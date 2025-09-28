@@ -44,39 +44,39 @@ SUITE(TopologyIsolatedBuck) {
 
         auto inputs = isolatedbuckInputs.process();
 
-        // {
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_IsolatedBuck_Primary.svg");
-        //     std::filesystem::remove(outFile);   
-        //     Painter painter(outFile, false, true);
-        //     painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
-        //     painter.export_svg();
-        // }
-        // {
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_IsolatedBuck_Secondary.svg");
-        //     std::filesystem::remove(outFile);   
-        //     Painter painter(outFile, false, true);
-        //     painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
-        //     painter.export_svg();
-        // }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_IsolatedBuck_Primary_Current.svg");
+            std::filesystem::remove(outFile);   
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_waveform().value());
+            painter.export_svg();
+        }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_IsolatedBuck_Secondary_Current.svg");
+            std::filesystem::remove(outFile);   
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_waveform().value());
+            painter.export_svg();
+        }
 
-        // {
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_IsolatedBuck_Primary_Voltage.svg");
-        //     std::filesystem::remove(outFile);   
-        //     Painter painter(outFile, false, true);
-        //     painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
-        //     painter.export_svg();
-        // }
-        // {
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_IsolatedBuck_Secondary_Voltage.svg");
-        //     std::filesystem::remove(outFile);   
-        //     Painter painter(outFile, false, true);
-        //     painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
-        //     painter.export_svg();
-        // }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_IsolatedBuck_Primary_Voltage.svg");
+            std::filesystem::remove(outFile);   
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
+            painter.export_svg();
+        }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_IsolatedBuck_Secondary_Voltage.svg");
+            std::filesystem::remove(outFile);   
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
+            painter.export_svg();
+        }
 
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding().size() == isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"].size());
         CHECK_CLOSE(double(isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_average().value(), double(isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
@@ -86,21 +86,23 @@ SUITE(TopologyIsolatedBuck) {
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
+        CHECK_CLOSE(double(isolatedbuckInputsJson["operatingPoints"][0]["outputVoltages"][1]), -inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_negative_peak().value(), double(isolatedbuckInputsJson["operatingPoints"][0]["outputVoltages"][1]) * maximumError);
         CHECK_CLOSE(double(isolatedbuckInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak_to_peak().value(), double(isolatedbuckInputsJson["inputVoltage"]["minimum"]) * maximumError);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::CUSTOM);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::CUSTOM);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_average().value(), double(isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(isolatedbuckInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(isolatedbuckInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
+        CHECK_CLOSE(0, inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset(), 0.01);
 
         CHECK_CLOSE(double(isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(isolatedbuckInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
+        CHECK_CLOSE(double(isolatedbuckInputsJson["operatingPoints"][0]["outputVoltages"][1]), -inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_negative_peak().value(), double(isolatedbuckInputsJson["operatingPoints"][0]["outputVoltages"][1]) * maximumError);
         CHECK_CLOSE(double(isolatedbuckInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak_to_peak().value(), double(isolatedbuckInputsJson["inputVoltage"]["maximum"]) * maximumError);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::CUSTOM);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::CUSTOM);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
     }
 

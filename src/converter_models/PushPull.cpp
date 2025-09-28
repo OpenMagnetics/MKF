@@ -40,7 +40,7 @@ namespace OpenMagnetics {
         return newTurnsRatios;
     }
 
-    double PushPull::calculate_duty_cycle() {
+    double PushPull::get_maximum_duty_cycle() {
         if (get_duty_cycle()) {
             return get_duty_cycle().value();
         }
@@ -57,58 +57,22 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPointExcitation complete_excitation(Waveform currentWaveform, Waveform voltageWaveform, double switchingFrequency) {
-        OperatingPointExcitation excitation;
-        excitation.set_frequency(switchingFrequency);
-        SignalDescriptor current;
-        current.set_waveform(currentWaveform);
-        auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true);
-        auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
-        auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
-        current.set_processed(currentProcessed);
-        current.set_harmonics(currentHarmonics);
-        excitation.set_current(current);
-        SignalDescriptor voltage;
-        voltage.set_waveform(voltageWaveform);
-        auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true);
-        auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
-        auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
-        voltage.set_processed(voltageProcessed);
-        voltage.set_harmonics(voltageHarmonics);
-        excitation.set_voltage(voltage);
-        json isolationSideJson;
-        to_json(isolationSideJson, get_isolation_side_from_index(0));
-        excitation.set_name(isolationSideJson);
-        excitation = Inputs::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
-        return excitation;
-    }
-
-    OperatingPoint PushPull::processOperatingPointsForInputVoltage(double inputVoltage, PushPullOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double outputInductance) {
+    OperatingPoint PushPull::process_operating_points_for_input_voltage(double inputVoltage, PushPullOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double outputInductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
         double mainOutputVoltage = outputOperatingPoint.get_output_voltages()[0];
         double mainOutputCurrent = outputOperatingPoint.get_output_currents()[0];
         double diodeVoltageDrop = get_diode_voltage_drop();
-        double totalReflectedSecondaryCurrent = get_total_reflected_secondary_current(outputOperatingPoint, turnsRatios);
 
         double mainSecondaryTurnsRatio = turnsRatios[1];
 
-        double efficiency = 1;
-        if (get_efficiency()) {
-            efficiency = get_efficiency().value();
-        }
-
-        auto dutyCycle = calculate_duty_cycle();
-
-        auto tOn = dutyCycle / switchingFrequency;
         auto inductorCurrentRipple = get_current_ripple_ratio() * mainOutputCurrent;
         auto period = 1.0 / switchingFrequency;
         auto t1 = period / 2 * (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
         if (t1 > period / 2) {
             throw std::runtime_error("T1 cannot be larger than period/2, wrong topology configuration");
         }
-        auto t2 = period / 2  - t1;
 
         auto magnetizationCurrent = inputVoltage * t1 / inductance;
         auto minimumSecondaryCurrent = mainOutputCurrent - inductorCurrentRipple / 2;
@@ -193,7 +157,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First primary");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -253,7 +217,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Second primary");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -317,7 +281,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First secondary");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -381,7 +345,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Second secondary");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -462,7 +426,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Auxiliary " + std::to_string(auxiliarySecondaryIndex));
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
 
             }
@@ -471,7 +435,6 @@ namespace OpenMagnetics {
         else {  // DCM
             auto t1 = sqrt(2 * mainOutputCurrent * outputInductance * (mainOutputVoltage + diodeVoltageDrop) / (2 * switchingFrequency * (inputVoltage / mainSecondaryTurnsRatio - diodeVoltageDrop - mainOutputVoltage) * (inputVoltage / mainSecondaryTurnsRatio)));
             auto t2 = t1 * (inputVoltage / mainSecondaryTurnsRatio) / (mainOutputVoltage + diodeVoltageDrop) - t1;
-            auto t3 = period / 2  - t1 - t2;
             if (t1 + t2 > period / 2) {
                 throw std::runtime_error("T1 + T2 cannot be larger than period/2, wrong topology configuration");
             }
@@ -492,7 +455,6 @@ namespace OpenMagnetics {
             double minimumPrimarySideTransformerVoltage = -inputVoltage;
             double maximumPrimarySideTransformerVoltage = inputVoltage;
 
-            double minimumSecondarySideTransformerCurrentT1OfFET = minimumSecondaryCurrent;
             double maximumSecondarySideTransformerCurrentT1OfFET = maximumSecondaryCurrent;
             double minimumSecondarySideTransformerCurrentT2OtherFET = (minimumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio - inductorCurrentRipple / 2;
             double maximumSecondarySideTransformerCurrentT2OtherFET = (minimumSecondaryCurrent / mainSecondaryTurnsRatio + magnetizationCurrent / 2) / 2 * mainSecondaryTurnsRatio;
@@ -568,7 +530,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First primary");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -634,7 +596,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Second primary");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -710,7 +672,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First secondary");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -784,7 +746,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Second secondary");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -799,7 +761,6 @@ namespace OpenMagnetics {
                 minimumPrimaryCurrent += minimumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary;
                 maximumPrimaryCurrent += maximumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary;
 
-                double minimumAuxiliarySecondarySideTransformerCurrentT1OfFET = minimumAuxiliarySecondaryCurrent;
                 double maximumAuxiliarySecondarySideTransformerCurrentT1OfFET = maximumAuxiliarySecondaryCurrent;
                 double minimumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (minimumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary - inductorCurrentRipple / 2;
                 double maximumAuxiliarySecondarySideTransformerCurrentT2OtherFET = (minimumAuxiliarySecondaryCurrent / turnsRatioAuxiliarySecondary + magnetizationCurrent / 2) / 2 * turnsRatioAuxiliarySecondary;
@@ -883,7 +844,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency);
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Auxiliary " + std::to_string(auxiliarySecondaryIndex));
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
 
             }
@@ -932,7 +893,7 @@ namespace OpenMagnetics {
         double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
         double diodeVoltageDrop = get_diode_voltage_drop();
-        double dutyCycle = calculate_duty_cycle();
+        double dutyCycle = get_maximum_duty_cycle();
 
         double efficiency = 1;
         if (get_efficiency()) {
@@ -987,7 +948,6 @@ namespace OpenMagnetics {
             double maximumSwitchCurrent = get_maximum_switch_current().value();
             // According to https://www.analog.com/cn/resources/technical-articles/high-frequency-push-pull-dc-dc-converter.html
             for (auto pushPullOperatingPoint : get_operating_points()) {
-                double mainSecondaryCurrent = pushPullOperatingPoint.get_output_currents()[0];
                 double switchingFrequency = pushPullOperatingPoint.get_switching_frequency();
                 double totalReflectedSecondaryCurrent = get_total_reflected_secondary_current(pushPullOperatingPoint, turnsRatios);
 
@@ -996,11 +956,7 @@ namespace OpenMagnetics {
             }
         }
 
-        for (size_t secondaryIndex = 0; secondaryIndex < get_operating_points()[0].get_output_voltages().size(); ++secondaryIndex) {
-        }
-
         DesignRequirements designRequirements;
-        auto convertedTurnsRatios = convert_turns_ratios(turnsRatios);
         designRequirements.get_mutable_turns_ratios().clear();
         for (auto turnsRatio : turnsRatios) {
             DimensionWithTolerance turnsRatioWithTolerance;
@@ -1020,13 +976,13 @@ namespace OpenMagnetics {
             isolationSides.push_back(get_isolation_side_from_index(windingIndex - 2));
         }
         designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::ISOLATED_BUCK_CONVERTER);
+        designRequirements.set_topology(Topologies::PUSH_PULL_CONVERTER);
         return designRequirements;
     }
 
     double PushPull::get_output_inductance(double mainSecondaryTurnsRatio) {
         double minimumOutputInductance = 0;
-        auto dutyCycle = calculate_duty_cycle();
+        auto dutyCycle = get_maximum_duty_cycle();
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
         for (auto outputOperatingPoint : get_operating_points()) {
             double mainOutputVoltage = outputOperatingPoint.get_output_voltages()[0];
@@ -1061,7 +1017,7 @@ namespace OpenMagnetics {
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t pushPullOperatingPointIndex = 0; pushPullOperatingPointIndex < get_operating_points().size(); ++pushPullOperatingPointIndex) {
-                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[pushPullOperatingPointIndex], turnsRatios, magnetizingInductance, minimumOutputInductance);
+                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[pushPullOperatingPointIndex], turnsRatios, magnetizingInductance, minimumOutputInductance);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
@@ -1158,7 +1114,7 @@ namespace OpenMagnetics {
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t pushPullOperatingPointIndex = 0; pushPullOperatingPointIndex < get_operating_points().size(); ++pushPullOperatingPointIndex) {
-                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[pushPullOperatingPointIndex], convertedTurnsRatios, minimumNeededInductance, minimumOutputInductance);
+                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[pushPullOperatingPointIndex], convertedTurnsRatios, minimumNeededInductance, minimumOutputInductance);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {

@@ -62,8 +62,7 @@ class Inputs : public MAS::Inputs {
     OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex=0);
     static OperatingPointExcitation get_primary_excitation(OperatingPoint operatingPoint);
 
-    static SignalDescriptor calculate_induced_voltage(OperatingPointExcitation& excitation,
-                                                        double magnetizingInductance);
+    static SignalDescriptor calculate_induced_voltage(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress=true);
     static bool include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,

@@ -26,7 +26,7 @@ SUITE(TopologyBoost) {
         inputVoltage["maximum"] = 24;
         boostInputsJson["inputVoltage"] = inputVoltage;
         boostInputsJson["diodeVoltageDrop"] = 0.7;
-        boostInputsJson["efficiency"] = 0.9;
+        boostInputsJson["efficiency"] = 1;
         boostInputsJson["maximumSwitchCurrent"] = 8;
         boostInputsJson["operatingPoints"] = json::array();
         {
@@ -77,14 +77,14 @@ SUITE(TopologyBoost) {
             painter.export_svg();
         }
 
-        CHECK_CLOSE(double(boostInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(boostInputsJson["inputVoltage"]["minimum"]) * maximumError);
+        CHECK_CLOSE(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
-        CHECK_CLOSE(double(boostInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(boostInputsJson["inputVoltage"]["maximum"]) * maximumError);
+        CHECK_CLOSE(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
     }
 }

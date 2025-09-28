@@ -22,7 +22,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint Boost::processOperatingPointsForInputVoltage(double inputVoltage, BoostOperatingPoint outputOperatingPoint, double inductance) {
+    OperatingPoint Boost::process_operating_points_for_input_voltage(double inputVoltage, BoostOperatingPoint outputOperatingPoint, double inductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -41,7 +41,6 @@ namespace OpenMagnetics {
         auto primaryCurrentPeakToPeak = inputVoltage * tOn / inductance;
         auto primaryCurrentAverage = outputCurrent * (outputVoltage + diodeVoltageDrop) / inputVoltage;
         auto primaryCurrentMinimum = primaryCurrentAverage - primaryCurrentPeakToPeak / 2;
-        auto primaryCurrentMaximum = primaryCurrentAverage - primaryCurrentPeakToPeak / 2;
 
         auto primaryVoltaveMinimum = inputVoltage - outputVoltage - diodeVoltageDrop;
         auto primaryVoltaveMaximum = inputVoltage;
@@ -49,11 +48,8 @@ namespace OpenMagnetics {
 
         // Primary
         {
-            OperatingPointExcitation excitation;
             Waveform currentWaveform;
             Waveform voltageWaveform;
-            Processed currentProcessed;
-            Processed voltageProcessed;
 
             if (primaryCurrentMinimum < 0) {
                 tOn = sqrt(2 * outputCurrent * inductance * (outputVoltage + diodeVoltageDrop - inputVoltage) / (switchingFrequency * pow(inputVoltage, 2)));
@@ -63,53 +59,14 @@ namespace OpenMagnetics {
 
                 currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR_WITH_DEADTIME, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, outputCurrent, deadTime);
                 voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
-                currentProcessed.set_label(WaveformLabel::TRIANGULAR_WITH_DEADTIME);
-                voltageProcessed.set_label(WaveformLabel::RECTANGULAR_WITH_DEADTIME);
-                currentProcessed.set_dead_time(deadTime);
-                voltageProcessed.set_dead_time(deadTime);
 
             }
             else {
                 currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryCurrentAverage, 0);
-                currentProcessed.set_label(WaveformLabel::TRIANGULAR);
                 voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
-                voltageProcessed.set_label(WaveformLabel::RECTANGULAR);
             }
 
-
-
-            currentProcessed.set_peak_to_peak(primaryCurrentPeakToPeak);
-            currentProcessed.set_peak(outputCurrent + primaryCurrentPeakToPeak / 2);
-            currentProcessed.set_duty_cycle(dutyCycle);
-            currentProcessed.set_offset(outputCurrent);
-
-            voltageProcessed.set_peak_to_peak(primaryVoltavePeaktoPeak);
-            voltageProcessed.set_peak(primaryVoltaveMaximum);
-            voltageProcessed.set_duty_cycle(dutyCycle);
-            voltageProcessed.set_offset(0);
-
-            excitation.set_frequency(switchingFrequency);
-            SignalDescriptor current;
-            current.set_waveform(currentWaveform);
-            currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
-            auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
-            auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
-            current.set_processed(currentProcessed);
-            current.set_harmonics(currentHarmonics);
-            excitation.set_current(current);
-            SignalDescriptor voltage;
-            voltage.set_waveform(voltageWaveform);
-            voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
-            auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
-            auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
-            voltage.set_processed(voltageProcessed);
-            voltage.set_harmonics(voltageHarmonics);
-            excitation.set_voltage(voltage);
-            json isolationSideJson;
-            to_json(isolationSideJson, get_isolation_side_from_index(0));
-            excitation.set_name(isolationSideJson);
-            excitation = Inputs::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
-
+            auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
 
@@ -165,7 +122,6 @@ namespace OpenMagnetics {
 
         if (get_maximum_switch_current()) {
             double maximumSwitchCurrent = get_maximum_switch_current().value();
-            double maximumOutputCurrent = 0;
 
             for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
                 auto boostOperatingPoint = get_operating_points()[boostOperatingPointIndex];
@@ -197,7 +153,7 @@ namespace OpenMagnetics {
         return designRequirements;
     }
 
-    std::vector<OperatingPoint> Boost::process_operating_points(double magnetizingInductance) {
+    std::vector<OperatingPoint> Boost::process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) {
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
@@ -218,7 +174,7 @@ namespace OpenMagnetics {
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
-                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[boostOperatingPointIndex], magnetizingInductance);
+                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[boostOperatingPointIndex], magnetizingInductance);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
@@ -231,28 +187,15 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
 
-    Inputs Boost::process() {
-        Boost::run_checks(_assertErrors);
-
-        Inputs inputs;
-        auto designRequirements = process_design_requirements();
-
-        auto desiredMagnetizingInductance = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
-        auto operatingPoints = process_operating_points(desiredMagnetizingInductance);
-
-        inputs.set_design_requirements(designRequirements);
-        inputs.set_operating_points(operatingPoints);
-
-        return inputs;
-    }
-
-    std::vector<OperatingPoint> Boost::process_operating_points(Magnetic magnetic) {
-        Boost::run_checks(_assertErrors);
+    std::vector<OperatingPoint> Boost::process_operating_points(OpenMagnetics::Magnetic magnetic) {
+        run_checks(_assertErrors);
 
         OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         
-        return process_operating_points(magnetizingInductance);
+        std::vector<double> turnsRatios = magnetic.get_turns_ratios();
+        
+        return process_operating_points(turnsRatios, magnetizingInductance);
     }
 
     Inputs AdvancedBoost::process() {
@@ -295,7 +238,7 @@ namespace OpenMagnetics {
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
-                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[boostOperatingPointIndex], maximumNeededInductance);
+                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[boostOperatingPointIndex], maximumNeededInductance);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {

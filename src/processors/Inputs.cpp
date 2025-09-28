@@ -429,32 +429,32 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
             break;
         }
         case WaveformLabel::RECTANGULAR: {
-            double max = peakToPeak * (1 - dutyCycle);
-            double min = -peakToPeak * dutyCycle;
+            double max = peakToPeak * (1 - dutyCycle) + offset;
+            double min = -peakToPeak * dutyCycle + offset;
             double dc = dutyCycle * period;
             data = {min, max, max, min, min};
             time = {0, 0, dc, dc, period};
             break;
         }
         case WaveformLabel::RECTANGULAR_WITH_DEADTIME: {
-            double max = peakToPeak * (1 - dutyCycle);
-            double min = -peakToPeak * dutyCycle;
+            double max = peakToPeak * (1 - dutyCycle) + offset;
+            double min = -peakToPeak * dutyCycle + offset;
             double dc = dutyCycle * period;
             data = {0, max, max, min, min, 0, 0};
             time = {0, 0, dc, dc, period - deadTime, period - deadTime, period};
             break;
         }
         case WaveformLabel::SECONDARY_RECTANGULAR: {
-            double max = -peakToPeak * (1 - dutyCycle);
-            double min = peakToPeak * dutyCycle;
+            double max = -peakToPeak * (1 - dutyCycle) + offset;
+            double min = peakToPeak * dutyCycle + offset;
             double dc = dutyCycle * period;
             data = {min, max, max, min, min};
             time = {0, 0, dc, dc, period};
             break;
         }
         case WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME: {
-            double max = -peakToPeak * (1 - dutyCycle);
-            double min = peakToPeak * dutyCycle;
+            double max = -peakToPeak * (1 - dutyCycle) + offset;
+            double min = peakToPeak * dutyCycle + offset;
             double dc = dutyCycle * period;
             data = {0, max, max, min, min, 0, 0};
             time = {0, 0, dc, dc, period - deadTime, period - deadTime, period};
@@ -785,8 +785,7 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
     return sampledWaveform;
 }
 
-SignalDescriptor Inputs::calculate_induced_voltage(OperatingPointExcitation& excitation,
-                                                            double magnetizingInductance) {
+SignalDescriptor Inputs::calculate_induced_voltage(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress) {
     if (!excitation.get_current()->get_waveform()) {
         throw std::runtime_error("Current waveform is missing");
     }
@@ -857,8 +856,10 @@ SignalDescriptor Inputs::calculate_induced_voltage(OperatingPointExcitation& exc
     voltageSignalDescriptor.set_waveform(voltageWaveform);
     auto sampledWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
     voltageSignalDescriptor.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
-    voltageSignalDescriptor.set_processed(
-        calculate_processed_data(voltageSignalDescriptor, sampledWaveform, true));
+    voltageSignalDescriptor.set_processed(calculate_processed_data(voltageSignalDescriptor, sampledWaveform, true));
+    if (!compress) {
+        voltageSignalDescriptor.set_waveform(sampledWaveform);
+    }
 
     resultWaveform.set_data(derivative);
     return voltageSignalDescriptor;
@@ -1275,7 +1276,11 @@ Processed Inputs::calculate_basic_processed_data(Waveform waveform) {
         processed.set_peak_to_peak(processed.get_peak_to_peak().value() - offset);
     }
 
-    processed.set_peak(std::max(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()), -1 * *min_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end())));
+    double positivePeak = *max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end());
+    double negativePeak = *min_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end());
+    processed.set_peak(std::max(positivePeak, -negativePeak));
+    processed.set_positive_peak(positivePeak);
+    processed.set_negative_peak(negativePeak);
 
     processed.set_duty_cycle(try_guess_duty_cycle(compressedWaveform, label));
 
@@ -1575,9 +1580,11 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
     auto voltageExcitation = excitation.get_voltage().value();
     voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
     auto waveform = voltageExcitation.get_waveform().value();
-
-    auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
-    return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, addOffset);
+ 
+    if (!is_waveform_sampled(waveform)) {
+        waveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+    }
+    return calculate_magnetizing_current(excitation, waveform, magnetizingInductance, compress, addOffset);
 }
 
 bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
@@ -1699,7 +1706,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios) {
     std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
     std::vector<Waveform> voltageSampledWaveforms;
-    bool allExcitationHaveVoltage = true;
+    bool allExcitationHaveVoltageOrAlreadyCalculated = true;
 
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
@@ -1764,6 +1771,8 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             if (operatingPoint.get_excitations_per_winding().size() == 1 && excitation.get_current()) {
                 auto voltageExcitation = calculate_induced_voltage(excitation, magnetizingInductance);
                 excitation.set_voltage(voltageExcitation);
+                excitation.set_magnetizing_current(excitation.get_current().value());
+                allExcitationHaveVoltageOrAlreadyCalculated = false;
             }
             else if (operatingPoint.get_excitations_per_winding().size() == 2 && windingIndex == 1 && operatingPoint.get_excitations_per_winding()[0].get_voltage() && turnsRatios) {
                 auto turnsRatio = turnsRatios.value()[0];
@@ -1776,19 +1785,20 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                 else {
                     sampledWaveform = waveform;
                 }
+                voltageSampledWaveforms.push_back(sampledWaveform);
                 voltageExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
                 voltageExcitation.set_processed(calculate_processed_data(voltageExcitation, sampledWaveform, true, voltageExcitation.get_processed()));
                 excitation.set_voltage(voltageExcitation);
             }
             else {
-                allExcitationHaveVoltage = false;
+                allExcitationHaveVoltageOrAlreadyCalculated = false;
             }
         }
         processedExcitationsPerWinding.push_back(excitation);
     }
     operatingPoint.set_excitations_per_winding(processedExcitationsPerWinding);
 
-    if (allExcitationHaveVoltage) {
+    if (allExcitationHaveVoltageOrAlreadyCalculated) {
         std::vector<double> turnsRatios;
         double primaryVoltageRms = operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_processed()->get_rms().value();
         for (size_t windingIndex = 1; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
@@ -1805,7 +1815,11 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
 
             if (!excitation.get_magnetizing_current() && magnetizingInductance > 0) {
-                excitation.set_magnetizing_current(calculate_magnetizing_current(excitation, voltageSampledWaveforms[windingIndex], magnetizingInductance, false, includeDcOffsetIntoMagnetizingCurrent));
+                Waveform waveform = excitation.get_voltage()->get_waveform().value();
+                if (windingIndex < voltageSampledWaveforms.size()) {
+                    waveform = voltageSampledWaveforms[windingIndex];
+                }
+                excitation.set_magnetizing_current(calculate_magnetizing_current(excitation, waveform, magnetizingInductance, false, includeDcOffsetIntoMagnetizingCurrent));
             }
             processedExcitationsPerWinding[windingIndex] = excitation;
         }
@@ -2298,6 +2312,10 @@ double Inputs::calculate_instantaneous_power(OperatingPointExcitation excitation
 }
 
 WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
+    if (waveform.get_ancillary_label()) {
+        return waveform.get_ancillary_label().value();
+    }
+
     auto compressedWaveform = waveform;
     if (is_waveform_sampled(waveform))
         compressedWaveform = compress_waveform(waveform);

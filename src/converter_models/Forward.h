@@ -10,12 +10,12 @@ using namespace MAS;
 namespace OpenMagnetics {
 
 
-class IsolatedBuckBoost : public MAS::IsolatedBuckBoost, public Topology {
+class Forward : public MAS::Forward, public Topology {
 public:
     bool _assertErrors = false;
 
-    IsolatedBuckBoost(const json& j);
-    IsolatedBuckBoost() {
+    Forward(const json& j);
+    Forward() {
     };
 
     bool run_checks(bool assert = false);
@@ -24,24 +24,26 @@ public:
     std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckBoostOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
-    double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance);
+    double get_output_inductance(double mainSecondaryTurnsRatio, size_t outputIndex);
+    double get_maximum_duty_cycle();
 
 };
 
-class AdvancedIsolatedBuckBoost : public IsolatedBuckBoost {
+class AdvancedForward : public Forward {
 private:
     std::vector<double> desiredTurnsRatios;
     double desiredInductance;
+    std::vector<double> desiredOutputInductances;
 
 protected:
 public:
     bool _assertErrors = false;
 
-    AdvancedIsolatedBuckBoost() = default;
-    ~AdvancedIsolatedBuckBoost() = default;
+    AdvancedForward() = default;
+    ~AdvancedForward() = default;
 
-    AdvancedIsolatedBuckBoost(const json& j);
+    AdvancedForward(const json& j);
 
     Inputs process();
 
@@ -53,33 +55,39 @@ public:
     std::vector<double> & get_mutable_desired_turns_ratios() { return desiredTurnsRatios; }
     void set_desired_turns_ratios(const std::vector<double> & value) { this->desiredTurnsRatios = value; }
 
+    const std::vector<double> & get_desired_output_inductances() const { return desiredOutputInductances; }
+    std::vector<double> & get_mutable_desired_output_inductances() { return desiredOutputInductances; }
+    void set_desired_output_inductances(const std::vector<double> & value) { this->desiredOutputInductances = value; }
 };
 
 
-void from_json(const json & j, AdvancedIsolatedBuckBoost & x);
-void to_json(json & j, const AdvancedIsolatedBuckBoost & x);
+void from_json(const json & j, AdvancedForward & x);
+void to_json(json & j, const AdvancedForward & x);
 
-
-inline void from_json(const json & j, AdvancedIsolatedBuckBoost& x) {
-    x.set_current_ripple_ratio(get_stack_optional<double>(j, "currentRippleRatio"));
+inline void from_json(const json & j, AdvancedForward& x) {
+    x.set_current_ripple_ratio(j.at("currentRippleRatio").get<double>());
     x.set_diode_voltage_drop(j.at("diodeVoltageDrop").get<double>());
+    x.set_duty_cycle(get_stack_optional<double>(j, "dutyCycle"));
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_switch_current(get_stack_optional<double>(j, "maximumSwitchCurrent"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<IsolatedBuckBoostOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<ForwardOperatingPoint>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
+    x.set_desired_output_inductances(j.at("desiredOutputInductances").get<std::vector<double>>());
 }
 
-inline void to_json(json & j, const AdvancedIsolatedBuckBoost & x) {
+inline void to_json(json & j, const AdvancedForward & x) {
     j = json::object();
     j["currentRippleRatio"] = x.get_current_ripple_ratio();
     j["diodeVoltageDrop"] = x.get_diode_voltage_drop();
+    j["dutyCycle"] = x.get_duty_cycle();
     j["efficiency"] = x.get_efficiency();
     j["inputVoltage"] = x.get_input_voltage();
     j["maximumSwitchCurrent"] = x.get_maximum_switch_current();
     j["operatingPoints"] = x.get_operating_points();
     j["desiredTurnsRatios"] = x.get_desired_turns_ratios();
     j["desiredInductance"] = x.get_desired_inductance();
+    j["desiredOutputInductances"] = x.get_desired_output_inductances();
 }
 } // namespace OpenMagnetics
