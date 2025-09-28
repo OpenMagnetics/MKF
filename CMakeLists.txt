@@ -221,7 +221,7 @@ set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
 add_dependencies(MKF MAS)
 
 cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards NAMESPACE insulationData src/data/insulation_standards/IEC_60664-1.json src/data/insulation_standards/IEC_60664-4.json src/data/insulation_standards/IEC_60664-5.json src/data/insulation_standards/IEC_62368-1.json src/data/insulation_standards/IEC_61558-1.json src/data/insulation_standards/IEC_61558-2-16.json src/data/insulation_standards/IEC_60335-1.json)
-target_link_libraries(MKF ${LIBS})
+target_link_libraries(MKF PUBLIC ${LIBS})
 
 set(DATA_LIST "")
 if(EMBED_MAS_DATA)
@@ -251,10 +251,12 @@ endif()
 
 message(${DATA_LIST})
 cmrc_add_resource_library(data ALIAS data::data NAMESPACE data ${DATA_LIST})
-target_link_libraries(MKF data::data)
+target_link_libraries(MKF PUBLIC data::data)
 
 
-target_link_libraries(MKF nlohmann_json::nlohmann_json matplot)
+target_link_libraries(MKF PUBLIC matplot)
+target_link_libraries(MKF PRIVATE nlohmann_json::nlohmann_json)
+
 
 target_include_directories(MKF PUBLIC
      "${PROJECT_SOURCE_DIR}/src/"
