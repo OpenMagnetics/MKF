@@ -1085,8 +1085,8 @@ std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size
         availableOverlappingDimension = windingWindows[0].get_width().value();
     }
     else {
-        availableContiguousDimension = windingWindows[0].get_radial_height().value();
-        availableOverlappingDimension = windingWindows[0].get_angle().value();
+        availableOverlappingDimension = windingWindows[0].get_radial_height().value();
+        availableContiguousDimension = windingWindows[0].get_angle().value();
     }
     double maximumLayerFillingFactor = 0;
     double contiguousDimension = 0;
