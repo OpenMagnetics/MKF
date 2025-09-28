@@ -94,7 +94,16 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType=s
 Bobbin find_bobbin_by_name(std::string name);
 InsulationMaterial find_insulation_material_by_name(std::string name);
 WireMaterial find_wire_material_by_name(std::string name);
-CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter);
+CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter, std::optional<CoreShapeFamily> family=std::nullopt);
+CoreShape find_core_shape_by_area_product(double desiredAreaProduct, std::optional<CoreShapeFamily> family=std::nullopt);
+CoreShape find_core_shape_by_winding_window_area(double desiredWindingWindowArea, std::optional<CoreShapeFamily> family=std::nullopt);
+CoreShape find_core_shape_by_winding_window_dimensions(double desiredWidthOrRadius, double desiredHeight, std::optional<CoreShapeFamily> family=std::nullopt);
+CoreShape find_core_shape_by_effective_parameters(double desiredEffectiveLength, double desiredEffectiveArea, double desiredEffectiveVolume, std::optional<CoreShapeFamily> family=std::nullopt);
+double get_error_by_winding_window_perimeter(CoreShape shape, double perimeter);
+double get_error_by_area_product(CoreShape shape, double areaProduct);
+double get_error_by_winding_window_area(CoreShape shape, double windingWindowArea);
+double get_error_by_winding_window_dimensions(CoreShape shape, double widthOrRadius, double height);
+double get_error_by_effective_parameters(CoreShape shape, double effectiveLength, double effectiveArea, double effectiveVolume);
 
 
 void clear_loaded_cores();

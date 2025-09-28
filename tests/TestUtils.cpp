@@ -98,6 +98,48 @@ SUITE(Utils) {
         CHECK_CLOSE(expectedValue, calculatedValue, expectedValue * 0.001);
     }
 
+    TEST(Test_Find_By_Area_Product) {
+        clear_databases();
+        auto settings = Settings::GetInstance();
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+
+        auto shape = find_core_shape_by_area_product(0.00000003568, MAS::CoreShapeFamily::PQ);
+
+        CHECK_EQUAL("PQ 35/35", shape.get_name().value());
+    }
+
+    TEST(Test_Find_By_Winding_Window_Area) {
+        clear_databases();
+        auto settings = Settings::GetInstance();
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+
+        auto shape = find_core_shape_by_winding_window_area(0.00022062, MAS::CoreShapeFamily::PQ);
+
+        CHECK_EQUAL("PQ 35/35", shape.get_name().value());
+    }
+
+    TEST(Test_Find_By_Winding_Window_Dimensions) {
+        clear_databases();
+        auto settings = Settings::GetInstance();
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+        auto shape = find_core_shape_by_winding_window_dimensions(0.008825, 0.025, MAS::CoreShapeFamily::PQ);
+
+        CHECK_EQUAL("PQ 35/35", shape.get_name().value());
+    }
+
+    TEST(Test_Find_By_Effective_Parameters) {
+        clear_databases();
+        auto settings = Settings::GetInstance();
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+        auto shape = find_core_shape_by_effective_parameters(0.079, 0.000171, 0.000014, MAS::CoreShapeFamily::PQ);
+
+        CHECK_EQUAL("PQ 35/35", shape.get_name().value());
+    }
+
     TEST(Test_Find_By_Perimeter) {
         clear_databases();
         auto settings = Settings::GetInstance();
@@ -367,12 +409,10 @@ SUITE(Utils) {
         load_core_shapes(false);
 
         auto allCoreShapes = coreShapeDatabase;
-        std::cout << "allCoreShapes.size(): " << allCoreShapes.size() << std::endl;
 
         load_core_shapes(false, external_core_shapes);
 
         auto allCoreShapesWithExternal = coreShapeDatabase;
-        std::cout << "allCoreShapesWithExternal.size(): " << allCoreShapesWithExternal.size() << std::endl;
 
         CHECK(allCoreShapesWithExternal.size() > allCoreShapes.size());
     }
