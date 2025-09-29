@@ -39,7 +39,7 @@ SUITE(MagnetizingInductance) {
         primaryWindingJson["numberParallels"] = 1;
         primaryWindingJson["numberTurns"] = numberTurns;
         primaryWindingJson["wire"] = "Dummy";
-        OpenMagnetics::CoilFunctionalDescription primaryCoilFunctionalDescription(primaryWindingJson);
+        OpenMagnetics::Winding primaryCoilFunctionalDescription(primaryWindingJson);
         json CoilFunctionalDescriptionJson = json::array();
         CoilFunctionalDescriptionJson.push_back(primaryWindingJson);
         json windingJson = json();

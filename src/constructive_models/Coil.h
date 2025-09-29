@@ -19,7 +19,7 @@ using BobbinDataOrNameUnion = std::variant<Bobbin, std::string>;
 using WireDataOrNameUnion = std::variant<Wire, std::string>;
 
 
-class CoilFunctionalDescription : public MAS::CoilFunctionalDescription {
+class Winding : public MAS::CoilFunctionalDescription {
     private:
         WireDataOrNameUnion wire;
 
@@ -27,17 +27,17 @@ class CoilFunctionalDescription : public MAS::CoilFunctionalDescription {
         const WireDataOrNameUnion & get_wire() const { return wire; }
         WireDataOrNameUnion & get_mutable_wire() { return wire; }
         void set_wire(const WireDataOrNameUnion & value) { this->wire = value; }
-        CoilFunctionalDescription(const MAS::CoilFunctionalDescription coilFunctionalDescription) {
+        Winding(const MAS::CoilFunctionalDescription winding) {
 
-            if (coilFunctionalDescription.get_connections()) {
-                set_connections(coilFunctionalDescription.get_connections());
+            if (winding.get_connections()) {
+                set_connections(winding.get_connections());
             }
 
-            set_isolation_side(coilFunctionalDescription.get_isolation_side());
-            set_name(coilFunctionalDescription.get_name());
-            set_number_parallels(coilFunctionalDescription.get_number_parallels());
-            set_number_turns(coilFunctionalDescription.get_number_turns());
-            auto wireVariant = coilFunctionalDescription.get_wire();
+            set_isolation_side(winding.get_isolation_side());
+            set_name(winding.get_name());
+            set_number_parallels(winding.get_number_parallels());
+            set_number_turns(winding.get_number_turns());
+            auto wireVariant = winding.get_wire();
             if (std::holds_alternative<std::string>(wireVariant)) {
                 set_wire(std::get<std::string>(wireVariant));
             }
@@ -45,8 +45,8 @@ class CoilFunctionalDescription : public MAS::CoilFunctionalDescription {
                 set_wire(std::get<MAS::Wire>(wireVariant));
             }
         };
-        CoilFunctionalDescription() = default;
-        virtual ~CoilFunctionalDescription() = default;
+        Winding() = default;
+        virtual ~Winding() = default;
 
         Wire resolve_wire();
 };
@@ -78,7 +78,7 @@ class Coil : public MAS::Coil {
         bool _bobbin_resolved = false;
         Bobbin _bobbin;
         BobbinDataOrNameUnion bobbin;
-        std::vector<CoilFunctionalDescription> functional_description;
+        std::vector<Winding> functional_description;
 
         bool wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
@@ -120,9 +120,9 @@ class Coil : public MAS::Coil {
         BobbinDataOrNameUnion & get_mutable_bobbin() { return bobbin; }
         void set_bobbin(const BobbinDataOrNameUnion & value) { this->bobbin = value; }
 
-        const std::vector<CoilFunctionalDescription> & get_functional_description() const { return functional_description; }
-        std::vector<CoilFunctionalDescription> & get_mutable_functional_description() { return functional_description; }
-        void set_functional_description(const std::vector<CoilFunctionalDescription> & value) { this->functional_description = value; }
+        const std::vector<Winding> & get_functional_description() const { return functional_description; }
+        std::vector<Winding> & get_mutable_functional_description() { return functional_description; }
+        void set_functional_description(const std::vector<Winding> & value) { this->functional_description = value; }
 
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
@@ -223,7 +223,7 @@ class Coil : public MAS::Coil {
         std::vector<size_t> get_turns_indexes_by_section(std::string sectionName);
         std::vector<size_t> get_turns_indexes_by_winding(std::string windingName);
 
-        CoilFunctionalDescription get_winding_by_name(std::string name);
+        Winding get_winding_by_name(std::string name);
 
         size_t get_winding_index_by_name(std::string name);
         size_t get_turn_index_by_name(std::string name);
@@ -234,11 +234,11 @@ class Coil : public MAS::Coil {
         void set_wires(std::vector<Wire> wires);
         WireType get_wire_type(size_t windingIndex);
         std::vector<double> get_wires_length();
-        static WireType get_wire_type(CoilFunctionalDescription coilFunctionalDescription);
+        static WireType get_wire_type(Winding winding);
         std::string get_wire_name(size_t windingIndex);
-        static std::string get_wire_name(CoilFunctionalDescription coilFunctionalDescription);
+        static std::string get_wire_name(Winding winding);
         Wire resolve_wire(size_t windingIndex);
-        static Wire resolve_wire(CoilFunctionalDescription coilFunctionalDescription);
+        static Wire resolve_wire(Winding winding);
 
         double overlapping_filling_factor(Section section);
 
@@ -288,8 +288,8 @@ namespace OpenMagnetics {
 
 void from_json(const json & j, Coil & x);
 void to_json(json & j, const Coil & x);
-void from_json(const json & j, CoilFunctionalDescription & x);
-void to_json(json & j, const CoilFunctionalDescription & x);
+void from_json(const json & j, Winding & x);
+void to_json(json & j, const Winding & x);
 } // namespace OpenMagnetics
 
 
@@ -311,14 +311,14 @@ struct adl_serializer<std::variant<OpenMagnetics::Wire, std::string>> {
 namespace OpenMagnetics {
 inline void from_json(const json & j, Coil& x) {
     x.set_bobbin(j.at("bobbin").get<OpenMagnetics::BobbinDataOrNameUnion>());
-    x.set_functional_description(j.at("functionalDescription").get<std::vector<CoilFunctionalDescription>>());
+    x.set_functional_description(j.at("functionalDescription").get<std::vector<Winding>>());
     x.set_layers_description(get_stack_optional<std::vector<Layer>>(j, "layersDescription"));
     x.set_sections_description(get_stack_optional<std::vector<Section>>(j, "sectionsDescription"));
     x.set_turns_description(get_stack_optional<std::vector<Turn>>(j, "turnsDescription"));
     x.set_groups_description(get_stack_optional<std::vector<Group>>(j, "groupsDescription"));
 }
 
-inline void from_json(const json & j, CoilFunctionalDescription& x) {
+inline void from_json(const json & j, Winding& x) {
     x.set_connections(get_stack_optional<std::vector<ConnectionElement>>(j, "connections"));
     x.set_isolation_side(j.at("isolationSide").get<IsolationSide>());
     x.set_name(j.at("name").get<std::string>());
@@ -337,7 +337,7 @@ inline void to_json(json & j, const Coil & x) {
     j["groupsDescription"] = x.get_groups_description();
 }
 
-inline void to_json(json & j, const CoilFunctionalDescription & x) {
+inline void to_json(json & j, const Winding & x) {
     j = json::object();
     j["connections"] = x.get_connections();
     j["isolationSide"] = x.get_isolation_side();

@@ -52,7 +52,7 @@ SUITE(Magnetic) {
         std::cout << "Core" << std::endl;
         OpenMagnetics::Core core(magneticJson["core"]);
         std::cout << "functionalDescription" << std::endl;
-        OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription(magneticJson["coil"]["functionalDescription"][0]);
+        OpenMagnetics::Winding coilFunctionalDescription(magneticJson["coil"]["functionalDescription"][0]);
         std::cout << "Wire" << std::endl;
         OpenMagnetics::Wire wire(magneticJson["coil"]["functionalDescription"][0]["wire"]);
         std::cout << "sectionsDescription 0" << std::endl;
