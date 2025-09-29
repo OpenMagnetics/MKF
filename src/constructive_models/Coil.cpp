@@ -1132,7 +1132,13 @@ std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size
             }
         }
         else {
-            area += layer.get_dimensions()[0] * layer.get_dimensions()[1];
+            if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+                area += layer.get_dimensions()[0] * layer.get_dimensions()[1];
+            }
+            else {
+                auto arc = angle_to_wound_distance(layer.get_dimensions()[1], (availableOverlappingDimension - layer.get_coordinates()[0]));
+                area += layer.get_dimensions()[0] * arc;
+            }
         }
     }
 
