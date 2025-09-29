@@ -10,20 +10,20 @@
 
 namespace OpenMagnetics {
 
-void normalize_scoring(std::vector<std::pair<CoilFunctionalDescription, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true) {
+void normalize_scoring(std::vector<std::pair<Winding, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true) {
     auto normalizedScorings = OpenMagnetics::normalize_scoring(*newScoring, 1, invert, false);
 
     for (size_t i = 0; i < (*coilsWithScoring).size(); ++i) {
         (*coilsWithScoring)[i].second += normalizedScorings[i];
     }
-    sort((*coilsWithScoring).begin(), (*coilsWithScoring).end(), [](std::pair<CoilFunctionalDescription, double>& b1, std::pair<CoilFunctionalDescription, double>& b2) {
+    sort((*coilsWithScoring).begin(), (*coilsWithScoring).end(), [](std::pair<Winding, double>& b1, std::pair<Winding, double>& b2) {
         return b1.second > b2.second;
     });
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_by_area_no_parallels(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_no_parallels(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                     Section section) {
-    std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
+    std::vector<std::pair<Winding, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
 
     std::list<size_t> listOfIndexesToErase;
@@ -61,11 +61,11 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_by_area_with_parallels(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_with_parallels(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                     Section section,
                                                                                                     double numberSections,
                                                                                                     bool allowNotFit) {
-    std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
+    std::vector<std::pair<Winding, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
 
     double sectionArea;
@@ -110,10 +110,10 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by_effective_resistance(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+std::vector<std::pair<Winding, double>> WireAdviser::filter_by_effective_resistance(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                       SignalDescriptor current,
                                                                                                       double temperature) {
-    std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
+    std::vector<std::pair<Winding, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
 
     if (!current.get_processed()->get_effective_frequency()) {
@@ -155,10 +155,10 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by_skin_losses_density(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+std::vector<std::pair<Winding, double>> WireAdviser::filter_by_skin_losses_density(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                      SignalDescriptor current,
                                                                                                      double temperature) {
-    std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
+    std::vector<std::pair<Winding, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
 
     auto filter = MagneticFilterSkinLossesDensity();
@@ -195,10 +195,10 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by_proximity_factor(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+std::vector<std::pair<Winding, double>> WireAdviser::filter_by_proximity_factor(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                       SignalDescriptor current,
                                                                                                       double temperature) {
-    std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
+    std::vector<std::pair<Winding, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
 
     if (!current.get_processed()->get_effective_frequency()) {
@@ -240,8 +240,8 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by_solid_insulation_requirements(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils, WireSolidInsulationRequirements wireSolidInsulationRequirements) {
-    std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
+std::vector<std::pair<Winding, double>> WireAdviser::filter_by_solid_insulation_requirements(std::vector<std::pair<Winding, double>>* unfilteredCoils, WireSolidInsulationRequirements wireSolidInsulationRequirements) {
+    std::vector<std::pair<Winding, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
 
     auto filter = MagneticFilterSolidInsulationRequirements();
@@ -278,7 +278,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<OpenMagnetics::CoilFunctionalDescription, double>> WireAdviser::get_advised_wire(OpenMagnetics ::CoilFunctionalDescription coilFunctionalDescription,
+std::vector<std::pair<OpenMagnetics::Winding, double>> WireAdviser::get_advised_wire(OpenMagnetics ::Winding coilFunctionalDescription,
                                                                                         Section section,
                                                                                         SignalDescriptor current,
                                                                                         double temperature,
@@ -309,10 +309,10 @@ std::vector<std::pair<OpenMagnetics::CoilFunctionalDescription, double>> WireAdv
     return get_advised_wire(&wires, coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_planar_dataset(CoilFunctionalDescription coilFunctionalDescription,
+std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Winding coilFunctionalDescription,
                                                                                              Section section,
                                                                                              uint8_t numberSections) {
-    std::vector<std::pair<CoilFunctionalDescription, double>> coilFunctionalDescriptions;
+    std::vector<std::pair<Winding, double>> coilFunctionalDescriptions;
     auto planarWires = get_wires(WireType::PLANAR);
 
     // No paralells
@@ -333,7 +333,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
                 wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
                 coilFunctionalDescription.set_wire(wire);
                 coilFunctionalDescription.set_number_parallels(1);
-                coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
+                coilFunctionalDescriptions.push_back(std::pair<Winding, double>{coilFunctionalDescription, 0});
             }
         }
     }
@@ -358,7 +358,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
                     wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
                     coilFunctionalDescription.set_wire(wire);
                     coilFunctionalDescription.set_number_parallels(numberParallels);
-                    coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
+                    coilFunctionalDescriptions.push_back(std::pair<Winding, double>{coilFunctionalDescription, 0});
                 }
             }
         }
@@ -366,13 +366,13 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
     return coilFunctionalDescriptions;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_dataset(CoilFunctionalDescription coilFunctionalDescription,
+std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding coilFunctionalDescription,
                                                                                       std::vector<Wire>* wires,
                                                                                       Section section,
                                                                                       SignalDescriptor current,
                                                                                       double temperature){
     auto settings = Settings::GetInstance();
-    std::vector<std::pair<CoilFunctionalDescription, double>> coilFunctionalDescriptions;
+    std::vector<std::pair<Winding, double>> coilFunctionalDescriptions;
 
     for (auto& wire : *wires){
         if (wire.get_type() == WireType::LITZ) {
@@ -409,17 +409,17 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
 
         coilFunctionalDescription.set_number_parallels(numberParallelsNeeded);
         coilFunctionalDescription.set_wire(wire);
-        coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
+        coilFunctionalDescriptions.push_back(std::pair<Winding, double>{coilFunctionalDescription, 0});
         if (numberParallelsNeeded < _maximumNumberParallels) {
             coilFunctionalDescription.set_number_parallels(numberParallelsNeeded + 1);
-            coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
+            coilFunctionalDescriptions.push_back(std::pair<Winding, double>{coilFunctionalDescription, 0});
         }
     }
 
     return coilFunctionalDescriptions;
 }
 
-void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils, Section section, uint8_t numberSections) {
+void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<Winding, double>>* unfilteredCoils, Section section, uint8_t numberSections) {
     double sectionArea;
 
     if (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
@@ -447,7 +447,7 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<CoilFunction
     }
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advised_planar_wire(CoilFunctionalDescription coilFunctionalDescription,
+std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Winding coilFunctionalDescription,
                                                                                                Section section,
                                                                                                SignalDescriptor current,
                                                                                                double temperature,
@@ -467,7 +467,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by proximity factor.");
 
     if (coilsWithScoring.size() > maximumNumberResults) {
-        auto finalCoilsWithScoring = std::vector<std::pair<CoilFunctionalDescription, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));
+        auto finalCoilsWithScoring = std::vector<std::pair<Winding, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));
         set_maximum_area_proportion(&finalCoilsWithScoring, section, numberSections);
         return finalCoilsWithScoring;
     }
@@ -479,8 +479,8 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
     return coilsWithScoring;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advised_wire(std::vector<Wire>* wires,
-                                                                                        CoilFunctionalDescription coilFunctionalDescription,
+std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(std::vector<Wire>* wires,
+                                                                                        Winding coilFunctionalDescription,
                                                                                         Section section,
                                                                                         SignalDescriptor current,
                                                                                         double temperature,
@@ -515,7 +515,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.");
 
     if (coilsWithScoring.size() > maximumNumberResults) {
-        auto finalCoilsWithScoring = std::vector<std::pair<CoilFunctionalDescription, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));
+        auto finalCoilsWithScoring = std::vector<std::pair<Winding, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));
         set_maximum_area_proportion(&finalCoilsWithScoring, section, numberSections);
         return finalCoilsWithScoring;
     }

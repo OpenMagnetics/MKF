@@ -342,7 +342,7 @@ namespace OpenMagnetics {
             }
         }
 
-        std::vector<std::vector<std::pair<OpenMagnetics::CoilFunctionalDescription, double>>> wireCoilPerWinding;
+        std::vector<std::vector<std::pair<OpenMagnetics::Winding, double>>> wireCoilPerWinding;
 
 
         if (!mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()) {
@@ -430,7 +430,7 @@ namespace OpenMagnetics {
                 }
             }
             if (!found) {
-                wireCoilPerWinding.push_back(std::vector<std::pair<CoilFunctionalDescription, double>>{});
+                wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
             }
         }
 
@@ -453,7 +453,7 @@ namespace OpenMagnetics {
 
         while (true) {
 
-            std::vector<CoilFunctionalDescription> coilFunctionalDescription;
+            std::vector<Winding> coilFunctionalDescription;
 
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
                 coilFunctionalDescription.push_back(wireCoilPerWinding[windingIndex][currentWireIndexPerWinding[windingIndex]].first);
@@ -521,7 +521,7 @@ namespace OpenMagnetics {
         coil.set_inputs(mas.get_inputs());
         coil.clear();
 
-        std::vector<std::vector<std::pair<OpenMagnetics::CoilFunctionalDescription, double>>> wireCoilPerWinding;
+        std::vector<std::vector<std::pair<OpenMagnetics::Winding, double>>> wireCoilPerWinding;
 
         auto sections = get_advised_planar_sections(mas, pattern, repetitions);
         if (sections.size() == 0) {
@@ -602,7 +602,7 @@ namespace OpenMagnetics {
                 found = true;
             }
             if (!found) {
-                wireCoilPerWinding.push_back(std::vector<std::pair<CoilFunctionalDescription, double>>{});
+                wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
             }
 
         }
@@ -626,7 +626,7 @@ namespace OpenMagnetics {
 
         while (true) {
 
-            std::vector<CoilFunctionalDescription> coilFunctionalDescription;
+            std::vector<Winding> coilFunctionalDescription;
 
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
                 coilFunctionalDescription.push_back(wireCoilPerWinding[windingIndex][currentWireIndexPerWinding[windingIndex]].first);

@@ -84,60 +84,60 @@ class WireAdviser {
         std::optional<WireStandard> get_common_wire_standard() {
             return _commonWireStandard;
         }
-        std::vector<std::pair<CoilFunctionalDescription, double>> get_advised_wire(CoilFunctionalDescription coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> get_advised_wire(Winding coilFunctionalDescription,
                                                                                    Section section,
                                                                                    SignalDescriptor current,
                                                                                    double temperature,
                                                                                    uint8_t numberSections,
                                                                                    size_t maximumNumberResults=1);
-        std::vector<std::pair<CoilFunctionalDescription, double>> get_advised_wire(std::vector<Wire>* wires,
-                                                                                   CoilFunctionalDescription coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> get_advised_wire(std::vector<Wire>* wires,
+                                                                                   Winding coilFunctionalDescription,
                                                                                    Section section,
                                                                                    SignalDescriptor current,
                                                                                    double temperature,
                                                                                    uint8_t numberSections,
                                                                                    size_t maximumNumberResults=1);
 
-        std::vector<std::pair<CoilFunctionalDescription, double>> get_advised_planar_wire(CoilFunctionalDescription coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> get_advised_planar_wire(Winding coilFunctionalDescription,
                                                                                           Section section,
                                                                                           SignalDescriptor current,
                                                                                           double temperature,
                                                                                           uint8_t numberSections,
                                                                                           size_t maximumNumberResults);
 
-        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_area_no_parallels(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+        std::vector<std::pair<Winding, double>> filter_by_area_no_parallels(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                               Section section);
 
-        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_area_with_parallels(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+        std::vector<std::pair<Winding, double>> filter_by_area_with_parallels(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                 Section section,
                                                                                                 double numberSections,
                                                                                                 bool allowNotFit);
 
-        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_effective_resistance(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+        std::vector<std::pair<Winding, double>> filter_by_effective_resistance(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                  SignalDescriptor current,
                                                                                                  double temperature);
 
-        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_skin_losses_density(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+        std::vector<std::pair<Winding, double>> filter_by_skin_losses_density(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                 SignalDescriptor current,
                                                                                                 double temperature);
 
-        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_proximity_factor(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+        std::vector<std::pair<Winding, double>> filter_by_proximity_factor(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                  SignalDescriptor current,
                                                                                                  double temperature);
 
-        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_solid_insulation_requirements(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+        std::vector<std::pair<Winding, double>> filter_by_solid_insulation_requirements(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                  WireSolidInsulationRequirements wireSolidInsulationRequirements);
 
-        std::vector<std::pair<CoilFunctionalDescription, double>> create_dataset(CoilFunctionalDescription coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> create_dataset(Winding coilFunctionalDescription,
                                                                                  std::vector<Wire>* wires,
                                                                                  Section section,
                                                                                  SignalDescriptor current,
                                                                                  double temperature);
-        std::vector<std::pair<CoilFunctionalDescription, double>> create_planar_dataset(CoilFunctionalDescription coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> create_planar_dataset(Winding coilFunctionalDescription,
                                                                                         Section section,
                                                                                         uint8_t numberSections);
-        void expand_wires_dataset_with_parallels(std::vector<CoilFunctionalDescription>* coilFunctionalDescriptions);
-        void set_maximum_area_proportion(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils, Section section, uint8_t numberSections);
+        void expand_wires_dataset_with_parallels(std::vector<Winding>* coilFunctionalDescriptions);
+        void set_maximum_area_proportion(std::vector<std::pair<Winding, double>>* unfilteredCoils, Section section, uint8_t numberSections);
     
 };
 

@@ -909,10 +909,10 @@ void Coil::set_number_parallels(std::vector<uint64_t> numberParallels){
     }
 }
 
-CoilFunctionalDescription Coil::get_winding_by_name(std::string name) {
-    for (auto& CoilFunctionalDescription : get_functional_description()) {
-        if (CoilFunctionalDescription.get_name() == name) {
-            return CoilFunctionalDescription;
+Winding Coil::get_winding_by_name(std::string name) {
+    for (auto& Winding : get_functional_description()) {
+        if (Winding.get_name() == name) {
+            return Winding;
         }
     }
     throw std::runtime_error("No such a winding name: " + name);
@@ -5465,7 +5465,7 @@ Wire Coil::resolve_wire(size_t windingIndex) {
     return resolve_wire(get_functional_description()[windingIndex]);
 }
 
-Wire CoilFunctionalDescription::resolve_wire() {
+Wire Winding::resolve_wire() {
     auto wireOrString = get_wire();
     Wire wire;
     if (std::holds_alternative<std::string>(wireOrString)) {
@@ -5488,8 +5488,8 @@ Wire CoilFunctionalDescription::resolve_wire() {
     return wire;
 }
 
-Wire Coil::resolve_wire(CoilFunctionalDescription coilFunctionalDescription) {
-    return coilFunctionalDescription.resolve_wire();
+Wire Coil::resolve_wire(Winding winding) {
+    return winding.resolve_wire();
 }
 
 std::vector<double> Coil::get_wires_length() {
@@ -5508,16 +5508,16 @@ std::vector<double> Coil::get_wires_length() {
     return wiresLength;
 }
 
-WireType Coil::get_wire_type(CoilFunctionalDescription coilFunctionalDescription) {
-    return resolve_wire(coilFunctionalDescription).get_type();
+WireType Coil::get_wire_type(Winding winding) {
+    return resolve_wire(winding).get_type();
 }
 
 WireType Coil::get_wire_type(size_t windingIndex) {
     return get_wire_type(get_functional_description()[windingIndex]);
 }
 
-std::string Coil::get_wire_name(CoilFunctionalDescription coilFunctionalDescription) {
-    auto name = resolve_wire(coilFunctionalDescription).get_name();
+std::string Coil::get_wire_name(Winding winding) {
+    auto name = resolve_wire(winding).get_name();
     if (name) {
         return name.value();
     }

@@ -468,7 +468,7 @@ SUITE(Utils) {
         settings->set_use_only_cores_in_stock(false);
         auto core = find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
         OpenMagnetics::Coil coil;
-        OpenMagnetics::CoilFunctionalDescription dummyWinding;
+        OpenMagnetics::Winding dummyWinding;
         dummyWinding.set_name("");
         dummyWinding.set_number_turns(0);
         dummyWinding.set_number_parallels(0);
@@ -599,7 +599,7 @@ SUITE(Utils) {
         settings->set_use_only_cores_in_stock(false);
         auto core = find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
         OpenMagnetics::Coil coil;
-        OpenMagnetics::CoilFunctionalDescription dummyWinding;
+        OpenMagnetics::Winding dummyWinding;
         dummyWinding.set_name("");
         dummyWinding.set_number_turns(0);
         dummyWinding.set_number_parallels(0);
@@ -629,7 +629,7 @@ SUITE(Utils) {
         auto core = find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
         OpenMagnetics::Coil coil;
         {
-            OpenMagnetics::CoilFunctionalDescription winding;
+            OpenMagnetics::Winding winding;
             winding.set_name("");
             winding.set_number_turns(12);
             winding.set_number_parallels(1);
@@ -645,7 +645,7 @@ SUITE(Utils) {
             coil.get_mutable_functional_description().push_back(winding);
         }
         {
-            OpenMagnetics::CoilFunctionalDescription winding;
+            OpenMagnetics::Winding winding;
             winding.set_name("");
             winding.set_number_turns(1);
             winding.set_number_parallels(12);
@@ -695,7 +695,7 @@ SUITE(Utils) {
         auto core = find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
         OpenMagnetics::Coil coil;
         {
-            OpenMagnetics::CoilFunctionalDescription winding;
+            OpenMagnetics::Winding winding;
             winding.set_name("");
             winding.set_number_turns(12);
             winding.set_number_parallels(1);
@@ -711,7 +711,7 @@ SUITE(Utils) {
             coil.get_mutable_functional_description().push_back(winding);
         }
         {
-            OpenMagnetics::CoilFunctionalDescription winding;
+            OpenMagnetics::Winding winding;
             winding.set_name("");
             winding.set_number_turns(1);
             winding.set_number_parallels(12);
