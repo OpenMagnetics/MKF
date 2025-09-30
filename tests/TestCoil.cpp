@@ -774,14 +774,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -809,7 +809,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -865,8 +865,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -893,8 +893,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -925,8 +925,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -987,7 +987,7 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         if (plot) {
@@ -1010,7 +1010,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1038,7 +1038,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1093,9 +1093,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginBeforeMargin_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         if (plot) {
@@ -1121,9 +1121,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginAfterMarginNoFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1154,9 +1154,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginAfterMarginFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1220,7 +1220,7 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         if (plot) {
@@ -1243,7 +1243,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1271,7 +1271,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1326,9 +1326,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginBeforeMargin_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         if (plot) {
@@ -1354,9 +1354,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginAfterMarginNoFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1387,9 +1387,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginAfterMarginFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1453,7 +1453,7 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         if (plot) {
@@ -1476,7 +1476,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1504,7 +1504,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1559,9 +1559,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginBeforeMargin_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         if (plot) {
@@ -1587,9 +1587,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginAfterMarginNoFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1620,9 +1620,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
         auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginAfterMarginFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1686,14 +1686,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1721,7 +1721,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1775,8 +1775,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -1803,8 +1803,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1835,8 +1835,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1897,14 +1897,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -1932,7 +1932,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -1986,8 +1986,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -2014,8 +2014,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -2046,8 +2046,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2108,14 +2108,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -2143,7 +2143,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2197,8 +2197,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -2225,8 +2225,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -2257,8 +2257,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2319,14 +2319,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2350,7 +2350,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2404,8 +2404,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -2432,9 +2432,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginAfterMarginNoFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -2465,9 +2465,9 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
-        auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
+        auto marginAfterMarginFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2528,14 +2528,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2559,7 +2559,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2612,8 +2612,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -2640,8 +2640,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -2672,8 +2672,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2734,14 +2734,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2765,7 +2765,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2818,8 +2818,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -2846,8 +2846,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -2878,8 +2878,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2940,14 +2940,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2971,7 +2971,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3024,8 +3024,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -3052,8 +3052,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -3084,8 +3084,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3146,14 +3146,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3177,7 +3177,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3231,8 +3231,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -3259,8 +3259,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 3, margin * 0.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -3291,8 +3291,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3353,14 +3353,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3384,7 +3384,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3438,8 +3438,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -3466,8 +3466,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -3498,8 +3498,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3560,14 +3560,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3591,7 +3591,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3645,8 +3645,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -3673,8 +3673,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -3705,8 +3705,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3767,14 +3767,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3798,7 +3798,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3852,8 +3852,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -3880,8 +3880,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -3912,8 +3912,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -3974,14 +3974,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4005,7 +4005,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4059,8 +4059,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -4087,8 +4087,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -4119,8 +4119,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4178,14 +4178,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4209,7 +4209,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4263,8 +4263,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -4291,8 +4291,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -4323,8 +4323,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4385,14 +4385,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4416,7 +4416,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4470,8 +4470,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -4498,8 +4498,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -4530,8 +4530,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4592,14 +4592,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4623,7 +4623,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4677,8 +4677,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -4705,8 +4705,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -4737,8 +4737,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4799,14 +4799,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4830,7 +4830,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -4884,8 +4884,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -4912,8 +4912,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -4944,8 +4944,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5006,14 +5006,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5037,7 +5037,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5091,8 +5091,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -5119,8 +5119,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -5151,8 +5151,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5213,14 +5213,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5244,7 +5244,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5298,8 +5298,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -5326,8 +5326,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -5358,8 +5358,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5420,14 +5420,14 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          turnsAlignment,
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_coil_wind_even_if_not_fit(true);
         settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5451,7 +5451,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -5505,8 +5505,8 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          sectionsAlignment);
         auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginBeforeMargin_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
@@ -5533,8 +5533,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginNoFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -5565,8 +5565,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
         auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_0 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+        auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");

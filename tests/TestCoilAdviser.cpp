@@ -693,8 +693,8 @@ SUITE(CoilAdviser) {
             CHECK(numberMaximumLayers < 3);
             CHECK((bobbinWindingWindowHeight - primarySectionHeight) >= std::max(creepageDistance, clearance));
 
-            CHECK_CLOSE(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0].get_margin().value()[0], std::max(creepageDistance, clearance) / 2, 0.00001);
-            CHECK_CLOSE(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0].get_margin().value()[1], std::max(creepageDistance, clearance) / 2, 0.00001);
+            CHECK_CLOSE(OpenMagnetics::Coil::resolve_margin(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0])[0], std::max(creepageDistance, clearance) / 2, 0.00001);
+            CHECK_CLOSE(OpenMagnetics::Coil::resolve_margin(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0])[1], std::max(creepageDistance, clearance) / 2, 0.00001);
 
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;

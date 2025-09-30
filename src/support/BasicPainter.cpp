@@ -880,7 +880,7 @@ void BasicPainter::paint_two_piece_set_margin(Magnetic magnetic) {
     auto sections = magnetic.get_coil().get_sections_description().value();
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_margin()) {
-            auto margins = sections[i].get_margin().value();
+            auto margins = Coil::resolve_margin(sections[i]);
             if (margins[0] > 0) {
                 auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
                 auto bobbinProcessedDescription = bobbin.get_processed_description().value();
@@ -916,7 +916,7 @@ void BasicPainter::paint_two_piece_set_margin(Magnetic magnetic) {
                 if (bobbinProcessedDescription.get_coordinates()) {
                     bobbinCoordinates = bobbinProcessedDescription.get_coordinates().value();
                 }
-                auto margins = sections[i].get_margin().value();
+                auto margins = Coil::resolve_margin(sections[i]);
                 auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
                 auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
                 auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
@@ -971,7 +971,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
     double windingWindowRadialHeight = processedDescription.get_width() / 2 - mainColumn.get_width();
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_margin()) {
-            auto margins = sections[i].get_margin().value();
+            auto margins = Coil::resolve_margin(sections[i]);
 
             if (sectionOrientation == WindingOrientation::CONTIGUOUS) {
 
@@ -980,8 +980,8 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     if (i < sections.size() - 2) {
                         nextSectionIndex = i + 2;
                     }
-                    double leftMargin = sections[i].get_margin().value()[1];
-                    double rightMargin = sections[nextSectionIndex].get_margin().value()[0];
+                    double leftMargin = Coil::resolve_margin(sections[i])[1];
+                    double rightMargin = Coil::resolve_margin(sections[nextSectionIndex])[0];
                     double rectangleThickness = leftMargin + rightMargin;
                     if (rectangleThickness == 0) {
                         continue;

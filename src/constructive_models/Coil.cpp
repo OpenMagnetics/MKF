@@ -1111,10 +1111,10 @@ std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size
     for (auto section : sections) {
         if (section.get_margin()) {
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                area += (section.get_margin().value()[0] + section.get_margin().value()[1]) * section.get_dimensions()[0];
+                area += (resolve_margin(section)[0] + resolve_margin(section)[1]) * section.get_dimensions()[0];
             }
             else {
-                area += (section.get_margin().value()[0] + section.get_margin().value()[1]) * section.get_dimensions()[1];
+                area += (resolve_margin(section)[0] + resolve_margin(section)[1]) * section.get_dimensions()[1];
             }
         }
     }
@@ -2161,11 +2161,11 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
 
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
 
-                    if ((section.get_margin().value()[0] + section.get_margin().value()[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) > currentSectionHeight) {
+                    if ((resolve_margin(section)[0] + resolve_margin(section)[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) > currentSectionHeight) {
                         std::string wireType = std::string(magic_enum::enum_name(wirePerWinding[windingIndex].get_type()));
                         return false;
                         // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
-                        //                          std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
+                        //                          std::string{", margin:"} + std::to_string(resolve_margin(section)[0] + resolve_margin(section)[1]) + 
                         //                          ", wire type: " + wireType + 
                         //                          ", wire height: " + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) + 
                         //                          ", section height: " + std::to_string(currentSectionHeight)
@@ -2173,10 +2173,10 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                     }
                 }
                 else {
-                    if ((section.get_margin().value()[0] + section.get_margin().value()[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) > currentSectionWidth) {
+                    if ((resolve_margin(section)[0] + resolve_margin(section)[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) > currentSectionWidth) {
                         return false;
                         // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
-                        //                          std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
+                        //                          std::string{", margin:"} + std::to_string(resolve_margin(section)[0] + resolve_margin(section)[1]) + 
                         //                          ", wire width:" + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) + 
                         //                          ", section width:" + std::to_string(currentSectionWidth)
                         //                          );
@@ -4482,23 +4482,23 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2;
                 switch (turnsAlignment) {
                     case CoilAlignment::INNER_OR_TOP:
-                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - sections[sectionIndex].get_margin().value()[0] - sections[sectionIndex].get_dimensions()[1] / 2;
+                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
                         break;
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + sections[sectionIndex].get_margin().value()[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
                         break;
                     case CoilAlignment::CENTERED:
                         {
                             currentCoilHeight = 0;
-                            double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - sections[sectionIndex].get_margin().value()[0] - sections[sectionIndex].get_dimensions()[1] / 2;
-                            double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + sections[sectionIndex].get_margin().value()[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+                            double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
+                            double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
                             currentCoilHeight = std::min(currentCoilHeight, currentCoilHeightTop);
                             currentCoilHeight = std::max(currentCoilHeight, currentCoilHeightBottom);
                             break;
                         }
                         break;
                     case CoilAlignment::SPREAD:
-                        currentCoilHeight = -sections[sectionIndex].get_margin().value()[0] / 2 + sections[sectionIndex].get_margin().value()[1] / 2;
+                        currentCoilHeight = -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
                         break;
                     default:
                         throw std::runtime_error("No such section alignment");
@@ -4508,22 +4508,22 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                 currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2;
                 switch (turnsAlignment) {
                     case CoilAlignment::INNER_OR_TOP:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - sections[sectionIndex].get_margin().value()[1] - sections[sectionIndex].get_dimensions()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1] - sections[sectionIndex].get_dimensions()[0];
                         break;
                     case CoilAlignment::CENTERED:
                         {
                             currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - sections[sectionIndex].get_dimensions()[0] / 2;
-                            double currentCoilWidthLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
-                            double currentCoilWidthRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - sections[sectionIndex].get_margin().value()[1] - sections[sectionIndex].get_dimensions()[0];
+                            double currentCoilWidthLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
+                            double currentCoilWidthRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1] - sections[sectionIndex].get_dimensions()[0];
                             currentCoilWidth = std::max(currentCoilWidth, currentCoilWidthLeft);
                             currentCoilWidth = std::min(currentCoilWidth, currentCoilWidthRight);
                             break;
                         }
                     case CoilAlignment::SPREAD:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     default:
                         throw std::runtime_error("No such section alignment");
@@ -4535,23 +4535,23 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - totalSectionsWidth;
                 switch (turnsAlignment) {
                     case CoilAlignment::INNER_OR_TOP:
-                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - sections[sectionIndex].get_margin().value()[0] - sections[sectionIndex].get_dimensions()[1] / 2;
+                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
                         break;
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + sections[sectionIndex].get_margin().value()[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
                         break;
                     case CoilAlignment::CENTERED:
                         {
                             currentCoilHeight = 0;
-                            double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - sections[sectionIndex].get_margin().value()[0] - sections[sectionIndex].get_dimensions()[1] / 2;
-                            double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + sections[sectionIndex].get_margin().value()[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+                            double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
+                            double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
                             currentCoilHeight = std::min(currentCoilHeight, currentCoilHeightTop);
                             currentCoilHeight = std::max(currentCoilHeight, currentCoilHeightBottom);
                             break;
                         }
                         break;
                     case CoilAlignment::SPREAD:
-                        currentCoilHeight = -sections[sectionIndex].get_margin().value()[0] / 2 + sections[sectionIndex].get_margin().value()[1] / 2;
+                        currentCoilHeight = -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
                         break;
                     default:
                         throw std::runtime_error("No such section alignment");
@@ -4561,23 +4561,23 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                 currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + totalSectionsHeight;
                 switch (turnsAlignment) {
                     case CoilAlignment::INNER_OR_TOP:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - sections[sectionIndex].get_margin().value()[1] - sections[sectionIndex].get_dimensions()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1] - sections[sectionIndex].get_dimensions()[0];
                         break;
                     case CoilAlignment::CENTERED:
                         {
                             currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - sections[sectionIndex].get_dimensions()[0] / 2;
-                            double currentCoilWidthLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
-                            double currentCoilWidthRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - sections[sectionIndex].get_margin().value()[1] - sections[sectionIndex].get_dimensions()[0];
+                            double currentCoilWidthLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
+                            double currentCoilWidthRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1] - sections[sectionIndex].get_dimensions()[0];
                             currentCoilWidth = std::max(currentCoilWidth, currentCoilWidthLeft);
                             currentCoilWidth = std::min(currentCoilWidth, currentCoilWidthRight);
                             break;
                         }
                         break;
                     case CoilAlignment::SPREAD:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     default:
                         throw std::runtime_error("No such section alignment");
@@ -4589,23 +4589,23 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2;
                 switch (turnsAlignment) {
                     case CoilAlignment::INNER_OR_TOP:
-                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - sections[sectionIndex].get_margin().value()[0] - sections[sectionIndex].get_dimensions()[1] / 2;
+                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
                         break;
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + sections[sectionIndex].get_margin().value()[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
                         break;
                     case CoilAlignment::CENTERED:
                         {
                             currentCoilHeight = 0;
-                            double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - sections[sectionIndex].get_margin().value()[0] - sections[sectionIndex].get_dimensions()[1] / 2;
-                            double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + sections[sectionIndex].get_margin().value()[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+                            double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
+                            double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
                             currentCoilHeight = std::min(currentCoilHeight, currentCoilHeightTop);
                             currentCoilHeight = std::max(currentCoilHeight, currentCoilHeightBottom);
                             break;
                         }
                         break;
                     case CoilAlignment::SPREAD:
-                        currentCoilHeight = -sections[sectionIndex].get_margin().value()[0] / 2 + sections[sectionIndex].get_margin().value()[1] / 2;
+                        currentCoilHeight = -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
                         break;
                     default:
                         throw std::runtime_error("No such section alignment");
@@ -4627,23 +4627,23 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
 
                 switch (turnsAlignment) {
                     case CoilAlignment::INNER_OR_TOP:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - sections[sectionIndex].get_margin().value()[1] - sections[sectionIndex].get_dimensions()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1] - sections[sectionIndex].get_dimensions()[0];
                         break;
                     case CoilAlignment::CENTERED:
                         {
                             currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - sections[sectionIndex].get_dimensions()[0] / 2;
-                            double currentCoilWidthLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
-                            double currentCoilWidthRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - sections[sectionIndex].get_margin().value()[1] - sections[sectionIndex].get_dimensions()[0];
+                            double currentCoilWidthLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
+                            double currentCoilWidthRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1] - sections[sectionIndex].get_dimensions()[0];
                             currentCoilWidth = std::max(currentCoilWidth, currentCoilWidthLeft);
                             currentCoilWidth = std::min(currentCoilWidth, currentCoilWidthRight);
                             break;
                         }
                         break;
                     case CoilAlignment::SPREAD:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     default:
                         throw std::runtime_error("No such section alignment");
@@ -4655,23 +4655,23 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2;
                 switch (turnsAlignment) {
                     case CoilAlignment::INNER_OR_TOP:
-                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - sections[sectionIndex].get_margin().value()[0] - sections[sectionIndex].get_dimensions()[1] / 2;
+                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
                         break;
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + sections[sectionIndex].get_margin().value()[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+                        currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
                         break;
                     case CoilAlignment::CENTERED:
                         {
                             currentCoilHeight = 0;
-                            double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - sections[sectionIndex].get_margin().value()[0] - sections[sectionIndex].get_dimensions()[1] / 2;
-                            double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + sections[sectionIndex].get_margin().value()[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+                            double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
+                            double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
                             currentCoilHeight = std::min(currentCoilHeight, currentCoilHeightTop);
                             currentCoilHeight = std::max(currentCoilHeight, currentCoilHeightBottom);
                             break;
                         }
                         break;
                     case CoilAlignment::SPREAD:
-                        currentCoilHeight = -sections[sectionIndex].get_margin().value()[0] / 2 + sections[sectionIndex].get_margin().value()[1] / 2;
+                        currentCoilHeight = -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
                         break;
                     default:
                         throw std::runtime_error("No such section alignment");
@@ -4681,16 +4681,16 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                 currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + totalSectionsHeight / 2;
                 switch (turnsAlignment) {
                     case CoilAlignment::INNER_OR_TOP:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     case CoilAlignment::OUTER_OR_BOTTOM:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - sections[sectionIndex].get_margin().value()[1] - sections[sectionIndex].get_dimensions()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1] - sections[sectionIndex].get_dimensions()[0];
                         break;
                     case CoilAlignment::CENTERED:
                         {
                             currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - sections[sectionIndex].get_dimensions()[0] / 2;
-                            double currentCoilWidthLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
-                            double currentCoilWidthRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - sections[sectionIndex].get_margin().value()[1] - sections[sectionIndex].get_dimensions()[0];
+                            double currentCoilWidthLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
+                            double currentCoilWidthRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1] - sections[sectionIndex].get_dimensions()[0];
                             if (currentCoilWidthLeft < 0) {
                                 throw std::invalid_argument("currentCoilWidthLeft cannot be less than 0: " + std::to_string(currentCoilWidthLeft));
                             }
@@ -4705,7 +4705,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         }
                         break;
                     case CoilAlignment::SPREAD:
-                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + sections[sectionIndex].get_margin().value()[0];
+                        currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     default:
                         throw std::runtime_error("No such section alignment");
@@ -4749,8 +4749,8 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
             if (sections[auxSectionIndex].get_type() == ElectricalType::CONDUCTION) {
                 totalSectionsRadialHeight = std::max(totalSectionsRadialHeight, sections[auxSectionIndex].get_dimensions()[0]);
                 double lastLayerMaximumRadius = windingWindowRadialHeight - (sections[auxSectionIndex].get_coordinates()[0] + sections[auxSectionIndex].get_dimensions()[0] / 2);
-                marginAngle0 = wound_distance_to_angle(sections[auxSectionIndex].get_margin().value()[0], lastLayerMaximumRadius);
-                marginAngle1 = wound_distance_to_angle(sections[auxSectionIndex].get_margin().value()[1], lastLayerMaximumRadius);
+                marginAngle0 = wound_distance_to_angle(resolve_margin(sections[auxSectionIndex])[0], lastLayerMaximumRadius);
+                marginAngle1 = wound_distance_to_angle(resolve_margin(sections[auxSectionIndex])[1], lastLayerMaximumRadius);
             }
             totalSectionsAngle += sections[auxSectionIndex].get_dimensions()[1] + marginAngle0 + marginAngle1;
         }
@@ -4764,7 +4764,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
 
     if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
         double lastLayerMaximumRadius = windingWindowRadialHeight - (sections[sectionIndex].get_coordinates()[0] + sections[sectionIndex].get_dimensions()[0] / 2);
-        marginAngle0 = wound_distance_to_angle(sections[sectionIndex].get_margin().value()[0], lastLayerMaximumRadius);
+        marginAngle0 = wound_distance_to_angle(resolve_margin(sections[sectionIndex])[0], lastLayerMaximumRadius);
     }
     auto turnsAlignment = get_turns_alignment(sections[sectionIndex].get_name());
 
@@ -5257,8 +5257,8 @@ bool Coil::delimit_and_compact_round_window() {
 
                     // if (section.get_type() == ElectricalType::CONDUCTION) {
                     //     double lastLayerMaximumRadius = windingWindowsRadius - (section.get_coordinates()[0] + section.get_dimensions()[0] / 2);
-                    //     marginAngle0 = wound_distance_to_angle(section.get_margin().value()[0], lastLayerMaximumRadius);
-                    //     marginAngle1 = wound_distance_to_angle(section.get_margin().value()[1], lastLayerMaximumRadius);
+                    //     marginAngle0 = wound_distance_to_angle(resolve_margin(section)[0], lastLayerMaximumRadius);
+                    //     marginAngle1 = wound_distance_to_angle(resolve_margin(section)[1], lastLayerMaximumRadius);
                     // }
 
                     switch (layers[i].get_turns_alignment().value()) {
@@ -5351,8 +5351,8 @@ bool Coil::delimit_and_compact_round_window() {
 
             if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
                 double lastLayerMaximumRadius = windingWindowsRadius - (sections[sectionIndex].get_coordinates()[0] + sections[sectionIndex].get_dimensions()[0] / 2);
-                marginAngle0 = wound_distance_to_angle(sections[sectionIndex].get_margin().value()[0], lastLayerMaximumRadius);
-                marginAngle1 = wound_distance_to_angle(sections[sectionIndex].get_margin().value()[1], lastLayerMaximumRadius);
+                marginAngle0 = wound_distance_to_angle(resolve_margin(sections[sectionIndex])[0], lastLayerMaximumRadius);
+                marginAngle1 = wound_distance_to_angle(resolve_margin(sections[sectionIndex])[1], lastLayerMaximumRadius);
             }
 
 
@@ -6427,6 +6427,57 @@ std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> 
     return get_wires();
 }
 
+std::vector<double> Coil::resolve_margin(size_t sectionIndex) {
+    if (!get_sections_description()) {
+        throw std::runtime_error("Sections not found");
+    }
+    auto sections = get_sections_description().value();
+    return resolve_margin(sections[sectionIndex]);
+}
+
+std::vector<double> Coil::resolve_margin(Section section) {
+    if (!section.get_margin()) {
+        return {0.0, 0.0};
+    }
+    if (std::holds_alternative<std::vector<double>>(section.get_margin().value())) {
+        auto margin = std::get<std::vector<double>>(section.get_margin().value());
+        return margin;
+    }
+    else {
+        std::vector<double> margin;
+        auto marginInfo = std::get<MarginInfo>(section.get_margin().value());
+        margin.push_back(marginInfo.get_top_or_left_width());
+        margin.push_back(marginInfo.get_bottom_or_right_width());
+        return margin;
+    }
+}
+
+MarginInfo Coil::resolve_margin_info(size_t sectionIndex) {
+    if (!get_sections_description()) {
+        throw std::runtime_error("Sections not found");
+    }
+    auto sections = get_sections_description().value();
+    return resolve_margin_info(sections[sectionIndex]);
+}
+
+MarginInfo Coil::resolve_margin_info(Section section) {
+    if (!section.get_margin()) {
+        section.set_margin(std::vector<double>{0,0, 0.0});
+    }
+
+    if (std::holds_alternative<std::vector<double>>(section.get_margin().value())) {
+        MarginInfo marginInfo;
+        auto margin = std::get<std::vector<double>>(section.get_margin().value());
+        marginInfo.set_top_or_left_width(margin[0]);
+        marginInfo.set_bottom_or_right_width(margin[1]);
+        return marginInfo;
+    }
+    else {
+        std::vector<double> margin;
+        auto marginInfo = std::get<MarginInfo>(section.get_margin().value());
+        return marginInfo;
+    }
+}
 
 } // namespace OpenMagnetics
  
