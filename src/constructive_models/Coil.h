@@ -239,6 +239,10 @@ class Coil : public MAS::Coil {
         static std::string get_wire_name(Winding winding);
         Wire resolve_wire(size_t windingIndex);
         static Wire resolve_wire(Winding winding);
+        std::vector<double> resolve_margin(size_t sectionIndex);
+        static std::vector<double> resolve_margin(Section section);
+        MarginInfo resolve_margin_info(size_t sectionIndex);
+        static MarginInfo resolve_margin_info(Section section);
 
         double overlapping_filling_factor(Section section);
 

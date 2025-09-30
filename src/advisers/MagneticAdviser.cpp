@@ -137,7 +137,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
                 double margin = 0;
                 if (mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin()) {
-                    margin = mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin().value()[0];
+                    margin = Coil::resolve_margin(mas.get_magnetic().get_coil().get_sections_description().value()[0])[0];
                 }
                 std::pair<size_t, double> numberSectionsAndMarginCombination = {numberSections, margin};
                 if (std::find(usedNumberSectionsAndMargin.begin(), usedNumberSectionsAndMargin.end(), numberSectionsAndMarginCombination) != usedNumberSectionsAndMargin.end()) {
