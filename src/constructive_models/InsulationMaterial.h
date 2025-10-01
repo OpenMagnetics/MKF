@@ -42,8 +42,8 @@ public:
         }
         set_dielectric_strength(insulationMaterial.get_dielectric_strength());
 
-        if (insulationMaterial.get_manufacturer()) {
-            set_manufacturer(insulationMaterial.get_manufacturer().value());
+        if (insulationMaterial.get_manufacturer_info()) {
+            set_manufacturer_info(insulationMaterial.get_manufacturer_info().value());
         }
         if (insulationMaterial.get_melting_point()) {
             set_melting_point(insulationMaterial.get_melting_point().value());

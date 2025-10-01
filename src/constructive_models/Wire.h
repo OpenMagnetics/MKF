@@ -179,6 +179,13 @@ class Wire : public MAS::Wire {
         static double get_outer_width_rectangular(double conductingWidth, int grade = 1, WireStandard standard = WireStandard::IEC_60317);
         static double get_outer_height_rectangular(double conductingHeight, int grade = 1, WireStandard standard = WireStandard::IEC_60317);
 
+        static double calculate_outer_height(Wire wire);
+        double calculate_outer_height();
+        static double calculate_outer_width(Wire wire);
+        double calculate_outer_width();
+        static double calculate_outer_diameter(Wire wire);
+        double calculate_outer_diameter();
+
         void set_nominal_value_conducting_diameter(double value) {
             DimensionWithTolerance aux;
             aux.set_nominal(value);
