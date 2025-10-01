@@ -997,6 +997,138 @@ namespace OpenMagnetics {
         return std::min(numberLayers, timesVoltageisCovered);
     }
 
+    double Wire::calculate_outer_height(Wire wire) {
+        switch (wire.get_type()) {
+            case WireType::RECTANGULAR: {
+                auto coating = wire.resolve_coating();
+                auto standard = WireStandard::IEC_60317;
+                if (wire.get_standard()) {
+                    standard = wire.get_standard().value();
+                }
+                if (coating) {
+                    if (coating->get_type() == InsulationWireCoatingType::BARE) {
+                        return resolve_dimensional_values(wire.get_conducting_height().value());
+                    }
+                    else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
+                        return get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_height().value()), coating->get_grade().value(), standard);
+                    }
+                    else {
+                        throw std::runtime_error("Unsupported coating in RECTANGULAR");
+                    }
+                }
+                else {
+                    return resolve_dimensional_values(wire.get_conducting_height().value());
+                }
+            }
+            case WireType::PLANAR:
+            case WireType::FOIL:
+                return resolve_dimensional_values(wire.get_conducting_height().value());
+            default:
+                throw std::runtime_error("Cannot calculate outer width for ROUND or LITZ");
+        }
+    }
+
+    double Wire::calculate_outer_height() {
+        return calculate_outer_height(*this);
+    }
+
+    double Wire::calculate_outer_width(Wire wire) {
+        switch (wire.get_type()) {
+            case WireType::RECTANGULAR: {
+                auto coating = wire.resolve_coating();
+                auto standard = WireStandard::IEC_60317;
+                if (wire.get_standard()) {
+                    standard = wire.get_standard().value();
+                }
+                if (coating) {
+                    if (coating->get_type() == InsulationWireCoatingType::BARE) {
+                        return resolve_dimensional_values(wire.get_conducting_width().value());
+                    }
+                    else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
+                        return get_outer_width_rectangular(resolve_dimensional_values(wire.get_conducting_width().value()), coating->get_grade().value(), standard);
+                    }
+                    else {
+                        throw std::runtime_error("Unsupported coating in RECTANGULAR");
+                    }
+                }
+                else {
+                    return resolve_dimensional_values(wire.get_conducting_width().value());
+                }
+            }
+            case WireType::PLANAR:
+            case WireType::FOIL:
+                return resolve_dimensional_values(wire.get_conducting_width().value());
+            default:
+                throw std::runtime_error("Cannot calculate outer width for ROUND or LITZ");
+        }
+    }
+
+    double Wire::calculate_outer_width() {
+        return calculate_outer_width(*this);
+    }
+
+    double Wire::calculate_outer_diameter(Wire wire) {
+        switch (wire.get_type()) {
+            case WireType::LITZ:{
+                auto coating = wire.resolve_coating();
+                auto strand = wire.resolve_strand();
+                auto strandCoating = resolve_coating(strand);
+                auto standard = WireStandard::IEC_60317;
+                if (wire.get_standard()) {
+                    standard = wire.get_standard().value();
+                }
+                int64_t numberConductors = wire.get_number_conductors().value();
+                if (coating) {
+                    if (coating->get_type() == InsulationWireCoatingType::BARE) {
+                        return get_outer_diameter_bare_litz(resolve_dimensional_values(strand.get_conducting_diameter()), numberConductors, strandCoating->get_grade().value(), standard);
+                    }
+                    else if (coating->get_type() == InsulationWireCoatingType::SERVED) {
+                        return get_outer_diameter_served_litz(resolve_dimensional_values(strand.get_conducting_diameter()), numberConductors, strandCoating->get_grade().value(), coating->get_number_layers().value(), standard);
+                    }
+                    else if (coating->get_type() == InsulationWireCoatingType::INSULATED) {
+                        return get_outer_diameter_insulated_litz(resolve_dimensional_values(strand.get_conducting_diameter()), numberConductors, coating->get_number_layers().value(), coating->get_thickness_layers().value(), strandCoating->get_grade().value(), standard);
+                    }
+                    else {
+                        throw std::runtime_error("Unsupported coating in LITZ");
+                    }
+                }
+                else {
+                    return get_outer_diameter_bare_litz(resolve_dimensional_values(strand.get_conducting_diameter()), numberConductors, strandCoating->get_grade().value(), standard);
+                }
+            }
+            case WireType::ROUND: {
+                auto coating = wire.resolve_coating();
+                auto standard = WireStandard::IEC_60317;
+                if (wire.get_standard()) {
+                    standard = wire.get_standard().value();
+                }
+                if (coating) {
+                    if (coating->get_type() == InsulationWireCoatingType::BARE) {
+                        return resolve_dimensional_values(wire.get_conducting_diameter().value());
+                    }
+                    else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
+                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value()), coating->get_grade().value(), standard);
+                    }
+                    else if (coating->get_type() == InsulationWireCoatingType::INSULATED) {
+                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value()), coating->get_number_layers().value(), coating->get_thickness_layers().value(), standard);
+                    }
+                    else {
+                        throw std::runtime_error("Unsupported coating in ROUND");
+                    }
+                }
+                else  {
+                    return resolve_dimensional_values(wire.get_conducting_diameter().value());
+                }
+            }
+            default:
+                throw std::runtime_error("Cannot calculate outer diameter for RECTANGULAR, FOIL, PLANAR");
+        }
+    }
+
+    double Wire::calculate_outer_diameter() {
+        return calculate_outer_diameter(*this);
+    }
+
     double Wire::calculate_conducting_area() {
         if (!get_number_conductors()) {
             if (get_type() == WireType::LITZ) {
