@@ -508,9 +508,9 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
             }
 
             logEntry("Winding by sections", "Coil", 2);
-            auto result = wind_by_planar_sections(stackUp, insulationThickness, coreToLayerDistance);
+            wind_by_planar_sections(stackUp, insulationThickness, coreToLayerDistance);
             logEntry("Winding by layers", "Coil", 2);
-            result = wind_by_planar_layers();
+            wind_by_planar_layers();
 
             if (!get_layers_description()) {
                 return false;
@@ -518,7 +518,7 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
 
             if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
                 logEntry("Winding by turns", "Coil", 2);
-                result = wind_by_planar_turns(borderToWireDistance.value(), wireToWireDistance);
+                wind_by_planar_turns(borderToWireDistance.value(), wireToWireDistance);
                 if (delimitAndCompact) {
                     logEntry("Delimiting and compacting", "Coil", 2);
                     delimit_and_compact();
@@ -919,8 +919,12 @@ Winding Coil::get_winding_by_name(std::string name) {
 }
 
 size_t Coil::get_winding_index_by_name(std::string name) {
-    for (size_t i=0; i<get_functional_description().size(); ++i) {
-        if (get_functional_description()[i].get_name() == name) {
+    return get_winding_index_by_name(get_functional_description(), name);
+}
+
+size_t Coil::get_winding_index_by_name(std::vector<CoilFunctionalDescription> functionalDescription, std::string name) {
+    for (size_t i=0; i<functionalDescription.size(); ++i) {
+        if (functionalDescription[i].get_name() == name) {
             return i;
         }
     }
@@ -1059,7 +1063,6 @@ double Coil::contiguous_filling_factor(Section section) {
 }
 
 std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size_t groupIndex) {
-    double fillingFactor = 1;
     auto bobbin = resolve_bobbin();
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -2030,12 +2033,401 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
     set_layers_description(std::nullopt);
     set_turns_description(std::nullopt);
 
+    std::vector<size_t> maybeVirtualizedPattern = pattern;
+    std::vector<double> maybeVirtualizedProportionPerWinding = proportionPerWinding;
+    auto functionalDescription = get_functional_description();
+    auto needsVirtualization = needs_virtualization();
+
+    if (needsVirtualization) {
+        create_virtualization_map();
+        auto virtualFunctionalDescription = virtualize_functional_description();
+        maybeVirtualizedPattern = virtualize_pattern(pattern);
+        maybeVirtualizedProportionPerWinding = virtualize_proportion_per_winding(proportionPerWinding);
+        set_functional_description(virtualFunctionalDescription);
+    }
+
+    bool result;
+
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        return wind_by_rectangular_sections(proportionPerWinding, pattern, repetitions);
+        result = wind_by_rectangular_sections(maybeVirtualizedProportionPerWinding, maybeVirtualizedPattern, repetitions);
     }
     else {
-        return wind_by_round_sections(proportionPerWinding, pattern, repetitions);
+        result = wind_by_round_sections(maybeVirtualizedProportionPerWinding, maybeVirtualizedPattern, repetitions);
     }
+
+    if (needsVirtualization) {
+        set_functional_description(functionalDescription);
+        devirtualize_sections_description();
+    }
+
+
+    return result;
+}
+
+bool Coil::needs_virtualization() {
+    for (auto winding : get_functional_description()) {
+        if (winding.get_wound_with()) {
+            if (winding.get_wound_with()->size() > 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+std::vector<CoilFunctionalDescription> Coil::virtualize_functional_description() {
+    std::vector<CoilFunctionalDescription> newFunctionalDescription;
+    for (auto [virtualWindingIndex, windingIndexes] : _virtualizationMap) {
+        std::string name = "";
+        int64_t numberTurns = 0;
+        int64_t numberParallels = 0;
+        std::optional<IsolationSide> isolationSide = std::nullopt;
+        std::optional<Wire> wire = std::nullopt;
+        std::vector<ConnectionElement> connections;
+        for (auto windingIndex : windingIndexes) {
+            auto winding = get_functional_description()[windingIndex];
+            numberTurns += winding.get_number_turns();
+
+            if (numberParallels == 0) {
+                numberParallels = winding.get_number_parallels();
+            }
+            else {
+                if (numberParallels != winding.get_number_parallels()) {
+                    throw std::runtime_error("Windings wound together must have the same number of parallels");
+                }
+            }
+
+            if (!isolationSide) {
+                isolationSide = winding.get_isolation_side();
+            }
+            else {
+                if (isolationSide.value() != winding.get_isolation_side()) {
+                    throw std::runtime_error("Windings wound together must have the same isolation side");
+                }
+            }
+
+            if (!wire) {
+                wire = winding.resolve_wire();
+            }
+            else {
+                if (wire.value() != winding.resolve_wire()) {
+                    throw std::runtime_error("Windings wound together must have the same wire");
+                }
+            }
+
+            if (winding.get_connections()) {
+                auto windingConnections = winding.get_connections().value();
+                for (auto connection : windingConnections) {
+                    connections.push_back(connection);
+                }
+            }
+
+            if (name == "") {
+                size_t minimumWindingGroupIndex = get_winding_group_minimum_index(windingIndex);
+                name = get_functional_description()[minimumWindingGroupIndex].get_name();
+            }
+        }
+
+        CoilFunctionalDescription newWinding;
+        newWinding.set_connections(connections);
+        newWinding.set_isolation_side(isolationSide.value());
+        newWinding.set_name(name);
+        newWinding.set_number_parallels(numberParallels);
+        newWinding.set_number_turns(numberTurns);
+        newWinding.set_wire(wire.value());
+        newFunctionalDescription.push_back(newWinding);
+    }
+    return newFunctionalDescription;
+}
+
+Section Coil::devirtualize_section(Section section) {
+    if (section.get_type() == ElectricalType::INSULATION) {
+        return section;
+    }
+    std::vector<PartialWinding> newPartialWindings;
+    for (auto partialWinding : section.get_partial_windings()) {
+        auto virtualWindingIndex = SIZE_MAX;
+        for (auto [auxVirtualWindingIndex, virtualWindingName]  : _virtualWindingNames) {
+            if (partialWinding.get_winding() == virtualWindingName) {
+                virtualWindingIndex = auxVirtualWindingIndex;
+            }
+        }
+
+        if (virtualWindingIndex == SIZE_MAX) {
+            throw std::runtime_error("Something wrong happened looking for virtual indexes");
+        }
+
+        for (auto windingIndex : _virtualizationMap[virtualWindingIndex]) {
+            auto newPartialWinding = partialWinding;
+            auto name = _windingNames[windingIndex];
+            newPartialWinding.set_winding(name);
+            newPartialWindings.push_back(newPartialWinding);
+        }
+    }
+    section.set_partial_windings(newPartialWindings);
+    return section;
+}
+
+Layer Coil::devirtualize_layer(Layer layer) {
+    if (layer.get_type() == ElectricalType::INSULATION) {
+        return layer;
+    }
+    std::vector<PartialWinding> newPartialWindings;
+    for (auto partialWinding : layer.get_partial_windings()) {
+        auto virtualWindingIndex = SIZE_MAX;
+        for (auto [auxVirtualWindingIndex, virtualWindingName]  : _virtualWindingNames) {
+            if (partialWinding.get_winding() == virtualWindingName) {
+                virtualWindingIndex = auxVirtualWindingIndex;
+            }
+        }
+
+        if (virtualWindingIndex == SIZE_MAX) {
+            throw std::runtime_error("Something wrong happened looking for virtual indexes");
+        }
+
+        for (auto windingIndex : _virtualizationMap[virtualWindingIndex]) {
+            auto newPartialWinding = partialWinding;
+            auto name = _windingNames[windingIndex];
+            newPartialWinding.set_winding(name);
+            newPartialWindings.push_back(newPartialWinding);
+        }
+    }
+    layer.set_partial_windings(newPartialWindings);
+    return layer;
+}
+
+Turn Coil::devirtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName) {
+    auto name = turn.get_name();
+    name = std::regex_replace(name, std::regex(virtualWindingName), windingName);
+    turn.set_name(name);
+    turn.set_winding(windingName);
+    return turn;
+}
+
+Section Coil::virtualize_section(Section section) {
+    if (section.get_type() == ElectricalType::INSULATION) {
+        return section;
+    }
+    auto partialWindings = section.get_partial_windings();
+    auto newPartialWinding = partialWindings[0];
+    section.set_partial_windings({newPartialWinding});
+    return section;
+}
+
+Layer Coil::virtualize_layer(Layer layer) {
+    if (layer.get_type() == ElectricalType::INSULATION) {
+        return layer;
+    }
+    auto partialWindings = layer.get_partial_windings();
+    auto newPartialWinding = partialWindings[0];
+    layer.set_partial_windings({newPartialWinding});
+    return layer;
+}
+
+Turn Coil::virtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName) {
+    auto name = turn.get_name();
+    name = std::regex_replace(name, std::regex(windingName), virtualWindingName);
+    turn.set_name(name);
+    turn.set_winding(virtualWindingName);
+    return turn;
+}
+
+void Coil::devirtualize_sections_description() {
+    std::vector<Section> newSectionsDescription;
+    auto sections = get_sections_description().value();
+    for (auto section : sections) {
+        auto newSection = devirtualize_section(section);
+        newSectionsDescription.push_back(newSection);
+    }
+    set_sections_description(newSectionsDescription);
+}
+
+void Coil::devirtualize_layers_description() {
+    std::vector<Layer> newLayersDescription;
+    auto layers = get_layers_description().value();
+    for (auto layer : layers) {
+        auto newLayer = devirtualize_layer(layer);
+        newLayersDescription.push_back(newLayer);
+    }
+    set_layers_description(newLayersDescription);
+}
+
+void Coil::devirtualize_turns_description() {
+    std::vector<Turn> newTurnsDescription;
+    auto turns = get_turns_description().value();
+
+    for (auto [virtualWindingIndex, windingIndexes] : _virtualizationMap) {
+        auto turnsInVirtualWinding = get_turns_by_winding(_virtualWindingNames[virtualWindingIndex]);
+        
+        std::vector<int64_t> remainingNumberTurnsPerWoundTogetherWinding;
+        int64_t minimumNumberTurns = std::numeric_limits<int64_t>::max();
+        int64_t totalNumberTurns = 0;
+        for (auto windingIndex : windingIndexes) {
+            auto numberTurns = get_functional_description()[windingIndex].get_number_turns() * get_functional_description()[windingIndex].get_number_parallels();
+            minimumNumberTurns = std::min(minimumNumberTurns, numberTurns);
+            totalNumberTurns += numberTurns;
+            remainingNumberTurnsPerWoundTogetherWinding.push_back(numberTurns);
+        }
+
+        if (size_t(totalNumberTurns) != turnsInVirtualWinding.size()) {
+            throw std::runtime_error("Something wrong happened devirtualizing turns 1");
+        }
+
+        std::vector<size_t> devirtualizingPattern = {};
+        for (auto windingIndex : windingIndexes) {
+            double numberTurns = get_functional_description()[windingIndex].get_number_turns() * get_functional_description()[windingIndex].get_number_parallels();
+            size_t numberTurnsPerPattern = round(numberTurns / minimumNumberTurns);
+            if (numberTurnsPerPattern == 0) {
+                throw std::runtime_error("Something wrong happened devirtualizing turns 2");
+            }
+            for (size_t index = 0; index < numberTurnsPerPattern; ++index) {
+                devirtualizingPattern.push_back(windingIndex);
+            }
+        }
+
+        size_t devirtualizingPatternIndex = 0;
+        for (auto turn : turnsInVirtualWinding) {
+            size_t timeout = devirtualizingPattern.size() + 1;
+            while (timeout > 0) {
+                if (remainingNumberTurnsPerWoundTogetherWinding[devirtualizingPattern[devirtualizingPatternIndex]] > 0) {
+                    auto newWindingName = get_functional_description()[devirtualizingPattern[devirtualizingPatternIndex]].get_name();
+                    auto oldWindingName = _virtualWindingNames[virtualWindingIndex];
+                    remainingNumberTurnsPerWoundTogetherWinding[devirtualizingPattern[devirtualizingPatternIndex]]--;
+                    devirtualizingPatternIndex = (devirtualizingPatternIndex + 1) % devirtualizingPattern.size();
+                    auto newTurn = devirtualize_turn(turn, oldWindingName, newWindingName);
+                    newTurnsDescription.push_back(newTurn);
+                    break;
+                }
+                else {
+                    devirtualizingPatternIndex = (devirtualizingPatternIndex + 1) % devirtualizingPattern.size();
+                }
+                timeout--;
+            }
+            if (timeout == 0) {
+                throw std::runtime_error("Something wrong happened devirtualizing turns 3");
+            }
+        }
+    }
+
+    set_turns_description(newTurnsDescription);
+}
+
+std::vector<Section> Coil::virtualize_sections_description() {
+    std::vector<Section> newSectionsDescription;
+    auto sections = get_sections_description().value();
+    for (auto section : sections) {
+        auto newSection = virtualize_section(section);
+        newSectionsDescription.push_back(newSection);
+    }
+    return newSectionsDescription;
+}
+
+std::vector<Layer> Coil::virtualize_layers_description() {
+    std::vector<Layer> newLayersDescription;
+    auto layers = get_layers_description().value();
+    for (auto layer : layers) {
+        auto newLayer = virtualize_layer(layer);
+        newLayersDescription.push_back(newLayer);
+    }
+    return newLayersDescription;
+}
+
+std::map<size_t, std::vector<size_t>> Coil::create_virtualization_map() {
+    std::map<size_t, size_t> inversedVirtualizationMap;
+
+    _virtualizationMap.clear();
+    size_t currentVirtualIndex = 0;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        _windingNames[windingIndex] = get_functional_description()[windingIndex].get_name();
+        size_t minimumWindingGroupIndex = get_winding_group_minimum_index(windingIndex);
+        if (inversedVirtualizationMap.count(minimumWindingGroupIndex)){
+            inversedVirtualizationMap[windingIndex] = inversedVirtualizationMap[minimumWindingGroupIndex];
+        }
+        else {
+            inversedVirtualizationMap[windingIndex] = currentVirtualIndex;
+            currentVirtualIndex++;
+        }
+    }
+
+    for (auto [windingIndex, virtualWindingIndex] : inversedVirtualizationMap) {
+        _virtualWindingNames[virtualWindingIndex] = get_functional_description()[get_winding_group_minimum_index(windingIndex)].get_name();
+        _virtualizationMap[virtualWindingIndex].push_back(windingIndex);
+
+    }
+    return _virtualizationMap;
+}
+
+size_t Coil::get_winding_group_minimum_index(size_t currentWindingIndex) {
+    size_t minimumWindingIndex = currentWindingIndex;
+    if (get_functional_description()[currentWindingIndex].get_wound_with()) {
+        auto windingsWoundWith = get_functional_description()[currentWindingIndex].get_wound_with().value();
+        for (auto windingWoundWith : windingsWoundWith) {
+            minimumWindingIndex = std::min(get_winding_index_by_name(windingWoundWith), minimumWindingIndex);
+        }
+    }
+    return minimumWindingIndex;
+}
+
+std::vector<size_t> Coil::virtualize_pattern(std::vector<size_t> pattern) {
+    std::vector<size_t> newPattern;
+    if (_virtualizationMap.size() == 0) {
+        throw std::runtime_error("No virtualization loaded. Did you forget to call create_virtualization_map()?");
+    }
+    for (auto windingIndex : pattern) {
+        auto winding = get_functional_description()[windingIndex];
+
+        size_t windingIndexForSearch;
+        if (!winding.get_wound_with()) {
+            windingIndexForSearch = windingIndex;
+        }
+        else {
+            windingIndexForSearch = get_winding_group_minimum_index(windingIndex);
+        }
+
+        size_t virtualWindingIndex = SIZE_MAX;
+        for (auto [auxVirtualWindingIndex, windingIndexes] : _virtualizationMap) {
+            if(std::find(windingIndexes.begin(), windingIndexes.end(), windingIndexForSearch) != windingIndexes.end()) {
+                virtualWindingIndex = auxVirtualWindingIndex;
+            }
+        }
+
+        if (virtualWindingIndex == SIZE_MAX) {
+            throw std::runtime_error("Something wrong happened looking for virtual indexes");
+        }
+
+        newPattern.push_back(virtualWindingIndex);
+    }
+    newPattern = compress_pattern(newPattern);
+    return newPattern;
+}
+
+std::vector<size_t> Coil::compress_pattern(std::vector<size_t> pattern) {
+    std::vector<size_t> newPattern;
+    for (auto windingIndex : pattern) {
+        if (newPattern.size() == 0) {
+            newPattern.push_back(windingIndex);
+        }
+        else if (newPattern.back() != windingIndex) {
+            newPattern.push_back(windingIndex);
+        }
+    }
+    return newPattern;
+}
+
+std::vector<double> Coil::virtualize_proportion_per_winding(std::vector<double> proportionPerWinding) {
+    std::vector<double> newProportionPerWinding;
+    if (_virtualizationMap.size() == 0) {
+        throw std::runtime_error("No virtualization loaded. Did you forget to call create_virtualization_map()?");
+    }
+
+    for (auto [virtualWindingIndex, windingIndexes] : _virtualizationMap) {
+        double newProportion = 0;
+        for (auto windingIndex : windingIndexes) {
+            newProportion += proportionPerWinding[windingIndex];
+        }
+        newProportionPerWinding.push_back(newProportion);
+    }
+    return newProportionPerWinding;
 }
 
 bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
@@ -2134,6 +2526,12 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 uint64_t physicalTurnsThisSection = parallelsProportions.first;
 
                 partialWinding.set_parallels_proportion(sectionParallelsProportion);
+                if (get_functional_description()[windingIndex].get_wound_with()) {
+                    if (get_functional_description()[windingIndex].get_wound_with()->size() > 0) {
+
+                    }
+                }
+
                 section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
                 section.set_partial_windings(std::vector<PartialWinding>{partialWinding});  // TODO: support more than one winding per section?
                 section.set_group(group.get_name());
@@ -2717,7 +3115,6 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     }
 
     for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
-        auto windingIndex = stackUpForThisGroup[stackUpIndex];
         sectionWidthPerWinding.push_back(group.get_dimensions()[0]);
         // double sectionHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
         double sectionHeight = totalAvailableHeight / stackUpForThisGroup.size();
@@ -2751,8 +3148,6 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
         WindingStyle windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberSections);
 
-        double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
- 
         auto parallelsProportions = get_parallels_proportions(sectionIndex,
                                                                numberSections,
                                                                get_number_turns(windingIndex),
@@ -2835,14 +3230,35 @@ bool Coil::wind_by_layers() {
         return false;
     }
     auto bobbin = resolve_bobbin();
-
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
+    auto functionalDescription = get_functional_description();
+    auto sectionsDescription = get_sections_description().value();
+    auto needsVirtualization = needs_virtualization();
+
+    if (needsVirtualization) {
+        create_virtualization_map();
+        auto virtualFunctionalDescription = virtualize_functional_description();
+        auto virtualSectionsDescription = virtualize_sections_description();
+        set_functional_description(virtualFunctionalDescription);
+        set_sections_description(virtualSectionsDescription);
+    }
+
+    bool result;
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        return wind_by_rectangular_layers();
+        result = wind_by_rectangular_layers();
     }
     else {
-        return wind_by_round_layers();
+        result = wind_by_round_layers();
     }
+
+    if (needsVirtualization) {
+        set_functional_description(functionalDescription);
+        set_sections_description(sectionsDescription);
+        devirtualize_layers_description();
+    }
+
+    return result;
 }
 
 bool Coil::wind_by_rectangular_layers() {
@@ -3475,13 +3891,37 @@ bool Coil::wind_by_turns() {
     }
     auto bobbin = resolve_bobbin();
 
+    auto functionalDescription = get_functional_description();
+    auto sectionsDescription = get_sections_description().value();
+    auto layersDescription = get_layers_description().value();
+    auto needsVirtualization = needs_virtualization();
+
+    if (needsVirtualization) {
+        create_virtualization_map();
+        auto virtualFunctionalDescription = virtualize_functional_description();
+        auto virtualSectionsDescription = virtualize_sections_description();
+        auto virtualLayersDescription = virtualize_layers_description();
+        set_functional_description(virtualFunctionalDescription);
+        set_sections_description(virtualSectionsDescription);
+        set_layers_description(virtualLayersDescription);
+    }
+
+    bool result;
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        return wind_by_rectangular_turns();
+        result = wind_by_rectangular_turns();
     }
     else {
-        return wind_by_round_turns();
+        result = wind_by_round_turns();
     }
+
+    if (needsVirtualization) {
+        set_functional_description(functionalDescription);
+        set_sections_description(sectionsDescription);
+        set_layers_description(layersDescription);
+        devirtualize_turns_description();
+    }
+    return result;
 }
 
 bool Coil::wind_by_rectangular_turns() {
@@ -3966,8 +4406,6 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
     std::vector<Turn> turns;
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
-            double totalLayerHeight;
-            double totalLayerWidth;
             if (layer.get_partial_windings().size() > 1) {
                 throw std::runtime_error("More than one winding per layer not supported yet");
             }
@@ -3976,7 +4414,6 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
             auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
             double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
             double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
-            auto physicalTurnsInLayer = get_number_turns(layer);
             double layerTurnsClearance;
 
             if (wireToWireDistance.count(windingIndex)) {
@@ -3989,8 +4426,6 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
             double currentTurnHeightIncrement = 0;
             double currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + wireWidth / 2, 9) + borderToWireDistance;
             double currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1], 9);
-
-            auto alignment = layer.get_turns_alignment().value();
 
             if (!layer.get_winding_style()) {
                 layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
@@ -4844,7 +5279,6 @@ WiringTechnology Coil::get_coil_type(size_t groupIndex) {
     auto group = get_groups_description().value()[groupIndex];
     return group.get_type();
 }
-
 
 bool Coil::delimit_and_compact_rectangular_window() {
     // Delimit
@@ -6221,7 +6655,7 @@ void Coil::set_interlayer_insulation(double layerThickness, std::optional<std::s
     auto layersOrientation = _layersOrientation;
 
     // TODO: Properly think about insulation layers with weird windings
-    auto windingOrientation = get_winding_orientation();
+    // auto windingOrientation = get_winding_orientation();
 
     Layer layer;
     layer.set_partial_windings(std::vector<PartialWinding>{});
@@ -6416,7 +6850,7 @@ std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> 
         }
         set_turns_description(std::nullopt);
         unwind();
-        auto result = fast_wind();
+        fast_wind();
         timeout--;
         if (timeout == 0) {
             break;
