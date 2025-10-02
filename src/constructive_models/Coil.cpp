@@ -922,7 +922,7 @@ size_t Coil::get_winding_index_by_name(std::string name) {
     return get_winding_index_by_name(get_functional_description(), name);
 }
 
-size_t Coil::get_winding_index_by_name(std::vector<CoilFunctionalDescription> functionalDescription, std::string name) {
+size_t Coil::get_winding_index_by_name(std::vector<Winding> functionalDescription, std::string name) {
     for (size_t i=0; i<functionalDescription.size(); ++i) {
         if (functionalDescription[i].get_name() == name) {
             return i;
@@ -2075,8 +2075,8 @@ bool Coil::needs_virtualization() {
     return false;
 }
 
-std::vector<CoilFunctionalDescription> Coil::virtualize_functional_description() {
-    std::vector<CoilFunctionalDescription> newFunctionalDescription;
+std::vector<Winding> Coil::virtualize_functional_description() {
+    std::vector<Winding> newFunctionalDescription;
     for (auto [virtualWindingIndex, windingIndexes] : _virtualizationMap) {
         std::string name = "";
         int64_t numberTurns = 0;
@@ -2128,7 +2128,7 @@ std::vector<CoilFunctionalDescription> Coil::virtualize_functional_description()
             }
         }
 
-        CoilFunctionalDescription newWinding;
+        Winding newWinding;
         newWinding.set_connections(connections);
         newWinding.set_isolation_side(isolationSide.value());
         newWinding.set_name(name);

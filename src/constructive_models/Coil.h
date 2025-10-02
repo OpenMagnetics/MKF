@@ -37,6 +37,7 @@ class Winding : public MAS::CoilFunctionalDescription {
             set_name(winding.get_name());
             set_number_parallels(winding.get_number_parallels());
             set_number_turns(winding.get_number_turns());
+            set_wound_with(winding.get_wound_with());
             auto wireVariant = winding.get_wire();
             if (std::holds_alternative<std::string>(wireVariant)) {
                 set_wire(std::get<std::string>(wireVariant));
@@ -226,7 +227,7 @@ class Coil : public MAS::Coil {
         Winding get_winding_by_name(std::string name);
 
         size_t get_winding_index_by_name(std::string name);
-        static size_t get_winding_index_by_name(std::vector<CoilFunctionalDescription> functionalDescription, std::string name);
+        static size_t get_winding_index_by_name(std::vector<Winding> functionalDescription, std::string name);
         size_t get_turn_index_by_name(std::string name);
         size_t get_layer_index_by_name(std::string name);
         size_t get_section_index_by_name(std::string name);
@@ -294,7 +295,7 @@ class Coil : public MAS::Coil {
         std::map<size_t, std::vector<size_t>> create_virtualization_map();
         size_t get_winding_group_minimum_index(size_t currentWindingIndex);
         std::vector<size_t> virtualize_pattern(std::vector<size_t> pattern);
-        std::vector<CoilFunctionalDescription> virtualize_functional_description();
+        std::vector<Winding> virtualize_functional_description();
         std::vector<size_t> compress_pattern(std::vector<size_t> pattern);
         std::vector<double> virtualize_proportion_per_winding(std::vector<double> proportionPerWinding);
         Section devirtualize_section(Section section);
