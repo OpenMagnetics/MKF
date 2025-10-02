@@ -1194,6 +1194,71 @@ namespace OpenMagnetics {
         }
     }
 
+    double Wire::calculate_outer_area() {
+        if (!get_number_conductors()) {
+            if (get_type() == WireType::LITZ) {
+                throw std::runtime_error("Missing number of conductors for wire");
+            }
+            else {
+                set_number_conductors(1);
+            }
+        }
+        switch (get_type()) {
+            case WireType::LITZ:
+                {
+                    auto strand = resolve_strand();
+                    auto outerDiameter = resolve_dimensional_values(strand.get_outer_diameter().value());
+                    return std::numbers::pi * pow(outerDiameter / 2, 2) * get_number_conductors().value();
+                }
+            case WireType::ROUND:
+                {
+                    if (!get_outer_diameter()) {
+                        throw std::runtime_error("Missing outer diameter in round wire");
+                    }
+                    auto outerDiameter = resolve_dimensional_values(get_outer_diameter().value());
+                    return std::numbers::pi * pow(outerDiameter / 2, 2) * get_number_conductors().value();
+                }
+            case WireType::RECTANGULAR:
+                {
+                    if (!get_outer_width()) {
+                        throw std::runtime_error("Missing outer width in rectangular wire");
+                    }
+                    if (!get_outer_height()) {
+                        throw std::runtime_error("Missing outer height in rectangular wire");
+                    }
+                    auto outerWidth = resolve_dimensional_values(get_outer_width().value());
+                    auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
+                    return outerWidth * outerHeight;
+                }
+            case WireType::FOIL:
+                {
+                    if (!get_outer_width()) {
+                        throw std::runtime_error("Missing outer width in foil wire");
+                    }
+                    if (!get_outer_height()) {
+                        throw std::runtime_error("Missing outer height in foil wire");
+                    }
+                    auto outerWidth = resolve_dimensional_values(get_outer_width().value());
+                    auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
+                    return outerWidth * outerHeight;
+                }
+            case WireType::PLANAR:
+                {
+                    if (!get_outer_width()) {
+                        throw std::runtime_error("Missing outer width in planar wire");
+                    }
+                    if (!get_outer_height()) {
+                        throw std::runtime_error("Missing outer height in planar wire");
+                    }
+                    auto outerWidth = resolve_dimensional_values(get_outer_width().value());
+                    auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
+                    return outerWidth * outerHeight;
+                }
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
+    }
+
     std::vector<std::vector<double>> Wire::calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints) {
         auto material = resolve_material();
         if (!current.get_processed()) {
