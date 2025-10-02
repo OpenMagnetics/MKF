@@ -226,6 +226,7 @@ class Coil : public MAS::Coil {
         Winding get_winding_by_name(std::string name);
 
         size_t get_winding_index_by_name(std::string name);
+        static size_t get_winding_index_by_name(std::vector<CoilFunctionalDescription> functionalDescription, std::string name);
         size_t get_turn_index_by_name(std::string name);
         size_t get_layer_index_by_name(std::string name);
         size_t get_section_index_by_name(std::string name);
@@ -284,6 +285,30 @@ class Coil : public MAS::Coil {
         bool is_edge_wound_coil();
 
         std::vector<Wire> guess_round_wire_from_dc_resistance(std::vector<double> dcResistances, double maxError=0.05);
+
+        // Virtualization
+        std::map<size_t, std::string> _windingNames;
+        std::map<size_t, std::string> _virtualWindingNames;
+        std::map<size_t, std::vector<size_t>> _virtualizationMap;
+        bool needs_virtualization();
+        std::map<size_t, std::vector<size_t>> create_virtualization_map();
+        size_t get_winding_group_minimum_index(size_t currentWindingIndex);
+        std::vector<size_t> virtualize_pattern(std::vector<size_t> pattern);
+        std::vector<CoilFunctionalDescription> virtualize_functional_description();
+        std::vector<size_t> compress_pattern(std::vector<size_t> pattern);
+        std::vector<double> virtualize_proportion_per_winding(std::vector<double> proportionPerWinding);
+        Section devirtualize_section(Section section);
+        Layer devirtualize_layer(Layer layer);
+        Turn devirtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName);
+        Section virtualize_section(Section section);
+        Layer virtualize_layer(Layer layer);
+        Turn virtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName);
+        void devirtualize_sections_description();
+        void devirtualize_layers_description();
+        void devirtualize_turns_description();
+        std::vector<Section> virtualize_sections_description();
+        std::vector<Layer> virtualize_layers_description();
+        std::vector<Turn> virtualize_turns_description();
 
 
 };
