@@ -238,6 +238,7 @@ class Wire : public MAS::Wire {
         double calculate_effective_current_density(double rms, double frequency, double temperature);
         double calculate_effective_conducting_area(double frequency, double temperature);
         double calculate_conducting_area();
+        double calculate_outer_area();
 
         static int calculate_number_parallels_needed(Inputs inputs, Wire& wire, double maximumEffectiveCurrentDensity, size_t windingIndex = 0);
         static int calculate_number_parallels_needed(OperatingPointExcitation excitation, double temperature, Wire& wire, double maximumEffectiveCurrentDensity);
