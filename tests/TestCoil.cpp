@@ -10566,10 +10566,11 @@ SUITE(CoilWindingGroups) {
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
         coil.set_bobbin(bobbin);
         coil.wind();
-        CHECK_EQUAL(1, coil.get_layers_description()->size());
+        CHECK_EQUAL(4, coil.get_layers_description()->size());
         CHECK_EQUAL(2, coil.get_layers_description().value()[0].get_partial_windings().size());
         CHECK_EQUAL("winding 0", coil.get_layers_description().value()[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL("winding 1", coil.get_layers_description().value()[0].get_partial_windings()[1].get_winding());
+        CHECK_EQUAL("winding 2", coil.get_layers_description().value()[2].get_partial_windings()[0].get_winding());
 
         OpenMagneticsTesting::check_turns_description(coil);
         {

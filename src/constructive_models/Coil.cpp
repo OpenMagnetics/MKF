@@ -2038,27 +2038,6 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
         maybeVirtualizedPattern = virtualize_pattern(pattern);
         maybeVirtualizedProportionPerWinding = virtualize_proportion_per_winding(proportionPerWinding);
         set_functional_description(virtualFunctionalDescription);
-        std::cout << "get_functional_description().size(): " << get_functional_description().size() << std::endl;
-        std::cout << "pattern: ";
-        for (auto windingIndex : pattern) {
-            std::cout << windingIndex << ", ";
-        }
-        std::cout << std::endl;
-        std::cout << "maybeVirtualizedPattern: ";
-        for (auto windingIndex : maybeVirtualizedPattern) {
-            std::cout << windingIndex << ", ";
-        }
-        std::cout << std::endl;
-        std::cout << "proportionPerWinding: ";
-        for (auto windingIndex : proportionPerWinding) {
-            std::cout << windingIndex << ", ";
-        }
-        std::cout << std::endl;
-        std::cout << "maybeVirtualizedProportionPerWinding: ";
-        for (auto windingIndex : maybeVirtualizedProportionPerWinding) {
-            std::cout << windingIndex << ", ";
-        }
-        std::cout << std::endl;
     }
 
     bool result;
@@ -2279,31 +2258,22 @@ void Coil::devirtualize_turns_description() {
         int64_t totalNumberTurns = 0;
         for (auto windingIndex : windingIndexes) {
             auto numberTurns = get_functional_description()[windingIndex].get_number_turns() * get_functional_description()[windingIndex].get_number_parallels();
-        std::cout << "windingIndex: " << windingIndex << std::endl;
-        std::cout << "numberTurns: " << numberTurns << std::endl;
             minimumNumberTurns = std::min(minimumNumberTurns, numberTurns);
             totalNumberTurns += numberTurns;
             remainingNumberTurnsPerWoundTogetherWinding.push_back(numberTurns);
         }
 
-        std::cout << "totalNumberTurns: " << totalNumberTurns << std::endl;
-        std::cout << "turnsInVirtualWinding.size(): " << turnsInVirtualWinding.size() << std::endl;
         if (size_t(totalNumberTurns) != turnsInVirtualWinding.size()) {
             throw std::runtime_error("Something wrong happened devirtualizing turns 1");
         }
-        std::cout << "totalNumberTurns: " << totalNumberTurns << std::endl;
 
         std::vector<size_t> devirtualizingPattern = {};
         for (auto windingIndex : windingIndexes) {
-            std::cout << "windingIndex: " << windingIndex << std::endl;
             double numberTurns = get_functional_description()[windingIndex].get_number_turns() * get_functional_description()[windingIndex].get_number_parallels();
-            std::cout << "numberTurns: " << numberTurns << std::endl;
-            std::cout << "minimumNumberTurns: " << minimumNumberTurns << std::endl;
             size_t numberTurnsPerPattern = round(numberTurns / minimumNumberTurns);
             if (numberTurnsPerPattern == 0) {
                 throw std::runtime_error("Something wrong happened devirtualizing turns 2");
             }
-            std::cout << "numberTurnsPerPattern: " << numberTurnsPerPattern << std::endl;
             for (size_t index = 0; index < numberTurnsPerPattern; ++index) {
                 devirtualizingPattern.push_back(windingIndex);
             }
@@ -2312,9 +2282,7 @@ void Coil::devirtualize_turns_description() {
         size_t devirtualizingPatternIndex = 0;
         for (auto turn : turnsInVirtualWinding) {
             size_t timeout = devirtualizingPattern.size() + 1;
-            std::cout << "turn.get_name(): " << turn.get_name() << std::endl;
             while (timeout > 0) {
-                std::cout << "timeout: " << timeout << std::endl;
                 if (remainingNumberTurnsPerWoundTogetherWinding[devirtualizingPattern[devirtualizingPatternIndex]] > 0) {
                     auto newWindingName = get_functional_description()[devirtualizingPattern[devirtualizingPatternIndex]].get_name();
                     auto oldWindingName = _virtualWindingNames[virtualWindingIndex];
