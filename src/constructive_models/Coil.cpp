@@ -2894,13 +2894,8 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
                 // We correct the radial height to exactly what we need, so afterwards we can calculate exactly how many turns we need
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                    if (section.get_number_layers()) {
-                        numberLayers = section.get_number_layers().value();
-                    }
-                    else {
-                        auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
-                        numberLayers = aux.first;
-                    }
+                    auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
+                    numberLayers = aux.first;
                     currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
 
                     if (_insulationInterLayers.contains(windingIndex)) {
@@ -2912,13 +2907,8 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                     while (numberLayers != prevNumberLayers) {
                         prevNumberLayers = numberLayers;
                         double currentSectionAngleMinusMargin = currentSectionAngle - marginAngle0 - marginAngle1;
-                        if (section.get_number_layers()) {
-                            numberLayers = section.get_number_layers().value();
-                        }
-                        else {
-                            auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngleMinusMargin, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
-                            numberLayers = aux.first;
-                        }
+                        auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngleMinusMargin, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
+                        numberLayers = aux.first;
                         if (_strict) {
                             currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
                         }
@@ -3355,15 +3345,20 @@ bool Coil::wind_by_rectangular_layers() {
             }
 
 
-            if (maximumNumberLayersFittingInSection == 0) {
-                numberLayers = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
-            }
-            else if (maximumNumberPhysicalTurnsPerLayer == 0) {
-                numberLayers = maximumNumberLayersFittingInSection;
+            if (sections[sectionIndex].get_number_layers()) {
+                numberLayers = sections[sectionIndex].get_number_layers().value();
             }
             else {
-                minimumNumberLayerNeeded = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
-                numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
+                if (maximumNumberLayersFittingInSection == 0) {
+                    numberLayers = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
+                }
+                else if (maximumNumberPhysicalTurnsPerLayer == 0) {
+                    numberLayers = maximumNumberLayersFittingInSection;
+                }
+                else {
+                    minimumNumberLayerNeeded = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
+                    numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
+                }
             }
 
             // We cannot have more layers than physical turns
@@ -3650,17 +3645,20 @@ bool Coil::wind_by_round_layers() {
             }
             else if (maximumNumberPhysicalTurnsPerLayer == 0) {
                 auto aux = get_number_layers_needed_and_number_physical_turns(sections[sectionIndex], wirePerWinding[windingIndex], physicalTurnsInSection, windingWindowRadialHeight);
-                layerPhysicalTurns = aux.second;
                 numberLayers = maximumNumberLayersFittingInSection;
+                layerPhysicalTurns = aux.second;
             }
             else {
                 auto aux = get_number_layers_needed_and_number_physical_turns(sections[sectionIndex], wirePerWinding[windingIndex], physicalTurnsInSection, windingWindowRadialHeight);
                 minimumNumberLayerNeeded = aux.first;
-                layerPhysicalTurns = aux.second;
                 numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
+                layerPhysicalTurns = aux.second;
             }
 
             // We cannot have more layers than physical turns
+            if (sections[sectionIndex].get_number_layers()) {
+                numberLayers = sections[sectionIndex].get_number_layers().value();
+            }
             numberLayers = std::min(numberLayers, physicalTurnsInSection);
 
             if (minimumNumberLayerNeeded > numberLayers) {
