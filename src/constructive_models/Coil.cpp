@@ -2496,8 +2496,13 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
                 // We correct the radial height to exactly what we need, so afterwards we can calculate exactly how many turns we need
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                    auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
-                    numberLayers = aux.first;
+                    if (section.get_number_layers()) {
+                        numberLayers = section.get_number_layers().value();
+                    }
+                    else {
+                        auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
+                        numberLayers = aux.first;
+                    }
                     currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
 
                     if (_insulationInterLayers.contains(windingIndex)) {
@@ -2509,8 +2514,13 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                     while (numberLayers != prevNumberLayers) {
                         prevNumberLayers = numberLayers;
                         double currentSectionAngleMinusMargin = currentSectionAngle - marginAngle0 - marginAngle1;
-                        auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngleMinusMargin, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
-                        numberLayers = aux.first;
+                        if (section.get_number_layers()) {
+                            numberLayers = section.get_number_layers().value();
+                        }
+                        else {
+                            auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngleMinusMargin, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
+                            numberLayers = aux.first;
+                        }
                         if (_strict) {
                             currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
                         }
