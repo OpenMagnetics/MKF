@@ -10238,3 +10238,355 @@ SUITE(CoilTools) {
         }
     }
 }
+
+SUITE(CoilWindingGroups) {
+    TEST(Test_Wind_By_Sections_Two_Windings_Together) {
+        settings->set_coil_wind_even_if_not_fit(true);
+        std::vector<int64_t> numberTurns = {5, 5};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+
+        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 40/40",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+
+        coil.get_mutable_functional_description()[0].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[1].get_name()});
+        coil.get_mutable_functional_description()[0].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        coil.get_mutable_functional_description()[1].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[0].get_name()});
+        coil.get_mutable_functional_description()[1].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        coil.set_bobbin(bobbin);
+        coil.wind_by_sections();
+        CHECK_EQUAL(1, coil.get_sections_description()->size());
+        CHECK_EQUAL(2, coil.get_sections_description().value()[0].get_partial_windings().size());
+        CHECK_EQUAL("winding 0", coil.get_sections_description().value()[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("winding 1", coil.get_sections_description().value()[0].get_partial_windings()[1].get_winding());
+        auto virtualFunctionalDescription = coil.virtualize_functional_description();
+        CHECK_EQUAL(1, virtualFunctionalDescription.size());
+        CHECK_EQUAL(numberTurns[0] + numberTurns[1], virtualFunctionalDescription[0].get_number_turns());
+        CHECK_EQUAL(numberParallels[0], virtualFunctionalDescription[0].get_number_parallels());
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Sections_Two_Windings_Together.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            magnetic.set_core(core);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_sections(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            settings->reset();
+        }
+    }
+
+    TEST(Test_Wind_By_Sections_Two_Windings_Together_One_Not) {
+        settings->set_coil_wind_even_if_not_fit(true);
+        std::vector<int64_t> numberTurns = {5, 5, 12};
+        std::vector<int64_t> numberParallels = {2, 2, 3};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+
+        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 40/40",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+
+        coil.get_mutable_functional_description()[0].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[1].get_name()});
+        coil.get_mutable_functional_description()[0].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        coil.get_mutable_functional_description()[1].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[0].get_name()});
+        coil.get_mutable_functional_description()[1].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        coil.set_bobbin(bobbin);
+        coil.wind_by_sections();
+
+        CHECK_EQUAL(4, coil.get_sections_description()->size());
+        CHECK_EQUAL(2, coil.get_sections_description().value()[0].get_partial_windings().size());
+        CHECK_EQUAL(1, coil.get_sections_description().value()[2].get_partial_windings().size());
+        CHECK_EQUAL("winding 0", coil.get_sections_description().value()[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("winding 1", coil.get_sections_description().value()[0].get_partial_windings()[1].get_winding());
+        CHECK_EQUAL("winding 2", coil.get_sections_description().value()[2].get_partial_windings()[0].get_winding());
+        auto virtualFunctionalDescription = coil.virtualize_functional_description();
+        CHECK_EQUAL(2, virtualFunctionalDescription.size());
+        CHECK_EQUAL(numberTurns[0] + numberTurns[1], virtualFunctionalDescription[0].get_number_turns());
+        CHECK_EQUAL(numberParallels[0], virtualFunctionalDescription[0].get_number_parallels());
+        CHECK_EQUAL(numberTurns[2], virtualFunctionalDescription[1].get_number_turns());
+        CHECK_EQUAL(numberParallels[2], virtualFunctionalDescription[1].get_number_parallels());
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Sections_Two_Windings_Together_One_Not.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            magnetic.set_core(core);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_sections(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            settings->reset();
+        }
+    }
+
+    TEST(Test_Wind_By_Layers_Two_Windings_Together) {
+        settings->set_coil_wind_even_if_not_fit(true);
+        std::vector<int64_t> numberTurns = {5, 5};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+
+
+        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 40/40",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+
+        coil.get_mutable_functional_description()[0].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[1].get_name()});
+        coil.get_mutable_functional_description()[0].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        coil.get_mutable_functional_description()[1].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[0].get_name()});
+        coil.get_mutable_functional_description()[1].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        coil.set_bobbin(bobbin);
+        coil.wind_by_sections();
+        coil.wind_by_layers();
+        CHECK_EQUAL(1, coil.get_layers_description()->size());
+        CHECK_EQUAL(2, coil.get_layers_description().value()[0].get_partial_windings().size());
+        CHECK_EQUAL("winding 0", coil.get_layers_description().value()[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("winding 1", coil.get_layers_description().value()[0].get_partial_windings()[1].get_winding());
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Layers_Two_Windings_Together.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            magnetic.set_core(core);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_layers(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            settings->reset();
+        }
+    }
+
+    TEST(Test_Wind_By_Layers_Two_Windings_Together_One_Not) {
+        settings->set_coil_wind_even_if_not_fit(true);
+        std::vector<int64_t> numberTurns = {5, 5, 12};
+        std::vector<int64_t> numberParallels = {2, 2, 3};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+
+
+        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 40/40",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+
+        coil.get_mutable_functional_description()[0].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[1].get_name()});
+        coil.get_mutable_functional_description()[0].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        coil.get_mutable_functional_description()[1].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[0].get_name()});
+        coil.get_mutable_functional_description()[1].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        coil.set_bobbin(bobbin);
+        coil.wind_by_sections();
+        coil.wind_by_layers();
+        CHECK_EQUAL(4, coil.get_layers_description()->size());
+        CHECK_EQUAL(2, coil.get_layers_description().value()[0].get_partial_windings().size());
+        CHECK_EQUAL(1, coil.get_layers_description().value()[2].get_partial_windings().size());
+        CHECK_EQUAL("winding 0", coil.get_layers_description().value()[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("winding 1", coil.get_layers_description().value()[0].get_partial_windings()[1].get_winding());
+        CHECK_EQUAL("winding 2", coil.get_layers_description().value()[2].get_partial_windings()[0].get_winding());
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Layers_Two_Windings_Together_One_Not.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            magnetic.set_core(core);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_layers(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            settings->reset();
+        }
+    }
+
+    TEST(Test_Wind_By_Turns_Two_Windings_Together) {
+        settings->set_coil_wind_even_if_not_fit(true);
+        std::vector<int64_t> numberTurns = {5, 5};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+
+
+        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 40/40",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+
+        coil.get_mutable_functional_description()[0].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[1].get_name()});
+        coil.get_mutable_functional_description()[0].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        coil.get_mutable_functional_description()[1].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[0].get_name()});
+        coil.get_mutable_functional_description()[1].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        coil.set_bobbin(bobbin);
+        coil.wind_by_sections();
+        coil.wind_by_layers();
+        coil.wind_by_turns();
+        CHECK_EQUAL(1, coil.get_layers_description()->size());
+        CHECK_EQUAL(2, coil.get_layers_description().value()[0].get_partial_windings().size());
+        CHECK_EQUAL("winding 0", coil.get_layers_description().value()[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("winding 1", coil.get_layers_description().value()[0].get_partial_windings()[1].get_winding());
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turns_Two_Windings_Together.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            magnetic.set_core(core);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            settings->reset();
+        }
+    }
+
+    TEST(Test_Wind_By_Turns_Two_Windings_Together_One_Not) {
+        settings->set_coil_wind_even_if_not_fit(true);
+        std::vector<int64_t> numberTurns = {5, 5, 12};
+        std::vector<int64_t> numberParallels = {2, 2, 3};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+
+
+        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 40/40",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+
+        coil.get_mutable_functional_description()[0].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[1].get_name()});
+        coil.get_mutable_functional_description()[0].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        coil.get_mutable_functional_description()[1].set_wound_with(std::vector<std::string>{coil.get_mutable_functional_description()[0].get_name()});
+        coil.get_mutable_functional_description()[1].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        coil.set_bobbin(bobbin);
+        coil.wind();
+        CHECK_EQUAL(4, coil.get_layers_description()->size());
+        CHECK_EQUAL(2, coil.get_layers_description().value()[0].get_partial_windings().size());
+        CHECK_EQUAL("winding 0", coil.get_layers_description().value()[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("winding 1", coil.get_layers_description().value()[0].get_partial_windings()[1].get_winding());
+        CHECK_EQUAL("winding 2", coil.get_layers_description().value()[2].get_partial_windings()[0].get_winding());
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turns_Two_Windings_Together_One_Not.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            magnetic.set_core(core);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            settings->reset();
+        }
+    }
+}
