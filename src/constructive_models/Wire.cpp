@@ -997,7 +997,7 @@ namespace OpenMagnetics {
         return std::min(numberLayers, timesVoltageisCovered);
     }
 
-    double Wire::calculate_outer_height(Wire wire) {
+    double Wire::calculate_outer_height(Wire wire, OpenMagnetics::DimensionalValues preferredValue) {
         switch (wire.get_type()) {
             case WireType::RECTANGULAR: {
                 auto coating = wire.resolve_coating();
@@ -1007,32 +1007,32 @@ namespace OpenMagnetics {
                 }
                 if (coating) {
                     if (coating->get_type() == InsulationWireCoatingType::BARE) {
-                        return resolve_dimensional_values(wire.get_conducting_height().value());
+                        return resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
-                        return get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_height().value()), coating->get_grade().value(), standard);
+                        return get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue), coating->get_grade().value(), standard);
                     }
                     else {
                         throw std::runtime_error("Unsupported coating in RECTANGULAR");
                     }
                 }
                 else {
-                    return resolve_dimensional_values(wire.get_conducting_height().value());
+                    return resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue);
                 }
             }
             case WireType::PLANAR:
             case WireType::FOIL:
-                return resolve_dimensional_values(wire.get_conducting_height().value());
+                return resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue);
             default:
                 throw std::runtime_error("Cannot calculate outer width for ROUND or LITZ");
         }
     }
 
-    double Wire::calculate_outer_height() {
-        return calculate_outer_height(*this);
+    double Wire::calculate_outer_height(OpenMagnetics::DimensionalValues preferredValue) {
+        return calculate_outer_height(*this, preferredValue);
     }
 
-    double Wire::calculate_outer_width(Wire wire) {
+    double Wire::calculate_outer_width(Wire wire, OpenMagnetics::DimensionalValues preferredValue) {
         switch (wire.get_type()) {
             case WireType::RECTANGULAR: {
                 auto coating = wire.resolve_coating();
@@ -1042,32 +1042,32 @@ namespace OpenMagnetics {
                 }
                 if (coating) {
                     if (coating->get_type() == InsulationWireCoatingType::BARE) {
-                        return resolve_dimensional_values(wire.get_conducting_width().value());
+                        return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
-                        return get_outer_width_rectangular(resolve_dimensional_values(wire.get_conducting_width().value()), coating->get_grade().value(), standard);
+                        return get_outer_width_rectangular(resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue), coating->get_grade().value(), standard);
                     }
                     else {
                         throw std::runtime_error("Unsupported coating in RECTANGULAR");
                     }
                 }
                 else {
-                    return resolve_dimensional_values(wire.get_conducting_width().value());
+                    return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
                 }
             }
             case WireType::PLANAR:
             case WireType::FOIL:
-                return resolve_dimensional_values(wire.get_conducting_width().value());
+                return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
             default:
                 throw std::runtime_error("Cannot calculate outer width for ROUND or LITZ");
         }
     }
 
-    double Wire::calculate_outer_width() {
-        return calculate_outer_width(*this);
+    double Wire::calculate_outer_width(OpenMagnetics::DimensionalValues preferredValue) {
+        return calculate_outer_width(*this, preferredValue);
     }
 
-    double Wire::calculate_outer_diameter(Wire wire) {
+    double Wire::calculate_outer_diameter(Wire wire, OpenMagnetics::DimensionalValues preferredValue) {
         switch (wire.get_type()) {
             case WireType::LITZ:{
                 auto coating = wire.resolve_coating();
@@ -1080,20 +1080,20 @@ namespace OpenMagnetics {
                 int64_t numberConductors = wire.get_number_conductors().value();
                 if (coating) {
                     if (coating->get_type() == InsulationWireCoatingType::BARE) {
-                        return get_outer_diameter_bare_litz(resolve_dimensional_values(strand.get_conducting_diameter()), numberConductors, strandCoating->get_grade().value(), standard);
+                        return get_outer_diameter_bare_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, strandCoating->get_grade().value(), standard);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::SERVED) {
-                        return get_outer_diameter_served_litz(resolve_dimensional_values(strand.get_conducting_diameter()), numberConductors, strandCoating->get_grade().value(), coating->get_number_layers().value(), standard);
+                        return get_outer_diameter_served_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, strandCoating->get_grade().value(), coating->get_number_layers().value(), standard);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::INSULATED) {
-                        return get_outer_diameter_insulated_litz(resolve_dimensional_values(strand.get_conducting_diameter()), numberConductors, coating->get_number_layers().value(), coating->get_thickness_layers().value(), strandCoating->get_grade().value(), standard);
+                        return get_outer_diameter_insulated_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, coating->get_number_layers().value(), coating->get_thickness_layers().value(), strandCoating->get_grade().value(), standard);
                     }
                     else {
                         throw std::runtime_error("Unsupported coating in LITZ");
                     }
                 }
                 else {
-                    return get_outer_diameter_bare_litz(resolve_dimensional_values(strand.get_conducting_diameter()), numberConductors, strandCoating->get_grade().value(), standard);
+                    return get_outer_diameter_bare_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, strandCoating->get_grade().value(), standard);
                 }
             }
             case WireType::ROUND: {
@@ -1104,20 +1104,20 @@ namespace OpenMagnetics {
                 }
                 if (coating) {
                     if (coating->get_type() == InsulationWireCoatingType::BARE) {
-                        return resolve_dimensional_values(wire.get_conducting_diameter().value());
+                        return resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::ENAMELLED) {
-                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value()), coating->get_grade().value(), standard);
+                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue), coating->get_grade().value(), standard);
                     }
                     else if (coating->get_type() == InsulationWireCoatingType::INSULATED) {
-                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value()), coating->get_number_layers().value(), coating->get_thickness_layers().value(), standard);
+                        return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue), coating->get_number_layers().value(), coating->get_thickness_layers().value(), standard);
                     }
                     else {
                         throw std::runtime_error("Unsupported coating in ROUND");
                     }
                 }
                 else  {
-                    return resolve_dimensional_values(wire.get_conducting_diameter().value());
+                    return resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue);
                 }
             }
             default:
@@ -1125,8 +1125,8 @@ namespace OpenMagnetics {
         }
     }
 
-    double Wire::calculate_outer_diameter() {
-        return calculate_outer_diameter(*this);
+    double Wire::calculate_outer_diameter(OpenMagnetics::DimensionalValues preferredValue) {
+        return calculate_outer_diameter(*this, preferredValue);
     }
 
     double Wire::calculate_conducting_area() {
@@ -1188,6 +1188,71 @@ namespace OpenMagnetics {
                     auto conductingWidth = resolve_dimensional_values(get_conducting_width().value());
                     auto conductingHeight = resolve_dimensional_values(get_conducting_height().value()) * get_number_conductors().value();
                     return conductingWidth * conductingHeight;
+                }
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
+    }
+
+    double Wire::calculate_outer_area() {
+        if (!get_number_conductors()) {
+            if (get_type() == WireType::LITZ) {
+                throw std::runtime_error("Missing number of conductors for wire");
+            }
+            else {
+                set_number_conductors(1);
+            }
+        }
+        switch (get_type()) {
+            case WireType::LITZ:
+                {
+                    auto strand = resolve_strand();
+                    auto outerDiameter = resolve_dimensional_values(strand.get_outer_diameter().value());
+                    return std::numbers::pi * pow(outerDiameter / 2, 2) * get_number_conductors().value();
+                }
+            case WireType::ROUND:
+                {
+                    if (!get_outer_diameter()) {
+                        throw std::runtime_error("Missing outer diameter in round wire");
+                    }
+                    auto outerDiameter = resolve_dimensional_values(get_outer_diameter().value());
+                    return std::numbers::pi * pow(outerDiameter / 2, 2) * get_number_conductors().value();
+                }
+            case WireType::RECTANGULAR:
+                {
+                    if (!get_outer_width()) {
+                        throw std::runtime_error("Missing outer width in rectangular wire");
+                    }
+                    if (!get_outer_height()) {
+                        throw std::runtime_error("Missing outer height in rectangular wire");
+                    }
+                    auto outerWidth = resolve_dimensional_values(get_outer_width().value());
+                    auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
+                    return outerWidth * outerHeight;
+                }
+            case WireType::FOIL:
+                {
+                    if (!get_outer_width()) {
+                        throw std::runtime_error("Missing outer width in foil wire");
+                    }
+                    if (!get_outer_height()) {
+                        throw std::runtime_error("Missing outer height in foil wire");
+                    }
+                    auto outerWidth = resolve_dimensional_values(get_outer_width().value());
+                    auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
+                    return outerWidth * outerHeight;
+                }
+            case WireType::PLANAR:
+                {
+                    if (!get_outer_width()) {
+                        throw std::runtime_error("Missing outer width in planar wire");
+                    }
+                    if (!get_outer_height()) {
+                        throw std::runtime_error("Missing outer height in planar wire");
+                    }
+                    auto outerWidth = resolve_dimensional_values(get_outer_width().value());
+                    auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
+                    return outerWidth * outerHeight;
                 }
             default:
                 throw std::runtime_error("Unknow type of wire");
