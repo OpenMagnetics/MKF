@@ -1632,6 +1632,14 @@ namespace OpenMagnetics {
         return cost;
     }
 
+    std::string Wire::get_reference() {
+        if (get_manufacturer_info()) {
+            if (get_manufacturer_info()->get_reference()) {
+                return get_manufacturer_info()->get_reference().value();
+            }
+        }
+        return "";
+    }
 
     double Wire::get_coating_thickness() {
         return get_coating_thickness(*this);
