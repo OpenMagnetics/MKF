@@ -266,11 +266,13 @@ class Wire : public MAS::Wire {
         void cut_foil_wire_to_section(Section section);
         void cut_planar_wire_to_section(Section section);
         double get_relative_cost();
+        std::string get_reference();
 
         static Wire get_equivalent_wire(Wire oldWire, WireType newWireType, double effectiveFrequency=200000, double temperature=Defaults().ambientTemperature);
         static Wire get_wire_for_frequency(double effectiveFrequency, double temperature=Defaults().ambientTemperature, bool exact=false);
         static Wire get_wire_for_conducting_area(double conductingArea, double temperature=Defaults().ambientTemperature, bool exact=false);
         static Wire get_wire_for_dc_resistance_per_meter(double dcResistancePerMeter, double temperature=Defaults().ambientTemperature);
+        
 
 };
 
