@@ -56,6 +56,7 @@ class Core : public MAS::MagneticCore {
     double get_effective_area();
     double get_minimum_area();
     double get_effective_volume();
+    std::string get_reference();
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
     double get_initial_permeability(double temperature = Defaults().ambientTemperature);

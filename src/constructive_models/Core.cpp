@@ -90,18 +90,21 @@ double Core::get_depth() {
     }
     return get_processed_description()->get_depth();
 }
+
 double Core::get_height() {
     if (!get_processed_description()) {
         throw std::runtime_error("Core is not processed");
     }
     return get_processed_description()->get_height();
 }
+
 double Core::get_width() {
     if (!get_processed_description()) {
         throw std::runtime_error("Core is not processed");
     }
     return get_processed_description()->get_width();
 }
+
 double Core::get_mass() {
     if (get_shape_family() == CoreShapeFamily::T) {
         auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
@@ -112,29 +115,42 @@ double Core::get_mass() {
         throw std::runtime_error("get_mass only implemented for toroidal cores for now");
     }
 }
+
 double Core::get_effective_length() {
     if (!get_processed_description()) {
         throw std::runtime_error("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_effective_length();
 }
+
 double Core::get_effective_area() {
     if (!get_processed_description()) {
         throw std::runtime_error("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_effective_area();
 }
+
 double Core::get_minimum_area() {
     if (!get_processed_description()) {
         throw std::runtime_error("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_minimum_area();
 }
+
 double Core::get_effective_volume() {
     if (!get_processed_description()) {
         throw std::runtime_error("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_effective_volume();
+}
+
+std::string Core::get_reference() {
+    if (get_manufacturer_info()) {
+        if (get_manufacturer_info()->get_reference()) {
+            return get_manufacturer_info()->get_reference().value();
+        }
+    }
+    return "";
 }
 
 double interp(std::vector<std::pair<double, double>> data, double temperature) {
