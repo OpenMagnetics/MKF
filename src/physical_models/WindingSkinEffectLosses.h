@@ -45,7 +45,7 @@ class WindingSkinEffectLosses {
       static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
       static double calculate_skin_depth(Wire wire, double frequency, double temperature);
       static WindingLossesOutput calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold);
-      static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider = 1, double windingLossesHarmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold);
+      static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider = 1);
 
 };
 

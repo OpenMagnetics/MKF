@@ -26,7 +26,6 @@ namespace OpenMagnetics {
         voltage.set_harmonics(voltageHarmonics);
         excitation.set_voltage(voltage);
         excitation.set_name(name);
-        excitation = Inputs::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
         return excitation;
     }
 
@@ -45,6 +44,9 @@ namespace OpenMagnetics {
         }
         auto desiredMagnetizingInductance = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
         auto operatingPoints = process_operating_points(turnsRatios, desiredMagnetizingInductance);
+        for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+            operatingPoints[operatingPointIndex] = Inputs::prune_harmonics(operatingPoints[operatingPointIndex], Defaults().harmonicAmplitudeThreshold);
+        }
 
         inputs.set_design_requirements(designRequirements);
         inputs.set_operating_points(operatingPoints);
