@@ -133,6 +133,7 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
 
 WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
     auto settings = OpenMagnetics::Settings::GetInstance();
+
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
     windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings->get_harmonic_amplitude_threshold());
 

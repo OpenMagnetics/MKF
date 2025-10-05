@@ -81,7 +81,7 @@ double WindingSkinEffectLosses::calculate_skin_depth(Wire wire, double frequency
     return calculate_skin_depth(wire.resolve_material(), frequency, temperature);
 };
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider, double windingLossesHarmonicAmplitudeThreshold) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider) {
     double dcResistancePerMeter = WindingOhmicLosses::calculate_dc_resistance_per_meter(wire, temperature);
 
     auto model = get_model(wire.get_type());
@@ -92,21 +92,11 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
     auto harmonics = current.get_harmonics().value();
 
     double totalSkinEffectLossesPerMeter = 0;
-    double maximumHarmonicAmplitudeTimesRootFrequency = 0;
-    for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-        if (harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]) > maximumHarmonicAmplitudeTimesRootFrequency) {
-            maximumHarmonicAmplitudeTimesRootFrequency = harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]);
-        }
-    }
 
     std::vector<std::pair<double, double>> lossesPerHarmonic;
 
     for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex)
     {
-        if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequency * windingLossesHarmonicAmplitudeThreshold) {
-            continue;
-        }
-
         auto harmonicRmsCurrent = harmonics.get_amplitudes()[harmonicIndex] / sqrt(2);  // Because a harmonic is always sinusoidal
         auto harmonicFrequency = harmonics.get_frequencies()[harmonicIndex];
         auto harmonicRmsCurrentInTurn = harmonicRmsCurrent * currentDivider;
@@ -133,6 +123,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     {
         throw std::runtime_error("Input has no waveform. TODO: get waveform from processed data");
     }
+    operatingPoint = Inputs::prune_harmonics(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
     auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
 
@@ -147,7 +138,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
 
         SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
 
-        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], windingLossesHarmonicAmplitudeThreshold).second;
+        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex]).second;
 
         WindingLossElement skinEffectLosses;
         auto model = get_model(coil.get_wire_type(windingIndex));

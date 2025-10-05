@@ -928,7 +928,7 @@ size_t Coil::get_winding_index_by_name(std::vector<Winding> functionalDescriptio
             return i;
         }
     }
-    throw std::runtime_error("No such a winding name: " + name);
+    throw std::runtime_error("No such a winding name in functionalDescription: " + name);
 }
 
 size_t Coil::get_turn_index_by_name(std::string name) {
@@ -2209,8 +2209,34 @@ Section Coil::virtualize_section(Section section) {
         return section;
     }
     auto partialWindings = section.get_partial_windings();
-    auto newPartialWinding = partialWindings[0];
-    section.set_partial_windings({newPartialWinding});
+    auto firstWindingName = partialWindings[0].get_winding();
+    auto firstWindingIndex = get_winding_index_by_name(firstWindingName);
+    auto virtualWindingIndex = 0;
+    bool found = false;
+    for (auto [virtualIndex, indexes] : _virtualizationMap) {
+        for (auto index : indexes) {
+            if (firstWindingIndex == index) {
+                found = true;
+                virtualWindingIndex = virtualIndex;
+                break;
+            }
+        }
+    }
+    if (!found) {
+        throw std::runtime_error("Something wrong happened virtualizing section");
+    }
+    found = false;
+    for (auto partialWinding : partialWindings) {
+        if (partialWinding.get_winding() == _virtualWindingNames[virtualWindingIndex]) {
+            found = true;
+            section.set_partial_windings({partialWinding});
+            break;
+        }
+    }
+    if (!found) {
+        throw std::runtime_error("Something wrong happened virtualizing section 2");
+    }
+
     return section;
 }
 
@@ -2219,8 +2245,33 @@ Layer Coil::virtualize_layer(Layer layer) {
         return layer;
     }
     auto partialWindings = layer.get_partial_windings();
-    auto newPartialWinding = partialWindings[0];
-    layer.set_partial_windings({newPartialWinding});
+    auto firstWindingName = partialWindings[0].get_winding();
+    auto firstWindingIndex = get_winding_index_by_name(firstWindingName);
+    auto virtualWindingIndex = 0;
+    bool found = false;
+    for (auto [virtualIndex, indexes] : _virtualizationMap) {
+        for (auto index : indexes) {
+            if (firstWindingIndex == index) {
+                found = true;
+                virtualWindingIndex = virtualIndex;
+                break;
+            }
+        }
+    }
+    if (!found) {
+        throw std::runtime_error("Something wrong happened virtualizing layer");
+    }
+    found = false;
+    for (auto partialWinding : partialWindings) {
+        if (partialWinding.get_winding() == _virtualWindingNames[virtualWindingIndex]) {
+            found = true;
+            layer.set_partial_windings({partialWinding});
+            break;
+        }
+    }
+    if (!found) {
+        throw std::runtime_error("Something wrong happened virtualizing layer 2");
+    }
     return layer;
 }
 
@@ -2259,14 +2310,14 @@ void Coil::devirtualize_turns_description() {
     for (auto [virtualWindingIndex, windingIndexes] : _virtualizationMap) {
         auto turnsInVirtualWinding = get_turns_by_winding(_virtualWindingNames[virtualWindingIndex]);
         
-        std::vector<int64_t> remainingNumberTurnsPerWoundTogetherWinding;
+        std::map<size_t, int64_t> remainingNumberTurnsPerWoundTogetherWinding;
         int64_t minimumNumberTurns = std::numeric_limits<int64_t>::max();
         int64_t totalNumberTurns = 0;
         for (auto windingIndex : windingIndexes) {
             auto numberTurns = get_functional_description()[windingIndex].get_number_turns() * get_functional_description()[windingIndex].get_number_parallels();
             minimumNumberTurns = std::min(minimumNumberTurns, numberTurns);
             totalNumberTurns += numberTurns;
-            remainingNumberTurnsPerWoundTogetherWinding.push_back(numberTurns);
+            remainingNumberTurnsPerWoundTogetherWinding[windingIndex] = numberTurns;
         }
 
         if (size_t(totalNumberTurns) != turnsInVirtualWinding.size()) {
@@ -2330,6 +2381,35 @@ std::vector<Layer> Coil::virtualize_layers_description() {
         newLayersDescription.push_back(newLayer);
     }
     return newLayersDescription;
+}
+
+std::map<std::pair<size_t, size_t>, std::vector<Layer>> Coil::virtualize_insulation_intersections_layers() {
+    std::map<std::pair<size_t, size_t>, std::vector<Layer>> newInsulationInterSectionsLayers;
+    for (auto [key, layers] : _insulationInterSectionsLayers) {
+        size_t newFirstIndex = 0;
+        size_t newSecondIndex = 0;
+        bool newFirstIndexFound = false;
+        bool newSecondIndexFound = false;
+        for (auto [virtualIndex , indexes] : _virtualizationMap) {
+            for (auto index : indexes) {
+                if (key.first == index) {
+                    newFirstIndex = virtualIndex;
+                    newFirstIndexFound = true;
+                }
+                if (key.second == index) {
+                    newSecondIndex = virtualIndex;
+                    newSecondIndexFound = true;
+                }
+            }
+        }
+
+        if (!newFirstIndexFound || !newSecondIndexFound) {
+            throw std::runtime_error("Something wrong happened looking for virtual indexes for insulation intersections layers");
+        }
+        std::pair<size_t, size_t> virtualKey = {newFirstIndex, newSecondIndex};
+        newInsulationInterSectionsLayers[virtualKey] = layers;
+    }
+    return newInsulationInterSectionsLayers;
 }
 
 std::map<size_t, std::vector<size_t>> Coil::create_virtualization_map() {
@@ -3234,12 +3314,14 @@ bool Coil::wind_by_layers() {
 
     auto functionalDescription = get_functional_description();
     auto sectionsDescription = get_sections_description().value();
+    auto insulationInterSectionsLayers = _insulationInterSectionsLayers;
     auto needsVirtualization = needs_virtualization();
 
     if (needsVirtualization) {
         create_virtualization_map();
         auto virtualFunctionalDescription = virtualize_functional_description();
         auto virtualSectionsDescription = virtualize_sections_description();
+        _insulationInterSectionsLayers = virtualize_insulation_intersections_layers();
         set_functional_description(virtualFunctionalDescription);
         set_sections_description(virtualSectionsDescription);
     }
@@ -3255,6 +3337,7 @@ bool Coil::wind_by_layers() {
     if (needsVirtualization) {
         set_functional_description(functionalDescription);
         set_sections_description(sectionsDescription);
+        _insulationInterSectionsLayers = insulationInterSectionsLayers;
         devirtualize_layers_description();
     }
 
@@ -3498,7 +3581,7 @@ bool Coil::wind_by_rectangular_layers() {
         }
         else {
             if (sectionIndex == 0) {
-                throw std::runtime_error("outer insulation layers not implemented");
+                throw std::runtime_error("inner insulation layers not implemented");
             }
 
             auto partialWinding = sections[sectionIndex - 1].get_partial_windings()[0];
@@ -3522,10 +3605,11 @@ bool Coil::wind_by_rectangular_layers() {
                 log(_insulationInterSectionsLayersLog[windingsMapKey]);
                 continue;
             }
-
             auto insulationLayers = _insulationInterSectionsLayers[windingsMapKey];
+
             if (insulationLayers.size() == 0) {
-                throw std::runtime_error("There must be at least one insulation layer between layers");
+                continue;
+                // throw std::runtime_error("There must be at least one insulation layer between layers");
             }
 
             double layerWidth = insulationLayers[0].get_dimensions()[0];
@@ -6803,7 +6887,6 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
     if (windingNames) {
         auto windingIndex = get_winding_index_by_name(windingNames->first);
         auto nextWindingIndex = get_winding_index_by_name(windingNames->second);
-
         {
             auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
             _insulationInterSectionsLayers[windingsMapKey] = insulationLayers;
@@ -6881,13 +6964,17 @@ std::vector<double> Coil::resolve_margin(Section section) {
     if (!section.get_margin()) {
         return {0.0, 0.0};
     }
-    if (std::holds_alternative<std::vector<double>>(section.get_margin().value())) {
-        auto margin = std::get<std::vector<double>>(section.get_margin().value());
+    return resolve_margin(section.get_margin().value());
+}
+
+std::vector<double> Coil::resolve_margin(Margin marginVariant) {
+    if (std::holds_alternative<std::vector<double>>(marginVariant)) {
+        auto margin = std::get<std::vector<double>>(marginVariant);
         return margin;
     }
     else {
         std::vector<double> margin;
-        auto marginInfo = std::get<MarginInfo>(section.get_margin().value());
+        auto marginInfo = std::get<MarginInfo>(marginVariant);
         margin.push_back(marginInfo.get_top_or_left_width());
         margin.push_back(marginInfo.get_bottom_or_right_width());
         return margin;
@@ -6904,19 +6991,27 @@ MarginInfo Coil::resolve_margin_info(size_t sectionIndex) {
 
 MarginInfo Coil::resolve_margin_info(Section section) {
     if (!section.get_margin()) {
-        section.set_margin(std::vector<double>{0,0, 0.0});
-    }
-
-    if (std::holds_alternative<std::vector<double>>(section.get_margin().value())) {
         MarginInfo marginInfo;
-        auto margin = std::get<std::vector<double>>(section.get_margin().value());
+        marginInfo.set_top_or_left_width(0);
+        marginInfo.set_bottom_or_right_width(0);
+        marginInfo.set_number_layers(0);
+        section.set_margin(marginInfo);
+        return marginInfo;
+    }
+    return resolve_margin_info(section.get_margin().value());
+}
+
+MarginInfo Coil::resolve_margin_info(Margin marginVariant) {
+    if (std::holds_alternative<std::vector<double>>(marginVariant)) {
+        MarginInfo marginInfo;
+        auto margin = std::get<std::vector<double>>(marginVariant);
         marginInfo.set_top_or_left_width(margin[0]);
         marginInfo.set_bottom_or_right_width(margin[1]);
         return marginInfo;
     }
     else {
         std::vector<double> margin;
-        auto marginInfo = std::get<MarginInfo>(section.get_margin().value());
+        auto marginInfo = std::get<MarginInfo>(marginVariant);
         return marginInfo;
     }
 }

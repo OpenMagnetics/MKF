@@ -243,8 +243,10 @@ class Coil : public MAS::Coil {
         static Wire resolve_wire(Winding winding);
         std::vector<double> resolve_margin(size_t sectionIndex);
         static std::vector<double> resolve_margin(Section section);
+        static std::vector<double> resolve_margin(Margin marginVariant);
         MarginInfo resolve_margin_info(size_t sectionIndex);
         static MarginInfo resolve_margin_info(Section section);
+        static MarginInfo resolve_margin_info(Margin marginVariant);
 
         double overlapping_filling_factor(Section section);
 
@@ -310,6 +312,7 @@ class Coil : public MAS::Coil {
         std::vector<Section> virtualize_sections_description();
         std::vector<Layer> virtualize_layers_description();
         std::vector<Turn> virtualize_turns_description();
+        std::map<std::pair<size_t, size_t>, std::vector<Layer>> virtualize_insulation_intersections_layers();
 
 
 };
