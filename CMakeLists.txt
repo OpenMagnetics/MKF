@@ -10,6 +10,7 @@ project ("MKF_Project")
 
 set(CMAKE_CXX_STANDARD 23) 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+SET(FETCHCONTENT_QUIET FALSE)
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Ox")
@@ -38,14 +39,13 @@ option(EMBED_MAS_WIRES "Embed cores in executable" ON)
 option(EMBED_MAS_WIRE_MATERIALS "Embed cores in executable" ON)
 option(EMBED_MAS_BOBBINS "Embed cores in executable" ON)
 option(EMBED_MAS_INSULATION_MATERIALS "Embed cores in executable" ON)
-option(INCLUDE_MKF_TESTS "Compiles also the tests" ON)
+option(MKF_INCLUDE_TESTS "Compiles also the tests" ON)
 option(BUILD_TESTS      "Build tests"    OFF)
 option(BUILD_EXAMPLES   "Build examples" OFF)
 option(BUILD_DEMO   "Build examples" FALSE)
 option(HAVE_LAPACK   "HAVE_LAPACK" 0)
 option(UTPP_INCLUDE_TESTS_IN_BUILD   "Build tests" OFF)
-option(INCLUDE_MKF_TESTS "Compiles also the tests" ON)
-option(INCLUDE_PYMKF "Compiles also the Python interface" OFF)
+# option(INCLUDE_PYMKF "Compiles also the Python interface" OFF)
 option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile the high resolution maps for geoplots" OFF)
 
 message("Embeding MAS Data: ${EMBED_MAS_DATA}")
@@ -122,10 +122,25 @@ if(NOT DEFINED MAS_DIRECTORY)
 endif(NOT DEFINED MAS_DIRECTORY)
 
 if(NOT DEFINED MAS_DIR)
-    set(MAS_DIR "${PROJECT_SOURCE_DIR}/MAS")
+    set(MAS_DIR "${PROJECT_SOURCE_DIR}/MAS/")
 endif(NOT DEFINED MAS_DIR)
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/MAS")
+
+message("CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
+message("CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
+message("CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
+message("CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
+message("MAS_DIR: ${MAS_DIR}")
 
 add_custom_command(
   OUTPUT "${MAS_DIRECTORY}/MAS.hpp"
@@ -279,29 +294,29 @@ if(INCLUDE_MKF_TESTS)
     target_link_libraries(MKF_tests UnitTest++)
 endif(INCLUDE_MKF_TESTS)
 
-if(INCLUDE_PYMKF)
-        FetchContent_Declare(pybind11
-                GIT_REPOSITORY https://github.com/pybind/pybind11.git)
+# if(INCLUDE_PYMKF)
+#         FetchContent_Declare(pybind11
+#                 GIT_REPOSITORY https://github.com/pybind/pybind11.git)
 
-        FetchContent_Declare(pybind11_json
-                GIT_REPOSITORY https://github.com/pybind/pybind11_json.git)
+#         FetchContent_Declare(pybind11_json
+#                 GIT_REPOSITORY https://github.com/pybind/pybind11_json.git)
 
-        FetchContent_MakeAvailable( pybind11 pybind11_json)
-        set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
-        add_custom_target(PyMASGeneration
-                          /bin/echo "RUNNING PyMASGeneration"
-                          DEPENDS "${MAS_DIRECTORY}/MAS.hpp")
-        add_dependencies(MKF PyMASGeneration)
-        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src/include/")
-        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11_json-src/include/pybind11_json/")
-        target_link_libraries(MKF pybind11_json pybind11::embed)
-        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src")
-        pybind11_add_module(PyMKF src/PyMKF/PyMKFWrapper.cpp )
-        target_link_libraries(PyMKF PRIVATE MKF pybind11_json)
+#         FetchContent_MakeAvailable( pybind11 pybind11_json)
+#         set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
+#         add_custom_target(PyMASGeneration
+#                           /bin/echo "RUNNING PyMASGeneration"
+#                           DEPENDS "${MAS_DIRECTORY}/MAS.hpp")
+#         add_dependencies(MKF PyMASGeneration)
+#         include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src/include/")
+#         include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11_json-src/include/pybind11_json/")
+#         target_link_libraries(MKF pybind11_json pybind11::embed)
+#         include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src")
+#         pybind11_add_module(PyMKF src/PyMKF/PyMKFWrapper.cpp )
+#         target_link_libraries(PyMKF PRIVATE MKF pybind11_json)
 
-        # EXAMPLE_VERSION_INFO is defined by setup.py and passed into the C++ code as a
-        # define (VERSION_INFO) here.
+#         # EXAMPLE_VERSION_INFO is defined by setup.py and passed into the C++ code as a
+#         # define (VERSION_INFO) here.
 
-        target_compile_definitions(PyMKF
-                                   PRIVATE VERSION_INFO=${EXAMPLE_VERSION_INFO})
-endif(INCLUDE_PYMKF)
+#         target_compile_definitions(PyMKF
+#                                    PRIVATE VERSION_INFO=${EXAMPLE_VERSION_INFO})
+# endif(INCLUDE_PYMKF)
