@@ -127,21 +127,6 @@ endif(NOT DEFINED MAS_DIR)
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/MAS")
 
-message("CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
-message("CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
-message("CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
-message("CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-message("MAS_DIR: ${MAS_DIR}")
-
 add_custom_command(
   OUTPUT "${MAS_DIRECTORY}/MAS.hpp"
   COMMAND quicktype -l c++ -s schema ${MAS_DIR}/schemas/MAS.json 
