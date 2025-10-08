@@ -20,7 +20,7 @@ public:
 
     bool run_checks(bool assert = false) override;
 
-    DesignRequirements process_design_requirements();
+    DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);
 
     OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, BoostOperatingPoint outputOperatingPoint, double inductance);
