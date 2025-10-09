@@ -30,7 +30,7 @@ class MagneticSimulator {
             _reluctanceModelName = defaults.reluctanceModelDefault;
 
             _coreTemperatureModel = CoreTemperatureModel::factory(_coreTemperatureModelName);
-            _magnetizingInductanceModel = MagnetizingInductance(std::string(magic_enum::enum_name(_reluctanceModelName)));
+            _magnetizingInductanceModel = MagnetizingInductance(to_string(_reluctanceModelName));
         }
 
         void set_core_temperature_model_name(CoreTemperatureModels model) {

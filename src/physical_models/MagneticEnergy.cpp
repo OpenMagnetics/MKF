@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -60,8 +59,9 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
         fringingFactorValue = fringingFactor.value();
     }
     else {
-        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(
-            magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+        ReluctanceModels reluctanceModelEnum;
+        from_json(_models["gapReluctance"], reluctanceModelEnum);
+        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
 
         fringingFactorValue = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
     }
@@ -77,8 +77,9 @@ double MagneticEnergy::calculate_gap_length_by_magnetic_energy(CoreGap gapInfo, 
     auto constants = Constants();
     auto gapArea = *(gapInfo.get_area());
 
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(
-        magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
 
     double fringingFactor = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
 

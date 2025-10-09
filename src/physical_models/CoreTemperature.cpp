@@ -11,7 +11,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>

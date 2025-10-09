@@ -1927,7 +1927,7 @@ int hybrd ( void fcn ( int n, double x[], double fvec[] ),
       r[l-1] = wa1[j-1];
       if ( wa1[j-1] == 0.0 )
       {
-        cout << "  Matrix is singular.\n";
+        cerr << "  Matrix is singular.\n";
       }
     }
 //
@@ -2487,7 +2487,7 @@ int hybrd_bdf2 ( void dydt ( double t, double x[], double f[] ), int n,
       r[l-1] = wa1[j-1];
       if ( wa1[j-1] == 0.0 )
       {
-        cout << "hybrd_bdf2(): Matrix is singular.\n";
+        cerr << "hybrd_bdf2(): Matrix is singular.\n";
       }
     }
 //
@@ -3051,7 +3051,7 @@ int hybrd_be ( void dydt ( double t, double x[], double f[] ), int n, double to,
       r[l-1] = wa1[j-1];
       if ( wa1[j-1] == 0.0 )
       {
-        cout << "  Matrix is singular.\n";
+        cerr << "  Matrix is singular.\n";
       }
     }
 //
@@ -3615,7 +3615,7 @@ int hybrd_tr ( void dydt ( double t, double x[], double f[] ), int n, double to,
       r[l-1] = wa1[j-1];
       if ( wa1[j-1] == 0.0 )
       {
-        cout << "  Matrix is singular.\n";
+        cerr << "  Matrix is singular.\n";
       }
     }
 //

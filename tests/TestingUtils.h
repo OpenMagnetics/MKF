@@ -7,6 +7,7 @@
 #include "constructive_models/Magnetic.h"
 #include "constructive_models/Mas.h"
 #include "constructive_models/Wire.h"
+#include <magic_enum.hpp>
 
 #include <filesystem>
 #include <fstream>

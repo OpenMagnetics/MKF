@@ -203,6 +203,12 @@ std::string generate_random_string(size_t length = 8);
 size_t find_closest_index(std::vector<double> vector, double value);
 double get_closest(double val1, double val2, double value);
 
+template <typename Type>
+std::string to_string(const Type & model) {
+    json modelJson;
+    to_json(modelJson, model);
+    return modelJson;
+}
 
 } // namespace OpenMagnetics
 

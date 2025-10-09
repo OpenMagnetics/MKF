@@ -8,7 +8,6 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -1854,7 +1853,7 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
         return piece;
     }
     else
-        throw std::runtime_error("Unknown shape family: " + std::string{magic_enum::enum_name(family)} + ", available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
+        throw std::runtime_error("Unknown shape family: " + to_string(family) + ", available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
                                  "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T, C}");
 }
 

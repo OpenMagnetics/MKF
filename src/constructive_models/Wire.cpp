@@ -736,8 +736,8 @@ namespace OpenMagnetics {
 
         auto wireType = WireType::ROUND;
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " enamelled " + std::to_string(grade) + standardString;
         return get_filling_factor(conductingDiameter,
                                   std::nullopt,
@@ -758,8 +758,8 @@ namespace OpenMagnetics {
     double Wire::get_outer_diameter_round(double conductingDiameter, int grade, WireStandard standard) {
         auto wireType = WireType::ROUND;
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " enamelled " + std::to_string(grade) + standardString;
         return get_outer_dimension(conductingDiameter,
                                    std::nullopt,
@@ -785,8 +785,8 @@ namespace OpenMagnetics {
             throw std::runtime_error("Unsupported layer thickness: " + std::to_string(thicknessLayers));
         }
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " µm " + standardString;
         return get_filling_factor(conductingDiameter,
                                   std::nullopt,
@@ -813,8 +813,8 @@ namespace OpenMagnetics {
             throw std::runtime_error("Unsupported layer thickness: " + std::to_string(thicknessLayers));
         }
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " µm " + standardString;
         return get_outer_dimension(conductingDiameter,
                                    std::nullopt,
@@ -832,8 +832,8 @@ namespace OpenMagnetics {
     // Thought for enamelled litz wires with or without serving
     double Wire::get_filling_factor_served_litz(double conductingDiameter, int numberConductors, int grade, int numberLayers, WireStandard standard, bool includeAirInCell) {
         auto wireType = WireType::LITZ;
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " enamelled " + std::to_string(grade) + standardString;
 
         return get_filling_factor(conductingDiameter,
@@ -874,8 +874,8 @@ namespace OpenMagnetics {
     double Wire::get_filling_factor_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade, WireStandard standard, bool includeAirInCell) {
         auto wireType = WireType::LITZ;
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " µm " + standardString;
 
         return get_filling_factor(conductingDiameter,
@@ -896,8 +896,8 @@ namespace OpenMagnetics {
     double Wire::get_outer_diameter_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade, WireStandard standard) {
         auto wireType = WireType::LITZ;
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " µm " + standardString;
 
         auto packingFactor = get_packing_factor(numberConductors,
@@ -932,8 +932,8 @@ namespace OpenMagnetics {
     double Wire::get_outer_width_rectangular(double conductingWidth, int grade, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " enamelled width " + std::to_string(grade) + standardString;
         return get_outer_dimension(std::nullopt,
                                    conductingWidth,
@@ -952,8 +952,8 @@ namespace OpenMagnetics {
     double Wire::get_outer_height_rectangular(double conductingHeight, int grade, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " enamelled height " + std::to_string(grade) + standardString;
         return get_outer_dimension(std::nullopt,
                                    std::nullopt,
@@ -972,8 +972,8 @@ namespace OpenMagnetics {
     double Wire::get_conducting_area_rectangular(double conductingWidth, double conductingHeight, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
-        std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
-        std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
+        std::string standardString = " " + to_string(standard);
+        std::string wireTypeString = to_string(wireType);
         std::string key = wireTypeString + " enamelled " + standardString;
         return get_conducting_area_rectangular_from_interpolator(conductingWidth, conductingHeight, standard, key);
     }
@@ -1849,7 +1849,7 @@ namespace OpenMagnetics {
             }
         }
         else {
-            throw std::invalid_argument("Coating type not implemented yet: " + std::string{magic_enum::enum_name(coating->get_type().value())});
+            throw std::invalid_argument("Coating type not implemented yet: " + to_string(coating->get_type().value()));
         }
 
         return text;

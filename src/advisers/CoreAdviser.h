@@ -54,14 +54,13 @@ class CoreAdviser {
             auto defaults = OpenMagnetics::Defaults();
             _models = models;
             if (models.find("gapReluctance") == models.end()) {
-                _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+                _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
             }
         }
         CoreAdviser() {
-            auto defaults = OpenMagnetics::Defaults();
-            _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-            _models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
-            _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+            _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
+            _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
+            _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
         }
         std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted = false);
 

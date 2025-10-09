@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>

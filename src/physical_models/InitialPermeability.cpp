@@ -8,7 +8,6 @@
 #include <fstream>
 #include <iostream>
 #include "spline.h"
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>

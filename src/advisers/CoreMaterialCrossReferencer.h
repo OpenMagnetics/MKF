@@ -12,15 +12,6 @@ namespace OpenMagnetics {
 
 class CoreMaterialCrossReferencer {
     public: 
-        enum class CoreMaterialCrossReferencerFilters : int {
-            INITIAL_PERMEABILITY,
-            REMANENCE, 
-            COERCIVE_FORCE, 
-            SATURATION,
-            CURIE_TEMPERATURE,
-            VOLUMETRIC_LOSSES,
-            RESISTIVITY
-        };
     protected:
         std::map<std::string, std::string> _models;
         std::string _log;
@@ -45,13 +36,13 @@ class CoreMaterialCrossReferencer {
             _models = models;
 
             if (models.find("gapReluctance") == models.end()) {
-                _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+                _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
             }
             if (models.find("coreLosses") == models.end()) {
-                _models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
+                _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
             }
             if (models.find("coreTemperature") == models.end()) {
-                _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+                _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
             }
 
             _weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0.5;
@@ -64,9 +55,9 @@ class CoreMaterialCrossReferencer {
         }
         CoreMaterialCrossReferencer() {
             auto defaults = OpenMagnetics::Defaults();
-            _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-            _models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
-            _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+            _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
+            _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
+            _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
 
             _weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0.5;
             _weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0.01;
@@ -100,7 +91,7 @@ class CoreMaterialCrossReferencer {
             std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* _scoredValues;
             std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, bool>>* _filterConfiguration;
 
-            void add_scoring(std::string name, CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters filter, double scoring) {
+            void add_scoring(std::string name, CoreMaterialCrossReferencerFilters filter, double scoring) {
                 if (std::isnan(scoring)) {
                     throw std::invalid_argument("scoring cannot be nan");
                 }
@@ -109,7 +100,7 @@ class CoreMaterialCrossReferencer {
                     (*_scorings)[filter][name] = scoring;
                 }
             }
-            void add_scored_value(std::string name, CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters filter, double scoredValues) {
+            void add_scored_value(std::string name, CoreMaterialCrossReferencerFilters filter, double scoredValues) {
                 if (scoredValues != -1) {
                     (*_scoredValues)[filter][name] = scoredValues;
                 }

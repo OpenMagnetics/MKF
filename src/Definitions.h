@@ -1,6 +1,7 @@
 #pragma once
 #include <MAS.hpp>
 #include "json.hpp"
+#include "Models.h"
 
 using json = nlohmann::json;
 
@@ -32,17 +33,17 @@ void from_json(const json & j, DimensionalValues & x);
 void to_json(json & j, const DimensionalValues & x);
 
 inline void from_json(const json & j, DimensionalValues & x) {
-    if (j == "maximum") x = DimensionalValues::MAXIMUM;
-    else if (j == "nominal") x = DimensionalValues::NOMINAL;
-    else if (j == "minimum") x = DimensionalValues::MINIMUM;
-    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    if (j == "Maximum") x = DimensionalValues::MAXIMUM;
+    else if (j == "Nominal") x = DimensionalValues::NOMINAL;
+    else if (j == "Minimum") x = DimensionalValues::MINIMUM;
+    else { throw std::runtime_error("Input JSON does not conform to DimensionalValues schema: " + to_string(j)); }
 }
 
 inline void to_json(json & j, const DimensionalValues & x) {
     switch (x) {
-        case DimensionalValues::MAXIMUM: j = "maximum"; break;
-        case DimensionalValues::NOMINAL: j = "nominal"; break;
-        case DimensionalValues::MINIMUM: j = "minimum"; break;
+        case DimensionalValues::MAXIMUM: j = "Maximum"; break;
+        case DimensionalValues::NOMINAL: j = "Nominal"; break;
+        case DimensionalValues::MINIMUM: j = "Minimum"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"DimensionalValues\": " + std::to_string(static_cast<int>(x)));
     }
 }
@@ -58,20 +59,91 @@ void from_json(const json & j, GappingType & x);
 void to_json(json & j, const GappingType & x);
 
 inline void from_json(const json & j, GappingType & x) {
-    if (j == "ground") x = GappingType::GROUND;
-    else if (j == "spacer") x = GappingType::SPACER;
-    else if (j == "residual") x = GappingType::RESIDUAL;
-    else if (j == "distributed") x = GappingType::DISTRIBUTED;
-    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    if (j == "Ground" || j == "ground" || j == "GROUND") x = GappingType::GROUND;
+    else if (j == "Spacer" || j == "spacer" || j == "SPACER") x = GappingType::SPACER;
+    else if (j == "Residual" || j == "residual" || j == "RESIDUAL") x = GappingType::RESIDUAL;
+    else if (j == "Distributed" || j == "distributed" || j == "DISTRIBUTED") x = GappingType::DISTRIBUTED;
+    else { throw std::runtime_error("Input JSON does not conform to GappingType schema: " + to_string(j)); }
 }
 
 inline void to_json(json & j, const GappingType & x) {
     switch (x) {
-        case GappingType::GROUND: j = "ground"; break;
-        case GappingType::SPACER: j = "spacer"; break;
-        case GappingType::RESIDUAL: j = "residual"; break;
-        case GappingType::DISTRIBUTED: j = "distributed"; break;
+        case GappingType::GROUND: j = "Ground"; break;
+        case GappingType::SPACER: j = "Spacer"; break;
+        case GappingType::RESIDUAL: j = "Residual"; break;
+        case GappingType::DISTRIBUTED: j = "Distributed"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"GappingType\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+enum class CoreCrossReferencerFilters : int {
+    PERMEANCE,
+    CORE_LOSSES, 
+    SATURATION, 
+    WINDING_WINDOW_AREA, 
+    ENVELOPING_VOLUME, 
+    EFFECTIVE_AREA
+};
+
+void from_json(const json & j, CoreCrossReferencerFilters & x);
+void to_json(json & j, const CoreCrossReferencerFilters & x);
+
+inline void from_json(const json & j, CoreCrossReferencerFilters & x) {
+    if (j == "Permeance" || j == "permeance" || j == "PERMEANCE") x = CoreCrossReferencerFilters::PERMEANCE;
+    else if (j == "CoreLosses" || j == "corelosses" || j == "CORELOSSES") x = CoreCrossReferencerFilters::CORE_LOSSES;
+    else if (j == "Saturation" || j == "saturation" || j == "SATURATION") x = CoreCrossReferencerFilters::SATURATION;
+    if (j == "WindingWindowArea" || j == "windingwindowarea" || j == "WINDINGWINDOWAREA") x = CoreCrossReferencerFilters::WINDING_WINDOW_AREA;
+    else if (j == "EnvelopingVolume" || j == "envelopingvolume" || j == "ENVELOPINGVOLUME") x = CoreCrossReferencerFilters::ENVELOPING_VOLUME;
+    else if (j == "EffectiveArea" || j == "effectivearea" || j == "EFFECTIVEAREA") x = CoreCrossReferencerFilters::EFFECTIVE_AREA;
+    else { throw std::runtime_error("Input JSON does not conform to CoreCrossReferencerFilters schema: " + to_string(j)); }
+}
+
+inline void to_json(json & j, const CoreCrossReferencerFilters & x) {
+    switch (x) {
+        case CoreCrossReferencerFilters::PERMEANCE: j = "Permeance"; break;
+        case CoreCrossReferencerFilters::CORE_LOSSES: j = "CoreLosses"; break;
+        case CoreCrossReferencerFilters::SATURATION: j = "Saturation"; break;
+        case CoreCrossReferencerFilters::WINDING_WINDOW_AREA: j = "WindingWindowArea"; break;
+        case CoreCrossReferencerFilters::ENVELOPING_VOLUME: j = "EnvelopingVolume"; break;
+        case CoreCrossReferencerFilters::EFFECTIVE_AREA: j = "EffectiveArea"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"CoreCrossReferencerFilters\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+enum class CoreMaterialCrossReferencerFilters : int {
+    INITIAL_PERMEABILITY,
+    REMANENCE, 
+    COERCIVE_FORCE, 
+    SATURATION,
+    CURIE_TEMPERATURE,
+    VOLUMETRIC_LOSSES,
+    RESISTIVITY
+};
+
+void from_json(const json & j, CoreMaterialCrossReferencerFilters & x);
+void to_json(json & j, const CoreMaterialCrossReferencerFilters & x);
+
+inline void from_json(const json & j, CoreMaterialCrossReferencerFilters & x) {
+    if (j == "InitialPermeability" || j == "initialpermeability" || j == "INITIALPERMEABILITY") x = CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY;
+    else if (j == "Remanence" || j == "remanence" || j == "REMANENCE") x = CoreMaterialCrossReferencerFilters::REMANENCE;
+    else if (j == "CoerciveForce" || j == "coerciveforce" || j == "COERCIVEFORCE") x = CoreMaterialCrossReferencerFilters::COERCIVE_FORCE;
+    else if (j == "Saturation" || j == "saturation" || j == "SATURATION") x = CoreMaterialCrossReferencerFilters::SATURATION;
+    if (j == "CurieTemperature" || j == "curietemperature" || j == "CURIETEMPERATURE") x = CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE;
+    else if (j == "VolumetricLosses" || j == "volumetriclosses" || j == "VOLUMETRICLOSSES") x = CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES;
+    else if (j == "Resistivity" || j == "resistivity" || j == "RESISTIVITY") x = CoreMaterialCrossReferencerFilters::RESISTIVITY;
+    else { throw std::runtime_error("Input JSON does not conform to CoreMaterialCrossReferencerFilters schema: " + to_string(j)); }
+}
+
+inline void to_json(json & j, const CoreMaterialCrossReferencerFilters & x) {
+    switch (x) {
+        case CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY: j = "InitialPermeability"; break;
+        case CoreMaterialCrossReferencerFilters::REMANENCE: j = "Remanence"; break;
+        case CoreMaterialCrossReferencerFilters::COERCIVE_FORCE: j = "CoerciveForce"; break;
+        case CoreMaterialCrossReferencerFilters::SATURATION: j = "Saturation"; break;
+        case CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE: j = "CurieTemperature"; break;
+        case CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES: j = "VolumetricLosses"; break;
+        case CoreMaterialCrossReferencerFilters::RESISTIVITY: j = "Resistivity"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"CoreMaterialCrossReferencerFilters\": " + std::to_string(static_cast<int>(x)));
     }
 }
 
@@ -94,19 +166,19 @@ void from_json(const json & j, OrderedIsolationSide & x);
 void to_json(json & j, const OrderedIsolationSide & x);
 
 inline void from_json(const json & j, OrderedIsolationSide & x) {
-    if (j == "primary") x = OrderedIsolationSide::PRIMARY;
-    else if (j == "secondary") x = OrderedIsolationSide::SECONDARY;
-    else if (j == "tertiary") x = OrderedIsolationSide::TERTIARY;
-    if (j == "quaternary") x = OrderedIsolationSide::QUATERNARY;
-    else if (j == "quinary") x = OrderedIsolationSide::QUINARY;
-    else if (j == "senary") x = OrderedIsolationSide::SENARY;
-    if (j == "septenary") x = OrderedIsolationSide::SEPTENARY;
-    else if (j == "octonary") x = OrderedIsolationSide::OCTONARY;
-    else if (j == "nonary") x = OrderedIsolationSide::NONARY;
-    if (j == "denary") x = OrderedIsolationSide::DENARY;
-    else if (j == "undenary") x = OrderedIsolationSide::UNDENARY;
-    else if (j == "duodenary") x = OrderedIsolationSide::DUODENARY;
-    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    if (j == "primary" || j == "primary" || j == "PRIMARY") x = OrderedIsolationSide::PRIMARY;
+    else if (j == "secondary" || j == "secondary" || j == "SECONDARY") x = OrderedIsolationSide::SECONDARY;
+    else if (j == "tertiary" || j == "tertiary" || j == "TERTIARY") x = OrderedIsolationSide::TERTIARY;
+    if (j == "quaternary" || j == "quaternary" || j == "QUATERNARY") x = OrderedIsolationSide::QUATERNARY;
+    else if (j == "quinary" || j == "quinary" || j == "QUINARY") x = OrderedIsolationSide::QUINARY;
+    else if (j == "senary" || j == "senary" || j == "SENARY") x = OrderedIsolationSide::SENARY;
+    if (j == "septenary" || j == "septenary" || j == "SEPTENARY") x = OrderedIsolationSide::SEPTENARY;
+    else if (j == "octonary" || j == "octonary" || j == "OCTONARY") x = OrderedIsolationSide::OCTONARY;
+    else if (j == "nonary" || j == "nonary" || j == "NONARY") x = OrderedIsolationSide::NONARY;
+    if (j == "denary" || j == "denary" || j == "DENARY") x = OrderedIsolationSide::DENARY;
+    else if (j == "undenary" || j == "undenary" || j == "UNDENARY") x = OrderedIsolationSide::UNDENARY;
+    else if (j == "duodenary" || j == "duodenary" || j == "DUODENARY") x = OrderedIsolationSide::DUODENARY;
+    else { throw std::runtime_error("Input JSON does not conform to OrderedIsolationSide schema: " + to_string(j)); }
 }
 
 inline void to_json(json & j, const OrderedIsolationSide & x) {
@@ -138,19 +210,238 @@ void from_json(const json & j, PainterModes & x);
 void to_json(json & j, const PainterModes & x);
 
 inline void from_json(const json & j, PainterModes & x) {
-    if (j == "contour") x = PainterModes::CONTOUR;
-    else if (j == "quiver") x = PainterModes::QUIVER;
-    else if (j == "scatter") x = PainterModes::SCATTER;
-    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    if (j == "Contour" || j == "contour" || j == "CONTOUR") x = PainterModes::CONTOUR;
+    else if (j == "Quiver" || j == "quiver" || j == "QUIVER") x = PainterModes::QUIVER;
+    else if (j == "Scatter" || j == "scatter" || j == "SCATTER") x = PainterModes::SCATTER;
+    else { throw std::runtime_error("Input JSON does not conform to PainterModes schema: " + to_string(j)); }
 }
 
 inline void to_json(json & j, const PainterModes & x) {
     switch (x) {
-        case PainterModes::CONTOUR: j = "contour"; break;
-        case PainterModes::QUIVER: j = "quiver"; break;
-        case PainterModes::SCATTER: j = "scatter"; break;
+        case PainterModes::CONTOUR: j = "Contour"; break;
+        case PainterModes::QUIVER: j = "Quiver"; break;
+        case PainterModes::SCATTER: j = "Scatter"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"PainterModes\": " + std::to_string(static_cast<int>(x)));
     }
+}
+
+void from_json(const json & j, MagneticFieldStrengthModels & x);
+void to_json(json & j, const MagneticFieldStrengthModels & x);
+
+inline void to_json(json & j, const MagneticFieldStrengthModels & x) {
+    switch (x) {
+        case MagneticFieldStrengthModels::BINNS_LAWRENSON: j = "BinnsLawrenson"; break;
+        case MagneticFieldStrengthModels::LAMMERANER: j = "Lammeraner"; break;
+        case MagneticFieldStrengthModels::DOWELL: j = "Dowell"; break;
+        case MagneticFieldStrengthModels::WANG: j = "Wang"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFieldStrengthModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, MagneticFieldStrengthModels & x) {
+    if (j == "BinnsLawrenson" || j == "binnslawrenson" || j == "BINNSLAWRENSON") x = MagneticFieldStrengthModels::BINNS_LAWRENSON;
+    else if (j == "Lammeraner" || j == "lammeraner" || j == "LAMMERANER") x = MagneticFieldStrengthModels::LAMMERANER;
+    else if (j == "Dowell" || j == "dowell" || j == "DOWELL") x = MagneticFieldStrengthModels::DOWELL;
+    else if (j == "Wang" || j == "wang" || j == "WANG") x = MagneticFieldStrengthModels::WANG;
+    else { throw std::runtime_error("Input JSON does not conform to MagneticFieldStrengthModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, MagneticFieldStrengthFringingEffectModels & x);
+void to_json(json & j, const MagneticFieldStrengthFringingEffectModels & x);
+
+inline void to_json(json & j, const MagneticFieldStrengthFringingEffectModels & x) {
+    switch (x) {
+        case MagneticFieldStrengthFringingEffectModels::ROSHEN: j = "Roshen"; break;
+        case MagneticFieldStrengthFringingEffectModels::ALBACH: j = "Albach"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFieldStrengthFringingEffectModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, MagneticFieldStrengthFringingEffectModels & x) {
+    if (j == "Roshen" || j == "roshen" || j == "ROSHEN") x = MagneticFieldStrengthFringingEffectModels::ROSHEN;
+    else if (j == "Albach" || j == "albach" || j == "ALBACH") x = MagneticFieldStrengthFringingEffectModels::ALBACH;
+    else { throw std::runtime_error("Input JSON does not conform to MagneticFieldStrengthFringingEffectModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, ReluctanceModels & x);
+void to_json(json & j, const ReluctanceModels & x);
+
+inline void to_json(json & j, const ReluctanceModels & x) {
+    switch (x) {
+        case ReluctanceModels::ZHANG: j = "Zhang"; break;
+        case ReluctanceModels::PARTRIDGE: j = "Partridge"; break;
+        case ReluctanceModels::EFFECTIVE_AREA: j = "EffectiveArea"; break;
+        case ReluctanceModels::EFFECTIVE_LENGTH: j = "EffectiveLength"; break;
+        case ReluctanceModels::MUEHLETHALER: j = "Muehlethaler"; break;
+        case ReluctanceModels::STENGLEIN: j = "Stenglein"; break;
+        case ReluctanceModels::BALAKRISHNAN: j = "Balakrishnan"; break;
+        case ReluctanceModels::CLASSIC: j = "Classic"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"ReluctanceModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, ReluctanceModels & x) {
+    if (j == "Zhang" || j == "zhang" || j == "ZHANG") x = ReluctanceModels::ZHANG;
+    else if (j == "Partridge" || j == "partridge" || j == "PARTRIDGE") x = ReluctanceModels::PARTRIDGE;
+    else if (j == "EffectiveArea" || j == "effectivearea" || j == "EFFECTIVEAREA") x = ReluctanceModels::EFFECTIVE_AREA;
+    else if (j == "EffectiveLength" || j == "effectivelength" || j == "EFFECTIVELENGTH") x = ReluctanceModels::EFFECTIVE_LENGTH;
+    else if (j == "Muehlethaler" || j == "muehlethaler" || j == "MUEHLETHALER") x = ReluctanceModels::MUEHLETHALER;
+    else if (j == "Stenglein" || j == "stenglein" || j == "STENGLEIN") x = ReluctanceModels::STENGLEIN;
+    else if (j == "Balakrishnan" || j == "balakrishnan" || j == "BALAKRISHNAN") x = ReluctanceModels::BALAKRISHNAN;
+    else if (j == "Classic" || j == "classic" || j == "CLASSIC") x = ReluctanceModels::CLASSIC;
+    else { throw std::runtime_error("Input JSON does not conform to ReluctanceModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, CoreLossesModels & x);
+void to_json(json & j, const CoreLossesModels & x);
+
+inline void to_json(json & j, const CoreLossesModels & x) {
+    switch (x) {
+        case CoreLossesModels::PROPRIETARY: j = "Proprietary"; break;
+        case CoreLossesModels::STEINMETZ: j = "Steinmetz"; break;
+        case CoreLossesModels::IGSE: j = "Igse"; break;
+        case CoreLossesModels::BARG: j = "Barg"; break;
+        case CoreLossesModels::ROSHEN: j = "Roshen"; break;
+        case CoreLossesModels::ALBACH: j = "Albach"; break;
+        case CoreLossesModels::NSE: j = "Nse"; break;
+        case CoreLossesModels::MSE: j = "Mse"; break;
+        case CoreLossesModels::LOSS_FACTOR: j = "LossFactor"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"CoreLossesModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, CoreLossesModels & x) {
+    if (j == "Proprietary" || j == "proprietary" || j == "PROPRIETARY") x = CoreLossesModels::PROPRIETARY;
+    else if (j == "Steinmetz" || j == "steinmetz" || j == "STEINMETZ") x = CoreLossesModels::STEINMETZ;
+    else if (j == "Igse" || j == "igse" || j == "IGSE") x = CoreLossesModels::IGSE;
+    else if (j == "Barg" || j == "barg" || j == "BARG") x = CoreLossesModels::BARG;
+    else if (j == "Roshen" || j == "roshen" || j == "ROSHEN") x = CoreLossesModels::ROSHEN;
+    else if (j == "Albach" || j == "albach" || j == "ALBACH") x = CoreLossesModels::ALBACH;
+    else if (j == "Nse" || j == "nse" || j == "NSE") x = CoreLossesModels::NSE;
+    else if (j == "Mse" || j == "mse" || j == "MSE") x = CoreLossesModels::MSE;
+    else if (j == "LossFactor" || j == "lossfactor" || j == "LOSSFACTOR") x = CoreLossesModels::LOSS_FACTOR;
+    else { throw std::runtime_error("Input JSON does not conform to CoreLossesModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, CoreThermalResistanceModels & x);
+void to_json(json & j, const CoreThermalResistanceModels & x);
+
+inline void to_json(json & j, const CoreThermalResistanceModels & x) {
+    switch (x) {
+        case CoreThermalResistanceModels::MANIKTALA: j = "Maniktala"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"CoreThermalResistanceModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, CoreThermalResistanceModels & x) {
+    if (j == "Maniktala" || j == "maniktala" || j == "MANIKTALA") x = CoreThermalResistanceModels::MANIKTALA;
+    else { throw std::runtime_error("Input JSON does not conform to CoreThermalResistanceModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, CoreTemperatureModels & x);
+void to_json(json & j, const CoreTemperatureModels & x);
+
+inline void to_json(json & j, const CoreTemperatureModels & x) {
+    switch (x) {
+        case CoreTemperatureModels::KAZIMIERCZUK: j = "Kazimierczuk"; break;
+        case CoreTemperatureModels::MANIKTALA: j = "Maniktala"; break;
+        case CoreTemperatureModels::TDK: j = "Tdk"; break;
+        case CoreTemperatureModels::DIXON: j = "Dixon"; break;
+        case CoreTemperatureModels::AMIDON: j = "Amidon"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"CoreTemperatureModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, CoreTemperatureModels & x) {
+    if (j == "Kazimierczuk" || j == "kazimierczuk" || j == "KAZIMIERCZUK") x = CoreTemperatureModels::KAZIMIERCZUK;
+    else if (j == "Maniktala" || j == "maniktala" || j == "MANIKTALA") x = CoreTemperatureModels::MANIKTALA;
+    else if (j == "Tdk" || j == "tdk" || j == "TDK") x = CoreTemperatureModels::TDK;
+    else if (j == "Dixon" || j == "dixon" || j == "DIXON") x = CoreTemperatureModels::DIXON;
+    else if (j == "Amidon" || j == "amidon" || j == "AMIDON") x = CoreTemperatureModels::AMIDON;
+    else { throw std::runtime_error("Input JSON does not conform to CoreTemperatureModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, WindingSkinEffectLossesModels & x);
+void to_json(json & j, const WindingSkinEffectLossesModels & x);
+
+inline void to_json(json & j, const WindingSkinEffectLossesModels & x) {
+    switch (x) {
+        case WindingSkinEffectLossesModels::DOWELL: j = "Dowell"; break;
+        case WindingSkinEffectLossesModels::WOJDA: j = "Wojda"; break;
+        case WindingSkinEffectLossesModels::ALBACH: j = "Albach"; break;
+        case WindingSkinEffectLossesModels::PAYNE: j = "Payne"; break;
+        case WindingSkinEffectLossesModels::LOTFI: j = "Lotfi"; break;
+        case WindingSkinEffectLossesModels::KAZIMIERCZUK: j = "Kazimierczuk"; break;
+        case WindingSkinEffectLossesModels::KUTKUT: j = "Kutkut"; break;
+        case WindingSkinEffectLossesModels::FERREIRA: j = "Ferreira"; break;
+        case WindingSkinEffectLossesModels::DIMITRAKAKIS: j = "Dimitrakakis"; break;
+        case WindingSkinEffectLossesModels::WANG: j = "Wang"; break;
+        case WindingSkinEffectLossesModels::HOLGUIN: j = "Holguin"; break;
+        case WindingSkinEffectLossesModels::PERRY: j = "Perry"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"WindingSkinEffectLossesModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, WindingSkinEffectLossesModels & x) {
+    if (j == "Dowell" || j == "dowell" || j == "DOWELL") x = WindingSkinEffectLossesModels::DOWELL;
+    else if (j == "Wojda" || j == "wojda" || j == "WOJDA") x = WindingSkinEffectLossesModels::WOJDA;
+    else if (j == "Albach" || j == "albach" || j == "ALBACH") x = WindingSkinEffectLossesModels::ALBACH;
+    else if (j == "Payne" || j == "payne" || j == "PAYNE") x = WindingSkinEffectLossesModels::PAYNE;
+    else if (j == "Lotfi" || j == "lotfi" || j == "LOTFI") x = WindingSkinEffectLossesModels::LOTFI;
+    else if (j == "Kazimierczuk" || j == "kazimierczuk" || j == "KAZIMIERCZUK") x = WindingSkinEffectLossesModels::KAZIMIERCZUK;
+    else if (j == "Kutkut" || j == "kutkut" || j == "KUTKUT") x = WindingSkinEffectLossesModels::KUTKUT;
+    else if (j == "Ferreira" || j == "ferreira" || j == "FERREIRA") x = WindingSkinEffectLossesModels::FERREIRA;
+    else if (j == "Dimitrakakis" || j == "dimitrakakis" || j == "DIMITRAKAKIS") x = WindingSkinEffectLossesModels::DIMITRAKAKIS;
+    else if (j == "Wang" || j == "wang" || j == "WANG") x = WindingSkinEffectLossesModels::WANG;
+    else if (j == "Holguin" || j == "holguin" || j == "HOLGUIN") x = WindingSkinEffectLossesModels::HOLGUIN;
+    else if (j == "Perry" || j == "perry" || j == "PERRY") x = WindingSkinEffectLossesModels::PERRY;
+    else { throw std::runtime_error("Input JSON does not conform to WindingSkinEffectLossesModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, WindingProximityEffectLossesModels & x);
+void to_json(json & j, const WindingProximityEffectLossesModels & x);
+
+inline void to_json(json & j, const WindingProximityEffectLossesModels & x) {
+    switch (x) {
+        case WindingProximityEffectLossesModels::ROSSMANITH: j = "Rossmanith"; break;
+        case WindingProximityEffectLossesModels::WANG: j = "Wang"; break;
+        case WindingProximityEffectLossesModels::FERREIRA: j = "Ferreira"; break;
+        case WindingProximityEffectLossesModels::LAMMERANER: j = "Lammeraner"; break;
+        case WindingProximityEffectLossesModels::ALBACH: j = "Albach"; break;
+        case WindingProximityEffectLossesModels::DOWELL: j = "Dowell"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"WindingProximityEffectLossesModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, WindingProximityEffectLossesModels & x) {
+    if (j == "Rossmanith" || j == "rossmanith" || j == "ROSSMANITH") x = WindingProximityEffectLossesModels::ROSSMANITH;
+    else if (j == "Wang" || j == "wang" || j == "WANG") x = WindingProximityEffectLossesModels::WANG;
+    else if (j == "Ferreira" || j == "ferreira" || j == "FERREIRA") x = WindingProximityEffectLossesModels::FERREIRA;
+    else if (j == "Lammeraner" || j == "lammeraner" || j == "LAMMERANER") x = WindingProximityEffectLossesModels::LAMMERANER;
+    else if (j == "Albach" || j == "albach" || j == "ALBACH") x = WindingProximityEffectLossesModels::ALBACH;
+    else if (j == "Dowell" || j == "dowell" || j == "DOWELL") x = WindingProximityEffectLossesModels::DOWELL;
+    else { throw std::runtime_error("Input JSON does not conform to WindingProximityEffectLossesModels schema: " + to_string(j)); }
+}
+
+void from_json(const json & j, StrayCapacitanceModels & x);
+void to_json(json & j, const StrayCapacitanceModels & x);
+
+inline void to_json(json & j, const StrayCapacitanceModels & x) {
+    switch (x) {
+        case StrayCapacitanceModels::KOCH: j = "Koch"; break;
+        case StrayCapacitanceModels::ALBACH: j = "Albach"; break;
+        case StrayCapacitanceModels::DUERDOTH: j = "Duerdoth"; break;
+        case StrayCapacitanceModels::MASSARINI: j = "Massarini"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"StrayCapacitanceModels\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json & j, StrayCapacitanceModels & x) {
+    if (j == "Koch" || j == "koch" || j == "KOCH") x = StrayCapacitanceModels::KOCH;
+    else if (j == "Albach" || j == "albach" || j == "ALBACH") x = StrayCapacitanceModels::ALBACH;
+    else if (j == "Duerdoth" || j == "duerdoth" || j == "DUERDOTH") x = StrayCapacitanceModels::DUERDOTH;
+    else if (j == "Massarini" || j == "massarini" || j == "MASSARINI") x = StrayCapacitanceModels::MASSARINI;
+    else { throw std::runtime_error("Input JSON does not conform to StrayCapacitanceModels schema: " + to_string(j)); }
 }
 
 

@@ -16,7 +16,6 @@
 #include <iomanip>
 #include <iostream>
 #include "spline.h"
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -131,12 +130,16 @@ double CoreLosses::get_core_losses_series_resistance(Core core, double frequency
 
 
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(std::map<std::string, std::string> models) {
-    return factory(magic_enum::enum_cast<CoreLossesModels>(models["coreLosses"]).value());
+    CoreLossesModels coreLossesModel;
+    from_json(models["coreLosses"], coreLossesModel);
+    return factory(coreLossesModel);
 }
 
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(json models) {
     std::string model = models["coreLosses"];
-    return factory(magic_enum::enum_cast<CoreLossesModels>(model).value());
+    CoreLossesModels coreLossesModel;
+    from_json(model, coreLossesModel);
+    return factory(coreLossesModel);
 }
 
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels modelName) {
@@ -193,8 +196,7 @@ std::vector<VolumetricLossesPoint> CoreLossesModel::get_volumetric_losses_data(C
 
 CoreLossesMethodData CoreLossesModel::get_method_data(CoreMaterial materialData, std::string method) {
     auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
-    std::string methodUpper = method;
-    std::transform(methodUpper.begin(), methodUpper.end(), methodUpper.begin(), ::toupper);
+    std::transform(method.begin(), method.end(), method.begin(), ::toupper);
 
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         if (volumetricLossesMethodVariant.first != "default") {
@@ -204,15 +206,16 @@ CoreLossesMethodData CoreLossesModel::get_method_data(CoreMaterial materialData,
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {
             if (std::holds_alternative<CoreLossesMethodData>(volumetricLossesMethod)) {
                 auto methodData = std::get<CoreLossesMethodData>(volumetricLossesMethod);
-                std::string methodDataNameString = std::string{magic_enum::enum_name(methodData.get_method())};
+                std::string methodDataNameString = to_string(methodData.get_method());
+                std::transform(methodDataNameString.begin(), methodDataNameString.end(), methodDataNameString.begin(), ::toupper);
 
-                if (methodDataNameString == methodUpper) {
+                if (methodDataNameString == method) {
                     return methodData;
                 }
             }
         }
     }
-    throw std::runtime_error("Material " + materialData.get_name() + " does not have method:" + method);
+    throw std::runtime_error("Material " + materialData.get_name() + " does not have method: " + method);
 }
 
 SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(CoreMaterialDataOrNameUnion material, double frequency) {
@@ -228,7 +231,7 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
 
     auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
 
-    auto steinmetzData = CoreLossesModel::get_method_data(materialData, "steinmetz");
+    auto steinmetzData = CoreLossesModel::get_method_data(materialData, "Steinmetz");
     auto ranges = steinmetzData.get_ranges().value();
     double minimumMaterialFrequency = 100000000;
     double minimumMaterialFrequencyIndex = -1;
@@ -1209,13 +1212,13 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
     }
 
     auto closestBIndex = find_closest_index(upperMagneticFluxDensityWaveform, magneticFluxDensityAcPeak);
-    std::cout << "************************************************" << std::endl;
-    std::cout << "magneticFluxDensityAcPeak: " << magneticFluxDensityAcPeak << std::endl;
-    std::cout << "closestBIndex: " << closestBIndex << std::endl;
-    std::cout << "coerciveForce: " << coerciveForce << std::endl;
-    std::cout << "magneticFieldStrengthPoints[closestBIndex]: " << magneticFieldStrengthPoints[closestBIndex] << std::endl;
+    // std::cout << "************************************************" << std::endl;
+    // std::cout << "magneticFluxDensityAcPeak: " << magneticFluxDensityAcPeak << std::endl;
+    // std::cout << "closestBIndex: " << closestBIndex << std::endl;
+    // std::cout << "coerciveForce: " << coerciveForce << std::endl;
+    // std::cout << "magneticFieldStrengthPoints[closestBIndex]: " << magneticFieldStrengthPoints[closestBIndex] << std::endl;
     double calculatedHValue = sqrt((2 * a1 * coerciveForce + pow(coerciveForce, 2) * (b1 - b2)) / (b1 - b2));
-    std::cout << "calculatedHValue: " << calculatedHValue << std::endl;
+    // std::cout << "calculatedHValue: " << calculatedHValue << std::endl;
 
 
     std::vector<double> cutUpperMagneticFluxDensityWaveform;
@@ -1419,7 +1422,7 @@ std::map<std::string, std::string> CoreLossesProprietaryModel::get_core_volumetr
         equations["volumetricCoreLosses"] = "1000 * ((B * 10)^a) * (b * f / 1000 + c * (f / 1000)^d)";
     }
     else {
-        throw std::invalid_argument("No volumetric losses method for method: " + std::string{magic_enum::enum_name(coreLossesMethodData.get_method())});
+        throw std::invalid_argument("No volumetric losses method for method: " + to_string(coreLossesMethodData.get_method()));
     }
 
     return equations;
@@ -1585,7 +1588,7 @@ double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial
 
     if (!lossFactorInterps.contains(coreMaterial.get_name())) {
 
-        auto lossFactorData = CoreLossesModel::get_method_data(coreMaterial, "loss_factor");
+        auto lossFactorData = CoreLossesModel::get_method_data(coreMaterial, "lossFactor");
         auto lossFactorPoints = lossFactorData.get_factors().value();
 
         int n = lossFactorPoints.size();

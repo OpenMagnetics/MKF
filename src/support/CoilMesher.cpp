@@ -8,7 +8,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <matplot/matplot.h>
 #include <streambuf>
@@ -192,7 +191,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
 
     for (auto& inducingFieldPoint : fieldPerHarmonic[0].get_data()) {
         if (std::isnan(inducingFieldPoint.get_value())) {
-            std::cout << "inducingFieldPoint.get_value(): " << inducingFieldPoint.get_value() << std::endl;
+            std::cerr << "inducingFieldPoint.get_value(): " << inducingFieldPoint.get_value() << std::endl;
             throw std::runtime_error("NaN found in inducingFieldPoint value");
         }
     }

@@ -22,8 +22,8 @@ CMRC_DECLARE(data);
 namespace OpenMagnetics {
 
 
-std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, double>> CoreCrossReferencer::get_scorings(bool weighted){
-    std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, double>> swappedScorings;
+std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossReferencer::get_scorings(bool weighted){
+    std::map<std::string, std::map<CoreCrossReferencerFilters, double>> swappedScorings;
     for (auto& [filter, aux] : _scorings) {
         auto filterConfiguration = _filterConfiguration[filter];
 
@@ -82,8 +82,8 @@ std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, 
     }
     return swappedScorings;
 }
-std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, double>> CoreCrossReferencer::get_scored_values(){
-    std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, double>> swappedScoredValues;
+std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossReferencer::get_scored_values(){
+    std::map<std::string, std::map<CoreCrossReferencerFilters, double>> swappedScoredValues;
     for (auto& [filter, aux] : _scoredValues) {
         auto filterConfiguration = _filterConfiguration[filter];
 
@@ -141,7 +141,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPerm
         return *unfilteredCores;
     }
     if (models.find("gapReluctance") == models.end()) {
-        models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+        models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
     }
 
     std::vector<double> newScoring;
@@ -158,17 +158,17 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPerm
     else {
         referencePermeance = 1.0 / reluctanceModel->get_core_reluctance(referenceCore).get_core_reluctance();
     }
-    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE, referencePermeance);
+    add_scored_value("Reference", CoreCrossReferencerFilters::PERMEANCE, referencePermeance);
 
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
         Core core = (*unfilteredCores)[coreIndex].first;
 
-        if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE)) {
-            if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE].contains(core.get_name().value())) {
-                if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE][core.get_name().value()]) {
-                    newScoring.push_back((*_scorings)[CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE][core.get_name().value()]);
+        if ((*_validScorings).contains(CoreCrossReferencerFilters::PERMEANCE)) {
+            if ((*_validScorings)[CoreCrossReferencerFilters::PERMEANCE].contains(core.get_name().value())) {
+                if ((*_validScorings)[CoreCrossReferencerFilters::PERMEANCE][core.get_name().value()]) {
+                    newScoring.push_back((*_scorings)[CoreCrossReferencerFilters::PERMEANCE][core.get_name().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(coreIndex);
@@ -191,8 +191,8 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPerm
         if (fabs(referencePermeance - reluctance) / referencePermeance < limit) {
             double scoring = fabs(referencePermeance - reluctance);
             newScoring.push_back(scoring);
-            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE, scoring);
-            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE, reluctance);
+            add_scoring(core.get_name().value(), CoreCrossReferencerFilters::PERMEANCE, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::PERMEANCE, reluctance);
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -214,7 +214,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPerm
     }
 
     if (filteredCoresWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE]);
+        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencerFilters::PERMEANCE]);
     }
     return filteredCoresWithScoring;
 }
@@ -230,16 +230,16 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterWind
         throw std::runtime_error("Winding window is missing area");
     }
     double referenceWindingWindowArea = referenceCore.get_winding_windows()[0].get_area().value();
-    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA, referenceWindingWindowArea);
+    add_scored_value("Reference", CoreCrossReferencerFilters::WINDING_WINDOW_AREA, referenceWindingWindowArea);
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
         Core core = (*unfilteredCores)[coreIndex].first;
 
-        if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA)) {
-            if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA].contains(core.get_name().value())) {
-                if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA][core.get_name().value()]) {
-                    newScoring.push_back((*_scorings)[CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA][core.get_name().value()]);
+        if ((*_validScorings).contains(CoreCrossReferencerFilters::WINDING_WINDOW_AREA)) {
+            if ((*_validScorings)[CoreCrossReferencerFilters::WINDING_WINDOW_AREA].contains(core.get_name().value())) {
+                if ((*_validScorings)[CoreCrossReferencerFilters::WINDING_WINDOW_AREA][core.get_name().value()]) {
+                    newScoring.push_back((*_scorings)[CoreCrossReferencerFilters::WINDING_WINDOW_AREA][core.get_name().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(coreIndex);
@@ -255,8 +255,8 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterWind
         if (fabs(referenceWindingWindowArea - windingWindowArea) / referenceWindingWindowArea < limit) {
             double scoring = fabs(referenceWindingWindowArea - windingWindowArea);
             newScoring.push_back(scoring);
-            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA, scoring);
-            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA, windingWindowArea);
+            add_scoring(core.get_name().value(), CoreCrossReferencerFilters::WINDING_WINDOW_AREA, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::WINDING_WINDOW_AREA, windingWindowArea);
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -278,7 +278,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterWind
     }
 
     if (filteredCoresWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA]);
+        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencerFilters::WINDING_WINDOW_AREA]);
     }
     return filteredCoresWithScoring;
 }
@@ -294,16 +294,16 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
         throw std::runtime_error("Core is not processed");
     }
     double referenceEffectiveArea = referenceCore.get_processed_description()->get_effective_parameters().get_effective_area();
-    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA, referenceEffectiveArea);
+    add_scored_value("Reference", CoreCrossReferencerFilters::EFFECTIVE_AREA, referenceEffectiveArea);
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
         Core core = (*unfilteredCores)[coreIndex].first;
 
-        if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA)) {
-            if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA].contains(core.get_name().value())) {
-                if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA][core.get_name().value()]) {
-                    newScoring.push_back((*_scorings)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA][core.get_name().value()]);
+        if ((*_validScorings).contains(CoreCrossReferencerFilters::EFFECTIVE_AREA)) {
+            if ((*_validScorings)[CoreCrossReferencerFilters::EFFECTIVE_AREA].contains(core.get_name().value())) {
+                if ((*_validScorings)[CoreCrossReferencerFilters::EFFECTIVE_AREA][core.get_name().value()]) {
+                    newScoring.push_back((*_scorings)[CoreCrossReferencerFilters::EFFECTIVE_AREA][core.get_name().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(coreIndex);
@@ -319,8 +319,8 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
         if (fabs(referenceEffectiveArea - effectiveArea) / referenceEffectiveArea < limit) {
             double scoring = fabs(referenceEffectiveArea - effectiveArea);
             newScoring.push_back(scoring);
-            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA, scoring);
-            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA, effectiveArea);
+            add_scoring(core.get_name().value(), CoreCrossReferencerFilters::EFFECTIVE_AREA, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::EFFECTIVE_AREA, effectiveArea);
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -342,7 +342,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
     }
 
     if (filteredCoresWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA]);
+        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencerFilters::EFFECTIVE_AREA]);
     }
     return filteredCoresWithScoring;
 }
@@ -357,15 +357,15 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEnve
     double referenceDepth = referenceCore.get_depth();
     double referenceHeight = referenceCore.get_height();
     double referenceWidth = referenceCore.get_width();
-    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME, std::max(referenceDepth, std::max(referenceHeight, referenceWidth)));
+    add_scored_value("Reference", CoreCrossReferencerFilters::ENVELOPING_VOLUME, std::max(referenceDepth, std::max(referenceHeight, referenceWidth)));
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
         Core core = (*unfilteredCores)[coreIndex].first;
-        if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME)) {
-            if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME].contains(core.get_name().value())) {
-                if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME][core.get_name().value()]) {
-                    newScoring.push_back((*_scorings)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME][core.get_name().value()]);
+        if ((*_validScorings).contains(CoreCrossReferencerFilters::ENVELOPING_VOLUME)) {
+            if ((*_validScorings)[CoreCrossReferencerFilters::ENVELOPING_VOLUME].contains(core.get_name().value())) {
+                if ((*_validScorings)[CoreCrossReferencerFilters::ENVELOPING_VOLUME][core.get_name().value()]) {
+                    newScoring.push_back((*_scorings)[CoreCrossReferencerFilters::ENVELOPING_VOLUME][core.get_name().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(coreIndex);
@@ -380,8 +380,8 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEnve
         if (fabs(referenceDepth - depth) / referenceDepth < limit && fabs(referenceHeight - height) / referenceHeight < limit && fabs(referenceWidth - width) / referenceWidth < limit) {
             double scoring = fabs(referenceDepth - depth) + fabs(referenceHeight - height) + fabs(referenceWidth - width);
             newScoring.push_back(scoring);
-            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME, scoring);
-            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME, std::max(depth, std::max(height, width)));
+            add_scoring(core.get_name().value(), CoreCrossReferencerFilters::ENVELOPING_VOLUME, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::ENVELOPING_VOLUME, std::max(depth, std::max(height, width)));
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -403,16 +403,12 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEnve
     }
 
     if (filteredCoresWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME]);
+        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencerFilters::ENVELOPING_VOLUME]);
     }
     return filteredCoresWithScoring;
 }
 
 std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::calculate_average_core_losses_and_magnetic_flux_density(Core core, int64_t numberTurns, Inputs inputs, std::map<std::string, std::string> models) {
-    if (models.find("coreLosses") == models.end()) {
-        models["coreLosses"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-    }
-
     auto temperature = inputs.get_maximum_temperature();
 
     OperatingPointExcitation excitation;
@@ -425,21 +421,15 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
 
     auto reluctanceModelName = defaults.reluctanceModelDefault;
     if (models.find("reluctance") != models.end()) {
-        std::string modelNameStringUpper = models["reluctance"];
-        std::transform(modelNameStringUpper.begin(), modelNameStringUpper.end(), modelNameStringUpper.begin(), ::toupper);
-        reluctanceModelName = magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(modelNameStringUpper).value();
+        from_json(models["reluctance"], reluctanceModelName);
     }
     auto coreLossesModelName = defaults.coreLossesModelDefault;
     if (models.find("coreLosses") != models.end()) {
-        std::string modelNameStringUpper = models["coreLosses"];
-        std::transform(modelNameStringUpper.begin(), modelNameStringUpper.end(), modelNameStringUpper.begin(), ::toupper);
-        coreLossesModelName = magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>(modelNameStringUpper).value();
+        from_json(models["coreLosses"], coreLossesModelName);
     }
     auto coreTemperatureModelName = defaults.coreTemperatureModelDefault;
     if (models.find("coreTemperature") != models.end()) {
-        std::string modelNameStringUpper = models["coreTemperature"];
-        std::transform(modelNameStringUpper.begin(), modelNameStringUpper.end(), modelNameStringUpper.begin(), ::toupper);
-        coreTemperatureModelName = magic_enum::enum_cast<OpenMagnetics::CoreTemperatureModels>(modelNameStringUpper).value();
+        from_json(models["coreTemperature"], coreTemperatureModelName);
     }
 
     OpenMagnetics::MagneticSimulator magneticSimulator;
@@ -468,10 +458,10 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
             magnetic.set_core(core);
             Coil coil;
             coil.set_bobbin("Dummy");
-            CoilFunctionalDescription coilFunctionalDescription;
-            coilFunctionalDescription.set_number_turns(numberTurns);
-            coilFunctionalDescription.set_wire("Dummy");
-            coil.set_functional_description({coilFunctionalDescription});
+            Winding winding;
+            winding.set_number_turns(numberTurns);
+            winding.set_wire("Dummy");
+            coil.set_functional_description({winding});
             magnetic.set_coil(coil);
             for (auto operatingPoint : inputs.get_operating_points()) {
                 auto coreLossesOutput = magneticSimulator.calculate_core_losses(operatingPoint, magnetic);
@@ -514,8 +504,8 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
     auto temperature = inputs.get_maximum_temperature();
     auto [referenceCoreLossesWithTemperature, referenceCoreMagneticFluxDensitySaturationPeak] = calculate_average_core_losses_and_magnetic_flux_density(referenceCore, referenceNumberTurns, inputs, models);
     auto referenceMaterialMagneticFluxDensitySaturationPeak = referenceCore.get_magnetic_flux_density_saturation(temperature, true);
-    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, referenceCoreLossesWithTemperature);
-    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::SATURATION, 1 + (referenceCoreMagneticFluxDensitySaturationPeak - referenceMaterialMagneticFluxDensitySaturationPeak) / referenceMaterialMagneticFluxDensitySaturationPeak);
+    add_scored_value("Reference", CoreCrossReferencerFilters::CORE_LOSSES, referenceCoreLossesWithTemperature);
+    add_scored_value("Reference", CoreCrossReferencerFilters::SATURATION, 1 + (referenceCoreMagneticFluxDensitySaturationPeak - referenceMaterialMagneticFluxDensitySaturationPeak) / referenceMaterialMagneticFluxDensitySaturationPeak);
 
     OperatingPointExcitation excitation;
     SignalDescriptor magneticFluxDensity;
@@ -529,10 +519,10 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
 
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
         Core core = (*unfilteredCores)[coreIndex].first;
-        if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES)) {
-            if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES].contains(core.get_name().value())) {
-                if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES][core.get_name().value()]) {
-                    newScoring.push_back((*_scorings)[CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES][core.get_name().value()]);
+        if ((*_validScorings).contains(CoreCrossReferencerFilters::CORE_LOSSES)) {
+            if ((*_validScorings)[CoreCrossReferencerFilters::CORE_LOSSES].contains(core.get_name().value())) {
+                if ((*_validScorings)[CoreCrossReferencerFilters::CORE_LOSSES][core.get_name().value()]) {
+                    newScoring.push_back((*_scorings)[CoreCrossReferencerFilters::CORE_LOSSES][core.get_name().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(coreIndex);
@@ -544,18 +534,18 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
         auto materialMagneticFluxDensitySaturationPeak = core.get_magnetic_flux_density_saturation(temperature, true);
 
         auto [coreLossesWithTemperature, coreMagneticFluxDensitySaturationPeak] = calculate_average_core_losses_and_magnetic_flux_density(core, referenceNumberTurns, inputs, models);
-        add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, coreLossesWithTemperature);
-        add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::SATURATION, 1 + (coreMagneticFluxDensitySaturationPeak - materialMagneticFluxDensitySaturationPeak) / materialMagneticFluxDensitySaturationPeak);
+        add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::CORE_LOSSES, coreLossesWithTemperature);
+        add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::SATURATION, 1 + (coreMagneticFluxDensitySaturationPeak - materialMagneticFluxDensitySaturationPeak) / materialMagneticFluxDensitySaturationPeak);
 
         if ((coreMagneticFluxDensitySaturationPeak < materialMagneticFluxDensitySaturationPeak) && (coreLossesWithTemperature < referenceCoreLossesWithTemperature)) {
             double scoring = 0;
             newScoring.push_back(scoring);
-            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, scoring);
+            add_scoring(core.get_name().value(), CoreCrossReferencerFilters::CORE_LOSSES, scoring);
         }
         else if ((coreMagneticFluxDensitySaturationPeak < materialMagneticFluxDensitySaturationPeak) && ((fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature) / referenceCoreLossesWithTemperature < limit) || limit >= 1)) {
             double scoring = fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature);
             newScoring.push_back(scoring);
-            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, scoring);
+            add_scoring(core.get_name().value(), CoreCrossReferencerFilters::CORE_LOSSES, scoring);
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -577,7 +567,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
     }
 
     if (filteredCoresWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES]);
+        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencerFilters::CORE_LOSSES]);
     }
     return filteredCoresWithScoring;
 }
@@ -694,7 +684,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
                 rankedCores = filterPermeance.filter_core(&rankedCores, referenceCore, inputs, _models, weights[CoreCrossReferencerFilters::PERMEANCE], limit);
                 break;
         }    
-        std::string filterString = std::string{magic_enum::enum_name(filter)};
+        std::string filterString = to_string(filter);
         logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + filterString + ".", "Core Cross Referencer", 2);
     });
 
@@ -704,7 +694,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
 
     // We leave core losses for the last one, as it is the most computationally costly
     rankedCores = filterVolumetricLosses.filter_core(&rankedCores, referenceCore, referenceNumberTurns, inputs, _models, weights[CoreCrossReferencerFilters::CORE_LOSSES], limit);
-        logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + std::string{magic_enum::enum_name(CoreCrossReferencerFilters::CORE_LOSSES)} + ".", "Core Cross Referencer", 2);
+        logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + to_string(CoreCrossReferencerFilters::CORE_LOSSES) + ".", "Core Cross Referencer", 2);
 
     if (rankedCores.size() > maximumNumberResults) {
         rankedCores = std::vector<std::pair<Core, double>>(rankedCores.begin(), rankedCores.end() - (rankedCores.size() - maximumNumberResults));

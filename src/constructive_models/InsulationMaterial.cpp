@@ -7,7 +7,6 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>

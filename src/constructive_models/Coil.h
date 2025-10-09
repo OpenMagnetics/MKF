@@ -165,6 +165,7 @@ class Coil : public MAS::Coil {
 
         void set_interleaving_level(uint8_t interleavingLevel);
         void reset_margins_per_section();
+        void reset_insulation();
         size_t get_interleaving_level();
         void set_winding_orientation(WindingOrientation windingOrientation);
         void set_layers_orientation(WindingOrientation layersOrientation, std::optional<std::string> sectionName = std::nullopt);

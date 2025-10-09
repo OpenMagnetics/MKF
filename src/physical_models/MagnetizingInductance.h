@@ -12,7 +12,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <map>
 #include <numbers>
 #include <streambuf>
@@ -29,11 +28,11 @@ class MagnetizingInductance {
   protected:
   public:
     MagnetizingInductance() {
-        _models["gapReluctance"] = magic_enum::enum_name(Defaults().reluctanceModelDefault);
+        _models["gapReluctance"] = to_string(Defaults().reluctanceModelDefault);
     }
 
     MagnetizingInductance(ReluctanceModels model) {
-        _models["gapReluctance"] = magic_enum::enum_name(model);
+        _models["gapReluctance"] = to_string(model);
     }
 
     MagnetizingInductance(std::string model) {

@@ -490,16 +490,16 @@ Coil get_dummy_coil(Inputs inputs) {
 
     // Set round wire with diameter to two times the skin depth 
     auto wire = Wire::get_wire_for_frequency(frequency, temperature, true);
-    CoilFunctionalDescription primaryCoilFunctionalDescription;
-    primaryCoilFunctionalDescription.set_isolation_side(IsolationSide::PRIMARY);
-    primaryCoilFunctionalDescription.set_name("primary");
-    primaryCoilFunctionalDescription.set_number_parallels(1);
-    primaryCoilFunctionalDescription.set_number_turns(1);
-    primaryCoilFunctionalDescription.set_wire(wire);
+    Winding primaryWinding;
+    primaryWinding.set_isolation_side(IsolationSide::PRIMARY);
+    primaryWinding.set_name("primary");
+    primaryWinding.set_number_parallels(1);
+    primaryWinding.set_number_turns(1);
+    primaryWinding.set_wire(wire);
 
     Coil coil;
     coil.set_bobbin("Dummy");
-    coil.set_functional_description({primaryCoilFunctionalDescription});
+    coil.set_functional_description({primaryWinding});
     return coil;
 }
 
@@ -616,7 +616,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults) {
-    auto globalIncludeStacks = settings->get_core_adviser_include_stacks();
     auto magnetics = create_magnetic_dataset(inputs, shapes, false);
 
     size_t maximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
@@ -940,7 +939,7 @@ std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vec
 }
 
 void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
-    CoreMaterialCrossReferencer coreMaterialCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "STEINMETZ"}});
+    CoreMaterialCrossReferencer coreMaterialCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});
     double temperature = 0; 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
@@ -1046,8 +1045,8 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
     operatingPointExcitation.set_frequency(1);
 
-    auto coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
-    auto coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+    auto coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
+    auto coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
     for (auto coreMaterial : coreMaterialsToEvaluate) {
         double averageVolumetricCoreLosses = 0;
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
@@ -1118,8 +1117,8 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
     operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
     operatingPointExcitation.set_frequency(1);
 
-    auto coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
-    auto coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+    auto coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
+    auto coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
     for (auto coreMaterial : coreMaterialsToEvaluate) {
         double averageVolumetricCoreLosses = 0;
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
@@ -1180,7 +1179,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
         throw std::invalid_argument("Missing impedance requirement");
     }
 
-    auto temperature = inputs.get_maximum_temperature();
     auto minimumImpedanceRequirement = inputs.get_design_requirements().get_minimum_impedance().value();
 
     ComplexPermeability complexPermeabilityModel;
@@ -1242,7 +1240,7 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
             auto winding = coil.get_functional_description()[0];
             winding.set_number_turns(numberTurnsCombination[windingIndex]);
             winding.set_isolation_side(get_isolation_side_from_index(windingIndex));
-            winding.set_name(std::string{magic_enum::enum_name(get_isolation_side_from_index(windingIndex))});
+            winding.set_name(get_isolation_side_name_from_index(windingIndex));
             (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description().push_back(winding);
         }
     }
