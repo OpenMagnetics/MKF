@@ -18,10 +18,10 @@ public:
     PushPull() {
     };
 
-    bool run_checks(bool assert = false);
+    bool run_checks(bool assert = false) override;
 
     Inputs process();
-    DesignRequirements process_design_requirements();
+    DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
