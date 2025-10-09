@@ -22,7 +22,7 @@ public:
 
     Inputs process();
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);
+    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
     OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, PushPullOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double outputInductance);
