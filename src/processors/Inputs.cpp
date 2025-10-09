@@ -13,7 +13,6 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <string>
@@ -221,38 +220,46 @@ double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label) {
     if (label != WaveformLabel::CUSTOM) {
         switch(label) {
             case WaveformLabel::TRIANGULAR: {
-                return (waveform.get_time().value()[1] - waveform.get_time().value()[0]) / (waveform.get_time().value()[2] - waveform.get_time().value()[0]);
+                if (waveform.get_time()->size() == 3) {
+                    return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
+                }
+                else if (waveform.get_time()->size() == 4) {
+                    return ((waveform.get_time().value()[1] + waveform.get_time().value()[2]) / 2 - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
+                }
+                break;
             }
             case WaveformLabel::UNIPOLAR_TRIANGULAR: {
-                return (waveform.get_time().value()[1] - waveform.get_time().value()[0]) / (waveform.get_time().value()[3] - waveform.get_time().value()[0]);
+                return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
             }
             case WaveformLabel::RECTANGULAR: {
-                return (waveform.get_time().value()[2] - waveform.get_time().value()[0]) / (waveform.get_time().value()[4] - waveform.get_time().value()[0]);
+                return (waveform.get_time().value()[2] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
             }
             case WaveformLabel::UNIPOLAR_RECTANGULAR: {
-                return (waveform.get_time().value()[2] - waveform.get_time().value()[0]) / (waveform.get_time().value()[4] - waveform.get_time().value()[0]);
+                return (waveform.get_time().value()[2] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
             }
             case WaveformLabel::BIPOLAR_RECTANGULAR: {
-                return (waveform.get_time().value()[3] - waveform.get_time().value()[2]) / (waveform.get_time().value()[9] - waveform.get_time().value()[0]);
+                return (waveform.get_time().value()[3] - waveform.get_time().value()[2]) / (waveform.get_time()->back() - waveform.get_time()->front());
             }
             case WaveformLabel::BIPOLAR_TRIANGULAR: {
-                return (waveform.get_time().value()[2] - waveform.get_time().value()[1]) / (waveform.get_time().value()[5] - waveform.get_time().value()[0]);
+                return (waveform.get_time().value()[2] - waveform.get_time().value()[1]) / (waveform.get_time()->back() - waveform.get_time()->front());
             }
             case WaveformLabel::FLYBACK_PRIMARY:{
                 if (waveform.get_time()->size() == 4) {
-                    return (waveform.get_time().value()[1] - waveform.get_time().value()[0]) / (waveform.get_time().value()[3] - waveform.get_time().value()[0]);
+                    return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
                 }
                 else if (waveform.get_time()->size() == 5) {
-                    return (waveform.get_time().value()[2] - waveform.get_time().value()[0]) / (waveform.get_time().value()[4] - waveform.get_time().value()[0]);
+                    return (waveform.get_time().value()[2] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
                 }
+                break;
             }
             case WaveformLabel::FLYBACK_SECONDARY:{
                 if (waveform.get_time()->size() == 4) {
-                    return (waveform.get_time().value()[1] - waveform.get_time().value()[0]) / (waveform.get_time().value()[3] - waveform.get_time().value()[0]);
+                    return (waveform.get_time().value()[1] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
                 }
                 else if (waveform.get_time()->size() == 5) {
-                    return (waveform.get_time().value()[2] - waveform.get_time().value()[0]) / (waveform.get_time().value()[4] - waveform.get_time().value()[0]);
+                    return (waveform.get_time().value()[2] - waveform.get_time()->front()) / (waveform.get_time()->back() - waveform.get_time()->front());
                 }
+                break;
             }
             case WaveformLabel::SINUSOIDAL: {
                 return 0.5;

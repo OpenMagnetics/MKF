@@ -3509,7 +3509,7 @@ SUITE(CoilPainter) {
             OpenMagnetics::Winding coilFunctionalDescription; 
             coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
             coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
-            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_name(OpenMagnetics::to_string(isolationSides[windingIndex]));
             coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
             coilFunctionalDescription.set_wire(wires[windingIndex]);
             coil.get_mutable_functional_description().push_back(coilFunctionalDescription);

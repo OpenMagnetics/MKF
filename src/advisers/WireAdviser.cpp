@@ -6,6 +6,7 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "support/Settings.h"
 #include <list>
+#include <magic_enum.hpp>
 
 
 namespace OpenMagnetics {
@@ -31,7 +32,8 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_no_parallel
     auto filter = MagneticFilterAreaNoParallels(_maximumNumberParallels);
 
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){
-        auto [valid, scoring] = filter.evaluate_magnetic((*unfilteredCoils)[coilIndex].first, section);
+        auto winding = (*unfilteredCoils)[coilIndex].first;
+        auto [valid, scoring] = filter.evaluate_magnetic(winding, section);
 
         if (valid) {
             newScoring.push_back(scoring);
@@ -278,7 +280,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_solid_insulation_
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<OpenMagnetics::Winding, double>> WireAdviser::get_advised_wire(OpenMagnetics ::Winding coilFunctionalDescription,
+std::vector<std::pair<OpenMagnetics::Winding, double>> WireAdviser::get_advised_wire(OpenMagnetics ::Winding winding,
                                                                                         Section section,
                                                                                         SignalDescriptor current,
                                                                                         double temperature,
@@ -306,21 +308,21 @@ std::vector<std::pair<OpenMagnetics::Winding, double>> WireAdviser::get_advised_
             }
         }
     }
-    return get_advised_wire(&wires, coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
+    return get_advised_wire(&wires, winding, section, current, temperature, numberSections, maximumNumberResults);
 }
 
-std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Winding coilFunctionalDescription,
+std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Winding winding,
                                                                                              Section section,
                                                                                              uint8_t numberSections) {
-    std::vector<std::pair<Winding, double>> coilFunctionalDescriptions;
+    std::vector<std::pair<Winding, double>> windings;
     auto planarWires = get_wires(WireType::PLANAR);
 
     // No paralells
     {
-        auto maximumNumberTurnsPerSection = ceil(double(coilFunctionalDescription.get_number_turns()) / numberSections);
+        auto maximumNumberTurnsPerSection = ceil(double(winding.get_number_turns()) / numberSections);
         auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
         if (maximumAvailableWidthForCopper < 0) {
-            return coilFunctionalDescriptions;
+            return windings;
             // throw std::runtime_error("maximumAvailableWidthForCopper cannot be negative");
         }
         auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / maximumNumberTurnsPerSection;
@@ -331,22 +333,22 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Windi
                 wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
                 wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
                 wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
-                coilFunctionalDescription.set_wire(wire);
-                coilFunctionalDescription.set_number_parallels(1);
-                coilFunctionalDescriptions.push_back(std::pair<Winding, double>{coilFunctionalDescription, 0});
+                winding.set_wire(wire);
+                winding.set_number_parallels(1);
+                windings.push_back(std::pair<Winding, double>{winding, 0});
             }
         }
     }
 
     // Paralells
     {
-        auto maximumNumberTurnsPerSection = coilFunctionalDescription.get_number_turns();
+        auto maximumNumberTurnsPerSection = winding.get_number_turns();
         auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
         if (maximumAvailableWidthForCopper < 0) {
-            return coilFunctionalDescriptions;
+            return windings;
             // throw std::runtime_error("maximumAvailableWidthForCopper cannot be negative");
         }
-        auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / coilFunctionalDescription.get_number_turns();
+        auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / winding.get_number_turns();
         size_t maximumNumberParallels = numberSections;
 
         for (auto wire : planarWires) {
@@ -356,23 +358,23 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Windi
                     wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
                     wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
                     wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
-                    coilFunctionalDescription.set_wire(wire);
-                    coilFunctionalDescription.set_number_parallels(numberParallels);
-                    coilFunctionalDescriptions.push_back(std::pair<Winding, double>{coilFunctionalDescription, 0});
+                    winding.set_wire(wire);
+                    winding.set_number_parallels(numberParallels);
+                    windings.push_back(std::pair<Winding, double>{winding, 0});
                 }
             }
         }
     }
-    return coilFunctionalDescriptions;
+    return windings;
 }
 
-std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding coilFunctionalDescription,
+std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding winding,
                                                                                       std::vector<Wire>* wires,
                                                                                       Section section,
                                                                                       SignalDescriptor current,
                                                                                       double temperature){
     auto settings = Settings::GetInstance();
-    std::vector<std::pair<Winding, double>> coilFunctionalDescriptions;
+    std::vector<std::pair<Winding, double>> windings;
 
     for (auto& wire : *wires){
         if (wire.get_type() == WireType::LITZ) {
@@ -407,16 +409,16 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding coil
             }
         }
 
-        coilFunctionalDescription.set_number_parallels(numberParallelsNeeded);
-        coilFunctionalDescription.set_wire(wire);
-        coilFunctionalDescriptions.push_back(std::pair<Winding, double>{coilFunctionalDescription, 0});
+        winding.set_number_parallels(numberParallelsNeeded);
+        winding.set_wire(wire);
+        windings.push_back(std::pair<Winding, double>{winding, 0});
         if (numberParallelsNeeded < _maximumNumberParallels) {
-            coilFunctionalDescription.set_number_parallels(numberParallelsNeeded + 1);
-            coilFunctionalDescriptions.push_back(std::pair<Winding, double>{coilFunctionalDescription, 0});
+            winding.set_number_parallels(numberParallelsNeeded + 1);
+            windings.push_back(std::pair<Winding, double>{winding, 0});
         }
     }
 
-    return coilFunctionalDescriptions;
+    return windings;
 }
 
 void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<Winding, double>>* unfilteredCoils, Section section, uint8_t numberSections) {
@@ -447,13 +449,13 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<Winding, dou
     }
 }
 
-std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Winding coilFunctionalDescription,
+std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Winding winding,
                                                                                                Section section,
                                                                                                SignalDescriptor current,
                                                                                                double temperature,
                                                                                                uint8_t numberSections,
                                                                                                size_t maximumNumberResults) {
-    auto coilsWithScoring = create_planar_dataset(coilFunctionalDescription, section, numberSections);
+    auto coilsWithScoring = create_planar_dataset(winding, section, numberSections);
 
     logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires");
 
@@ -480,13 +482,14 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Win
 }
 
 std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(std::vector<Wire>* wires,
-                                                                                        Winding coilFunctionalDescription,
+                                                                                        Winding winding,
                                                                                         Section section,
                                                                                         SignalDescriptor current,
                                                                                         double temperature,
                                                                                         uint8_t numberSections,
                                                                                         size_t maximumNumberResults){
-    auto coilsWithScoring = create_dataset(coilFunctionalDescription, wires, section, current, temperature);
+    auto coilsWithScoring = create_dataset(winding, wires, section, current, temperature);
+
 
     logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires");
     coilsWithScoring = filter_by_area_no_parallels(&coilsWithScoring, section);

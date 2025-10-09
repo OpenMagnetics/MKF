@@ -50,13 +50,13 @@ SUITE(CoreMaterialCrossReferencer) {
             json result;
             result["scoringPerFilter"] = json();
             result["scoredValuePerFilter"] = json();
-            for (auto& filter : magic_enum::enum_names<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>()) {
+            for (auto& filter : magic_enum::enum_names<CoreMaterialCrossReferencerFilters>()) {
                 std::string filterString(filter);
 
-                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
-                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
-                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]));
-                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]));
+                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()];
+                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()];
+                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()]));
+                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()]));
             };
             results["data"].push_back(result);
         }
@@ -139,14 +139,14 @@ SUITE(CoreMaterialCrossReferencer) {
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
 
-        std::map<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters, double> weights;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 1;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 0.5;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
+        std::map<CoreMaterialCrossReferencerFilters, double> weights;
+        weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 1;
+        weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
+        weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
+        weights[CoreMaterialCrossReferencerFilters::SATURATION] = 0;
+        weights[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
+        weights[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 0.5;
+        weights[CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
 
         std::string coreMaterialName = "3C97";
         CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
@@ -164,14 +164,14 @@ SUITE(CoreMaterialCrossReferencer) {
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
 
-        std::map<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters, double> weights;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
-        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
+        std::map<CoreMaterialCrossReferencerFilters, double> weights;
+        weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0;
+        weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
+        weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
+        weights[CoreMaterialCrossReferencerFilters::SATURATION] = 0;
+        weights[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
+        weights[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
+        weights[CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
 
         std::string coreMaterialName = "Kool Mµ MAX 26";
         CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
@@ -214,12 +214,10 @@ SUITE(CoreMaterialCrossReferencer) {
             json result;
             result["scoringPerFilter"] = json();
             result["scoredValuePerFilter"] = json();
-            for (auto& filter : magic_enum::enum_names<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>()) {
+            for (auto& filter : magic_enum::enum_names<CoreMaterialCrossReferencerFilters>()) {
                 std::string filterString(filter);
-                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
-                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
-                std::cout << "name: " << name << std::endl;
-                std::cout << "scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]: " << scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()] << std::endl;
+                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()];
+                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()];
             };
             results["data"].push_back(result);
         }

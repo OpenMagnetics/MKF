@@ -329,9 +329,9 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
         text += "Winding: " + winding.get_name() + "\n";
         text += "\tNumber Turns: " + std::to_string(winding.get_number_turns()) + "\n";
         text += "\tNumber Parallels: " + std::to_string(winding.get_number_parallels()) + "\n";
-        text += "\tWire: " + std::string(magic_enum::enum_name(wire.get_type()));
+        text += "\tWire: " + to_string(wire.get_type());
         if (wire.get_standard()) {
-            text += " " + std::string(magic_enum::enum_name(wire.get_standard().value()));
+            text += " " + to_string(wire.get_standard().value());
         }
         if (wire.get_name()) {
             text += " " + wire.get_name().value();

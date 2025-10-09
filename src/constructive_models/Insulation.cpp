@@ -1,7 +1,6 @@
 #include "support/Utils.h"
 #include "constructive_models/Insulation.h"
 #include "support/Settings.h"
-#include <magic_enum.hpp>
 #include "physical_models/WindingSkinEffectLosses.h"
 #include <cfloat>
 
@@ -473,7 +472,7 @@ double InsulationIEC60664Model::calculate_distance_through_insulation_over_30kHz
 }
 
 double InsulationIEC60664Model::get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage, InsulationType insulationType){
-    std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
+    std::string overvoltageCategoryString = to_string(overvoltageCategory);
     auto aux = part1TableF1[overvoltageCategoryString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (ratedVoltage <= aux[voltagesIndex].first) {
@@ -494,8 +493,8 @@ double InsulationIEC60664Model::get_rated_impulse_withstand_voltage(OvervoltageC
 }
 
 double InsulationIEC60664Model::get_clearance_table_f2(PollutionDegree pollutionDegree, double ratedImpulseWithstandVoltage){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
-    auto aux = part1TableF2["inhomogeneusField"][pollutionDegreeString];
+    std::string pollutionDegreeString = to_string(pollutionDegree);
+    auto aux = part1TableF2["InhomogeneusField"][pollutionDegreeString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (ratedImpulseWithstandVoltage <= aux[voltagesIndex].first) {
             return aux[voltagesIndex].second;
@@ -505,7 +504,7 @@ double InsulationIEC60664Model::get_clearance_table_f2(PollutionDegree pollution
 }
 
 double InsulationIEC60664Model::get_clearance_table_f8(double ratedImpulseWithstandVoltage){
-    auto aux = part1TableF8["inhomogeneusField"];
+    auto aux = part1TableF8["InhomogeneusField"];
     double ratedImpulseWithstandVoltageScaled = ratedImpulseWithstandVoltage;
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (ratedImpulseWithstandVoltageScaled <= aux[voltagesIndex].first) {
@@ -518,10 +517,10 @@ double InsulationIEC60664Model::get_clearance_table_f8(double ratedImpulseWithst
 std::optional<double> InsulationIEC60664Model::get_clearance_planar(double altitude, double ratedImpulseWithstandVoltage){
     std::vector<std::pair<double, double>> table;
     if (altitude <= lowerAltitudeLimit) {
-        table = part5Table2["inhomogeneusField"];
+        table = part5Table2["InhomogeneusField"];
     }
     else {
-        table = part5Table3["inhomogeneusField"];
+        table = part5Table3["InhomogeneusField"];
     }
 
     bool insideTable = false;
@@ -549,9 +548,9 @@ double InsulationIEC60664Model::get_rated_insulation_voltage(double mainSupplyVo
 }
 
 double InsulationIEC60664Model::get_creepage_distance(PollutionDegree pollutionDegree, Cti cti, double voltageRms, WiringTechnology wiringType){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
-    std::string ctiString = std::string{magic_enum::enum_name(cti)};
-    std::string wiringTypeString = std::string{magic_enum::enum_name(wiringType)};
+    std::string pollutionDegreeString = to_string(pollutionDegree);
+    std::string ctiString = to_string(cti);
+    std::string wiringTypeString = to_string(wiringType);
 
     if (!part1TableF5.contains(wiringTypeString)) 
         throw std::invalid_argument("Unknown wiring type: " + wiringTypeString);
@@ -594,8 +593,8 @@ double InsulationIEC60664Model::get_creepage_distance_over_30kHz(double voltageR
 }
 
 std::optional<double> InsulationIEC60664Model::get_creepage_distance_planar(PollutionDegree pollutionDegree, Cti cti, double voltageRms){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
-    std::string ctiString = std::string{magic_enum::enum_name(cti)};
+    std::string pollutionDegreeString = to_string(pollutionDegree);
+    std::string ctiString = to_string(cti);
 
     if (!part5Table4.contains(pollutionDegreeString)) 
         throw std::invalid_argument("Pollution degree " + pollutionDegreeString + " is not supported in IEC 60664-5");
@@ -821,10 +820,10 @@ double InsulationIEC62368Model::get_voltage_due_to_temporary_overvoltages_proced
 double InsulationIEC62368Model::get_voltage_due_to_transient_overvoltages(double requiredWithstandVoltage, InsulationType insulationType){
     std::vector<std::pair<double, double>> table;
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-        table = table25["REINFORCED"];
+        table = table25["Reinforced"];
     }
     else {
-        table = table25["BASIC"];
+        table = table25["Basic"];
     }
     return linear_table_interpolation(table, requiredWithstandVoltage);
 }
@@ -832,10 +831,10 @@ double InsulationIEC62368Model::get_voltage_due_to_transient_overvoltages(double
 double InsulationIEC62368Model::get_voltage_due_to_recurring_peak_voltages(double workingVoltage, InsulationType insulationType){
     std::vector<std::pair<double, double>> table;
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-        table = table26["REINFORCED"];
+        table = table26["Reinforced"];
     }
     else {
-        table = table26["BASIC"];
+        table = table26["Basic"];
     }
     return linear_table_interpolation(table, workingVoltage);
 }
@@ -843,10 +842,10 @@ double InsulationIEC62368Model::get_voltage_due_to_recurring_peak_voltages(doubl
 double InsulationIEC62368Model::get_voltage_due_to_temporary_overvoltages(double supplyVoltageRms, InsulationType insulationType){
     std::vector<std::pair<double, double>> table;
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-        table = table27["REINFORCED"];
+        table = table27["Reinforced"];
     }
     else {
-        table = table27["BASIC"];
+        table = table27["Basic"];
     }
     for (auto& voltagePair : table) {
         if (supplyVoltageRms < voltagePair.first) {
@@ -868,13 +867,13 @@ double InsulationIEC62368Model::get_reduction_factor_per_material(std::string ma
 }
 
 double InsulationIEC62368Model::get_clearance_table_10(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
+    std::string pollutionDegreeString = to_string(pollutionDegree);
     std::vector<std::pair<double, double>> table;
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-        table = table10["REINFORCED"][pollutionDegreeString];
+        table = table10["Reinforced"][pollutionDegreeString];
     }
     else {
-        table = table10["BASIC"][pollutionDegreeString];
+        table = table10["Basic"][pollutionDegreeString];
     }
 
     double result = linear_table_interpolation(table, supplyVoltagePeak);
@@ -888,13 +887,13 @@ double InsulationIEC62368Model::get_clearance_table_10(double supplyVoltagePeak,
 }
 
 double InsulationIEC62368Model::get_clearance_table_14(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
+    std::string pollutionDegreeString = to_string(pollutionDegree);
     std::vector<std::pair<double, double>> table;
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-        table = table14["REINFORCED"][pollutionDegreeString];
+        table = table14["Reinforced"][pollutionDegreeString];
     }
     else {
-        table = table14["BASIC"][pollutionDegreeString];
+        table = table14["Basic"][pollutionDegreeString];
     }
 
     double result = linear_table_interpolation(table, supplyVoltagePeak);
@@ -910,10 +909,10 @@ double InsulationIEC62368Model::get_clearance_table_14(double supplyVoltagePeak,
 double InsulationIEC62368Model::get_clearance_table_11(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree){
     std::vector<std::pair<double, double>> table;
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-        table = table11["REINFORCED"];
+        table = table11["Reinforced"];
     }
     else {
-        table = table11["BASIC"];
+        table = table11["Basic"];
     }
 
     double valuePollutionDegree2 = linear_table_interpolation(table, supplyVoltagePeak);
@@ -939,10 +938,10 @@ double InsulationIEC62368Model::get_clearance_table_11(double supplyVoltagePeak,
 double InsulationIEC62368Model::get_distance_table_G13(double workingVoltage, InsulationType insulationType){
     std::vector<std::pair<double, double>> table;
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-        table = tableG13["REINFORCED"];
+        table = tableG13["Reinforced"];
     }
     else {
-        table = tableG13["BASIC"];
+        table = tableG13["Basic"];
     }
 
     double result = linear_table_interpolation(table, workingVoltage);
@@ -950,8 +949,8 @@ double InsulationIEC62368Model::get_distance_table_G13(double workingVoltage, In
 }
 
 double InsulationIEC62368Model::get_creepage_distance_table_17(double voltageRms, InsulationType insulationType, PollutionDegree pollutionDegree, Cti cti){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
-    std::string ctiString = std::string{magic_enum::enum_name(cti)};
+    std::string pollutionDegreeString = to_string(pollutionDegree);
+    std::string ctiString = to_string(cti);
     std::vector<std::pair<double, double>> table = table17[pollutionDegreeString][ctiString];
 
     double valueBasic = linear_table_interpolation(table, voltageRms);
@@ -1005,7 +1004,7 @@ double InsulationIEC62368Model::get_altitude_factor(double altitude){
 }
 
 double InsulationIEC62368Model::get_mains_transient_voltage(double supplyVoltagePeak, OvervoltageCategory overvoltageCategory){
-    std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
+    std::string overvoltageCategoryString = to_string(overvoltageCategory);
     auto table = table12[overvoltageCategoryString];
     for (size_t voltagesIndex = 0; voltagesIndex < table.size(); voltagesIndex++) {
         if (supplyVoltagePeak <= table[voltagesIndex].first) {
@@ -1151,17 +1150,17 @@ double InsulationIEC61558Model::get_working_voltage_rms(Inputs& inputs) {
 }
 
 double InsulationIEC61558Model::get_withstand_voltage_table_14(OvervoltageCategory overvoltageCategory, InsulationType insulationType, double workingVoltage){
-    std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
-    std::string insulationTypeString = std::string{magic_enum::enum_name(insulationType)};
+    std::string overvoltageCategoryString = to_string(overvoltageCategory);
+    std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table = table14[overvoltageCategoryString][insulationTypeString];
 
     return linear_table_interpolation(table, workingVoltage);
 }
 
 double InsulationIEC61558Model::get_clearance_table_20(OvervoltageCategory overvoltageCategory, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
-    std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
-    std::string insulationTypeString = std::string{magic_enum::enum_name(insulationType)};
+    std::string pollutionDegreeString = to_string(pollutionDegree);
+    std::string overvoltageCategoryString = to_string(overvoltageCategory);
+    std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table = table20[overvoltageCategoryString][insulationTypeString][pollutionDegreeString];
 
     if (workingVoltage < iec61558MinimumWorkingVoltage || pollutionDegree == PollutionDegree::P1 || insulationType == InsulationType::FUNCTIONAL) {
@@ -1177,9 +1176,9 @@ double InsulationIEC61558Model::get_clearance_table_20(OvervoltageCategory overv
 }
 
 double InsulationIEC61558Model::get_creepage_distance_table_21(Cti cti, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
-    std::string ctiString = std::string{magic_enum::enum_name(cti)};
-    std::string insulationTypeString = std::string{magic_enum::enum_name(insulationType)};
+    std::string pollutionDegreeString = to_string(pollutionDegree);
+    std::string ctiString = to_string(cti);
+    std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table = table21[ctiString][insulationTypeString][pollutionDegreeString];
 
     if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == InsulationType::FUNCTIONAL) {
@@ -1192,16 +1191,16 @@ double InsulationIEC61558Model::get_creepage_distance_table_21(Cti cti, Pollutio
 }
 
 double InsulationIEC61558Model::get_distance_through_insulation_table_22(InsulationType insulationType, double workingVoltage, bool usingThinLayers){
-    std::string insulationTypeString = std::string{magic_enum::enum_name(insulationType)};
+    std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table;
     if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == InsulationType::FUNCTIONAL || insulationType == InsulationType::BASIC) {
         return 0;
     }
     if (usingThinLayers) {
-        table = table22[insulationTypeString]["thinLayers"];
+        table = table22[insulationTypeString]["ThinLayers"];
     }
     else {
-        table = table22[insulationTypeString]["solid"];
+        table = table22[insulationTypeString]["Solid"];
     }
 
     double dti = linear_table_interpolation(table, workingVoltage);
@@ -1233,7 +1232,7 @@ double InsulationIEC61558Model::calculate_distance_through_insulation_over_30kHz
 }
 
 double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType insulationType, double workingVoltage) {
-    std::string insulationTypeString = std::string{magic_enum::enum_name(insulationType)};
+    std::string insulationTypeString = to_string(insulationType);
 
     if (workingVoltage < iec61558MinimumWorkingVoltage || insulationType == InsulationType::FUNCTIONAL) {
         return 0;
@@ -1244,10 +1243,10 @@ double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType in
     {
         std::vector<std::pair<double, double>> table;
         if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-            table = table103["REINFORCED"];
+            table = table103["Reinforced"];
         }
         else {
-            table = table103["BASIC"];
+            table = table103["Basic"];
         }
         for (size_t voltagesIndex = 0; voltagesIndex < table.size(); voltagesIndex++) {
             if (workingVoltage <= table[voltagesIndex].first) {
@@ -1259,10 +1258,10 @@ double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType in
     {
         std::vector<std::pair<double, double>> table;
         if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-            table = table104["REINFORCED"];
+            table = table104["Reinforced"];
         }
         else {
-            table = table104["BASIC"];
+            table = table104["Basic"];
         }
         for (size_t voltagesIndex = 0; voltagesIndex < table.size(); voltagesIndex++) {
             if (workingVoltage <= table[voltagesIndex].first) {
@@ -1451,7 +1450,7 @@ double InsulationIEC61558Model::calculate_creepage_distance(Inputs& inputs, bool
 }
 
 double InsulationIEC60335Model::get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage){
-    std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
+    std::string overvoltageCategoryString = to_string(overvoltageCategory);
     auto aux = table15[overvoltageCategoryString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (ratedVoltage <= aux[voltagesIndex].first) {
@@ -1500,7 +1499,7 @@ double InsulationIEC60335Model::get_clearance_table_16(PollutionDegree pollution
 }
 
 double InsulationIEC60335Model::get_distance_through_insulation_table_19(OvervoltageCategory overvoltageCategory, double ratedVoltage){
-    std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
+    std::string overvoltageCategoryString = to_string(overvoltageCategory);
     auto aux = table19[overvoltageCategoryString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (ratedVoltage <= aux[voltagesIndex].first) {
@@ -1511,7 +1510,7 @@ double InsulationIEC60335Model::get_distance_through_insulation_table_19(Overvol
 }
 
 double InsulationIEC60335Model::get_withstand_voltage_table_7(InsulationType insulationType, double ratedVoltage){
-    std::string insulationTypeString = std::string{magic_enum::enum_name(insulationType)};
+    std::string insulationTypeString = to_string(insulationType);
     auto aux = table7[insulationTypeString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (ratedVoltage <= aux[voltagesIndex].first) {
@@ -1536,8 +1535,8 @@ double InsulationIEC60335Model::get_withstand_voltage_formula_table_7(Insulation
 
 
 double InsulationIEC60335Model::get_creepage_distance_table_17(Cti cti, PollutionDegree pollutionDegree, double workingVoltage){
-    std::string ctiString = std::string{magic_enum::enum_name(cti)};
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
+    std::string ctiString = to_string(cti);
+    std::string pollutionDegreeString = to_string(pollutionDegree);
     auto aux = table17[pollutionDegreeString][ctiString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (workingVoltage <= aux[voltagesIndex].first) {
@@ -1548,8 +1547,8 @@ double InsulationIEC60335Model::get_creepage_distance_table_17(Cti cti, Pollutio
 }
 
 double InsulationIEC60335Model::get_creepage_distance_table_18(Cti cti, PollutionDegree pollutionDegree, double workingVoltage){
-    std::string ctiString = std::string{magic_enum::enum_name(cti)};
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
+    std::string ctiString = to_string(cti);
+    std::string pollutionDegreeString = to_string(pollutionDegree);
     auto aux = table18[pollutionDegreeString][ctiString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (workingVoltage <= aux[voltagesIndex].first) {

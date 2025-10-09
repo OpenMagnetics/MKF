@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -138,7 +137,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
             maximumFringingFactor = std::max(maximumFringingFactor, gapReluctance.get_fringing_factor());
             maximumStorableMagneticEnergyGapping += gapReluctance.get_maximum_storable_magnetic_energy();
             if (gapReluctance.get_fringing_factor() < 1) {
-                std::cout << "fringing_factor " << gapReluctance.get_fringing_factor() << std::endl;
+                std::cerr << "fringing_factor " << gapReluctance.get_fringing_factor() << std::endl;
             }
         }
         calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
@@ -505,7 +504,9 @@ AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap g
 };
 
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(std::map<std::string, std::string> models) {
-    return factory(magic_enum::enum_cast<ReluctanceModels>(models["gapReluctance"]).value());
+    ReluctanceModels reluctanceModelEnum;
+    from_json(models["gapReluctance"], reluctanceModelEnum);
+    return factory(reluctanceModelEnum);
 }
 
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels modelName) {

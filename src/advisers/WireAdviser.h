@@ -84,21 +84,21 @@ class WireAdviser {
         std::optional<WireStandard> get_common_wire_standard() {
             return _commonWireStandard;
         }
-        std::vector<std::pair<Winding, double>> get_advised_wire(Winding coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> get_advised_wire(Winding winding,
                                                                                    Section section,
                                                                                    SignalDescriptor current,
                                                                                    double temperature,
                                                                                    uint8_t numberSections,
                                                                                    size_t maximumNumberResults=1);
         std::vector<std::pair<Winding, double>> get_advised_wire(std::vector<Wire>* wires,
-                                                                                   Winding coilFunctionalDescription,
+                                                                                   Winding winding,
                                                                                    Section section,
                                                                                    SignalDescriptor current,
                                                                                    double temperature,
                                                                                    uint8_t numberSections,
                                                                                    size_t maximumNumberResults=1);
 
-        std::vector<std::pair<Winding, double>> get_advised_planar_wire(Winding coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> get_advised_planar_wire(Winding winding,
                                                                                           Section section,
                                                                                           SignalDescriptor current,
                                                                                           double temperature,
@@ -128,15 +128,15 @@ class WireAdviser {
         std::vector<std::pair<Winding, double>> filter_by_solid_insulation_requirements(std::vector<std::pair<Winding, double>>* unfilteredCoils,
                                                                                                  WireSolidInsulationRequirements wireSolidInsulationRequirements);
 
-        std::vector<std::pair<Winding, double>> create_dataset(Winding coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> create_dataset(Winding winding,
                                                                                  std::vector<Wire>* wires,
                                                                                  Section section,
                                                                                  SignalDescriptor current,
                                                                                  double temperature);
-        std::vector<std::pair<Winding, double>> create_planar_dataset(Winding coilFunctionalDescription,
+        std::vector<std::pair<Winding, double>> create_planar_dataset(Winding winding,
                                                                                         Section section,
                                                                                         uint8_t numberSections);
-        void expand_wires_dataset_with_parallels(std::vector<Winding>* coilFunctionalDescriptions);
+        void expand_wires_dataset_with_parallels(std::vector<Winding>* windings);
         void set_maximum_area_proportion(std::vector<std::pair<Winding, double>>* unfilteredCoils, Section section, uint8_t numberSections);
     
 };

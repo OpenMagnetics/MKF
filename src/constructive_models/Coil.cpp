@@ -14,8 +14,6 @@
 #include "constructive_models/InsulationMaterial.h"
 #include "physical_models/WindingOhmicLosses.h"
 
-#include <magic_enum.hpp>
-
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
@@ -231,6 +229,11 @@ void Coil::set_interleaving_level(uint8_t interleavingLevel) {
 
 void Coil::reset_margins_per_section() {
     _marginsPerSection.clear();
+}
+
+void Coil::reset_insulation() {
+    _marginsPerSection.clear();
+    _insulationSections.clear();
 }
 
 size_t Coil::get_interleaving_level() {
@@ -2640,7 +2643,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
 
                     if ((resolve_margin(section)[0] + resolve_margin(section)[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) > currentSectionHeight) {
-                        std::string wireType = std::string(magic_enum::enum_name(wirePerWinding[windingIndex].get_type()));
+                        std::string wireType = to_string(wirePerWinding[windingIndex].get_type());
                         return false;
                         // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
                         //                          std::string{", margin:"} + std::to_string(resolve_margin(section)[0] + resolve_margin(section)[1]) + 

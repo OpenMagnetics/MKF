@@ -189,6 +189,7 @@ namespace OpenMagnetics {
 
         coil.set_strict(false);
         coil.set_inputs(mas.get_inputs());
+
         coil.calculate_insulation(true);
         auto result = coil.wind_by_sections(sectionProportions, pattern, repetitions);
         if (result) {
@@ -198,6 +199,7 @@ namespace OpenMagnetics {
 
         if (coil.get_sections_description()) {
             auto sections = coil.get_sections_description().value();
+
             return sections;
         }
         else {
@@ -453,19 +455,22 @@ namespace OpenMagnetics {
 
         while (true) {
 
-            std::vector<Winding> coilFunctionalDescription;
+            std::vector<Winding> windings;
 
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-                coilFunctionalDescription.push_back(wireCoilPerWinding[windingIndex][currentWireIndexPerWinding[windingIndex]].first);
+                windings.push_back(wireCoilPerWinding[windingIndex][currentWireIndexPerWinding[windingIndex]].first);
             }
-            mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(coilFunctionalDescription);
+            mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(windings);
 
-            mas.get_mutable_magnetic().get_mutable_coil().reset_margins_per_section();
+            // We have new wires combination, we need to restart insulation each time and let it compute it again
+            mas.get_mutable_magnetic().get_mutable_coil().reset_insulation();
             bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind(sectionProportions, pattern, repetitions);
 
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
                 mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
+
+
                 if (!mas.get_mutable_magnetic().get_manufacturer_info()) {
                     MagneticManufacturerInfo manufacturerInfo;
                     mas.get_mutable_magnetic().set_manufacturer_info(manufacturerInfo);
@@ -626,12 +631,12 @@ namespace OpenMagnetics {
 
         while (true) {
 
-            std::vector<Winding> coilFunctionalDescription;
+            std::vector<Winding> windings;
 
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-                coilFunctionalDescription.push_back(wireCoilPerWinding[windingIndex][currentWireIndexPerWinding[windingIndex]].first);
+                windings.push_back(wireCoilPerWinding[windingIndex][currentWireIndexPerWinding[windingIndex]].first);
             }
-            mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(coilFunctionalDescription);
+            mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(windings);
 
             mas.get_mutable_magnetic().get_mutable_coil().reset_margins_per_section();
             bool wound = false;

@@ -12,14 +12,6 @@ namespace OpenMagnetics {
 
 class CoreCrossReferencer {
     public: 
-        enum class CoreCrossReferencerFilters : int {
-            PERMEANCE,
-            CORE_LOSSES, 
-            SATURATION, 
-            WINDING_WINDOW_AREA, 
-            ENVELOPING_VOLUME, 
-            EFFECTIVE_AREA
-        };
     protected:
         std::map<std::string, std::string> _models;
         std::string _log;
@@ -44,13 +36,13 @@ class CoreCrossReferencer {
             auto defaults = OpenMagnetics::Defaults();
             _models = models;
             if (models.find("gapReluctance") == models.end()) {
-                _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+                _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
             }
             if (models.find("coreLosses") == models.end()) {
-                _models["gapReluctance"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
+                _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
             }
             if (models.find("coreTemperature") == models.end()) {
-                _models["gapReluctance"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+                _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
             }
 
             _weights[CoreCrossReferencerFilters::PERMEANCE] = 1;
@@ -62,9 +54,9 @@ class CoreCrossReferencer {
         }
         CoreCrossReferencer() {
             auto defaults = OpenMagnetics::Defaults();
-            _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-            _models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
-            _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+            _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
+            _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
+            _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
 
             _weights[CoreCrossReferencerFilters::PERMEANCE] = 1;
             _weights[CoreCrossReferencerFilters::SATURATION] = 0.5;
@@ -104,7 +96,7 @@ class CoreCrossReferencer {
             std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* _scoredValues;
             std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* _filterConfiguration;
 
-            void add_scoring(std::string name, CoreCrossReferencer::CoreCrossReferencerFilters filter, double scoring) {
+            void add_scoring(std::string name, CoreCrossReferencerFilters filter, double scoring) {
                 if (std::isnan(scoring)) {
                     throw std::invalid_argument("scoring cannot be nan");
                 }
@@ -114,7 +106,7 @@ class CoreCrossReferencer {
                     (*_scorings)[filter][name] = scoring;
                 }
             }
-            void add_scored_value(std::string name, CoreCrossReferencer::CoreCrossReferencerFilters filter, double scoredValues) {
+            void add_scored_value(std::string name, CoreCrossReferencerFilters filter, double scoredValues) {
                 if (scoredValues != -1) {
                     (*_scoredValues)[filter][name] = scoredValues;
                 }
@@ -174,6 +166,5 @@ class CoreCrossReferencer {
             std::pair<double, double> calculate_average_core_losses_and_magnetic_flux_density(Core core, int64_t numberTurns, Inputs inputs, std::map<std::string, std::string> models);
     };
 };
-
 
 } // namespace OpenMagnetics

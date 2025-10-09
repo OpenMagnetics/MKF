@@ -283,13 +283,13 @@ SUITE(CoreCrossReferencer) {
             json result;
             result["scoringPerFilter"] = json();
             result["scoredValuePerFilter"] = json();
-            for (auto& filter : magic_enum::enum_names<CoreCrossReferencer::CoreCrossReferencerFilters>()) {
+            for (auto& filter : magic_enum::enum_names<CoreCrossReferencerFilters>()) {
                 std::string filterString(filter);
 
-                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
-                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
-                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()]));
-                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()]));
+                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreCrossReferencerFilters>(filterString).value()];
+                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreCrossReferencerFilters>(filterString).value()];
+                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<CoreCrossReferencerFilters>(filterString).value()]));
+                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<CoreCrossReferencerFilters>(filterString).value()]));
             };
             results["data"].push_back(result);
         }

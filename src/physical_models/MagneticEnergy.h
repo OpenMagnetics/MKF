@@ -1,6 +1,7 @@
 #pragma once
 #include "Constants.h"
 #include "Defaults.h"
+#include "Utils.h"
 
 #include "physical_models/Reluctance.h"
 #include "constructive_models/Core.h"
@@ -10,7 +11,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <map>
 #include <numbers>
 #include <streambuf>
@@ -29,12 +29,12 @@ public:
         auto defaults = OpenMagnetics::Defaults();
         _models = models;
         if (models.find("gapReluctance") == models.end()) {
-            _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+            _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
         }
     }
     MagneticEnergy() {
         auto defaults = OpenMagnetics::Defaults();
-        _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+        _models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
     }
     static double get_ungapped_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint = std::nullopt, bool saturationProportion = true);
     static double get_ungapped_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency = std::nullopt, bool saturationProportion = true);

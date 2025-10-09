@@ -645,8 +645,6 @@ double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil) {
         double cabValue = cab(numberTurns, ctt, cts);
         C2 = 2 * cabValue * casValue / (4 * cabValue - casValue);
         double C1 = cabValue - cabValue * casValue / (4 * cabValue - casValue);
-        // std::cout << "C2: " << C2 << std::endl;
-        // std::cout << "C1: " << C1 << std::endl;
 
         C2 = C2 * 2;
 

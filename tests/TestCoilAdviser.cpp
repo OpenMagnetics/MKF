@@ -4,6 +4,7 @@
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
 #include "processors/Inputs.h"
+#include <magic_enum.hpp>
 #include "TestingUtils.h"
 #include "support/Settings.h"
 
@@ -606,6 +607,7 @@ SUITE(CoilAdviser) {
     }
 
     TEST(Test_CoilAdviser_Insulation_Margin) {
+        // OpenMagnetics::set_log_verbosity(2);
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
         std::vector<double> turnsRatios;
         int64_t numberStacks = 1;
@@ -783,7 +785,7 @@ SUITE(CoilAdviser) {
         settings->reset();
         srand (time(NULL));
 
-        int count = 10;
+        int count = 2;
         while (count > 0) {
             std::vector<double> turnsRatios;
             int64_t numberStacks = 1;

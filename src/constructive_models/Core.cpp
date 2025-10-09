@@ -13,7 +13,6 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -483,11 +482,11 @@ int Core::find_closest_column_index_by_coordinates(std::vector<double> coordinat
     auto columns = processedDescription.get_columns();
     for (size_t index = 0; index < columns.size(); ++index) {
         double distance = 0;
-        auto column_coordinates = columns[index].get_coordinates();
-        for (size_t i = 0; i < column_coordinates.size(); ++i) {
+        auto columnCoordinates = columns[index].get_coordinates();
+        for (size_t i = 0; i < columnCoordinates.size(); ++i) {
             if (i != 1) { // We don't care about how high in the column the gap is, just about its projection, with are
                           // axis X and Z
-                distance += fabs(column_coordinates[i] - coordinates[i]);
+                distance += fabs(columnCoordinates[i] - coordinates[i]);
             }
         }
         if (distance < closestDistance) {
@@ -503,14 +502,18 @@ int Core::find_exact_column_index_by_coordinates(std::vector<double> coordinates
     auto columns = processedDescription.get_columns();
     for (size_t index = 0; index < columns.size(); ++index) {
         double distance = 0;
-        auto column_coordinates = columns[index].get_coordinates();
-        for (size_t i = 0; i < column_coordinates.size(); ++i) {
+        auto columnCoordinates = columns[index].get_coordinates();
+
+        double maxCoordinate = 1e-6; // Toavoid dividing by 0;
+        for (size_t i = 0; i < columnCoordinates.size(); ++i) {
             if (i != 1) { // We don't care about how high in the column the gap is, just about its projection, with are
                           // axis X and Z
-                distance += fabs(column_coordinates[i] - coordinates[i]);
+                maxCoordinate = std::max(fabs(columnCoordinates[i]), maxCoordinate);
+                distance += fabs(columnCoordinates[i] - coordinates[i]);
             }
         }
-        if (distance == 0) {
+        double error = distance / maxCoordinate;
+        if (error < 0.01) {
             return index;
         }
     }
@@ -524,9 +527,9 @@ ColumnElement Core::find_closest_column_by_coordinates(std::vector<double> coord
     auto columns = processedDescription.get_columns();
     for (auto& column : columns) {
         double distance = 0;
-        auto column_coordinates = column.get_coordinates();
-        for (size_t i = 0; i < column_coordinates.size(); ++i) {
-            distance += fabs(column_coordinates[i] - coordinates[i]);
+        auto columnCoordinates = column.get_coordinates();
+        for (size_t i = 0; i < columnCoordinates.size(); ++i) {
+            distance += fabs(columnCoordinates[i] - coordinates[i]);
         }
         if (distance < closestDistance) {
             closestColumn = column;
@@ -885,6 +888,7 @@ bool Core::is_gapping_missaligned() {
         if (!gapping[i].get_coordinates()) {
             return true;
         }
+
         auto columnIndex = find_exact_column_index_by_coordinates(*gapping[i].get_coordinates());
         if (columnIndex == -1) {
             return true;

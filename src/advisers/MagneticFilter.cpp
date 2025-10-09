@@ -5,6 +5,7 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/CoreTemperature.h"
 #include "physical_models/Impedance.h"
+#include <magic_enum.hpp>
 
 #include <cfloat>
 #include <cmath>
@@ -120,8 +121,8 @@ MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
     processed.set_peak_to_peak(2 * _magneticFluxDensityReference);
     magneticFluxDensity.set_processed(processed);
     _operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
-    _coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
-    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+    _coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
 
     if (settings->get_core_adviser_include_margin() && inputs.get_design_requirements().get_insulation()) {
         auto clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
@@ -172,11 +173,11 @@ MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
         }
         _areaProductRequiredPreCalculations.push_back(preCalculation);
         if (std::isinf(_areaProductRequiredPreCalculations.back()) || _areaProductRequiredPreCalculations.back() == 0) {
-            std::cout << "powerMean: " << powerMean << std::endl;
-            std::cout << "operatingPointIndex: " << operatingPointIndex << std::endl;
-            std::cout << "primaryAreaFactor: " << primaryAreaFactor << std::endl;
-            std::cout << "switchingFrequency: " << switchingFrequency << std::endl;
-            std::cout << "_areaProductRequiredPreCalculations.back(): " << _areaProductRequiredPreCalculations.back() << std::endl;
+            std::cerr << "powerMean: " << powerMean << std::endl;
+            std::cerr << "operatingPointIndex: " << operatingPointIndex << std::endl;
+            std::cerr << "primaryAreaFactor: " << primaryAreaFactor << std::endl;
+            std::cerr << "switchingFrequency: " << switchingFrequency << std::endl;
+            std::cerr << "_areaProductRequiredPreCalculations.back(): " << _areaProductRequiredPreCalculations.back() << std::endl;
             throw std::runtime_error("_areaProductRequiredPreCalculations cannot be 0 or NaN");
         }
     }
@@ -437,22 +438,22 @@ std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic
 
 MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs) {
     std::map<std::string, std::string> models;
-    models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-    models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
-    models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+    models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
+    models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
     MagneticFilterCoreAndDcLosses(inputs, models);
 }
 
 MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses() {
     std::map<std::string, std::string> models;
-    models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-    models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
-    models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+    models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
+    models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
 
     _maximumPowerMean = 0;
 
     _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
-    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
 
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
     _models = models;
@@ -485,13 +486,13 @@ MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std:
 
 
     if (largeWaveform) {
-        models["coreLosses"] = magic_enum::enum_name(CoreLossesModels::STEINMETZ);
+        models["coreLosses"] = to_string(CoreLossesModels::STEINMETZ);
     }
 
     _maximumPowerMean = *max_element(powerMeans.begin(), powerMeans.end());
 
     _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
-    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
 
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
     _models = models;
@@ -661,22 +662,22 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
 
 MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inputs) {
     std::map<std::string, std::string> models;
-    models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-    models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
-    models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+    models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
+    models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
     MagneticFilterCoreDcAndSkinLosses(inputs, models);
 }
 
 MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses() {
     std::map<std::string, std::string> models;
-    models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-    models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
-    models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+    models["gapReluctance"] = to_string(defaults.reluctanceModelDefault);
+    models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
 
     _maximumPowerMean = 0;
 
     _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
-    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
 
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
     _models = models;
@@ -709,13 +710,13 @@ MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inpu
 
 
     if (largeWaveform) {
-        models["coreLosses"] = magic_enum::enum_name(CoreLossesModels::STEINMETZ);
+        models["coreLosses"] = to_string(CoreLossesModels::STEINMETZ);
     }
 
     _maximumPowerMean = *max_element(powerMeans.begin(), powerMeans.end());
 
     _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
-    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
 
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
     _models = models;
@@ -1092,7 +1093,7 @@ std::pair<bool, double> MagneticFilterAreaNoParallels::evaluate_magnetic(Magneti
     return {valid, scoring};
 }
 
-std::pair<bool, double> MagneticFilterAreaNoParallels::evaluate_magnetic(CoilFunctionalDescription winding, Section section) {
+std::pair<bool, double> MagneticFilterAreaNoParallels::evaluate_magnetic(Winding winding, Section section) {
     auto wire = Coil::resolve_wire(winding);
 
     if (wire.get_type() == WireType::FOIL && winding.get_number_parallels() * winding.get_number_turns() > _maximumNumberParallels) {
@@ -1142,7 +1143,7 @@ std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Magne
     return {valid, scoring};
 }
 
-std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(CoilFunctionalDescription winding, Section section, double numberSections, double sectionArea, bool allowNotFit) {
+std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Winding winding, Section section, double numberSections, double sectionArea, bool allowNotFit) {
     auto wire = Coil::resolve_wire(winding);
     if (!Coil::resolve_wire(winding).get_conducting_area()) {
         throw std::runtime_error("Conducting area is missing");
@@ -1185,7 +1186,7 @@ std::pair<bool, double> MagneticFilterEffectiveResistance::evaluate_magnetic(Mag
     return {valid, scoring};
 }
 
-std::pair<bool, double> MagneticFilterEffectiveResistance::evaluate_magnetic(CoilFunctionalDescription winding, double effectivefrequency, double temperature) {
+std::pair<bool, double> MagneticFilterEffectiveResistance::evaluate_magnetic(Winding winding, double effectivefrequency, double temperature) {
     auto wire = Coil::resolve_wire(winding);
 
     double effectiveResistancePerMeter = WindingLosses::calculate_effective_resistance_per_meter(wire, effectivefrequency, temperature);
@@ -1213,7 +1214,7 @@ std::pair<bool, double> MagneticFilterProximityFactor::evaluate_magnetic(Magneti
     return {valid, scoring};
 }
 
-std::pair<bool, double> MagneticFilterProximityFactor::evaluate_magnetic(CoilFunctionalDescription winding, double effectiveSkinDepth, double temperature) {
+std::pair<bool, double> MagneticFilterProximityFactor::evaluate_magnetic(Winding winding, double effectiveSkinDepth, double temperature) {
     auto wire = Coil::resolve_wire(winding);
 
     if (!wire.get_number_conductors()) {
@@ -1264,7 +1265,7 @@ std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magn
     return {valid, scoring};
 }
 
-std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magnetic(CoilFunctionalDescription winding, WireSolidInsulationRequirements wireSolidInsulationRequirements) {
+std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magnetic(Winding winding, WireSolidInsulationRequirements wireSolidInsulationRequirements) {
     auto wire = Coil::resolve_wire(winding);
 
     if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
@@ -1515,7 +1516,9 @@ MagneticFilterFringingFactor::MagneticFilterFringingFactor(Inputs inputs, std::m
     _models = models;
     _magneticEnergy = MagneticEnergy(models);
     _requiredMagneticEnergy = resolve_dimensional_values(_magneticEnergy.calculate_required_magnetic_energy(inputs));
-    _reluctanceModel = ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+    ReluctanceModels reluctanceModel;
+    from_json(_models["gapReluctance"], reluctanceModel);
+    _reluctanceModel = ReluctanceModel::factory(reluctanceModel);
 }
 
 MagneticFilterFringingFactor::MagneticFilterFringingFactor(Inputs inputs) {
@@ -1568,7 +1571,7 @@ std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(Magne
     return {valid, scoring};
 }
 
-std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(CoilFunctionalDescription winding, SignalDescriptor current, double temperature) {
+std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(Winding winding, SignalDescriptor current, double temperature) {
     auto wire = Coil::resolve_wire(winding);
     double skinEffectLossesPerMeter = WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature).first;
     double valid = true;

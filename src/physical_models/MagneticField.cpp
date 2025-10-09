@@ -12,7 +12,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -387,7 +386,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
     WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput;
     windingWindowMagneticStrengthFieldOutput.set_field_per_frequency(complexFieldPerHarmonic);
-    windingWindowMagneticStrengthFieldOutput.set_method_used(std::string{magic_enum::enum_name(_magneticFieldStrengthModel)});
+    windingWindowMagneticStrengthFieldOutput.set_method_used(to_string(_magneticFieldStrengthModel));
     windingWindowMagneticStrengthFieldOutput.set_origin(ResultOrigin::SIMULATION);
     return windingWindowMagneticStrengthFieldOutput;
 }

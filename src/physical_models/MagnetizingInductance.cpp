@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -73,7 +72,9 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     OpenMagnetics::InitialPermeability initialPermeability;
     double currentInitialPermeability;
 
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
     double currentTotalReluctance;
     double modifiedTotalReluctance = 0;
     double modifiedMagnetizingInductance = 5e-3;
@@ -244,7 +245,9 @@ double MagnetizingInductance::calculate_inductance_air_solenoid(Magnetic magneti
 double MagnetizingInductance::calculate_inductance_air_solenoid(Core core, Coil coil) {
     double numberTurnsPrimary = coil.get_functional_description()[0].get_number_turns();
 
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
     double airCoreReluctance = reluctanceModel->get_air_cored_reluctance(coil.resolve_bobbin());
     auto modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / airCoreReluctance;
     return modifiedMagnetizingInductance;
@@ -280,7 +283,9 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     double currentInitialPermeability;
     double modifiedInitialPermeability;
 
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
     double totalReluctance;
 
     currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
@@ -407,7 +412,9 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     double modifiedInitialPermeability;
     double currentInitialPermeability;
 
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
     double neededTotalReluctance = pow(numberTurnsPrimary, 2) / desiredMagnetizingInductance;
 
     currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);

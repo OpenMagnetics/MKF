@@ -76,7 +76,7 @@ SUITE(CoreAdviserAvailableCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         auto cores = load_test_data();
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 5);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 50);
 
 
         CHECK(masMagnetics.size() > 0);
@@ -131,7 +131,7 @@ SUITE(CoreAdviserAvailableCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         auto cores = load_test_data();
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 5);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 50);
 
 
         CHECK(masMagnetics.size() > 0);
@@ -345,7 +345,7 @@ SUITE(CoreAdviserAvailableCores) {
         settings->set_use_toroidal_cores(true);
         CoreAdviser coreAdviser;
         auto cores = load_test_data();
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 5);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 50);
 
         CHECK(masMagnetics.size() == 5);
         bool found = false;

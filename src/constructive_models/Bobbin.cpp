@@ -5,7 +5,6 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -683,7 +682,7 @@ bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t w
         }
     }
     else {
-        throw std::runtime_error("Unsupported winding window shape: " + std::string{magic_enum::enum_name(get_winding_window_shape())});
+        throw std::runtime_error("Unsupported winding window shape: " + to_string(get_winding_window_shape()));
     }
 }
 

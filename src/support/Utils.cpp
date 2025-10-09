@@ -10,7 +10,6 @@
 #include <iostream>
 #include <cfloat>
 #include <limits>
-#include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -20,6 +19,7 @@
 #include <typeinfo>
 #include <random>
 #include <algorithm>
+#include <magic_enum.hpp>
 
 CMRC_DECLARE(data);
 
@@ -458,7 +458,9 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
         CoreShape coreShape;
         from_json(jf, coreShape);
 
-        coreShape.set_family(magic_enum::enum_cast<CoreShapeFamily>(family).value());
+        CoreShapeFamily coreShapeFamily;
+        from_json(family, coreShapeFamily);
+        coreShape.set_family(coreShapeFamily);
 
         coreShapeDatabase[jf["name"]] = coreShape;
 
@@ -1314,23 +1316,23 @@ bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByNam
 
             if (roundWindingWinw) {
                 if (distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) < -1e-8) {
-                    std::cout << "leftName: " << leftName << std::endl;
-                    std::cout << "rightName: " << rightName << std::endl;
-                    std::cout << "distanceBetweenCenters: " << distanceBetweenCenters << std::endl;
-                    std::cout << "(distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9)): " << (distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9)) << std::endl;
-                    std::cout << "(leftDimensions[0] / 2 + rightDimensions[0] / 2): " << (leftDimensions[0] / 2 + rightDimensions[0] / 2) << std::endl;
+                    std::cerr << "leftName: " << leftName << std::endl;
+                    std::cerr << "rightName: " << rightName << std::endl;
+                    std::cerr << "distanceBetweenCenters: " << distanceBetweenCenters << std::endl;
+                    std::cerr << "(distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9)): " << (distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9)) << std::endl;
+                    std::cerr << "(leftDimensions[0] / 2 + rightDimensions[0] / 2): " << (leftDimensions[0] / 2 + rightDimensions[0] / 2) << std::endl;
                     return true;
                 }
             }
             else {
                 if (roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) < roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) &&
                     roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) < roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9)) {
-                    std::cout << "leftName: " << leftName << std::endl;
-                    std::cout << "rightName: " << rightName << std::endl;
-                    std::cout << "roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9): " << roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) << std::endl;
-                    std::cout << "roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9): " << roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) << std::endl;
-                    std::cout << "roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9): " << roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) << std::endl;
-                    std::cout << "roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9): " << roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9) << std::endl;
+                    std::cerr << "leftName: " << leftName << std::endl;
+                    std::cerr << "rightName: " << rightName << std::endl;
+                    std::cerr << "roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9): " << roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) << std::endl;
+                    std::cerr << "roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9): " << roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) << std::endl;
+                    std::cerr << "roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9): " << roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) << std::endl;
+                    std::cerr << "roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9): " << roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9) << std::endl;
                     return true;
                 }
             }
@@ -1399,14 +1401,16 @@ double derivative_kelvin_function_imaginary(double order, double x) {
 }
 
 IsolationSide get_isolation_side_from_index(size_t index) {
-    auto orderedIsolationSide = magic_enum::enum_cast<OrderedIsolationSide>(index).value();
-    auto orderedIsolationSideString = std::string{magic_enum::enum_name(orderedIsolationSide)};
-    return magic_enum::enum_cast<IsolationSide>(orderedIsolationSideString).value();
+    auto orderedIsolationSide = static_cast<OrderedIsolationSide>(index);
+    auto orderedIsolationSideString = to_string(orderedIsolationSide);
+    IsolationSide isolationSide;
+    from_json(orderedIsolationSideString, isolationSide);
+    return isolationSide;
 }
 
 std::string get_isolation_side_name_from_index(size_t index) {
     auto isolationSide = get_isolation_side_from_index(index);
-    std::string isolationSideString = std::string{magic_enum::enum_name(isolationSide)};
+    std::string isolationSideString = to_string(isolationSide);
     std::transform(isolationSideString.begin(), isolationSideString.end(), isolationSideString.begin(), ::tolower);
     return isolationSideString;
 }
@@ -1969,7 +1973,7 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
 
     for (size_t i = 0; i < magnetic.get_coil().get_functional_description().size(); i++) {
         if (magnetic.get_coil().get_functional_description().size() <= i) {
-            CoilFunctionalDescription dummyWinding;
+            Winding dummyWinding;
             dummyWinding.set_name(get_isolation_side_name_from_index(i));
             dummyWinding.set_number_turns(1);
             dummyWinding.set_number_parallels(1);
@@ -2334,5 +2338,6 @@ double get_closest(double val1, double val2, double value) {
     else
         return val1;
 }
+
 
 } // namespace OpenMagnetics

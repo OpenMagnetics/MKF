@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <magic_enum.hpp>
 #include <map>
 #include <numbers>
 #include <streambuf>
@@ -126,7 +125,7 @@ class CoreLossesModel {
         std::vector<std::string> methodsString;
         auto methods = get_methods(material);
         for (auto method : methods) {
-            auto methodString = std::string{magic_enum::enum_name(method)};
+            auto methodString = to_string(method);
             std::transform(methodString.begin(), methodString.end(), methodString.begin(), ::tolower);
             methodsString.push_back(methodString);
         }

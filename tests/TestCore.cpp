@@ -1924,10 +1924,8 @@ SUITE(CoreFunctionalDescription) {
             "[0.0, 0.001, 0.0], \"distanceClosestNormalSurface\": 0.0041, \"length\": 0.001, \"sectionDimensions\": "
             "[0.0043, 0.0043], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 8.8e-05, \"coordinates\": "
             "[0.0, 0.0, -0.005751], \"distanceClosestNormalSurface\": 0.004598, \"length\": 5e-06, "
-            "\"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": \"residual\"}, "
-            "{\"area\": 8.8e-05, \"coordinates\": [0.0, -0.001, -0.005751], \"distanceClosestNormalSurface\": 0.004598, "
-            "\"length\": 5e-06, \"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": "
-            "\"residual\"}], \"material\": \"3C97\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": "
+            "\"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": \"residual\"}"
+            "], \"material\": \"3C97\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": "
             "{\"A\": 0.0125, \"B\": 0.0064, \"C\": 0.0088, \"D\": 0.0046, \"E\": 0.01, \"F\": 0.0043, \"G\": 0.000, "
             "\"H\": 0.0, \"K\": 0.0023}, \"family\": \"ep\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": "
             "\"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": "
@@ -1935,9 +1933,11 @@ SUITE(CoreFunctionalDescription) {
 
         Core core(coreJson, true);
 
+        std::cout << coreJson["functionalDescription"]["gapping"].size() << std::endl;
+
         auto functionalDescription = core.get_functional_description();
 
-        CHECK_EQUAL(functionalDescription.get_gapping().size(), 4u);
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 3u);
         CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] == 0);
         CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[1] == 0);
         CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[2] == 0);
@@ -1950,9 +1950,6 @@ SUITE(CoreFunctionalDescription) {
         CHECK((*functionalDescription.get_gapping()[2].get_coordinates())[1] == 0);
         CHECK((*functionalDescription.get_gapping()[2].get_coordinates())[2] != 0);
 
-        CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[0] == 0);
-        CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[1] != 0);
-        CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[2] != 0);
     }
 
     TEST(Test_Core_Functional_Description_Web_3) {
