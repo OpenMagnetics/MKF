@@ -18,7 +18,7 @@ public:
     TwoSwitchForward() {
     };
 
-    bool run_checks(bool assert = false);
+    bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);

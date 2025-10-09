@@ -37,10 +37,10 @@ public:
         efficiency = 1;
     };
 
-    bool run_checks(bool assert = false);
+    bool run_checks(bool assert = false) override;
 
     // According to Worked Example (7), pages 135-144 — Designing the Flyback Transformer of Switching Power Supplies A - Z (Second Edition) by Sanjaya Maniktala
-    DesignRequirements process_design_requirements();
+    DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
