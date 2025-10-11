@@ -208,4 +208,23 @@ inline void to_json(json & j, const CoreAdviser::CoreAdviserModes & x) {
     }
 }
 
+void from_json(const json & j, CoreAdviser::CoreAdviserFilters & x);
+void to_json(json & j, const CoreAdviser::CoreAdviserFilters & x);
+
+inline void from_json(const json & j, CoreAdviser::CoreAdviserFilters & x) {
+    if (j == "Cost" || j == "cost" || j == "COST") x = CoreAdviser::CoreAdviserFilters::COST;
+    else if (j == "Efficiency" || j == "efficiency" || j == "EFFICIENCY") x = CoreAdviser::CoreAdviserFilters::EFFICIENCY;
+    else if (j == "Dimensions" || j == "dimensions" || j == "DIMENSIONS") x = CoreAdviser::CoreAdviserFilters::DIMENSIONS;
+    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+}
+
+inline void to_json(json & j, const CoreAdviser::CoreAdviserFilters & x) {
+    switch (x) {
+        case CoreAdviser::CoreAdviserFilters::COST: j = "Cost"; break;
+        case CoreAdviser::CoreAdviserFilters::EFFICIENCY: j = "Efficiency"; break;
+        case CoreAdviser::CoreAdviserFilters::DIMENSIONS: j = "Dimensions"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"CoreAdviser::CoreAdviserFilters\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
 } // namespace OpenMagnetics
