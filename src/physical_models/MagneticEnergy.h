@@ -1,7 +1,7 @@
 #pragma once
 #include "Constants.h"
 #include "Defaults.h"
-#include "Utils.h"
+#include "support/Utils.h"
 
 #include "physical_models/Reluctance.h"
 #include "constructive_models/Core.h"
