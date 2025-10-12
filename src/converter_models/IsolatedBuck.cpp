@@ -183,7 +183,13 @@ namespace OpenMagnetics {
 
             for (size_t isolatedbuckOperatingPointIndex = 0; isolatedbuckOperatingPointIndex < get_operating_points().size(); ++isolatedbuckOperatingPointIndex) {
                 auto isolatedbuckOperatingPoint = get_operating_points()[isolatedbuckOperatingPointIndex];
-                maximumOutputCurrent = std::max(maximumOutputCurrent, isolatedbuckOperatingPoint.get_output_currents()[0]);
+                auto totalCurrentInPoint = isolatedbuckOperatingPoint.get_output_currents()[0];
+                double totalReflectedSecondaryCurrent = 0;
+                for (size_t secondaryIndex = 0; secondaryIndex < isolatedbuckOperatingPoint.get_output_currents().size() - 1; ++secondaryIndex) {
+                    totalReflectedSecondaryCurrent += isolatedbuckOperatingPoint.get_output_currents()[secondaryIndex + 1] / turnsRatios[secondaryIndex];
+                }
+                totalCurrentInPoint += totalReflectedSecondaryCurrent;
+                maximumOutputCurrent = std::max(maximumOutputCurrent, totalCurrentInPoint);
             }
 
             maximumCurrentRiple = currentRippleRatio * maximumOutputCurrent;
