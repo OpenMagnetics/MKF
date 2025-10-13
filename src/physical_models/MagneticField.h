@@ -21,7 +21,8 @@ namespace OpenMagnetics {
 
 class MagneticFieldStrengthModel {
     public:
-        virtual ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire = std::nullopt) = 0;
+        std::vector<Wire> _wirePerWinding;
+        virtual ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) = 0;
 };
 
 class MagneticFieldStrengthFringingEffectModel {
@@ -38,6 +39,7 @@ class MagneticField {
         std::shared_ptr<MagneticFieldStrengthModel>  _model;
         std::shared_ptr<MagneticFieldStrengthFringingEffectModel>  _fringingEffectModel;
     public:
+        std::vector<Wire> _wirePerWinding;
 
         MagneticField(MagneticFieldStrengthModels magneticFieldStrengthModel = Defaults().magneticFieldStrengthModelDefault,
                       MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModel = Defaults().magneticFieldStrengthFringingEffectModelDefault) {
@@ -69,7 +71,7 @@ class MagneticField {
 // class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
 //     public:
 //         std::string methodName = "Dowell";
-//         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire = std::nullopt);
+//         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
 // };
 
 
@@ -79,7 +81,7 @@ class MagneticField {
 class MagneticFieldStrengthWangModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "Wang";
-        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire = std::nullopt);
+        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
 };
 
 
@@ -89,7 +91,7 @@ class MagneticFieldStrengthWangModel : public MagneticFieldStrengthModel {
 class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "BinnsLawrenson";
-        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire = std::nullopt);
+        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
 };
 
 
@@ -98,7 +100,7 @@ class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthMod
 class MagneticFieldStrengthLammeranerModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "Lammeraner";
-        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire = std::nullopt);
+        ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
 };
 
 

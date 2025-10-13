@@ -922,7 +922,10 @@ Winding Coil::get_winding_by_name(std::string name) {
 }
 
 size_t Coil::get_winding_index_by_name(std::string name) {
-    return get_winding_index_by_name(get_functional_description(), name);
+    if (_windingIndexByName.count(name) == 0) {
+        _windingIndexByName[name] = get_winding_index_by_name(get_functional_description(), name);
+    }
+    return _windingIndexByName[name];
 }
 
 size_t Coil::get_winding_index_by_name(std::vector<Winding> functionalDescription, std::string name) {
