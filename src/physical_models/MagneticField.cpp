@@ -140,16 +140,16 @@ std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory() {
     return factory(defaults.magneticFieldStrengthModelDefault);
 }
 
-bool is_inside_inducing_turns(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, Wire inducingWire) {
+bool is_inside_inducing_turns(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, Wire* inducingWire) {
     double distanceX = fabs(inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0]);
     double distanceY = fabs(inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1]);
-    if (inducingWire.get_type() == WireType::ROUND || inducingWire.get_type() == WireType::LITZ) {
-        if (hypot(distanceX, distanceY) < inducingWire.get_maximum_outer_width() / 2) {
+    if (inducingWire->get_type() == WireType::ROUND || inducingWire->get_type() == WireType::LITZ) {
+        if (hypot(distanceX, distanceY) < inducingWire->get_maximum_outer_width() / 2) {
             return true;
         }
     }
     else {
-        if (distanceX < inducingWire.get_maximum_outer_width() / 2 && distanceY < inducingWire.get_maximum_outer_height() / 2) {
+        if (distanceX < inducingWire->get_maximum_outer_width() / 2 && distanceY < inducingWire->get_maximum_outer_height() / 2) {
             return true;
         }
     }
@@ -237,7 +237,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     if (!magnetic.get_coil().get_turns_description()) {
         throw std::runtime_error("Missing turns description in coil");
     }
-    auto wirePerWinding = magnetic.get_mutable_coil().get_wires();
+    _wirePerWinding = magnetic.get_mutable_coil().get_wires();
+    _model->_wirePerWinding = _wirePerWinding;
     auto turns = magnetic.get_coil().get_turns_description().value();
 
     std::vector<ComplexField> complexFieldPerHarmonic;
@@ -347,10 +348,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             }
 
             for (auto& inducingFieldPoint : inducingFields[harmonicIndex].get_data()) {
-                std::optional<Wire> inducingWire;
+                auto windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingFieldPoint.get_turn_index().value()].get_winding());
                 if (inducingFieldPoint.get_turn_index()) {
-                    auto windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingFieldPoint.get_turn_index().value()].get_winding());
-                    inducingWire = wirePerWinding[windingIndex];
                     if (inducedFieldPoint.get_turn_index()) {
                         if (inducedFieldPoint.get_turn_index().value() == inducingFieldPoint.get_turn_index().value()) {
                             continue;
@@ -364,7 +363,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     }
                 }
 
-                auto complexFieldPoint = _model->get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint, inducingWire);
+                auto complexFieldPoint = _model->get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint, windingIndex);
 
                 totalInducedFieldX += complexFieldPoint.get_real();
                 totalInducedFieldY += complexFieldPoint.get_imaginary();
@@ -391,23 +390,22 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     return windingWindowMagneticStrengthFieldOutput;
 }
 
-ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire) {
+ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
     double Hx = 0;
     double Hy = 0;
-    if (!inducingWire) {
+    if (!inducingWireIndex) {
         return MagneticFieldStrengthLammeranerModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
     }
     else {
-        auto wire = inducingWire.value();
         double c = 0;
         double h = 0;
-        if (wire.get_type() == WireType::FOIL) {
-            c = resolve_dimensional_values(wire.get_conducting_width().value());
-            h = resolve_dimensional_values(wire.get_conducting_height().value());
+        if (_wirePerWinding[inducingWireIndex.value()].get_type() == WireType::FOIL) {
+            c = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_width().value());
+            h = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_height().value());
         }
         else {
-            h = resolve_dimensional_values(wire.get_conducting_width().value());
-            c = resolve_dimensional_values(wire.get_conducting_height().value());
+            h = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_width().value());
+            c = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_height().value());
         }
         double k = c / h;
         double lambda = 0.01 * k + 0.66;
@@ -551,30 +549,47 @@ ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_be
     return complexFieldPoint;   
 }
 
-ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire) {
+ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
     double Hx;
     double Hy;
-    if (!inducingWire || inducingWire.value().get_type() == WireType::ROUND || inducingWire.value().get_type() == WireType::LITZ) {
 
-        double distanceX = inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0];
-        double distanceY = inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1];
-        if (inducingWire && hypot(distanceX, distanceY) < inducingWire.value().get_maximum_outer_width() / 2) {
-            Hx = 0;
-            Hy = 0;
+    double distanceX = inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0];
+    double distanceY = inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1];
+
+    bool computeRectangularFiled = false;
+
+    if (inducingWireIndex) {
+        if (_wirePerWinding[inducingWireIndex.value()].get_type() != WireType::ROUND && _wirePerWinding[inducingWireIndex.value()].get_type() != WireType::LITZ) {
+            computeRectangularFiled = true;
         }
-        else { 
-            double divisor = 2 * std::numbers::pi * (pow(distanceY, 2) + pow(distanceX, 2));
-            Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
-            Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
+        else {
+            if (hypot(distanceX, distanceY) < _wirePerWinding[inducingWireIndex.value()].get_maximum_outer_width() / 2) {
+                Hx = 0;
+                Hy = 0;
+            }
+            else { 
+                double divisor = 2 * std::numbers::pi * (pow(distanceY, 2) + pow(distanceX, 2));
+                Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
+                Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
+            }
+            if (std::isnan(Hx) || std::isnan(Hy)) {
+                throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
+            }
         }
+    }
+    else {
+        double divisor = 2 * std::numbers::pi * (pow(distanceY, 2) + pow(distanceX, 2));
+        Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
+        Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
         if (std::isnan(Hx) || std::isnan(Hy)) {
             throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
         }
     }
-    else {
-        auto wire = inducingWire.value();
-        double a = resolve_dimensional_values(wire.get_conducting_width().value()) / 2;
-        double b = resolve_dimensional_values(wire.get_conducting_height().value()) / 2;
+
+
+    if (computeRectangularFiled) {
+        double a = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_width().value()) / 2;
+        double b = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_height().value()) / 2;
         double x = inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0];
         double y = inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1];
 
@@ -696,17 +711,22 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
     return complexFieldPoint;   
 }
 
-ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire) {
+ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
     double Hx;
     double Hy;
-    if (!inducingWire || inducingWire.value().get_type() == WireType::ROUND || inducingWire.value().get_type() == WireType::LITZ) {
-        double turnLength = 1;
-        if (inducingFieldPoint.get_turn_length()) {
-            turnLength = inducingFieldPoint.get_turn_length().value();
+
+    double turnLength = 1;
+    if (inducingFieldPoint.get_turn_length()) {
+        turnLength = inducingFieldPoint.get_turn_length().value();
+    }
+    double distance = hypot(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
+    double angle = atan2(inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1]);
+
+    if (inducingWireIndex) {
+        if (_wirePerWinding[inducingWireIndex.value()].get_type() != WireType::ROUND && _wirePerWinding[inducingWireIndex.value()].get_type() != WireType::LITZ) {
+            return MagneticFieldStrengthBinnsLawrensonModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
         }
-        double distance = hypot(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
-        double angle = atan2(inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1]);
-        if (inducingWire && distance < inducingWire.value().get_maximum_outer_width() / 2) {
+        if (distance < _wirePerWinding[inducingWireIndex.value()].get_maximum_outer_width() / 2) {
             Hx = 0;
             Hy = 0;
         }
@@ -719,8 +739,13 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
         }
     }
     else {
-        return MagneticFieldStrengthBinnsLawrensonModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
+        double ex = cos(angle - std::numbers::pi / 2);
+        double ey = sin(angle - std::numbers::pi / 2);
+        double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
+        Hx = magneticFiledStrengthModule * ex;
+        Hy = magneticFiledStrengthModule * ey;
     }
+
     if (std::isnan(Hx) || std::isnan(Hy)) {
         throw std::runtime_error("NaN found in Lammeraner's model for magnetic field");
     }
