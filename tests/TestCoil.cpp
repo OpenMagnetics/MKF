@@ -21,6 +21,86 @@ using json = nlohmann::json;
 using namespace MAS;
 using namespace OpenMagnetics;
 
+
+void process_coil_configuration(OpenMagnetics::Coil& coil, json configuration, std::optional<size_t> repetitions = std::nullopt, std::optional<std::vector<double>> proportionPerWinding = std::nullopt, std::optional<std::vector<size_t>> pattern = std::nullopt) {
+    if (repetitions && proportionPerWinding && pattern) {
+        if (configuration["_layersOrientation"].is_object()) {
+            auto layersOrientationPerSection = std::map<std::string, WindingOrientation>(configuration["_layersOrientation"]);
+            for (auto [sectionName, layerOrientation] : layersOrientationPerSection) {
+                coil.set_layers_orientation(layerOrientation, sectionName);
+            }
+        }
+        else if (configuration["_layersOrientation"].is_array()) {
+            coil.wind_by_sections(proportionPerWinding.value(), pattern.value(), repetitions.value());
+            if (coil.get_sections_description()) {
+                auto sections = coil.get_sections_description_conduction();
+                auto layersOrientationPerSection = std::vector<WindingOrientation>(configuration["_layersOrientation"]);
+                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                    if (sectionIndex < layersOrientationPerSection.size()) {
+                        coil.set_layers_orientation(layersOrientationPerSection[sectionIndex], sections[sectionIndex].get_name());
+                    }
+                }
+            }
+        }
+        else {
+            WindingOrientation layerOrientation(configuration["_layersOrientation"]);
+            coil.set_layers_orientation(layerOrientation);
+
+        }
+        if (configuration["_turnsAlignment"].is_object()) {
+            auto turnsAlignmentPerSection = std::map<std::string, CoilAlignment>(configuration["_turnsAlignment"]);
+            for (auto [sectionName, turnsAlignment] : turnsAlignmentPerSection) {
+                coil.set_turns_alignment(turnsAlignment, sectionName);
+            }
+        }
+        else if (configuration["_turnsAlignment"].is_array()) {
+            coil.wind_by_sections(proportionPerWinding.value(), pattern.value(), repetitions.value());
+            if (coil.get_sections_description()) {
+                auto sections = coil.get_sections_description_conduction();
+                auto turnsAlignmentPerSection = std::vector<CoilAlignment>(configuration["_turnsAlignment"]);
+                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                    if (sectionIndex < turnsAlignmentPerSection.size()) {
+                        coil.set_turns_alignment(turnsAlignmentPerSection[sectionIndex], sections[sectionIndex].get_name());
+                    }
+                }
+            }
+        }
+        else {
+            CoilAlignment turnsAlignment(configuration["_turnsAlignment"]);
+            coil.set_turns_alignment(turnsAlignment);
+        }
+    }
+    else {
+        if (configuration.contains("_layersOrientation")) {
+            coil.set_layers_orientation(configuration["_layersOrientation"]);
+        }
+        if (configuration.contains("_turnsAlignment")) {
+            coil.set_turns_alignment(configuration["_turnsAlignment"]);
+        }
+    }
+
+    if (configuration.contains("_interleavingLevel")) {
+        coil.set_interleaving_level(configuration["_interleavingLevel"]);
+    }
+    if (configuration.contains("_windingOrientation")) {
+        coil.set_winding_orientation(configuration["_windingOrientation"]);
+    }
+    if (configuration.contains("_sectionAlignment")) {
+        coil.set_section_alignment(configuration["_sectionAlignment"]);
+    }
+    if (configuration.contains("_sectionAlignment")) {
+        coil.set_section_alignment(configuration["_sectionAlignment"]);
+    }
+
+    if (configuration.contains("_interlayerInsulationThickness")) {
+        coil.set_interlayer_insulation(configuration["_interlayerInsulationThickness"], std::nullopt, std::nullopt, false);
+    }
+    if (configuration.contains("_intersectionInsulationThickness")) {
+        coil.set_intersection_insulation(configuration["_intersectionInsulationThickness"], 1, std::nullopt, std::nullopt, false);
+    }
+}
+
+
 SUITE(CoilWeb) {
     bool plot = false;
     auto settings = Settings::GetInstance();

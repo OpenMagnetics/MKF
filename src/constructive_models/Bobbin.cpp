@@ -418,7 +418,7 @@ std::vector<double> Bobbin::get_winding_window_dimensions(double coreWindingWind
     return {bobbinWindingWindowWidth, bobbinWindingWindowHeight};
 }
 
-Bobbin Bobbin::create_quick_bobbin(double windingWindowHeight, double windingWindowWidth) {
+Bobbin Bobbin::create_quick_bobbin(double windingWindowHeight, double windingWindowWidth, ColumnShape shape) {
     CoreBobbinProcessedDescription coreBobbinProcessedDescription;
     WindingWindowElement windingWindowElement;
 
@@ -430,7 +430,7 @@ Bobbin Bobbin::create_quick_bobbin(double windingWindowHeight, double windingWin
     coreBobbinProcessedDescription.set_winding_windows(std::vector<WindingWindowElement>({windingWindowElement}));
     coreBobbinProcessedDescription.set_wall_thickness(0.001);
     coreBobbinProcessedDescription.set_column_thickness(0.001);
-    coreBobbinProcessedDescription.set_column_shape(ColumnShape::ROUND);
+    coreBobbinProcessedDescription.set_column_shape(shape);
     coreBobbinProcessedDescription.set_column_depth(windingWindowWidth / 2);
     coreBobbinProcessedDescription.set_column_width(windingWindowWidth / 2);
 
