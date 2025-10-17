@@ -63,7 +63,7 @@ class Bobbin : public MAS::Bobbin {
     std::vector<double> get_winding_window_coordinates(size_t windingWindowIndex = 0);
     WindingOrientation get_winding_window_sections_orientation(size_t windingWindowIndex = 0);
     CoilAlignment get_winding_window_sections_alignment(size_t windingWindowIndex = 0);
-    static Bobbin create_quick_bobbin(double windingWindowHeight, double windingWindowWidth);
+    static Bobbin create_quick_bobbin(double windingWindowHeight, double windingWindowWidth, ColumnShape shape = ColumnShape::ROUND);
     static Bobbin create_quick_bobbin(Core core, bool nullDimensions = false);
     static Bobbin create_quick_bobbin(Core core, double thickness);
     static Bobbin create_quick_bobbin(Core core, double wallThickness, double columnThickness);
