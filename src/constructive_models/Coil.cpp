@@ -2050,6 +2050,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
         maybeVirtualizedPattern = virtualize_pattern(pattern);
         maybeVirtualizedProportionPerWinding = virtualize_proportion_per_winding(proportionPerWinding);
         set_functional_description(virtualFunctionalDescription);
+        _windingIndexByName.clear();
     }
 
     bool result;
@@ -2062,6 +2063,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
     }
 
     if (needsVirtualization) {
+        _windingIndexByName.clear();
         set_functional_description(functionalDescription);
         devirtualize_sections_description();
     }
@@ -2421,6 +2423,7 @@ std::map<std::pair<size_t, size_t>, std::vector<Layer>> Coil::virtualize_insulat
 std::map<size_t, std::vector<size_t>> Coil::create_virtualization_map() {
     std::map<size_t, size_t> inversedVirtualizationMap;
 
+    _windingIndexByName.clear();
     _virtualizationMap.clear();
     size_t currentVirtualIndex = 0;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -3330,6 +3333,7 @@ bool Coil::wind_by_layers() {
         _insulationInterSectionsLayers = virtualize_insulation_intersections_layers();
         set_functional_description(virtualFunctionalDescription);
         set_sections_description(virtualSectionsDescription);
+        _windingIndexByName.clear();
     }
 
     bool result;
@@ -3341,6 +3345,7 @@ bool Coil::wind_by_layers() {
     }
 
     if (needsVirtualization) {
+        _windingIndexByName.clear();
         set_functional_description(functionalDescription);
         set_sections_description(sectionsDescription);
         _insulationInterSectionsLayers = insulationInterSectionsLayers;
@@ -3432,7 +3437,6 @@ bool Coil::wind_by_rectangular_layers() {
                     layerHeight = wireHeight;
                 }
             }
-
 
             if (sections[sectionIndex].get_number_layers()) {
                 numberLayers = sections[sectionIndex].get_number_layers().value();
@@ -4002,6 +4006,7 @@ bool Coil::wind_by_turns() {
         set_functional_description(virtualFunctionalDescription);
         set_sections_description(virtualSectionsDescription);
         set_layers_description(virtualLayersDescription);
+        _windingIndexByName.clear();
     }
 
     bool result;
@@ -4014,6 +4019,7 @@ bool Coil::wind_by_turns() {
     }
 
     if (needsVirtualization) {
+        _windingIndexByName.clear();
         set_functional_description(functionalDescription);
         set_sections_description(sectionsDescription);
         set_layers_description(layersDescription);
