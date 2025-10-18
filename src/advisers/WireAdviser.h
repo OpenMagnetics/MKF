@@ -69,11 +69,17 @@ class WireAdviser {
         void set_maximum_effective_current_density(double maximumEffectiveCurrentDensity) {
             _maximumEffectiveCurrentDensity = maximumEffectiveCurrentDensity;
         }
+        double get_maximum_effective_current_density() {
+            return _maximumEffectiveCurrentDensity;
+        }
         void set_wire_solid_insulation_requirements(WireSolidInsulationRequirements wireSolidInsulationRequirements) {
             _wireSolidInsulationRequirements = wireSolidInsulationRequirements;
         }
         void set_maximum_number_parallels(int maximumNumberParallels) {
             _maximumNumberParallels = maximumNumberParallels;
+        }
+        double get_maximum_number_parallels() {
+            return _maximumNumberParallels;
         }
         double get_maximum_area_proportion() {
             return _maximumOuterAreaProportion;

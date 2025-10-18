@@ -409,6 +409,9 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding wind
             }
         }
 
+        // std::cout << "_maximumEffectiveCurrentDensity: " << _maximumEffectiveCurrentDensity << std::endl;
+        // std::cout << "_maximumNumberParallels: " << _maximumNumberParallels << std::endl;
+
         winding.set_number_parallels(numberParallelsNeeded);
         winding.set_wire(wire);
         windings.push_back(std::pair<Winding, double>{winding, 0});
@@ -501,7 +504,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(std::vecto
     }
 
     auto tempCoilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, false);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels.");
+    logEntry("There are " + std::to_string(tempCoilsWithScoring.size()) + " after filtering by area with parallels.");
 
     if (tempCoilsWithScoring.size() == 0) {
         coilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, true);
