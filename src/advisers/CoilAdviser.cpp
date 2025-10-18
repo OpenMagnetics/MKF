@@ -361,6 +361,8 @@ namespace OpenMagnetics {
         int timeout = 1 - numberWindings;
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             _wireAdviser.set_wire_solid_insulation_requirements(solidInsulationRequirementsForWires[windingIndex]);
+            wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
+
 
             SignalDescriptor maximumCurrent;
             double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
@@ -406,12 +408,12 @@ namespace OpenMagnetics {
                 {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
                 {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
             };
-            bool found = false;
             logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
 
             for (auto& wireConfiguration : wireConfigurations) {
                 _wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
                 _wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
+                logEntry("Trying wires with a current density of " + std::to_string(wireConfiguration["maximumEffectiveCurrentDensity"]) + " and " + std::to_string(wireConfiguration["maximumNumberParallels"]) + " maximum parallels", "CoilAdviser", 3);
 
                 auto sectionIndex = coil.convert_conduction_section_index_to_global(windingIndex);
 
@@ -426,13 +428,11 @@ namespace OpenMagnetics {
                 if (wiresWithScoring.size() != 0) {
                     timeout += wiresWithScoring.size();
 
-                    wireCoilPerWinding.push_back(wiresWithScoring);
-                    found = true;
-                    break;
+                    std::move(wiresWithScoring.begin(), wiresWithScoring.end(), std::back_inserter(wireCoilPerWinding.back()));
+                    if (wireCoilPerWinding.back().size() > maximumNumberResults * 4) {
+                        break;
+                    }
                 }
-            }
-            if (!found) {
-                wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
             }
         }
 

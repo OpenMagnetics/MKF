@@ -48,6 +48,22 @@ class CoilAdviser : public WireAdviser {
             return _commonWireStandard;
         }
 
+        void set_maximum_effective_current_density(double maximumEffectiveCurrentDensity) {
+            _wireAdviser.set_maximum_effective_current_density(maximumEffectiveCurrentDensity);
+        }
+        
+        double get_maximum_effective_current_density() {
+            return _wireAdviser.get_maximum_effective_current_density();
+        }
+
+        void set_maximum_number_parallels(int maximumNumberParallels) {
+            _wireAdviser.set_maximum_number_parallels(maximumNumberParallels);
+        }
+
+        double get_maximum_number_parallels() {
+            return _wireAdviser.get_maximum_number_parallels();
+        }
+
 };
 
 
