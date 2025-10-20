@@ -1243,9 +1243,9 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
         case WaveformLabel::CUSTOM:
             return (*max_element(waveform.get_data().begin(), waveform.get_data().end()) + *min_element(waveform.get_data().begin(), waveform.get_data().end())) / 2;
         case WaveformLabel::FLYBACK_PRIMARY:
-            return waveform.get_data()[1];
+            return *min_element(waveform.get_data().begin(), waveform.get_data().end());
         case WaveformLabel::FLYBACK_SECONDARY:
-            return waveform.get_data()[3];
+            return *min_element(waveform.get_data().begin(), waveform.get_data().end());
     }
     return 0;
 }
