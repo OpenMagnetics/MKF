@@ -199,6 +199,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
 
     load_filter_flow(filterFlow, catalogMagneticsWithInputs[0].get_inputs());
+    std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;
+    std::vector<MagneticFilterOperation> nonStrictlyRequiredFilterFlow;
     std::vector<Mas> validMas;
     MagneticSimulator magneticSimulator;
 
@@ -207,30 +209,26 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     bool noStrictlyRequiredFilters = true;
     for (auto filterConfiguration : filterFlow) {
         if (filterConfiguration.get_strictly_required()) {
+            strictlyRequiredFilterFlow.push_back(filterConfiguration);
             noStrictlyRequiredFilters = false;
-            break;
+            // break;
+        }
+        else {
+            nonStrictlyRequiredFilterFlow.push_back(filterConfiguration);
         }
     }
-
-    for (auto mas : catalogMagneticsWithInputs) {
+    for (size_t index = 0; index < catalogMagneticsWithInputs.size(); ++index) {
+        auto mas = catalogMagneticsWithInputs[index];
         std::vector<Outputs> outputs;
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
         bool validMagnetic = true;
-        for (auto filterConfiguration : filterFlow) {
+        for (auto filterConfiguration : strictlyRequiredFilterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
         
             auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
             add_scoring(magnetic.get_reference(), filterEnum, scoring);
             if (strict) {
-                if ((valid && filterConfiguration.get_strictly_required()) || (!valid && noStrictlyRequiredFilters)) {
-                    catalogMasWithStriclyRequirementsPassed.push_back(mas);
-                }
-                if (!valid && filterConfiguration.get_strictly_required()) {
-                    if (std::find(catalogMasWithStriclyRequirementsPassed.begin(), catalogMasWithStriclyRequirementsPassed.end(), mas) != catalogMasWithStriclyRequirementsPassed.end()) {
-                        catalogMasWithStriclyRequirementsPassed.erase(std::remove(catalogMasWithStriclyRequirementsPassed.begin(), catalogMasWithStriclyRequirementsPassed.end(), mas), catalogMasWithStriclyRequirementsPassed.end());
-                    }
-                }
                 validMagnetic &= valid;
                 if (!valid) {
                     break;
@@ -239,12 +237,31 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         }
 
         if (validMagnetic) {
-            Mas mas;
-            mas.set_magnetic(magnetic);
-            mas.set_inputs(inputs);
-            mas.set_outputs(outputs);
-            validMas.push_back(mas);
+            Mas resultMas;
+            resultMas.set_magnetic(magnetic);
+            resultMas.set_inputs(inputs);
+            resultMas.set_outputs(outputs);
+            catalogMasWithStriclyRequirementsPassed.push_back(resultMas);
         }
+    }
+
+    for (size_t index = 0; index < catalogMasWithStriclyRequirementsPassed.size(); ++index) {
+        auto mas = catalogMasWithStriclyRequirementsPassed[index];
+        std::vector<Outputs> outputs;
+        auto inputs = mas.get_inputs();
+        auto magnetic = mas.get_magnetic();
+        for (auto filterConfiguration : filterFlow) {
+            MagneticFilters filterEnum = filterConfiguration.get_filter();
+        
+            auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
+            add_scoring(magnetic.get_reference(), filterEnum, scoring);
+        }
+
+        Mas resultMas;
+        resultMas.set_magnetic(magnetic);
+        resultMas.set_inputs(inputs);
+        resultMas.set_outputs(outputs);
+        validMas.push_back(resultMas);
     }
 
     auto scoringsPerReferencePerFilter = get_scorings();

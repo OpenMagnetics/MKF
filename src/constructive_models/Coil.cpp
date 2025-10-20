@@ -6569,9 +6569,14 @@ InsulationMaterial Coil::resolve_insulation_layer_insulation_material(Layer laye
     auto insulationMaterial = layer.get_insulation_material().value();
     // If the material is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(insulationMaterial)) {
-        auto insulationMaterialData = find_insulation_material_by_name(std::get<std::string>(insulationMaterial));
+        try {
+            auto insulationMaterialData = find_insulation_material_by_name(std::get<std::string>(insulationMaterial));
+            return insulationMaterialData;
+        }
+        catch (...) {
+            return find_insulation_material_by_name(defaults.defaultInsulationMaterial);
+        }
 
-        return insulationMaterialData;
     }
     else {
         return InsulationMaterial(std::get<MAS::InsulationMaterial>(insulationMaterial));
