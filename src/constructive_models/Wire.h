@@ -157,6 +157,7 @@ class Wire : public MAS::Wire {
         WireMaterial resolve_material();
         static InsulationMaterial resolve_coating_insulation_material(Wire wire);
         static InsulationMaterial resolve_coating_insulation_material(WireRound wire);
+        static InsulationMaterial resolve_coating_insulation_material(InsulationWireCoating coating);
         InsulationMaterial resolve_coating_insulation_material();
 
         // Thought for enamelled round wires

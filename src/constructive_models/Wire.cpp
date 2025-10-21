@@ -1696,44 +1696,33 @@ namespace OpenMagnetics {
         auto coating = resolve_coating(wire);
 
         if (!coating) {
-            throw std::runtime_error("Coating is missing");
-        }
-        if (!coating->get_material())
-        {
-            if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
-                coating->set_material(defaults.defaultEnamelledInsulationMaterial);
-            }
-            else {
-                throw std::runtime_error("Coating is missing material information");
-            }
+            throw std::runtime_error("Wire has no coating");
         }
 
-        auto insulationMaterial = coating->get_material().value();
-        // If the material is a string, we have to load its data from the database
-        if (std::holds_alternative<std::string>(insulationMaterial)) {
-            auto insulationMaterialData = find_insulation_material_by_name(std::get<std::string>(insulationMaterial));
-
-            return insulationMaterialData;
-        }
-        else {
-            return InsulationMaterial(std::get<MAS::InsulationMaterial>(insulationMaterial));
-        }
+        return resolve_coating_insulation_material(coating.value());
     }
 
     InsulationMaterial Wire::resolve_coating_insulation_material(WireRound wire) {
         auto coating = resolve_coating(wire);
+        if (!coating) {
+            throw std::runtime_error("Wire has no coating");
+        }
 
-        if (!coating->get_material())
+        return resolve_coating_insulation_material(coating.value());
+    }
+
+    InsulationMaterial Wire::resolve_coating_insulation_material(InsulationWireCoating coating) {
+        if (!coating.get_material())
         {
-            if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
-                coating->set_material(defaults.defaultEnamelledInsulationMaterial);
+            if (coating.get_type().value() == InsulationWireCoatingType::ENAMELLED) {
+                coating.set_material(defaults.defaultEnamelledInsulationMaterial);
             }
             else {
                 throw std::runtime_error("Coating is missing material information");
             }
         }
 
-        auto insulationMaterial = coating->get_material().value();
+        auto insulationMaterial = coating.get_material().value();
         // If the material is a string, we have to load its data from the database
         if (std::holds_alternative<std::string>(insulationMaterial)) {
             auto insulationMaterialData = find_insulation_material_by_name(std::get<std::string>(insulationMaterial));

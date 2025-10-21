@@ -54,6 +54,7 @@ class MagneticAdviser{
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults);
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, size_t maximumNumberResults=1, bool strict=true);
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::map<std::string, Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
         std::vector<std::pair<Mas, double>> get_advised_magnetic(std::vector<Mas> catalogMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
         std::vector<std::pair<Mas, double>> score_magnetics(std::vector<Mas> masMagneticsWithCoil, std::vector<MagneticFilterOperation> filterFlow);
         static void preview_magnetic(Mas mas);

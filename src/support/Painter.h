@@ -54,7 +54,7 @@ class PainterInterface {
                         else {
                             coatingColor = settings->get_painter_color_fep();
                             if (coating.get_material()) {
-                                std::string coatingMaterial = std::get<std::string>(coating.get_material().value());
+                                std::string coatingMaterial = Wire::resolve_coating_insulation_material(coating).get_name();
                                 if (coatingMaterial == "PFA") {
                                     coatingColor = settings->get_painter_color_pfa();
                                 }
