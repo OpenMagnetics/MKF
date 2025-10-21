@@ -1387,10 +1387,14 @@ std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnet
     bool valid = true;
     double scoring = 0;
 
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
+
     for (auto operatingPoint : inputs->get_operating_points()) {
         for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
             auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-            if (!excitation.get_current()) {
+            if (!excitation.get_current()) { 
                 throw std::runtime_error("Current is missing in excitation");
             }
             auto current = excitation.get_current().value();
@@ -1412,6 +1416,10 @@ std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnet
 std::pair<bool, double> MagneticFilterEffectiveCurrentDensity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;
+
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
 
     for (auto operatingPoint : inputs->get_operating_points()) {
         for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
@@ -1552,6 +1560,10 @@ std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(Magne
     bool valid = true;
     double scoring = 0;
     auto temperature = inputs->get_maximum_temperature();
+
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
 
     for (auto operatingPoint : inputs->get_operating_points()) {
         for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
@@ -1711,6 +1723,10 @@ std::pair<bool, double> MagneticFilterLossesNoProximityTimesVolumeTimesTemperatu
 std::pair<bool, double> MagnetomotiveForce::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto coil = magnetic->get_coil();
     double maximumMagnetomotiveForce = 0;
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
+
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         std::vector<double> currentRmsPerParallelPerWinding;
         for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
