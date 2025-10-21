@@ -501,6 +501,10 @@ MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std:
 std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto core = magnetic->get_core();
 
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
+
     std::string shapeName = core.get_shape_name();
     if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
         auto bobbin = Bobbin::create_quick_bobbin(core);
@@ -725,6 +729,10 @@ MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inpu
 std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto core = magnetic->get_core();
 
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
+
     std::string shapeName = core.get_shape_name();
     if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
         auto bobbin = Bobbin::create_quick_bobbin(core);
@@ -893,6 +901,10 @@ MagneticFilterLosses::MagneticFilterLosses(std::map<std::string, std::string> mo
 std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     double scoring = 0;
 
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
+
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
         auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -922,6 +934,10 @@ MagneticFilterLossesNoProximity::MagneticFilterLossesNoProximity(std::map<std::s
 
 std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     double scoring = 0;
+
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
@@ -1173,6 +1189,11 @@ std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Windi
 std::pair<bool, double> MagneticFilterEffectiveResistance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;
+
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
+
     for (size_t windingIndex = 0; windingIndex < magnetic->get_coil().get_functional_description().size(); ++windingIndex) {
         auto winding = magnetic->get_coil().get_functional_description()[windingIndex];
         auto maximumEffectiveFrequency = inputs->get_maximum_current_effective_frequency(windingIndex);
@@ -1200,6 +1221,11 @@ std::pair<bool, double> MagneticFilterEffectiveResistance::evaluate_magnetic(Win
 std::pair<bool, double> MagneticFilterProximityFactor::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;
+
+    if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        return {false, 0.0};        
+    }
+
     for (size_t windingIndex = 0; windingIndex < magnetic->get_coil().get_functional_description().size(); ++windingIndex) {
         auto winding = magnetic->get_coil().get_functional_description()[windingIndex];
         auto maximumEffectiveFrequency = inputs->get_maximum_current_effective_frequency(windingIndex);
@@ -1586,6 +1612,7 @@ std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(Magne
 
 std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(Winding winding, SignalDescriptor current, double temperature) {
     auto wire = Coil::resolve_wire(winding);
+
     double skinEffectLossesPerMeter = WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature).first;
     double valid = true;
     return {valid, skinEffectLossesPerMeter};
