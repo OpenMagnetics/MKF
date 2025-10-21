@@ -21,6 +21,10 @@ public:
         return _cache.size();
     }
 
+    std::map<std::string, T> get(){
+        return _cache;
+    }
+
     std::vector<std::string> references() {
         std::vector<std::string> filteredReferences;
         for (auto [reference, value] : _cache) {

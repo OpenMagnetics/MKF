@@ -196,6 +196,18 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     return get_advised_magnetic(catalogMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
 }
 
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<std::string, Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
+    std::vector<Mas> catalogMagneticsWithInputs;
+    for (auto [reference, magnetic] : catalogMagnetics) {
+        Mas mas;
+        mas.set_inputs(inputs);
+        mas.set_magnetic(magnetic);
+        catalogMagneticsWithInputs.push_back(mas);
+    }
+
+    return get_advised_magnetic(catalogMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
+}
+
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
 
     load_filter_flow(filterFlow, catalogMagneticsWithInputs[0].get_inputs());
