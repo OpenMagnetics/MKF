@@ -238,13 +238,19 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         for (auto filterConfiguration : strictlyRequiredFilterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
         
-            auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
-            add_scoring(magnetic.get_reference(), filterEnum, scoring);
-            if (strict) {
-                validMagnetic &= valid;
-                if (!valid) {
-                    break;
+            try {
+                auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
+                add_scoring(magnetic.get_reference(), filterEnum, scoring);
+                if (strict) {
+                    validMagnetic &= valid;
+                    if (!valid) {
+                        break;
+                    }
                 }
+            }
+            catch (const std::runtime_error& runtimeError) {
+                validMagnetic = false;
+                break;
             }
         }
 
@@ -262,18 +268,27 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         std::vector<Outputs> outputs;
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
+        bool valid = true;
         for (auto filterConfiguration : filterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
         
-            auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
-            add_scoring(magnetic.get_reference(), filterEnum, scoring);
+            try {
+                auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
+                add_scoring(magnetic.get_reference(), filterEnum, scoring);
+            }
+            catch (const std::runtime_error& runtimeError) {
+                valid = false;
+                break;
+            }
         }
 
-        Mas resultMas;
-        resultMas.set_magnetic(magnetic);
-        resultMas.set_inputs(inputs);
-        resultMas.set_outputs(outputs);
-        validMas.push_back(resultMas);
+        if (valid) {
+            Mas resultMas;
+            resultMas.set_magnetic(magnetic);
+            resultMas.set_inputs(inputs);
+            resultMas.set_outputs(outputs);
+            validMas.push_back(resultMas);
+        }
     }
 
     auto scoringsPerReferencePerFilter = get_scorings();
