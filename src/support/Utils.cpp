@@ -1953,6 +1953,11 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
     else {
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
         shape.set_magnetic_circuit(MagneticCircuit::OPEN);
+        for (size_t i = 0; i < magnetic.get_core().get_functional_description().get_gapping().size(); i++) {
+            double gapLength = magnetic.get_core().get_functional_description().get_gapping()[i].get_length();
+            gapLength = std::max(0.0, gapLength);
+            magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping()[i].set_length(gapLength);
+        }
     }
     magnetic.get_mutable_core().get_mutable_functional_description().set_shape(shape);
 
