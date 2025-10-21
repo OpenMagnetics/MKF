@@ -312,7 +312,7 @@ std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* 
 
         if (totalStorableMagneticEnergy >= _requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
             if (outputs != nullptr) {
-                if (outputs->size() < operatingPointIndex + 1) {
+                while (outputs->size() < operatingPointIndex + 1) {
                     outputs->push_back(Outputs());
                 }
                 MagnetizingInductanceOutput magnetizingInductanceOutput;
@@ -649,7 +649,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
 
     if (outputs != nullptr) {
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-            if (outputs->size() < operatingPointIndex + 1) {
+            while (outputs->size() < operatingPointIndex + 1) {
                 outputs->push_back(Outputs());
             }
             (*outputs)[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
@@ -875,7 +875,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
 
     if (outputs != nullptr) {
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-            if (outputs->size() < operatingPointIndex + 1) {
+            while (outputs->size() < operatingPointIndex + 1) {
                 outputs->push_back(Outputs());
             }
             (*outputs)[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
@@ -903,7 +903,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
         scoring += windingLossesValue + coreLossesValue;
 
         if (outputs != nullptr) {
-            if (outputs->size() < operatingPointIndex + 1) {
+            while (outputs->size() < operatingPointIndex + 1) {
                 outputs->push_back(Outputs());
             }
             (*outputs)[operatingPointIndex].set_core_losses(coreLosses);
@@ -937,7 +937,7 @@ std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magne
         scoring += windingLossesValue + coreLossesValue;
 
         if (outputs != nullptr) {
-            if (outputs->size() < operatingPointIndex + 1) {
+            while (outputs->size() < operatingPointIndex + 1) {
                 outputs->push_back(Outputs());
             }
             (*outputs)[operatingPointIndex].set_core_losses(coreLosses);
@@ -1458,7 +1458,7 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
             scoring += 1.0 / abs(impedance);
                 
             if (outputs != nullptr) {
-                if (outputs->size() < operatingPointIndex + 1) {
+                while (outputs->size() < operatingPointIndex + 1) {
                     outputs->push_back(Outputs());
                 }
                 ImpedanceOutput impedanceOutput;
@@ -1490,6 +1490,7 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
         OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
+
         auto aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
         double magnetizingInductance = resolve_dimensional_values(aux.get_magnetizing_inductance());
         scoring += fabs(resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) - magnetizingInductance);
@@ -1499,7 +1500,7 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
         }
         else {
             if (outputs != nullptr) {
-                if (outputs->size() < operatingPointIndex + 1) {
+                while (outputs->size() < operatingPointIndex + 1) {
                     outputs->push_back(Outputs());
                 }
                 (*outputs)[operatingPointIndex].set_magnetizing_inductance(aux);
