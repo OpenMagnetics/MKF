@@ -520,14 +520,14 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                 gapLength += gapLengthModification;
             }
             else {
-                gapLength -= gapLengthModification;
+                gapLength = std::max(constants.residualGap, gapLength - gapLengthModification);
             }
 
             timeout--;
         }
     }
 
-    gapLength = roundFloat(gapLength, decimals);
+    gapLength = std::max(constants.residualGap, roundFloat(gapLength, decimals));
 
     switch (gappingType) {
         case GappingType::GROUND:
