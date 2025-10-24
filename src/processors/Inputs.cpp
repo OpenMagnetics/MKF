@@ -1346,6 +1346,7 @@ Processed Inputs::calculate_processed_data(Harmonics harmonics,
     else {
         processedResult = calculate_basic_processed_data(sampledDataToProcess);
     }
+
     {
         if (is_waveform_sampled(waveform)) {
             processedResult.set_average(std::accumulate(std::begin(sampledDataToProcess.get_data()), std::end(sampledDataToProcess.get_data()), 0.0) /
@@ -2221,6 +2222,7 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
         SignalDescriptor current;
         Processed processed;
         processed.set_label(waveShape);
+        processed.set_peak(peakToPeak / 2 + dcCurrent);
         processed.set_peak_to_peak(peakToPeak);
         processed.set_duty_cycle(dutyCycle);
         processed.set_offset(dcCurrent);
@@ -2239,6 +2241,7 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
         SignalDescriptor current;
         Processed processed;
         processed.set_label(waveShape);
+        processed.set_peak(peakToPeak / 2 * turnsRatio);
         processed.set_peak_to_peak(peakToPeak * turnsRatio);
         processed.set_duty_cycle(dutyCycle);
         processed.set_offset(dcCurrent);
@@ -2317,6 +2320,7 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
         SignalDescriptor current;
         Processed processed;
         processed.set_label(waveShape);
+        processed.set_peak(peakToPeak / 2 + dcCurrent);
         processed.set_peak_to_peak(peakToPeak);
         processed.set_duty_cycle(dutyCycle);
         processed.set_offset(dcCurrent);
