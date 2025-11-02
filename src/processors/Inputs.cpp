@@ -1514,8 +1514,11 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
         }
     }
     std::vector<size_t> currentHarmonicIndexesToMaintain;
+    std::vector<double> currentHarmonicFrequenciesToMaintain;
     std::vector<size_t> magnetizingCurrentHarmonicIndexesToMaintain;
+    std::vector<double> magnetizingCurrFrequenciesonicIndexesToMaintain;
     std::vector<size_t> voltageHarmonicIndexesToMaintain;
+    std::vector<double> voltageHarmonicFrequenciesToMaintain;
 
     for (auto excitation : operatingPoint.get_excitations_per_winding()) {
         // Current
@@ -1525,6 +1528,7 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             for (auto harmonicIndex : harmonicsIndexesToMaintain) {
                 if (std::find(currentHarmonicIndexesToMaintain.begin(), currentHarmonicIndexesToMaintain.end(), harmonicIndex) == currentHarmonicIndexesToMaintain.end()) {
                     currentHarmonicIndexesToMaintain.push_back(harmonicIndex);
+                    currentHarmonicFrequenciesToMaintain.push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
             }
         }
@@ -1536,6 +1540,7 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             for (auto harmonicIndex : harmonicsIndexesToMaintain) {
                 if (std::find(magnetizingCurrentHarmonicIndexesToMaintain.begin(), magnetizingCurrentHarmonicIndexesToMaintain.end(), harmonicIndex) == magnetizingCurrentHarmonicIndexesToMaintain.end()) {
                     magnetizingCurrentHarmonicIndexesToMaintain.push_back(harmonicIndex);
+                    magnetizingCurrFrequenciesonicIndexesToMaintain.push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
             }
         }
@@ -1547,10 +1552,12 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             for (auto harmonicIndex : harmonicsIndexesToMaintain) {
                 if (std::find(voltageHarmonicIndexesToMaintain.begin(), voltageHarmonicIndexesToMaintain.end(), harmonicIndex) == voltageHarmonicIndexesToMaintain.end()) {
                     voltageHarmonicIndexesToMaintain.push_back(harmonicIndex);
+                    voltageHarmonicFrequenciesToMaintain.push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
             }
         }
     }
+
     std::vector<OperatingPointExcitation> newExcitationsPerWinding;
     for (auto excitation : operatingPoint.get_excitations_per_winding()) {
         OperatingPointExcitation newExcitation;
@@ -1563,8 +1570,14 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
             std::sort(currentHarmonicIndexesToMaintain.begin(), currentHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
             for (auto harmonicIndex : currentHarmonicIndexesToMaintain) {
-                prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
-                prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
+                if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
+                    prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
+                }
+                else {
+                    prunedHarmonics.get_mutable_amplitudes().push_back(0);
+                    prunedHarmonics.get_mutable_frequencies().push_back(currentHarmonicFrequenciesToMaintain[harmonicIndex]);
+                }
             }
             current.set_harmonics(prunedHarmonics);
             newExcitation.set_current(current);
@@ -1582,8 +1595,14 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
             std::sort(magnetizingCurrentHarmonicIndexesToMaintain.begin(), magnetizingCurrentHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
             for (auto harmonicIndex : magnetizingCurrentHarmonicIndexesToMaintain) {
-                prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
-                prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
+                if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
+                    prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
+                }
+                else {
+                    prunedHarmonics.get_mutable_amplitudes().push_back(0);
+                    prunedHarmonics.get_mutable_frequencies().push_back(magnetizingCurrFrequenciesonicIndexesToMaintain[harmonicIndex]);
+                }
             }
             magnetizingCurrent.set_harmonics(prunedHarmonics);
             newExcitation.set_magnetizing_current(magnetizingCurrent);
@@ -1602,8 +1621,14 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
             std::sort(voltageHarmonicIndexesToMaintain.begin(), voltageHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
             for (auto harmonicIndex : voltageHarmonicIndexesToMaintain) {
-                prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
-                prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
+                if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
+                    prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
+                }
+                else {
+                    prunedHarmonics.get_mutable_amplitudes().push_back(0);
+                    prunedHarmonics.get_mutable_frequencies().push_back(voltageHarmonicFrequenciesToMaintain[harmonicIndex]);
+                }
             }
             voltage.set_harmonics(prunedHarmonics);
             newExcitation.set_voltage(voltage);
