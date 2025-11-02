@@ -2948,8 +2948,8 @@ SUITE(WindingLossesWeb) {
         // std::cout << mierda << std::endl;
 
         CHECK(losses.get_dc_resistance_per_winding().value()[0] > 0);
-
     }
+
     TEST(Test_Winding_Losses_Web_1) {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/slow_simulation.json");
@@ -2965,6 +2965,21 @@ SUITE(WindingLossesWeb) {
         // std::cout << mierda << std::endl;
 
         CHECK(losses.get_dc_resistance_per_winding().value()[0] > 0);
+    }
 
+    TEST(Test_Winding_Losses_Web_2) {
+        settings->set_magnetic_field_include_fringing(false);
+
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/huge_losses.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+
+        auto losses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+
+        CHECK(losses.get_winding_losses() < 2);
+        settings->reset();
     }
 }

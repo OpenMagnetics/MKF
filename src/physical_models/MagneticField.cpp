@@ -763,8 +763,6 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
     return complexFieldPoint;
 }
 
-
-
 FieldPoint MagneticFieldStrengthAlbachModel::get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap) {
     if (!gap.get_section_dimensions()) {
         throw std::runtime_error("Gap is missing section dimensions");

@@ -25,10 +25,20 @@ namespace OpenMagnetics {
 Core::Core(const json& j, bool includeMaterialData, bool includeProcessedDescription, bool includeGeometricalDescription) {
     _includeMaterialData = includeMaterialData;
     from_json(j, *this);
+    std::cout << "Mierda 1" << std::endl;
     
     if (includeProcessedDescription) {
+    std::cout << "Mierda 2" << std::endl;
         process_data();
+    std::cout << "Mierda 3" << std::endl;
         process_gap();
+        json mierda;
+        to_json(mierda, get_gapping()[2]);
+
+    std::cout << mierda << std::endl;
+    std::cout << get_gapping().size() << std::endl;
+
+    std::cout << "Mierda 34" << std::endl;
     }
 
     if (!get_geometrical_description() && includeGeometricalDescription) {

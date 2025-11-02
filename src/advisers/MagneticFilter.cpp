@@ -945,7 +945,7 @@ std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magne
         auto windingLosses = _windingOhmicLosses.calculate_ohmic_losses(magnetic->get_coil(), operatingPoint, temperature);
         windingLosses = _windingSkinEffectLosses.calculate_skin_effect_losses(magnetic->get_coil(), temperature, windingLosses, 0.5);
         windingLosses = _windingSkinEffectLosses.calculate_skin_effect_losses(magnetic->get_coil(), temperature, windingLosses, 0.5);
-        windingLosses = WindingLosses::combine_turn_losses(windingLosses, magnetic->get_coil());
+        // windingLosses = WindingLosses::combine_turn_losses(windingLosses, magnetic->get_coil());
         double windingLossesValue = windingLosses.get_winding_losses();
 
         auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic);
