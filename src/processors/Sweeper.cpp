@@ -226,11 +226,23 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double 
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, coil).get_magnetizing_inductance());
 
     std::vector<double> coreResistances;
-    auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
-    for (auto frequency : frequencies) {
-        auto coreResistance =  coreLossesModel->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
-        coreResistances.push_back(coreResistance);
+    auto coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
+    auto coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
+    auto coreLossesMethods = Core::get_available_core_losses_methods(core.resolve_material());
+
+    if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+        for (auto frequency : frequencies) {
+            auto coreResistance =  coreLossesModelSteinmetz->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
+            coreResistances.push_back(coreResistance);
+        }
     }
+    else {
+        for (auto frequency : frequencies) {
+            auto coreResistance =  coreLossesModelProprietary->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
+            coreResistances.push_back(coreResistance);
+        }
+    }
+
 
     return Curve2D(frequencies, coreResistances, title);
 }

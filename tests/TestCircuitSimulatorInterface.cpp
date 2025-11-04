@@ -120,6 +120,34 @@ SUITE(CircuitSimulatorExporterSimba) {
         CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
+
+    TEST(Test_CircuitSimulatorExporter_Simba_Powder_Core) {
+        std::vector<int64_t> numberTurns = {30, 10, 5, 1};
+        std::vector<int64_t> numberParallels = {1, 1, 1, 2};
+        std::string shapeName = "PQ 35/35";
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName);
+        coil.get_mutable_functional_description()[3].set_isolation_side(MAS::IsolationSide::PRIMARY);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "GX 60";
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        std::string filePath = __FILE__;
+        auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+        auto jsimbaFile = outputFilePath;
+        jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Only_Magnetic.jsimba");
+
+        std::filesystem::remove(jsimbaFile);
+        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile);
+        CHECK(std::filesystem::exists(jsimbaFile));
+    }
 }
 
 SUITE(CircuitSimulatorExporterNgspice) {
