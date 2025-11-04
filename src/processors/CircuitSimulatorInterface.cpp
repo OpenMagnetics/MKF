@@ -30,6 +30,21 @@ template<typename T> std::vector<T> convolution_valid(std::vector<T> const &f, s
     return out;
 }
 
+std::string to_string(double d, size_t precision) {
+    std::ostringstream out;
+    out.precision(precision);
+    out << std::fixed << d;
+    return out.str();
+}
+
+std::vector<std::string> to_string(std::vector<double> v, size_t precision=12) {
+    std::vector<std::string> s;
+    for (auto d : v){
+        s.push_back(to_string(d, precision));
+    }
+    return s;
+}
+
 CircuitSimulatorExporter::CircuitSimulatorExporter(CircuitSimulatorExporterModels program) {
     _model = CircuitSimulatorExporterModel::factory(program);
 }
@@ -186,20 +201,20 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     return acResistanceCoefficientsPerWinding;
 }
 
-std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(Magnetic magnetic) {
+std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(Magnetic magnetic, double temperature) {
     const size_t numberUnknowns = 6;
 
     const size_t numberElements = 20;
-    const size_t numberElementsPlusOne = 101;
-    size_t loopIterations = 5;
-    double startingFrequency = 0.1;
-    double endingFrequency = 1000000;
+    const size_t numberElementsPlusOne = 21;
+    size_t loopIterations = 15;
+    double startingFrequency = 1000;
+    double endingFrequency = 300000;
     auto coil = magnetic.get_coil();
 
     std::vector<double> coreResistanceCoefficients;
 
 
-    Curve2D coreResistanceData = Sweeper().sweep_core_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, 25);
+    Curve2D coreResistanceData = Sweeper().sweep_core_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, temperature);
     auto frequenciesVector = coreResistanceData.get_x_points();
 
     auto valuePoints = coreResistanceData.get_y_points();
@@ -411,23 +426,23 @@ ordered_json CircuitSimulatorExporterSimbaModel::create_air_gap(std::vector<int>
     ordered_json deviceJson = create_device("Air Gap", coordinates, angle, name);
 
     deviceJson["Parameters"]["RelativePermeability"] = "1";
-    deviceJson["Parameters"]["Area"] = std::to_string(area);
-    deviceJson["Parameters"]["Length"] = std::to_string(length);
+    deviceJson["Parameters"]["Area"] = to_string(area, _precision);
+    deviceJson["Parameters"]["Length"] = to_string(length, _precision);
     return deviceJson;
 }
 ordered_json CircuitSimulatorExporterSimbaModel::create_core(double initialPermeability, std::vector<int> coordinates, double area, double length, int angle, std::string name) {
     ordered_json deviceJson = create_device("Linear Core", coordinates, angle, name);
 
-    deviceJson["Parameters"]["RelativePermeability"] = std::to_string(initialPermeability);
-    deviceJson["Parameters"]["Area"] = std::to_string(area);
-    deviceJson["Parameters"]["Length"] = std::to_string(length);
+    deviceJson["Parameters"]["RelativePermeability"] = to_string(initialPermeability, _precision);
+    deviceJson["Parameters"]["Area"] = to_string(area, _precision);
+    deviceJson["Parameters"]["Length"] = to_string(length, _precision);
     return deviceJson;
 }
 
 ordered_json CircuitSimulatorExporterSimbaModel::create_winding(size_t numberTurns, std::vector<int> coordinates, int angle, std::string name) {
     ordered_json deviceJson = create_device("Winding", coordinates, angle, name);
 
-    deviceJson["Parameters"]["NumberOfTurns"] = std::to_string(numberTurns);
+    deviceJson["Parameters"]["NumberOfTurns"] = to_string(numberTurns, _precision);
     return deviceJson;
 }
 
@@ -435,7 +450,7 @@ ordered_json CircuitSimulatorExporterSimbaModel::create_resistor(double resistan
 
     ordered_json deviceJson = create_device("Resistor", coordinates, angle, name);
 
-    deviceJson["Parameters"]["Value"] = std::to_string(resistance);
+    deviceJson["Parameters"]["Value"] = to_string(resistance, _precision);
     return deviceJson;
 }
 
@@ -443,9 +458,40 @@ ordered_json CircuitSimulatorExporterSimbaModel::create_inductor(double inductan
 
     ordered_json deviceJson = create_device("Inductor", coordinates, angle, name);
 
-    deviceJson["Parameters"]["Value"] = std::to_string(inductance);
+    deviceJson["Parameters"]["Value"] = to_string(inductance, _precision);
     deviceJson["Parameters"]["Iinit"] = "0";
     return deviceJson;
+}
+
+std::pair<std::vector<ordered_json>, std::vector<ordered_json>> CircuitSimulatorExporterSimbaModel::create_ladder(std::vector<double> ladderCoefficients, std::vector<int> coordinates, std::string name) {
+    std::vector<ordered_json> ladderJsons;
+    std::vector<ordered_json> ladderConnectorsJsons;
+    coordinates[0] -= 6;
+    for (size_t ladderIndex = 0; ladderIndex < ladderCoefficients.size(); ladderIndex+=2) {
+        std::string ladderIndexs = std::to_string(ladderIndex);
+        auto ladderInductorJson = create_inductor(ladderCoefficients[ladderIndex + 1], coordinates, 180, name + " Ladder element " + std::to_string(ladderIndex));
+        ladderJsons.push_back(ladderInductorJson);
+        coordinates[1] -= 3;
+        coordinates[0] += 3;
+        auto ladderResistorJson = create_resistor(ladderCoefficients[ladderIndex], coordinates, 90, name + " Ladder element " + std::to_string(ladderIndex));
+        ladderJsons.push_back(ladderResistorJson);
+        coordinates[1] -= 3;
+        coordinates[0] -= 3;
+        {
+            std::vector<int> finalConnectorTopCoordinates = {coordinates[0], coordinates[1] + 1};
+            std::vector<int> finalConnectorBottomCoordinates = {coordinates[0], coordinates[1] + 7};
+            auto ladderConnectorJson = create_connector(finalConnectorTopCoordinates, finalConnectorBottomCoordinates, "Connector between winding " + name + " ladder elements" + std::to_string(ladderIndex) + " and " + std::to_string(ladderIndex + 2));
+            ladderConnectorsJsons.push_back(ladderConnectorJson);
+        }
+        if (ladderIndex == ladderCoefficients.size() - 2) {
+            std::vector<int> finalConnectorTopCoordinates = {coordinates[0], coordinates[1] + 1};
+            std::vector<int> finalConnectorBottomCoordinates = {coordinates[0] + 6, coordinates[1] + 1};
+            auto ladderConnectorJson = create_connector(finalConnectorTopCoordinates, finalConnectorBottomCoordinates, "Connector between winding " + name + " ladder elements" + std::to_string(ladderIndex) + " and " + std::to_string(ladderIndex + 2));
+            ladderConnectorsJsons.push_back(ladderConnectorJson);
+        }
+    }
+
+    return {ladderJsons, ladderConnectorsJsons};
 }
 
 ordered_json CircuitSimulatorExporterSimbaModel::create_pin(std::vector<int> coordinates, int angle, std::string name) {
@@ -542,6 +588,8 @@ ordered_json CircuitSimulatorExporterSimbaModel::merge_connectors(ordered_json c
     return mergeConnectors;
 }
 
+
+
 std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     ordered_json simulation;
     auto core = magnetic.get_core();
@@ -606,8 +654,13 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     }
 
     std::vector<std::vector<int>> columnBottomCoordinates; 
-    std::vector<std::vector<int>> columnTopCoordinates; 
+    std::vector<std::vector<int>> columnTopCoordinates;
     
+    auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature);
+    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+    double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
+    int numberLadderPairElements = acResistanceCoefficientsPerWinding[0].size() / 2 - 1;
+
     for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
         auto column = columns[columnIndex];
         auto gapsInThisColumn = core.find_gaps_by_column(column);
@@ -619,25 +672,11 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         else {
             columnCoordinates = {static_cast<int>(column.get_coordinates()[0] * _scale), 0};
         }
-        if (columnIndex == 0) {
-            coreChunkJson = create_core(core.get_initial_permeability(), columnCoordinates, coreEffectiveArea, coreEffectiveLengthMinusColumns, 90, "Core winding column and plates " + std::to_string(columnIndex));
-        }
-        else {
-            coreChunkJson = create_core(core.get_initial_permeability(), columnCoordinates, coreEffectiveArea, column.get_height(), 90, "Core lateral column " + std::to_string(columnIndex));
-        }
-        std::vector<int> columnTopCoordinate = {columnCoordinates[0] + 3, -2};  // Don't ask
-        std::vector<int> columnBottomCoordinate = {columnCoordinates[0] + 3, 4};  // Don't ask
-        device["SubcircuitDefinition"]["Devices"].push_back(coreChunkJson);
+
+        std::vector<int> columnTopCoordinate = {columnCoordinates[0] + 3, -2 - numberLadderPairElements * 6};  // Don't ask
+        std::vector<int> columnBottomCoordinate = {columnCoordinates[0] + 3, 4 + (coreResistanceCoefficients.size() / 2 + 1) * 6};  // Don't ask
         int currentColumnGapHeight = 6;
         for (size_t gapIndex = 0; gapIndex < gapsInThisColumn.size(); ++gapIndex) {
-            auto gap = gapsInThisColumn[gapIndex];
-            if (!gap.get_coordinates()) {
-                throw std::runtime_error("Gap is not processed");
-            }
-            std::vector<int> gapCoordinates = {columnCoordinates[0], currentColumnGapHeight};
-
-            auto gapJson = create_air_gap(gapCoordinates, gap.get_area().value(), gap.get_length(), 90, "Column " + std::to_string(columnIndex) + " gap " + std::to_string(gapIndex));
-            device["SubcircuitDefinition"]["Devices"].push_back(gapJson);
             currentColumnGapHeight += 6;
             columnBottomCoordinate[1] += 6;
         }
@@ -645,78 +684,219 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         columnTopCoordinates.push_back(columnTopCoordinate);
     }
 
-    double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
+
+    std::vector<int> windingCoordinates = {columnTopCoordinates[0][0] - 2, columnTopCoordinates[0][1] - 6 + numberLadderPairElements * 6};
+    windingCoordinates[1] -= 6 * (coil.get_functional_description().size() - 1);
+    int numberLeftWindings = 0;
+    int numberRightWindings = 0;
+    int maximumWindingCoordinate = windingCoordinates[1];
+    int maximumLadderCoordinate = windingCoordinates[1];
+    int maximumLeftCoordinate = windingCoordinates[0];
+    int maximumRightCoordinate = windingCoordinates[0];
 
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, windingIndex, frequency, temperature);
+        auto dcResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, windingIndex, 0.1, temperature);
         auto winding = coil.get_functional_description()[windingIndex];
-        std::vector<int> coordinates = {columnTopCoordinates[0][0] - 2, columnTopCoordinates[0][1] - 6};
+        std::vector<int> coordinates = windingCoordinates;
         ordered_json windingJson;
         ordered_json topPinJson;
         ordered_json bottomPinJson;
         ordered_json acResistorJson;
+        std::vector<ordered_json> ladderJsons;
+        std::vector<ordered_json> ladderConnectorsJsons;
+
         if (winding.get_isolation_side() == IsolationSide::PRIMARY) {
             windingJson = create_winding(winding.get_number_turns(), coordinates, 0, winding.get_name());
+            coordinates[0] -= numberLeftWindings * 18;
         }
         else {
             windingJson = create_winding(winding.get_number_turns(), coordinates, 180, winding.get_name());
+            coordinates[0] += numberRightWindings * 12;
         }
 
         if (winding.get_isolation_side() == IsolationSide::PRIMARY) {
-            coordinates[0] -= 6;
-            acResistorJson = create_resistor(effectiveResistanceThisWinding, coordinates, 180, winding.get_name() + " AC resistance");
             if (windingIndex == 0) {
                 coordinates[0] -= 6;
                 auto leakageInductanceJson = create_inductor(leakageInductance, coordinates, 0, winding.get_name() + " Leakage inductance");
                 device["SubcircuitDefinition"]["Devices"].push_back(leakageInductanceJson);
             }
+            coordinates[0] -= 6;
+            acResistorJson = create_resistor(dcResistanceThisWinding, coordinates, 180, winding.get_name() + " AC resistance");
+
+            auto aux = create_ladder(acResistanceCoefficientsPerWinding[windingIndex], coordinates, winding.get_name());
+            if (acResistanceCoefficientsPerWinding[windingIndex].size() > 0) {
+                coordinates[0] -= 6;
+            }
+            ladderJsons = aux.first;
+            ladderConnectorsJsons = aux.second;
+
             coordinates[0] -= 2;
             bottomPinJson = create_pin(coordinates, 0, winding.get_name() + " Input");
-            if (windingIndex == 0) {
-                coordinates[0] += 12;
+
+            if (numberLeftWindings > 0) {
+                auto connectorJson = create_connector({windingCoordinates[0] - numberLeftWindings * 18, windingCoordinates[1] + 1}, {windingCoordinates[0], windingCoordinates[1] + 1}, "Connector between DC resistance in winding " + std::to_string(windingIndex));
+                device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
             }
-            else {
-                coordinates[0] += 6;
-            }
-            coordinates[1] += 4;
-            topPinJson = create_pin(coordinates, 0, winding.get_name() + " Output");
+            topPinJson = create_pin({windingCoordinates[0] - 2, windingCoordinates[1] + 4}, 0, winding.get_name() + " Output");
         }
         else {
             coordinates[0] += 4;
-            acResistorJson = create_resistor(effectiveResistanceThisWinding, coordinates, 180, winding.get_name() + " AC resistance");
+            acResistorJson = create_resistor(dcResistanceThisWinding, coordinates, 180, winding.get_name() + " AC resistance");
+
+            auto aux = create_ladder(acResistanceCoefficientsPerWinding[windingIndex], {coordinates[0] + 12, coordinates[1]}, winding.get_name());
+            ladderJsons = aux.first;
+            ladderConnectorsJsons = aux.second;
+            if (acResistanceCoefficientsPerWinding[windingIndex].size() > 0) {
+                coordinates[0] += 6;
+            }
+
             coordinates[0] += 6;
             topPinJson = create_pin(coordinates, 180, winding.get_name() + " Input");
-            coordinates[1] += 4;
-            coordinates[0] -= 6;
-            bottomPinJson = create_pin(coordinates, 180, winding.get_name() + " Output");
+
+            if (numberRightWindings > 0) {
+                auto connectorJson = create_connector({windingCoordinates[0] + numberRightWindings * 12 + 4, windingCoordinates[1] + 1}, {windingCoordinates[0] + 4, windingCoordinates[1] + 1}, "Connector between DC resistance in winding " + std::to_string(windingIndex));
+                device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
+            }
+            bottomPinJson = create_pin({windingCoordinates[0] + 4, windingCoordinates[1] + 4}, 180, winding.get_name() + " Output");
         }
 
-        auto connectorTopCoordinates = columnTopCoordinates[0];
-        auto connectorBottomCoordinates = columnTopCoordinates[0];
-        if (windingIndex == 0) {
-            connectorTopCoordinates[1] -= 1;
+        std::vector<int> connectorTopCoordinates = {windingCoordinates[0] + 2, windingCoordinates[1] + 5};
+        std::vector<int> connectorBottomCoordinates = {windingCoordinates[0] + 2, windingCoordinates[1] + 7};
+        if (windingIndex == coil.get_functional_description().size() - 1) {
+            connectorBottomCoordinates[1] = windingCoordinates[1] + 6;
         }
-        else {
-            connectorTopCoordinates[1] -= 1;
-            connectorBottomCoordinates[1] += 1;
-        }
+
         auto connectorJson = create_connector(connectorBottomCoordinates, connectorTopCoordinates, "Connector between winding " + std::to_string(windingIndex) + " and winding " + std::to_string(windingIndex + 1));
         device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
 
-        columnTopCoordinates[0][1] -= 6;
         device["SubcircuitDefinition"]["Devices"].push_back(windingJson);
         device["SubcircuitDefinition"]["Devices"].push_back(topPinJson);
         device["SubcircuitDefinition"]["Devices"].push_back(bottomPinJson);
         device["SubcircuitDefinition"]["Devices"].push_back(acResistorJson);
-
-        if (windingIndex == coil.get_functional_description().size() - 1) {
-            std::vector<int> finalConnectorTopCoordinates = {columnTopCoordinates[0][0], columnTopCoordinates[0][1] - 5};
-            std::vector<int> finalConnectorBottomCoordinates = {columnTopCoordinates[0][0], columnTopCoordinates[0][1] + 1};
-            auto connectorJson = create_connector(finalConnectorTopCoordinates, finalConnectorBottomCoordinates, "Connector between winding " + std::to_string(windingIndex) + " and top");
-            device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
-            columnTopCoordinates[0][1] -= 5;
-
+        for (auto ladderJson : ladderJsons) {
+            device["SubcircuitDefinition"]["Devices"].push_back(ladderJson);
         }
+        for (auto ladderConnectorsJson : ladderConnectorsJsons) {
+            device["SubcircuitDefinition"]["Connectors"].push_back(ladderConnectorsJson);
+        }
+
+        windingCoordinates[1] += 6;
+        if (winding.get_isolation_side() == IsolationSide::PRIMARY) {
+            numberLeftWindings++;
+        }
+        else {
+            numberRightWindings++;
+        }
+    }
+
+
+    // Magnetizing current and core losses
+    {
+        auto winding = coil.get_functional_description()[0];
+        std::vector<int> coordinates = windingCoordinates;
+        ordered_json windingJson;
+        std::vector<ordered_json> ladderJsons;
+        std::vector<ordered_json> ladderConnectorsJsons;
+        coordinates[1] += (coreResistanceCoefficients.size() / 2 + 1) * 6 - 5;
+
+        windingJson = create_winding(winding.get_number_turns(), coordinates, 0, winding.get_name());
+        {
+            std::vector<int> connectorTopCoordinates = {coordinates[0], coordinates[1] + 1};
+            std::vector<int> connectorBottomCoordinates = {coordinates[0] - 6, coordinates[1] + 1};
+
+            auto connectorJson = create_connector(connectorBottomCoordinates, connectorTopCoordinates, "Top connector core losses");
+            device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
+        }
+        {
+            std::vector<int> connectorTopCoordinates = {coordinates[0], coordinates[1] + 5};
+            std::vector<int> connectorBottomCoordinates = {coordinates[0] - 12, coordinates[1] + 1};
+
+            auto connectorJson = create_connector(connectorTopCoordinates, connectorBottomCoordinates, "Bottom connector core losses");
+            device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
+        }
+        {
+            std::vector<int> connectorTopCoordinates = {windingCoordinates[0] + 2, windingCoordinates[1]};
+            std::vector<int> connectorBottomCoordinates = {coordinates[0] + 2, coordinates[1] + 1};
+
+            auto connectorJson = create_connector(connectorTopCoordinates, connectorBottomCoordinates, "Central column connector to core losses");
+            device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
+        }
+
+        coordinates[0] -= 6;
+        auto aux = create_ladder(coreResistanceCoefficients, coordinates, winding.get_name());
+        if (coreResistanceCoefficients.size() > 0) {
+            coordinates[0] -= 6;
+        }
+        ladderJsons = aux.first;
+        ladderConnectorsJsons = aux.second;
+
+        device["SubcircuitDefinition"]["Devices"].push_back(windingJson);
+
+        for (auto ladderJson : ladderJsons) {
+            device["SubcircuitDefinition"]["Devices"].push_back(ladderJson);
+        }
+        for (auto ladderConnectorsJson : ladderConnectorsJsons) {
+            device["SubcircuitDefinition"]["Connectors"].push_back(ladderConnectorsJson);
+        }
+    }
+
+    for (auto deviceJson : device["SubcircuitDefinition"]["Devices"]) {
+        maximumLadderCoordinate = std::min(maximumLadderCoordinate, deviceJson["Top"].get<int>());
+        maximumLeftCoordinate = std::max(maximumLeftCoordinate, deviceJson["Left"].get<int>());
+        maximumRightCoordinate = std::min(maximumRightCoordinate, deviceJson["Left"].get<int>());
+    }
+
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        columnTopCoordinates[columnIndex][1] = maximumLadderCoordinate - 5;
+    }
+    if (columns.size() > 1) {
+        columnTopCoordinates[1][0] = maximumLeftCoordinate + 4;
+        columnBottomCoordinates[1][0] = maximumLeftCoordinate + 4;
+    }
+    if (columns.size() > 2) {
+        columnTopCoordinates[2][0] = maximumRightCoordinate - 2;
+        columnBottomCoordinates[2][0] = maximumRightCoordinate - 2;
+    }
+
+
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        auto column = columns[columnIndex];
+        auto gapsInThisColumn = core.find_gaps_by_column(column);
+        ordered_json coreChunkJson;
+        std::vector<int> coordinates = columnBottomCoordinates[columnIndex];
+        coordinates[1] -= (gapsInThisColumn.size() + 1) * 6 - 2;
+        coordinates[0] -= 3;
+        if (columnIndex == 0) {
+            coreChunkJson = create_core(core.get_initial_permeability(), coordinates, coreEffectiveArea, coreEffectiveLengthMinusColumns, 90, "Core winding column and plates " + std::to_string(columnIndex));
+        }
+        else {
+            coreChunkJson = create_core(core.get_initial_permeability(), coordinates, coreEffectiveArea, column.get_height(), 90, "Core lateral column " + std::to_string(columnIndex));
+
+            std::vector<int> connectorTopCoordinates = {columnTopCoordinates[0][0], columnTopCoordinates[columnIndex][1]};
+            std::vector<int> connectorBottomCoordinates = {columnTopCoordinates[columnIndex][0], coordinates[1] - 2};
+            auto connectorJson = create_connector(connectorTopCoordinates, connectorBottomCoordinates, "Connector between column " + std::to_string(columnIndex) + " and top");
+            device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
+        }
+        device["SubcircuitDefinition"]["Devices"].push_back(coreChunkJson);
+
+        for (size_t gapIndex = 0; gapIndex < gapsInThisColumn.size(); ++gapIndex) {
+            coordinates[1] += 6;
+            auto gap = gapsInThisColumn[gapIndex];
+            if (!gap.get_coordinates()) {
+                throw std::runtime_error("Gap is not processed");
+            }
+            std::vector<int> gapCoordinates = {coordinates[0], coordinates[1]};
+
+            auto gapJson = create_air_gap(gapCoordinates, gap.get_area().value(), gap.get_length(), 90, "Column " + std::to_string(columnIndex) + " gap " + std::to_string(gapIndex));
+            device["SubcircuitDefinition"]["Devices"].push_back(gapJson);
+        }
+    }
+
+    {
+        std::vector<int> finalConnectorTopCoordinates = {columnTopCoordinates[0][0], columnTopCoordinates[0][1]};
+        std::vector<int> finalConnectorBottomCoordinates = {columnTopCoordinates[0][0], maximumWindingCoordinate + 1};
+        auto connectorJson = create_connector(finalConnectorTopCoordinates, finalConnectorBottomCoordinates, "Connector between winding 0 and top");
+        device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
     }
 
     // Magnetic ground
@@ -728,13 +908,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         device["SubcircuitDefinition"]["Devices"].push_back(groundJson);
     }
 
-    for (size_t columnIndex = 1; columnIndex < columns.size(); ++columnIndex) {
-        auto connectorJson = create_connector(columnTopCoordinates[0], columnTopCoordinates[columnIndex], "Top Connector between column " + std::to_string(0) + " and columm " + std::to_string(columnIndex));
-        device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
-    }
-    device["SubcircuitDefinition"]["Connectors"] = merge_connectors(device["SubcircuitDefinition"]["Connectors"]);
-
-
+    // Horizontal bottom connectors
     if (columns.size() == 1) {
         auto columnBottomCoordinatesAux = columnBottomCoordinates[0];
         columnBottomCoordinatesAux[1] = 0;
@@ -751,6 +925,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
             device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
         }
     }
+    device["SubcircuitDefinition"]["Connectors"] = merge_connectors(device["SubcircuitDefinition"]["Connectors"]);
 
     library["Devices"] = ordered_json::array();
     library["Devices"].push_back(device);
@@ -786,14 +961,8 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient);
         }
 
-        std::vector<std::string> c;
-        for (auto coeff : acResistanceCoefficientsPerWinding[index]){
+        std::vector<std::string> c = to_string(acResistanceCoefficientsPerWinding[index]);
 
-            std::ostringstream out;
-            out.precision(20);
-            out << std::fixed << coeff;
-            c.push_back(std::move(out).str());
-        }
         if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
             throw std::invalid_argument("Analytica mode not supported in NgSpice");
         }
@@ -851,14 +1020,8 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient);
         }
 
-        std::vector<std::string> c;
-        for (auto coeff : acResistanceCoefficientsPerWinding[index]){
+        std::vector<std::string> c = to_string(acResistanceCoefficientsPerWinding[index]);
 
-            std::ostringstream out;
-            out.precision(20);
-            out << std::fixed << coeff;
-            c.push_back(std::move(out).str());
-        }
         if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
             circuitString += "E" + is + " P" + is + "+ Node_R_Lmag_" + is + " P" + is + "+ Node_R_Lmag_" + is + " Laplace = 1 /(" + c[0] + " + " + c[1] + " * sqrt(abs(s)/(2*pi)) + " + c[2] + " * abs(s)/(2*pi))\n";
             circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
