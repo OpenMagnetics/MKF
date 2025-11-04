@@ -72,7 +72,7 @@ class CircuitSimulatorExporter {
         static void core_ladder_func(double *p, double *x, int m, int n, void *data);
 
         static std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding(Magnetic magnetic, double temperature, CircuitSimulatorExporterCurveFittingModes mode = CircuitSimulatorExporterCurveFittingModes::LADDER);
-        static std::vector<double> calculate_core_resistance_coefficients(Magnetic magnetic);
+        static std::vector<double> calculate_core_resistance_coefficients(Magnetic magnetic, double temperature = defaults.ambientTemperature);
         std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
         std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = defaults.measurementFrequency, double temperature = defaults.ambientTemperature, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
 };
@@ -82,6 +82,7 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
         std::string programName = "Simba";
         double _scale;
         double _modelSize = 50;
+        size_t _precision = 12;
 
         std::string generate_id();
         std::mt19937 _gen;
@@ -97,6 +98,7 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
         ordered_json create_pin(std::vector<int> coordinates, int angle, std::string name);
         ordered_json create_resistor(double resistance, std::vector<int> coordinates, int angle, std::string name);
         ordered_json create_inductor(double inductance, std::vector<int> coordinates, int angle, std::string name);
+        std::pair<std::vector<ordered_json>, std::vector<ordered_json>> create_ladder(std::vector<double> ladderCoefficients, std::vector<int> coordinates, std::string name);
         ordered_json create_magnetic_ground(std::vector<int> coordinates, int angle, std::string name);
         ordered_json create_connector(std::vector<int> startingCoordinates, std::vector<int> endingCoordinates, std::string name);
         ordered_json merge_connectors(ordered_json connectors);

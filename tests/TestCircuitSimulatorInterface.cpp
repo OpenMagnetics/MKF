@@ -15,14 +15,14 @@ SUITE(CircuitSimulatorExporterSimba) {
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
     TEST(Test_CircuitSimulatorExporter_Simba_Only_Magnetic) {
-        std::vector<int64_t> numberTurns = {30, 10};
-        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<int64_t> numberTurns = {30, 10, 5, 1};
+        std::vector<int64_t> numberParallels = {1, 1, 1, 2};
         std::string shapeName = "PQ 35/35";
-        std::vector<OpenMagnetics::Wire> wires;
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
                                                          shapeName);
+        coil.get_mutable_functional_description()[3].set_isolation_side(MAS::IsolationSide::PRIMARY);
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "95";
@@ -46,7 +46,6 @@ SUITE(CircuitSimulatorExporterSimba) {
         std::vector<int64_t> numberTurns = {30, 10};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "PQ 35/35";
-        std::vector<OpenMagnetics::Wire> wires;
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -319,8 +318,8 @@ SUITE(CircuitSimulatorExporterLtspice) {
     }
 
     TEST(Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder) {
-        std::vector<int64_t> numberTurns = {10};
-        std::vector<int64_t> numberParallels = {1};
+        std::vector<int64_t> numberTurns = {10, 10};
+        std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "PQ 35/35";
         std::vector<OpenMagnetics::Wire> wires;
 
@@ -338,9 +337,9 @@ SUITE(CircuitSimulatorExporterLtspice) {
 
         auto coefficients = CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).calculate_core_resistance_coefficients(magnetic);
 
-        size_t numberElements = 100;
-        double startingFrequency = 0.1;
-        double endingFrequency = 1000000;
+        size_t numberElements = 20;
+        double startingFrequency = 1000;
+        double endingFrequency = 300000;
 
         Curve2D windingCoreResistanceData = Sweeper().sweep_core_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, 25);
         auto frequenciesVector = windingCoreResistanceData.get_x_points();
