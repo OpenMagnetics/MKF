@@ -660,6 +660,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
     double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
     int numberLadderPairElements = acResistanceCoefficientsPerWinding[0].size() / 2 - 1;
+    int numberCoreLadderPairElements = coreResistanceCoefficients.size() / 2 + 1;
 
     for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
         auto column = columns[columnIndex];
@@ -674,7 +675,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         }
 
         std::vector<int> columnTopCoordinate = {columnCoordinates[0] + 3, -2 - numberLadderPairElements * 6};  // Don't ask
-        std::vector<int> columnBottomCoordinate = {columnCoordinates[0] + 3, 4 + (coreResistanceCoefficients.size() / 2 + 1) * 6};  // Don't ask
+        std::vector<int> columnBottomCoordinate = {columnCoordinates[0] + 3, 4 + numberCoreLadderPairElements * 6};  // Don't ask
         int currentColumnGapHeight = 6;
         for (size_t gapIndex = 0; gapIndex < gapsInThisColumn.size(); ++gapIndex) {
             currentColumnGapHeight += 6;
@@ -797,7 +798,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         ordered_json windingJson;
         std::vector<ordered_json> ladderJsons;
         std::vector<ordered_json> ladderConnectorsJsons;
-        coordinates[1] += (coreResistanceCoefficients.size() / 2 + 1) * 6 - 5;
+        coordinates[1] += numberCoreLadderPairElements * 6 - 5;
 
         windingJson = create_winding(winding.get_number_turns(), coordinates, 0, winding.get_name());
         {
