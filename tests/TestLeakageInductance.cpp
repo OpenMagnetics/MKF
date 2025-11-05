@@ -14,7 +14,7 @@
 #include <typeinfo>
 #include <cmath>
 
-using namespace MAS;
+using namespace MAS; 
 using namespace OpenMagnetics;
 
 
@@ -770,6 +770,7 @@ SUITE(LeakageInductance) {
     TEST(Test_Leakage_Inductance_T_0) {
         settings->reset();
         clear_databases();
+    std::cout << "mierda 0" << std::endl;
         std::vector<int64_t> numberTurns({10, 200});
         std::vector<int64_t> numberParallels({1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -783,6 +784,7 @@ SUITE(LeakageInductance) {
 
         std::vector<OpenMagnetics::Wire> wires;
         OpenMagnetics::Wire wire;
+    std::cout << "mierda 1" << std::endl;
 
         wire.set_nominal_value_outer_diameter(0.001);
         wire.set_nominal_value_conducting_diameter(0.00095);
@@ -798,6 +800,7 @@ SUITE(LeakageInductance) {
         wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
+    std::cout << "mierda 2" << std::endl;
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
                                                          shapeName,
@@ -808,6 +811,7 @@ SUITE(LeakageInductance) {
                                                          sectionsAlignment,
                                                          wires);
 
+    std::cout << "mierda 3" << std::endl;
         std::vector<double> proportionPerWinding = {16.185 / (222.42 + 16.185), 222.42 / (222.42 + 16.185)};
         std::vector<size_t> pattern = {0, 1};
         coil.wind(proportionPerWinding, pattern);
@@ -823,6 +827,7 @@ SUITE(LeakageInductance) {
         double frequency = 100000;
         double expectedLeakageInductance = 0.00143;
 
+    std::cout << "mierda 4" << std::endl;
         auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         if (plot) {
