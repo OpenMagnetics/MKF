@@ -169,7 +169,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
         auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_inducing_turn(turn, wire, turnIndex, turn.get_length(), magnetic.get_core());
 
         for (auto harmonicIndex : commonHarmonicIndexes) {
-            auto harmonicCurrentPeak = 0;
+            double harmonicCurrentPeak = 0;
             if (harmonicIndex < harmonics.get_amplitudes().size()) {
                 harmonicCurrentPeak = harmonics.get_amplitudes()[harmonicIndex];  // Because a harmonic is always sinusoidal
             }
@@ -193,6 +193,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
     }
 
     for (auto& inducingFieldPoint : fieldPerHarmonic[0].get_data()) {
+
         if (std::isnan(inducingFieldPoint.get_value())) {
             std::cerr << "inducingFieldPoint.get_value(): " << inducingFieldPoint.get_value() << std::endl;
             throw std::runtime_error("NaN found in inducingFieldPoint value");

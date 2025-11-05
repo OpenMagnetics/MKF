@@ -825,6 +825,25 @@ SUITE(CoilWeb) {
         CHECK(bool(coil.get_layers_description()));
         CHECK(bool(coil.get_turns_description()));
     }
+
+    TEST(Test_Coil_Json_12) {
+        std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"primary","name":"Primary","numberParallels":1,"numberTurns":1,"wire":{"coating":null,"conductingArea":null,"conductingDiameter":null,"conductingHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000348},"conductingWidth":{"nominal":0.002},"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Planar 34.80 µm","numberConductors":1,"outerDiameter":null,"outerHeight":{"nominal":0.0000348},"outerWidth":{"nominal":0.002},"standard":"IPC-6012","standardName":"1 oz.","strand":null,"type":"planar"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null})";
+
+        settings->set_coil_wind_even_if_not_fit(true);
+        auto coilJson = json::parse(coilString);
+        auto coil = OpenMagnetics::Coil(coilJson, false);
+        std::vector<size_t> stackUp = {0};
+
+        coil.set_strict(false);
+        coil.wind_planar(stackUp);
+
+        if (!coil.get_turns_description()) {
+            throw std::runtime_error("Turns not created");
+        }
+
+        json result;
+        to_json(result, coil);
+    }
 }
 
 SUITE(CoilSectionsDescriptionMargins) {
