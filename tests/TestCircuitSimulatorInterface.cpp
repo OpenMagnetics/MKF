@@ -345,6 +345,46 @@ SUITE(CircuitSimulatorExporterLtspice) {
         CHECK(0.01 > errorAverage);
     }
 
+    TEST(Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder_Planar) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/ladder_planar.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+
+        auto coefficientsPerWinding = CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic, 42, CircuitSimulatorExporterCurveFittingModes::LADDER);
+
+        size_t numberElements = 100;
+        size_t windingIndex = 0;
+        double startingFrequency = 0.1;
+        double endingFrequency = 10000000;
+
+        Curve2D windingAcResistanceData = Sweeper().sweep_winding_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
+        auto frequenciesVector = windingAcResistanceData.get_x_points();
+        auto acResistanceVector = windingAcResistanceData.get_y_points();
+
+        for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+            std::cout << coefficientIndex << std::endl;
+            std::cout << coefficientsPerWinding[0][coefficientIndex] << std::endl;
+        }
+
+        double errorAverage = 0;
+        for (size_t index = 0; index < acResistanceVector.size(); ++index) {
+            double c[coefficientsPerWinding[0].size()];
+            for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+                c[coefficientIndex] = coefficientsPerWinding[0][coefficientIndex];
+            }
+            auto frequency = frequenciesVector[index];
+            double modeledAcResistance = CircuitSimulatorExporter::ladder_model(c, frequency, acResistanceVector[0]);
+            double error = fabs(acResistanceVector[index] - modeledAcResistance) / acResistanceVector[index];
+            errorAverage += error;
+        }
+
+        errorAverage /= acResistanceVector.size();
+        std::cout << "errorAverage: " << errorAverage << std::endl;
+
+        CHECK(0.01 > errorAverage);
+    }
+
     TEST(Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder) {
         std::vector<int64_t> numberTurns = {10, 10};
         std::vector<int64_t> numberParallels = {1, 1};
