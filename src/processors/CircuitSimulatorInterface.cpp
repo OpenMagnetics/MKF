@@ -82,6 +82,10 @@ double CircuitSimulatorExporter::ladder_model(double x[], double frequency, doub
     auto R5 = std::complex<double>(x[8], 0);
     auto L5 = std::complex<double>(0, w * x[9]);
 
+    if (x[1] > 1e-7) {
+        return 0;
+    }
+
     for(int i=0; i<10; ++i) {
         if (x[i] < 0) {
             return 0;
@@ -134,7 +138,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     const size_t numberElementsPlusOne = 101;
     size_t loopIterations = 5;
     double startingFrequency = 0.1;
-    double endingFrequency = 1000000;
+    double endingFrequency = 10000000;
     auto coil = magnetic.get_coil();
 
     std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
@@ -170,7 +174,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
 
             double dcResistanceAndfrequencies[numberElementsPlusOne];
             dcResistanceAndfrequencies[0] = acResistances[0];
-            // coefficients[1] = 1e-7;
+            coefficients[1] = 1e-9;
             for (size_t index = 0; index < frequenciesVector.size(); ++index) {
                 dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
             }
