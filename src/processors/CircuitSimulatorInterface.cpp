@@ -801,44 +801,45 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         coordinates[1] += numberCoreLadderPairElements * 6 - 5;
 
         windingJson = create_winding(winding.get_number_turns(), coordinates, 0, winding.get_name());
-        {
-            std::vector<int> connectorTopCoordinates = {coordinates[0], coordinates[1] + 1};
-            std::vector<int> connectorBottomCoordinates = {coordinates[0] - 6, coordinates[1] + 1};
+        // {
+        //     std::vector<int> connectorTopCoordinates = {coordinates[0], coordinates[1] + 1};
+        //     std::vector<int> connectorBottomCoordinates = {coordinates[0] - 6, coordinates[1] + 1};
 
-            auto connectorJson = create_connector(connectorBottomCoordinates, connectorTopCoordinates, "Top connector core losses");
-            device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
-        }
-        {
-            std::vector<int> connectorTopCoordinates = {coordinates[0], coordinates[1] + 5};
-            std::vector<int> connectorBottomCoordinates = {coordinates[0] - 12, coordinates[1] + 1};
+        //     auto connectorJson = create_connector(connectorBottomCoordinates, connectorTopCoordinates, "Top connector core losses");
+        //     device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
+        // }
+        // {
+        //     std::vector<int> connectorTopCoordinates = {coordinates[0], coordinates[1] + 5};
+        //     std::vector<int> connectorBottomCoordinates = {coordinates[0] - 12, coordinates[1] + 1};
 
-            auto connectorJson = create_connector(connectorTopCoordinates, connectorBottomCoordinates, "Bottom connector core losses");
-            device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
-        }
+        //     auto connectorJson = create_connector(connectorTopCoordinates, connectorBottomCoordinates, "Bottom connector core losses");
+        //     device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
+        // }
         {
             std::vector<int> connectorTopCoordinates = {windingCoordinates[0] + 2, windingCoordinates[1]};
-            std::vector<int> connectorBottomCoordinates = {coordinates[0] + 2, coordinates[1] + 1};
+            // std::vector<int> connectorBottomCoordinates = {coordinates[0] + 2, coordinates[1] + 1};
+            std::vector<int> connectorBottomCoordinates = {coordinates[0] + 2, coordinates[1] + 5};
 
             auto connectorJson = create_connector(connectorTopCoordinates, connectorBottomCoordinates, "Central column connector to core losses");
             device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
         }
 
-        coordinates[0] -= 6;
-        auto aux = create_ladder(coreResistanceCoefficients, coordinates, winding.get_name());
-        if (coreResistanceCoefficients.size() > 0) {
-            coordinates[0] -= 6;
-        }
-        ladderJsons = aux.first;
-        ladderConnectorsJsons = aux.second;
+        // coordinates[0] -= 6;
+        // auto aux = create_ladder(coreResistanceCoefficients, coordinates, winding.get_name());
+        // if (coreResistanceCoefficients.size() > 0) {
+        //     coordinates[0] -= 6;
+        // }
+        // ladderJsons = aux.first;
+        // ladderConnectorsJsons = aux.second;
 
-        device["SubcircuitDefinition"]["Devices"].push_back(windingJson);
+        // device["SubcircuitDefinition"]["Devices"].push_back(windingJson);
 
-        for (auto ladderJson : ladderJsons) {
-            device["SubcircuitDefinition"]["Devices"].push_back(ladderJson);
-        }
-        for (auto ladderConnectorsJson : ladderConnectorsJsons) {
-            device["SubcircuitDefinition"]["Connectors"].push_back(ladderConnectorsJson);
-        }
+        // for (auto ladderJson : ladderJsons) {
+        //     device["SubcircuitDefinition"]["Devices"].push_back(ladderJson);
+        // }
+        // for (auto ladderConnectorsJson : ladderConnectorsJsons) {
+        //     device["SubcircuitDefinition"]["Connectors"].push_back(ladderConnectorsJson);
+        // }
     }
 
     for (auto deviceJson : device["SubcircuitDefinition"]["Devices"]) {
