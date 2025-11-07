@@ -218,7 +218,6 @@ namespace OpenMagnetics {
             double minimumSecondaryVoltage = -inputVoltage / turnsRatios[secondaryIndex];
             double maximumSecondaryVoltage = outputOperatingPoint.get_output_voltages()[secondaryIndex] + get_diode_voltage_drop();
             double secondaryVoltagePeaktoPeak = maximumSecondaryVoltage - minimumSecondaryVoltage;
-            double secondaryVoltageOffset = maximumSecondaryVoltage + minimumSecondaryVoltage;
             double secondaryCurrentAverage = centerPrimaryCurrentRamp * turnsRatios[secondaryIndex] * powerDivider;
             double secondaryCurrentPeaktoPeak = secondaryCurrentAverage * currentRippleRatio * 2;
             double secondaryCurrentOffset = std::max(0.0, secondaryCurrentAverage - secondaryCurrentPeaktoPeak / 2);
@@ -257,6 +256,16 @@ namespace OpenMagnetics {
         }
 
         return totalPower / efficiency;
+    }
+
+
+    double Flyback::get_total_input_current(std::vector<double> outputCurrents, double inputVoltage, std::vector<double> outputVoltages, double diodeVoltageDrop) {
+        double totalCurrent = 0;
+        for (size_t secondaryIndex = 0; secondaryIndex < outputCurrents.size(); ++secondaryIndex) {
+            totalCurrent += outputCurrents[secondaryIndex] * (outputVoltages[secondaryIndex] + diodeVoltageDrop) / inputVoltage;
+        }
+
+        return totalCurrent;
     }
 
 
@@ -308,7 +317,7 @@ namespace OpenMagnetics {
         if (!get_maximum_drain_source_voltage() && !get_maximum_duty_cycle()) {
             throw std::invalid_argument("Missing both maximum duty cycle and maximum drain source voltage");
         }
-        double maximumNeededInductance = 0;
+        double globalNeededInductance = 0;
         std::vector<double> turnsRatios(get_operating_points()[0].get_output_voltages().size(), 0);
 
         if (get_maximum_duty_cycle()) {
@@ -355,7 +364,6 @@ namespace OpenMagnetics {
                     turnsRatios[secondaryIndex] = std::max(turnsRatios[secondaryIndex], turnsRatiosFromMaximumDrainSourceVoltage[secondaryIndex]);
                 }
             }
-
         }
 
         for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
@@ -379,7 +387,23 @@ namespace OpenMagnetics {
             double tOn = dutyCycle / switchingFrequency;
             double voltsSeconds = minimumInputVoltage * tOn;
             double neededInductance = voltsSeconds / get_current_ripple_ratio() / centerPrimaryCurrentRamp;
-            maximumNeededInductance = std::max(maximumNeededInductance, neededInductance);
+            globalNeededInductance = std::max(globalNeededInductance, neededInductance);
+        }
+
+        // Add maximum inductance to stay in DCM
+        double maximumInductance = 0;
+        for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
+            auto flybackOperatingPoint = get_operating_points()[flybackOperatingPointIndex];
+            if (flybackOperatingPoint.get_mode()) {
+                if (flybackOperatingPoint.get_mode().value() != MAS::FlybackModes::CONTINUOUS_CONDUCTION_MODE) {
+                    double switchingFrequency = flybackOperatingPoint.resolve_switching_frequency(minimumInputVoltage, get_diode_voltage_drop());
+                    double totalInputCurrent = get_total_input_current(flybackOperatingPoint.get_output_currents(), minimumInputVoltage, flybackOperatingPoint.get_output_voltages(), get_diode_voltage_drop());
+                    double mainOutputVoltage = flybackOperatingPoint.get_output_voltages()[0];
+                    double t1 = (mainOutputVoltage + get_diode_voltage_drop()) / switchingFrequency * turnsRatios[0] / (minimumInputVoltage + (mainOutputVoltage + get_diode_voltage_drop()) * turnsRatios[0]);
+                    double maximumInductanceThisPoint = (minimumInputVoltage * t1) / (totalInputCurrent * 2);
+                    maximumInductance = std::max(maximumInductance, maximumInductanceThisPoint);
+                }
+            }
         }
 
         DesignRequirements designRequirements;
@@ -390,7 +414,13 @@ namespace OpenMagnetics {
             designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
         }
         DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_minimum(roundFloat(maximumNeededInductance, 10));
+        inductanceWithTolerance.set_minimum(roundFloat(globalNeededInductance, 10));
+
+
+        if (maximumInductance > 0) {
+            inductanceWithTolerance.set_maximum(roundFloat(maximumInductance, 10));
+        }
+
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         std::vector<IsolationSide> isolationSides;
         for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
@@ -452,7 +482,7 @@ namespace OpenMagnetics {
 
         Inputs inputs;
 
-        double maximumNeededInductance = get_desired_inductance();
+        double globalNeededInductance = get_desired_inductance();
         std::vector<double> turnsRatios = get_desired_turns_ratios();
 
         inputs.get_mutable_operating_points().clear();
@@ -481,7 +511,7 @@ namespace OpenMagnetics {
             designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
         }
         DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_nominal(roundFloat(maximumNeededInductance, 10));
+        inductanceWithTolerance.set_nominal(roundFloat(globalNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         std::vector<IsolationSide> isolationSides;
         for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
@@ -508,7 +538,7 @@ namespace OpenMagnetics {
                     customDeadTime = get_desired_dead_time().value()[flybackOperatingPointIndex];
                 }
 
-                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[flybackOperatingPointIndex], turnsRatios, maximumNeededInductance, std::nullopt, customDutyCycle, customDeadTime);
+                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[flybackOperatingPointIndex], turnsRatios, globalNeededInductance, std::nullopt, customDutyCycle, customDeadTime);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {

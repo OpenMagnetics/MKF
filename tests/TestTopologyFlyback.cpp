@@ -576,6 +576,64 @@ SUITE(TopologyFlyback) {
         CHECK_CLOSE(0, inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6);
     }
 
+
+    TEST(Test_Advanced_Flyback_DCM_Maximum_Inductance) {
+        json flybackInputsJson;
+        json inputVoltage;
+
+
+        inputVoltage["minimum"] = 180;
+        inputVoltage["maximum"] = 230;
+        flybackInputsJson["inputVoltage"] = inputVoltage;
+        flybackInputsJson["diodeVoltageDrop"] = 0.7;
+        flybackInputsJson["desiredDeadTime"] = {1e-6};
+        flybackInputsJson["maximumDrainSourceVoltage"] = 350;
+        flybackInputsJson["currentRippleRatio"] = 0.3;
+        flybackInputsJson["efficiency"] = 1;
+        flybackInputsJson["operatingPoints"] = json::array();
+
+        {
+            json flybackOperatingPointJson;
+            flybackOperatingPointJson["outputVoltages"] = {12, 5};
+            flybackOperatingPointJson["outputCurrents"] = {3, 5};
+            flybackOperatingPointJson["switchingFrequency"] = 200000;
+            flybackOperatingPointJson["ambientTemperature"] = 42;
+            flybackOperatingPointJson["mode"] = MAS::FlybackModes::DISCONTINUOUS_CONDUCTION_MODE;
+            flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
+        }
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
+        flybackInputs._assertErrors = true;
+
+        auto inputs = flybackInputs.process();
+        CHECK(inputs.get_design_requirements().get_magnetizing_inductance().get_minimum());
+        CHECK(inputs.get_design_requirements().get_magnetizing_inductance().get_maximum());
+
+
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
+        CHECK_CLOSE(0, inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_negative_peak().value(), 1e-6);
+
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1] .get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK_CLOSE(0, inputs.get_operating_points()[0].get_excitations_per_winding()[1] .get_current()->get_processed()->get_negative_peak().value(), 1e-6);
+
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK_CLOSE(0, inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6);
+
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
+        CHECK_CLOSE(0, inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_negative_peak().value(), 1e-6);
+
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK_CLOSE(0, inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_negative_peak().value(), 1e-6);
+
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK_CLOSE(0, inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6);
+    }
+
     TEST(Test_Flyback_Drain_Source_Voltage_BMO) {
         json flybackInputsJson;
         json inputVoltage;
