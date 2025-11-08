@@ -157,6 +157,27 @@ bool is_inside_inducing_turns(FieldPoint inducingFieldPoint, FieldPoint inducedF
     return false;
 }
 
+
+bool is_inside_turns(std::vector<Turn> turns, FieldPoint inducedFieldPoint, std::vector<Wire> wires, Magnetic magnetic) {
+    for (auto turn : turns) {
+        auto windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turn.get_winding());
+        double distanceX = fabs(turn.get_coordinates()[0] - inducedFieldPoint.get_point()[0]);
+        double distanceY = fabs(turn.get_coordinates()[1] - inducedFieldPoint.get_point()[1]);
+        if (wires[windingIndex].get_type() == WireType::ROUND || wires[windingIndex].get_type() == WireType::LITZ) {
+            if (hypot(distanceX, distanceY) < wires[windingIndex].get_maximum_outer_width() / 2) {
+                return true;
+            }
+        }
+        else {
+            if (distanceX < wires[windingIndex].get_maximum_outer_width() / 2 && distanceY < wires[windingIndex].get_maximum_outer_height() / 2) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool is_inside_core(FieldPoint inducedFieldPoint, Core core) {
     if (core.get_shape_family() != CoreShapeFamily::T) {
         return false;
@@ -199,7 +220,7 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, Magnetic m
     return magneticFieldStrengthGap;
 }
 
-WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
+WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings->get_magnetic_field_include_fringing();
     CoilMesher coilMesher; 
@@ -221,7 +242,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     }
 
     if (externalInducedField){
-        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings->get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
+        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings->get_harmonic_amplitude_threshold(), currentDirectionPerWinding, coilMesherModel);
         // We only process the harmonic that comes from the external field
         for (auto field : aux) {
             if (field.get_frequency() == externalInducedField.value().get_frequency()) {
@@ -355,7 +376,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                             continue;
                         }
                     }
-                    // else if (is_inside_inducing_turns(inducingFieldPoint, inducedFieldPoint, inducingWire.value())) {
+                    // else if (is_inside_inducing_turns(inducingFieldPoint, inducedFieldPoint, &_wirePerWinding[windingIndex])) {
+                    //     continue;
+                    // }
+                    // else if (is_inside_turns(turns, inducedFieldPoint, _wirePerWinding, magnetic)) {
                     //     continue;
                     // }
                     else if (is_inside_core(inducedFieldPoint, magnetic.get_core())) {

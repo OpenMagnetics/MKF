@@ -102,7 +102,7 @@ ComplexField AdvancedPainter::calculate_magnetic_field(OperatingPoint operatingP
 
     size_t numberPointsX = settings->get_painter_number_points_x();
     size_t numberPointsY = settings->get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY).first;
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
 
     MagneticField magneticField;
     settings->set_magnetic_field_include_fringing(includeFringing);

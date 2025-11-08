@@ -38,8 +38,34 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint opera
     }
 }
 
+bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
+    for (auto turn : turns) {
+        double distanceX = fabs(turn.get_coordinates()[0] - pointX);
+        double distanceY = fabs(turn.get_coordinates()[1] - pointY);
+        if (!turn.get_dimensions()) {
+            throw std::runtime_error("Turns is missing dimensions, which is needed for leakage inductance calculation");
+        }
+        if (!turn.get_cross_sectional_shape()) {
+            if (distanceX < turn.get_dimensions().value()[0] / 2 && distanceY < turn.get_dimensions().value()[1] / 2) {
+                return true;
+            }
+        }
+        else if (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+            if (hypot(distanceX, distanceY) < turn.get_dimensions().value()[0]) {
+                return true;
+            }
+        }
+        else {
+            if (distanceX < turn.get_dimensions().value()[0] / 2 && distanceY < turn.get_dimensions().value()[1] / 2) {
+                return true;
+            }
+        }
+    }
 
-std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY) {
+    return false;
+}
+
+std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY, bool ignoreTurns) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
 
     std::vector<FieldPoint> points;
@@ -72,9 +98,22 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
         double dy = coreHeight * extraDimension / numberPointsY;
         dA = dx * dy;
     }
+    auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
+    auto coil = magnetic.get_coil();
+    if (!coil.get_turns_description()) {
+        throw std::runtime_error("Winding does not have turns description");
 
+    }
+    auto turns = coil.get_turns_description().value();
     for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
         for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
+            if (isPlanar && !ignoreTurns) {
+                // Planar are so thin and can be so close, that we need to remove he copper part to avoid having a much larger value
+                // TODO: Evaluate for other wires
+                if (is_inside_turns(turns, bobbinPointsX[i], bobbinPointsY[j])) {
+                    continue;
+                }
+            }
             FieldPoint fieldPoint;
             fieldPoint.set_point(std::vector<double>{bobbinPointsX[i], bobbinPointsY[j]});
             points.push_back(fieldPoint);
@@ -88,7 +127,7 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
 }
 
 
-std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
+std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Winding does not have turns description");
@@ -122,29 +161,34 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         std::shared_ptr<CoilMesherModel> model;
 
-        switch(coil.get_wire_type(windingIndex)) {
-            case WireType::ROUND: {
-                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
-                break;
+        if (coilMesherModel) {
+            model = CoilMesherModel::factory(coilMesherModel.value());
+        }
+        else {
+            switch(coil.get_wire_type(windingIndex)) {
+                case WireType::ROUND: {
+                    model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+                    break;
+                }
+                case WireType::LITZ: {
+                    model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+                    break;
+                }
+                case WireType::PLANAR: {
+                    model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                    break;
+                }
+                case WireType::RECTANGULAR: {
+                    model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                    break;
+                }
+                case WireType::FOIL: {
+                    model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                    break;
+                }
+                default:
+                    throw std::runtime_error("Unknown type of wire");
             }
-            case WireType::LITZ: {
-                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
-                break;
-            }
-            case WireType::PLANAR: {
-                model = CoilMesherModel::factory(CoilMesherModels::WANG);
-                break;
-            }
-            case WireType::RECTANGULAR: {
-                model = CoilMesherModel::factory(CoilMesherModels::WANG);
-                break;
-            }
-            case WireType::FOIL: {
-                model = CoilMesherModel::factory(CoilMesherModels::WANG);
-                break;
-            }
-            default:
-                throw std::runtime_error("Unknown type of wire");
         }
 
         breakdownModelPerWinding.push_back(model);
@@ -301,8 +345,8 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
         double B = windingWindow.get_height().value();
         double coreColumnWidth = core.get_columns()[0].get_width();
 
-        double turn_a = turn.get_coordinates()[0] - coreColumnWidth / 2;
-        double turn_b = turn.get_coordinates()[1] + B / 2;
+        double turnA = turn.get_coordinates()[0] - coreColumnWidth / 2;
+        double turnB = turn.get_coordinates()[1] + B / 2;
 
         for (int m = -M; m <= M; ++m)
         {
@@ -320,16 +364,16 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
                 double a;
                 double b;
                 if (m % 2 == 0) {
-                    a = m * A + turn_a;
+                    a = m * A + turnA;
                 }
                 else {
-                    a = m * A + A - turn_a;
+                    a = m * A + A - turnA;
                 }
                 if (n % 2 == 0) {
-                    b = n * B + turn_b;
+                    b = n * B + turnB;
                 }
                 else {
-                    b = n * B + B - turn_b;
+                    b = n * B + B - turnB;
                 }
                 mirroredFieldPoint.set_point(std::vector<double>{a + coreColumnWidth / 2, b - B / 2});
                 fieldPoints.push_back(mirroredFieldPoint);

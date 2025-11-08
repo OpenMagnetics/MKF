@@ -14,6 +14,13 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
     auto numberPointsX = settings->get_magnetic_field_number_points_x();
     auto numberPointsY = settings->get_magnetic_field_number_points_y();
+    auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
+
+    if (isPlanar) {
+        // If planar, we swap the number of points, as Y is larger by default
+        numberPointsX = settings->get_magnetic_field_number_points_y();
+        numberPointsY = settings->get_magnetic_field_number_points_x();
+    }
 
     auto aux = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY);
     Field inducedField = aux.first;
@@ -36,7 +43,7 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
 
     ComplexField field;
     {
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, std::nullopt, CoilMesherModels::CENTER);
         field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
     }
