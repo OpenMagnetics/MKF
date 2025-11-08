@@ -796,8 +796,6 @@ OpenMagnetics::Mas mas_loader(std::string path) {
     std::ifstream f(path);
     std::string data((std::istreambuf_iterator<char>(f)),
                      std::istreambuf_iterator<char>());
-    // std::cout << data << std::endl;
-    // std::cout << data.decode("utf8") << std::endl;
     auto masJson = json::parse(data);
     auto inputsJson = masJson["inputs"];
     auto magneticJson = masJson["magnetic"];

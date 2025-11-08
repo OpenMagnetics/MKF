@@ -4190,6 +4190,12 @@ bool Coil::wind_by_rectangular_turns() {
                         turn.set_winding(partialWinding.get_winding());
                         turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                         turn.set_rotation(0);
+                        if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                            turn.set_cross_sectional_shape(TurnCrossSectionalShape::ROUND);
+                        }
+                        else {
+                            turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
+                        }
                         turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
                         if (turn.get_name() == "winding 1 parallel 1 turn 0") {
                         }
@@ -4245,6 +4251,12 @@ bool Coil::wind_by_rectangular_turns() {
                             turn.set_winding(partialWinding.get_winding());
                             turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                             turn.set_rotation(0);
+                            if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                                turn.set_cross_sectional_shape(TurnCrossSectionalShape::ROUND);
+                            }
+                            else {
+                                turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
+                            }
                             turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
                             turns.push_back(turn);
@@ -4401,6 +4413,12 @@ bool Coil::wind_by_round_turns() {
                         turn.set_winding(partialWinding.get_winding());
                         turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                         turn.set_rotation(currentTurnCenterAngle);
+                        if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                            turn.set_cross_sectional_shape(TurnCrossSectionalShape::ROUND);
+                        }
+                        else {
+                            turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
+                        }
                         turn.set_coordinate_system(CoordinateSystem::POLAR);
 
                         turns.push_back(turn);
@@ -4451,6 +4469,12 @@ bool Coil::wind_by_round_turns() {
                             turn.set_winding(partialWinding.get_winding());
                             turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                             turn.set_rotation(currentTurnCenterAngle);
+                            if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                                turn.set_cross_sectional_shape(TurnCrossSectionalShape::ROUND);
+                            }
+                            else {
+                                turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
+                            }
                             turn.set_coordinate_system(CoordinateSystem::POLAR);
 
 
@@ -4577,6 +4601,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
                         turn.set_winding(partialWinding.get_winding());
                         turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                         turn.set_rotation(0);
+                        turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
                         turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
                         turns.push_back(turn);
@@ -4627,6 +4652,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
                             turn.set_winding(partialWinding.get_winding());
                             turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                             turn.set_rotation(0);
+                            turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
                             turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
                             turns.push_back(turn);

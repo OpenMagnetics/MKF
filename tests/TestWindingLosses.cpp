@@ -2982,4 +2982,80 @@ SUITE(WindingLossesWeb) {
         CHECK(losses.get_winding_losses() < 2);
         settings->reset();
     }
+
+    TEST(Test_Winding_Losses_Web_3) {
+        settings->set_magnetic_field_include_fringing(false);
+
+        std::string file_path = __FILE__;
+        OpenMagnetics::Mas mas1;
+        OpenMagnetics::Mas mas2;
+        OpenMagnetics::Mas mas3;
+        {
+            auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_proximity_losses_1.json");
+            mas1 = OpenMagneticsTesting::mas_loader(path);
+        }
+        {
+            auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_proximity_losses_2.json");
+            mas2 = OpenMagneticsTesting::mas_loader(path);
+        }
+        {
+            auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_proximity_losses_3.json");
+            mas3 = OpenMagneticsTesting::mas_loader(path);
+        }
+
+        auto magnetic1 = mas1.get_magnetic();
+        auto inputs1 = mas1.get_inputs();
+
+        std::cout << "magnetic1" << std::endl;
+        auto losses1 = WindingLosses().calculate_losses(magnetic1, inputs1.get_operating_point(0), 25);
+
+        auto magnetic2 = mas2.get_magnetic();
+        auto inputs2 = mas2.get_inputs();
+
+        std::cout << "magnetic2" << std::endl;
+        auto losses2 = WindingLosses().calculate_losses(magnetic2, inputs2.get_operating_point(0), 25);
+
+        auto magnetic3 = mas3.get_magnetic();
+        auto inputs3 = mas3.get_inputs();
+
+        std::cout << "magnetic3" << std::endl;
+        auto losses3 = WindingLosses().calculate_losses(magnetic3, inputs3.get_operating_point(0), 25);
+
+        settings->set_painter_include_fringing(false);
+        // CHECK(losses.get_winding_losses() <  2);
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Winding_Losses_Web_3_1.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, true);
+            painter.paint_magnetic_field(inputs1.get_operating_point(0), magnetic1);
+            painter.paint_core(magnetic1);
+            painter.paint_bobbin(magnetic1);
+            painter.paint_coil_turns(magnetic1);
+            painter.export_svg();
+        }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Winding_Losses_Web_3_2.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, true);
+            painter.paint_magnetic_field(inputs2.get_operating_point(0), magnetic2);
+            painter.paint_core(magnetic2);
+            painter.paint_bobbin(magnetic2);
+            painter.paint_coil_turns(magnetic2);
+            painter.export_svg();
+        }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Winding_Losses_Web_3_3.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, true);
+            painter.paint_magnetic_field(inputs3.get_operating_point(0), magnetic3);
+            painter.paint_core(magnetic3);
+            painter.paint_bobbin(magnetic3);
+            painter.paint_coil_turns(magnetic3);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
 }

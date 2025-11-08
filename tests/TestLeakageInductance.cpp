@@ -927,4 +927,36 @@ SUITE(LeakageInductance) {
 
         settings->reset();
     }
+
+    TEST(Test_Leakage_Inductance_Planar) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_leakage_inductance.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+
+        double frequency = 100000;
+        double expectedLeakageInductance = 1.4e-6;
+
+        auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 2).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageMagneticField = LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 2);
+        std::cout << "leakageInductance: " << leakageInductance << std::endl;
+        CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        if (true) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            settings->set_painter_mode(PainterModes::QUIVER);
+            outFile.append("Test_Leakage_Inductance_Planar.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, true);
+            painter.paint_magnetic_field(OperatingPoint(), magnetic, 1, leakageMagneticField);
+            painter.paint_core(magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+
+
+        settings->reset();
+    }
 }
