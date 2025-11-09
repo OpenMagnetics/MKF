@@ -68,7 +68,7 @@ class MagneticField {
 
 
 // // Based on Effects of eddy currents in transformer windings by P. L. Dowell.
-// // https://sci-hub.wf/10.1049/piee.1966.0236
+// // https://sci-hub.st/10.1049/piee.1966.0236
 // class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
 //     public:
 //         std::string methodName = "Dowell";
@@ -78,7 +78,7 @@ class MagneticField {
 
 
 // Based on Improved Analytical Calculation of High Frequency Winding Losses in Planar Inductors by Xiaohui Wang
-// https://sci-hub.wf/10.1109/ECCE.2018.8558397
+// https://sci-hub.st/10.1109/ECCE.2018.8558397
 class MagneticFieldStrengthWangModel : public MagneticFieldStrengthModel {
     public:
         std::string methodName = "Wang";
@@ -120,7 +120,7 @@ class MagneticFieldStrengthRoshenModel : public MagneticFieldStrengthFringingEff
 
 // Based on Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften by Manfred Albach
 // https://libgen.rocks/get.php?md5=94b7f2906f53602f19892d7f1dabd929&key=YMKCEJOWB653PYLL
-// https://sci-hub.wf/10.1109/tpel.2011.2143729
+// https://sci-hub.st/10.1109/tpel.2011.2143729
 class MagneticFieldStrengthAlbachModel : public MagneticFieldStrengthFringingEffectModel {
     public:
         std::string methodName = "Albach";

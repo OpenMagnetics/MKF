@@ -959,4 +959,5 @@ SUITE(LeakageInductance) {
 
         settings->reset();
     }
+
 }

@@ -176,7 +176,6 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             totalProximityEffectLosses += lossesThisHarmonic.first * wireLength;
 
         }
-        std::cout << "totalProximityEffectLosses: " << totalProximityEffectLosses << std::endl;
 
         windingLossesPerTurn[turnIndex].set_proximity_effect_losses(proximityEffectLossesThisTurn);
     }

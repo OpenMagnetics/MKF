@@ -2985,6 +2985,7 @@ SUITE(WindingLossesWeb) {
 
     TEST(Test_Winding_Losses_Web_3) {
         settings->set_magnetic_field_include_fringing(false);
+        settings->set_magnetic_field_mirroring_dimension(3);
 
         std::string file_path = __FILE__;
         OpenMagnetics::Mas mas1;
@@ -3001,25 +3002,34 @@ SUITE(WindingLossesWeb) {
         {
             auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_proximity_losses_3.json");
             mas3 = OpenMagneticsTesting::mas_loader(path);
-        }
+        } 
 
         auto magnetic1 = mas1.get_magnetic();
         auto inputs1 = mas1.get_inputs();
 
-        std::cout << "magnetic1" << std::endl;
         auto losses1 = WindingLosses().calculate_losses(magnetic1, inputs1.get_operating_point(0), 25);
+        // auto lossesPerTurns1 = losses1.get_winding_losses_per_turn().value();
+        // for (auto losses : lossesPerTurns1) {
+        //     std::cout << "losses.get_proximity_effect_losses(): " << losses.get_proximity_effect_losses()->get_losses_per_harmonic()[1] << std::endl;
+        // }
 
         auto magnetic2 = mas2.get_magnetic();
         auto inputs2 = mas2.get_inputs();
 
-        std::cout << "magnetic2" << std::endl;
         auto losses2 = WindingLosses().calculate_losses(magnetic2, inputs2.get_operating_point(0), 25);
+        // auto lossesPerTurns2 = losses2.get_winding_losses_per_turn().value();
+        // for (auto losses : lossesPerTurns2) {
+        //     std::cout << "losses.get_proximity_effect_losses(): " << losses.get_proximity_effect_losses()->get_losses_per_harmonic()[1] << std::endl;
+        // }
 
         auto magnetic3 = mas3.get_magnetic();
         auto inputs3 = mas3.get_inputs();
 
-        std::cout << "magnetic3" << std::endl;
         auto losses3 = WindingLosses().calculate_losses(magnetic3, inputs3.get_operating_point(0), 25);
+        // auto lossesPerTurns3 = losses3.get_winding_losses_per_turn().value();
+        // for (auto losses : lossesPerTurns3) {
+        //     std::cout << "losses.get_proximity_effect_losses(): " << losses.get_proximity_effect_losses()->get_losses_per_harmonic()[1] << std::endl;
+        // }
 
         settings->set_painter_include_fringing(false);
         // CHECK(losses.get_winding_losses() <  2);
