@@ -190,15 +190,6 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
 
     double currentRms = operatingPoint.get_excitations_per_winding()[sourceIndex].get_current()->get_processed()->get_rms().value();
     double leakageInductance = 2.0 / pow(currentRms, 2) * energy;
-    json mierda;
-    to_json(mierda, magnetic);
-    std::cout << "mierda: " << mierda << std::endl;
-    std::cout << "frequency: " << frequency << std::endl;
-    std::cout << "sourceIndex: " << sourceIndex << std::endl;
-    std::cout << "destinationIndex: " << destinationIndex << std::endl;
-    std::cout << "harmonicIndex: " << harmonicIndex << std::endl;
-    std::cout << "energy: " << energy << std::endl;
-    std::cout << "leakageInductance: " << leakageInductance << std::endl;
     LeakageInductanceOutput leakageInductanceOutput;
 
     leakageInductanceOutput.set_method_used("Energy");
