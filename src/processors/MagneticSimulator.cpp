@@ -41,6 +41,10 @@ MagnetizingInductanceOutput MagneticSimulator::calculate_magnetizing_inductance(
 
 LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic){
     double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
+    return calculate_leakage_inductance(magnetic, frequency);
+}
+
+LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(Magnetic magnetic, double frequency){
     LeakageInductanceOutput leakageInductanceOutput; 
     for (size_t windingIndex = 1; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
         auto aux = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, windingIndex);
