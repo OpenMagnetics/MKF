@@ -110,9 +110,9 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
             if (isPlanar && !ignoreTurns) {
                 // Planar are so thin and can be so close, that we need to remove he copper part to avoid having a much larger value
                 // TODO: Evaluate for other wires
-                if (is_inside_turns(turns, bobbinPointsX[i], bobbinPointsY[j])) {
-                    continue;
-                }
+                // if (is_inside_turns(turns, bobbinPointsX[i], bobbinPointsY[j])) {
+                //     continue;
+                // }
             }
             FieldPoint fieldPoint;
             fieldPoint.set_point(std::vector<double>{bobbinPointsX[i], bobbinPointsY[j]});

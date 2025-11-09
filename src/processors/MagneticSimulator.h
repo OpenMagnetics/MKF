@@ -47,6 +47,7 @@ class MagneticSimulator {
         Mas simulate(const Inputs& inputs, const Magnetic& magnetic, bool fastMode=false);
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic);
         LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
+        static LeakageInductanceOutput calculate_leakage_inductance(Magnetic magnetic, double frequency);
         MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
         WindingLossesOutput calculate_winding_losses(OperatingPoint& operatingPoint, Magnetic magnetic, std::optional<double> temperature = std::nullopt);
 
