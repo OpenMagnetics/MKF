@@ -396,7 +396,7 @@ namespace OpenMagnetics {
             auto flybackOperatingPoint = get_operating_points()[flybackOperatingPointIndex];
             if (flybackOperatingPoint.get_mode()) {
                 if (flybackOperatingPoint.get_mode().value() != MAS::FlybackModes::CONTINUOUS_CONDUCTION_MODE) {
-                    double totalOutputPower = Flyback::get_total_input_power(get_output_currents(), get_output_voltages(), get_efficiency(), get_diode_voltage_drop());
+                    double totalOutputPower = Flyback::get_total_input_power(flybackOperatingPoint.get_output_currents(), flybackOperatingPoint.get_output_voltages(), get_efficiency(), get_diode_voltage_drop());
                     double switchingFrequency = flybackOperatingPoint.resolve_switching_frequency(minimumInputVoltage, get_diode_voltage_drop());
                     double mainOutputVoltage = flybackOperatingPoint.get_output_voltages()[0];
                     double aux = (mainOutputVoltage + get_diode_voltage_drop()) * turnsRatios[0];
