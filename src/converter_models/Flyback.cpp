@@ -396,11 +396,12 @@ namespace OpenMagnetics {
             auto flybackOperatingPoint = get_operating_points()[flybackOperatingPointIndex];
             if (flybackOperatingPoint.get_mode()) {
                 if (flybackOperatingPoint.get_mode().value() != MAS::FlybackModes::CONTINUOUS_CONDUCTION_MODE) {
+                    double totalOutputPower = Flyback::get_total_input_power(get_output_currents(), get_output_voltages(), get_efficiency(), get_diode_voltage_drop());
                     double switchingFrequency = flybackOperatingPoint.resolve_switching_frequency(minimumInputVoltage, get_diode_voltage_drop());
-                    double totalInputCurrent = get_total_input_current(flybackOperatingPoint.get_output_currents(), minimumInputVoltage, flybackOperatingPoint.get_output_voltages(), get_diode_voltage_drop());
                     double mainOutputVoltage = flybackOperatingPoint.get_output_voltages()[0];
-                    double t1 = (mainOutputVoltage + get_diode_voltage_drop()) / switchingFrequency * turnsRatios[0] / (minimumInputVoltage + (mainOutputVoltage + get_diode_voltage_drop()) * turnsRatios[0]);
-                    double maximumInductanceThisPoint = (minimumInputVoltage * t1) / (totalInputCurrent * 2);
+                    double aux = (mainOutputVoltage + get_diode_voltage_drop()) * turnsRatios[0];
+                    // Accoding to Switch-Mode Power Supplies, 2nd ed; Christophe Basso; page 747.
+                    double maximumInductanceThisPoint = get_efficiency() * pow(minimumInputVoltage, 2) * pow(aux, 2) / (2 * totalOutputPower * switchingFrequency * (minimumInputVoltage + aux) * (aux + get_efficiency() * minimumInputVoltage));
                     maximumInductance = std::max(maximumInductance, maximumInductanceThisPoint);
                 }
             }
@@ -415,7 +416,6 @@ namespace OpenMagnetics {
         }
         DimensionWithTolerance inductanceWithTolerance;
         inductanceWithTolerance.set_minimum(roundFloat(globalNeededInductance, 10));
-
 
         if (maximumInductance > 0) {
             inductanceWithTolerance.set_maximum(roundFloat(maximumInductance, 10));
