@@ -738,10 +738,10 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
         if (frequency == 0) {
             frequency = 1.0 / period;
         }
-        else {
-            if (fabs((1.0 / period) - frequency) / frequency > 0.01)
-                throw std::invalid_argument("Frequency: " + std::to_string(frequency) + " is not matching waveform time info with calculated frequency of: " + std::to_string(1.0 / period));
-        }
+        // else {
+        //     if (fabs((1.0 / period) - frequency) / frequency > 0.01)
+        //         throw std::invalid_argument("Frequency: " + std::to_string(frequency) + " is not matching waveform time info with calculated frequency of: " + std::to_string(1.0 / period));
+        // }
     }
 
     size_t numberPointsForSampling = settings->get_inputs_number_points_sampled_waveforms();
