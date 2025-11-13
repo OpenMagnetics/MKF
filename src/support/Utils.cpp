@@ -20,6 +20,7 @@
 #include <random>
 #include <algorithm>
 #include <magic_enum.hpp>
+#include <rapidfuzz/fuzz.hpp>
 
 CMRC_DECLARE(data);
 
@@ -1025,6 +1026,35 @@ WireMaterial find_wire_material_by_name(std::string name) {
     }
 }
 
+std::pair<MAS::CoreShape, double> find_closest_core_shape(std::vector<std::string> coreShapeCandidates, MagneticCoreSearchElement magneticCoreSearchElement) {
+    double lowestError = DBL_MAX;
+    MAS::CoreShape lowestErrorCoreShape;
+
+    for (auto candidate : coreShapeCandidates) {
+        auto coreShape = OpenMagnetics::find_core_shape_by_name(candidate);
+        double error = 0;
+        if (magneticCoreSearchElement.get_area_product()) {
+            error += OpenMagnetics::get_error_by_area_product(coreShape, magneticCoreSearchElement.get_area_product().value());
+        }
+        if (magneticCoreSearchElement.get_winding_window_area()) {
+            error += OpenMagnetics::get_error_by_winding_window_area(coreShape, magneticCoreSearchElement.get_winding_window_area().value());
+        }
+        if (magneticCoreSearchElement.get_winding_width() && magneticCoreSearchElement.get_winding_height()) {
+            error += OpenMagnetics::get_error_by_winding_window_dimensions(coreShape, magneticCoreSearchElement.get_winding_width().value(), magneticCoreSearchElement.get_winding_height().value());
+        }
+        if (magneticCoreSearchElement.get_effective_length() && magneticCoreSearchElement.get_effective_area() && magneticCoreSearchElement.get_effective_volume()) {
+            error += OpenMagnetics::get_error_by_effective_parameters(coreShape, magneticCoreSearchElement.get_effective_length().value(), magneticCoreSearchElement.get_effective_area().value(), magneticCoreSearchElement.get_effective_volume().value());
+        }
+
+        if (error < lowestError) {
+            lowestError = error;
+            lowestErrorCoreShape = coreShape;
+        }
+    }
+
+    return {lowestErrorCoreShape, lowestError};
+}
+
 double get_error_by_winding_window_perimeter(CoreShape shape, double desiredPerimeter) {
     auto corePiece = CorePiece::factory(shape);
     auto mainColumn = corePiece->get_columns()[0];
@@ -1045,7 +1075,6 @@ double get_error_by_winding_window_perimeter(CoreShape shape, double desiredPeri
     double error = fabs(perimeter - desiredPerimeter) / desiredPerimeter;
     return error;
 }
-
 
 CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter, std::optional<CoreShapeFamily> family) {
     if (coreShapeDatabase.empty()) {
@@ -2344,5 +2373,145 @@ double get_closest(double val1, double val2, double value) {
         return val1;
 }
 
+
+template <typename Sentence1,
+                    typename Iterable, typename Sentence2 = typename Iterable::value_type>
+std::vector<std::pair<Sentence2, double>>
+extract(const Sentence1& query, const Iterable& choices, const double score_cutoff = 0.0)
+{
+    std::vector<std::pair<Sentence2, double>> results;
+
+    rapidfuzz::fuzz::CachedRatio<typename Sentence1::value_type> scorer(query);
+
+    for (const auto& choice : choices) {
+        double score = scorer.similarity(choice, score_cutoff);
+
+        if (score >= score_cutoff) {
+            results.emplace_back(choice, score);
+        }
+    }
+
+    return results;
+}
+
+template <typename Sentence1, typename Iterable, typename Sentence2 = typename Iterable::value_type>
+std::optional<std::pair<Sentence2, double>>
+extractOne(const Sentence1& query, const Iterable& choices, const double score_cutoff = 0.0)
+{
+    bool match_found = false;
+    double best_score = score_cutoff;
+    Sentence2 best_match;
+
+    rapidfuzz::fuzz::CachedRatio<typename Sentence1::value_type> scorer(query);
+
+    for (const auto& choice : choices) {
+        double score = scorer.similarity(choice, best_score);
+
+        if (score >= best_score) {
+            match_found = true;
+            best_score = score;
+            best_match = choice;
+        }
+    }
+
+    if (!match_found) {
+        return std::nullopt;
+    }
+
+    return std::make_pair(best_match, best_score);
+}
+
+
+std::vector<std::string> try_extract_core_shape_names(std::string coreShapeText) {
+    auto coreShapeNames = OpenMagnetics::get_core_shape_names();
+    auto results = extract(coreShapeText, coreShapeNames, 80);
+    if (results.size() == 0) {
+        results = extract(coreShapeText, coreShapeNames, 50);
+    }
+    sort(results.begin(), results.end(), [](std::pair<std::string, double>& b1, std::pair<std::string, double>& b2) {
+        return b1.second > b2.second;
+    });
+
+    std::vector<std::string> coreShapeCandidates;
+    for (auto [coreShapeName, score] : results) {
+        coreShapeCandidates.push_back(coreShapeName);
+    }
+
+    return coreShapeCandidates;
+}
+
+std::optional<MAS::CoreShape> try_extract_core_shape(std::string coreShapeText) {
+    auto coreShapeCandidates = try_extract_core_shape_names(coreShapeText);
+    if (coreShapeCandidates.size() == 0) {
+        return std::nullopt;
+    }
+    auto coreShape = OpenMagnetics::find_core_shape_by_name(coreShapeCandidates[0]);
+
+    return coreShape;
+}
+
+std::vector<std::string> try_extract_core_material_names(std::string coreMaterialText) {
+
+    std::vector<std::string> coreMaterialsNames;
+    std::vector<std::string> coreMaterialsCandidates = OpenMagnetics::split(coreMaterialText, " ");
+    auto coreMaterialsNamesInMAS = OpenMagnetics::get_core_material_names();
+    for (auto coreMaterialsCandidate : coreMaterialsCandidates) {
+        auto result = extractOne(coreMaterialsCandidate, coreMaterialsNamesInMAS, 90);
+        if (result) {
+            coreMaterialsNames.push_back(result->first);
+        }
+    }
+
+    return coreMaterialsNames;
+}
+
+std::optional<MAS::CoreMaterial> try_extract_core_material(std::string coreMaterialText) {
+
+    auto coreMaterialsNames = try_extract_core_material_names(coreMaterialText);
+    if (coreMaterialsNames.size() == 0) {
+        return std::nullopt;
+    }
+
+    MAS::CoreMaterial coreMaterial;
+    coreMaterial.set_name("Dummy");
+    for (auto coreMaterialsName : coreMaterialsNames) {
+        if (coreMaterial.get_name() == "Dummy") {
+            coreMaterial = OpenMagnetics::find_core_material_by_name(coreMaterialsName);
+        }
+        else {
+            std::vector<std::string> alternatives;
+            if (coreMaterial.get_alternatives()) {
+                alternatives = coreMaterial.get_alternatives().value();
+            }
+            alternatives.push_back(coreMaterialsName);
+            coreMaterial.set_alternatives(alternatives);
+        }
+    }
+    return coreMaterial;
+}
+
+std::vector<MAS::CoreGap> extract_core_gapping(OpenMagnetics::Core ungappedCore, int64_t numberTurns, double inductance) {
+    OpenMagnetics::Coil coil;
+    OpenMagnetics::Winding winding;
+    winding.set_number_turns(numberTurns);
+    coil.get_mutable_functional_description().push_back(winding);
+
+    OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+    ungappedCore.process_data();
+    OpenMagnetics::Inputs inputs;
+    MAS::DesignRequirements designRequirements;
+    DimensionWithTolerance inductanceWithTolerance;
+    inductanceWithTolerance.set_nominal(OpenMagnetics::roundFloat(inductance, 10));
+    designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+    inputs.set_design_requirements(designRequirements);
+
+    if (ungappedCore.get_shape_family() != CoreShapeFamily::T) {
+        auto gapping =  magnetizingInductanceModel.calculate_gapping_from_number_turns_and_inductance(ungappedCore, coil, &inputs, OpenMagnetics::GappingType::GROUND);
+        ungappedCore.get_mutable_functional_description().set_gapping(gapping);
+        ungappedCore.process_gap();
+    }
+
+    return ungappedCore.get_functional_description().get_gapping();
+}
 
 } // namespace OpenMagnetics

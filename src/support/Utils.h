@@ -99,6 +99,7 @@ CoreShape find_core_shape_by_area_product(double desiredAreaProduct, std::option
 CoreShape find_core_shape_by_winding_window_area(double desiredWindingWindowArea, std::optional<CoreShapeFamily> family=std::nullopt);
 CoreShape find_core_shape_by_winding_window_dimensions(double desiredWidthOrRadius, double desiredHeight, std::optional<CoreShapeFamily> family=std::nullopt);
 CoreShape find_core_shape_by_effective_parameters(double desiredEffectiveLength, double desiredEffectiveArea, double desiredEffectiveVolume, std::optional<CoreShapeFamily> family=std::nullopt);
+std::pair<MAS::CoreShape, double> find_closest_core_shape(std::vector<std::string> coreShapeCandidates, MagneticCoreSearchElement magneticCoreSearchElement);
 double get_error_by_winding_window_perimeter(CoreShape shape, double perimeter);
 double get_error_by_area_product(CoreShape shape, double areaProduct);
 double get_error_by_winding_window_area(CoreShape shape, double windingWindowArea);
@@ -209,6 +210,13 @@ std::string to_string(const Type & model) {
     to_json(modelJson, model);
     return modelJson;
 }
+
+std::vector<std::string> try_extract_core_shape_names(std::string coreShapeText);
+std::optional<MAS::CoreShape> try_extract_core_shape(std::string coreShapeText);
+std::vector<std::string> try_extract_core_material_names(std::string coreMaterialText);
+std::optional<MAS::CoreMaterial> try_extract_core_material(std::string coreMaterialText);
+std::vector<MAS::CoreGap> extract_core_gapping(OpenMagnetics::Core ungappedCore, int64_t numberTurns, double inductance);
+
 
 } // namespace OpenMagnetics
 

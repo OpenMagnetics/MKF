@@ -104,6 +104,10 @@ FetchContent_Declare(svg
 FetchContent_MakeAvailable(svg)
 include_directories("${CMAKE_BINARY_DIR}/_deps/svg-src/src")
 
+FetchContent_Declare(rapidfuzz
+  GIT_REPOSITORY https://github.com/rapidfuzz/rapidfuzz-cpp.git
+  GIT_TAG main)
+FetchContent_MakeAvailable(rapidfuzz)
 
 if(INCLUDE_MKF_TESTS)
 FetchContent_Declare(UnitTest++
@@ -254,10 +258,8 @@ message(${DATA_LIST})
 cmrc_add_resource_library(data ALIAS data::data NAMESPACE data ${DATA_LIST})
 target_link_libraries(MKF PUBLIC data::data)
 
-
-target_link_libraries(MKF PUBLIC matplot)
+target_link_libraries(MKF PUBLIC matplot rapidfuzz::rapidfuzz)
 target_link_libraries(MKF PRIVATE nlohmann_json::nlohmann_json)
-
 
 target_include_directories(MKF PUBLIC
      "${PROJECT_SOURCE_DIR}/src/"
