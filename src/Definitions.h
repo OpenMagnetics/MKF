@@ -732,4 +732,47 @@ inline double resolve_dimensional_values(MAS::Dimension dimensionValue, Dimensio
     return doubleValue;
 }
 
+
+class MagneticCoreSearchElement {
+    public:
+        MagneticCoreSearchElement() = default;
+        virtual ~MagneticCoreSearchElement() = default;
+    private:
+        std::string name;
+        std::optional<double> effective_length;
+        std::optional<double> effective_area;
+        std::optional<double> effective_volume;
+        std::optional<double> winding_window_area;
+        std::optional<double> area_product;
+        std::optional<double> winding_width;
+        std::optional<double> winding_height;
+
+    public:
+
+        const std::string & get_name() const { return name; }
+        std::string & get_mutable_name() { return name; }
+        void set_name(const std::string & value) { this->name = value; }
+
+        std::optional<double> get_effective_length() const { return effective_length; }
+        void set_effective_length(std::optional<double> value) { this->effective_length = value; }
+        
+        std::optional<double> get_effective_area() const { return effective_area; }
+        void set_effective_area(std::optional<double> value) { this->effective_area = value; }
+        
+        std::optional<double> get_effective_volume() const { return effective_volume; }
+        void set_effective_volume(std::optional<double> value) { this->effective_volume = value; }
+        
+        std::optional<double> get_winding_window_area() const { return winding_window_area; }
+        void set_winding_window_area(std::optional<double> value) { this->winding_window_area = value; }
+        
+        std::optional<double> get_area_product() const { return area_product; }
+        void set_area_product(std::optional<double> value) { this->area_product = value; }
+        
+        std::optional<double> get_winding_width() const { return winding_width; }
+        void set_winding_width(std::optional<double> value) { this->winding_width = value; }
+        
+        std::optional<double> get_winding_height() const { return winding_height; }
+        void set_winding_height(std::optional<double> value) { this->winding_height = value; }
+};
+
 }
