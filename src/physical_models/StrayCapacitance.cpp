@@ -12,9 +12,10 @@
 
 namespace OpenMagnetics {
 
-std::vector<Turn> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription) {
-    std::vector<Turn> surroundingTurns;
-    for (auto potentiallySurroundingTurn : turnsDescription) {
+std::vector<std::pair<Turn, size_t>> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription) {
+    std::vector<std::pair<Turn, size_t>> surroundingTurns;
+    for (size_t turnIndex = 0; turnIndex < turnsDescription.size(); ++turnIndex) {
+        auto potentiallySurroundingTurn = turnsDescription[turnIndex];
         auto factor = Defaults().overlappingFactorSurroundingTurns;
         auto x1 = currentTurn.get_coordinates()[0];
         auto y1 = currentTurn.get_coordinates()[1];
@@ -72,7 +73,7 @@ std::vector<Turn> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std:
             continue;
         }
         else {
-            surroundingTurns.push_back(potentiallySurroundingTurn);
+            surroundingTurns.push_back({potentiallySurroundingTurn, turnIndex});
         }
     }
     return surroundingTurns;
@@ -401,25 +402,25 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
     return _model->calculate_static_capacitance_between_two_turns(insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, epsilonF);
 }
 
-std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_turns(Coil coil) {
+std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacitance_among_turns(Coil coil) {
     if (!coil.get_turns_description()) {
         throw std::invalid_argument("Missing turns description");
     }
 
-    std::map<std::pair<std::string, std::string>, double> capacitanceAmongTurns;
+    std::map<std::pair<size_t, size_t>, double> capacitanceAmongTurns;
 
     auto turns = coil.get_turns_description().value();
     auto wirePerWinding = coil.get_wires();
 
-    std::set<std::pair<std::string, std::string>> turnsCombinations;
+    std::set<std::pair<size_t, size_t>> turnsCombinations;
 
     for (size_t turnIndex = 0; turnIndex <  turns.size(); ++turnIndex) {
         auto turnWindingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
         auto turnWire = wirePerWinding[turnWindingIndex];
-        auto firstTurnName = turns[turnIndex].get_name();
+        auto firstTurnName = turnIndex;
         auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turns[turnIndex], turns);
-        for (auto surroundingTurn : surroundingTurns) {
-            auto secondTurnName = surroundingTurn.get_name();
+        for (auto [surroundingTurn, surroundingTurnIndex] : surroundingTurns) {
+            auto secondTurnName = surroundingTurnIndex;
             auto key = std::make_pair(firstTurnName, secondTurnName);
             if (turnsCombinations.contains(key) || turnsCombinations.contains(std::make_pair(secondTurnName, firstTurnName))) {
                 continue;
@@ -479,7 +480,7 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
     auto windings = coil.get_functional_description();
     std::map<std::pair<std::string, std::string>, double> capacitanceMapPerWindings;
     for (auto firstWinding : windings) {
-        auto turnsInFirstWinding = coil.get_turns_names_by_winding(firstWinding.get_name());
+        auto turnsInFirstWinding = coil.get_turns_indexes_by_winding(firstWinding.get_name());
         auto firstWindingName = firstWinding.get_name();
         double minVoltageInFirstWinding = 1;
         double maxVoltageInFirstWinding = 0;
@@ -505,14 +506,14 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
                 V3 = V3calculated;
                 double energyInBetweenTheseWindings = 0;
                 // double C0 = 0;
-                auto turnsInSecondWinding = coil.get_turns_names_by_winding(secondWinding.get_name());
+                auto turnsInSecondWinding = coil.get_turns_indexes_by_winding(secondWinding.get_name());
                 bool windingAreNotAdjacent = true;
                 for (auto turnInFirstWinding : turnsInFirstWinding) {
-                    auto firstTurnVoltage = voltagesPerTurn[coil.get_turn_index_by_name(turnInFirstWinding)];
+                    auto firstTurnVoltage = voltagesPerTurn[turnInFirstWinding];
                     minVoltageInFirstWinding = std::min(minVoltageInFirstWinding, firstTurnVoltage);
                     maxVoltageInFirstWinding = std::max(maxVoltageInFirstWinding, firstTurnVoltage);
                     for (auto turnInSecondWinding : turnsInSecondWinding) {
-                        auto secondTurnVoltage = voltagesPerTurn[coil.get_turn_index_by_name(turnInSecondWinding)];
+                        auto secondTurnVoltage = voltagesPerTurn[turnInSecondWinding];
                         if (firstWindingName != secondWindingName) {
                             secondTurnVoltage = -secondTurnVoltage;
                         }

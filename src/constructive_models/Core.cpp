@@ -29,8 +29,6 @@ Core::Core(const json& j, bool includeMaterialData, bool includeProcessedDescrip
     if (includeProcessedDescription) {
         process_data();
         process_gap();
-        json mierda;
-        to_json(mierda, get_gapping()[2]);
     }
 
     if (!get_geometrical_description() && includeGeometricalDescription) {

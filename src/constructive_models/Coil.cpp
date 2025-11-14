@@ -938,16 +938,24 @@ size_t Coil::get_winding_index_by_name(std::vector<Winding> functionalDescriptio
 }
 
 size_t Coil::get_turn_index_by_name(std::string name) {
-    if (!get_turns_description()) {
-        throw std::runtime_error("Turns description not set, did you forget to wind?");
-    }
-    auto turns = get_turns_description().value();
-    for (size_t i=0; i<turns.size(); ++i) {
-        if (turns[i].get_name() == name) {
-            return i;
+    if (_turnIndexByName.count(name) == 0) {
+        if (!get_turns_description()) {
+            throw std::runtime_error("Turns description not set, did you forget to wind?");
+        }
+        auto turns = get_turns_description().value();
+        bool found = false;
+        for (size_t i=0; i<turns.size(); ++i) {
+            if (turns[i].get_name() == name) {
+                _turnIndexByName[name] = i;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            throw std::runtime_error("No such a turn name: " + name);
         }
     }
-    throw std::runtime_error("No such a turn name: " + name);
+    return _turnIndexByName[name];
 }
 
 size_t Coil::get_layer_index_by_name(std::string name) {
@@ -2051,6 +2059,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
         maybeVirtualizedProportionPerWinding = virtualize_proportion_per_winding(proportionPerWinding);
         set_functional_description(virtualFunctionalDescription);
         _windingIndexByName.clear();
+        _turnIndexByName.clear();
     }
 
     bool result;
@@ -2064,6 +2073,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
 
     if (needsVirtualization) {
         _windingIndexByName.clear();
+        _turnIndexByName.clear();
         set_functional_description(functionalDescription);
         devirtualize_sections_description();
     }
@@ -2424,6 +2434,7 @@ std::map<size_t, std::vector<size_t>> Coil::create_virtualization_map() {
     std::map<size_t, size_t> inversedVirtualizationMap;
 
     _windingIndexByName.clear();
+    _turnIndexByName.clear();
     _virtualizationMap.clear();
     size_t currentVirtualIndex = 0;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -3334,6 +3345,7 @@ bool Coil::wind_by_layers() {
         set_functional_description(virtualFunctionalDescription);
         set_sections_description(virtualSectionsDescription);
         _windingIndexByName.clear();
+        _turnIndexByName.clear();
     }
 
     bool result;
@@ -3346,6 +3358,7 @@ bool Coil::wind_by_layers() {
 
     if (needsVirtualization) {
         _windingIndexByName.clear();
+        _turnIndexByName.clear();
         set_functional_description(functionalDescription);
         set_sections_description(sectionsDescription);
         _insulationInterSectionsLayers = insulationInterSectionsLayers;
@@ -4007,6 +4020,7 @@ bool Coil::wind_by_turns() {
         set_sections_description(virtualSectionsDescription);
         set_layers_description(virtualLayersDescription);
         _windingIndexByName.clear();
+        _turnIndexByName.clear();
     }
 
     bool result;
@@ -4020,6 +4034,7 @@ bool Coil::wind_by_turns() {
 
     if (needsVirtualization) {
         _windingIndexByName.clear();
+        _turnIndexByName.clear();
         set_functional_description(functionalDescription);
         set_sections_description(sectionsDescription);
         set_layers_description(layersDescription);
