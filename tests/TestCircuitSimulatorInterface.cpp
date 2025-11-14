@@ -1278,7 +1278,7 @@ SUITE(CircuitSimulationReader) {
         std::string file_path = __FILE__;
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_4.csv");
 
-        double frequency = 237175;
+        double frequency = 239600;
         auto reader = CircuitSimulationReader(simulation_path);
         auto mapColumnNamesJson = json::parse(R"([{"current":"I(L1","time":"time","voltage":"V(Vin_q1_drain"},{"current":"I(L2","time":"time","voltage":"V(q5_drain_q2_drain"}])");
         std::vector<std::map<std::string, std::string>> mapColumnNames = mapColumnNamesJson.get<std::vector<std::map<std::string, std::string>>>();

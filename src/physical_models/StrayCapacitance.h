@@ -67,13 +67,13 @@ class StrayCapacitance{
         virtual ~StrayCapacitance() = default;
 
 
-        static std::vector<Turn> get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription);
+        static std::vector<std::pair<Turn, size_t>> get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription);
         static StrayCapacitanceOutput calculate_voltages_per_turn(Coil coil, OperatingPoint operatingPoint);
         static StrayCapacitanceOutput calculate_voltages_per_turn(Coil coil, std::map<std::string, double> voltageRmsPerWinding);
         static std::vector<Layer> get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, Coil coil);
         double calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil);
 
-        std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_turns(Coil coil);
+        std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
         std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_windings(Coil coil);
         static std::map<std::string, double> calculate_capacitance_matrix(double energy, double voltageDrop, double relativeTurnsRatio);

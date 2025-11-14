@@ -84,15 +84,16 @@ SUITE(StrayCapacitance) {
         magnetic.set_coil(coil);
 
 
-        auto outFile = outputFilePath;
-        outFile.append("Test_Get_Capacitance_Among_Windings_1_Windings_8_Turns_1_Parallels.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
-
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Get_Capacitance_Among_Windings_1_Windings_8_Turns_1_Parallels.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
     }
 
     TEST(Test_Get_Capacitance_Among_Windings_2_Windings_8_Turns_1_Parallels) {
@@ -256,14 +257,16 @@ SUITE(StrayCapacitance) {
             }
 
 
-            auto outFile = outputFilePath;
-            outFile.append("Test_One_Versus_Two_Windings_One.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile);
-            painter.paint_core(magnetic);
-            painter.paint_bobbin(magnetic);
-            painter.paint_coil_turns(magnetic);
-            painter.export_svg();
+            if (plot) {
+                auto outFile = outputFilePath;
+                outFile.append("Test_One_Versus_Two_Windings_One.svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile);
+                painter.paint_core(magnetic);
+                painter.paint_bobbin(magnetic);
+                painter.paint_coil_turns(magnetic);
+                painter.export_svg();
+            }
         }
         {
             std::vector<int64_t> numberTurns = {110, 110};
@@ -314,14 +317,16 @@ SUITE(StrayCapacitance) {
                 CHECK_CLOSE(expectedValues[keys], capacitance, fabs(expectedValues[keys]) * maximumError);
             }
 
-            auto outFile = outputFilePath;
-            outFile.append("Test_One_Versus_Two_Windings_Two.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile);
-            painter.paint_core(magnetic);
-            painter.paint_bobbin(magnetic);
-            painter.paint_coil_turns(magnetic);
-            painter.export_svg();
+            if (plot) {
+                auto outFile = outputFilePath;
+                outFile.append("Test_One_Versus_Two_Windings_Two.svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile);
+                painter.paint_core(magnetic);
+                painter.paint_bobbin(magnetic);
+                painter.paint_coil_turns(magnetic);
+                painter.export_svg();
+            }
         }
 
     }
@@ -398,7 +403,10 @@ SUITE(StrayCapacitance) {
         for (auto turn : turns) {
 
             auto surroundingTurns = StrayCapacitance::get_surrounding_turns(turn, turns);
-            std::vector<Turn> newTurns = surroundingTurns;
+            std::vector<Turn> newTurns;
+            for (auto [surroundingTurn, surroundingTurnIndex] : surroundingTurns) {
+                newTurns.push_back(surroundingTurn);
+            }
             newTurns.push_back(turn);
 
             // magnetic.get_mutable_coil().set_turns_description(newTurns);

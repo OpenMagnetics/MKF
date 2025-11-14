@@ -61,6 +61,7 @@ class Coil : public MAS::Coil {
         std::map<std::pair<size_t, size_t>, std::string> _insulationSectionsLog;
         std::map<std::pair<size_t, size_t>, std::string> _insulationInterSectionsLayersLog;
         std::map<std::string, size_t> _windingIndexByName;
+        std::map<std::string, size_t> _turnIndexByName;
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> _sectionInfoWithInsulation;
         std::vector<std::vector<double>> _marginsPerSection;
         size_t _interleavingLevel = 1;
