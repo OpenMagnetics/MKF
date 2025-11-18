@@ -10,6 +10,6 @@ using json = nlohmann::json;
 
 SUITE(Constants) {
     TEST(AccessConstants) {
-        CHECK_CLOSE(constants.residualGap, 5.0e-6, 1e-8);
+        CHECK_CLOSE(OpenMagnetics::constants.residualGap, 5.0e-6, 1e-8);
     }
 }

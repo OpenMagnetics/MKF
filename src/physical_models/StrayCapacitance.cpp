@@ -257,7 +257,7 @@ std::shared_ptr<StrayCapacitanceModel> StrayCapacitanceModel::factory(StrayCapac
         throw std::runtime_error("Unknown Stray capacitance model, available options are: {KOCH, ALBACH, DUERDOTH, MASSARINI}");
 }
 
-std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil) {
+std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
     if (firstWire.get_type() != WireType::ROUND || secondWire.get_type() != WireType::ROUND) {
         throw std::runtime_error("Other wires not implemented yet, check Albach's book");
     }
@@ -286,16 +286,16 @@ std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, Wire 
     std::vector<double> relativePermittivityLayers;
     double effectiveRelativePermittivityLayers = 1;
             
-    std::vector<Layer> insulationLayersInBetween = StrayCapacitance::get_insulation_layers_between_two_turns(firstTurn, secondTurn, coil);
+    if (coil) {
+        std::vector<Layer> insulationLayersInBetween = StrayCapacitance::get_insulation_layers_between_two_turns(firstTurn, secondTurn, coil.value());
 
-
-
-    for (auto layer : insulationLayersInBetween) {
-        auto distance = coil.get_insulation_layer_thickness(layer);
-        auto relativePermittivity = coil.get_insulation_layer_relative_permittivity(layer);
-        distanceThroughLayers += distance;
-        distancesThroughLayers.push_back(distance);
-        relativePermittivityLayers.push_back(relativePermittivity);
+        for (auto layer : insulationLayersInBetween) {
+            auto distance = coil->get_insulation_layer_thickness(layer);
+            auto relativePermittivity = coil->get_insulation_layer_relative_permittivity(layer);
+            distanceThroughLayers += distance;
+            distancesThroughLayers.push_back(distance);
+            relativePermittivityLayers.push_back(relativePermittivity);
+        }
     }
 
     for (size_t index = 0; index < distancesThroughLayers.size(); ++index) {
@@ -320,12 +320,19 @@ double StrayCapacitanceMassariniModel::calculate_static_capacitance_between_two_
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
     double Dc = conductingRadius * 2;
-    double D0 = (conductingRadius + insulationThickness) * 2;
-    double epsilonR = get_effective_relative_permittivity(insulationThickness, epsilonD, distanceThroughAir + distanceThroughLayers, epsilonF);
+    double D0;
+    double epsilonR;
+    if (insulationThickness > 0) {
+        D0 = (conductingRadius + insulationThickness) * 2;
+        epsilonR = get_effective_relative_permittivity(insulationThickness, epsilonD, distanceThroughAir + distanceThroughLayers, epsilonF);
+    }
+    else {
+        D0 = (conductingRadius + distanceThroughAir / 2) * 2;
+        epsilonR = get_effective_relative_permittivity(distanceThroughAir / 2, vacuumPermittivity, distanceThroughAir + distanceThroughLayers, epsilonF);
+    }
     double aux0 = 2 * epsilonR + log(D0 / Dc);
     double aux1 = sqrt(log(D0 / Dc) * (2 * epsilonR + log(D0 / Dc)));
     double aux2 = sqrt(2 * epsilonR * log(D0 / Dc) + pow(log(D0 / Dc), 2));
-
     double C0 = vacuumPermittivity * averageTurnLength * 2 * epsilonR * atan(((-1 + sqrt(3)) * aux0) / ((1 + sqrt(3)) * aux1)) / aux2;
 
     return C0;
@@ -377,7 +384,13 @@ double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
     double alpha = 1 - insulationThickness / (epsilonD * conductingRadius);
-    double beta = 1.0 / alpha * (1 + distanceThroughLayers / (2 * epsilonF * conductingRadius));
+    double beta;
+    if (distanceThroughLayers > 0) {
+        beta = 1.0 / alpha * (1 + distanceThroughLayers / (2 * epsilonF * conductingRadius));
+    }
+    else {
+        beta = 1.0 / alpha * (1 + distanceThroughAir / (2 * vacuumPermittivity * conductingRadius));
+    }
     double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1))) - std::numbers::pi / 4;
     double Z = beta * (pow(beta, 2) - 2) / pow(pow(beta, 2) - 1, 1.5) * atan(sqrt((beta + 1) / (beta - 1))) - beta / (2 * (pow(beta, 2) - 1))  - std::numbers::pi / 4;
     double C0 = vacuumPermittivity * averageTurnLength / (1 - insulationThickness / (epsilonD * conductingRadius)) * (V + 1.0 / (8 * epsilonD) * pow(2 * insulationThickness / conductingRadius, 2) * Z / (1 - insulationThickness / (epsilonD * conductingRadius)));
@@ -389,7 +402,7 @@ double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns
     return C0;
 }
 
-double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil) {
+double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
     auto aux = _model->preprocess_data(firstTurn, firstWire, secondTurn, secondWire, coil);
     double insulationThickness = aux[0];
     double averageTurnLength = aux[1];

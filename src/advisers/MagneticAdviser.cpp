@@ -224,11 +224,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
 
     std::map<std::string, double> scoringPerReference;
     std::vector<Mas> catalogMasWithStriclyRequirementsPassed;
-    bool noStrictlyRequiredFilters = true;
     for (auto filterConfiguration : filterFlow) {
         if (filterConfiguration.get_strictly_required()) {
             strictlyRequiredFilterFlow.push_back(filterConfiguration);
-            noStrictlyRequiredFilters = false;
             // break;
         }
         else {
@@ -457,81 +455,81 @@ bool is_number(const std::string& s)
     return !s.empty() && it == s.end();
 }
 
-int main(int argc, char* argv[]) {
-    if (argc == 1) {
-        throw std::invalid_argument("Missing inputs file");
-    }
-    else {
-        int numberMagnetics = 1;
-        std::filesystem::path inputFilepath = argv[1];
-        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
-        if (argc >= 3) {
-            if (is_number(argv[2])) {
-                numberMagnetics = std::stoi(argv[2]);
-            }
-            else {
-                outputFilePath = argv[2];
-            }
-        }
-        if (argc >= 4) {
-            if (!is_number(argv[2]) && is_number(argv[3])) {
-                numberMagnetics = std::stoi(argv[3]);
-            }
-        }
+// int main(int argc, char* argv[]) {
+//     if (argc == 1) {
+//         throw std::invalid_argument("Missing inputs file");
+//     }
+//     else {
+//         int numberMagnetics = 1;
+//         std::filesystem::path inputFilepath = argv[1];
+//         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+//         if (argc >= 3) {
+//             if (is_number(argv[2])) {
+//                 numberMagnetics = std::stoi(argv[2]);
+//             }
+//             else {
+//                 outputFilePath = argv[2];
+//             }
+//         }
+//         if (argc >= 4) {
+//             if (!is_number(argv[2]) && is_number(argv[3])) {
+//                 numberMagnetics = std::stoi(argv[3]);
+//             }
+//         }
 
-        std::ifstream f(inputFilepath);
-        json masJson;
-        std::string str;
-        if(static_cast<bool>(f)) {
-            std::ostringstream ss;
-            ss << f.rdbuf(); // reading data
-            masJson = json::parse(ss.str());
-        }
+//         std::ifstream f(inputFilepath);
+//         json masJson;
+//         std::string str;
+//         if(static_cast<bool>(f)) {
+//             std::ostringstream ss;
+//             ss << f.rdbuf(); // reading data
+//             masJson = json::parse(ss.str());
+//         }
 
-        if (masJson["inputs"]["designRequirements"]["insulation"]["cti"] == "Group IIIa") {
-            masJson["inputs"]["designRequirements"]["insulation"]["cti"] = "Group IIIA";
-        }
-        if (masJson["inputs"]["designRequirements"]["insulation"]["cti"] == "Group IIIb") {
-            masJson["inputs"]["designRequirements"]["insulation"]["cti"] = "Group IIIB";
-        }
+//         if (masJson["inputs"]["designRequirements"]["insulation"]["cti"] == "Group IIIa") {
+//             masJson["inputs"]["designRequirements"]["insulation"]["cti"] = "Group IIIA";
+//         }
+//         if (masJson["inputs"]["designRequirements"]["insulation"]["cti"] == "Group IIIb") {
+//             masJson["inputs"]["designRequirements"]["insulation"]["cti"] = "Group IIIB";
+//         }
 
-        OpenMagnetics::Inputs inputs(masJson["inputs"]);
+//         OpenMagnetics::Inputs inputs(masJson["inputs"]);
 
-        auto outputFolder = inputFilepath.parent_path();
+//         auto outputFolder = inputFilepath.parent_path();
 
 
-        OpenMagnetics::MagneticAdviser MagneticAdviser;
-        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, numberMagnetics);
-        for (size_t i = 0; i < masMagnetics.size(); ++i){
-            OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetics[i].first);
+//         OpenMagnetics::MagneticAdviser MagneticAdviser;
+//         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, numberMagnetics);
+//         for (size_t i = 0; i < masMagnetics.size(); ++i){
+//             OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetics[i].first);
 
-            std::filesystem::path outputFilename = outputFilePath;
-            outputFilename += inputFilepath.filename();
-            outputFilename += "_design_" + std::to_string(i) + ".json";
-            std::ofstream outputFile(outputFilename);
+//             std::filesystem::path outputFilename = outputFilePath;
+//             outputFilename += inputFilepath.filename();
+//             outputFilename += "_design_" + std::to_string(i) + ".json";
+//             std::ofstream outputFile(outputFilename);
             
-            json output;
-            to_json(output, masMagnetics[i].first);
-            outputFile << output;
+//             json output;
+//             to_json(output, masMagnetics[i].first);
+//             outputFile << output;
             
-            outputFile.close();
+//             outputFile.close();
 
-            outputFilename.replace_extension("svg");
-            OpenMagnetics::Painter painter(outputFilename);
-            settings->set_painter_mode(OpenMagnetics::PainterModes::CONTOUR);
+//             outputFilename.replace_extension("svg");
+//             OpenMagnetics::Painter painter(outputFilename);
+//             settings->set_painter_mode(OpenMagnetics::PainterModes::CONTOUR);
 
-            settings->set_painter_number_points_x(20);
-            settings->set_painter_number_points_y(20);
-            settings->set_painter_include_fringing(false);
-            settings->set_painter_mirroring_dimension(0);
+//             settings->set_painter_number_points_x(20);
+//             settings->set_painter_number_points_y(20);
+//             settings->set_painter_include_fringing(false);
+//             settings->set_painter_mirroring_dimension(0);
 
-            painter.paint_magnetic_field(masMagnetics[i].first.get_mutable_inputs().get_operating_point(0), masMagnetics[i].first.get_mutable_magnetic());
-            painter.paint_core(masMagnetics[i].first.get_mutable_magnetic());
-            painter.paint_bobbin(masMagnetics[i].first.get_mutable_magnetic());
-            painter.paint_coil_turns(masMagnetics[i].first.get_mutable_magnetic());
-            painter.export_svg();
-        }
+//             painter.paint_magnetic_field(masMagnetics[i].first.get_mutable_inputs().get_operating_point(0), masMagnetics[i].first.get_mutable_magnetic());
+//             painter.paint_core(masMagnetics[i].first.get_mutable_magnetic());
+//             painter.paint_bobbin(masMagnetics[i].first.get_mutable_magnetic());
+//             painter.paint_coil_turns(masMagnetics[i].first.get_mutable_magnetic());
+//             painter.export_svg();
+//         }
 
 
-    }
-}
+//     }
+// }

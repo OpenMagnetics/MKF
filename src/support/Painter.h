@@ -140,23 +140,23 @@ class BasicPainter : public PainterInterface {
         void paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group = nullptr, double fillAngle=360, double angle = 0, std::vector<double> center = {0, 0});
 
     public:
-        SVG::SVG* _root;
+        SVG::SVG _root;
         BasicPainter(){};
         BasicPainter(std::filesystem::path filepath){
             _filename = filepath.filename();
             _filepath = filepath.remove_filename();
-            _root = new SVG::SVG();
+            _root = SVG::SVG();
                 
-            _root->style(".ferrite").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_ferrite()), std::regex("0x"), "#"));
-            _root->style(".bobbin").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_bobbin()), std::regex("0x"), "#"));
-            _root->style(".margin").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
-            _root->style(".spacer").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_spacer()), std::regex("0x"), "#"));
-            _root->style(".copper").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
-            _root->style(".insulation").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
-            _root->style(".fr4").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_fr4()), std::regex("0x"), "#"));
-            _root->style(".current_density").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_current_density()), std::regex("0x"), "#"));
-            _root->style(".text").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_text()), std::regex("0x"), "#"));
-            _root->style(".white").set_attr("fill", "#ffffff");
+            _root.style(".ferrite").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_ferrite()), std::regex("0x"), "#"));
+            _root.style(".bobbin").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_bobbin()), std::regex("0x"), "#"));
+            _root.style(".margin").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+            _root.style(".spacer").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_spacer()), std::regex("0x"), "#"));
+            _root.style(".copper").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
+            _root.style(".insulation").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
+            _root.style(".fr4").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_fr4()), std::regex("0x"), "#"));
+            _root.style(".current_density").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_current_density()), std::regex("0x"), "#"));
+            _root.style(".text").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_text()), std::regex("0x"), "#"));
+            _root.style(".white").set_attr("fill", "#ffffff");
         };
         virtual ~BasicPainter() = default;
 

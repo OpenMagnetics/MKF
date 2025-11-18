@@ -19,6 +19,9 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+inline std::map<std::string, tk::spline> lossFactorInterps;
+
+
 class CoreLossesModel {
   private:
   protected:

@@ -10004,8 +10004,6 @@ SUITE(PlanarCoil) {
         std::vector<int64_t> numberParallels = {1};
         std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
         std::vector<size_t> stackUp = {0};
-        double bobbinHeight = 0.01;
-        double bobbinWidth = 0.02;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         auto core = OpenMagneticsTesting::get_quick_core("ELP 32/6/20", json::parse("[]"), 1, "Dummy");
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
@@ -10060,8 +10058,6 @@ SUITE(PlanarCoil) {
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
         std::vector<size_t> stackUp = {0, 1, 0, 1};
-        double bobbinHeight = 0.01;
-        double bobbinWidth = 0.02;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "Dummy");
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
@@ -10124,8 +10120,6 @@ SUITE(PlanarCoil) {
         std::vector<int64_t> numberParallels = {4, 4};
         std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
         std::vector<size_t> stackUp = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-        double bobbinHeight = 0.01;
-        double bobbinWidth = 0.02;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "Dummy");
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
@@ -10189,8 +10183,6 @@ SUITE(PlanarCoil) {
         std::vector<int64_t> numberParallels = {1};
         std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
         std::vector<size_t> stackUp = {0};
-        double bobbinHeight = 0.01;
-        double bobbinWidth = 0.02;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         auto core = OpenMagneticsTesting::get_quick_core("ELP 32/6/20", json::parse("[]"), 1, "Dummy");
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
@@ -10245,8 +10237,6 @@ SUITE(PlanarCoil) {
         std::vector<int64_t> numberParallels = {4, 4};
         std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
         std::vector<size_t> stackUp = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-        double bobbinHeight = 0.01;
-        double bobbinWidth = 0.02;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "Dummy");
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);

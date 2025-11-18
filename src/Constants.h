@@ -9,6 +9,7 @@
 namespace OpenMagnetics {
 struct Constants {
     Constants() {};
+    ~Constants() {};
     const double residualGap = 5e-6;
     const double minimumNonResidualGap = 0.1e-3;
     const double vacuumPermeability = 1.25663706212e-6;

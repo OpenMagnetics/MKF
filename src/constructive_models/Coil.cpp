@@ -7074,5 +7074,47 @@ MarginInfo Coil::resolve_margin_info(Margin marginVariant) {
     }
 }
 
+void Winding::set_isolation_side_from_index(size_t windingIndex) {
+    set_isolation_side(get_isolation_side_from_index(windingIndex));
+}
+
+Coil Coil::create_quick_coil(std::string coreShapeName, std::vector<int64_t> numberTurns, std::vector<int64_t> numberParallels, std::vector<OpenMagnetics::Wire> wires, WindingOrientation windingOrientation, WindingOrientation layersOrientation, CoilAlignment turnsAlignment, CoilAlignment sectionsAlignment, uint8_t interleavingLevel, bool useBobbin, int numberStacks) {
+    Coil coil;
+
+    auto core = Core::create_quick_core(coreShapeName, "Dummy");
+    bool auxUseBobbin = useBobbin;
+    OpenMagnetics::Bobbin bobbin;
+    if (core.get_shape_family() == CoreShapeFamily::T) {
+        bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+    }
+    else {
+        bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, useBobbin);
+    }
+    coil.set_bobbin(bobbin);
+
+    for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex){
+        OpenMagnetics::Winding winding;
+        winding.set_name("winding " + std::to_string(windingIndex));
+        winding.set_number_turns(numberTurns[windingIndex]);
+        winding.set_number_parallels(numberParallels[windingIndex]);
+        winding.set_isolation_side_from_index(windingIndex);
+        if (windingIndex < wires.size()) {
+            winding.set_wire(wires[windingIndex]);
+        }
+        else {
+            winding.set_wire("Round 0.475 - Grade 1");
+        }
+        coil.get_mutable_functional_description().push_back(winding);
+    }
+    coil.set_interleaving_level(interleavingLevel);
+    coil.set_winding_orientation(windingOrientation);
+    coil.set_layers_orientation(layersOrientation);
+    coil.set_turns_alignment(turnsAlignment);
+    coil.set_section_alignment(sectionsAlignment);
+
+    coil.wind();
+    return coil;
+}
+
 } // namespace OpenMagnetics
  

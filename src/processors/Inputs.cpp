@@ -1,4 +1,6 @@
 #include "processors/Inputs.h"
+#include "constructive_models/Magnetic.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "support/Painter.h"
 
 #include "support/Utils.h"
@@ -2051,15 +2053,15 @@ OperatingPoint Inputs::create_operating_point_with_sinusoidal_current_mask(doubl
         processed.set_offset(currentOffset);
         current.set_processed(processed);
         current = standardize_waveform(current, frequency);
-        calculate_basic_processed_data(current.get_waveform().value());
+        current.set_processed(calculate_basic_processed_data(current.get_waveform().value()));
         excitation.set_current(current);
         if (magnetizingInductance > 0) {
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance);
+            voltage.set_processed(calculate_basic_processed_data(voltage.get_waveform().value()));
             excitation.set_voltage(voltage);
-        calculate_basic_processed_data(voltage.get_waveform().value());
             auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            magnetizingCurrent.set_processed(calculate_basic_processed_data(magnetizingCurrent.get_waveform().value()));
             excitation.set_magnetizing_current(magnetizingCurrent);
-        calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
         }
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
@@ -2074,16 +2076,15 @@ OperatingPoint Inputs::create_operating_point_with_sinusoidal_current_mask(doubl
         processed.set_duty_cycle(0.5);
         processed.set_offset(0);
         current.set_processed(processed);
-        current.set_processed(processed);
         current = standardize_waveform(current, frequency);
         excitation.set_current(current);
         if (magnetizingInductance > 0) {
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));
+            voltage.set_processed(calculate_basic_processed_data(voltage.get_waveform().value()));
             excitation.set_voltage(voltage);
-        calculate_basic_processed_data(voltage.get_waveform().value());
             auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            magnetizingCurrent.set_processed(calculate_basic_processed_data(magnetizingCurrent.get_waveform().value()));
             excitation.set_magnetizing_current(magnetizingCurrent);
-        calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
         }
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }

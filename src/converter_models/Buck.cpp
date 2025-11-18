@@ -94,7 +94,6 @@ namespace OpenMagnetics {
     }
 
     DesignRequirements Buck::process_design_requirements() {
-        double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
 
         if (!get_current_ripple_ratio() && !get_maximum_switch_current()) {

@@ -27,6 +27,8 @@ class Winding : public MAS::CoilFunctionalDescription {
         const WireDataOrNameUnion & get_wire() const { return wire; }
         WireDataOrNameUnion & get_mutable_wire() { return wire; }
         void set_wire(const WireDataOrNameUnion & value) { this->wire = value; }
+
+        void set_isolation_side_from_index(size_t windingIndex);
         Winding(const MAS::CoilFunctionalDescription winding) {
 
             if (winding.get_connections()) {
@@ -318,7 +320,18 @@ class Coil : public MAS::Coil {
         std::vector<Turn> virtualize_turns_description();
         std::map<std::pair<size_t, size_t>, std::vector<Layer>> virtualize_insulation_intersections_layers();
 
-
+        static Coil create_quick_coil(std::string coreShapeName,
+                                      std::vector<int64_t> numberTurns,
+                                      std::vector<int64_t> numberParallels = {},
+                                      std::vector<OpenMagnetics::Wire> wires = {},
+                                      WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING,
+                                      WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING,
+                                      CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
+                                      CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP,
+                                      uint8_t interleavingLevel = 1,
+                                      bool useBobbin = true,
+                                      int numberStacks = 1);
+                                               
 };
 }
 namespace OpenMagnetics {

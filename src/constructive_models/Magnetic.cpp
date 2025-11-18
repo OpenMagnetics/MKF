@@ -1,6 +1,9 @@
 #include <MAS.hpp>
 #include "constructive_models/Magnetic.h"
+#include "constructive_models/Mas.h"
+#include "processors/Outputs.h"
 #include "physical_models/Reluctance.h"
+#include "support/Utils.h"
 
 namespace OpenMagnetics {
 
@@ -14,6 +17,14 @@ std::vector<Wire> Magnetic::get_wires() {
 
 std::vector<double> Magnetic::get_turns_ratios() {
     return get_mutable_coil().get_turns_ratios();
+}
+
+std::vector<double> Magnetic::get_turns_ratios(MAS::Magnetic magnetic) {
+    std::vector<double> turnsRatios;
+    for (size_t windingIndex = 1; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+        turnsRatios.push_back(double(magnetic.get_coil().get_functional_description()[0].get_number_turns()) / magnetic.get_coil().get_functional_description()[windingIndex].get_number_turns());
+    }
+    return turnsRatios;
 }
 
 Wire Magnetic::get_wire(size_t windingIndex) {
@@ -159,5 +170,20 @@ double Magnetic::calculate_saturation_current(double temperature) {
     double saturationCurrent = magneticFluxDensitySaturation * effectiveArea * reluctance / numberTurns;
     return saturationCurrent;
 }
-        
+
+void to_file(std::filesystem::path filepath, const Magnetic & x) {
+    OpenMagnetics::Mas mas;
+    auto inputs = OpenMagnetics::get_defaults_inputs(x);
+    std::vector<OpenMagnetics::Outputs> outputs = {OpenMagnetics::Outputs()};
+    mas.set_magnetic(x);
+    mas.set_inputs(inputs);
+    mas.set_outputs(outputs);
+    json masJson;
+    to_json(masJson, mas);
+
+    std::ofstream myfile;
+    myfile.open(filepath);
+    myfile << masJson;
+}
+
 } // namespace OpenMagnetics

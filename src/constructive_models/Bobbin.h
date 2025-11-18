@@ -12,10 +12,26 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "spline.h"
 
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
+
+inline tk::spline bobbinFillingFactorInterpWidth;
+inline tk::spline bobbinFillingFactorInterpHeight;
+inline tk::spline bobbinWindingWindowProportionInterpWidth;
+inline tk::spline bobbinWindingWindowProportionInterpHeight;
+
+inline double minBobbinWidth;
+inline double maxBobbinWidth;
+inline double minBobbinHeight;
+inline double maxBobbinHeight;
+inline double minWindingWindowWidth;
+inline double maxWindingWindowWidth;
+inline double minWindingWindowHeight;
+inline double maxWindingWindowHeight;
+
 class Bobbin : public MAS::Bobbin {
   private:
   public:

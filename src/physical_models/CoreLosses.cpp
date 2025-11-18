@@ -21,7 +21,6 @@
 #include <vector>
 #include "levmar.h"
 
-std::map<std::string, tk::spline> lossFactorInterps;
 
 namespace OpenMagnetics {
 
@@ -1121,7 +1120,7 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
     double saturationMagneticFluxDensity = parameters["saturationMagneticFluxDensity"];
     double coerciveForce = parameters["coerciveForce"];
     double remanence = parameters["remanence"];
-    double frequency = excitation.get_frequency();
+    // double frequency = excitation.get_frequency();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
                                        magneticFluxDensity.get_processed().value().get_offset();
@@ -1211,13 +1210,13 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
         abs_tol += timeout * 0.0001;
     }
 
-    auto closestBIndex = find_closest_index(upperMagneticFluxDensityWaveform, magneticFluxDensityAcPeak);
+    // auto closestBIndex = find_closest_index(upperMagneticFluxDensityWaveform, magneticFluxDensityAcPeak);
     // std::cout << "************************************************" << std::endl;
     // std::cout << "magneticFluxDensityAcPeak: " << magneticFluxDensityAcPeak << std::endl;
     // std::cout << "closestBIndex: " << closestBIndex << std::endl;
     // std::cout << "coerciveForce: " << coerciveForce << std::endl;
     // std::cout << "magneticFieldStrengthPoints[closestBIndex]: " << magneticFieldStrengthPoints[closestBIndex] << std::endl;
-    double calculatedHValue = sqrt((2 * a1 * coerciveForce + pow(coerciveForce, 2) * (b1 - b2)) / (b1 - b2));
+    // double calculatedHValue = sqrt((2 * a1 * coerciveForce + pow(coerciveForce, 2) * (b1 - b2)) / (b1 - b2));
     // std::cout << "calculatedHValue: " << calculatedHValue << std::endl;
 
 

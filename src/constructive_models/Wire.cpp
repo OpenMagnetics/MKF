@@ -8,15 +8,6 @@
 #include "support/Utils.h"
 #include "spline.h"
 
-std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
-std::map<std::string, tk::spline> wireFillingFactorInterps;
-std::map<std::string, tk::spline> wirePackingFactorInterps;
-std::map<std::string, tk::spline> wireConductingAreaProportionInterps;
-std::map<std::string, double> minWireConductingDimensions;
-std::map<std::string, double> maxWireConductingDimensions;
-std::map<std::string, int64_t> minLitzWireNumberConductors;
-std::map<std::string, int64_t> maxLitzWireNumberConductors;
-
 namespace OpenMagnetics {
 
     WireRound Wire::convert_from_wire_to_strand(Wire wire) {
@@ -2160,7 +2151,67 @@ namespace OpenMagnetics {
         }
     }
 
+void Wire::set_bare_coating() {
 
+    MAS::InsulationWireCoating bareCoating;
+    bareCoating.set_type(MAS::InsulationWireCoatingType::BARE);
+    bareCoating.set_thickness_layers(std::nullopt);
+    bareCoating.set_thickness(std::nullopt);
+    set_coating(bareCoating);
+    set_outer_width(get_conducting_width());
+    set_outer_height(get_conducting_height());
+    set_outer_diameter(get_conducting_diameter());
+}
+
+Wire Wire::create_quick_litz_wire(double conductingDiameter, int64_t numberStrands) {
+    OpenMagnetics::Wire wire;
+    // DimensionWithTolerance strandConductingDiameter;
+    // DimensionWithTolerance strandOuterDiameter;
+    // strandConductingDiameter.set_nominal(conductingDiameter);
+    // strandOuterDiameter.set_nominal(get_outer_diameter_round(conductingDiameter));
+    // InsulationWireCoating strandCoating;
+
+    auto strand = convert_from_wire_to_strand(find_wire_by_dimension(conductingDiameter, WireType::ROUND));
+    // strandCoating.set_type(InsulationWireCoatingType::ENAMELLED);
+    // strandCoating.set_grade(1);
+    // strand.set_conducting_diameter(strandConductingDiameter);
+    // strand.set_outer_diameter(strandOuterDiameter);
+    // strand.set_number_conductors(1);
+    // strand.set_material("copper");
+    // strand.set_standard_name( );
+    // strand.set_type(WireType::ROUND);
+    // strand.set_coating(strandCoating);
+    InsulationWireCoating coating;
+    coating.set_type(InsulationWireCoatingType::SERVED);
+    coating.set_number_layers(1);
+
+    double outerDiameter = get_outer_diameter_served_litz(conductingDiameter, numberStrands);
+    wire.set_strand(strand);
+    wire.set_nominal_value_outer_diameter(outerDiameter);
+    wire.set_number_conductors(numberStrands);
+    wire.set_type(WireType::LITZ);
+    wire.set_coating(coating);
+    return wire;
+}
+
+Wire Wire::create_quick_rectangular_wire(double conductingWidth, double conductingHeight) {
+    OpenMagnetics::Wire wire;
+
+    InsulationWireCoating coating;
+    coating.set_type(InsulationWireCoatingType::ENAMELLED);
+    coating.set_grade(1);
+
+    double outerWidth = get_outer_width_rectangular(conductingWidth);
+    double outerHeight = get_outer_height_rectangular(conductingHeight);
+    wire.set_nominal_value_conducting_width(conductingWidth);
+    wire.set_nominal_value_conducting_height(conductingHeight);
+    wire.set_nominal_value_outer_width(outerWidth);
+    wire.set_nominal_value_outer_height(outerHeight);
+    wire.set_number_conductors(1);
+    wire.set_type(WireType::RECTANGULAR);
+    wire.set_coating(coating);
+    return wire;
+}
 
 
 } // namespace OpenMagnetics

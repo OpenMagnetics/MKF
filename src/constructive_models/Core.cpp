@@ -821,64 +821,103 @@ bool Core::distribute_and_process_gap() {
     return true;
 }
 
-void Core::set_ground_gap(double gapLength) {
+
+std::vector<CoreGap> Core::create_ground_gapping(double gapLength) {
     size_t numberColumns = get_columns().size();
+    return create_ground_gapping(gapLength, numberColumns);
+}
+
+std::vector<CoreGap> Core::create_ground_gapping(double gapLength, size_t numberColumns) {
     std::vector<CoreGap> gapping;
     {
         CoreGap gap;
+        gap.set_coordinates({});
         gap.set_type(GapType::SUBTRACTIVE);
         gap.set_length(gapLength);
         gapping.push_back(gap);
     }
     for (size_t i = 0; i < numberColumns - 1; ++i) {
         CoreGap gap;
+        gap.set_coordinates({});
         gap.set_type(GapType::RESIDUAL);
         gap.set_length(constants.residualGap);
         gapping.push_back(gap);
     }
-    get_mutable_functional_description().set_gapping(gapping);
+    return gapping;
 }
 
-void Core::set_distributed_gap(double gapLength, size_t numberGaps) {
+void Core::set_ground_gapping(double gapLength) {
+    get_mutable_functional_description().set_gapping(create_ground_gapping(gapLength));
+}
+
+std::vector<CoreGap> Core::create_distributed_gapping(double gapLength, size_t numberGaps) {
     size_t numberColumns = get_columns().size();
+    return create_distributed_gapping(gapLength, numberGaps, numberColumns);
+}
+
+std::vector<CoreGap> Core::create_distributed_gapping(double gapLength, size_t numberGaps, size_t numberColumns) {
     std::vector<CoreGap> gapping;
     for (size_t i = 0; i < numberGaps; ++i) {
         CoreGap gap;
+        gap.set_coordinates({});
         gap.set_type(GapType::SUBTRACTIVE);
         gap.set_length(gapLength);
         gapping.push_back(gap);
     }
     for (size_t i = 0; i < numberColumns - 1; ++i) {
         CoreGap gap;
+        gap.set_coordinates({});
         gap.set_type(GapType::RESIDUAL);
         gap.set_length(constants.residualGap);
         gapping.push_back(gap);
     }
-    get_mutable_functional_description().set_gapping(gapping);
+    return gapping;
 }
 
-void Core::set_spacer_gap(double gapLength) {
+void Core::set_distributed_gapping(double gapLength, size_t numberGaps) {
+    get_mutable_functional_description().set_gapping(create_distributed_gapping(gapLength, numberGaps));
+}
+
+std::vector<CoreGap> Core::create_spacer_gapping(double gapLength) {
     size_t numberColumns = get_columns().size();
+    return create_spacer_gapping(gapLength, numberColumns);
+}
+
+std::vector<CoreGap> Core::create_spacer_gapping(double gapLength, size_t numberColumns) {
     std::vector<CoreGap> gapping;
     for (size_t i = 0; i < numberColumns; ++i) {
         CoreGap gap;
+        gap.set_coordinates({});
         gap.set_type(GapType::ADDITIVE);
         gap.set_length(gapLength);
         gapping.push_back(gap);
     }
-    get_mutable_functional_description().set_gapping(gapping);
+    return gapping;
 }
 
-void Core::set_residual_gap() {
+void Core::set_spacer_gapping(double gapLength) {
+    get_mutable_functional_description().set_gapping(create_spacer_gapping(gapLength));
+}
+
+std::vector<CoreGap> Core::create_residual_gapping() {
     size_t numberColumns = get_columns().size();
+    return create_residual_gapping(numberColumns);
+}
+
+std::vector<CoreGap> Core::create_residual_gapping(size_t numberColumns) {
     std::vector<CoreGap> gapping;
     for (size_t i = 0; i < numberColumns; ++i) {
         CoreGap gap;
+        gap.set_coordinates({});
         gap.set_type(GapType::RESIDUAL);
         gap.set_length(constants.residualGap);
         gapping.push_back(gap);
     }
-    get_mutable_functional_description().set_gapping(gapping);
+    return gapping;
+}
+
+void Core::set_residual_gapping() {
+    get_mutable_functional_description().set_gapping(create_residual_gapping());
 }
 
 
@@ -968,6 +1007,22 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
     else {
         return std::get<CoreMaterial>(coreMaterial);
     }
+}
+
+void Core::set_type(CoreType coreType) {
+    get_mutable_functional_description().set_type(coreType);
+}
+
+void Core::set_number_stacks(int64_t numberStacks) {
+    get_mutable_functional_description().set_number_stacks(numberStacks);
+}
+
+void Core::set_gapping(std::vector<CoreGap> coreGapping) {
+    get_mutable_functional_description().set_gapping(coreGapping);
+}
+
+void Core::set_shape(CoreShape coreShape) {
+    get_mutable_functional_description().set_shape(coreShape);
 }
 
 void Core::set_material(CoreMaterial coreMaterial) {
@@ -1515,5 +1570,32 @@ std::vector<double> Core::get_maximum_dimensions() {
     auto coreProcessedDescription = get_processed_description().value();
     return {coreProcessedDescription.get_width(), coreProcessedDescription.get_height(), coreProcessedDescription.get_depth()};
 }
+
+Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterialName, std::vector<CoreGap> gapping, int64_t numberStacks) {
+    Core core;
+    auto coreShape = find_core_shape_by_name(coreShapeName);
+    core.set_shape(coreShape);
+    if (coreMaterialName != "Dummy" && coreMaterialName != "dummy") {
+        auto coreMaterial = find_core_material_by_name(coreMaterialName);
+        core.set_material(coreMaterial);
+    }
+    else {
+        core.get_mutable_functional_description().set_material(coreMaterialName);
+    }
+    core.set_number_stacks(numberStacks);
+    core.set_gapping(gapping);
+    core.set_name("Quick core with " + coreMaterialName + " " + coreShapeName);
+    if (coreShape.get_family() == CoreShapeFamily::T || coreShape.get_family() == CoreShapeFamily::UT) {
+        core.set_type(CoreType::TOROIDAL);
+    }
+    else {
+        core.set_type(CoreType::TWO_PIECE_SET);
+    }
+
+    core.process_data();
+    core.process_gap();
+    return core;
+}
+
 
 } // namespace OpenMagnetics

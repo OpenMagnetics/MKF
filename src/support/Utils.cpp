@@ -30,24 +30,7 @@ CMRC_DECLARE(data);
 
 using json = nlohmann::json;
 
-std::vector<OpenMagnetics::Core> coreDatabase;
-std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
-std::map<std::string, MAS::CoreShape> coreShapeDatabase;
-std::vector<MAS::CoreShapeFamily> coreShapeFamiliesInDatabase;
-std::map<std::string, OpenMagnetics::Wire> wireDatabase;
-std::map<std::string, OpenMagnetics::Bobbin> bobbinDatabase;
-std::map<std::string, OpenMagnetics::InsulationMaterial> insulationMaterialDatabase;
-std::map<std::string, MAS::WireMaterial> wireMaterialDatabase;
-OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
-OpenMagnetics::Constants constants = OpenMagnetics::Constants();
-OpenMagnetics::Settings* settings = OpenMagnetics::Settings::GetInstance();
-
-OpenMagnetics::MagneticsCache magneticsCache;
-std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
-
-bool _addInternalData = true;
-std::string _log;
-uint8_t _logVerbosity = 1;
+static bool _addInternalData = true;
 
 namespace OpenMagnetics {
 
@@ -921,7 +904,6 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
     auto wires = get_wires(wireType, wireStandard);
     double minimumDistance = DBL_MAX;
     Wire chosenWire;
-    double minimumDimension = DBL_MAX;
     std::vector<Wire> possibleWires;
 
     for (auto wire : wires) {
@@ -2512,6 +2494,42 @@ std::vector<MAS::CoreGap> extract_core_gapping(OpenMagnetics::Core ungappedCore,
     }
 
     return ungappedCore.get_functional_description().get_gapping();
+}
+
+
+Inputs get_defaults_inputs(OpenMagnetics::Magnetic magnetic) {
+    OpenMagnetics::Inputs inputs;
+    MAS::DesignRequirements designRequirements;
+    designRequirements.set_name("Default Requirements");
+    designRequirements.get_mutable_turns_ratios().clear();
+    auto turnsRatios = magnetic.get_turns_ratios();
+    for (auto turnsRatio : turnsRatios) {
+        MAS::DimensionWithTolerance turnsRatioWithTolerance;
+        turnsRatioWithTolerance.set_nominal(OpenMagnetics::roundFloat(turnsRatio, 2));
+        designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
+    }
+    auto operatingPoint = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, MAS::WaveformLabel::SINUSOIDAL, 0.01, 0.5, 0, turnsRatios).get_operating_points()[0];
+
+    OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+    magnetic.set_core(core);
+    auto aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic, &operatingPoint);
+    double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, coil).get_magnetizing_inductance().get_nominal().value();
+
+    MAS::DimensionWithTolerance inductanceWithTolerance;
+    inductanceWithTolerance.set_nominal(OpenMagnetics::roundFloat(magnetizingInductance, 10));
+    designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+    std::vector<IsolationSide> isolationSides;
+    for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
+        isolationSides.push_back(OpenMagnetics::get_isolation_side_from_index(windingIndex));
+    }
+    designRequirements.set_isolation_sides(isolationSides);
+
+
+    inputs.set_design_requirements(designRequirements);
+    inputs.set_operating_points({operatingPoint});
+    return inputs;
 }
 
 } // namespace OpenMagnetics

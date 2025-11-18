@@ -10,18 +10,18 @@
 #include <vector>
 #include "spline.h"
 
-tk::spline bobbinFillingFactorInterpWidth;
-tk::spline bobbinFillingFactorInterpHeight;
-tk::spline bobbinWindingWindowProportionInterpWidth;
-tk::spline bobbinWindingWindowProportionInterpHeight;
-double minBobbinWidth;
-double maxBobbinWidth;
-double minBobbinHeight;
-double maxBobbinHeight;
-double minWindingWindowWidth;
-double maxWindingWindowWidth;
-double minWindingWindowHeight;
-double maxWindingWindowHeight;
+// tk::spline bobbinFillingFactorInterpWidth;
+// tk::spline bobbinFillingFactorInterpHeight;
+// tk::spline bobbinWindingWindowProportionInterpWidth;
+// tk::spline bobbinWindingWindowProportionInterpHeight;
+// double minBobbinWidth;
+// double maxBobbinWidth;
+// double minBobbinHeight;
+// double maxBobbinHeight;
+// double minWindingWindowWidth;
+// double maxWindingWindowWidth;
+// double minWindingWindowHeight;
+// double maxWindingWindowHeight;
 
 namespace OpenMagnetics {
 

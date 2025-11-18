@@ -17,7 +17,7 @@ class StrayCapacitanceModel {
     public:
         std::string methodName = "Default";
         static std::shared_ptr<StrayCapacitanceModel> factory(StrayCapacitanceModels modelName);
-        std::vector<double> preprocess_data(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil);
+        std::vector<double> preprocess_data(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil = std::nullopt);
         virtual double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) = 0;
 };
 
@@ -61,8 +61,8 @@ class StrayCapacitance{
     std::shared_ptr<StrayCapacitanceModel> _model;
     public:
 
-        StrayCapacitance(){
-            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::ALBACH);
+        StrayCapacitance(StrayCapacitanceModels strayCapacitanceModel = StrayCapacitanceModels::ALBACH){
+            _model = StrayCapacitanceModel::factory(strayCapacitanceModel);
         };
         virtual ~StrayCapacitance() = default;
 
@@ -71,7 +71,7 @@ class StrayCapacitance{
         static StrayCapacitanceOutput calculate_voltages_per_turn(Coil coil, OperatingPoint operatingPoint);
         static StrayCapacitanceOutput calculate_voltages_per_turn(Coil coil, std::map<std::string, double> voltageRmsPerWinding);
         static std::vector<Layer> get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, Coil coil);
-        double calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil);
+        double calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil = std::nullopt);
 
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 

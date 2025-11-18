@@ -55,7 +55,10 @@ inline bool operator==(Mas lhs, Mas rhs) {
 
 void from_json(const json & j, Mas & x);
 void to_json(json & j, const Mas & x);
+
+void from_file(std::filesystem::path filepath, Mas & x);
 void to_file(std::filesystem::path filepath, const Mas & x);
+
 void from_json(const json& j, std::vector<Mas>& v);
 void to_json(json& j, const std::vector<Mas>& v);
 

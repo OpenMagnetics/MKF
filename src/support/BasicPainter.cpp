@@ -64,13 +64,13 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
     }
     coatingColor = std::regex_replace(std::string(coatingColor), std::regex("0x"), "#");
 
-    SVG::Group* shapes = _root->add_child<SVG::Group>();
+    SVG::Group* shapes = _root.add_child<SVG::Group>();
 
 
     // Paint insulation
     {
         std::string cssClassName = generate_random_string();
-        _root->style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
+        _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
         paint_circle(xCoordinate, yCoordinate, outerDiameter / 2, cssClassName, shapes);
     }
 
@@ -85,7 +85,7 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
     // Paint layer separation lines
     {
         std::string cssClassName = generate_random_string();
-        _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
+        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
         
         for (size_t i = 0; i < numberLines; ++i) {
             paint_circle(xCoordinate, yCoordinate, currentLineDiameter / 2, cssClassName, shapes);
@@ -171,18 +171,18 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
 
     coatingColor = std::regex_replace(std::string(coatingColor), std::regex("0x"), "#");
 
-    auto shapes = _root->add_child<SVG::Group>();
+    auto shapes = _root.add_child<SVG::Group>();
 
     // Paint insulation
     {
         std::string cssClassName = generate_random_string();
-        _root->style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
+        _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
         paint_circle(xCoordinate, yCoordinate, outerDiameter / 2, cssClassName, shapes);
     }
     // Paint layer separation lines
     {
         std::string cssClassName = generate_random_string();
-        _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
+        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
         
         for (size_t i = 0; i < numberLines; ++i) {
             paint_circle(xCoordinate, yCoordinate, currentLineDiameter / 2, cssClassName, shapes);
@@ -284,24 +284,24 @@ void BasicPainter::paint_rectangle(double xCoordinate, double yCoordinate, doubl
     turnPoints.push_back(SVG::Point(xCoordinate + xDimension / 2, yCoordinate - yDimension / 2));
     turnPoints.push_back(SVG::Point(xCoordinate - xDimension / 2, yCoordinate - yDimension / 2));
     if (group == nullptr) {
-        group = _root->add_child<SVG::Group>();
+        group = _root.add_child<SVG::Group>();
     }
     *group << SVG::Polygon(scale_points(turnPoints, 0, _scale));
-    auto turnSvg = _root->get_children<SVG::Polygon>().back();
+    auto turnSvg = _root.get_children<SVG::Polygon>().back();
     turnSvg->set_attr("class", cssClassName);
     turnSvg->set_attr("transform", "rotate( " + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ") ");
 }
 
 void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group, double fillAngle, double angle, std::vector<double> center) {
     if (group == nullptr) {
-        group = _root->add_child<SVG::Group>();
+        group = _root.add_child<SVG::Group>();
     }
     *group << SVG::Circle(xCoordinate * _scale, -yCoordinate * _scale, radius * _scale);
-    auto turnSvg = _root->get_children<SVG::Circle>().back();
-    turnSvg = _root->get_children<SVG::Circle>().back();
+    auto turnSvg = _root.get_children<SVG::Circle>().back();
+    turnSvg = _root.get_children<SVG::Circle>().back();
     turnSvg->set_attr("class", cssClassName);
 
-    // auto group = _root->add_child<SVG::Group>();
+    // auto group = _root.add_child<SVG::Group>();
     // *group << SVG::Circle(xCoordinate * _scale, -yCoordinate * _scale, radius * _scale);
     if (angle != 0) {
         turnSvg->set_attr("transform", "rotate( " + std::to_string(angle) + " " + std::to_string(center[0]) + " " + std::to_string(center[1]) + ")");
@@ -373,12 +373,12 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
     }
     coatingColor = std::regex_replace(std::string(coatingColor), std::regex("0x"), "#");
 
-    SVG::Group* shapes = _root->add_child<SVG::Group>();
+    SVG::Group* shapes = _root.add_child<SVG::Group>();
     // Paint insulation
     {
         std::string cssClassName = generate_random_string();
 
-        _root->style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
+        _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
         paint_rectangle(xCoordinate, yCoordinate, outerWidth, outerHeight, cssClassName, shapes, angle, center);
     }
 
@@ -391,7 +391,7 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
 
     {
         std::string cssClassName = generate_random_string();
-        _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
+        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
         for (size_t i = 0; i < numberLines; ++i) {
             paint_rectangle(xCoordinate, yCoordinate, currentLineWidth, currentLineHeight, cssClassName, shapes, angle, center);
             currentLineWidth += lineWidthIncrease;
@@ -409,10 +409,10 @@ void BasicPainter::paint_two_piece_set_coil_sections(Magnetic magnetic) {
 
     auto sections = magnetic.get_coil().get_sections_description().value();
 
-    auto shapes = _root->add_child<SVG::Group>();
+    auto shapes = _root.add_child<SVG::Group>();
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-            _root->style(".section_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleSections[i % constants.coilPainterColorsScaleSections.size()]);
+            _root.style(".section_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleSections[i % constants.coilPainterColorsScaleSections.size()]);
             paint_rectangle(sections[i].get_coordinates()[0], sections[i].get_coordinates()[1], sections[i].get_dimensions()[0], sections[i].get_dimensions()[1], "section_" + std::to_string(i), shapes);
         }
         else {
@@ -440,16 +440,15 @@ void BasicPainter::paint_toroidal_coil_sections(Magnetic magnetic) {
         {
             double strokeWidth = sections[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - sections[i].get_coordinates()[0]) * 2;
-            double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
             double angleProportion = sections[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
 
             std::string cssClassName = generate_random_string();
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-                _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
             }
             else {
-                _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
             }
 
             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, sections[i].get_dimensions()[1], -(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2), {0, 0});
@@ -468,10 +467,10 @@ void BasicPainter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
 
     auto layers = coil.get_layers_description().value();
 
-    auto shapes = _root->add_child<SVG::Group>();
+    auto shapes = _root.add_child<SVG::Group>();
     for (size_t i = 0; i < layers.size(); ++i){
         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-            _root->style(".layer_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleLayers[i % constants.coilPainterColorsScaleLayers.size()]);
+            _root.style(".layer_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleLayers[i % constants.coilPainterColorsScaleLayers.size()]);
             paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "layer_" + std::to_string(i), shapes);
         }
         else {
@@ -508,10 +507,10 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
 
             std::string cssClassName = generate_random_string();
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
             }
             else {
-                _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
             }
             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
         }
@@ -531,7 +530,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
 
     auto turns = coil.get_turns_description().value();
 
-    auto shapes = _root->add_child<SVG::Group>();
+    auto shapes = _root.add_child<SVG::Group>();
 
     WiringTechnology coilType = WiringTechnology::WOUND;
 
@@ -566,7 +565,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
         }
         else {
             {
-                _root->style(".turn_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleTurns[turns[i].get_parallel() % constants.coilPainterColorsScaleTurns.size()]);
+                _root.style(".turn_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleTurns[turns[i].get_parallel() % constants.coilPainterColorsScaleTurns.size()]);
                 double xCoordinate = turns[i].get_coordinates()[0];
                 double yCoordinate = turns[i].get_coordinates()[1];
                 double outerWidth = 0;
@@ -679,7 +678,7 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
             std::string termination = angleProportion < 1? "butt" : "round";
 
             std::string cssClassName = generate_random_string();
-            _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
+            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
 
             if (layers[i].get_additional_coordinates()) {
@@ -690,7 +689,7 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
     }
 
     paint_toroidal_margin(magnetic);
-    // _root->autoscale();
+    // _root.autoscale();
 }
 
 void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
@@ -705,7 +704,7 @@ void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
         bobbinCoordinates = bobbinProcessedDescription.get_coordinates().value();
     }
 
-    auto shapes = _root->add_child<SVG::Group>();
+    auto shapes = _root.add_child<SVG::Group>();
     double bobbinOuterWidth = bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() + bobbinProcessedDescription.get_winding_windows()[0].get_width().value();
     double bobbinOuterHeight = bobbinProcessedDescription.get_wall_thickness();
     for (auto& windingWindow: bobbinProcessedDescription.get_winding_windows()) {
@@ -733,7 +732,7 @@ void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
 
     *shapes << SVG::Polygon(scale_points(bobbinPoints, 0, _scale));
 
-    auto sectionSvg = _root->get_children<SVG::Polygon>().back();
+    auto sectionSvg = _root.get_children<SVG::Polygon>().back();
     sectionSvg->set_attr("class", "bobbin");
 }
 
@@ -844,20 +843,20 @@ void BasicPainter::paint_two_piece_set_core(Core core) {
     bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset + highestHeightBottomCoreMainColumn));
     bottomPiecePoints.push_back(SVG::Point(0, bottomCoreOffset + highestHeightBottomCoreMainColumn));
 
-    auto shapes = _root->add_child<SVG::Group>();
+    auto shapes = _root.add_child<SVG::Group>();
     *shapes << SVG::Polygon(scale_points(topPiecePoints, 0, _scale));
-    auto topPiece = _root->get_children<SVG::Polygon>().back();
+    auto topPiece = _root.get_children<SVG::Polygon>().back();
     topPiece->set_attr("class", "ferrite");
     *shapes << SVG::Polygon(scale_points(bottomPiecePoints, 0, _scale));
-    auto bottomPiece = _root->get_children<SVG::Polygon>().back();
+    auto bottomPiece = _root.get_children<SVG::Polygon>().back();
     bottomPiece->set_attr("class", "ferrite");
     for (auto& chunk : gapChunks) {
         *shapes << SVG::Polygon(scale_points(chunk, 0, _scale));
-        auto chunkPiece = _root->get_children<SVG::Polygon>().back();
+        auto chunkPiece = _root.get_children<SVG::Polygon>().back();
         chunkPiece->set_attr("class", "ferrite");
     }
 
-    _root->autoscale();
+    _root.autoscale();
 }
 
 void BasicPainter::paint_toroidal_core(Core core) {
@@ -868,12 +867,12 @@ void BasicPainter::paint_toroidal_core(Core core) {
     double circleDiameter = processedDescription.get_width() - strokeWidth;
 
     std::string cssClassName = generate_random_string();
-    _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_ferrite()), std::regex("0x"), "#"));
+    _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_ferrite()), std::regex("0x"), "#"));
     paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr);
 
-    // _root->autoscale();
-    _root->set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);  // TODO remove
-    _root->set_attr("viewBox", std::to_string(-_imageWidth / 2 * _scale) + " " + std::to_string(-_imageHeight / 2 * _scale) + " " + std::to_string(_imageWidth * _scale) + " " + std::to_string(_imageHeight * _scale));  // TODO remove
+    // _root.autoscale();
+    _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);  // TODO remove
+    _root.set_attr("viewBox", std::to_string(-_imageWidth / 2 * _scale) + " " + std::to_string(-_imageHeight / 2 * _scale) + " " + std::to_string(_imageWidth * _scale) + " " + std::to_string(_imageHeight * _scale));  // TODO remove
 }
 
 void BasicPainter::paint_two_piece_set_margin(Magnetic magnetic) {
@@ -953,8 +952,6 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
 
     auto processedDescription = magnetic.get_core().get_processed_description().value();
 
-    double coreWidth = processedDescription.get_width();
-    double coreHeight = processedDescription.get_height();
     auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
 
     if (!magnetic.get_coil().get_sections_description()) {
@@ -1011,7 +1008,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                         double angle = wound_distance_to_angle(margins[0], circleDiameter / 2 - strokeWidth / 2);
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                             std::string cssClassName = generate_random_string();
-                            _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+                            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
                             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2), {0, 0});
                         }
                     }
@@ -1023,7 +1020,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                         double angle = wound_distance_to_angle(margins[1], circleDiameter / 2 - strokeWidth / 2);
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                             std::string cssClassName = generate_random_string();
-                            _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+                            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
                             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2 + angle), {0, 0});
                         }
                     }
@@ -1037,7 +1034,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                         std::string cssClassName = generate_random_string();
-                        _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+                        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
                         paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2), {0, 0});
                     }
                 }
@@ -1049,7 +1046,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                         std::string cssClassName = generate_random_string();
-                        _root->style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+                        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
                         paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2 + angle), {0, 0});
                     }
                 }
@@ -1105,8 +1102,8 @@ void BasicPainter::paint_wire(Wire wire) {
         default:
             throw std::runtime_error("Unknown error");
     }
-    _root->autoscale();
-    _root->set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);  // TODO remove
+    _root.autoscale();
+    _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);  // TODO remove
 }
 
 void BasicPainter::paint_core(Magnetic magnetic) {
@@ -1191,9 +1188,9 @@ std::string BasicPainter::export_svg() {
             std::filesystem::create_directory(_filepath);
         }
         std::ofstream outfile(_filepath.replace_filename(_filename));
-        outfile << std::string(*_root);
+        outfile << std::string(_root);
     }
-    return std::string(*_root);
+    return std::string(_root);
 }
 
 } // namespace OpenMagnetics

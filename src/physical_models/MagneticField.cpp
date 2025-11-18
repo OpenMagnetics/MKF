@@ -178,14 +178,11 @@ bool is_inside_turns(std::vector<Turn> turns, FieldPoint inducedFieldPoint, std:
     return false;
 }
 
-bool is_inside_core(FieldPoint inducedFieldPoint, Core core) {
-    if (core.get_shape_family() != CoreShapeFamily::T) {
+bool is_inside_core(FieldPoint inducedFieldPoint, double coreColumnWidth, double coreWidth, CoreShapeFamily coreShapeFamily) {
+    if (coreShapeFamily != CoreShapeFamily::T) {
         return false;
     }
     double radius = sqrt(pow(inducedFieldPoint.get_point()[0], 2) + pow(inducedFieldPoint.get_point()[1], 2));
-    double coreColumnWidth = core.get_columns()[0].get_width();
-    auto processedDescription = core.get_processed_description().value();
-    double coreWidth = processedDescription.get_width();
 
     if (radius * 1.05 > coreWidth / 2) {
         return false;
@@ -225,10 +222,16 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     auto includeFringing = settings->get_magnetic_field_include_fringing();
     CoilMesher coilMesher; 
     std::vector<Field> inducingFields;
+    auto core = magnetic.get_core();
 
-    if (!magnetic.get_mutable_core().is_gap_processed()) {
-        magnetic.get_mutable_core().process_gap();
+    if (!core.is_gap_processed()) {
+        core.process_gap();
     }
+    auto gapping = core.get_functional_description().get_gapping();
+    double coreColumnWidth = core.get_columns()[0].get_width();
+    auto processedDescription = core.get_processed_description().value();
+    double coreWidth = processedDescription.get_width();
+    auto coreShapeFamily = core.get_shape_family();
 
     std::vector<int8_t> currentDirectionPerWinding;
     if (!customCurrentDirectionPerWinding) {
@@ -308,7 +311,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
                     
-                    for (auto& gap : magnetic.get_core().get_functional_description().get_gapping()) {
+                    for (auto& gap : gapping) {
                         if (gap.get_coordinates().value()[0] < 0) {
                             continue;
                         }
@@ -356,7 +359,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
 
-                    for (auto& gap : magnetic.get_core().get_functional_description().get_gapping()) {
+                    for (auto& gap : gapping) {
                         if (gap.get_coordinates().value()[0] < 0) {
                             continue;
                         }
@@ -382,7 +385,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     // else if (is_inside_turns(turns, inducedFieldPoint, _wirePerWinding, magnetic)) {
                     //     continue;
                     // }
-                    else if (is_inside_core(inducedFieldPoint, magnetic.get_core())) {
+                    else if (is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
                         continue;
                     }
                 }

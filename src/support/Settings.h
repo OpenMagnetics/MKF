@@ -70,6 +70,10 @@ class Settings
         int _magneticFieldMirroringDimension;
         bool _magneticFieldIncludeFringing = true;
 
+        bool _leakageInductanceGridAutoScaling = true;
+        double _leakageInductanceGridPrecisionLevelPlanar = 3;
+        double _leakageInductanceGridPrecisionLevelWound = 1;
+
         size_t _coilAdviserMaximumNumberWires = 100;
         bool _coreAdviserIncludeStacks = true;
         bool _coreAdviserIncludeDistributedGaps = true;
@@ -246,6 +250,15 @@ class Settings
 
         bool get_magnetic_field_include_fringing() const;
         void set_magnetic_field_include_fringing(bool value);
+
+        bool get_leakage_inductance_grid_auto_scaling() const;
+        void set_leakage_inductance_grid_auto_scaling(bool value);
+
+        double get_leakage_inductance_grid_precision_level_planar() const;
+        void set_leakage_inductance_grid_precision_level_planar(double value);
+
+        double get_leakage_inductance_grid_precision_level_wound() const;
+        void set_leakage_inductance_grid_precision_level_wound(double value);
 
         int get_magnetic_field_mirroring_dimension() const;
         void set_magnetic_field_mirroring_dimension(int value);
