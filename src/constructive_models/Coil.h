@@ -331,6 +331,9 @@ class Coil : public MAS::Coil {
                                       uint8_t interleavingLevel = 1,
                                       bool useBobbin = true,
                                       int numberStacks = 1);
+
+        std::vector<size_t> extract_stack_up(std::vector<Section> sections);
+        bool is_planar();
                                                
 };
 }

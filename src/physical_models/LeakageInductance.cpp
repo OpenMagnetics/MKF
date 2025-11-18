@@ -25,6 +25,9 @@ std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_
     for (auto layer : layers) {
         minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, layer.get_dimensions()[0]);
         minimumDistanceVerticallyOrAngular = std::min(minimumDistanceVerticallyOrAngular, layer.get_dimensions()[1]);
+        std::cout << "layer.get_dimensions()[1]: " << layer.get_dimensions()[1] << std::endl;
+        std::cout << "layer.get_name(): " << layer.get_name() << std::endl;
+        std::cout << "minimumDistanceVerticallyOrAngular: " << minimumDistanceVerticallyOrAngular << std::endl;
     }
     for (auto turn : turns) {
         minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, turn.get_dimensions().value()[0]);
@@ -45,6 +48,9 @@ std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_
         numberPointsX = size_t(ceil(windingWindowsDimensions[0] / minimumDistanceHorizontallyOrRadially));
         numberPointsY = size_t(ceil(windingWindowsDimensions[1] / minimumDistanceVerticallyOrAngular));
     }
+    std::cout << "calculate_number_points_needed_for_leakage numberPointsY: " << numberPointsY << std::endl;
+    std::cout << "minimumDistanceVerticallyOrAngular: " << minimumDistanceVerticallyOrAngular << std::endl;
+    std::cout << "windingWindowsDimensions[1]: " << windingWindowsDimensions[1] << std::endl;
 
     return {numberPointsX, numberPointsY};
 }
@@ -57,6 +63,7 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     size_t numberPointsY;
     auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
 
+    std::cout << "settings->get_leakage_inductance_grid_auto_scaling(): " << settings->get_leakage_inductance_grid_auto_scaling() << std::endl;
     if (settings->get_leakage_inductance_grid_auto_scaling()) {
         auto aux = calculate_number_points_needed_for_leakage(magnetic.get_coil());
         numberPointsX = aux.first;
@@ -71,6 +78,7 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
         precisionLevel = std::max(1.0, precisionLevel);
         numberPointsX *= precisionLevel;
         numberPointsY *= precisionLevel;
+    std::cout << "precisionLevel: " << precisionLevel << std::endl;
     }
     else {
         numberPointsX = settings->get_magnetic_field_number_points_x();
@@ -82,8 +90,8 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
         }
 
     }
-    // std::cout << "numberPointsX: " << numberPointsX << std::endl;
-    // std::cout << "numberPointsY: " << numberPointsY << std::endl;
+    std::cout << "numberPointsX: " << numberPointsX << std::endl;
+    std::cout << "numberPointsY: " << numberPointsY << std::endl;
 
     auto aux = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY);
     Field inducedField = aux.first;

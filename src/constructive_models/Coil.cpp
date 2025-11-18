@@ -141,6 +141,13 @@ void Coil::convert_turns_to_polar_coordinates() {
     set_turns_description(turns);
 }
 
+bool Coil::is_planar() {
+    if (resolve_wire(0).get_type() == WireType::PLANAR) {
+        return true;
+    }
+    return false;
+}
+
 Coil::Coil(const json& j, size_t interleavingLevel,
                                WindingOrientation windingOrientation,
                                WindingOrientation layersOrientation,
@@ -153,14 +160,18 @@ Coil::Coil(const json& j, size_t interleavingLevel,
     _sectionAlignment = sectionAlignment;
     from_json(j, *this);
 
-    wind();
+    if (!is_planar()) {
+        wind();
+    }
 }
 
 Coil::Coil(const json& j, bool windInConstructor) {
     from_json(j, *this);
 
     if (windInConstructor) {
-        wind();
+        if (!is_planar()) {
+            wind();
+        }
     }
 }
 
@@ -373,10 +384,20 @@ bool Coil::wind(std::vector<size_t> pattern, size_t repetitions){
     return wind(proportionPerWinding, pattern, repetitions);
 }
 
+std::vector<size_t> Coil::extract_stack_up(std::vector<Section> sections) {
+    std::vector<size_t> stackUp;
+    for (auto section : sections) {
+        size_t windingIndex = get_winding_index_by_name(section.get_partial_windings()[0].get_winding());
+        stackUp.push_back(windingIndex);
+    }
+    return stackUp;
+}
+
 bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings->get_coil_delimit_and_compact();
     bool tryRewind = settings->get_coil_try_rewind();
+
     std::string bobbinName = "";
     if (std::holds_alternative<std::string>(get_bobbin())) {
         bobbinName = std::get<std::string>(get_bobbin());
@@ -3308,7 +3329,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
             Section insulationSection;
             insulationSection.set_type(ElectricalType::INSULATION);
-            insulationSection.set_name("Insulation section between stack index" + std::to_string(stackUpIndex) + " and " + std::to_string(stackUpIndex + 1));
+            insulationSection.set_name("Insulation section between stack index " + std::to_string(stackUpIndex) + " and " + std::to_string(stackUpIndex + 1));
             insulationSection.set_dimensions(std::vector<double>{sectionWidth, insulationThicknessThisLayer});
             insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
             insulationSection.set_coordinate_system(CoordinateSystem::CARTESIAN);
