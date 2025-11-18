@@ -8,19 +8,82 @@
 
 namespace OpenMagnetics {
 
+std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_leakage(Coil coil) {
+    if (!coil.get_layers_description()) {
+        throw std::runtime_error("Layers description is missing");
+    }
+    if (!coil.get_turns_description()) {
+        throw std::runtime_error("Turns description is missing");
+    }
+
+    double minimumDistanceHorizontallyOrRadially = DBL_MAX;
+    double minimumDistanceVerticallyOrAngular = DBL_MAX;
+
+    auto layers = coil.get_layers_description().value();
+    auto turns = coil.get_turns_description().value();
+
+    for (auto layer : layers) {
+        minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, layer.get_dimensions()[0]);
+        minimumDistanceVerticallyOrAngular = std::min(minimumDistanceVerticallyOrAngular, layer.get_dimensions()[1]);
+    }
+    for (auto turn : turns) {
+        minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, turn.get_dimensions().value()[0]);
+        minimumDistanceVerticallyOrAngular = std::min(minimumDistanceVerticallyOrAngular, turn.get_dimensions().value()[1]);
+    }
+
+    auto bobbin = coil.resolve_bobbin();
+    auto windingWindowsDimensions = bobbin.get_winding_window_dimensions();
+    auto windingWindowShape = bobbin.get_winding_window_shape();
+    size_t numberPointsX;
+    size_t numberPointsY;
+    if (windingWindowShape == WindingWindowShape::ROUND) {
+        double angleInDistance = 2 * std::numbers::pi * windingWindowsDimensions[0] * (windingWindowsDimensions[1] / 360);
+        numberPointsX = size_t(ceil(windingWindowsDimensions[0] / minimumDistanceHorizontallyOrRadially));
+        numberPointsY = size_t(ceil(angleInDistance / minimumDistanceVerticallyOrAngular));
+    }
+    else {
+        numberPointsX = size_t(ceil(windingWindowsDimensions[0] / minimumDistanceHorizontallyOrRadially));
+        numberPointsY = size_t(ceil(windingWindowsDimensions[1] / minimumDistanceVerticallyOrAngular));
+    }
+
+    return {numberPointsX, numberPointsY};
+}
+
 std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
-    auto numberPointsX = settings->get_magnetic_field_number_points_x();
-    auto numberPointsY = settings->get_magnetic_field_number_points_y();
+    size_t numberPointsX;
+    size_t numberPointsY;
     auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
 
-    if (isPlanar) {
-        // If planar, we swap the number of points, as Y is larger by default
-        numberPointsX = settings->get_magnetic_field_number_points_y();
-        numberPointsY = settings->get_magnetic_field_number_points_x();
+    if (settings->get_leakage_inductance_grid_auto_scaling()) {
+        auto aux = calculate_number_points_needed_for_leakage(magnetic.get_coil());
+        numberPointsX = aux.first;
+        numberPointsY = aux.second;
+        double precisionLevel = 1;
+        if (isPlanar)  {
+            precisionLevel = settings->get_leakage_inductance_grid_precision_level_planar();
+        }
+        else {
+            precisionLevel = settings->get_leakage_inductance_grid_precision_level_wound();
+        }
+        precisionLevel = std::max(1.0, precisionLevel);
+        numberPointsX *= precisionLevel;
+        numberPointsY *= precisionLevel;
     }
+    else {
+        numberPointsX = settings->get_magnetic_field_number_points_x();
+        numberPointsY = settings->get_magnetic_field_number_points_y();
+        if (isPlanar) {
+            // If planar, we swap the number of points, as Y is larger by default
+            numberPointsX = settings->get_magnetic_field_number_points_y();
+            numberPointsY = settings->get_magnetic_field_number_points_x();
+        }
+
+    }
+    // std::cout << "numberPointsX: " << numberPointsX << std::endl;
+    // std::cout << "numberPointsY: " << numberPointsY << std::endl;
 
     auto aux = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY);
     Field inducedField = aux.first;

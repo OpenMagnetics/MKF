@@ -986,7 +986,7 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
         }
         if (core.get_shape_family() != CoreShapeFamily::T) {
             double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], core.get_magnetic_flux_density_saturation(), requiredMagneticEnergy), 5);
-            core.set_ground_gap(gapLength);
+            core.set_ground_gapping(gapLength);
             core.process_gap();
             std::stringstream ss;
             ss << roundFloat(gapLength * 1000, 2);

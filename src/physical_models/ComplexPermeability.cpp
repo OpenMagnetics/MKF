@@ -4,8 +4,6 @@
 #include "support/Utils.h"
 #include <math.h>
 
-std::map<std::string, tk::spline> complexPermeabilityRealInterps;
-std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
 
 namespace OpenMagnetics {
 

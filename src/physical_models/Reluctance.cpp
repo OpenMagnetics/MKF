@@ -550,8 +550,6 @@ double ReluctanceModel::get_gapping_by_fringing_factor(Core core, double fringin
     }
     double gapLength = centralColumns[0].get_height();
     double gapIncrease = gapLength / 2;
-    double calculatedFringingFactor = 0;
-    bool slowMode = false;
     size_t timeout = 100;
     while (true) {
         core.set_gap_length(gapLength);

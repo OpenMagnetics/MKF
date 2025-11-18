@@ -40,8 +40,8 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint opera
 
 bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
     for (auto turn : turns) {
-        double distanceX = fabs(turn.get_coordinates()[0] - pointX);
-        double distanceY = fabs(turn.get_coordinates()[1] - pointY);
+        double distanceX = fabs(turn.get_coordinates()[0] - pointX) * 1.05;
+        double distanceY = fabs(turn.get_coordinates()[1] - pointY) * 1.05;
         if (!turn.get_dimensions()) {
             throw std::runtime_error("Turns is missing dimensions, which is needed for leakage inductance calculation");
         }
@@ -63,6 +63,44 @@ bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
     }
 
     return false;
+}
+
+bool is_far_from_turns(std::vector<Turn> turns, double pointX, double pointY) {
+    for (auto turn : turns) {
+        double distanceX = fabs(turn.get_coordinates()[0] - pointX);
+        double distanceY = fabs(turn.get_coordinates()[1] - pointY);
+        if (!turn.get_dimensions()) {
+            throw std::runtime_error("Turns is missing dimensions, which is needed for leakage inductance calculation");
+        }
+        if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 2) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool is_passed_from_all_turns(std::vector<Turn> turns, double pointX, double pointY) {
+    for (auto turn : turns) {
+        if (pointX < turn.get_coordinates()[0]) {
+            return false;
+        }
+    }
+    bool noTurnsAbove = true;
+    for (auto turn : turns) {
+        if (pointY < turn.get_coordinates()[1]) {
+            noTurnsAbove = false;
+        }
+    }
+
+    bool noTurnsBelow = true;
+    for (auto turn : turns) {
+        if (pointY > turn.get_coordinates()[1]) {
+            noTurnsBelow = false;
+        }
+    }
+
+    return noTurnsBelow ^ noTurnsAbove;
 }
 
 std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY, bool ignoreTurns) {
@@ -105,8 +143,16 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
 
     }
     auto turns = coil.get_turns_description().value();
+    auto windingOrientation = bobbin.get_winding_orientation();
+    bool checkOnlyDistance = true;
+    if (windingOrientation && windingOrientation.value() == WindingOrientation::CONTIGUOUS) {
+        checkOnlyDistance = false;
+    }
     for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
         for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
+            if (is_far_from_turns(turns, bobbinPointsX[i], bobbinPointsY[j]) && (checkOnlyDistance || is_passed_from_all_turns(turns, bobbinPointsX[i], bobbinPointsY[j]))) {
+                continue;
+            }
             if (isPlanar && !ignoreTurns) {
                 // Planar are so thin and can be so close, that we need to remove he copper part to avoid having a much larger value
                 // TODO: Evaluate for other wires

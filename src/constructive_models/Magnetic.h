@@ -51,6 +51,7 @@ class Magnetic : public MAS::Magnetic {
         Bobbin get_bobbin();
         std::vector<Wire> get_wires();
         std::vector<double> get_turns_ratios();
+        static std::vector<double> get_turns_ratios(MAS::Magnetic magnetic);
         Wire get_wire(size_t windingIndex=0);
         std::string get_reference();
         std::vector<double> get_maximum_dimensions();
@@ -87,6 +88,18 @@ void from_json(const json & j, Magnetic & x);
 void to_json(json & j, const Magnetic & x);
 void from_json(const json& j, std::vector<Magnetic>& v);
 void to_json(json& j, const std::vector<Magnetic>& v);
+void from_file(std::filesystem::path filepath, Magnetic & x);
+void to_file(std::filesystem::path filepath, const Magnetic & x);
+
+inline void from_file(std::filesystem::path filepath, Magnetic & x) {
+    std::ifstream f(filepath);
+    std::string data((std::istreambuf_iterator<char>(f)),
+                     std::istreambuf_iterator<char>());
+    auto masJson = json::parse(data);
+    auto magneticJson = masJson["magnetic"];
+
+    x = OpenMagnetics::Magnetic(magneticJson);
+}
 
 inline void from_json(const json & j, Magnetic& x) {
     x.set_coil(j.at("coil").get<Coil>());

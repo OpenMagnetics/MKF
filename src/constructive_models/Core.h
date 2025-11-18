@@ -96,12 +96,29 @@ class Core : public MAS::MagneticCore {
     CoreType get_type();
     bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
     std::vector<double> get_maximum_dimensions();
+    void set_type(CoreType coreType);
+    void set_number_stacks(int64_t numberStacks);
     void set_material(CoreMaterial coreMaterial);
+    void set_shape(CoreShape coreShape);
+    void set_gapping(std::vector<CoreGap> coreGapping);
     void set_material_initial_permeability(double value);
-    void set_ground_gap(double gapLength);
-    void set_distributed_gap(double gapLength, size_t numberGaps);
-    void set_spacer_gap(double gapLength);
-    void set_residual_gap();
+
+    void set_ground_gapping(double gapLength);
+    void set_distributed_gapping(double gapLength, size_t numberGaps);
+    void set_spacer_gapping(double gapLength);
+    void set_residual_gapping();
+
+    std::vector<CoreGap> create_ground_gapping(double gapLength);
+    static std::vector<CoreGap> create_ground_gapping(double gapLength, size_t numberColumns);
+    std::vector<CoreGap> create_distributed_gapping(double gapLength, size_t numberGaps);
+    static std::vector<CoreGap> create_distributed_gapping(double gapLength, size_t numberGaps, size_t numberColumns);
+    std::vector<CoreGap> create_spacer_gapping(double gapLength);
+    static std::vector<CoreGap> create_spacer_gapping(double gapLength, size_t numberColumns);
+    std::vector<CoreGap> create_residual_gapping();
+    static std::vector<CoreGap> create_residual_gapping(size_t numberColumns);
+
+    static Core create_quick_core(std::string coreShapeName, std::string coreMaterialName, std::vector<CoreGap> gapping = {}, int64_t numberStacks = 1);
+
 };
 
 

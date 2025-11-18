@@ -3,6 +3,7 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Mas.h"
+#include "constructive_models/Magnetic.h"
 #include "constructive_models/InsulationMaterial.h"
 
 #include <MAS.hpp>
@@ -20,61 +21,28 @@
 #include "Definitions.h"
 #include "Cache.h"
 
-
-        
-extern OpenMagnetics::Defaults defaults;
-extern OpenMagnetics::Constants constants;
-extern OpenMagnetics::Settings *settings;
-extern std::string _log;
-extern uint8_t _logVerbosity;
-extern std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
-
-extern std::vector<OpenMagnetics::Core> coreDatabase;
-extern std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
-extern std::map<std::string, MAS::CoreShape> coreShapeDatabase;
-extern std::vector<MAS::CoreShapeFamily> coreShapeFamiliesInDatabase;
-extern std::map<std::string, OpenMagnetics::Wire> wireDatabase;
-extern std::map<std::string, OpenMagnetics::Bobbin> bobbinDatabase;
-extern std::map<std::string, OpenMagnetics::InsulationMaterial> insulationMaterialDatabase;
-extern std::map<std::string, MAS::WireMaterial> wireMaterialDatabase;
-
-extern tk::spline bobbinFillingFactorInterpWidth;
-extern tk::spline bobbinFillingFactorInterpHeight;
-extern tk::spline bobbinWindingWindowProportionInterpWidth;
-extern tk::spline bobbinWindingWindowProportionInterpHeight;
-extern std::map<std::string, tk::spline> wireFillingFactorInterps;
-extern std::map<std::string, tk::spline> wirePackingFactorInterps;
-extern std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
-extern std::map<std::string, tk::spline> wireConductingAreaProportionInterps;
-extern double minBobbinWidth;
-extern double maxBobbinWidth;
-extern double minBobbinHeight;
-extern double maxBobbinHeight;
-extern double minWindingWindowWidth;
-extern double maxWindingWindowWidth;
-extern double minWindingWindowHeight;
-extern double maxWindingWindowHeight;
-
-extern std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityMagneticFieldDcBiasInterps;
-extern std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityFrequencyInterps;
-extern std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityTemperatureInterps;
-extern std::map<std::string, tk::spline> complexPermeabilityRealInterps;
-extern std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
-
-extern std::map<std::string, tk::spline> lossFactorInterps;
-
-extern bool _addInternalData;
-
-extern std::map<std::string, double> minWireConductingDimensions;
-extern std::map<std::string, double> maxWireConductingDimensions;
-extern std::map<std::string, int64_t> minLitzWireNumberConductors;
-extern std::map<std::string, int64_t> maxLitzWireNumberConductors;
-
-extern OpenMagnetics::MagneticsCache magneticsCache;
-
 using namespace MAS;
 
 namespace OpenMagnetics {
+
+inline OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
+inline OpenMagnetics::Constants constants = OpenMagnetics::Constants();
+inline OpenMagnetics::Settings* settings = OpenMagnetics::Settings::GetInstance();
+
+inline std::string _log;
+inline uint8_t _logVerbosity;
+inline std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
+
+inline std::vector<OpenMagnetics::Core> coreDatabase;
+inline std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
+inline std::map<std::string, MAS::CoreShape> coreShapeDatabase;
+inline std::vector<MAS::CoreShapeFamily> coreShapeFamiliesInDatabase;
+inline std::map<std::string, OpenMagnetics::Wire> wireDatabase;
+inline std::map<std::string, OpenMagnetics::Bobbin> bobbinDatabase;
+inline std::map<std::string, OpenMagnetics::InsulationMaterial> insulationMaterialDatabase;
+inline std::map<std::string, MAS::WireMaterial> wireMaterialDatabase;
+
+inline OpenMagnetics::MagneticsCache magneticsCache;
 
 void add_scoring(std::string name, OpenMagnetics::MagneticFilters filter, double scoring);
 void clear_scoring();
@@ -216,6 +184,8 @@ std::optional<MAS::CoreShape> try_extract_core_shape(std::string coreShapeText);
 std::vector<std::string> try_extract_core_material_names(std::string coreMaterialText);
 std::optional<MAS::CoreMaterial> try_extract_core_material(std::string coreMaterialText);
 std::vector<MAS::CoreGap> extract_core_gapping(OpenMagnetics::Core ungappedCore, int64_t numberTurns, double inductance);
+
+Inputs get_defaults_inputs(OpenMagnetics::Magnetic magnetic);
 
 
 } // namespace OpenMagnetics

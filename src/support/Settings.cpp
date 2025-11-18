@@ -78,6 +78,10 @@ namespace OpenMagnetics {
         _magneticFieldNumberPointsY = 50;
         _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         _magneticFieldIncludeFringing = true;
+
+        _leakageInductanceGridAutoScaling = true;
+        _leakageInductanceGridPrecisionLevelPlanar = 3;
+        _leakageInductanceGridPrecisionLevelWound = 1;
         
         _coilAdviserMaximumNumberWires = 100;
         _coreAdviserIncludeStacks = true;
@@ -450,6 +454,27 @@ namespace OpenMagnetics {
     }
     void Settings::set_magnetic_field_include_fringing(bool value) {
         _magneticFieldIncludeFringing = value;
+    }
+
+    bool Settings::get_leakage_inductance_grid_auto_scaling() const {
+        return _leakageInductanceGridAutoScaling;
+    }
+    void Settings::set_leakage_inductance_grid_auto_scaling(bool value) {
+        _leakageInductanceGridAutoScaling = value;
+    }
+
+    double Settings::get_leakage_inductance_grid_precision_level_planar() const {
+        return _leakageInductanceGridPrecisionLevelPlanar;
+    }
+    void Settings::set_leakage_inductance_grid_precision_level_planar(double value) {
+        _leakageInductanceGridPrecisionLevelPlanar = value;
+    }
+
+    double Settings::get_leakage_inductance_grid_precision_level_wound() const {
+        return _leakageInductanceGridPrecisionLevelWound;
+    }
+    void Settings::set_leakage_inductance_grid_precision_level_wound(double value) {
+        _leakageInductanceGridPrecisionLevelWound = value;
     }
 
     size_t Settings::get_coil_adviser_maximum_number_wires() const {

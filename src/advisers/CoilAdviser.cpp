@@ -508,7 +508,7 @@ namespace OpenMagnetics {
     }
 
     std::vector<Mas> CoilAdviser::get_advised_planar_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, size_t maximumNumberResults, std::string reference){
-        bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
+        // bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
         size_t maximumNumberWires = settings->get_coil_adviser_maximum_number_wires();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         auto core = mas.get_magnetic().get_core();

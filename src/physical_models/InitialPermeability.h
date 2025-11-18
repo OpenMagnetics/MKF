@@ -10,12 +10,17 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "spline.h"
 
 using namespace MAS;
 
 namespace OpenMagnetics {
+inline std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityMagneticFieldDcBiasInterps;
+inline std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityFrequencyInterps;
+inline std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityTemperatureInterps;
 
 class InitialPermeability {
+
     private:
     protected:
     public:

@@ -4,6 +4,7 @@
 #include "processors/Inputs.h"
 #include "Defaults.h"
 #include "json.hpp"
+#include "spline.h"
 
 #include <MAS.hpp>
 #include <vector>
@@ -14,6 +15,15 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
     
+inline std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
+inline std::map<std::string, tk::spline> wireFillingFactorInterps;
+inline std::map<std::string, tk::spline> wirePackingFactorInterps;
+inline std::map<std::string, tk::spline> wireConductingAreaProportionInterps;
+inline std::map<std::string, double> minWireConductingDimensions;
+inline std::map<std::string, double> maxWireConductingDimensions;
+inline std::map<std::string, int64_t> minLitzWireNumberConductors;
+inline std::map<std::string, int64_t> maxLitzWireNumberConductors;
+
 class WireSolidInsulationRequirements {
     public:
     WireSolidInsulationRequirements() = default;
@@ -228,6 +238,7 @@ class Wire : public MAS::Wire {
             aux.set_nominal(value);
             set_conducting_area(aux);
         }
+        void set_bare_coating();
 
         int get_equivalent_insulation_layers(double voltageToInsulate);
 
@@ -274,6 +285,8 @@ class Wire : public MAS::Wire {
         static Wire get_wire_for_conducting_area(double conductingArea, double temperature=Defaults().ambientTemperature, bool exact=false);
         static Wire get_wire_for_dc_resistance_per_meter(double dcResistancePerMeter, double temperature=Defaults().ambientTemperature);
         
+        static Wire create_quick_litz_wire(double conductingDiameter, int64_t numberStrands);
+        static Wire create_quick_rectangular_wire(double conductingWidth, double conductingHeight);
 
 };
 

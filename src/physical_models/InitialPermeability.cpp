@@ -14,9 +14,6 @@
 #include <cfloat>
 
 
-std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityMagneticFieldDcBiasInterps;
-std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityFrequencyInterps;
-std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityTemperatureInterps;
 
 namespace OpenMagnetics {
 

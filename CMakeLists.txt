@@ -24,9 +24,17 @@ else ()
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pg")
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+    # Set flags for Debug builds to include AddressSanitizer and debug symbols (-g)
+    # These flags will only be used when you configure with -DCMAKE_BUILD_TYPE=Debug
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -fsanitize=address")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -fsanitize=address")
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address")
+
     # set(CMAKE_BUILD_TYPE RelWithDebInfo)
     # set(CMAKE_BUILD_TYPE MinSizeRel)
     set(CMAKE_BUILD_TYPE Release)
+    # set(CMAKE_BUILD_TYPE Debug)
 endif()
 
 
@@ -84,8 +92,8 @@ FetchContent_Declare(matplotplusplus
     GIT_TAG tags/v1.2.1)
 FetchContent_GetProperties(matplotplusplus)
 if(NOT matplotplusplus_POPULATED)
-    FetchContent_Populate(matplotplusplus)
-    add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
+    FetchContent_MakeAvailable(matplotplusplus)
+    # add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
     
 FetchContent_Declare(spline
@@ -275,10 +283,42 @@ target_include_directories(MKF PUBLIC
 # target_link_libraries(magnetic_adviser MKF)
 
 if(INCLUDE_MKF_TESTS)
+    FetchContent_Declare(
+      Catch2
+      GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+      GIT_TAG        v3.8.1 # or a later release
+    )
+
+    FetchContent_MakeAvailable(Catch2)
+
+    file(GLOB NEW_TESTS_SOURCES 
+        "tests/TestStrayCapacitance.cpp" 
+        "tests/TestLeakageInductance.cpp" 
+        )
+    add_executable(tests ${NEW_TESTS_SOURCES})
+    target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
+    target_link_libraries(tests PUBLIC MKF)
+    target_include_directories(tests PUBLIC "${PROJECT_SOURCE_DIR}/src/" )
+
+    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+    include(CTest)
+    include(Catch)
+
+
     file(GLOB TESTS_SOURCES "tests/*.cpp" )
+    get_filename_component(full_path_test_stray_capacitance ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestStrayCapacitance.cpp ABSOLUTE)
+    # message("${full_path_test_stray_capacitance}")
+    # list(REMOVE_ITEM TESTS_SOURCES NEW_TESTS_SOURCES)
+
+    foreach(new_test_source ${NEW_TESTS_SOURCES})
+        list(REMOVE_ITEM TESTS_SOURCES ${new_test_source})
+    endforeach()
+
     add_executable(MKF_tests ${TESTS_SOURCES})
     target_link_libraries(MKF_tests MKF)
     target_link_libraries(MKF_tests UnitTest++)
+
+
 endif(INCLUDE_MKF_TESTS)
 
 if(INCLUDE_PYMKF)

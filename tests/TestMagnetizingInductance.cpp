@@ -1077,10 +1077,6 @@ SUITE(MagnetizingInductance) {
         settings->reset();
         clear_databases();
 
-        double dcCurrent = 0;
-        double ambientTemperature = 25;
-        double numberTurns = 16;
-        double frequency = 570000;
         std::string coreShape = "PQ 40/40";
         std::string coreMaterial = "DMR51W";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0005, 4);
@@ -1090,7 +1086,6 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::Inputs inputs;
         MagnetizingInductance magnetizing_inductance("ZHANG");
         double expectedValue = 30e-6;
-        int numberStacks = 1;
         std::string file_path = __FILE__;
 
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Error_inductance_with_Csv.json");

@@ -1,9 +1,12 @@
 #pragma once
 #include <MAS.hpp>
+#include "spline.h"
 
 using namespace MAS;
 
 namespace OpenMagnetics {
+inline std::map<std::string, tk::spline> complexPermeabilityRealInterps;
+inline std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
 
 class ComplexPermeability {
     private:

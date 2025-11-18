@@ -1166,4 +1166,5 @@ SUITE(MagneticSimulator) {
 
         MagneticAdviser::preview_magnetic(mas);
     }
+
 }
