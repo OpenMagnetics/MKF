@@ -2165,22 +2165,9 @@ void Wire::set_bare_coating() {
 
 Wire Wire::create_quick_litz_wire(double conductingDiameter, int64_t numberStrands) {
     OpenMagnetics::Wire wire;
-    // DimensionWithTolerance strandConductingDiameter;
-    // DimensionWithTolerance strandOuterDiameter;
-    // strandConductingDiameter.set_nominal(conductingDiameter);
-    // strandOuterDiameter.set_nominal(get_outer_diameter_round(conductingDiameter));
-    // InsulationWireCoating strandCoating;
 
     auto strand = convert_from_wire_to_strand(find_wire_by_dimension(conductingDiameter, WireType::ROUND));
-    // strandCoating.set_type(InsulationWireCoatingType::ENAMELLED);
-    // strandCoating.set_grade(1);
-    // strand.set_conducting_diameter(strandConductingDiameter);
-    // strand.set_outer_diameter(strandOuterDiameter);
-    // strand.set_number_conductors(1);
-    // strand.set_material("copper");
-    // strand.set_standard_name( );
-    // strand.set_type(WireType::ROUND);
-    // strand.set_coating(strandCoating);
+
     InsulationWireCoating coating;
     coating.set_type(InsulationWireCoatingType::SERVED);
     coating.set_number_layers(1);
