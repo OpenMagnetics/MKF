@@ -21,7 +21,9 @@ void from_file(std::filesystem::path filepath, Mas & x) {
     auto magnetic = OpenMagnetics::Magnetic(magneticJson);
     std::vector<OpenMagnetics::Outputs> outputs;
     if (outputsJson != nullptr) {
-        outputs = std::vector<OpenMagnetics::Outputs>(outputsJson);
+        for (auto outputJson : outputsJson) {
+            outputs.push_back(OpenMagnetics::Outputs(outputJson));
+        }
     }
     OpenMagnetics::Inputs inputs;
     std::vector<double> magnetizingInductancePerPoint;
