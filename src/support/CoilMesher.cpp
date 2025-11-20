@@ -242,12 +242,21 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
 
     auto commonHarmonicIndexes = get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
-    std::vector<Field> tempFieldPerHarmonic;
-    for (size_t harmonicIndex = 0; harmonicIndex < operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size(); ++harmonicIndex){
+    std::map<size_t, Field> tempFieldPerHarmonic;
+    for (auto harmonicIndex : commonHarmonicIndexes) {
         Field field;
-        field.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_frequencies()[harmonicIndex]);
-        tempFieldPerHarmonic.push_back(field);
+        for (auto excitation : operatingPoint.get_excitations_per_winding()) {
+            if (harmonicIndex < excitation.get_current()->get_harmonics().value().get_frequencies().size()) {
+                field.set_frequency(excitation.get_current()->get_harmonics().value().get_frequencies()[harmonicIndex]);
+                break;
+            }
+        }
+        if (field.get_frequency() == 0) {
+            throw std::runtime_error("0 frequency found in Coil Mesher");
+        }
+        tempFieldPerHarmonic[harmonicIndex] = field;
     }
+
 
 
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
@@ -338,11 +347,16 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, Ope
 
     auto commonHarmonicIndexes = get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
-    std::vector<Field> tempFieldPerHarmonic;
-    for (size_t harmonicIndex = 0; harmonicIndex < operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size(); ++harmonicIndex){
+    std::map<size_t, Field> tempFieldPerHarmonic;
+    for (auto harmonicIndex : commonHarmonicIndexes) {
         Field field;
-        field.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_frequencies()[harmonicIndex]);
-        tempFieldPerHarmonic.push_back(field);
+        for (auto excitation : operatingPoint.get_excitations_per_winding()) {
+            if (harmonicIndex < excitation.get_current()->get_harmonics().value().get_frequencies().size()) {
+                field.set_frequency(excitation.get_current()->get_harmonics().value().get_frequencies()[harmonicIndex]);
+                break;
+            }
+        }
+        tempFieldPerHarmonic[harmonicIndex] = field;
     }
 
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {

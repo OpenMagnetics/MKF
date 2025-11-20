@@ -15,7 +15,7 @@ using Catch::Matchers::WithinAbs;
 
 static double maximumError = 0.4;
 static auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-static bool plot = false;
+static bool plot = true;
 
 // TEST_CASE("Calculate capacitance between two bare round turns", "[physical-model][stray-capacitance]") {
 
@@ -488,3 +488,112 @@ TEST_CASE("Benchmakrs stray capacitance calculation", "[physical-model][stray-ca
 
     // }
 
+
+
+TEST_CASE("Calculate capacitance of an automatic buck produced in OM with three layers", "[physical-model][stray-capacitance]") {
+    settings->reset();
+
+    std::string file_path = __FILE__;
+    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/buck_inductor three layers.json");
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_file(path, mas);
+    auto magnetic = mas.get_magnetic();
+    auto coil = magnetic.get_coil();
+
+    StrayCapacitance strayCapacitance;
+
+    std::map<std::pair<std::string, std::string>, double> expectedValues = {
+        {{"Primary", "Primary"}, 2.6849e-12},
+    };
+
+
+    auto maxwellCapacitanceMatrix = strayCapacitance.calculate_maxwell_capacitance_matrix(coil);
+    CHECK(maxwellCapacitanceMatrix.size() == 1);
+    for (auto [keys, capacitance] : maxwellCapacitanceMatrix) {
+        std::cout << "capacitance: " << capacitance << std::endl;
+        CHECK_THAT(capacitance, WithinRel(expectedValues[keys], maximumError));
+    }
+
+    if (plot) {
+        auto outFile = outputFilePath;
+        outFile.append("Test_Get_Capacitance_Automatic_Buck_OM.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+    }
+}
+
+TEST_CASE("Calculate capacitance of an automatic buck produced in OM with two layers", "[physical-model][stray-capacitance]") {
+    settings->reset();
+
+    std::string file_path = __FILE__;
+    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/buck_inductor two layers.json");
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_file(path, mas);
+    auto magnetic = mas.get_magnetic();
+    auto coil = magnetic.get_coil();
+
+    StrayCapacitance strayCapacitance;
+
+    std::map<std::pair<std::string, std::string>, double> expectedValues = {
+        {{"Primary", "Primary"}, 2.8e-12},
+    };
+
+
+    auto maxwellCapacitanceMatrix = strayCapacitance.calculate_maxwell_capacitance_matrix(coil);
+    CHECK(maxwellCapacitanceMatrix.size() == 1);
+    for (auto [keys, capacitance] : maxwellCapacitanceMatrix) {
+        std::cout << "capacitance: " << capacitance << std::endl;
+        CHECK_THAT(capacitance, WithinRel(expectedValues[keys], maximumError));
+    }
+
+    if (plot) {
+        auto outFile = outputFilePath;
+        outFile.append("Test_Get_Capacitance_Automatic_Buck_OM.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+    }
+}
+
+TEST_CASE("Calculate capacitance of an automatic buck produced in OM with one layer", "[physical-model][stray-capacitance]") {
+    settings->reset();
+
+    std::string file_path = __FILE__;
+    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/buck_inductor one layer.json");
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::from_file(path, mas);
+    auto magnetic = mas.get_magnetic();
+    auto coil = magnetic.get_coil();
+
+    StrayCapacitance strayCapacitance;
+
+    std::map<std::pair<std::string, std::string>, double> expectedValues = {
+        {{"Primary", "Primary"}, 0.3e-12},
+    };
+
+
+    auto maxwellCapacitanceMatrix = strayCapacitance.calculate_maxwell_capacitance_matrix(coil);
+    CHECK(maxwellCapacitanceMatrix.size() == 1);
+    for (auto [keys, capacitance] : maxwellCapacitanceMatrix) {
+        std::cout << "capacitance: " << capacitance << std::endl;
+        CHECK_THAT(capacitance, WithinRel(expectedValues[keys], maximumError));
+    }
+
+    if (plot) {
+        auto outFile = outputFilePath;
+        outFile.append("Test_Get_Capacitance_Automatic_Buck_OM.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+    }
+}
