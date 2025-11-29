@@ -855,24 +855,25 @@ std::vector<CoreGap> Core::create_distributed_gapping(double gapLength, size_t n
     return create_distributed_gapping(gapLength, numberGaps, numberColumns);
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 std::vector<CoreGap> Core::create_distributed_gapping(double gapLength, size_t numberGaps, size_t numberColumns) {
     std::vector<CoreGap> gapping;
     for (size_t i = 0; i < numberGaps; ++i) {
-        CoreGap gap;
-        gap.set_coordinates({});
+        CoreGap gap{};
         gap.set_type(GapType::SUBTRACTIVE);
         gap.set_length(gapLength);
         gapping.push_back(gap);
     }
     for (size_t i = 0; i < numberColumns - 1; ++i) {
-        CoreGap gap;
-        gap.set_coordinates({});
+        CoreGap gap{};
         gap.set_type(GapType::RESIDUAL);
         gap.set_length(constants.residualGap);
         gapping.push_back(gap);
     }
     return gapping;
 }
+#pragma GCC diagnostic pop
 
 void Core::set_distributed_gapping(double gapLength, size_t numberGaps) {
     get_mutable_functional_description().set_gapping(create_distributed_gapping(gapLength, numberGaps));
