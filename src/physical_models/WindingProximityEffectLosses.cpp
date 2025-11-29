@@ -291,8 +291,19 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     }
 
 
-    double turnLosses = c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(h / skinDepth) - sin(h / skinDepth)) / (cosh(h / skinDepth) + cos(h / skinDepth));
-    turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(c / skinDepth) - sin(c / skinDepth)) / (cosh(c / skinDepth) + cos(c / skinDepth));
+    double turnLosses = 0;
+    double hTerm = h / skinDepth;
+    double cTerm = c / skinDepth;
+    if (hTerm > 710) {
+        // to avoid cosh overflow according to https://cpp-lang.net/docs/std/math/mathematical_functions/cosh/
+        hTerm = 710;
+    }
+    if (cTerm > 710) {
+        // to avoid cosh overflow according to https://cpp-lang.net/docs/std/math/mathematical_functions/cosh/
+        cTerm = 710;
+    }
+    turnLosses += c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
+    turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
 
     // For the H field not planned for in Wang's model, we use Ferreira's
     if (nonPlanarHe != 0) {
