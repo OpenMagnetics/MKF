@@ -364,6 +364,12 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
     double He = 0;
 
     for (auto& datum : data) {
+        if (std::isnan(datum.get_real())) {
+            throw std::runtime_error("NaN found in Ferreira proximity losses calculation");
+        }
+        if (std::isnan(datum.get_imaginary())) {
+            throw std::runtime_error("NaN found in Ferreira proximity losses calculation");
+        }
         He = std::max(He, hypot(datum.get_real(), datum.get_imaginary()));
     }
 
@@ -372,6 +378,12 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
         wire.set_number_conductors(1);
     }
     turnLosses *= wire.get_number_conductors().value();
+        if (std::isnan(turnLosses)) {
+            std::cout << "frequency:" << frequency << std::endl;
+            std::cout << "proximityFactor:" << proximityFactor << std::endl;
+            std::cout << "He:" << He << std::endl;
+            throw std::runtime_error("NaN found in Ferreira proximity losses calculation");
+        }
 
     return turnLosses;
 }
