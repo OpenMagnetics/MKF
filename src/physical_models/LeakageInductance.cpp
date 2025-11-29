@@ -25,9 +25,6 @@ std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_
     for (auto layer : layers) {
         minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, layer.get_dimensions()[0]);
         minimumDistanceVerticallyOrAngular = std::min(minimumDistanceVerticallyOrAngular, layer.get_dimensions()[1]);
-        std::cout << "layer.get_dimensions()[1]: " << layer.get_dimensions()[1] << std::endl;
-        std::cout << "layer.get_name(): " << layer.get_name() << std::endl;
-        std::cout << "minimumDistanceVerticallyOrAngular: " << minimumDistanceVerticallyOrAngular << std::endl;
     }
     for (auto turn : turns) {
         minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, turn.get_dimensions().value()[0]);
@@ -48,9 +45,6 @@ std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_
         numberPointsX = size_t(ceil(windingWindowsDimensions[0] / minimumDistanceHorizontallyOrRadially));
         numberPointsY = size_t(ceil(windingWindowsDimensions[1] / minimumDistanceVerticallyOrAngular));
     }
-    std::cout << "calculate_number_points_needed_for_leakage numberPointsY: " << numberPointsY << std::endl;
-    std::cout << "minimumDistanceVerticallyOrAngular: " << minimumDistanceVerticallyOrAngular << std::endl;
-    std::cout << "windingWindowsDimensions[1]: " << windingWindowsDimensions[1] << std::endl;
 
     return {numberPointsX, numberPointsY};
 }
@@ -63,7 +57,7 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     size_t numberPointsY;
     auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
 
-    std::cout << "settings->get_leakage_inductance_grid_auto_scaling(): " << settings->get_leakage_inductance_grid_auto_scaling() << std::endl;
+    settings->set_magnetic_field_mirroring_dimension(1);
     if (settings->get_leakage_inductance_grid_auto_scaling()) {
         auto aux = calculate_number_points_needed_for_leakage(magnetic.get_coil());
         numberPointsX = aux.first;
@@ -78,7 +72,6 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
         precisionLevel = std::max(1.0, precisionLevel);
         numberPointsX *= precisionLevel;
         numberPointsY *= precisionLevel;
-    std::cout << "precisionLevel: " << precisionLevel << std::endl;
     }
     else {
         numberPointsX = settings->get_magnetic_field_number_points_x();
@@ -90,8 +83,6 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
         }
 
     }
-    std::cout << "numberPointsX: " << numberPointsX << std::endl;
-    std::cout << "numberPointsY: " << numberPointsY << std::endl;
 
     auto aux = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY);
     Field inducedField = aux.first;
@@ -114,7 +105,19 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
 
     ComplexField field;
     {
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, std::nullopt, CoilMesherModels::CENTER);
+        CoilMesherModels modelToUse = CoilMesherModels::CENTER;
+
+        if (isPlanar) {
+            double minimumRatio = DBL_MAX;
+            for (auto wire : magnetic.get_wires()) {
+                minimumRatio = std::min(minimumRatio, wire.get_maximum_conducting_width() / wire.get_maximum_conducting_height());
+            }
+            auto isThickPlanar = minimumRatio < 10;
+            if (!isThickPlanar) {
+                modelToUse = CoilMesherModels::WANG;
+            }
+        }
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, std::nullopt, modelToUse);
         field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
     }
