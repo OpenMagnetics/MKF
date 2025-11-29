@@ -23,12 +23,20 @@ std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_
     auto turns = coil.get_turns_description().value();
 
     for (auto layer : layers) {
-        minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, layer.get_dimensions()[0]);
-        minimumDistanceVerticallyOrAngular = std::min(minimumDistanceVerticallyOrAngular, layer.get_dimensions()[1]);
+        if (layer.get_dimensions()[0] > 0) {
+            minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, layer.get_dimensions()[0]);
+        }
+        if (layer.get_dimensions()[1] > 0) {
+            minimumDistanceVerticallyOrAngular = std::min(minimumDistanceVerticallyOrAngular, layer.get_dimensions()[1]);
+        }
     }
     for (auto turn : turns) {
-        minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, turn.get_dimensions().value()[0]);
-        minimumDistanceVerticallyOrAngular = std::min(minimumDistanceVerticallyOrAngular, turn.get_dimensions().value()[1]);
+        if (turn.get_dimensions().value()[0] > 0) {
+            minimumDistanceHorizontallyOrRadially = std::min(minimumDistanceHorizontallyOrRadially, turn.get_dimensions().value()[0]);
+        }
+        if (turn.get_dimensions().value()[1] > 0) {
+            minimumDistanceVerticallyOrAngular = std::min(minimumDistanceVerticallyOrAngular, turn.get_dimensions().value()[1]);
+        }
     }
 
     auto bobbin = coil.resolve_bobbin();
@@ -57,7 +65,6 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     size_t numberPointsY;
     auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
 
-    settings->set_magnetic_field_mirroring_dimension(1);
     if (settings->get_leakage_inductance_grid_auto_scaling()) {
         auto aux = calculate_number_points_needed_for_leakage(magnetic.get_coil());
         numberPointsX = aux.first;
@@ -86,6 +93,10 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
 
     auto aux = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY);
     Field inducedField = aux.first;
+
+        if (inducedField.get_data().size() == 0) {
+            throw std::runtime_error("Empty complexField 00");
+        }
     double dA = aux.second;
 
     MagneticField magneticField;

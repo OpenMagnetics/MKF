@@ -310,12 +310,12 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
-                    
                     for (auto& gap : gapping) {
                         if (gap.get_coordinates().value()[0] < 0) {
                             continue;
                         }
                         auto fieldPoint = _fringingEffectModel->get_equivalent_inducing_point_for_gap(gap, magneticFieldStrengthGap);
+                        
                         inducingFields[harmonicIndex].get_mutable_data().push_back(fieldPoint);
                     }
                 }
@@ -367,6 +367,12 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
                         totalInducedFieldX += complexFieldPoint.get_real();
                         totalInducedFieldY += complexFieldPoint.get_imaginary();
+                        if (std::isnan(complexFieldPoint.get_real())) {
+                            throw std::runtime_error("NaN found in Roshen's fringing field");
+                        }
+                        if (std::isnan(complexFieldPoint.get_imaginary())) {
+                            throw std::runtime_error("NaN found in Roshen's fringing field");
+                        }
                     }
                 }
             }
@@ -394,6 +400,12 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
                 totalInducedFieldX += complexFieldPoint.get_real();
                 totalInducedFieldY += complexFieldPoint.get_imaginary();
+                if (std::isnan(complexFieldPoint.get_real())) {
+                    throw std::runtime_error("NaN found in magnetic field calculation");
+                }
+                if (std::isnan(complexFieldPoint.get_imaginary())) {
+                    throw std::runtime_error("NaN found in magnetic field calculation");
+                }
             }
             ComplexFieldPoint complexFieldPoint;
             complexFieldPoint.set_point(inducedFieldPoint.get_point());
