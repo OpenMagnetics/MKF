@@ -334,6 +334,12 @@ class Coil : public MAS::Coil {
 
         std::vector<size_t> extract_stack_up(std::vector<Section> sections);
         bool is_planar();
+        std::vector<Turn> get_turns_touching_bobbin_column();
+        std::vector<Turn> get_turns_touching_bobbin_walls();
+        std::vector<Turn> get_turns_touching_bobbin_column(std::vector<Turn> turns);
+        std::vector<Turn> get_turns_touching_bobbin_walls(std::vector<Turn> turns);
+        std::vector<Turn> get_turns_touching_bobbin_column(std::vector<size_t> turnIndexes);
+        std::vector<Turn> get_turns_touching_bobbin_walls(std::vector<size_t> turnIndexes);
                                                
 };
 }

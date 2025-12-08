@@ -117,7 +117,10 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
 
     size_t numberPointsX = settings->get_painter_number_points_x();
     size_t numberPointsY = settings->get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false).first;
+    auto oldCoilMesherInsideTurnsFactor = settings->get_coil_mesher_inside_turns_factor();
+    settings->set_coil_mesher_inside_turns_factor(1.2);
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false).first;
+    settings->set_coil_mesher_inside_turns_factor(oldCoilMesherInsideTurnsFactor);
 
     StrayCapacitance strayCapacitance;
     settings->set_magnetic_field_include_fringing(includeFringing);
@@ -288,25 +291,6 @@ double Painter::get_pixel_proportion_between_turns(Turn firstTurn, Turn secondTu
 
     auto x0 = pixelCoordinates[0];
     auto y0 = pixelCoordinates[1];
-    auto dx0 = dimension;
-    auto dy0 = dimension;
-
-    // if ((x1 == x0 && y1 == y0) || (x2 == x0 && y2 == y0)) {
-    //     return 0;
-    // }
-
-    // if ((x0 + dx0 / 2 * factor) < std::min(x1 , x2)) {
-    //     return 0;
-    // }
-    // if ((x0 - dx0 / 2 * factor) > std::max(x1, x2)) {
-    //     return 0;
-    // }
-    // if ((y0 + dy0 / 2 * factor) < std::min(y1, y2)) {
-    //     return 0;
-    // }
-    // if ((y0 - dy0 / 2 * factor) > std::max(y1, y2)) {
-    //     return 0;
-    // }
 
     auto distanceFrom0toLine12 = fabs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1) / sqrt(pow(y2 - y1, 2) + pow(x2 - x1, 2));
     auto distanceFrom0toCenter1 = hypot(x1 - x0, y1 - y0);

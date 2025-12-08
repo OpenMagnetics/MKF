@@ -30,9 +30,10 @@ std::vector<std::pair<Turn, size_t>> StrayCapacitance::get_surrounding_turns(Tur
         auto dx2 = potentiallySurroundingTurn.get_dimensions().value()[0];
         auto dy2 = potentiallySurroundingTurn.get_dimensions().value()[1];
 
+        double minimumDimension = std::min(std::max(dx1, dy1), std::max(dx2, dy2));
         double distance = hypot(x2 - x1, y2 - y1) - std::max(dx1, dy1) / 2 - std::max(dx2, dy2) / 2;
 
-        if (distance > 4e-5) {
+        if (distance > minimumDimension / 2) {
             continue;
         }
 
@@ -334,7 +335,6 @@ double StrayCapacitance::calculate_area_between_two_turns_using_vecticals_and_ho
     return areaWithoutWires;
 }
 
-
 std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, Coil coil) {
     if (!coil.get_sections_description()) {
         throw std::invalid_argument("Missing sections description");
@@ -357,9 +357,8 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Tur
             x2 = coil.cartesian_to_polar(secondTurn.get_coordinates())[0];
         }
 
-
         for (auto layer : layers) {
-            if (layer.get_coordinates()[0] > std::min(x1, x2) && layer.get_coordinates()[0] < std::max(x1, x2)) {
+            if (layer.get_dimensions()[0] > 0 && layer.get_coordinates()[0] > std::min(x1, x2) && layer.get_coordinates()[0] < std::max(x1, x2)) {
                 layersInBetween.push_back(layer);
             }
         }
@@ -371,21 +370,21 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Tur
             double y2 = coil.cartesian_to_polar(secondTurn.get_coordinates())[1];
             if (y1 < 90 && y2 > 270) {
                 for (auto layer : layers) {
-                    if (layer.get_coordinates()[1] > y2) {
+                    if (layer.get_dimensions()[1] > 0 && layer.get_coordinates()[1] > y2) {
                         layersInBetween.push_back(layer);
                     }
                 }
             }
             else if (y2 < 90 && y1 > 270) {
                 for (auto layer : layers) {
-                    if (layer.get_coordinates()[1] > y1) {
+                    if (layer.get_dimensions()[1] > 0 && layer.get_coordinates()[1] > y1) {
                         layersInBetween.push_back(layer);
                     }
                 }
             }
             else {
                 for (auto layer : layers) {
-                    if (layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
+                    if (layer.get_dimensions()[1] > 0 && layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
                         layersInBetween.push_back(layer);
                     }
                 }
@@ -395,7 +394,7 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Tur
             double y1 = firstTurn.get_coordinates()[1];
             double y2 = secondTurn.get_coordinates()[1];
             for (auto layer : layers) {
-                if (layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
+                if (layer.get_dimensions()[1] > 0 && layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
                     layersInBetween.push_back(layer);
                 }
             }
@@ -513,20 +512,20 @@ std::shared_ptr<StrayCapacitanceModel> StrayCapacitanceModel::factory(StrayCapac
         throw std::runtime_error("Unknown Stray capacitance model, available options are: {KOCH, ALBACH, DUERDOTH, MASSARINI}");
 }
 
-std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
+std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
     if (firstWire.get_type() != WireType::ROUND || secondWire.get_type() != WireType::ROUND) {
         throw std::runtime_error("Other wires not implemented yet, check Albach's book");
     }
 
     InsulationMaterial insulationMaterial = find_insulation_material_by_name(Defaults().defaultInsulationMaterial);
 
-    auto epsilonDFirstWire = get_wire_insulation_relative_permittivity(firstWire);
-    auto epsilonDSecondWire = get_wire_insulation_relative_permittivity(secondWire);
-    auto epsilonD = (epsilonDFirstWire + epsilonDSecondWire) / 2;
+    auto relativePermittivityWireCoatingFirstWire = get_wire_insulation_relative_permittivity(firstWire);
+    auto relativePermittivityWireCoatingSecondWire = get_wire_insulation_relative_permittivity(secondWire);
+    auto relativePermittivityWireCoating = (relativePermittivityWireCoatingFirstWire + relativePermittivityWireCoatingSecondWire) / 2;
 
-    auto insulationThicknessFirstWire = firstWire.get_coating_thickness();
-    auto insulationThicknessSecondWire = secondWire.get_coating_thickness();
-    auto insulationThickness = (insulationThicknessFirstWire + insulationThicknessSecondWire) / 2;
+    auto wireCoatingThicknessFirstWire = firstWire.get_coating_thickness();
+    auto wireCoatingThicknessSecondWire = secondWire.get_coating_thickness();
+    auto wireCoatingThickness = (wireCoatingThicknessFirstWire + wireCoatingThicknessSecondWire) / 2;
 
     auto conductingDiameterFirstWire = firstWire.get_maximum_conducting_width();
     auto conductingDiameterSecondWire = secondWire.get_maximum_conducting_width();
@@ -572,22 +571,70 @@ std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, Wire 
     }
     auto averageTurnLength = (firstTurn.get_length() + secondTurn.get_length()) / 2;
 
-    return {insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, effectiveRelativePermittivityLayers};
+    return {wireCoatingThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, relativePermittivityWireCoating, effectiveRelativePermittivityLayers};
 }
 
-double StrayCapacitanceMassariniModel::calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) {
+std::vector<double> StrayCapacitanceParallelPlateModel::preprocess_data_for_planar_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire) {
+
+    InsulationMaterial insulationMaterial = find_insulation_material_by_name(Defaults().defaultInsulationMaterial);
+
+    double conductingDimensionFirstWire = 0;
+    double conductingDimensionSecondWire = 0;
+    double conductingDimension = 0;
+
+    double distanceBetweenTurns = 0;
+    double overlappingDimension = 0;
+    if (firstTurn.get_coordinates()[1] == secondTurn.get_coordinates()[1]) {
+        distanceBetweenTurns = fabs(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0]);
+        distanceBetweenTurns -= firstWire.get_maximum_conducting_width() / 2 + secondWire.get_maximum_conducting_width() / 2;
+        conductingDimensionFirstWire = firstWire.get_maximum_conducting_height();
+        conductingDimensionSecondWire = secondWire.get_maximum_conducting_height();
+        conductingDimension = (conductingDimensionFirstWire + conductingDimensionSecondWire) / 2;
+        overlappingDimension = conductingDimension;
+    }
+    else {
+        distanceBetweenTurns = fabs(firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1]);
+        distanceBetweenTurns -= firstWire.get_maximum_conducting_height() / 2 + secondWire.get_maximum_conducting_height() / 2;
+        conductingDimensionFirstWire = firstWire.get_maximum_conducting_width();
+        conductingDimensionSecondWire = secondWire.get_maximum_conducting_width();
+        double firstWireLeftCoordinate = firstTurn.get_coordinates()[0] - firstTurn.get_dimensions().value()[0] / 2;
+        double firstWireRightCoordinate = firstTurn.get_coordinates()[0] + firstTurn.get_dimensions().value()[0] / 2;
+        double secondWireLeftCoordinate = secondTurn.get_coordinates()[0] - secondTurn.get_dimensions().value()[0] / 2;
+        double secondWireRightCoordinate = secondTurn.get_coordinates()[0] + secondTurn.get_dimensions().value()[0] / 2;
+        conductingDimension = std::min(conductingDimensionFirstWire, conductingDimensionSecondWire);
+        overlappingDimension = fabs(std::min(firstWireRightCoordinate, secondWireRightCoordinate) - std::max(firstWireLeftCoordinate, secondWireLeftCoordinate));
+    }
+
+    distanceBetweenTurns = roundFloat(distanceBetweenTurns, 6);
+
+    double distanceThroughLayers = distanceBetweenTurns;
+
+    std::vector<double> distancesThroughLayers;
+    std::vector<double> relativePermittivityLayers;
+
+    auto coatingInsulationMaterial = find_insulation_material_by_name(defaults.defaultPcbInsulationMaterial);
+    if (!coatingInsulationMaterial.get_relative_permittivity())
+        throw std::runtime_error("FR4 insulation material is missing dielectric constant");
+    double effectiveRelativePermittivityLayers = coatingInsulationMaterial.get_relative_permittivity().value();
+
+    auto averageTurnLength = (firstTurn.get_length() + secondTurn.get_length()) / 2;
+
+    return {averageTurnLength, overlappingDimension, distanceThroughLayers, effectiveRelativePermittivityLayers};
+}
+
+double StrayCapacitanceMassariniModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
     double Dc = conductingRadius * 2;
     double D0;
     double epsilonR;
-    if (insulationThickness > 0) {
-        D0 = (conductingRadius + insulationThickness) * 2;
-        epsilonR = get_effective_relative_permittivity(insulationThickness, epsilonD, distanceThroughAir + distanceThroughLayers, epsilonF);
+    if (wireCoatingThickness > 0) {
+        D0 = (conductingRadius + wireCoatingThickness) * 2;
+        epsilonR = get_effective_relative_permittivity(wireCoatingThickness, relativePermittivityWireCoating, distanceThroughAir + distanceThroughLayers, relativePermittivityInsulationLayers);
     }
     else {
         D0 = (conductingRadius + distanceThroughAir / 2) * 2;
-        epsilonR = get_effective_relative_permittivity(distanceThroughAir / 2, vacuumPermittivity, distanceThroughAir + distanceThroughLayers, epsilonF);
+        epsilonR = get_effective_relative_permittivity(distanceThroughAir / 2, vacuumPermittivity, distanceThroughAir + distanceThroughLayers, relativePermittivityInsulationLayers);
     }
     double aux0 = 2 * epsilonR + log(D0 / Dc);
     double aux1 = sqrt(log(D0 / Dc) * (2 * epsilonR + log(D0 / Dc)));
@@ -597,39 +644,43 @@ double StrayCapacitanceMassariniModel::calculate_static_capacitance_between_two_
     return C0;
 }
 
-double StrayCapacitanceDuerdothModel::calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) {
+double StrayCapacitanceDuerdothModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
     double h = distanceThroughAir + distanceThroughLayers;
-    double delta = insulationThickness;
+    double delta = wireCoatingThickness;
     double r0 = conductingRadius;
-    double dtt = h + 2 * r0 + 2 * insulationThickness;
-    double dPrima = 2 * r0 + h;
-    double dEff = dPrima - 2.3 * (r0 + delta) + 0.26 * dtt;
-    double epsilonEff = get_effective_relative_permittivity(delta, epsilonD, h, epsilonF);
+    double dtt = 2 * r0 + 2 * wireCoatingThickness;
+    double dPrima = 2 * (r0 + delta) + h;
+    // double dEff = dPrima - 2.3 * (r0 + delta) + 0.26 * dtt;
+    double dEff = dPrima - 0.15 * 2 * (r0 + delta) + 0.26 * (dtt);
+    double epsilonEff = get_effective_relative_permittivity(delta, relativePermittivityWireCoating, h, relativePermittivityInsulationLayers);
+    if (std::isnan(epsilonEff)) {
+        throw std::invalid_argument("epsilonEff is NAN");
+    }
 
     double C0 = vacuumPermittivity * epsilonEff * averageTurnLength * 2 * r0 / dEff;
 
     return C0;
 }
 
-double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) {
+double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
-    double effectiveRelativePermittivity = epsilonF;
+    double effectiveRelativePermittivity = relativePermittivityInsulationLayers;
     double distanceThroughLayersAndAir = distanceThroughAir + distanceThroughLayers;
     if (distanceThroughAir > 0 && distanceThroughLayers > 0) {
-        effectiveRelativePermittivity = get_effective_relative_permittivity(distanceThroughLayers, epsilonF, distanceThroughAir, vacuumPermittivity);
+        effectiveRelativePermittivity = get_effective_relative_permittivity(distanceThroughLayers, relativePermittivityInsulationLayers, distanceThroughAir, 1);
     }
     else if (distanceThroughAir > 0 && distanceThroughLayers == 0) {
-        effectiveRelativePermittivity = vacuumPermittivity;
+        effectiveRelativePermittivity = 1;
     }
 
-    double zeta = 1 - insulationThickness / (epsilonD * conductingRadius);
-    double beta = 1.0 / zeta * (1 + distanceThroughLayersAndAir / (2 * effectiveRelativePermittivity * conductingRadius));
+    double zeta = 1 - wireCoatingThickness / (relativePermittivityWireCoating * (conductingRadius + wireCoatingThickness));
+    double beta = 1.0 / zeta * (1 + distanceThroughLayersAndAir / (2 * effectiveRelativePermittivity * (conductingRadius + wireCoatingThickness)));
     double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1)));
     double Z = 1.0 / (pow(beta, 2) - 1)*((pow(beta, 2) - 2) * V - beta / 2) - std::numbers::pi / 4;
-    double Y1 = 1.0 / zeta * (V - std::numbers::pi / 4 + 1.0 / (2 * epsilonD) * pow(distanceThroughLayers / conductingRadius, 2) * Z / zeta);
+    double Y1 = 1.0 / zeta * (V - std::numbers::pi / 4 + 1.0 / (2 * relativePermittivityWireCoating) * pow(distanceThroughLayers / (conductingRadius + wireCoatingThickness), 2) * Z / zeta);
     double C0 = 2.0 / 3 * vacuumPermittivity * averageTurnLength * Y1;
 
     if (std::isnan(beta)) {
@@ -639,20 +690,20 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
     return C0;
 }
 
-double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) {
+double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
-    double alpha = 1 - insulationThickness / (epsilonD * conductingRadius);
+    double alpha = 1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius);
     double beta;
     if (distanceThroughLayers > 0) {
-        beta = 1.0 / alpha * (1 + distanceThroughLayers / (2 * epsilonF * conductingRadius));
+        beta = 1.0 / alpha * (1 + distanceThroughLayers / (2 * relativePermittivityInsulationLayers * conductingRadius));
     }
     else {
         beta = 1.0 / alpha * (1 + distanceThroughAir / (2 * vacuumPermittivity * conductingRadius));
     }
     double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1))) - std::numbers::pi / 4;
     double Z = beta * (pow(beta, 2) - 2) / pow(pow(beta, 2) - 1, 1.5) * atan(sqrt((beta + 1) / (beta - 1))) - beta / (2 * (pow(beta, 2) - 1))  - std::numbers::pi / 4;
-    double C0 = vacuumPermittivity * averageTurnLength / (1 - insulationThickness / (epsilonD * conductingRadius)) * (V + 1.0 / (8 * epsilonD) * pow(2 * insulationThickness / conductingRadius, 2) * Z / (1 - insulationThickness / (epsilonD * conductingRadius)));
+    double C0 = vacuumPermittivity * averageTurnLength / (1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius)) * (V + 1.0 / (8 * relativePermittivityWireCoating) * pow(2 * wireCoatingThickness / conductingRadius, 2) * Z / (1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius)));
 
     if (std::isnan(beta)) {
         throw std::invalid_argument("beta is NAN");
@@ -661,17 +712,37 @@ double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns
     return C0;
 }
 
-double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
-    auto aux = _model->preprocess_data(firstTurn, firstWire, secondTurn, secondWire, coil);
-    double insulationThickness = aux[0];
-    double averageTurnLength = aux[1];
-    double conductingRadius = aux[2];
-    double distanceThroughLayers = aux[3];
-    double distanceThroughAir = aux[4];
-    double epsilonD = aux[5];
-    double epsilonF = aux[6];
+double StrayCapacitanceParallelPlateModel::calculate_static_capacitance_between_two_turns(double overlappingDimension, double averageTurnLength, double distanceThroughLayers, double relativePermittivityInsulationLayers) {
+    auto vacuumPermittivity = Constants().vacuumPermittivity;
+    return vacuumPermittivity * relativePermittivityInsulationLayers * overlappingDimension * averageTurnLength / distanceThroughLayers;
+}
 
-    return _model->calculate_static_capacitance_between_two_turns(insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, epsilonF);
+double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
+    if (firstWire.get_type() == WireType::PLANAR && secondWire.get_type() == WireType::PLANAR) {
+        StrayCapacitanceParallelPlateModel model;
+        auto aux = model.preprocess_data_for_planar_wires(firstTurn, firstWire, secondTurn, secondWire);
+        double averageTurnLength = aux[0];
+        double overlappingDimension = aux[1];
+        double distanceThroughLayers = aux[2];
+        double relativePermittivityInsulationLayers = aux[3];
+        double capacitance = model.calculate_static_capacitance_between_two_turns(overlappingDimension, averageTurnLength, distanceThroughLayers, relativePermittivityInsulationLayers);
+        return capacitance;
+    }
+    else {
+
+        auto aux = _model->preprocess_data_for_round_wires(firstTurn, firstWire, secondTurn, secondWire, coil);
+        double wireCoatingThickness = aux[0];
+        double averageTurnLength = aux[1];
+        double conductingRadius = aux[2];
+        double distanceThroughLayers = aux[3];
+        double distanceThroughAir = aux[4];
+        double relativePermittivityWireCoating = aux[5];
+        double relativePermittivityInsulationLayers = aux[6];
+        double capacitance = _model->calculate_static_capacitance_between_two_turns(wireCoatingThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, relativePermittivityWireCoating, relativePermittivityInsulationLayers);
+
+        return capacitance;
+
+    }
 }
 
 double StrayCapacitance::calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil) {
@@ -704,13 +775,15 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
         auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turns[turnIndex], turns);
         for (auto [surroundingTurn, surroundingTurnIndex] : surroundingTurns) {
             auto key = std::make_pair(turnIndex, surroundingTurnIndex);
-            if (turnsCombinations.contains(key) || turnsCombinations.contains(std::make_pair(surroundingTurnIndex, turnIndex))) {
+            auto inverseKey = std::make_pair(surroundingTurnIndex, turnIndex);
+            if (turnsCombinations.contains(key) || turnsCombinations.contains(inverseKey)) {
                 continue;
             }
             auto surroundingTurnWindingIndex = coil.get_winding_index_by_name(surroundingTurn.get_winding());
             auto surroundingTurnWire = wirePerWinding[surroundingTurnWindingIndex];
             double capacitance = calculate_static_capacitance_between_two_turns(turns[turnIndex], turnWire, surroundingTurn, surroundingTurnWire, coil);
             capacitanceAmongTurns[key] = capacitance;
+            // capacitanceAmongTurns[inverseKey] = capacitance;
             turnsCombinations.insert(key);
         }
     }
@@ -791,7 +864,6 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
         voltageRmsPerWinding[winding.get_name()] = 10.0 / turnsRatio;
     }
 
-
     auto strayCapacitanceOutput = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding);
     auto voltagesPerTurn = strayCapacitanceOutput.get_voltage_per_turn().value();
     auto windings = coil.get_functional_description();
@@ -823,7 +895,8 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
             double voltageDropBetweenWindings = 0;
             double relativeTurnsRatio = 0;
             ScalarMatrixAtFrequency capacitanceMatrixBetweenWindings;
-            while (V3 != V3calculated) {
+            // std::cout << "firstWindingName: " << firstWindingName << std::endl;
+            while (fabs(V3 - V3calculated) / V3 > 0.001) {
                 energyInBetweenTheseWindings = 0;
                 V3 = V3calculated;
                 // double C0 = 0;
@@ -841,8 +914,8 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
                         minVoltageInSecondWinding = std::min(minVoltageInSecondWinding, secondTurnVoltage);
                         maxVoltageInSecondWinding = std::max(maxVoltageInSecondWinding, secondTurnVoltage);
                         auto turnsKey = std::make_pair(turnInFirstWinding, turnInSecondWinding);
-                    std::cout << "turnInFirstWinding: " << turnInFirstWinding << std::endl;
-                    std::cout << "turnInSecondWinding: " << turnInSecondWinding << std::endl;
+                    // std::cout << "turnInFirstWinding: " << turnInFirstWinding << std::endl;
+                    // std::cout << "turnInSecondWinding: " << turnInSecondWinding << std::endl;
                         if (capacitanceAmongTurns.contains(turnsKey)) {
                             windingAreNotAdjacent = false;
                             double voltageDropAmongTurns = V3 + firstTurnVoltage - secondTurnVoltage;
