@@ -606,6 +606,17 @@ std::vector<double> Bobbin::get_winding_window_coordinates(size_t windingWindowI
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_coordinates().value();
 }
 
+std::pair<double, double> Bobbin::get_column_and_wall_thickness(size_t windingWindowIndex) {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Bobbin not processed");
+    }
+    auto bobbinProcessedDescription = get_processed_description().value();
+
+    double columnThickness = bobbinProcessedDescription.get_column_thickness();
+    double wallThickness = bobbinProcessedDescription.get_wall_thickness();
+    return {columnThickness, wallThickness};
+}
+
 WindingOrientation Bobbin::get_winding_window_sections_orientation(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
         throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");

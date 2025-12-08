@@ -17,8 +17,17 @@ class StrayCapacitanceModel {
     public:
         std::string methodName = "Default";
         static std::shared_ptr<StrayCapacitanceModel> factory(StrayCapacitanceModels modelName);
-        std::vector<double> preprocess_data(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil = std::nullopt);
-        virtual double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) = 0;
+        std::vector<double> preprocess_data_for_round_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil = std::nullopt);
+        virtual double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) = 0;
+};
+
+
+class StrayCapacitanceParallelPlateModel {
+    public:
+        std::string methodName = "ParallelPlate";
+        double calculate_static_capacitance_between_two_turns(double overlappingDimension, double averageTurnLength, double distanceThroughLayers, double relativePermittivityInsulationLayers);
+        std::vector<double> preprocess_data_for_planar_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire);
+
 };
 
 // Based on "Self-Capacitance of Inductors" by Antonio Massarini
@@ -26,7 +35,7 @@ class StrayCapacitanceModel {
 class StrayCapacitanceMassariniModel : public StrayCapacitanceModel {
     public:
         std::string methodName = "Massarini";
-        double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF);
+        double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers);
 
 };
 
@@ -34,7 +43,7 @@ class StrayCapacitanceMassariniModel : public StrayCapacitanceModel {
 class StrayCapacitanceDuerdothModel : public StrayCapacitanceModel {
     public:
         std::string methodName = "Duerdoth";
-        double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF);
+        double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers);
 
 };
 
@@ -42,7 +51,7 @@ class StrayCapacitanceDuerdothModel : public StrayCapacitanceModel {
 class StrayCapacitanceAlbachModel : public StrayCapacitanceModel {
     public:
         std::string methodName = "Albach";
-        double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF);
+        double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers);
 
 };
 
@@ -52,7 +61,7 @@ class StrayCapacitanceAlbachModel : public StrayCapacitanceModel {
 class StrayCapacitanceKochModel : public StrayCapacitanceModel {
     public:
         std::string methodName = "Koch";
-        double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF);
+        double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers);
 
 };
 

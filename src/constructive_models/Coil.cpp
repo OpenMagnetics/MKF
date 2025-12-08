@@ -7137,5 +7137,97 @@ Coil Coil::create_quick_coil(std::string coreShapeName, std::vector<int64_t> num
     return coil;
 }
 
+std::vector<Turn> Coil::get_turns_touching_bobbin_column() {
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns description");
+    }
+    auto turns = get_turns_description().value();
+    return get_turns_touching_bobbin_column(turns);
+}
+
+std::vector<Turn> Coil::get_turns_touching_bobbin_column(std::vector<size_t> turnIndexes) {
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns description");
+    }
+    auto turns = get_turns_description().value();
+    std::vector<Turn> filteredTurns;
+    for (auto turnIndex : turnIndexes) {
+        filteredTurns.push_back(turns[turnIndex]);
+    }
+    return get_turns_touching_bobbin_column(filteredTurns);
+}
+
+std::vector<Turn> Coil::get_turns_touching_bobbin_column(std::vector<Turn> turns) {
+    std::vector<Turn> touchingTurns;
+    auto bobbin = resolve_bobbin();
+    auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
+    auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
+    auto bobbinLeftCoordinate = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+    auto windingWindowShape = bobbin.get_winding_window_shape();
+    if (windingWindowShape == WindingWindowShape::RECTANGULAR) {
+        for (auto turn : turns) {
+            auto leftSideCoordinate = turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2;
+            if (fabs((leftSideCoordinate - bobbinLeftCoordinate) / bobbinLeftCoordinate) < 0.05) {
+                touchingTurns.push_back(turn);
+            }
+        }
+    }
+    else {
+        throw std::runtime_error("Not implemented yet");
+
+    }
+    return touchingTurns;
+}
+
+std::vector<Turn> Coil::get_turns_touching_bobbin_walls() {
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns description");
+    }
+    auto turns = get_turns_description().value();
+    return get_turns_touching_bobbin_walls(turns);
+}
+
+std::vector<Turn> Coil::get_turns_touching_bobbin_walls(std::vector<size_t> turnIndexes) {
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns description");
+    }
+    auto turns = get_turns_description().value();
+    std::vector<Turn> filteredTurns;
+    for (auto turnIndex : turnIndexes) {
+        filteredTurns.push_back(turns[turnIndex]);
+    }
+    return get_turns_touching_bobbin_walls(filteredTurns);
+}
+
+std::vector<Turn> Coil::get_turns_touching_bobbin_walls(std::vector<Turn> turns) {
+    std::vector<Turn> touchingTurns;
+    auto bobbin = resolve_bobbin();
+    auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
+    auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
+    auto bobbinTopCoordinate = windingWindowCoordinates[1] + windingWindowDimensions[1] / 2;
+    auto bobbinBottomCoordinate = windingWindowCoordinates[1] - windingWindowDimensions[1] / 2;
+    auto windingWindowShape = bobbin.get_winding_window_shape();
+    if (windingWindowShape != WindingWindowShape::RECTANGULAR) {
+        return touchingTurns;
+    }
+    for (auto turn : turns) {
+        auto topSideCoordinate = turn.get_coordinates()[1] + turn.get_dimensions().value()[1] / 2;
+        auto bottomSideCoordinate = turn.get_coordinates()[1] - turn.get_dimensions().value()[1] / 2;
+        if (fabs((bottomSideCoordinate - bobbinBottomCoordinate) / bobbinBottomCoordinate) < 0.05) {
+            std::cout << "bottomSideCoordinate: " << bottomSideCoordinate << std::endl;
+            std::cout << "bobbinBottomCoordinate: " << bobbinBottomCoordinate << std::endl;
+            std::cout << "(fabs(bottomSideCoordinate - bobbinBottomCoordinate) / bobbinBottomCoordinate): " << (fabs(bottomSideCoordinate - bobbinBottomCoordinate) / bobbinBottomCoordinate) << std::endl;
+            touchingTurns.push_back(turn);
+        }
+        if (fabs((topSideCoordinate - bobbinTopCoordinate) / bobbinTopCoordinate) < 0.05) {
+            std::cout << "topSideCoordinate: " << topSideCoordinate << std::endl;
+            std::cout << "bobbinTopCoordinate: " << bobbinTopCoordinate << std::endl;
+            std::cout << "(fabs(topSideCoordinate - bobbinTopCoordinate) / bobbinTopCoordinate): " << (fabs(topSideCoordinate - bobbinTopCoordinate) / bobbinTopCoordinate) << std::endl;
+            touchingTurns.push_back(turn);
+        }
+    }
+    return touchingTurns;
+}
+
 } // namespace OpenMagnetics
  

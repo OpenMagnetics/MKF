@@ -40,8 +40,8 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint opera
 
 bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
     for (auto turn : turns) {
-        double distanceX = fabs(turn.get_coordinates()[0] - pointX) * 1.05;
-        double distanceY = fabs(turn.get_coordinates()[1] - pointY) * 1.05;
+        double distanceX = fabs(turn.get_coordinates()[0] - pointX) * settings->get_coil_mesher_inside_turns_factor();
+        double distanceY = fabs(turn.get_coordinates()[1] - pointY) * settings->get_coil_mesher_inside_turns_factor();
         if (!turn.get_dimensions()) {
             throw std::runtime_error("Turns is missing dimensions, which is needed for leakage inductance calculation");
         }
@@ -51,7 +51,7 @@ bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
             }
         }
         else if (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
-            if (hypot(distanceX, distanceY) < turn.get_dimensions().value()[0]) {
+            if (hypot(distanceX, distanceY) < turn.get_dimensions().value()[0] / 2) {
                 return true;
             }
         }
@@ -72,8 +72,8 @@ bool is_far_from_turns(std::vector<Turn> turns, double pointX, double pointY) {
         if (!turn.get_dimensions()) {
             throw std::runtime_error("Turns is missing dimensions, which is needed for leakage inductance calculation");
         }
-        // if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 2) {
-        if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 1) {
+        if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 2) {
+        // if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 1) {
             return false;
         }
     }

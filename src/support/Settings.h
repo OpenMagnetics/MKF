@@ -72,6 +72,8 @@ class Settings
         int _magneticFieldMirroringDimension;
         bool _magneticFieldIncludeFringing = true;
 
+        double _coilMesherInsideTurnsFactor = 1.05;
+
         bool _leakageInductanceGridAutoScaling = true;
         double _leakageInductanceGridPrecisionLevelPlanar = 3;
         double _leakageInductanceGridPrecisionLevelWound = 1;
@@ -258,6 +260,9 @@ class Settings
 
         bool get_magnetic_field_include_fringing() const;
         void set_magnetic_field_include_fringing(bool value);
+
+        double get_coil_mesher_inside_turns_factor() const;
+        void set_coil_mesher_inside_turns_factor(double value);
 
         bool get_leakage_inductance_grid_auto_scaling() const;
         void set_leakage_inductance_grid_auto_scaling(bool value);

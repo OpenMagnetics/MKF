@@ -69,7 +69,7 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
 
     double opacity = 1;
     // if (_fieldPainted) {
-        // opacity = 0.25;
+    //     opacity = 0.25;
     // }
     // Paint insulation
     {
@@ -85,12 +85,12 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
             throw std::runtime_error("Wire is missing conducting diameter");
         }
         std::string colorClass;
-        if (_fieldPainted) {
-            colorClass = "copper_translucent";
-        }
-        else {
+        // if (_fieldPainted) {
+        //     colorClass = "copper_translucent";
+        // }
+        // else {
             colorClass = "copper";
-        }
+        // }
         paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, colorClass, shapes, 360, 0, {0, 0}, label);
     }
 

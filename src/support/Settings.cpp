@@ -81,6 +81,8 @@ namespace OpenMagnetics {
         _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         _magneticFieldIncludeFringing = true;
 
+        _coilMesherInsideTurnsFactor = 1.05;
+
         _leakageInductanceGridAutoScaling = true;
         _leakageInductanceGridPrecisionLevelPlanar = 3;
         _leakageInductanceGridPrecisionLevelWound = 1;
@@ -472,6 +474,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_magnetic_field_include_fringing(bool value) {
         _magneticFieldIncludeFringing = value;
+    }
+
+    double Settings::get_coil_mesher_inside_turns_factor() const {
+        return _coilMesherInsideTurnsFactor;
+    }
+    void Settings::set_coil_mesher_inside_turns_factor(double value) {
+        _coilMesherInsideTurnsFactor = value;
     }
 
     bool Settings::get_leakage_inductance_grid_auto_scaling() const {

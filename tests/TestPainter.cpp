@@ -1044,10 +1044,10 @@ SUITE(ElectricFieldPainter) {
     }
 
     TEST(Test_Coil_Electric_Field_Basic_Painter) {
-        std::vector<int64_t> numberTurns = {2, 2};
+        std::vector<int64_t> numberTurns = {4, 2};
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 2;
         int64_t numberStacks = 1;
         double voltagePeakToPeak = 2000;
         std::string coreShape = "PQ 26/25";
@@ -1059,7 +1059,7 @@ SUITE(ElectricFieldPainter) {
         CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
 
         std::vector<OpenMagnetics::Wire> wires;
-        wires.push_back({find_wire_by_name("Round 1.00 - Grade 3")});
+        wires.push_back({find_wire_by_name("Round 0.5 - Grade 3")});
         wires.push_back({find_wire_by_name("Round 1.00 - Grade 3")});
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
