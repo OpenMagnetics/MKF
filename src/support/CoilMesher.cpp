@@ -72,7 +72,8 @@ bool is_far_from_turns(std::vector<Turn> turns, double pointX, double pointY) {
         if (!turn.get_dimensions()) {
             throw std::runtime_error("Turns is missing dimensions, which is needed for leakage inductance calculation");
         }
-        if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 2) {
+        // if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 2) {
+        if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 1) {
             return false;
         }
     }
@@ -103,7 +104,7 @@ bool is_passed_from_all_turns(std::vector<Turn> turns, double pointX, double poi
     return noTurnsBelow ^ noTurnsAbove;
 }
 
-std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY, bool ignoreTurns) {
+std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY, bool ignoreTurns, bool includeInsideTurns) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
 
     std::vector<FieldPoint> points;
@@ -121,8 +122,11 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
         double coreColumnWidth = magnetic.get_mutable_core().get_columns()[0].get_width();
         double coreColumnHeight = magnetic.get_mutable_core().get_columns()[0].get_height();
 
-        bobbinPointsX = matplot::linspace(coreColumnWidth / 2, bobbinWidthStart + bobbinWidth, numberPointsX);
-        bobbinPointsY = matplot::linspace(-coreColumnHeight / 2, coreColumnHeight / 2, numberPointsY);
+        double totalWidthInGrid = bobbinWidthStart + bobbinWidth - coreColumnWidth / 2;
+        double pixelXDimension = totalWidthInGrid / numberPointsX;
+        double pixelYDimension = coreColumnHeight / numberPointsY;
+        bobbinPointsX = matplot::linspace(coreColumnWidth / 2 + pixelXDimension / 2, bobbinWidthStart + bobbinWidth - pixelXDimension / 2, numberPointsX);
+        bobbinPointsY = matplot::linspace(-coreColumnHeight / 2 + pixelYDimension / 2, coreColumnHeight / 2 - pixelYDimension / 2, numberPointsY);
 
         double dx = (bobbinWidthStart + bobbinWidth - coreColumnWidth / 2) / numberPointsX;
         double dy = coreColumnHeight / numberPointsY;
@@ -150,12 +154,21 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
     }
     for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
         for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
-            if (is_far_from_turns(turns, bobbinPointsX[i], bobbinPointsY[j]) && (checkOnlyDistance || is_passed_from_all_turns(turns, bobbinPointsX[i], bobbinPointsY[j]))) {
-                continue;
+            if (!ignoreTurns) {
+                if (is_far_from_turns(turns, bobbinPointsX[i], bobbinPointsY[j]) && (checkOnlyDistance || is_passed_from_all_turns(turns, bobbinPointsX[i], bobbinPointsY[j]))) {
+                    continue;
+                }
             }
-            if (isPlanar && !ignoreTurns) {
-                // Planar are so thin and can be so close, that we need to remove he copper part to avoid having a much larger value
-                // TODO: Evaluate for other wires
+            if (isPlanar) {
+                if (!ignoreTurns) {
+                    // Planar are so thin and can be so close, that we need to remove he copper part to avoid having a much larger value
+                    // TODO: Evaluate for other wires
+                    if (is_inside_turns(turns, bobbinPointsX[i], bobbinPointsY[j])) {
+                        continue;
+                    }
+                }
+            }
+            else if (!includeInsideTurns) {
                 if (is_inside_turns(turns, bobbinPointsX[i], bobbinPointsY[j])) {
                     continue;
                 }

@@ -79,6 +79,262 @@ std::vector<std::pair<Turn, size_t>> StrayCapacitance::get_surrounding_turns(Tur
     return surroundingTurns;
 }
 
+double StrayCapacitance::calculate_area_between_two_turns(Turn firstTurn, Turn secondTurn) {
+    return std::max(calculate_area_between_two_turns_using_diagonals(firstTurn, secondTurn), calculate_area_between_two_turns_using_vecticals_and_horizontals(firstTurn, secondTurn));
+}
+double StrayCapacitance::calculate_area_between_two_turns_using_diagonals(Turn firstTurn, Turn secondTurn) {
+
+    double x1 = 0;
+    double y1 = 0;
+    double x2 = 0;
+    double y2 = 0;
+    double x3 = 0;
+    double y3 = 0;
+    double x4 = 0;
+    double y4 = 0;
+    double sqrt2 = sqrt(2);
+
+    double angleBetweenTurns = atan2(secondTurn.get_coordinates()[1] - firstTurn.get_coordinates()[1], secondTurn.get_coordinates()[0] - firstTurn.get_coordinates()[0]);
+    if ((angleBetweenTurns > 0 && angleBetweenTurns < std::numbers::pi / 2) || (angleBetweenTurns < 0 && angleBetweenTurns < -std::numbers::pi / 2)) {
+        // Top right quadrant
+
+        if (firstTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::RECTANGULAR) {
+            x1 = firstTurn.get_coordinates()[0] - firstTurn.get_dimensions().value()[0] / 2;
+            y1 = firstTurn.get_coordinates()[1] + firstTurn.get_dimensions().value()[1] / 2;
+            x2 = firstTurn.get_coordinates()[0] + firstTurn.get_dimensions().value()[0] / 2;
+            y2 = firstTurn.get_coordinates()[1] - firstTurn.get_dimensions().value()[1] / 2;
+        }
+        else {
+            x1 = firstTurn.get_coordinates()[0] - firstTurn.get_dimensions().value()[0] / 2 / sqrt2;
+            y1 = firstTurn.get_coordinates()[1] + firstTurn.get_dimensions().value()[1] / 2 / sqrt2;
+            x2 = firstTurn.get_coordinates()[0] + firstTurn.get_dimensions().value()[0] / 2 / sqrt2;
+            y2 = firstTurn.get_coordinates()[1] - firstTurn.get_dimensions().value()[1] / 2 / sqrt2;
+        }
+        if (secondTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::RECTANGULAR) {
+            x3 = secondTurn.get_coordinates()[0] - secondTurn.get_dimensions().value()[0] / 2;
+            y3 = secondTurn.get_coordinates()[1] + secondTurn.get_dimensions().value()[1] / 2;
+            x4 = secondTurn.get_coordinates()[0] + secondTurn.get_dimensions().value()[0] / 2;
+            y4 = secondTurn.get_coordinates()[1] - secondTurn.get_dimensions().value()[1] / 2;
+        }
+        else {
+            x3 = secondTurn.get_coordinates()[0] - secondTurn.get_dimensions().value()[0] / 2 / sqrt2;
+            y3 = secondTurn.get_coordinates()[1] + secondTurn.get_dimensions().value()[1] / 2 / sqrt2;
+            x4 = secondTurn.get_coordinates()[0] + secondTurn.get_dimensions().value()[0] / 2 / sqrt2;
+            y4 = secondTurn.get_coordinates()[1] - secondTurn.get_dimensions().value()[1] / 2 / sqrt2;
+        }
+    }
+    else {
+        // Top left quadrant
+        if (firstTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::RECTANGULAR) {
+            x1 = firstTurn.get_coordinates()[0] + firstTurn.get_dimensions().value()[0] / 2;
+            y1 = firstTurn.get_coordinates()[1] + firstTurn.get_dimensions().value()[1] / 2;
+            x2 = firstTurn.get_coordinates()[0] - firstTurn.get_dimensions().value()[0] / 2;
+            y2 = firstTurn.get_coordinates()[1] - firstTurn.get_dimensions().value()[1] / 2;
+        }
+        else {
+            x1 = firstTurn.get_coordinates()[0] + firstTurn.get_dimensions().value()[0] / 2 / sqrt2;
+            y1 = firstTurn.get_coordinates()[1] + firstTurn.get_dimensions().value()[1] / 2 / sqrt2;
+            x2 = firstTurn.get_coordinates()[0] - firstTurn.get_dimensions().value()[0] / 2 / sqrt2;
+            y2 = firstTurn.get_coordinates()[1] - firstTurn.get_dimensions().value()[1] / 2 / sqrt2;
+        }
+        if (secondTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::RECTANGULAR) {
+            x3 = secondTurn.get_coordinates()[0] + secondTurn.get_dimensions().value()[0] / 2;
+            y3 = secondTurn.get_coordinates()[1] + secondTurn.get_dimensions().value()[1] / 2;
+            x4 = secondTurn.get_coordinates()[0] - secondTurn.get_dimensions().value()[0] / 2;
+            y4 = secondTurn.get_coordinates()[1] - secondTurn.get_dimensions().value()[1] / 2;
+        }
+        else {
+            x3 = secondTurn.get_coordinates()[0] + secondTurn.get_dimensions().value()[0] / 2 / sqrt2;
+            y3 = secondTurn.get_coordinates()[1] + secondTurn.get_dimensions().value()[1] / 2 / sqrt2;
+            x4 = secondTurn.get_coordinates()[0] - secondTurn.get_dimensions().value()[0] / 2 / sqrt2;
+            y4 = secondTurn.get_coordinates()[1] - secondTurn.get_dimensions().value()[1] / 2 / sqrt2;
+        }
+    }
+
+
+    // Helper: Cross product (p2-p1) × (p3-p1)
+    auto cross = [](double x1, double y1, double x2, double y2, 
+                    double x3, double y3) -> double {
+        return (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+    };
+    
+    // Store points
+    double x[4] = {x1, x2, x3, x4};
+    double y[4] = {y1, y2, y3, y4};
+    
+    // Find leftmost point (for convex hull start)
+    int start = 0;
+    for (int i = 1; i < 4; i++) {
+        if (x[i] < x[start] || (x[i] == x[start] && y[i] < y[start])) {
+            start = i;
+        }
+    }
+    
+    // Build convex hull (Graham scan for 4 points)
+    int hull[5];
+    int hullSize = 0;
+    int p = start, q;
+    
+    do {
+        hull[hullSize++] = p;
+        
+        // Find next point that makes the largest left turn
+        q = (p + 1) % 4;
+        for (int i = 0; i < 4; i++) {
+            if (i == p || i == q) continue;
+            
+            double orient = cross(x[p], y[p], x[q], y[q], x[i], y[i]);
+            if (orient < 0) {
+                q = i;
+            }
+        }
+        p = q;
+    } while (p != start && hullSize < 5);
+    
+    // Close the polygon
+    hull[hullSize] = hull[0];
+    
+    // Shoelace formula on convex hull
+    double area = 0.0;
+    for (int i = 0; i < hullSize; i++) {
+        area += x[hull[i]] * y[hull[i+1]];
+        area -= y[hull[i]] * x[hull[i+1]];
+    }
+
+    double areaWithoutWires = 0.5 * std::abs(area);
+
+
+    if (firstTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+        double halfCircleArea = std::numbers::pi * pow(firstTurn.get_dimensions().value()[0], 2) / 8;
+        areaWithoutWires -= halfCircleArea;
+    }
+    else {
+        double halfRectangularArea = firstTurn.get_dimensions().value()[0] * firstTurn.get_dimensions().value()[1] / 2;
+        areaWithoutWires -= halfRectangularArea;
+    }
+
+    if (secondTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+        double halfCircleArea = std::numbers::pi * pow(secondTurn.get_dimensions().value()[0], 2) / 8;
+        areaWithoutWires -= halfCircleArea;
+    }
+    else {
+        double halfRectangularArea = secondTurn.get_dimensions().value()[0] * secondTurn.get_dimensions().value()[1] / 2;
+        areaWithoutWires -= halfRectangularArea;
+    }
+
+    return areaWithoutWires;
+}
+double StrayCapacitance::calculate_area_between_two_turns_using_vecticals_and_horizontals(Turn firstTurn, Turn secondTurn) {
+
+    double x1 = 0;
+    double y1 = 0;
+    double x2 = 0;
+    double y2 = 0;
+    double x3 = 0;
+    double y3 = 0;
+    double x4 = 0;
+    double y4 = 0;
+
+    double angleBetweenTurns = atan2(secondTurn.get_coordinates()[1] - firstTurn.get_coordinates()[1], secondTurn.get_coordinates()[0] - firstTurn.get_coordinates()[0]);
+    if ((angleBetweenTurns > std::numbers::pi / 4 && angleBetweenTurns < 3 * std::numbers::pi / 4) || (angleBetweenTurns < -std::numbers::pi / 4 && angleBetweenTurns > -3 * std::numbers::pi / 4)) {
+        // Top right quadrant
+
+        x1 = firstTurn.get_coordinates()[0] - firstTurn.get_dimensions().value()[0] / 2;
+        y1 = firstTurn.get_coordinates()[1];
+        x2 = firstTurn.get_coordinates()[0] + firstTurn.get_dimensions().value()[0] / 2;
+        y2 = firstTurn.get_coordinates()[1];
+
+        x3 = secondTurn.get_coordinates()[0] - secondTurn.get_dimensions().value()[0] / 2;
+        y3 = secondTurn.get_coordinates()[1];
+        x4 = secondTurn.get_coordinates()[0] + secondTurn.get_dimensions().value()[0] / 2;
+        y4 = secondTurn.get_coordinates()[1];
+    }
+    else {
+        x1 = firstTurn.get_coordinates()[0];
+        y1 = firstTurn.get_coordinates()[1] + firstTurn.get_dimensions().value()[1] / 2;
+        x2 = firstTurn.get_coordinates()[0];
+        y2 = firstTurn.get_coordinates()[1] - firstTurn.get_dimensions().value()[1] / 2;
+
+        x3 = secondTurn.get_coordinates()[0];
+        y3 = secondTurn.get_coordinates()[1] + secondTurn.get_dimensions().value()[1] / 2;
+        x4 = secondTurn.get_coordinates()[0];
+        y4 = secondTurn.get_coordinates()[1] - secondTurn.get_dimensions().value()[1] / 2;
+    }
+
+    // Helper: Cross product (p2-p1) × (p3-p1)
+    auto cross = [](double x1, double y1, double x2, double y2, 
+                    double x3, double y3) -> double {
+        return (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+    };
+    
+    // Store points
+    double x[4] = {x1, x2, x3, x4};
+    double y[4] = {y1, y2, y3, y4};
+    
+    // Find leftmost point (for convex hull start)
+    int start = 0;
+    for (int i = 1; i < 4; i++) {
+        if (x[i] < x[start] || (x[i] == x[start] && y[i] < y[start])) {
+            start = i;
+        }
+    }
+    
+    // Build convex hull (Graham scan for 4 points)
+    int hull[5];
+    int hullSize = 0;
+    int p = start, q;
+    
+    do {
+        hull[hullSize++] = p;
+        
+        // Find next point that makes the largest left turn
+        q = (p + 1) % 4;
+        for (int i = 0; i < 4; i++) {
+            if (i == p || i == q) continue;
+            
+            double orient = cross(x[p], y[p], x[q], y[q], x[i], y[i]);
+            if (orient < 0) {
+                q = i;
+            }
+        }
+        p = q;
+    } while (p != start && hullSize < 5);
+    
+    // Close the polygon
+    hull[hullSize] = hull[0];
+    
+    // Shoelace formula on convex hull
+    double area = 0.0;
+    for (int i = 0; i < hullSize; i++) {
+        area += x[hull[i]] * y[hull[i+1]];
+        area -= y[hull[i]] * x[hull[i+1]];
+    }
+
+    double areaWithoutWires = 0.5 * std::abs(area);
+
+
+    if (firstTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+        double halfCircleArea = std::numbers::pi * pow(firstTurn.get_dimensions().value()[0], 2) / 8;
+        areaWithoutWires -= halfCircleArea;
+    }
+    else {
+        double halfRectangularArea = firstTurn.get_dimensions().value()[0] * firstTurn.get_dimensions().value()[1] / 2;
+        areaWithoutWires -= halfRectangularArea;
+    }
+
+    if (secondTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+        double halfCircleArea = std::numbers::pi * pow(secondTurn.get_dimensions().value()[0], 2) / 8;
+        areaWithoutWires -= halfCircleArea;
+    }
+    else {
+        double halfRectangularArea = secondTurn.get_dimensions().value()[0] * secondTurn.get_dimensions().value()[1] / 2;
+        areaWithoutWires -= halfRectangularArea;
+    }
+
+    return areaWithoutWires;
+}
+
+
 std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, Coil coil) {
     if (!coil.get_sections_description()) {
         throw std::invalid_argument("Missing sections description");
@@ -309,7 +565,10 @@ std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, Wire 
     double distanceThroughAir = distanceBetweenTurns - distanceThroughLayers;
 
     if (distanceBetweenTurns < 0) {
-        throw std::invalid_argument("distanceBetweenTurns cannot be negative");
+        distanceBetweenTurns = DBL_MAX;
+        distanceThroughAir = DBL_MAX;
+        distanceThroughLayers = DBL_MAX;
+        // throw std::invalid_argument("distanceBetweenTurns cannot be negative");
     }
     auto averageTurnLength = (firstTurn.get_length() + secondTurn.get_length()) / 2;
 
@@ -415,6 +674,18 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
     return _model->calculate_static_capacitance_between_two_turns(insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, epsilonF);
 }
 
+double StrayCapacitance::calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil) {
+    double capacitance = calculate_static_capacitance_between_two_turns(firstTurn, firstWire, secondTurn, secondWire, coil);
+    double energy = 0.5 * capacitance * pow(voltageDrop, 2);
+    return energy;
+}
+
+double StrayCapacitance::calculate_energy_density_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil) {
+    double energy = calculate_energy_between_two_turns(firstTurn, firstWire, secondTurn, secondWire, voltageDrop, coil);
+    double area = calculate_area_between_two_turns(firstTurn, secondTurn);
+    return energy / area;
+}
+
 std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacitance_among_turns(Coil coil) {
     if (!coil.get_turns_description()) {
         throw std::invalid_argument("Missing turns description");
@@ -430,12 +701,10 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
     for (size_t turnIndex = 0; turnIndex <  turns.size(); ++turnIndex) {
         auto turnWindingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
         auto turnWire = wirePerWinding[turnWindingIndex];
-        auto firstTurnName = turnIndex;
         auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turns[turnIndex], turns);
         for (auto [surroundingTurn, surroundingTurnIndex] : surroundingTurns) {
-            auto secondTurnName = surroundingTurnIndex;
-            auto key = std::make_pair(firstTurnName, secondTurnName);
-            if (turnsCombinations.contains(key) || turnsCombinations.contains(std::make_pair(secondTurnName, firstTurnName))) {
+            auto key = std::make_pair(turnIndex, surroundingTurnIndex);
+            if (turnsCombinations.contains(key) || turnsCombinations.contains(std::make_pair(surroundingTurnIndex, turnIndex))) {
                 continue;
             }
             auto surroundingTurnWindingIndex = coil.get_winding_index_by_name(surroundingTurn.get_winding());
@@ -450,7 +719,30 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
 }
 
 
-std::map<std::string, double> StrayCapacitance::calculate_capacitance_matrix(double energy, double voltageDrop, double relativeTurnsRatio) {
+ScalarMatrixAtFrequency StrayCapacitance::calculate_capacitance_matrix_between_windings(double energy, double voltageDrop, double relativeTurnsRatio) {
+    ScalarMatrixAtFrequency scalarMatrixAtFrequency;
+    double C0 = energy * 2 / pow(voltageDrop, 2);
+    scalarMatrixAtFrequency.set_frequency(0);  // Static result
+
+    auto gamma1 = -C0 / 6;
+    auto gamma2 = -C0 / 6;
+    auto gamma3 = C0 / 3;
+    auto gamma4 = C0 / 3;
+    auto gamma5 = C0 / 6;
+    auto gamma6 = C0 / 6;
+
+    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["1"].set_nominal(gamma1 + relativeTurnsRatio * (gamma4 + gamma5));
+    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["2"].set_nominal(-2 * gamma4);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["3"].set_nominal(2 * relativeTurnsRatio * gamma5);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["2"]["2"].set_nominal(gamma2 + gamma4 + gamma6);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["2"]["3"].set_nominal(2 * gamma6);
+    scalarMatrixAtFrequency.get_mutable_magnitude()["3"]["3"].set_nominal(gamma3 + gamma5 + gamma6);
+
+    return scalarMatrixAtFrequency;
+
+}
+
+std::pair<SixCapacitorNetworkPerWinding, TripoleCapacitancePerWinding> StrayCapacitance::calculate_capacitance_models_between_windings(double energy, double voltageDrop, double relativeTurnsRatio) {
     std::map<std::string, double> result;
 
     double C0 = energy * 2 / pow(voltageDrop, 2);
@@ -462,23 +754,34 @@ std::map<std::string, double> StrayCapacitance::calculate_capacitance_matrix(dou
     auto gamma5 = C0 / 6;
     auto gamma6 = C0 / 6;
 
-    result["C11"] = gamma1 + relativeTurnsRatio * (gamma4 + gamma5);
-    result["C12"] = -2 * gamma4;
-    result["C13"] = 2 * relativeTurnsRatio * gamma5;
-    result["C22"] = gamma2 + gamma4 + gamma6;
-    result["C23"] = 2 * gamma6;
-    result["C33"] = gamma3 + gamma5 + gamma6;
+    SixCapacitorNetworkPerWinding sixCapacitorNetworkPerWinding;
+    sixCapacitorNetworkPerWinding.set_c1(gamma1);
+    sixCapacitorNetworkPerWinding.set_c2(gamma2);
+    sixCapacitorNetworkPerWinding.set_c3(gamma3);
+    sixCapacitorNetworkPerWinding.set_c4(gamma4);
+    sixCapacitorNetworkPerWinding.set_c5(gamma5);
+    sixCapacitorNetworkPerWinding.set_c6(gamma6);
 
+    auto C1 = gamma1 + relativeTurnsRatio * gamma2;
+    auto C2 = gamma5 + gamma6;
+    auto C3 = gamma3;
 
-    result["C1"] = gamma1 + relativeTurnsRatio * gamma2;
-    result["C2"] = gamma5 + gamma6;
-    result["C3"] = gamma3;
+    TripoleCapacitancePerWinding tripoleCapacitancePerWinding;
+    tripoleCapacitancePerWinding.set_c1(C1);
+    tripoleCapacitancePerWinding.set_c2(C2);
+    tripoleCapacitancePerWinding.set_c3(C3);
 
-    return result;
+    return {sixCapacitorNetworkPerWinding, tripoleCapacitancePerWinding};
 }
 
 
-std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_windings(Coil coil) {
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
+    std::map<std::pair<size_t, size_t>, double> electricEnergyBetweenTurnsMap;
+    std::map<std::pair<size_t, size_t>, double> voltageDropBetweenTurnsMap;
+    std::map<std::string, std::map<std::string, ScalarMatrixAtFrequency>> capacitanceMatrix;
+    std::map<std::string, std::map<std::string, SixCapacitorNetworkPerWinding>> sixCapacitorNetworkPerWinding;
+    std::map<std::string, std::map<std::string, TripoleCapacitancePerWinding>> tripoleCapacitancePerWinding;
+
     auto capacitanceAmongTurns = calculate_capacitance_among_turns(coil);
 
     std::map<std::string, double> voltageRmsPerWinding;
@@ -489,22 +792,23 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
     }
 
 
-    auto voltagesPerTurn = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding).get_voltage_per_turn().value();
+    auto strayCapacitanceOutput = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding);
+    auto voltagesPerTurn = strayCapacitanceOutput.get_voltage_per_turn().value();
     auto windings = coil.get_functional_description();
     std::map<std::pair<std::string, std::string>, double> capacitanceMapPerWindings;
     for (auto firstWinding : windings) {
-        auto turnsInFirstWinding = coil.get_turns_indexes_by_winding(firstWinding.get_name());
         auto firstWindingName = firstWinding.get_name();
+        auto turnsInFirstWinding = coil.get_turns_indexes_by_winding(firstWindingName);
         double minVoltageInFirstWinding = 1;
         double maxVoltageInFirstWinding = 0;
         double minVoltageInSecondWinding = 1;
         double maxVoltageInSecondWinding = 0;
         for (auto secondWinding : windings) {
-            auto windingsKey = std::make_pair(firstWinding.get_name(), secondWinding.get_name());
-            if (capacitanceMapPerWindings.contains(windingsKey) || capacitanceMapPerWindings.contains(std::make_pair(secondWinding.get_name(), firstWinding.get_name()))) {
+            auto secondWindingName = secondWinding.get_name();
+            auto windingsKey = std::make_pair(firstWindingName, secondWindingName);
+            if (capacitanceMapPerWindings.contains(windingsKey) || capacitanceMapPerWindings.contains(std::make_pair(secondWindingName, firstWindingName))) {
                 continue;
             }
-            auto secondWindingName = secondWinding.get_name();
 
             double V3 = 42;
             double V3calculated = 0;
@@ -515,11 +819,15 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
                 // continue;
             }
 
+            double energyInBetweenTheseWindings = 0;
+            double voltageDropBetweenWindings = 0;
+            double relativeTurnsRatio = 0;
+            ScalarMatrixAtFrequency capacitanceMatrixBetweenWindings;
             while (V3 != V3calculated) {
+                energyInBetweenTheseWindings = 0;
                 V3 = V3calculated;
-                double energyInBetweenTheseWindings = 0;
                 // double C0 = 0;
-                auto turnsInSecondWinding = coil.get_turns_indexes_by_winding(secondWinding.get_name());
+                auto turnsInSecondWinding = coil.get_turns_indexes_by_winding(secondWindingName);
                 bool windingAreNotAdjacent = true;
                 for (auto turnInFirstWinding : turnsInFirstWinding) {
                     auto firstTurnVoltage = voltagesPerTurn[turnInFirstWinding];
@@ -533,9 +841,15 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
                         minVoltageInSecondWinding = std::min(minVoltageInSecondWinding, secondTurnVoltage);
                         maxVoltageInSecondWinding = std::max(maxVoltageInSecondWinding, secondTurnVoltage);
                         auto turnsKey = std::make_pair(turnInFirstWinding, turnInSecondWinding);
+                    std::cout << "turnInFirstWinding: " << turnInFirstWinding << std::endl;
+                    std::cout << "turnInSecondWinding: " << turnInSecondWinding << std::endl;
                         if (capacitanceAmongTurns.contains(turnsKey)) {
                             windingAreNotAdjacent = false;
-                            energyInBetweenTheseWindings += 0.5 * capacitanceAmongTurns[turnsKey] * pow(V3 + firstTurnVoltage - secondTurnVoltage, 2);
+                            double voltageDropAmongTurns = V3 + firstTurnVoltage - secondTurnVoltage;
+                            double energyBetweenTurns = 0.5 * capacitanceAmongTurns[turnsKey] * pow(voltageDropAmongTurns, 2);
+                            energyInBetweenTheseWindings += energyBetweenTurns;
+                            electricEnergyBetweenTurnsMap[turnsKey] = energyBetweenTurns;
+                            voltageDropBetweenTurnsMap[turnsKey] = voltageDropAmongTurns;
                             if (std::isnan(energyInBetweenTheseWindings)) {
                                 throw std::runtime_error("Energy cannot be nan");
                             }
@@ -545,52 +859,113 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
                 if (windingAreNotAdjacent) {
                     capacitanceMapPerWindings[windingsKey] = 0;
                     continue;
-
                 }
-                double voltageDropBetweenWindings = maxVoltageInFirstWinding - minVoltageInSecondWinding + V3;
-                double relativeTurnsRatio = static_cast<double>(firstWinding.get_number_turns()) / secondWinding.get_number_turns(); 
-                auto matrix = calculate_capacitance_matrix(energyInBetweenTheseWindings, voltageDropBetweenWindings, relativeTurnsRatio);
+
+                voltageDropBetweenWindings = maxVoltageInFirstWinding - minVoltageInSecondWinding + V3;
+                relativeTurnsRatio = static_cast<double>(firstWinding.get_number_turns()) / secondWinding.get_number_turns(); 
+                capacitanceMatrixBetweenWindings = calculate_capacitance_matrix_between_windings(energyInBetweenTheseWindings, voltageDropBetweenWindings, relativeTurnsRatio);
                 if (firstWindingName != secondWindingName) {
-                    V3calculated = fabs(-(matrix["C13"] * maxVoltageInFirstWinding + matrix["C23"] * fabs(minVoltageInSecondWinding)) / matrix["C33"]);
+                    V3calculated = fabs(-(resolve_dimensional_values(capacitanceMatrixBetweenWindings.get_mutable_magnitude()["1"]["3"]) * maxVoltageInFirstWinding + resolve_dimensional_values(capacitanceMatrixBetweenWindings.get_mutable_magnitude()["2"]["3"]) * fabs(minVoltageInSecondWinding)) / resolve_dimensional_values(capacitanceMatrixBetweenWindings.get_mutable_magnitude()["3"]["3"]));
                 }
-
                 capacitanceMapPerWindings[windingsKey] = energyInBetweenTheseWindings * 2 / pow(voltageDropBetweenWindings, 2);
             }
+            capacitanceMatrix[firstWindingName][secondWindingName] = capacitanceMatrixBetweenWindings;
+            capacitanceMatrix[secondWindingName][firstWindingName] = capacitanceMatrixBetweenWindings;
+            auto [sixCapacitorNetworkPerWindingBetweenWindings, tripoleCapacitancePerWindingBetweenWindings] = calculate_capacitance_models_between_windings(energyInBetweenTheseWindings, voltageDropBetweenWindings, relativeTurnsRatio);
+            sixCapacitorNetworkPerWinding[firstWindingName][secondWindingName] = sixCapacitorNetworkPerWindingBetweenWindings;
+            sixCapacitorNetworkPerWinding[secondWindingName][firstWindingName] = sixCapacitorNetworkPerWindingBetweenWindings;
+            tripoleCapacitancePerWinding[firstWindingName][secondWindingName] = tripoleCapacitancePerWindingBetweenWindings;
+            tripoleCapacitancePerWinding[secondWindingName][firstWindingName] = tripoleCapacitancePerWindingBetweenWindings;
         }
     }
-    return capacitanceMapPerWindings;
+
+    std::map<std::string, std::map<std::string, double>> staticCapacitanceMapPerWindings;
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        auto winding = windings[windingIndex];
+        staticCapacitanceMapPerWindings[winding.get_name()] = std::map<std::string, double>();
+    }
+
+    for (size_t firstWindingIndex = 0; firstWindingIndex < windings.size(); ++firstWindingIndex) {
+        auto firstWinding = windings[firstWindingIndex];
+        for (size_t secondWindingIndex = 0; secondWindingIndex < windings.size(); ++secondWindingIndex) {
+            auto secondWinding = windings[secondWindingIndex];
+            auto windingsKey = std::make_pair(firstWinding.get_name(), secondWinding.get_name());
+            if (!capacitanceMapPerWindings.contains(windingsKey)) {
+                continue;
+            }
+            auto capacitance = capacitanceMapPerWindings[windingsKey];
+            staticCapacitanceMapPerWindings[firstWinding.get_name()][secondWinding.get_name()] = capacitance;
+            staticCapacitanceMapPerWindings[secondWinding.get_name()][firstWinding.get_name()] = capacitance;
+        }
+    }
+
+
+    std::map<std::string, std::map<std::string, double>> electricEnergyAmongTurns;
+    std::map<std::string, std::map<std::string, double>> voltageDropAmongTurns;
+    std::map<std::string, std::map<std::string, double>> capacitanceAmongTurnsOutput;
+    auto turns = coil.get_turns_description().value();
+    for (size_t firstTurnIndex = 0; firstTurnIndex < turns.size(); ++firstTurnIndex) {
+        auto firstTurnName = turns[firstTurnIndex].get_name();
+        for (size_t secondTurnIndex = firstTurnIndex + 1; secondTurnIndex < turns.size(); ++secondTurnIndex) {
+            auto secondTurnName = turns[secondTurnIndex].get_name();
+            auto turnsKey = std::make_pair(firstTurnIndex, secondTurnIndex);
+            electricEnergyAmongTurns[firstTurnName][secondTurnName] = electricEnergyBetweenTurnsMap[turnsKey];
+            electricEnergyAmongTurns[secondTurnName][firstTurnName] = electricEnergyBetweenTurnsMap[turnsKey];
+            voltageDropAmongTurns[firstTurnName][secondTurnName] = voltageDropBetweenTurnsMap[turnsKey];
+            voltageDropAmongTurns[secondTurnName][firstTurnName] = -voltageDropBetweenTurnsMap[turnsKey];
+            capacitanceAmongTurnsOutput[firstTurnName][secondTurnName] = capacitanceAmongTurns[turnsKey];
+            capacitanceAmongTurnsOutput[secondTurnName][firstTurnName] = capacitanceAmongTurns[turnsKey];
+        }
+    }
+
+    strayCapacitanceOutput.set_capacitance_among_turns(capacitanceAmongTurnsOutput);
+    strayCapacitanceOutput.set_capacitance_among_windings(staticCapacitanceMapPerWindings);
+    strayCapacitanceOutput.set_electric_energy_among_turns(electricEnergyAmongTurns);
+    strayCapacitanceOutput.set_voltage_drop_among_turns(voltageDropAmongTurns);
+    strayCapacitanceOutput.set_maxwell_capacitance_matrix(calculate_maxwell_capacitance_matrix(coil, staticCapacitanceMapPerWindings));
+    strayCapacitanceOutput.set_capacitance_matrix(capacitanceMatrix);
+    strayCapacitanceOutput.set_six_capacitor_network_per_winding(sixCapacitorNetworkPerWinding);
+    strayCapacitanceOutput.set_tripole_capacitance_per_winding(tripoleCapacitancePerWinding);
+
+    return strayCapacitanceOutput;
 }
 
 
-std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_maxwell_capacitance_matrix(Coil coil) {
-    auto capacitanceMapPerWindings = calculate_capacitance_among_windings(coil);
-    std::map<std::pair<std::string, std::string>, double> result;
+std::vector<ScalarMatrixAtFrequency> StrayCapacitance::calculate_maxwell_capacitance_matrix(Coil coil, std::map<std::string, std::map<std::string, double>> capacitanceAmongWindings) {
+    ScalarMatrixAtFrequency scalarMatrixAtFrequency;
+    scalarMatrixAtFrequency.set_frequency(0);  // Static result
+
     auto windings = coil.get_functional_description();
 
     for (auto firstWinding : windings) {
+        std::string firstWindingName = firstWinding.get_name();
         double capacitanceSum = 0;
         for (auto secondWinding : windings) {
-            auto key = std::make_pair(firstWinding.get_name(), secondWinding.get_name());
-            auto mirroredKey = std::make_pair(secondWinding.get_name(), firstWinding.get_name());
-            if (capacitanceMapPerWindings.contains(key)) {
-                capacitanceSum += capacitanceMapPerWindings[key];
-                if (firstWinding.get_name() != secondWinding.get_name()) {
-                    result[key] = -capacitanceMapPerWindings[key];
-                    result[mirroredKey] = -capacitanceMapPerWindings[key];
+            std::string secondWindingName = secondWinding.get_name();
+            if (capacitanceAmongWindings.contains(firstWindingName)) {
+                if (capacitanceAmongWindings[firstWindingName].contains(secondWindingName)) {
+                    auto capacitance = capacitanceAmongWindings[firstWindingName][secondWindingName];
+                    capacitanceSum += capacitance;
+                    if (firstWindingName != secondWindingName) {
+                        scalarMatrixAtFrequency.get_mutable_magnitude()[firstWindingName][secondWindingName].set_nominal(-capacitance);
+                        scalarMatrixAtFrequency.get_mutable_magnitude()[secondWindingName][firstWindingName].set_nominal(-capacitance);
+                    }
                 }
             }
             else {
-                capacitanceSum += capacitanceMapPerWindings[mirroredKey];
-                if (firstWinding.get_name() != secondWinding.get_name()) {
-                    result[key] = -capacitanceMapPerWindings[mirroredKey];
-                    result[mirroredKey] = -capacitanceMapPerWindings[mirroredKey];
+                capacitanceSum += capacitanceAmongWindings[secondWindingName][firstWindingName];
+                throw std::runtime_error("Old code, this should not happen");
+                if (firstWindingName != secondWindingName) {
+                    auto capacitance = capacitanceAmongWindings[secondWindingName][firstWindingName];
+                    scalarMatrixAtFrequency.get_mutable_magnitude()[firstWindingName][secondWindingName].set_nominal(-capacitance);
+                    scalarMatrixAtFrequency.get_mutable_magnitude()[secondWindingName][firstWindingName].set_nominal(-capacitance);
                 }
             }
         }
-        result[std::make_pair(firstWinding.get_name(), firstWinding.get_name())] = capacitanceSum;
+        scalarMatrixAtFrequency.get_mutable_magnitude()[firstWindingName][firstWindingName].set_nominal(capacitanceSum);
     }
 
-    return result;
+    return {scalarMatrixAtFrequency};
 }
 
 

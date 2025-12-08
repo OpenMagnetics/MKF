@@ -289,8 +289,6 @@ double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label) {
     for (size_t i = 0; i < diff_data.size() - 1; ++i) {
         diff_diff_data.push_back(fabs(roundFloat(diff_data[i + 1] - diff_data[i], 9)));
     }
-    for (size_t i = 0; i < diff_data.size() - 1; ++i) {
-    }
 
     double maximum = *max_element(diff_diff_data.begin(), diff_diff_data.end());
     size_t maximum_index = 0;

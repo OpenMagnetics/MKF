@@ -1,4 +1,5 @@
 #include "support/Painter.h"
+#include <cfloat>
 
 namespace OpenMagnetics {
 
@@ -41,7 +42,7 @@ std::vector<double> BasicPainter::get_image_size(Magnetic magnetic) {
 }
 
 
-void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire wire) {
+void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
     if (!wire.get_outer_diameter()) {
         throw std::runtime_error("Wire is missing outerDiameter");
     }
@@ -66,12 +67,16 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
 
     SVG::Group* shapes = _root.add_child<SVG::Group>();
 
-
+    double opacity = 1;
+    // if (_fieldPainted) {
+        // opacity = 0.25;
+    // }
     // Paint insulation
     {
         std::string cssClassName = generate_random_string();
-        _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
-        paint_circle(xCoordinate, yCoordinate, outerDiameter / 2, cssClassName, shapes);
+
+        _root.style("." + cssClassName).set_attr("fill", coatingColor).set_attr("opacity", opacity);
+        paint_circle(xCoordinate, yCoordinate, outerDiameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
     }
 
     // Paint copper
@@ -79,22 +84,29 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
         if (!wire.get_conducting_diameter()) {
             throw std::runtime_error("Wire is missing conducting diameter");
         }
-        paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, "copper", shapes);
+        std::string colorClass;
+        if (_fieldPainted) {
+            colorClass = "copper_translucent";
+        }
+        else {
+            colorClass = "copper";
+        }
+        paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, colorClass, shapes, 360, 0, {0, 0}, label);
     }
 
     // Paint layer separation lines
     {
         std::string cssClassName = generate_random_string();
-        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
+        _root.style("." + cssClassName).set_attr("opacity", opacity).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
         
         for (size_t i = 0; i < numberLines; ++i) {
-            paint_circle(xCoordinate, yCoordinate, currentLineDiameter / 2, cssClassName, shapes);
+            paint_circle(xCoordinate, yCoordinate, currentLineDiameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
             currentLineDiameter += lineRadiusIncrease;
         }
     }
 }
 
-void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire) {
+void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
     if (!wire.get_outer_diameter()) {
         throw std::runtime_error("Wire is missing outerDiameter");
     }
@@ -177,7 +189,7 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
     {
         std::string cssClassName = generate_random_string();
         _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
-        paint_circle(xCoordinate, yCoordinate, outerDiameter / 2, cssClassName, shapes);
+        paint_circle(xCoordinate, yCoordinate, outerDiameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
     }
     // Paint layer separation lines
     {
@@ -185,18 +197,18 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
         _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
         
         for (size_t i = 0; i < numberLines; ++i) {
-            paint_circle(xCoordinate, yCoordinate, currentLineDiameter / 2, cssClassName, shapes);
+            paint_circle(xCoordinate, yCoordinate, currentLineDiameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
             currentLineDiameter += lineRadiusIncrease;
         }
     }
 
     if (simpleMode) {
-        paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, "copper", shapes);
+        paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, "copper", shapes, 360, 0, {0, 0}, label);
     }
     else {
         // Contour
         {
-            paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, "white", shapes);
+            paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, "white", shapes, 360, 0, {0, 0}, label);
         }
 
         auto coordinateFilePath = settings->get_painter_cci_coordinates_path();
@@ -235,7 +247,7 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
                     BasicPainter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
                 }
                 else {
-                    paint_circle(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strandOuterDiameter / 2, "copper", shapes);
+                    paint_circle(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strandOuterDiameter / 2, "copper", shapes, 360, 0, {0, 0}, label);
                 }
             }
         }
@@ -252,7 +264,7 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
                     BasicPainter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
                 }
                 else {
-                    paint_circle(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strandOuterDiameter / 2, "copper", shapes);
+                    paint_circle(xCoordinate + internalXCoordinate, yCoordinate - internalYCoordinate, strandOuterDiameter / 2, "copper", shapes, 360, 0, {0, 0}, label);
                 }
 
                 if (currentRadius > 0) {
@@ -277,7 +289,11 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
     }
 }
 
-void BasicPainter::paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string cssClassName, SVG::Group* group, double angle, std::vector<double> center) {
+void BasicPainter::paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension) {
+    return paint_rectangle(xCoordinate, yCoordinate, xDimension, yDimension, "point");
+}
+
+void BasicPainter::paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string cssClassName, SVG::Group* group, double angle, std::vector<double> center, std::optional<std::string> label) {
     std::vector<SVG::Point> turnPoints = {};
     turnPoints.push_back(SVG::Point(xCoordinate - xDimension / 2, yCoordinate + yDimension / 2));
     turnPoints.push_back(SVG::Point(xCoordinate + xDimension / 2, yCoordinate + yDimension / 2));
@@ -290,9 +306,17 @@ void BasicPainter::paint_rectangle(double xCoordinate, double yCoordinate, doubl
     auto turnSvg = _root.get_children<SVG::Polygon>().back();
     turnSvg->set_attr("class", cssClassName);
     turnSvg->set_attr("transform", "rotate( " + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ") ");
+    if (label) {
+        turnSvg->add_child<SVG::Title>(label.value());
+    }
 }
 
-void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group, double fillAngle, double angle, std::vector<double> center) {
+
+void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double radius) {
+    return paint_circle(xCoordinate, yCoordinate, radius, "point");
+}
+
+void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group, double fillAngle, double angle, std::vector<double> center, std::optional<std::string> label) {
     if (group == nullptr) {
         group = _root.add_child<SVG::Group>();
     }
@@ -315,9 +339,12 @@ void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double r
         group->set_attr("stroke-dashoffset", "0");
         group->set_attr("stroke-dasharray", std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)));
     }
+    if (label) {
+        turnSvg->add_child<SVG::Title>(label.value());
+    }
 }
 
-void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle, std::vector<double> center) {
+void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle, std::vector<double> center, std::optional<std::string> label) {
     double outerWidth = 0;
     double outerHeight = 0;
     if (wire.get_outer_width()) {
@@ -558,10 +585,10 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
         auto windingIndex = coil.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
         if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
-            paint_round_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wirePerWinding[windingIndex]);
+            paint_round_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wirePerWinding[windingIndex], turns[i].get_name());
         }
         else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
-            paint_litz_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wirePerWinding[windingIndex]);
+            paint_litz_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wirePerWinding[windingIndex], turns[i].get_name());
         }
         else {
             {
@@ -588,7 +615,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
                     }
                     outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
                 }
-                paint_rectangle(xCoordinate, yCoordinate, outerWidth, outerHeight, "turn_" + std::to_string(i), shapes);
+                paint_rectangle(xCoordinate, yCoordinate, outerWidth, outerHeight, "turn_" + std::to_string(i), shapes, 0, {0, 0}, turns[i].get_name());
             }
 
             if (wire.get_conducting_width() && wire.get_conducting_height()) {
@@ -596,7 +623,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
                 double yCoordinate = turns[i].get_coordinates()[1];
                 double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
                 double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-                paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, "copper", shapes);
+                paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, "copper", shapes, 0, {0, 0}, turns[i].get_name());
             }
         }
     }
@@ -733,7 +760,13 @@ void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     *shapes << SVG::Polygon(scale_points(bobbinPoints, 0, _scale));
 
     auto sectionSvg = _root.get_children<SVG::Polygon>().back();
-    sectionSvg->set_attr("class", "bobbin");
+    // sectionSvg->set_attr("class", "bobbin");
+    if (_fieldPainted) {
+        sectionSvg->set_attr("class", "bobbin_translucent");
+    }
+    else {
+        sectionSvg->set_attr("class", "bobbin");
+    }
 }
 
 void BasicPainter::paint_two_piece_set_core(Core core) {
@@ -1181,6 +1214,211 @@ void BasicPainter::paint_coil_turns(Magnetic magnetic) {
             break;
     }
 }
+
+std::string BasicPainter::get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value) {
+    auto minColor = hex_to_uint(minimumColor);
+    auto maxColor = hex_to_uint(maximumColor);
+    
+    // Clamp the value
+    value = clamp(value, minimumValue, maximumValue);
+    
+    // Calculate interpolation factor (0.0 at minimumValue, 1.0 at maximumValue)
+    double t = (value - minimumValue) / (maximumValue - minimumValue);
+    
+    // Linearly interpolate each channel
+    uint32_t result = get_uint_color_from_ratio(t);
+    
+    // Convert back to hex string
+    return uint_to_hex(result, "#");
+}
+
+
+void BasicPainter::paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label) {
+
+    SVG::Group* shapes = _root.add_child<SVG::Group>();
+
+    std::string cssClassName = generate_random_string();
+
+    // _root.style("." + cssClassName).set_attr("opacity", 0.5).set_attr("fill", color).set_attr("stroke", color);
+    _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color).set_attr("stroke", color);
+    paint_rectangle(xCoordinate, yCoordinate, xDimension, yDimension, cssClassName, shapes, 0, {0, 0}, label);
+}
+
+
+void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
+    set_image_size(magnetic);
+    double minimumModule = DBL_MAX;
+    double maximumModule = 0;
+    _fieldPainted = true;
+    std::vector<double> modules;
+    // settings->set_painter_number_points_x(4);
+    // settings->set_painter_number_points_y(4);
+    auto mode = settings->get_painter_mode();
+    bool logarithmicScale = settings->get_painter_logarithmic_scale();
+
+
+    ComplexField field;
+    if (inputField) {
+        field = inputField.value();
+    }
+    else {
+        field = calculate_magnetic_field(operatingPoint, magnetic, harmonicIndex);
+    }
+
+    auto [pixelXDimension, pixelYDimension] = Painter::get_pixel_dimensions(magnetic);
+
+    for (size_t i = 0; i < field.get_data().size(); ++i) {
+        auto datum = field.get_data()[i];
+
+        double value;
+        if (logarithmicScale) {
+            value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+        }
+        else {
+            value = hypot(datum.get_real(), datum.get_imaginary());
+        }
+        modules.push_back(value);
+    }
+    std::sort(modules.begin(), modules.end());
+    size_t index05 = static_cast<size_t>(0.02 * (modules.size() - 1));
+    size_t index95 = static_cast<size_t>(0.98 * (modules.size() - 1));
+    double percentile05Value = modules[index05];
+    double percentile95Value = modules[index95];
+
+    if (!settings->get_painter_maximum_value_colorbar()) {
+        maximumModule = percentile95Value;
+    }
+    if (!settings->get_painter_minimum_value_colorbar()) {
+        minimumModule = percentile05Value;
+    }
+
+    if (settings->get_painter_maximum_value_colorbar()) {
+        maximumModule = settings->get_painter_maximum_value_colorbar().value();
+    }
+    if (settings->get_painter_minimum_value_colorbar()) {
+        minimumModule = settings->get_painter_minimum_value_colorbar().value();
+    }
+    if (minimumModule == maximumModule) {
+        minimumModule = maximumModule - 1;
+    }
+
+    auto magneticFieldMinimumColor = settings->get_painter_color_magnetic_field_minimum();
+    auto magneticFieldMaximumColor = settings->get_painter_color_magnetic_field_maximum();
+    
+    for (auto datum : field.get_data()) {
+        double value;
+        if (logarithmicScale) {
+            value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+        }
+        else {
+            value = hypot(datum.get_real(), datum.get_imaginary());
+        }
+        auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
+
+        std::stringstream stream;
+        stream << std::fixed << std::setprecision(1) << value;
+        std::string label = stream.str() + " A/m";
+        paint_field_point(datum.get_point()[0], datum.get_point()[1], pixelXDimension, pixelYDimension, color, label);
+    }
+}
+
+void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField) {
+    set_image_size(magnetic);
+    double minimumModule = DBL_MAX;
+    double maximumModule = 0;
+    _fieldPainted = true;
+    std::vector<double> modules;
+    // settings->set_painter_number_points_x(4);
+    // settings->set_painter_number_points_y(4);
+    auto mode = settings->get_painter_mode();
+    bool logarithmicScale = settings->get_painter_logarithmic_scale();
+
+
+    Field field;
+    if (inputField) {
+        field = inputField.value();
+    }
+    else {
+        field = calculate_electric_field(operatingPoint, magnetic, harmonicIndex);
+    }
+
+    auto [pixelXDimension, pixelYDimension] = Painter::get_pixel_dimensions(magnetic);
+
+    for (size_t i = 0; i < field.get_data().size(); ++i) {
+        auto datum = field.get_data()[i];
+
+        double value;
+        if (logarithmicScale) {
+            value = log10(fabs(datum.get_value()));
+        }
+        else {
+            value = datum.get_value();
+        }
+        modules.push_back(value);
+    }
+    std::sort(modules.begin(), modules.end());
+    size_t index05 = static_cast<size_t>(0.02 * (modules.size() - 1));
+    size_t index95 = static_cast<size_t>(0.98 * (modules.size() - 1));
+    double percentile05Value = modules[index05];
+    double percentile95Value = modules[index95];
+
+    if (!settings->get_painter_maximum_value_colorbar()) {
+        maximumModule = percentile95Value;
+    }
+    if (!settings->get_painter_minimum_value_colorbar()) {
+        minimumModule = percentile05Value;
+    }
+
+    if (settings->get_painter_maximum_value_colorbar()) {
+        maximumModule = settings->get_painter_maximum_value_colorbar().value();
+    }
+    if (settings->get_painter_minimum_value_colorbar()) {
+        minimumModule = settings->get_painter_minimum_value_colorbar().value();
+    }
+    if (minimumModule == maximumModule) {
+        minimumModule = maximumModule - 1;
+    }
+
+    auto magneticFieldMinimumColor = settings->get_painter_color_magnetic_field_minimum();
+    auto magneticFieldMaximumColor = settings->get_painter_color_magnetic_field_maximum();
+
+    auto windingWindow = magnetic.get_mutable_core().get_winding_window();
+    json mierda;
+    to_json(mierda, windingWindow);
+
+    if (windingWindow.get_width()) {
+
+        std::string cssClassName = generate_random_string();
+
+        auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, minimumModule);
+        color = std::regex_replace(std::string(color), std::regex("0x"), "#");
+        _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color);
+        std::cout << "bool(windingWindow.get_coordinates())" << bool(windingWindow.get_coordinates()) << std::endl;
+        std::cout << "bool(windingWindow.get_width())" << bool(windingWindow.get_width()) << std::endl;
+        std::cout << "bool(windingWindow.get_height())" << bool(windingWindow.get_height()) << std::endl;
+        paint_rectangle(windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2, windingWindow.get_coordinates().value()[1], windingWindow.get_width().value(), windingWindow.get_height().value(), cssClassName);
+    }
+    else {
+        throw std::runtime_error("Not implemented yet");
+    }
+
+    for (auto datum : field.get_data()) {
+        double value;
+        if (logarithmicScale) {
+            value = log10(fabs(datum.get_value()));
+        }
+        else {
+            value = datum.get_value();
+        }
+        auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
+
+        std::stringstream stream;
+        stream << std::fixed << std::setprecision(1) << value;
+        std::string label = stream.str() + " V/m";
+        paint_field_point(datum.get_point()[0], datum.get_point()[1], pixelXDimension, pixelYDimension, color, label);
+    }
+}
+
 
 std::string BasicPainter::export_svg() {
     if (!_filepath.empty()) {

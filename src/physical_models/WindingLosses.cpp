@@ -193,18 +193,18 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     return windingLossesOutput;
 }
 
-ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magnetic, double temperature, double frequency) {
-    ResistanceMatrixAtFrequency resistanceMatrixAtFrequency;
+ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magnetic, double temperature, double frequency) {
+    ScalarMatrixAtFrequency scalarMatrixAtFrequency;
+    scalarMatrixAtFrequency.set_frequency(frequency);
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
 
-    std::vector<std::vector<DimensionWithTolerance>> resistanceMatrix;
-    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-        resistanceMatrix.push_back(std::vector<DimensionWithTolerance>{});
-        for (size_t secondWindingIndex = 0; secondWindingIndex < magnetic.get_coil().get_functional_description().size(); ++secondWindingIndex) {
-            DimensionWithTolerance dimension;
-            resistanceMatrix[windingIndex].push_back(dimension);
-        }
-    }
+    // for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+    //     resistanceMatrix.push_back(std::vector<DimensionWithTolerance>{});
+    //     for (size_t secondWindingIndex = 0; secondWindingIndex < magnetic.get_coil().get_functional_description().size(); ++secondWindingIndex) {
+    //         DimensionWithTolerance dimension;
+    //         resistanceMatrix[windingIndex].push_back(dimension);
+    //     }
+    // }
 
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto previousSetting = settings->get_magnetic_field_include_fringing();
@@ -230,7 +230,7 @@ ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic 
 
         double effectiveResistance = totalLossses / pow(virtualCurrent, 2);
 
-        resistanceMatrix[enabledWindingIndex][enabledWindingIndex].set_nominal(effectiveResistance);
+        scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(enabledWindingIndex + 1)][std::to_string(enabledWindingIndex + 1)].set_nominal(effectiveResistance);
     }
 
     // rest of elements calculation. mask => {1, 1, 0, ...}, {1, 0, 1, ...}, ...
@@ -249,17 +249,16 @@ ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic 
             auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
             double totalLossses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
-            double mutualResistance = (totalLossses - (resolve_dimensional_values(resistanceMatrix[enabledWindingIndex][enabledWindingIndex]) * pow(virtualCurrent, 2) + resolve_dimensional_values(resistanceMatrix[secondEnabledWindingIndex][secondEnabledWindingIndex]) * pow(virtualCurrent, 2))) / (2 * virtualCurrent * virtualCurrent);
-            resistanceMatrix[enabledWindingIndex][secondEnabledWindingIndex].set_nominal(mutualResistance);
-            resistanceMatrix[secondEnabledWindingIndex][enabledWindingIndex].set_nominal(mutualResistance);
+            double mutualResistance = (totalLossses - (resolve_dimensional_values(scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(enabledWindingIndex + 1)][std::to_string(enabledWindingIndex + 1)]) * pow(virtualCurrent, 2) + 
+                                                       resolve_dimensional_values(scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(secondEnabledWindingIndex + 1)][std::to_string(secondEnabledWindingIndex + 1)]) * pow(virtualCurrent, 2))) / (2 * virtualCurrent * virtualCurrent);
+            scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(enabledWindingIndex + 1)][std::to_string(secondEnabledWindingIndex + 1)].set_nominal(mutualResistance);
+            scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(secondEnabledWindingIndex + 1)][std::to_string(enabledWindingIndex + 1)].set_nominal(mutualResistance);
         }
     }
 
-    resistanceMatrixAtFrequency.set_frequency(frequency);
-    resistanceMatrixAtFrequency.set_magnitude(resistanceMatrix);
 
     settings->set_magnetic_field_include_fringing(previousSetting);
-    return resistanceMatrixAtFrequency;
+    return scalarMatrixAtFrequency;
 }
 
 double WindingLosses::calculate_losses_per_meter(Wire wire, SignalDescriptor current, double temperature)

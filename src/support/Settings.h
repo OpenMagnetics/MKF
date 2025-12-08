@@ -64,6 +64,8 @@ class Settings
         std::string _painterColorText = "0x000000";
         std::string _painterColorCurrentDensity = "0x0892D0";
         std::string _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../../cci_coords/coordinates/");
+        std::string _painterColorMagneticFieldMinimum = "0x2b35f5";
+        std::string _painterColorMagneticFieldMaximum = "0xe84922";
 
         size_t _magneticFieldNumberPointsX = 25;
         size_t _magneticFieldNumberPointsY = 50;
@@ -238,6 +240,12 @@ class Settings
 
         std::string get_painter_color_current_density() const;
         void set_painter_color_current_density(std::string value);
+
+        std::string get_painter_color_magnetic_field_minimum() const;
+        void set_painter_color_magnetic_field_minimum(std::string value);
+
+        std::string get_painter_color_magnetic_field_maximum() const;
+        void set_painter_color_magnetic_field_maximum(std::string value);
 
         int get_painter_mirroring_dimension() const;
         void set_painter_mirroring_dimension(int value);
