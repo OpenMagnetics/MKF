@@ -15,7 +15,7 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(FieldPainter) {
+SUITE(MagneticFieldPainter) {
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
     TEST(Test_Painter_Contour_Many_Turns) {
@@ -48,12 +48,12 @@ SUITE(FieldPainter) {
         Painter painter(outFile, true);
         settings->set_painter_mode(PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
-        settings->set_painter_include_fringing(true);
+        settings->set_painter_include_fringing(false);
         settings->set_painter_maximum_value_colorbar(std::nullopt);
         settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
+        // painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
@@ -920,8 +920,177 @@ SUITE(FieldPainter) {
         settings->reset();
     }
 
+    TEST(Test_Coil_Fields_Basic_Painter) {
+        std::vector<int64_t> numberTurns = {23, 13};
+        std::vector<int64_t> numberParallels = {2, 2};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Fields_Basic_Painter.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+
+            // settings->set_painter_number_points_x(150);
+            // settings->set_painter_number_points_y(150);
+            settings->set_painter_include_fringing(false);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+    }
 }
 
+SUITE(ElectricFieldPainter) {
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    TEST(Test_Coil_Proportion_Between_Turns_Half) {
+        std::vector<int64_t> numberTurns = {1, 1};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::string coreShapeName = "E 35";
+        std::vector<OpenMagnetics::Wire> wires;
+        auto firstWire = find_wire_by_name("Round 2.00 - Grade 1");
+        wires.push_back(firstWire);
+        auto secondWire = find_wire_by_name("Round 2.00 - Grade 1");
+        wires.push_back(secondWire);
+        
+        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterialName = "A07";
+        std::vector<CoreGap> gapping = {};
+        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto firstTurn = coil.get_turns_description().value()[0];
+        auto secondTurn = coil.get_turns_description().value()[1];
+        double pixelHeight = firstTurn.get_coordinates()[1] + firstTurn.get_dimensions().value()[1] / 2;
+        double pixelDimension = firstTurn.get_dimensions().value()[1] / 2;
+        std::vector<double> pixelCoordinates = {(firstTurn.get_coordinates()[0] + secondTurn.get_coordinates()[0]) / 2, pixelHeight};
+        auto proportion = Painter::get_pixel_proportion_between_turns(firstTurn, secondTurn, pixelCoordinates, pixelDimension);
+        CHECK(fabs(proportion - 0.5) / 0.5 < 0.01);
+        auto outFile = outputFilePath;
+        outFile.append("Test_Energy_Between_Two_turns.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_rectangle(pixelCoordinates[0], pixelCoordinates[1], pixelDimension, pixelDimension);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+    }
+    TEST(Test_Coil_Proportion_Between_Turns_Quarter) {
+        std::vector<int64_t> numberTurns = {1, 1};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::string coreShapeName = "E 35";
+        std::vector<OpenMagnetics::Wire> wires;
+        auto firstWire = find_wire_by_name("Round 2.00 - Grade 1");
+        wires.push_back(firstWire);
+        auto secondWire = find_wire_by_name("Round 2.00 - Grade 1");
+        wires.push_back(secondWire);
+        
+        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterialName = "A07";
+        std::vector<CoreGap> gapping = {};
+        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto firstTurn = coil.get_turns_description().value()[0];
+        auto secondTurn = coil.get_turns_description().value()[1];
+        double pixelHeight = firstTurn.get_coordinates()[1] + 5 * firstTurn.get_dimensions().value()[1] / 8;
+        double pixelDimension = firstTurn.get_dimensions().value()[1] / 2;
+        std::vector<double> pixelCoordinates = {(firstTurn.get_coordinates()[0] + secondTurn.get_coordinates()[0]) / 2, pixelHeight};
+        auto proportion = Painter::get_pixel_proportion_between_turns(firstTurn, secondTurn, pixelCoordinates, pixelDimension);
+        std::cout << "proportion: " << proportion << std::endl;
+        CHECK(fabs(proportion - 0.25) / 0.25 < 0.01);
+        auto outFile = outputFilePath;
+        outFile.append("Test_Energy_Between_Two_turns.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_rectangle(pixelCoordinates[0], pixelCoordinates[1], pixelDimension, pixelDimension);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+    }
+
+    TEST(Test_Coil_Electric_Field_Basic_Painter) {
+        std::vector<int64_t> numberTurns = {2, 2};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::Wire> wires;
+        wires.push_back({find_wire_by_name("Round 1.00 - Grade 3")});
+        wires.push_back({find_wire_by_name("Round 1.00 - Grade 3")});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Electric_Field_Basic_Painter.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+
+            settings->set_painter_number_points_x(150);
+            settings->set_painter_number_points_y(150);
+            settings->set_painter_include_fringing(false);
+            painter.paint_electric_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+    }
+}
 
 SUITE(ToroidalFieldPainter) {
     auto settings = Settings::GetInstance();

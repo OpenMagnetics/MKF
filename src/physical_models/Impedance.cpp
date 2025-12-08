@@ -34,9 +34,8 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
         capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
     }
     else {
-        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance_among_windings(coil);
-        auto windingsKey = std::make_pair(coil.get_functional_description()[0].get_name(), coil.get_functional_description()[0].get_name());
-        capacitance = capacitanceMatrix[windingsKey];
+        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings().value();
+        capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
 
     auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
@@ -114,10 +113,9 @@ double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double
         if (!coil.get_turns_description()) {
             coil.wind();
         }
-        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance_among_windings(coil);
-        auto windingsKey = std::make_pair(coil.get_functional_description()[0].get_name(), coil.get_functional_description()[0].get_name());
+        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings().value();
 
-        capacitance = capacitanceMatrix[windingsKey];
+        capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
 
     OperatingPoint operatingPoint;

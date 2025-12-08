@@ -12,27 +12,6 @@
 
 namespace OpenMagnetics {
 
-std::string uint_to_hex(uint32_t i) {
-    std::stringstream stream;
-    stream << "0x" << std::setfill ('0') << std::setw(8) << std::hex << i;
-    return stream.str();
-}
-
-std::string key_to_rgb_color(uint32_t i) {
-    std::stringstream stream;
-    stream << "rgb(" << std::setfill (' ') << std::setw(3) << ((i >> 16) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 8) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 0) & 0xFF) << ")";
-    return stream.str();
-}
-
-std::string key_to_rgb_color(std::string s) {
-    if (s[0] != '0') {
-        return s;
-    }
-    auto i = stoi(s, 0, 16);
-    std::stringstream stream;
-    stream << "rgb(" << std::setfill (' ') << std::setw(3) << ((i >> 16) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 8) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 0) & 0xFF) << ")";
-    return stream.str();
-}
 
 std::string replace_key(std::string key, std::string line, std::string replacement) {
     size_t pos = 0;
@@ -63,75 +42,6 @@ void AdvancedPainter::increment_current_map_index() {
         _currentMapIndex += 0x000100;
         _currentMapIndex &= 0xFFFFFF00;
     }
-}
-
-ComplexField AdvancedPainter::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
-    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
-        throw std::runtime_error("Current is missing in excitation");
-    }
-    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
-            auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
-            if (!current.get_waveform()) {
-                throw std::runtime_error("Waveform is missing from current");
-            }
-            auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            current.set_harmonics(harmonics);
-            if (!current.get_processed()) {
-                auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
-                current.set_processed(processed);
-            }
-            else {
-                if (!current.get_processed()->get_rms()) {
-                    auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
-                    current.set_processed(processed);
-                }
-            }
-            operatingPoint.get_mutable_excitations_per_winding()[windingIndex].set_current(current);
-        }
-    }
-
-    auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
-    auto frequency = harmonics.get_frequencies()[harmonicIndex];
-
-    bool includeFringing = settings->get_painter_include_fringing();
-    bool mirroringDimension = settings->get_painter_mirroring_dimension();
-
-    _extraDimension = Coil::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
-
-    size_t numberPointsX = settings->get_painter_number_points_x();
-    size_t numberPointsY = settings->get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
-
-    MagneticField magneticField;
-    settings->set_magnetic_field_include_fringing(includeFringing);
-    settings->set_magnetic_field_mirroring_dimension(mirroringDimension);
-    ComplexField field;
-    {
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
-        field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
-
-    }
-    auto turns = magnetic.get_coil().get_turns_description().value();
-
-    if (turns[0].get_additional_coordinates()) {
-        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-            if (turns[turnIndex].get_additional_coordinates()) {
-                turns[turnIndex].set_coordinates(turns[turnIndex].get_additional_coordinates().value()[0]);
-            }
-        }
-        magnetic.get_mutable_coil().set_turns_description(turns);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
-        auto additionalField = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
-        for (size_t pointIndex = 0; pointIndex < field.get_data().size(); ++pointIndex) {
-            field.get_mutable_data()[pointIndex].set_real(field.get_mutable_data()[pointIndex].get_real() + additionalField.get_mutable_data()[pointIndex].get_real());
-            field.get_mutable_data()[pointIndex].set_imaginary(field.get_mutable_data()[pointIndex].get_imaginary() + additionalField.get_mutable_data()[pointIndex].get_imaginary());
-        }
-    }
-
-
-    return field;
 }
 
 bool is_inside_inducing_turns(std::vector<double> point, Coil coil) {
@@ -173,6 +83,7 @@ bool is_inside_inducing_turns(std::vector<double> point, Coil coil) {
 }
 
 void AdvancedPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
+    std::cout << "Mierda 0" << std::endl;
     matplot::gcf()->quiet_mode(true);
     matplot::cla();
     get_image_size(magnetic);
@@ -193,6 +104,7 @@ void AdvancedPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnet
     }
     else {
         field = calculate_magnetic_field(operatingPoint, magnetic, harmonicIndex);
+        _extraDimension = Coil::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
     }
     if (settings->get_painter_maximum_value_colorbar()) {
         forceMaximumModule = settings->get_painter_maximum_value_colorbar().value();
@@ -203,6 +115,7 @@ void AdvancedPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnet
     if (forceMinimumModule == forceMaximumModule) {
         forceMinimumModule = forceMaximumModule - 1;
     }
+    std::cout << "Mierda 1" << std::endl;
 
 
     if (mode == PainterModes::CONTOUR) {
@@ -232,6 +145,7 @@ void AdvancedPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnet
 
             }
         }
+    std::cout << "Mierda 2" << std::endl;
         matplot::gcf()->quiet_mode(true);
         auto c = matplot::contourf(X, Y, M);
         c->font_size(99);
@@ -320,6 +234,7 @@ void AdvancedPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnet
     std::ostringstream oss;
     oss << std::setprecision(0) << std::fixed << roundFloat(minimumModule, 0);
     std::vector<std::string> tickLabels = {oss.str() + " A/m"};
+    std::cout << "Mierda 3" << std::endl;
 
     int precision = 0;
     while (tickLabels.size() < 5) {

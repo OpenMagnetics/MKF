@@ -2925,8 +2925,8 @@ SUITE(WindingLossesResistanceMatrix) {
 
         CHECK(resistanceMatrixAtFrequency.get_magnitude().size() == magnetic.get_coil().get_functional_description().size());
         for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-            CHECK(resistanceMatrixAtFrequency.get_magnitude()[windingIndex].size() == magnetic.get_coil().get_functional_description().size());
-            CHECK(resolve_dimensional_values(resistanceMatrixAtFrequency.get_magnitude()[windingIndex][windingIndex]) > 0);
+            CHECK(resistanceMatrixAtFrequency.get_mutable_magnitude()[std::to_string(windingIndex + 1)].size() == magnetic.get_coil().get_functional_description().size());
+            CHECK(resolve_dimensional_values(resistanceMatrixAtFrequency.get_mutable_magnitude()[std::to_string(windingIndex + 1)][std::to_string(windingIndex + 1)]) > 0);
         }
 
     }

@@ -49,6 +49,7 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
     }
     return magneticFlux;
 }
+
 SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor magneticFlux,
                                                                   double area) {
     SignalDescriptor magneticFluxDensity;

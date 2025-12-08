@@ -1490,19 +1490,18 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
             auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
             auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, operatingPoint.get_excitations_per_winding()[0].get_frequency());
             scoring += 1.0 / abs(impedance);
+            std::string name = magnetic->get_coil().get_functional_description()[0].get_name();
                 
             if (outputs != nullptr) {
                 while (outputs->size() < operatingPointIndex + 1) {
                     outputs->push_back(Outputs());
                 }
                 ImpedanceOutput impedanceOutput;
-                ImpedanceMatrixAtFrequency impedanceMatrixAtFrequency;
-                DimensionWithTolerance impedanceDimension;
-                impedanceDimension.set_nominal(abs(impedance));
-                impedanceMatrixAtFrequency.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_frequency());
-                impedanceMatrixAtFrequency.set_magnitude({{impedanceDimension}});
-                std::vector<ImpedanceMatrixAtFrequency> impedanceMatrixPerFrequency;
-                impedanceMatrixPerFrequency.push_back(impedanceMatrixAtFrequency);
+                ComplexMatrixAtFrequency complexMatrixAtFrequency;
+                complexMatrixAtFrequency.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_frequency());
+                complexMatrixAtFrequency.get_mutable_magnitude()[name][name].set_nominal(abs(impedance));
+                std::vector<ComplexMatrixAtFrequency> impedanceMatrixPerFrequency;
+                impedanceMatrixPerFrequency.push_back(complexMatrixAtFrequency);
                 impedanceOutput.set_impedance_matrix(impedanceMatrixPerFrequency);
                 impedanceOutput.set_origin(ResultOrigin::SIMULATION);
                 (*outputs)[operatingPointIndex].set_impedance(impedanceOutput);

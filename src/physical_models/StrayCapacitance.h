@@ -58,7 +58,10 @@ class StrayCapacitanceKochModel : public StrayCapacitanceModel {
 
 
 class StrayCapacitance{
-    std::shared_ptr<StrayCapacitanceModel> _model;
+    private:
+        std::shared_ptr<StrayCapacitanceModel> _model;
+        static double calculate_area_between_two_turns_using_diagonals(Turn firstTurn, Turn secondTurn);
+        static double calculate_area_between_two_turns_using_vecticals_and_horizontals(Turn firstTurn, Turn secondTurn);
     public:
 
         StrayCapacitance(StrayCapacitanceModels strayCapacitanceModel = StrayCapacitanceModels::ALBACH){
@@ -72,12 +75,22 @@ class StrayCapacitance{
         static StrayCapacitanceOutput calculate_voltages_per_turn(Coil coil, std::map<std::string, double> voltageRmsPerWinding);
         static std::vector<Layer> get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, Coil coil);
         double calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil = std::nullopt);
+        double calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil = std::nullopt);
+        double calculate_energy_density_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil = std::nullopt);
+        static double calculate_area_between_two_turns(Turn firstTurn, Turn secondTurn);
+        // calculamos el area entre dos vueltas
+        // calcualmos la densidad de energia entre dosvuetlas
+        // calculas la proporcion de solapamiento entre un pixel y la proyeccion externa de dos vueltas
+        // SI es mayor que cero, se le asigna la energi prpocional al area que solape, 
+        // cada piel se hace para cada par de dosvuetlas y se suma la energia
+        // se pinta la energia
 
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
-        std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_windings(Coil coil);
-        static std::map<std::string, double> calculate_capacitance_matrix(double energy, double voltageDrop, double relativeTurnsRatio);
-        std::map<std::pair<std::string, std::string>, double> calculate_maxwell_capacitance_matrix(Coil coil);
+        StrayCapacitanceOutput calculate_capacitance(Coil coil);
+        static ScalarMatrixAtFrequency calculate_capacitance_matrix_between_windings(double energy, double voltageDrop, double relativeTurnsRatio);
+        static std::pair<SixCapacitorNetworkPerWinding, TripoleCapacitancePerWinding> calculate_capacitance_models_between_windings(double energy, double voltageDrop, double relativeTurnsRatio);
+        static std::vector<ScalarMatrixAtFrequency> calculate_maxwell_capacitance_matrix(Coil coil, std::map<std::string, std::map<std::string, double>> capacitanceAmongWindings);
 
 };
 
