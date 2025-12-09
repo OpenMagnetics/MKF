@@ -44,11 +44,6 @@ TEST_CASE("Calculate capacitance among two windings each with 1 turn and 1 paral
     for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
         for (auto [secondKey, capacitanceWithTolerance] : aux) {
             auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
-            std::cout << "-------------------: " << std::endl;
-            std::cout << "firstKey: " << firstKey << std::endl;
-            std::cout << "secondKey: " << secondKey << std::endl;
-            std::cout << "capacitance: " << capacitance << std::endl;
-            std::cout << "expectedValues[firstKey][secondKey]: " << expectedValues[firstKey][secondKey] << std::endl;
             CHECK_THAT(capacitance, WithinRel(expectedValues[firstKey][secondKey], maximumError));
         }
     }
@@ -428,11 +423,9 @@ TEST_CASE("Calculate area between two round turns", "[physical-model][stray-capa
         magnetic.set_coil(coil);
 
         StrayCapacitance strayCapacitance;
-        std::cout << "coil.get_turns_description()->size(): " << coil.get_turns_description()->size() << std::endl;
         auto firstTurn = coil.get_turns_description().value()[0];
         auto secondTurn = coil.get_turns_description().value()[1];
         auto area = strayCapacitance.calculate_area_between_two_turns(firstTurn, secondTurn);
-        std::cout << "area: " << area << std::endl;
         CHECK(area < 1e-6);
         CHECK(area > 0.86e-6);
     }
@@ -459,7 +452,6 @@ TEST_CASE("Calculate area between two rectangular turns", "[physical-model][stra
         magnetic.set_coil(coil);
 
         StrayCapacitance strayCapacitance;
-        std::cout << "coil.get_turns_description()->size(): " << coil.get_turns_description()->size() << std::endl;
         auto layerThickness = coil.get_layers_description().value()[1].get_dimensions()[0];
         auto firstTurn = coil.get_turns_description().value()[0];
         auto secondTurn = coil.get_turns_description().value()[1];
@@ -491,11 +483,9 @@ TEST_CASE("Calculate area between round and rectangular turns", "[physical-model
         magnetic.set_coil(coil);
 
         StrayCapacitance strayCapacitance;
-        std::cout << "coil.get_turns_description()->size(): " << coil.get_turns_description()->size() << std::endl;
         auto firstTurn = coil.get_turns_description().value()[0];
         auto secondTurn = coil.get_turns_description().value()[1];
         auto area = strayCapacitance.calculate_area_between_two_turns(firstTurn, secondTurn);
-        std::cout << "area: " << area << std::endl;
         CHECK(area < 0.6e-6);
         if (plot) {
             auto outFile = outputFilePath;
@@ -532,11 +522,9 @@ TEST_CASE("Calculate area between round and rectangular turns diagonally", "[phy
         magnetic.set_coil(coil);
 
         StrayCapacitance strayCapacitance;
-        std::cout << "coil.get_turns_description()->size(): " << coil.get_turns_description()->size() << std::endl;
         auto firstTurn = coil.get_turns_description().value()[0];
         auto secondTurn = coil.get_turns_description().value()[2];
         auto area = strayCapacitance.calculate_area_between_two_turns(firstTurn, secondTurn);
-        std::cout << "area: " << area << std::endl;
         CHECK(area < 2e-6);
         CHECK(area > 1.5e-6);
         if (plot) {
@@ -573,11 +561,9 @@ TEST_CASE("Calculate energy density between two turns", "[physical-model][stray-
         magnetic.set_coil(coil);
 
         StrayCapacitance strayCapacitance;
-        std::cout << "coil.get_turns_description()->size(): " << coil.get_turns_description()->size() << std::endl;
         auto firstTurn = coil.get_turns_description().value()[0];
         auto secondTurn = coil.get_turns_description().value()[1];
         auto energy = strayCapacitance.calculate_energy_density_between_two_turns(firstTurn, wire, secondTurn, wire, 10);
-        std::cout << "energy: " << energy << std::endl;
 
         if (plot) {
             auto outFile = outputFilePath;

@@ -894,7 +894,7 @@ SUITE(MagneticFieldPainter) {
         settings->reset();
     }
 
-    TEST(Test_Coil_Fields_Painter_Web_0) {
+    TEST(Test_Coil_Magnetic_Field_Painter_Web_0) {
         clear_databases();
 
         OpenMagnetics::Magnetic magnetic(json::parse(R"({"coil": {"bobbin": {"distributorsInfo": null, "functionalDescription": null, "manufacturerInfo": null, "name": null, "processedDescription": {"columnDepth": 0.005974999999999999, "columnShape": "rectangular", "columnThickness": 0.0013999999999999993, "columnWidth": 0.005999999999999999, "coordinates": [0, 0, 0], "pins": null, "wallThickness": 0.0011204000000000006, "windingWindows": [{"angle": null, "area": 0.00011625151999999999, "coordinates": [0.008799999999999999, 0, 0], "height": 0.0207592, "radialHeight": null, "sectionsOrientation": "overlapping", "shape": "rectangular", "width": 0.0056}]}}, "functionalDescription": [{"connections": null, "isolationSide": "primary", "name": "primary", "numberParallels": 1, "numberTurns": 20, "wire": {"coating": {"breakdownVoltage": 18000, "grade": null, "material": "PFA", "numberLayers": 3, "temperatureRating": 180, "thickness": null, "thicknessLayers": 7.62e-05, "type": "insulated"}, "conductingArea": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 6.532502100168472e-07}, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.000912}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Rubadue", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round T19A01PXXX-3", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.001369}, "outerHeight": null, "outerWidth": null, "standard": "NEMA MW 1000 C", "standardName": "19 AWG", "strand": null, "type": "round"}}], "layersDescription": [{"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 8.673617379884035e-19], "dimensions": [0.0045850000000000005, 0.020700000000000003], "fillingFactor": 0.9971482523411308, "insulationMaterial": null, "name": "primary section 0 layer 0", "orientation": "overlapping", "partialWindings": [{"connections": null, "parallelsProportion": [1], "winding": "primary"}], "section": "primary section 0", "turnsAlignment": "centered", "type": "conduction", "windingStyle": "windByConsecutiveTurns"}], "sectionsDescription": [{"coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0], "dimensions": [0.0045850000000000005, 0.020700000000000003], "fillingFactor": 0.9624513055163947, "layersAlignment": null, "layersOrientation": "overlapping", "margin": [0, 0], "name": "primary section 0", "partialWindings": [{"connections": null, "parallelsProportion": [1], "winding": "primary"}], "type": "conduction", "windingStyle": "windByConsecutiveTurns"}], "turnsDescription": [{"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.009832500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 0", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.008797500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 1", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.007762500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 2", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.006727500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 3", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.005692500000000002], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 4", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.004657500000000002], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 5", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0036225000000000016], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 6", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0025875000000000013], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 7", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0015525000000000011], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 8", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.000517500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 9", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0005174999999999991], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 10", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0015524999999999992], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 11", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0025874999999999995], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 12", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0036225], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 13", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0046575], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 14", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0056925000000000005], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 15", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.006727500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 16", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.007762500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 17", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.008797500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 18", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.009832500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 19", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}]}, "core": {"distributorsInfo": [{"cost": 1.87, "country": "USA", "distributedArea": "International", "email": null, "link": "https://www.digikey.com/en/products/detail/epcos-tdk-electronics/B66229G0500X127/3914560", "name": "Digi-Key", "phone": null, "quantity": 660, "reference": "495-B66229G0500X127-ND", "updatedAt": "16/04/2024"}, {"cost": 1.86, "country": "USA", "distributedArea": "International", "email": null, "link": "https://www.mouser.es/ProductDetail/EPCOS-TDK/B66229G0500X127?qs=%2FsLciWRBLmC6djd1SV6djQ%3D%3D", "name": "Mouser", "phone": null, "quantity": 355, "reference": "871-B66229G0500X127", "updatedAt": "16/04/2024"}], "functionalDescription": {"coating": null, "gapping": [{"area": 8.5e-05, "coordinates": [0, 0.00025, 0], "distanceClosestNormalSurface": 0.011, "distanceClosestParallelSurface": 0.006999999999999999, "length": 0.0005, "sectionDimensions": [0.0092, 0.00915], "shape": "rectangular", "type": "subtractive"}, {"area": 4.1e-05, "coordinates": [0.013825, 0, 0], "distanceClosestNormalSurface": 0.011498, "distanceClosestParallelSurface": 0.006999999999999999, "length": 5e-06, "sectionDimensions": [0.004451, 0.00915], "shape": "rectangular", "type": "residual"}, {"area": 4.1e-05, "coordinates": [-0.013825, 0, 0], "distanceClosestNormalSurface": 0.011498, "distanceClosestParallelSurface": 0.006999999999999999, "length": 5e-06, "sectionDimensions": [0.004451, 0.00915], "shape": "rectangular", "type": "residual"}], "material": "N27", "numberStacks": 1, "shape": {"aliases": ["E 32/9", "EF 32"], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0329, "minimum": 0.0313, "nominal": null}, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0164, "minimum": 0.0158, "nominal": null}, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0095, "minimum": 0.0088, "nominal": null}, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0118, "minimum": 0.0112, "nominal": null}, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0237, "minimum": 0.0227, "nominal": null}, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0095, "minimum": 0.0089, "nominal": null}}, "family": "e", "familySubtype": null, "magneticCircuit": "open", "name": "E 32/16/9", "type": "standard"}, "type": "two-piece set"}, "geometricalDescription": null, "manufacturerInfo": {"cost": null, "datasheetUrl": "https://product.tdk.com/system/files/dam/doc/product/ferrite/ferrite/ferrite-acc/data_sheet/80/db/fer/e_32_16_9.pdf", "family": null, "name": "TDK", "orderCode": null, "reference": "B66229G0500X127 (N27", "status": "production"}, "name": "E 32/16/9 - N27 - Gapped 0.500 mm", "processedDescription": {"columns": [{"area": 8.5e-05, "coordinates": [0, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "central", "width": 0.0092}, {"area": 4.1e-05, "coordinates": [0.013825, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.004451}, {"area": 4.1e-05, "coordinates": [-0.013825, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.004451}], "depth": 0.00915, "effectiveParameters": {"effectiveArea": 8.316165619067432e-05, "effectiveLength": 0.07431657444154591, "effectiveVolume": 6.180289412976495e-06, "minimumArea": 8.143500000000005e-05}, "height": 0.032200000000000006, "width": 0.032100000000000004, "windingWindows": [{"angle": null, "area": 0.00016099999999999998, "coordinates": [0.0046, 0], "height": 0.023, "radialHeight": null, "sectionsOrientation": null, "shape": null, "width": 0.006999999999999999}]}}, "distributorsInfo": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "", "recommendations": null, "reference": "E 32/16/9 - N27 - 0.5 mm, Turns: 20, Order: 0, Non-Interleaved, Margin Taped 00", "status": null}, "rotation": null})"));
@@ -905,7 +905,7 @@ SUITE(MagneticFieldPainter) {
 
         {
             auto outFile = outputFilePath;
-            outFile.append("Test_Coil_Fields_Painter_Web_0.svg");
+            outFile.append("Test_Coil_Magnetic_Field_Painter_Web_0.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
 
@@ -920,9 +920,9 @@ SUITE(MagneticFieldPainter) {
         settings->reset();
     }
 
-    TEST(Test_Coil_Fields_Basic_Painter) {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
+    TEST(Test_Coil_Magnetic_Field_Basic_Painter) {
+        std::vector<int64_t> numberTurns = {14, 16};
+        std::vector<int64_t> numberParallels = {1, 1};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
         uint8_t interleavingLevel = 2;
         int64_t numberStacks = 1;
@@ -932,10 +932,14 @@ SUITE(MagneticFieldPainter) {
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
         WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
         WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
         CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        std::vector<OpenMagnetics::Wire> wires;
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 3")});
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 3")});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
         coil.delimit_and_compact();
@@ -946,16 +950,45 @@ SUITE(MagneticFieldPainter) {
 
         {
             auto outFile = outputFilePath;
-            outFile.append("Test_Coil_Fields_Basic_Painter.svg");
+            outFile.append("Test_Coil_Magnetic_Field_Basic_Painter.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
 
-            // settings->set_painter_number_points_x(150);
-            // settings->set_painter_number_points_y(150);
+            settings->set_painter_number_points_x(50);
+            settings->set_painter_number_points_y(100);
             settings->set_painter_include_fringing(false);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Coil_Magnetic_Field_Basic_Painter_Planar) {
+
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
+        OpenMagnetics::Mas mas;
+        OpenMagnetics::from_file(path, mas);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Magnetic_Field_Basic_Painter_Planar.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+
+            settings->set_painter_number_points_x(50);
+            settings->set_painter_number_points_y(100);
+            settings->set_painter_include_fringing(false);
             painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -992,7 +1025,7 @@ SUITE(ElectricFieldPainter) {
         double pixelHeight = firstTurn.get_coordinates()[1] + firstTurn.get_dimensions().value()[1] / 2;
         double pixelDimension = firstTurn.get_dimensions().value()[1] / 2;
         std::vector<double> pixelCoordinates = {(firstTurn.get_coordinates()[0] + secondTurn.get_coordinates()[0]) / 2, pixelHeight};
-        auto proportion = Painter::get_pixel_proportion_between_turns(firstTurn, secondTurn, pixelCoordinates, pixelDimension);
+        auto proportion = Painter::get_pixel_proportion_between_turns(firstTurn.get_coordinates(), firstTurn.get_dimensions().value(), firstTurn.get_cross_sectional_shape().value(), secondTurn.get_coordinates(), secondTurn.get_dimensions().value(), secondTurn.get_cross_sectional_shape().value(), pixelCoordinates, pixelDimension);
         CHECK(fabs(proportion - 0.5) / 0.5 < 0.01);
         auto outFile = outputFilePath;
         outFile.append("Test_Energy_Between_Two_turns.svg");
@@ -1004,6 +1037,7 @@ SUITE(ElectricFieldPainter) {
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
     }
+
     TEST(Test_Coil_Proportion_Between_Turns_Quarter) {
         std::vector<int64_t> numberTurns = {1, 1};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -1029,7 +1063,7 @@ SUITE(ElectricFieldPainter) {
         double pixelHeight = firstTurn.get_coordinates()[1] + 5 * firstTurn.get_dimensions().value()[1] / 8;
         double pixelDimension = firstTurn.get_dimensions().value()[1] / 2;
         std::vector<double> pixelCoordinates = {(firstTurn.get_coordinates()[0] + secondTurn.get_coordinates()[0]) / 2, pixelHeight};
-        auto proportion = Painter::get_pixel_proportion_between_turns(firstTurn, secondTurn, pixelCoordinates, pixelDimension);
+        auto proportion = Painter::get_pixel_proportion_between_turns(firstTurn.get_coordinates(), firstTurn.get_dimensions().value(), firstTurn.get_cross_sectional_shape().value(), secondTurn.get_coordinates(), secondTurn.get_dimensions().value(), secondTurn.get_cross_sectional_shape().value(), pixelCoordinates, pixelDimension);
         std::cout << "proportion: " << proportion << std::endl;
         CHECK(fabs(proportion - 0.25) / 0.25 < 0.01);
         auto outFile = outputFilePath;
@@ -1044,7 +1078,7 @@ SUITE(ElectricFieldPainter) {
     }
 
     TEST(Test_Coil_Electric_Field_Basic_Painter) {
-        std::vector<int64_t> numberTurns = {4, 2};
+        std::vector<int64_t> numberTurns = {14, 16};
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
         uint8_t interleavingLevel = 2;
@@ -1059,8 +1093,8 @@ SUITE(ElectricFieldPainter) {
         CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
 
         std::vector<OpenMagnetics::Wire> wires;
-        wires.push_back({find_wire_by_name("Round 0.5 - Grade 3")});
-        wires.push_back({find_wire_by_name("Round 1.00 - Grade 3")});
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 3")});
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 3")});
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
@@ -1077,8 +1111,37 @@ SUITE(ElectricFieldPainter) {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
 
-            settings->set_painter_number_points_x(150);
-            settings->set_painter_number_points_y(150);
+            settings->set_painter_number_points_x(50);
+            settings->set_painter_number_points_y(100);
+            settings->set_painter_include_fringing(false);
+            painter.paint_electric_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Coil_Electric_Field_Basic_Painter_Planar) {
+
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
+        OpenMagnetics::Mas mas;
+        OpenMagnetics::from_file(path, mas);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Electric_Field_Basic_Painter_Planar.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+
+            settings->set_painter_number_points_x(50);
+            settings->set_painter_number_points_y(100);
             settings->set_painter_include_fringing(false);
             painter.paint_electric_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);

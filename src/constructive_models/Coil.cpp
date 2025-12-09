@@ -880,17 +880,27 @@ const Layer Coil::get_layer_by_name(std::string name) const {
     throw std::runtime_error("Not found layer with name:" + name);
 }
 
-const Turn Coil::get_turn_by_name(std::string name) const {
-    if (!get_turns_description()) {
-        throw std::runtime_error("Turns description not set, did you forget to wind?");
-    }
-    auto turns = get_turns_description().value();
-    for (auto & turn : turns) {
-        if (turn.get_name() == name) {
-            return turn;
+
+Turn Coil::get_turn_by_name(std::string name){
+    if (_turnByName.count(name) == 0) {
+
+        if (!get_turns_description()) {
+            throw std::runtime_error("Turns description not set, did you forget to wind?");
+        }
+        auto turns = get_turns_description().value();
+        bool found = false;
+        for (auto turn : turns) {
+            if (turn.get_name() == name) {
+                _turnByName[name] = turn;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            throw std::runtime_error("No such a turn name: " + name);
         }
     }
-    throw std::runtime_error("Not found turn with name:" + name);
+    return _turnByName[name];
 }
 
 const std::vector<Layer> Coil::get_layers_by_type(ElectricalType electricalType) const {

@@ -576,8 +576,12 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
         paint_two_piece_set_margin(magnetic);
     }
     else if (coilType == WiringTechnology::PRINTED){
-        auto group = coil.get_groups_description().value()[0]; // TODO: take into account more groups
-        paint_rectangle(group.get_coordinates()[0], group.get_coordinates()[1], group.get_dimensions()[0], group.get_dimensions()[1], "fr4", shapes);
+        std::string styleClass = "fr4";
+        if (!_fieldPainted) {
+            // styleClass = "fr4_translucent";
+            auto group = coil.get_groups_description().value()[0]; // TODO: take into account more groups
+            paint_rectangle(group.get_coordinates()[0], group.get_coordinates()[1], group.get_dimensions()[0], group.get_dimensions()[1], styleClass, shapes);
+        }
     }
 
     for (size_t i = 0; i < turns.size(); ++i){
@@ -1316,7 +1320,7 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
         auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
 
         std::stringstream stream;
-        stream << std::fixed << std::setprecision(1) << value;
+        stream << std::scientific << std::setprecision(1) << value;
         std::string label = stream.str() + " A/m";
         paint_field_point(datum.get_point()[0], datum.get_point()[1], pixelXDimension, pixelYDimension, color, label);
     }
@@ -1393,9 +1397,7 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
         auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, minimumModule);
         color = std::regex_replace(std::string(color), std::regex("0x"), "#");
         _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color);
-        std::cout << "bool(windingWindow.get_coordinates())" << bool(windingWindow.get_coordinates()) << std::endl;
-        std::cout << "bool(windingWindow.get_width())" << bool(windingWindow.get_width()) << std::endl;
-        std::cout << "bool(windingWindow.get_height())" << bool(windingWindow.get_height()) << std::endl;
+
         paint_rectangle(windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2, windingWindow.get_coordinates().value()[1], windingWindow.get_width().value(), windingWindow.get_height().value(), cssClassName);
     }
     else {
@@ -1413,7 +1415,7 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
         auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
 
         std::stringstream stream;
-        stream << std::fixed << std::setprecision(1) << value;
+        stream << std::scientific << std::setprecision(1) << value;
         std::string label = stream.str() + " V/m";
         paint_field_point(datum.get_point()[0], datum.get_point()[1], pixelXDimension, pixelYDimension, color, label);
     }
