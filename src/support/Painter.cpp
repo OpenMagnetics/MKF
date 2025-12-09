@@ -132,21 +132,16 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
     auto turns = coil.get_turns_description().value();
     auto wirePerWinding = coil.get_wires();
 
-    // std::cout << "Mierda 0" << std::endl;
 
     auto capacitanceOutput = strayCapacitance.calculate_capacitance(coil);
     auto electricEnergyAmongTurns = capacitanceOutput.get_electric_energy_among_turns().value();
-    // std::cout << "Mierda 1" << std::endl;
 
-    // std::cout << "inducedField.get_data().size(): " << inducedField.get_data().size() << std::endl;
-    // std::cout << "electricEnergyAmongTurns.size(): " << electricEnergyAmongTurns.size() << std::endl;
     std::set<std::pair<size_t, size_t>> turnsCombinations;
     for (size_t pointIndex = 0; pointIndex < inducedField.get_data().size(); ++pointIndex) {
         auto inducedFieldPoint = inducedField.get_data()[pointIndex];
         double fieldValue = 0;
         std::set<std::pair<std::string, std::string>> turnsCombinations;
 
-        // std::cout << "inducedFieldPoint.get_point()[1]: " << inducedFieldPoint.get_point()[1] << std::endl;
         for (auto [firstTurnName, aux] : electricEnergyAmongTurns) {
             auto firstTurn = coil.get_turn_by_name(firstTurnName);
             for (auto [secondTurnName, energy] : aux) {
@@ -158,14 +153,10 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
                 turnsCombinations.insert(key);
 
                 auto secondTurn = coil.get_turn_by_name(secondTurnName);
-                double pixelArea = Painter::get_pixel_area_between_turns(firstTurn, secondTurn, inducedFieldPoint.get_point(), std::max(pixelXDimension, pixelYDimension));
-
+                double pixelArea = Painter::get_pixel_area_between_turns(firstTurn.get_coordinates(), firstTurn.get_dimensions().value(), firstTurn.get_cross_sectional_shape().value(), secondTurn.get_coordinates(), secondTurn.get_dimensions().value(), secondTurn.get_cross_sectional_shape().value(), inducedFieldPoint.get_point(), std::max(pixelXDimension, pixelYDimension));
                 if (pixelArea > 0) {
-                    // std::cout << "pixelArea: " << pixelArea << std::endl;
                     double area = StrayCapacitance::calculate_area_between_two_turns(firstTurn, secondTurn);
-                    // std::cout << "energy: " << energy << std::endl;
                     double energyDensity = energy / area;
-                    // std::cout << "energyDensity: " << energyDensity << std::endl;
                     fieldValue += energyDensity * pixelArea;
                 }
             }
@@ -173,7 +164,6 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
         inducedField.get_mutable_data()[pointIndex].set_value(fieldValue);
     }
 
-    // std::cout << "Mierda 2" << std::endl;
     return inducedField;
 }
 
@@ -254,17 +244,21 @@ void Painter::paint_circle(double xCoordinate, double yCoordinate, double radius
     _painter->paint_circle(xCoordinate, yCoordinate, radius);
 }
 
-double Painter::get_pixel_area_between_turns(Turn firstTurn, Turn secondTurn, std::vector<double> pixelCoordinates, double dimension) {
-    return dimension * dimension * get_pixel_proportion_between_turns(firstTurn, secondTurn, pixelCoordinates, dimension);
+double Painter::get_pixel_area_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape,
+                                             std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape,
+                                             std::vector<double> pixelCoordinates, double dimension) {
+    return dimension * dimension * get_pixel_proportion_between_turns(firstTurnCoordinates, firstTurnDimensions, firstTurncrossSectionalShape, secondTurnCoordinates, secondTurnDimensions, secondTurncrossSectionalShape, pixelCoordinates, dimension);
 }
 
-double Painter::get_pixel_proportion_between_turns(Turn firstTurn, Turn secondTurn, std::vector<double> pixelCoordinates, double dimension) {
+double Painter::get_pixel_proportion_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape,
+                                             std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape,
+                                             std::vector<double> pixelCoordinates, double dimension) {
     // auto factor = Defaults().overlappingFactorSurroundingTurns;
     auto factor = 1;
-    auto x1 = firstTurn.get_coordinates()[0];
-    auto y1 = firstTurn.get_coordinates()[1];
-    auto x2 = secondTurn.get_coordinates()[0];
-    auto y2 = secondTurn.get_coordinates()[1];
+    auto x1 = firstTurnCoordinates[0];
+    auto y1 = firstTurnCoordinates[1];
+    auto x2 = secondTurnCoordinates[0];
+    auto y2 = secondTurnCoordinates[1];
 
     if (y2 == y1 && x2 == x1) {
         return 0;
@@ -274,17 +268,17 @@ double Painter::get_pixel_proportion_between_turns(Turn firstTurn, Turn secondTu
     double firstTurnMaximumDimension = 0;
     double secondTurnMaximumDimension = 0;
 
-    if (firstTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::RECTANGULAR) {
-        firstTurnMaximumDimension = hypot(firstTurn.get_dimensions().value()[0], firstTurn.get_dimensions().value()[1]);
+    if (firstTurncrossSectionalShape == TurnCrossSectionalShape::RECTANGULAR) {
+        firstTurnMaximumDimension = hypot(firstTurnDimensions[0], firstTurnDimensions[1]);
     }
     else {
-        firstTurnMaximumDimension = firstTurn.get_dimensions().value()[0];
+        firstTurnMaximumDimension = firstTurnDimensions[0];
     }
-    if (secondTurn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::RECTANGULAR) {
-        secondTurnMaximumDimension = hypot(secondTurn.get_dimensions().value()[0], secondTurn.get_dimensions().value()[1]);
+    if (secondTurncrossSectionalShape == TurnCrossSectionalShape::RECTANGULAR) {
+        secondTurnMaximumDimension = hypot(secondTurnDimensions[0], secondTurnDimensions[1]);
     }
     else {
-        secondTurnMaximumDimension = secondTurn.get_dimensions().value()[0];
+        secondTurnMaximumDimension = secondTurnDimensions[0];
     }
 
     double semiAverageDimensionOf12 = (firstTurnMaximumDimension + secondTurnMaximumDimension) / 4;
@@ -311,6 +305,8 @@ double Painter::get_pixel_proportion_between_turns(Turn firstTurn, Turn secondTu
     else {
         proportion = (semiAverageDimensionOf12 - (distanceFrom0toLine12 - dimension / 2)) / dimension;
     }
+
+    proportion *= (semiAverageDimensionOf12 - distanceFrom0toLine12) / semiAverageDimensionOf12;
 
     return proportion;
 }

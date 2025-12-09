@@ -264,6 +264,7 @@ class BasicPainter : public PainterInterface {
             _root.style(".insulation").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
             _root.style(".insulation_translucent").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
             _root.style(".fr4").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_fr4()), std::regex("0x"), "#"));
+            _root.style(".fr4_translucent").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_fr4()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
             _root.style(".current_density").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_current_density()), std::regex("0x"), "#"));
             _root.style(".text").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_text()), std::regex("0x"), "#"));
             _root.style(".white").set_attr("fill", "#ffffff");
@@ -412,8 +413,8 @@ class Painter{
 
     void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
     void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt);
-    static double get_pixel_proportion_between_turns(Turn firstTurn, Turn secondTurn, std::vector<double> pixelCoordinates, double dimension);
-    static double get_pixel_area_between_turns(Turn firstTurn, Turn secondTurn, std::vector<double> pixelCoordinates, double dimension);
+    static double get_pixel_proportion_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
+    static double get_pixel_area_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
     static std::pair<double, double> get_pixel_dimensions(Magnetic magnetic);
 
     std::string export_svg();

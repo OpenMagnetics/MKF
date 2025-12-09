@@ -783,7 +783,7 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
             auto surroundingTurnWire = wirePerWinding[surroundingTurnWindingIndex];
             double capacitance = calculate_static_capacitance_between_two_turns(turns[turnIndex], turnWire, surroundingTurn, surroundingTurnWire, coil);
             capacitanceAmongTurns[key] = capacitance;
-            // capacitanceAmongTurns[inverseKey] = capacitance;
+            capacitanceAmongTurns[inverseKey] = capacitance;
             turnsCombinations.insert(key);
         }
     }
@@ -887,26 +887,26 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
 
             if (firstWindingName == secondWindingName) {
                 V3calculated = 0;
-                // capacitanceMapPerWindings[windingsKey] = 0;
-                // continue;
             }
 
             double energyInBetweenTheseWindings = 0;
             double voltageDropBetweenWindings = 0;
             double relativeTurnsRatio = 0;
             ScalarMatrixAtFrequency capacitanceMatrixBetweenWindings;
-            // std::cout << "firstWindingName: " << firstWindingName << std::endl;
             while (fabs(V3 - V3calculated) / V3 > 0.001) {
                 energyInBetweenTheseWindings = 0;
                 V3 = V3calculated;
                 // double C0 = 0;
                 auto turnsInSecondWinding = coil.get_turns_indexes_by_winding(secondWindingName);
                 bool windingAreNotAdjacent = true;
+                std::set<std::pair<size_t, size_t>> turnsCombinations;
                 for (auto turnInFirstWinding : turnsInFirstWinding) {
+
                     auto firstTurnVoltage = voltagesPerTurn[turnInFirstWinding];
                     minVoltageInFirstWinding = std::min(minVoltageInFirstWinding, firstTurnVoltage);
                     maxVoltageInFirstWinding = std::max(maxVoltageInFirstWinding, firstTurnVoltage);
                     for (auto turnInSecondWinding : turnsInSecondWinding) {
+
                         auto secondTurnVoltage = voltagesPerTurn[turnInSecondWinding];
                         if (firstWindingName != secondWindingName) {
                             secondTurnVoltage = -secondTurnVoltage;
@@ -914,8 +914,12 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
                         minVoltageInSecondWinding = std::min(minVoltageInSecondWinding, secondTurnVoltage);
                         maxVoltageInSecondWinding = std::max(maxVoltageInSecondWinding, secondTurnVoltage);
                         auto turnsKey = std::make_pair(turnInFirstWinding, turnInSecondWinding);
-                    // std::cout << "turnInFirstWinding: " << turnInFirstWinding << std::endl;
-                    // std::cout << "turnInSecondWinding: " << turnInSecondWinding << std::endl;
+                        auto inverseTurnsKey = std::make_pair(turnInSecondWinding, turnInFirstWinding);
+
+                        if (turnsCombinations.contains(turnsKey) || turnsCombinations.contains(inverseTurnsKey)) {
+                            continue;
+                        }
+                        turnsCombinations.insert(turnsKey);
                         if (capacitanceAmongTurns.contains(turnsKey)) {
                             windingAreNotAdjacent = false;
                             double voltageDropAmongTurns = V3 + firstTurnVoltage - secondTurnVoltage;
@@ -923,6 +927,7 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
                             energyInBetweenTheseWindings += energyBetweenTurns;
                             electricEnergyBetweenTurnsMap[turnsKey] = energyBetweenTurns;
                             voltageDropBetweenTurnsMap[turnsKey] = voltageDropAmongTurns;
+
                             if (std::isnan(energyInBetweenTheseWindings)) {
                                 throw std::runtime_error("Energy cannot be nan");
                             }
@@ -979,15 +984,16 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
     auto turns = coil.get_turns_description().value();
     for (size_t firstTurnIndex = 0; firstTurnIndex < turns.size(); ++firstTurnIndex) {
         auto firstTurnName = turns[firstTurnIndex].get_name();
-        for (size_t secondTurnIndex = firstTurnIndex + 1; secondTurnIndex < turns.size(); ++secondTurnIndex) {
+        for (size_t secondTurnIndex = 0; secondTurnIndex < turns.size(); ++secondTurnIndex) {
+        // for (size_t secondTurnIndex = firstTurnIndex + 1; secondTurnIndex < turns.size(); ++secondTurnIndex) {
             auto secondTurnName = turns[secondTurnIndex].get_name();
             auto turnsKey = std::make_pair(firstTurnIndex, secondTurnIndex);
             electricEnergyAmongTurns[firstTurnName][secondTurnName] = electricEnergyBetweenTurnsMap[turnsKey];
-            electricEnergyAmongTurns[secondTurnName][firstTurnName] = electricEnergyBetweenTurnsMap[turnsKey];
+            // electricEnergyAmongTurns[secondTurnName][firstTurnName] = electricEnergyBetweenTurnsMap[turnsKey];
             voltageDropAmongTurns[firstTurnName][secondTurnName] = voltageDropBetweenTurnsMap[turnsKey];
-            voltageDropAmongTurns[secondTurnName][firstTurnName] = -voltageDropBetweenTurnsMap[turnsKey];
+            // voltageDropAmongTurns[secondTurnName][firstTurnName] = -voltageDropBetweenTurnsMap[turnsKey];
             capacitanceAmongTurnsOutput[firstTurnName][secondTurnName] = capacitanceAmongTurns[turnsKey];
-            capacitanceAmongTurnsOutput[secondTurnName][firstTurnName] = capacitanceAmongTurns[turnsKey];
+            // capacitanceAmongTurnsOutput[secondTurnName][firstTurnName] = capacitanceAmongTurns[turnsKey];
         }
     }
 
