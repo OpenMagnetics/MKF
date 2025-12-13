@@ -856,8 +856,8 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         columnTopCoordinates[columnIndex][1] = maximumLadderCoordinate - 5;
     }
     if (columns.size() > 1) {
-        columnTopCoordinates[1][0] = maximumLeftCoordinate + 4;
-        columnBottomCoordinates[1][0] = maximumLeftCoordinate + 4;
+        columnTopCoordinates[1][0] = maximumLeftCoordinate + 6;
+        columnBottomCoordinates[1][0] = maximumLeftCoordinate + 6;
     }
     if (columns.size() > 2) {
         columnTopCoordinates[2][0] = maximumRightCoordinate - 2;
@@ -893,8 +893,18 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
             }
             std::vector<int> gapCoordinates = {coordinates[0], coordinates[1]};
 
-            auto gapJson = create_air_gap(gapCoordinates, gap.get_area().value(), gap.get_length(), 90, "Column " + std::to_string(columnIndex) + " gap " + std::to_string(gapIndex));
-            device["SubcircuitDefinition"]["Devices"].push_back(gapJson);
+            if (gap.get_length() > 0) {
+
+                auto gapJson = create_air_gap(gapCoordinates, gap.get_area().value(), gap.get_length(), 90, "Column " + std::to_string(columnIndex) + " gap " + std::to_string(gapIndex));
+                device["SubcircuitDefinition"]["Devices"].push_back(gapJson);
+            }
+            else {
+                std::vector<int> zeroGapConnectorTopCoordinates = {gapCoordinates[0] + 3, gapCoordinates[1]- 2};
+                std::vector<int> zeroGapConnectorBottomCoordinates = {gapCoordinates[0] + 3, gapCoordinates[1] + 4};
+                auto connectorJson = create_connector(zeroGapConnectorTopCoordinates, zeroGapConnectorBottomCoordinates, "Connector replacing gap of 0 length");
+                device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
+            }
+
         }
     }
 

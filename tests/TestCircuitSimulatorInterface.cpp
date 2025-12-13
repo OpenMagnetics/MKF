@@ -148,6 +148,22 @@ SUITE(CircuitSimulatorExporterSimba) {
         CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
+
+    TEST(Test_CircuitSimulatorExporter_Simba_Bug_0_Gap_Length) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_0_length_gap.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+
+        std::string filePath = __FILE__;
+        auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+        auto jsimbaFile = outputFilePath;
+        jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_0_Length_Gap.jsimba");
+
+        std::filesystem::remove(jsimbaFile);
+        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile);
+        CHECK(std::filesystem::exists(jsimbaFile));
+    }
 }
 
 SUITE(CircuitSimulatorExporterNgspice) {
