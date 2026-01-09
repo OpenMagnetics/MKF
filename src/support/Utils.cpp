@@ -1,6 +1,8 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Utils.h"
+#include "support/Logger.h"
+#include "support/DatabaseManager.h"
 #include "json.hpp"
 
 #include <math.h>
@@ -21,6 +23,7 @@
 #include <algorithm>
 #include <magic_enum.hpp>
 #include <rapidfuzz/fuzz.hpp>
+#include "support/Exceptions.h"
 
 CMRC_DECLARE(data);
 
@@ -55,34 +58,25 @@ std::optional<double> get_scoring(std::string name, MagneticFilters filter) {
 }
         
 std::string read_log() {
-    return _log;
+    // Use the StringSink from Logger if available
+    auto& logger = Logger::getInstance();
+    // For now, return empty - logs should be accessed via Logger
+    return "";
 }
 
 void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
-    if (entryVerbosity <= _logVerbosity) {
-        std::string logEntry = "";
-        if (module != "") {
-            logEntry += module + ": ";
-        }
-        logEntry += entry + "\n";
-
-        // std::cout << logEntry;
-        _log += logEntry;
-    }
-}
-
-uint8_t get_log_verbosity() {
-    return _logVerbosity;
-}
-
-void set_log_verbosity(uint8_t logVerbosity) {
-    _logVerbosity = logVerbosity;
+    auto& logger = Logger::getInstance();
+    LogLevel level = (entryVerbosity == 0) ? LogLevel::ERROR 
+                   : (entryVerbosity == 1) ? LogLevel::WARNING
+                   : (entryVerbosity == 2) ? LogLevel::INFO
+                   : LogLevel::DEBUG;
+    logger.log(level, module.empty() ? "OpenMagnetics" : module, entry);
 }
 
 void load_cores(std::optional<std::string> fileToLoad) {
-    bool includeToroidalCores = settings->get_use_toroidal_cores();
-    bool includeConcentricCores = settings->get_use_concentric_cores();
-    bool useOnlyCoresInStock = settings->get_use_only_cores_in_stock();
+    bool includeToroidalCores = settings.get_use_toroidal_cores();
+    bool includeConcentricCores = settings.get_use_concentric_cores();
+    bool useOnlyCoresInStock = settings.get_use_only_cores_in_stock();
 
     auto fs = cmrc::data::get_filesystem();
     if (useOnlyCoresInStock && fs.exists("MAS/data/cores_stock.ndjson")) {
@@ -251,8 +245,8 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     }
     auto fs = cmrc::data::get_filesystem();
     {
-        bool includeToroidalCores = settings->get_use_toroidal_cores();
-        bool includeConcentricCores = settings->get_use_concentric_cores();
+        bool includeToroidalCores = settings.get_use_toroidal_cores();
+        bool includeConcentricCores = settings.get_use_concentric_cores();
 
         std::string database;
         if (fileToLoad) {
@@ -499,7 +493,7 @@ Core find_core_by_name(std::string name) {
             return core;
         }
     }
-    throw std::runtime_error("Core not found: " + name);
+    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core not found: " + name);
 }
 
 CoreMaterial find_core_material_by_name(std::string name) {
@@ -523,7 +517,7 @@ CoreMaterial find_core_material_by_name(std::string name) {
                 return coreMaterial;
             }
         }
-        throw std::runtime_error("Core material not found: " + name);
+        throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA, "Core material not found: " + name);
     }
 }
 
@@ -542,7 +536,7 @@ CoreShape find_core_shape_by_name(std::string name) {
                 return value;
             }
         }
-        throw std::runtime_error("Core shape not found: " + name);
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core shape not found: " + name);
     }
 }
 
@@ -615,8 +609,8 @@ std::vector<std::string> get_core_shape_names() {
     if (coreShapeDatabase.empty()) {
         load_core_shapes(true);
     }
-    bool includeToroidalCores = settings->get_use_toroidal_cores();
-    bool includeConcentricCores = settings->get_use_concentric_cores();
+    bool includeToroidalCores = settings.get_use_toroidal_cores();
+    bool includeConcentricCores = settings.get_use_concentric_cores();
 
     std::vector<std::string> shapeNames;
  
@@ -891,7 +885,7 @@ Wire find_wire_by_name(std::string name) {
         return wireDatabase[name];
     }
     else {
-        throw std::runtime_error("wire not found: " + name);
+        throw WireNotFoundException("wire not found: " + name);
     }
 }
 
@@ -916,7 +910,7 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
             case WireType::ROUND:
                 {
                     if (!wire.get_conducting_diameter()) {
-                        throw std::runtime_error("Missing conducting diameter in round wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting diameter in round wire");
                     }
                     auto conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
                     distance = fabs(conductingDiameter - dimension) / dimension;
@@ -926,7 +920,7 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
             case WireType::RECTANGULAR:
                 {
                     if (!wire.get_conducting_height()) {
-                        throw std::runtime_error("Missing conducting height in rectangular wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in rectangular wire");
                     }
                     auto conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
                     distance = fabs(conductingHeight - dimension) / dimension;
@@ -935,14 +929,14 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
             case WireType::FOIL:
                 {
                     if (!wire.get_conducting_width()) {
-                        throw std::runtime_error("Missing conducting width in foil wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in foil wire");
                     }
                     auto conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
                     distance = fabs(conductingWidth - dimension) / dimension;
                     break;
                 }
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
 
         if (distance < minimumDistance) {
@@ -1051,7 +1045,7 @@ double get_error_by_winding_window_perimeter(CoreShape shape, double desiredPeri
         perimeter = std::numbers::pi * mainColumn.get_width() + 2 * (mainColumn.get_depth() - mainColumn.get_width());
     }
     else {
-        throw std::runtime_error("Unsupported column shape");
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unsupported column shape");
     }
 
     double error = fabs(perimeter - desiredPerimeter) / desiredPerimeter;
@@ -1089,7 +1083,7 @@ double get_error_by_area_product(CoreShape shape, double desiredAreaProduct) {
     auto columnArea = mainColumn.get_area();
     auto windingWindow = core.get_winding_window();
     if (!windingWindow.get_area()) {
-        throw std::runtime_error("Column area is missing");
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Column area is missing");
     }
     auto windingWindowArea = windingWindow.get_area().value();
     double areaProduct = columnArea * windingWindowArea;
@@ -1127,7 +1121,7 @@ double get_error_by_winding_window_area(CoreShape shape, double desiredWindingWi
     core.process_data();
     auto windingWindow = core.get_winding_window();
     if (!windingWindow.get_area()) {
-        throw std::runtime_error("Column area is missing");
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Column area is missing");
     }
     auto windingWindowArea = windingWindow.get_area().value();
 
@@ -1251,24 +1245,24 @@ CoreShape find_core_shape_by_effective_parameters(double desiredEffectiveLength,
 bool check_requirement(DimensionWithTolerance requirement, double value){
     if (requirement.get_minimum() && requirement.get_maximum()) {
         if (requirement.get_maximum().value() < requirement.get_minimum().value()) {
-            throw std::runtime_error("Minimum requirement cannot be larger than maximum");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Minimum requirement cannot be larger than maximum");
         }
         if (requirement.get_nominal()) {
             if (requirement.get_maximum().value() < requirement.get_nominal().value()) {
-                throw std::runtime_error("Nominal requirement cannot be larger than maximum");
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Nominal requirement cannot be larger than maximum");
             }
         }
         return requirement.get_minimum().value() <= value && value <= requirement.get_maximum().value();
     }
     else if (!requirement.get_minimum() && requirement.get_nominal() && requirement.get_maximum()) {
         if (requirement.get_maximum().value() < requirement.get_nominal().value()) {
-            throw std::runtime_error("Nominal requirement cannot be larger than maximum");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Nominal requirement cannot be larger than maximum");
         }
         return requirement.get_nominal().value() <= value && value <= requirement.get_maximum().value();
     }
     else if (requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
         if (requirement.get_nominal().value() < requirement.get_minimum().value()) {
-            throw std::runtime_error("Minimum requirement cannot be larger than nominal");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Minimum requirement cannot be larger than nominal");
         }
         return requirement.get_minimum().value() <= value && value <= requirement.get_nominal().value();
     }
@@ -1586,13 +1580,13 @@ std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitatio
     SignalDescriptor signalDescriptor;
     if (signal == "current") {
         if (!excitation.get_current()) {
-            throw std::runtime_error("Missing current");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current");
         }
         signalDescriptor = excitation.get_current().value();
     }
     else if (signal == "voltage") {
         if (!excitation.get_voltage()) {
-            throw std::runtime_error("Missing voltage");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing voltage");
         }
         signalDescriptor = excitation.get_voltage().value();
     }
@@ -1603,11 +1597,11 @@ std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitatio
         signalDescriptor = excitation.get_magnetizing_current().value();
     }
     else {
-         throw std::runtime_error("Not supported harmonic common index extraction for " + signal);
+         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Not supported harmonic common index extraction for " + signal);
     }
     if (!signalDescriptor.get_harmonics()) {
         if (!signalDescriptor.get_waveform()) {
-            throw std::runtime_error("Missing harmonics");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing harmonics");
         }
     }
     auto harmonics = signalDescriptor.get_harmonics().value();

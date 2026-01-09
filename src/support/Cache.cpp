@@ -2,6 +2,7 @@
 #include "support/Cache.h"
 #include "physical_models/MagneticEnergy.h"
 #include "Constants.h"
+#include "support/Exceptions.h"
 
 
 namespace OpenMagnetics {
@@ -69,7 +70,7 @@ double MagneticsCache::read_magnetic_energy_cache(std::string reference) {
     if (_magneticEnergyCache.contains(reference)) {
         return _magneticEnergyCache[reference];
     } else {
-        throw std::runtime_error("No value found with reference: " + reference);
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "No value found with reference: " + reference);
     }
 }
 
@@ -123,7 +124,7 @@ double MasCache::read_magnetic_energy_cache(std::string reference) {
     if (_magneticEnergyCache.contains(reference)) {
         return _magneticEnergyCache[reference];
     } else {
-        throw std::runtime_error("No value found with reference: " + reference);
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "No value found with reference: " + reference);
     }
 }
 

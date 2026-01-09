@@ -8,7 +8,8 @@
 #include "processors/MagneticSimulator.h"
 #include "TestingUtils.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -20,14 +21,12 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-
-SUITE(WindingLossesRound) {
-    auto settings = Settings::GetInstance();
+namespace TestWindingLossesRound {
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     double maximumError = 0.15;
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Stacked) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Stacked", "[physical-model][winding-losses][round][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -94,13 +93,13 @@ SUITE(WindingLossesRound) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Tendency) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Tendency", "[physical-model][winding-losses][round][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -152,30 +151,28 @@ SUITE(WindingLossesRound) {
         magnetic.set_coil(coil);
 
         auto ohmicLosses100kHz = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-        CHECK_CLOSE(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0], ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0] * maximumError);
-        CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses());
-        CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
+        REQUIRE_THAT(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), Catch::Matchers::WithinAbs(ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0], ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0] * maximumError));
+        REQUIRE(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses());
+        REQUIRE(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
 
         // auto scaledOperatingPoint = OpenMagnetics::Inputs::scale_time_to_frequency(inputs.get_operating_point(0), frequency * 10);
         OperatingPoint scaledOperatingPoint = inputs.get_operating_point(0);
         OpenMagnetics::Inputs::scale_time_to_frequency(scaledOperatingPoint, frequency * 10);
         scaledOperatingPoint = OpenMagnetics::Inputs::process_operating_point(scaledOperatingPoint, frequency * 10);
         auto ohmicLosses1MHz = WindingLosses().calculate_losses(magnetic, scaledOperatingPoint, temperature);
-        CHECK_CLOSE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
-                    ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
-                    ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses() * maximumError);
-        CHECK(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1] > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
-        CHECK(ohmicLosses1MHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses());
-        settings->reset();
+        REQUIRE_THAT(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), Catch::Matchers::WithinAbs(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses() * maximumError));
+        REQUIRE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1] > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
+        REQUIRE(ohmicLosses1MHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses());
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal) {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate skin effect losses, as no fringing or proximity are present
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -213,10 +210,10 @@ SUITE(WindingLossesRound) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             OpenMagnetics::Mas auxMas;
             auxMas.set_magnetic(magnetic);
             auxMas.set_inputs(inputs);
@@ -225,16 +222,16 @@ SUITE(WindingLossesRound) {
             OpenMagnetics::to_file(outFile, auxMas);
 
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal) {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -273,10 +270,10 @@ SUITE(WindingLossesRound) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             OpenMagnetics::Mas auxMas;
             auxMas.set_magnetic(magnetic);
             auxMas.set_inputs(inputs);
@@ -285,15 +282,15 @@ SUITE(WindingLossesRound) {
             OpenMagnetics::to_file(outFile, auxMas);
 
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing) {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -331,10 +328,10 @@ SUITE(WindingLossesRound) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             OpenMagnetics::Mas auxMas;
             auxMas.set_magnetic(magnetic);
             auxMas.set_inputs(inputs);
@@ -343,17 +340,17 @@ SUITE(WindingLossesRound) {
             OpenMagnetics::to_file(outFile, auxMas);
 
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far) {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Worst error in this one
         double maximumError = 0.4;
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -391,10 +388,10 @@ SUITE(WindingLossesRound) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             OpenMagnetics::Mas auxMas;
             auxMas.set_magnetic(magnetic);
             auxMas.set_inputs(inputs);
@@ -403,16 +400,16 @@ SUITE(WindingLossesRound) {
             OpenMagnetics::to_file(outFile, auxMas);
 
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column) {
+    TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -452,10 +449,10 @@ SUITE(WindingLossesRound) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             OpenMagnetics::Mas auxMas;
             auxMas.set_magnetic(magnetic);
             auxMas.set_inputs(inputs);
@@ -464,11 +461,11 @@ SUITE(WindingLossesRound) {
             OpenMagnetics::to_file(outFile, auxMas);
 
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_With_DC) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_With_DC", "[physical-model][winding-losses][round][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -539,18 +536,18 @@ SUITE(WindingLossesRound) {
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
 
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving) {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -588,10 +585,10 @@ SUITE(WindingLossesRound) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             OpenMagnetics::Mas auxMas;
             auxMas.set_magnetic(magnetic);
             auxMas.set_inputs(inputs);
@@ -600,16 +597,16 @@ SUITE(WindingLossesRound) {
             OpenMagnetics::to_file(outFile, auxMas);
 
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving) {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -647,10 +644,10 @@ SUITE(WindingLossesRound) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             OpenMagnetics::Mas auxMas;
             auxMas.set_magnetic(magnetic);
             auxMas.set_inputs(inputs);
@@ -659,16 +656,16 @@ SUITE(WindingLossesRound) {
             OpenMagnetics::to_file(outFile, auxMas);
 
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2) {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -707,10 +704,10 @@ SUITE(WindingLossesRound) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             OpenMagnetics::Mas auxMas;
             auxMas.set_magnetic(magnetic);
             auxMas.set_inputs(inputs);
@@ -719,11 +716,11 @@ SUITE(WindingLossesRound) {
             OpenMagnetics::to_file(outFile, auxMas);
 
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty_With_DC) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty_With_DC", "[physical-model][winding-losses][round][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -790,19 +787,20 @@ SUITE(WindingLossesRound) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 }
 
-SUITE(WindingLossesLitz) {
-    auto settings = Settings::GetInstance();
+
+namespace TestWindingLossesLitz {
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     double maximumError = 0.15;
     bool plot = false;
 
-    TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -883,13 +881,13 @@ SUITE(WindingLossesLitz) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Strands) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Strands", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -970,13 +968,13 @@ SUITE(WindingLossesLitz) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Litz_Triangular_With_DC_Many_Strands) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Triangular_With_DC_Many_Strands", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1051,13 +1049,13 @@ SUITE(WindingLossesLitz) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Few_Strands) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Few_Strands", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1138,13 +1136,13 @@ SUITE(WindingLossesLitz) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Many_Strands) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Many_Strands", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1225,13 +1223,13 @@ SUITE(WindingLossesLitz) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1312,19 +1310,19 @@ SUITE(WindingLossesLitz) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             if (plot) {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal_" + std::to_string(expectedValue) +".svg");
                 std::filesystem::remove(outFile);
                 Painter painter(outFile, true);
-                settings->set_painter_mode(PainterModes::CONTOUR);
-                settings->set_painter_logarithmic_scale(false);
-                settings->set_painter_include_fringing(false);
-                settings->set_painter_number_points_x(200);
-                settings->set_painter_number_points_y(200);
-                settings->set_painter_maximum_value_colorbar(std::nullopt);
-                settings->set_painter_minimum_value_colorbar(std::nullopt);
+                settings.set_painter_mode(PainterModes::CONTOUR);
+                settings.set_painter_logarithmic_scale(false);
+                settings.set_painter_include_fringing(false);
+                settings.set_painter_number_points_x(200);
+                settings.set_painter_number_points_y(200);
+                settings.set_painter_maximum_value_colorbar(std::nullopt);
+                settings.set_painter_minimum_value_colorbar(std::nullopt);
                 painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
                 painter.paint_core(magnetic);
                 painter.paint_bobbin(magnetic);
@@ -1332,11 +1330,11 @@ SUITE(WindingLossesLitz) {
                 painter.export_svg();
             }
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Thirty_Turns_Litz_Sinusoidal) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_Thirty_Turns_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1417,23 +1415,24 @@ SUITE(WindingLossesLitz) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 }
 
-SUITE(WindingLossesRectangular) {
+
+namespace TestWindingLossesRectangular {
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
-    auto settings = Settings::GetInstance();
     double maximumError = 0.2;
 
-    TEST(Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing) {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -1471,15 +1470,15 @@ SUITE(WindingLossesRectangular) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             WindingLosses windingLosses;
-            settings->set_magnetic_field_include_fringing(false);
+            settings.set_magnetic_field_include_fringing(false);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1557,14 +1556,15 @@ SUITE(WindingLossesRectangular) {
 
 
             WindingLosses windingLosses;
-            settings->set_magnetic_field_mirroring_dimension(2);
+            settings.set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
-    TEST(Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps) {
-        settings->reset();
+
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1642,14 +1642,15 @@ SUITE(WindingLossesRectangular) {
 
 
             WindingLosses windingLosses;
-            settings->set_magnetic_field_mirroring_dimension(2);
+            settings.set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
-    TEST(Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps) {
-        settings->reset();
+
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1727,14 +1728,15 @@ SUITE(WindingLossesRectangular) {
 
 
             WindingLosses windingLosses;
-            settings->set_magnetic_field_mirroring_dimension(2);
+            settings.set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
-    TEST(Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal) {
-        settings->reset();
+
+    TEST_CASE("Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1834,9 +1836,9 @@ SUITE(WindingLossesRectangular) {
 
 
             WindingLosses windingLosses;
-            settings->set_magnetic_field_mirroring_dimension(2);
+            settings.set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
             // auto outFile = outputFilePath;
             // outFile.append("Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal_" + std::to_string(expectedValue) +".svg");
             // std::filesystem::remove(outFile);
@@ -1854,15 +1856,16 @@ SUITE(WindingLossesRectangular) {
             // painter.export_svg();
 
         }
-        settings->reset();
+        settings.reset();
     }
 }
 
-SUITE(WindingLossesFoil) {
-    auto settings = Settings::GetInstance();
+
+namespace TestWindingLossesFoil {
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     double maximumError = 0.3;
-    TEST(Test_Winding_Losses_One_Turn_Foil_Sinusoidal) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -1936,13 +1939,13 @@ SUITE(WindingLossesFoil) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -2016,13 +2019,13 @@ SUITE(WindingLossesFoil) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -2095,20 +2098,21 @@ SUITE(WindingLossesFoil) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
 
         }
-        settings->reset();
+        settings.reset();
     }
 }
 
-SUITE(WindingLossesToroidalCores) {
-    auto settings = Settings::GetInstance();
+
+namespace TestWindingLossesToroidalCores {
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     double maximumError = 0.15;
     bool plot = false;
 
-    TEST(Test_Winding_Losses_Toroidal_Core_One_Turn_Round_Tendency) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_Toroidal_Core_One_Turn_Round_Tendency", "[physical-model][winding-losses][round][round-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -2163,23 +2167,19 @@ SUITE(WindingLossesToroidalCores) {
         auto ohmicLosses100kHz = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
 
 
-        CHECK_CLOSE(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0], ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0] * maximumError);
-        CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses());
-        CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
+        REQUIRE_THAT(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), Catch::Matchers::WithinAbs(ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0], ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0] * maximumError));
+        REQUIRE(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses());
+        REQUIRE(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
 
         OperatingPoint scaledOperatingPoint = inputs.get_operating_point(0);
         OpenMagnetics::Inputs::scale_time_to_frequency(scaledOperatingPoint, frequency * 10);
         scaledOperatingPoint = OpenMagnetics::Inputs::process_operating_point(scaledOperatingPoint, frequency * 10);
         auto ohmicLosses1MHz =    WindingLosses().calculate_losses(magnetic, scaledOperatingPoint, temperature);
-        CHECK_CLOSE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
-                    ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
-                    ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses() * maximumError);
-        CHECK(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1] > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
-        CHECK_CLOSE(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1],
-            ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1],
-            ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1] * maximumError);
-        CHECK(ohmicLosses1MHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses());
-        settings->reset();
+        REQUIRE_THAT(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), Catch::Matchers::WithinAbs(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses() * maximumError));
+        REQUIRE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1] > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
+        REQUIRE_THAT(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1], Catch::Matchers::WithinAbs(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1], ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1] * maximumError));
+        REQUIRE(ohmicLosses1MHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses());
+        settings.reset();
 
         if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -2190,14 +2190,14 @@ SUITE(WindingLossesToroidalCores) {
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
-            // settings->set_painter_mode(PainterModes::CONTOUR);
-            settings->set_painter_mode(PainterModes::QUIVER);
-            settings->set_painter_logarithmic_scale(false);
-            settings->set_painter_include_fringing(true);
-            settings->set_painter_number_points_x(50);
-            settings->set_painter_number_points_y(50);
-            settings->set_painter_maximum_value_colorbar(std::nullopt);
-            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            // settings.set_painter_mode(PainterModes::CONTOUR);
+            settings.set_painter_mode(PainterModes::QUIVER);
+            settings.set_painter_logarithmic_scale(false);
+            settings.set_painter_include_fringing(true);
+            settings.set_painter_number_points_x(50);
+            settings.set_painter_number_points_y(50);
+            settings.set_painter_maximum_value_colorbar(std::nullopt);
+            settings.set_painter_minimum_value_colorbar(std::nullopt);
             painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);
             // painter.paint_coil_sections(magnetic);
@@ -2206,8 +2206,8 @@ SUITE(WindingLossesToroidalCores) {
         }
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core", "[physical-model][winding-losses][round][round-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -2278,13 +2278,13 @@ SUITE(WindingLossesToroidalCores) {
 
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Toroidal_Core) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Toroidal_Core", "[physical-model][winding-losses][round][round-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -2355,16 +2355,16 @@ SUITE(WindingLossesToroidalCores) {
 
 
             auto windingLosses = WindingLosses();
-            settings->set_magnetic_field_mirroring_dimension(1);
-            settings->set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -2444,14 +2444,14 @@ SUITE(WindingLossesToroidalCores) {
                 OpenMagnetics::Magnetic magnetic;
                 magnetic.set_core(core);
                 magnetic.set_coil(coil);
-                // settings->set_painter_mode(PainterModes::CONTOUR);
-                settings->set_painter_mode(PainterModes::QUIVER);
-                settings->set_painter_logarithmic_scale(false);
-                settings->set_painter_include_fringing(true);
-                settings->set_painter_number_points_x(50);
-                settings->set_painter_number_points_y(50);
-                settings->set_painter_maximum_value_colorbar(std::nullopt);
-                settings->set_painter_minimum_value_colorbar(std::nullopt);
+                // settings.set_painter_mode(PainterModes::CONTOUR);
+                settings.set_painter_mode(PainterModes::QUIVER);
+                settings.set_painter_logarithmic_scale(false);
+                settings.set_painter_include_fringing(true);
+                settings.set_painter_number_points_x(50);
+                settings.set_painter_number_points_y(50);
+                settings.set_painter_maximum_value_colorbar(std::nullopt);
+                settings.set_painter_minimum_value_colorbar(std::nullopt);
                 painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
                 painter.paint_core(magnetic);
                 // painter.paint_coil_sections(magnetic);
@@ -2460,13 +2460,13 @@ SUITE(WindingLossesToroidalCores) {
             }
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire) {
-        settings->reset();
+    TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {
+        settings.reset();
         clear_databases();
 
         double temperature = 20;
@@ -2546,14 +2546,14 @@ SUITE(WindingLossesToroidalCores) {
                 OpenMagnetics::Magnetic magnetic;
                 magnetic.set_core(core);
                 magnetic.set_coil(coil);
-                // settings->set_painter_mode(PainterModes::CONTOUR);
-                settings->set_painter_mode(PainterModes::QUIVER);
-                settings->set_painter_logarithmic_scale(false);
-                settings->set_painter_include_fringing(true);
-                settings->set_painter_number_points_x(50);
-                settings->set_painter_number_points_y(50);
-                settings->set_painter_maximum_value_colorbar(std::nullopt);
-                settings->set_painter_minimum_value_colorbar(std::nullopt);
+                // settings.set_painter_mode(PainterModes::CONTOUR);
+                settings.set_painter_mode(PainterModes::QUIVER);
+                settings.set_painter_logarithmic_scale(false);
+                settings.set_painter_include_fringing(true);
+                settings.set_painter_number_points_x(50);
+                settings.set_painter_number_points_y(50);
+                settings.set_painter_maximum_value_colorbar(std::nullopt);
+                settings.set_painter_minimum_value_colorbar(std::nullopt);
                 painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
                 painter.paint_core(magnetic);
                 // painter.paint_coil_sections(magnetic);
@@ -2562,24 +2562,25 @@ SUITE(WindingLossesToroidalCores) {
             }
 
             auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
 }
 
-SUITE(WindingLossesPlanar) {
-    auto settings = Settings::GetInstance();
+
+namespace TestWindingLossesPlanar {
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
     double maximumError = 0.3;
 
-    TEST(Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing) {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -2616,20 +2617,20 @@ SUITE(WindingLossesPlanar) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             WindingLosses windingLosses;
-            settings->set_magnetic_field_include_fringing(false);
+            settings.set_magnetic_field_include_fringing(false);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing) {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing", "[physical-model][winding-losses][planar]") {
         // Not sure about that many losses due to fringing losses in a small piece
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -2660,7 +2661,7 @@ SUITE(WindingLossesPlanar) {
             // {1500000, 1708.1},
         });
 
-        settings->set_magnetic_field_include_fringing(true);
+        settings.set_magnetic_field_include_fringing(true);
         for (auto& [frequency, expectedValue] : expectedWindingLosses) {
             OperatingPoint operatingPoint = inputs.get_operating_point(0);
             OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
@@ -2669,17 +2670,17 @@ SUITE(WindingLossesPlanar) {
 
             WindingLosses windingLosses;
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing) {
+    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -2716,19 +2717,19 @@ SUITE(WindingLossesPlanar) {
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             WindingLosses windingLosses;
-            // settings->set_magnetic_field_include_fringing(false);
+            // settings.set_magnetic_field_include_fringing(false);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close) {
+    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -2758,7 +2759,7 @@ SUITE(WindingLossesPlanar) {
             {1000000, 355.25},
         });
 
-        settings->set_magnetic_field_include_fringing(true);
+        settings.set_magnetic_field_include_fringing(true);
         for (auto& [frequency, expectedValue] : expectedWindingLosses) {
             OperatingPoint operatingPoint = inputs.get_operating_point(0);
             OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
@@ -2767,17 +2768,17 @@ SUITE(WindingLossesPlanar) {
 
             WindingLosses windingLosses;
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far) {
+    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][planar]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -2807,7 +2808,7 @@ SUITE(WindingLossesPlanar) {
             {1000000, 201.29},
         });
 
-        settings->set_magnetic_field_include_fringing(true);
+        settings.set_magnetic_field_include_fringing(true);
         for (auto& [frequency, expectedValue] : expectedWindingLosses) {
             OperatingPoint operatingPoint = inputs.get_operating_point(0);
             OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
@@ -2816,17 +2817,17 @@ SUITE(WindingLossesPlanar) {
 
             WindingLosses windingLosses;
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving) {
+    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving", "[physical-model][winding-losses][planar]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        settings->reset();
+        settings.reset();
         clear_databases();
 
         double temperature = 22;
@@ -2856,7 +2857,7 @@ SUITE(WindingLossesPlanar) {
             {1000000, 46.876},
         });
 
-        settings->set_magnetic_field_include_fringing(true);
+        settings.set_magnetic_field_include_fringing(true);
         for (auto& [frequency, expectedValue] : expectedWindingLosses) {
             OperatingPoint operatingPoint = inputs.get_operating_point(0);
             OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
@@ -2865,15 +2866,16 @@ SUITE(WindingLossesPlanar) {
 
             WindingLosses windingLosses;
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
-            CHECK_CLOSE(expectedValue, ohmicLosses.get_winding_losses(), expectedValue * maximumError);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
         }
-        settings->reset();
+        settings.reset();
     }
 }
 
 
-SUITE(WindingLossesResistanceMatrix) {
-    TEST(Test_Resistance_Matrix) {
+namespace TestWindingLossesResistanceMatrix {
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    TEST_CASE("Test_Resistance_Matrix", "[physical-model][winding-losses]") {
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -2923,17 +2925,19 @@ SUITE(WindingLossesResistanceMatrix) {
 
         auto resistanceMatrixAtFrequency = WindingLosses().calculate_resistance_matrix(magnetic, temperature, frequency);
 
-        CHECK(resistanceMatrixAtFrequency.get_magnitude().size() == magnetic.get_coil().get_functional_description().size());
+        REQUIRE(resistanceMatrixAtFrequency.get_magnitude().size() == magnetic.get_coil().get_functional_description().size());
         for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-            CHECK(resistanceMatrixAtFrequency.get_mutable_magnitude()[std::to_string(windingIndex + 1)].size() == magnetic.get_coil().get_functional_description().size());
-            CHECK(resolve_dimensional_values(resistanceMatrixAtFrequency.get_mutable_magnitude()[std::to_string(windingIndex + 1)][std::to_string(windingIndex + 1)]) > 0);
+            REQUIRE(resistanceMatrixAtFrequency.get_mutable_magnitude()[std::to_string(windingIndex + 1)].size() == magnetic.get_coil().get_functional_description().size());
+            REQUIRE(resolve_dimensional_values(resistanceMatrixAtFrequency.get_mutable_magnitude()[std::to_string(windingIndex + 1)][std::to_string(windingIndex + 1)]) > 0);
         }
 
     }
 }
 
-SUITE(WindingLossesWeb) {
-    TEST(Test_Winding_Losses_Web_0) {
+
+namespace TestWindingLossesWeb {
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    TEST_CASE("Test_Winding_Losses_Web_0", "[physical-model][winding-losses][bug]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/negative_losses.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
@@ -2947,10 +2951,10 @@ SUITE(WindingLossesWeb) {
         to_json(mierda, losses);
         // std::cout << mierda << std::endl;
 
-        CHECK(losses.get_dc_resistance_per_winding().value()[0] > 0);
+        REQUIRE(losses.get_dc_resistance_per_winding().value()[0] > 0);
     }
 
-    TEST(Test_Winding_Losses_Web_1) {
+    TEST_CASE("Test_Winding_Losses_Web_1", "[physical-model][winding-losses][bug]") {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/slow_simulation.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
@@ -2964,11 +2968,11 @@ SUITE(WindingLossesWeb) {
         to_json(mierda, losses);
         // std::cout << mierda << std::endl;
 
-        CHECK(losses.get_dc_resistance_per_winding().value()[0] > 0);
+        REQUIRE(losses.get_dc_resistance_per_winding().value()[0] > 0);
     }
 
-    TEST(Test_Winding_Losses_Web_2) {
-        settings->set_magnetic_field_include_fringing(false);
+    TEST_CASE("Test_Winding_Losses_Web_2", "[physical-model][winding-losses][bug]") {
+        settings.set_magnetic_field_include_fringing(false);
 
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/huge_losses.json");
@@ -2979,13 +2983,13 @@ SUITE(WindingLossesWeb) {
 
         auto losses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
 
-        CHECK(losses.get_winding_losses() < 2);
-        settings->reset();
+        REQUIRE(losses.get_winding_losses() < 2);
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Web_3) {
-        settings->set_magnetic_field_include_fringing(false);
-        settings->set_magnetic_field_mirroring_dimension(3);
+    TEST_CASE("Test_Winding_Losses_Web_3", "[physical-model][winding-losses][bug]") {
+        settings.set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_mirroring_dimension(3);
 
         std::string file_path = __FILE__;
         OpenMagnetics::Mas mas1;
@@ -3031,8 +3035,8 @@ SUITE(WindingLossesWeb) {
         //     std::cout << "losses.get_proximity_effect_losses(): " << losses.get_proximity_effect_losses()->get_losses_per_harmonic()[1] << std::endl;
         // }
 
-        settings->set_painter_include_fringing(false);
-        // CHECK(losses.get_winding_losses() <  2);
+        settings.set_painter_include_fringing(false);
+        // REQUIRE(losses.get_winding_losses() <  2);
         {
             auto outFile = outputFilePath;
             outFile.append("Test_Winding_Losses_Web_3_1.svg");
@@ -3066,11 +3070,11 @@ SUITE(WindingLossesWeb) {
             painter.paint_coil_turns(magnetic3);
             painter.export_svg();
         }
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Winding_Losses_Web_4) {
-        settings->set_magnetic_field_include_fringing(false);
+    TEST_CASE("Test_Winding_Losses_Web_4", "[physical-model][winding-losses][bug]") {
+        settings.set_magnetic_field_include_fringing(false);
 
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_with_csv.json");
@@ -3081,6 +3085,6 @@ SUITE(WindingLossesWeb) {
 
         auto losses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
 
-        settings->reset();
+        settings.reset();
     }
 }

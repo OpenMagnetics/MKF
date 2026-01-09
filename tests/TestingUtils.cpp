@@ -1,7 +1,8 @@
 #include "support/Settings.h"
 #include "TestingUtils.h"
 #include "physical_models/MagnetizingInductance.h"
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -164,8 +165,7 @@ OpenMagnetics::Coil get_quick_coil_no_compact(std::vector<int64_t> numberTurns,
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
 
-    auto settings = Settings::GetInstance();
-    settings->set_coil_delimit_and_compact(false);
+    settings.set_coil_delimit_and_compact(false);
 
     OpenMagnetics::Coil coil(coilJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
     return coil;
@@ -217,8 +217,7 @@ OpenMagnetics::Coil get_quick_toroidal_coil_no_compact(std::vector<int64_t> numb
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
 
-    auto settings = Settings::GetInstance();
-    settings->set_coil_delimit_and_compact(false);
+    settings.set_coil_delimit_and_compact(false);
 
     OpenMagnetics::Coil coil(coilJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
     return coil;
@@ -483,17 +482,17 @@ void check_sections_description(OpenMagnetics::Coil coil,
                 sectionsArea += section.get_dimensions()[0] * section.get_dimensions()[1];
                 dimensionsByName[section.get_name()] = section.get_dimensions();
                 coordinatesByName[section.get_name()] = section.get_coordinates();
-                CHECK(roundFloat(section.get_coordinates()[0] - section.get_dimensions()[0] / 2, 6) >= roundFloat(windingWindow.get_coordinates().value()[0] - windingWindow.get_width().value() / 2, 6));
-                CHECK(roundFloat(section.get_coordinates()[0] + section.get_dimensions()[0] / 2, 6) <= roundFloat(windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2, 6));
-                CHECK(roundFloat(section.get_coordinates()[1] - section.get_dimensions()[1] / 2, 6) >= roundFloat(windingWindow.get_coordinates().value()[1] - windingWindow.get_height().value() / 2, 6));
-                CHECK(roundFloat(section.get_coordinates()[1] + section.get_dimensions()[1] / 2, 6) <= roundFloat(windingWindow.get_coordinates().value()[1] + windingWindow.get_height().value() / 2, 6));
+                REQUIRE(roundFloat(section.get_coordinates()[0] - section.get_dimensions()[0] / 2, 6) >= roundFloat(windingWindow.get_coordinates().value()[0] - windingWindow.get_width().value() / 2, 6));
+                REQUIRE(roundFloat(section.get_coordinates()[0] + section.get_dimensions()[0] / 2, 6) <= roundFloat(windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2, 6));
+                REQUIRE(roundFloat(section.get_coordinates()[1] - section.get_dimensions()[1] / 2, 6) >= roundFloat(windingWindow.get_coordinates().value()[1] - windingWindow.get_height().value() / 2, 6));
+                REQUIRE(roundFloat(section.get_coordinates()[1] + section.get_dimensions()[1] / 2, 6) <= roundFloat(windingWindow.get_coordinates().value()[1] + windingWindow.get_height().value() / 2, 6));
 
                 for (auto& parallelProportion : partialWinding.get_parallels_proportion()) {
                     numberAssignedParallels[currentIndividualWindingIndex] += parallelProportion;
                     numberAssignedPhysicalTurns[currentIndividualWindingIndex] += round(parallelProportion * currentIndividualWinding.get_number_turns());
                 }
             }
-            CHECK(section.get_filling_factor().value() > 0);
+            REQUIRE(section.get_filling_factor().value() > 0);
         }
     }
     for (size_t i = 0; i < sectionsDescription.size() - 1; ++i){
@@ -501,23 +500,23 @@ void check_sections_description(OpenMagnetics::Coil coil,
         }
         else {
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                CHECK(sectionsDescription[i].get_coordinates()[0] < sectionsDescription[i + 1].get_coordinates()[0]);
-                CHECK(sectionsDescription[i].get_coordinates()[1] == sectionsDescription[i + 1].get_coordinates()[1]);
+                REQUIRE(sectionsDescription[i].get_coordinates()[0] < sectionsDescription[i + 1].get_coordinates()[0]);
+                REQUIRE(sectionsDescription[i].get_coordinates()[1] == sectionsDescription[i + 1].get_coordinates()[1]);
             } 
             else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
-                CHECK(sectionsDescription[i].get_coordinates()[1] > sectionsDescription[i + 1].get_coordinates()[1]);
-                CHECK(sectionsDescription[i].get_coordinates()[0] == sectionsDescription[i + 1].get_coordinates()[0]);
+                REQUIRE(sectionsDescription[i].get_coordinates()[1] > sectionsDescription[i + 1].get_coordinates()[1]);
+                REQUIRE(sectionsDescription[i].get_coordinates()[0] == sectionsDescription[i + 1].get_coordinates()[0]);
             }
         }
     }
 
-    CHECK(roundFloat(bobbinArea, 6) == roundFloat(sectionsArea, 6));
+    REQUIRE(roundFloat(bobbinArea, 6) == roundFloat(sectionsArea, 6));
     for (size_t i = 0; i < numberAssignedParallels.size() - 1; ++i){
-        CHECK(round(numberAssignedParallels[i]) == round(numberParallels[i]));
-        CHECK(round(numberAssignedPhysicalTurns[i]) == round(numberTurns[i] * numberParallels[i]));
+        REQUIRE(round(numberAssignedParallels[i]) == round(numberParallels[i]));
+        REQUIRE(round(numberAssignedPhysicalTurns[i]) == round(numberTurns[i] * numberParallels[i]));
     }
-    CHECK(sectionsDescription.size() - numberInsulationSections == (interleavingLevel * numberTurns.size()));
-    CHECK(!check_collisions(dimensionsByName, coordinatesByName));
+    REQUIRE(sectionsDescription.size() - numberInsulationSections == (interleavingLevel * numberTurns.size()));
+    REQUIRE(!check_collisions(dimensionsByName, coordinatesByName));
 }
 
 void check_layers_description(OpenMagnetics::Coil coil,
@@ -540,31 +539,31 @@ void check_layers_description(OpenMagnetics::Coil coil,
                 for (size_t i = 0; i < sectionParallelsProportion.size(); ++i){
                     sectionParallelsProportion[i] += layer.get_partial_windings()[0].get_parallels_proportion()[i];
                 }
-                CHECK(layer.get_filling_factor().value() > 0);
+                REQUIRE(layer.get_filling_factor().value() > 0);
 
                 dimensionsByName[layer.get_name()] = layer.get_dimensions();
                 coordinatesByName[layer.get_name()] = layer.get_coordinates();
             }
             for (size_t i = 0; i < sectionParallelsProportion.size(); ++i){
-                CHECK(roundFloat(sectionParallelsProportion[i], 9) == roundFloat(sectionParallelsProportionExpected[i], 9));
+                REQUIRE(roundFloat(sectionParallelsProportion[i], 9) == roundFloat(sectionParallelsProportionExpected[i], 9));
             }
             for (size_t i = 0; i < layers.size() - 1; ++i){
                 if (layersOrientation == WindingOrientation::OVERLAPPING) {
-                    CHECK(layers[i].get_coordinates()[0] < layers[i + 1].get_coordinates()[0]);
-                    CHECK(layers[i].get_coordinates()[1] == layers[i + 1].get_coordinates()[1]);
-                    CHECK(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
+                    REQUIRE(layers[i].get_coordinates()[0] < layers[i + 1].get_coordinates()[0]);
+                    REQUIRE(layers[i].get_coordinates()[1] == layers[i + 1].get_coordinates()[1]);
+                    REQUIRE(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
                 } 
                 else if (layersOrientation == WindingOrientation::CONTIGUOUS) {
-                    CHECK(layers[i].get_coordinates()[1] > layers[i + 1].get_coordinates()[1]);
-                    CHECK(layers[i].get_coordinates()[0] == layers[i + 1].get_coordinates()[0]);
-                    CHECK(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
+                    REQUIRE(layers[i].get_coordinates()[1] > layers[i + 1].get_coordinates()[1]);
+                    REQUIRE(layers[i].get_coordinates()[0] == layers[i + 1].get_coordinates()[0]);
+                    REQUIRE(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
                 }
             }
         }
 
     }
 
-    CHECK(!check_collisions(dimensionsByName, coordinatesByName));
+    REQUIRE(!check_collisions(dimensionsByName, coordinatesByName));
 }
 
 
@@ -633,13 +632,13 @@ bool check_turns_description(OpenMagnetics::Coil coil) {
         }
     }
 
-    CHECK(equalToOne);
+    REQUIRE(equalToOne);
     bool collides = check_collisions(dimensionsByName, coordinatesByName, bobbinWindingWindowShape == WindingWindowShape::ROUND);
-    CHECK(!collides);
+    REQUIRE(!collides);
     if (additionalCoordinatesByName.size() > 0) {
         collides |= check_collisions(dimensionsByName, additionalCoordinatesByName, bobbinWindingWindowShape == WindingWindowShape::ROUND);
     }
-    CHECK(!collides);
+    REQUIRE(!collides);
     return !collides && equalToOne;
 }
 
@@ -654,7 +653,7 @@ bool check_wire_standards(OpenMagnetics::Coil coil) {
                 std::cout << magic_enum::enum_name(firstWireStandard.value()) << std::endl;
             }
             else {
-                CHECK(firstWireStandard.value() == wire.get_standard().value());
+                REQUIRE(firstWireStandard.value() == wire.get_standard().value());
                 std::cout << magic_enum::enum_name(wire.get_standard().value()) << std::endl;
                 if (firstWireStandard.value() != wire.get_standard().value()) {
                     throw std::runtime_error("DEBUG");
@@ -698,9 +697,9 @@ void check_winding_losses(OpenMagnetics::Mas mas) {
             for (auto lossesElement : windingLossesPerWinding) {
                 ohmicLossesPerWinding += lossesElement.get_ohmic_losses()->get_losses();
             }
-            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerLayer, ohmicLossesPerTurn * 0.001);
-            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerSection, ohmicLossesPerTurn * 0.001);
-            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerWinding, ohmicLossesPerTurn * 0.001);
+            REQUIRE_THAT(ohmicLossesPerTurn, Catch::Matchers::WithinAbs(ohmicLossesPerLayer, ohmicLossesPerTurn * 0.001));
+            REQUIRE_THAT(ohmicLossesPerTurn, Catch::Matchers::WithinAbs(ohmicLossesPerSection, ohmicLossesPerTurn * 0.001));
+            REQUIRE_THAT(ohmicLossesPerTurn, Catch::Matchers::WithinAbs(ohmicLossesPerWinding, ohmicLossesPerTurn * 0.001));
             totalWindingLossesByTurn += ohmicLossesPerTurn;
             totalWindingLossesByLayer += ohmicLossesPerLayer;
             totalWindingLossesBySection += ohmicLossesPerSection;
@@ -737,9 +736,9 @@ void check_winding_losses(OpenMagnetics::Mas mas) {
                     skinLossesPerWinding += harmonicLoss;
                 }
             }
-            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerLayer, skinLossesPerTurn * 0.001);
-            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerSection, skinLossesPerTurn * 0.001);
-            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerWinding, skinLossesPerTurn * 0.001);
+            REQUIRE_THAT(skinLossesPerTurn, Catch::Matchers::WithinAbs(skinLossesPerLayer, skinLossesPerTurn * 0.001));
+            REQUIRE_THAT(skinLossesPerTurn, Catch::Matchers::WithinAbs(skinLossesPerSection, skinLossesPerTurn * 0.001));
+            REQUIRE_THAT(skinLossesPerTurn, Catch::Matchers::WithinAbs(skinLossesPerWinding, skinLossesPerTurn * 0.001));
             totalWindingLossesByTurn += skinLossesPerTurn;
             totalWindingLossesByLayer += skinLossesPerLayer;
             totalWindingLossesBySection += skinLossesPerSection;
@@ -776,19 +775,19 @@ void check_winding_losses(OpenMagnetics::Mas mas) {
                     proximityLossesPerWinding += harmonicLoss;
                 }
             }
-            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerLayer, proximityLossesPerTurn * 0.001);
-            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerSection, proximityLossesPerTurn * 0.001);
-            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerWinding, proximityLossesPerTurn * 0.001);
+            REQUIRE_THAT(proximityLossesPerTurn, Catch::Matchers::WithinAbs(proximityLossesPerLayer, proximityLossesPerTurn * 0.001));
+            REQUIRE_THAT(proximityLossesPerTurn, Catch::Matchers::WithinAbs(proximityLossesPerSection, proximityLossesPerTurn * 0.001));
+            REQUIRE_THAT(proximityLossesPerTurn, Catch::Matchers::WithinAbs(proximityLossesPerWinding, proximityLossesPerTurn * 0.001));
             totalWindingLossesByTurn += proximityLossesPerTurn;
             totalWindingLossesByLayer += proximityLossesPerLayer;
             totalWindingLossesBySection += proximityLossesPerSection;
             totalWindingLossesByWinding += proximityLossesPerWinding;
         }
 
-        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByTurn, totalWindingLosses * 0.001);
-        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByLayer, totalWindingLosses * 0.001);
-        CHECK_CLOSE(totalWindingLosses, totalWindingLossesBySection, totalWindingLosses * 0.001);
-        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByWinding, totalWindingLosses * 0.001);
+        REQUIRE_THAT(totalWindingLosses, Catch::Matchers::WithinAbs(totalWindingLossesByTurn, totalWindingLosses * 0.001));
+        REQUIRE_THAT(totalWindingLosses, Catch::Matchers::WithinAbs(totalWindingLossesByLayer, totalWindingLosses * 0.001));
+        REQUIRE_THAT(totalWindingLosses, Catch::Matchers::WithinAbs(totalWindingLossesBySection, totalWindingLosses * 0.001));
+        REQUIRE_THAT(totalWindingLosses, Catch::Matchers::WithinAbs(totalWindingLossesByWinding, totalWindingLosses * 0.001));
     }
 }
 

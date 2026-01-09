@@ -9,6 +9,7 @@
 
 #include <MAS.hpp>
 #include <vector>
+#include "support/Exceptions.h"
 
 using namespace MAS;
 using json = nlohmann::json;

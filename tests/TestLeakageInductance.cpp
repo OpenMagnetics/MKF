@@ -21,7 +21,7 @@ static auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().app
 static bool plot = false;
 
 TEST_CASE("Calculate leakage inductance for a E core with same number of turns", "[physical-model][leakage-inductance]") {
-    settings->reset();
+    settings.reset();
     std::vector<int64_t> numberTurns({69, 69});
     std::vector<int64_t> numberParallels({1, 1});
     std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -44,7 +44,7 @@ TEST_CASE("Calculate leakage inductance for a E core with same number of turns",
     double expectedLeakageInductance = 6.7e-6;
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a E core with different number of turns", "[physical-model][leakage-inductance]") {
@@ -70,7 +70,7 @@ TEST_CASE("Calculate leakage inductance for a E core with different number of tu
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a E core with different number of turns and larger Litz wire", "[physical-model][leakage-inductance]") {
@@ -108,7 +108,7 @@ TEST_CASE("Calculate leakage inductance for a E core with different number of tu
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
     }
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a larger E core with different number of turns and larger Litz wire and interleaving", "[physical-model][leakage-inductance]") {
@@ -141,7 +141,7 @@ TEST_CASE("Calculate leakage inductance for a larger E core with different numbe
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a PQ core with with several parallels", "[physical-model][leakage-inductance]") {
@@ -182,7 +182,7 @@ TEST_CASE("Calculate leakage inductance for a PQ core with with several parallel
         painter.export_svg();
     }
 
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a PQ core with with several parallels with interleaving", "[physical-model][leakage-inductance]") {
@@ -229,7 +229,7 @@ TEST_CASE("Calculate leakage inductance for a PQ core with with several parallel
         painter.export_svg();
     }
 
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a ETD core", "[physical-model][leakage-inductance]") {
@@ -257,11 +257,11 @@ TEST_CASE("Calculate leakage inductance for a ETD core", "[physical-model][leaka
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding orientation", "[physical-model][leakage-inductance]") {
-    settings->set_coil_try_rewind(false);
+    settings.set_coil_try_rewind(false);
     std::vector<int64_t> numberTurns({27, 3});
     std::vector<int64_t> numberParallels({1, 1});
     std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -298,7 +298,7 @@ TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding or
         OpenMagnetics::to_file(outFile, magnetic);
     }
     if (plot) {
-        // settings->set_painter_mode(PainterModes::QUIVER);
+        // settings.set_painter_mode(PainterModes::QUIVER);
 
         // auto leakageMagneticField = LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 1);
 
@@ -314,11 +314,11 @@ TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding or
         painter.export_svg();
     }
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a PQ core with overlapping winding orientation and large Litz wires", "[physical-model][leakage-inductance]") {
-    settings->set_leakage_inductance_grid_precision_level_wound(2);
+    settings.set_leakage_inductance_grid_precision_level_wound(2);
     std::vector<int64_t> numberTurns({20, 2});
     std::vector<int64_t> numberParallels({1, 3});
     std::vector<double> turnsRatios({10});
@@ -353,12 +353,12 @@ TEST_CASE("Calculate leakage inductance for a PQ core with overlapping winding o
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
     // }
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding orientation and large Litz wires", "[physical-model][leakage-inductance]") {
     double localMaximumError = 0.4;
-    settings->set_coil_try_rewind(false);
+    settings.set_coil_try_rewind(false);
     std::vector<int64_t> numberTurns({20, 2});
     std::vector<int64_t> numberParallels({1, 3});
     std::vector<double> turnsRatios({10});
@@ -394,11 +394,11 @@ TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding or
         outFile.append("Leakage_Inductance_Failing_Test.json");
         OpenMagnetics::to_file(outFile, magnetic);
     }
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for an E core with three windings", "[physical-model][leakage-inductance]") {
-    settings->reset();
+    settings.reset();
     std::vector<int64_t> numberTurns({50, 100, 25});
     std::vector<int64_t> numberParallels({1, 1, 1});
     std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1], double(numberTurns[0]) / numberTurns[2]});
@@ -431,13 +431,13 @@ TEST_CASE("Calculate leakage inductance for an E core with three windings", "[ph
     auto leakageInductance_12 = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 2).get_leakage_inductance_per_winding()[0].get_nominal().value();
     auto leakageInductance_21 = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 2, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance_12, WithinRel(leakageInductance_21 * pow(double(numberTurns[1]) / numberTurns[2], 2), 0.01));
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous sections", "[physical-model][leakage-inductance][toroidal-core]") {
-    settings->reset();
+    settings.reset();
     clear_databases();
-    settings->set_coil_try_rewind(false);
+    settings.set_coil_try_rewind(false);
     std::vector<int64_t> numberTurns({10, 200});
     std::vector<int64_t> numberParallels({1, 1});
     std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -469,7 +469,7 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     if (plot) {
-        settings->set_painter_mode(PainterModes::QUIVER);
+        settings.set_painter_mode(PainterModes::QUIVER);
         auto leakageMagneticField = LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 1);
 
         auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -486,12 +486,12 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     }
 
 
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous sections with few turns", "[physical-model][leakage-inductance][toroidal-core]") {
-    settings->reset();
-    settings->set_coil_try_rewind(false);
+    settings.reset();
+    settings.set_coil_try_rewind(false);
     clear_databases();
     std::vector<int64_t> numberTurns({10, 5});
     std::vector<int64_t> numberParallels({1, 1});
@@ -536,7 +536,7 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     }
 
 
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physical-model][leakage-inductance][planar]") {
@@ -548,8 +548,8 @@ TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physic
 
     double frequency = 100000;
     double expectedLeakageInductance = 1.4e-6;
-    // settings->set_magnetic_field_number_points_x(100);
-    // settings->set_magnetic_field_number_points_y(100);
+    // settings.set_magnetic_field_number_points_x(100);
+    // settings.set_magnetic_field_number_points_y(100);
     std::vector<double> turnsRatios = magnetic.get_turns_ratios();
 
     auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, 0.001, 25, turnsRatios, {sqrt(2), sqrt(2), 0});
@@ -560,8 +560,8 @@ TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physic
     // if (true) {
         auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
-        settings->set_painter_include_fringing(false);
-        settings->set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_include_fringing(false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
         outFile.append("Test_Leakage_Inductance_Planar.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
@@ -573,12 +573,12 @@ TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physic
     // }
 
 
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Checks that increasing insulation between layers keeps leakage inductance consistent", "[physical-model][leakage-inductance][planar][bug]") {
-    settings->set_leakage_inductance_grid_auto_scaling(true);
-    settings->set_coil_maximum_layers_planar(60);
+    settings.set_leakage_inductance_grid_auto_scaling(true);
+    settings.set_coil_maximum_layers_planar(60);
     std::string file_path = __FILE__;
     auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_unstable_leakage.json");
     OpenMagnetics::Mas mas;
@@ -611,8 +611,8 @@ TEST_CASE("Checks that increasing insulation between layers keeps leakage induct
         auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, 0.001, 25, turnsRatios, {sqrt(2), sqrt(2), 0});
         auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
-        settings->set_painter_include_fringing(false);
-        settings->set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_include_fringing(false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
         outFile.append("Test_Leakage_Inductance_Planar_Bug_Insulation.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
@@ -624,7 +624,7 @@ TEST_CASE("Checks that increasing insulation between layers keeps leakage induct
     }
 
 
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Benchmarks leakage inductance calculation in planar", "[physical-model][leakage-inductance][!benchmark]") {
@@ -658,7 +658,7 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web", "[p
         OpenMagnetics::to_file(outFile, magnetic);
     }
 
-    settings->reset();
+    settings.reset();
 }
 
 TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "[physical-model][leakage-inductance][planar][bug]") {
@@ -681,7 +681,7 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "
         OpenMagnetics::to_file(outFile, magnetic);
     }
 
-    settings->reset();
+    settings.reset();
 }
 
 
@@ -694,8 +694,8 @@ TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physica
 
     double frequency = 100000;
     double expectedLeakageInductance = 1.4e-6;
-    // settings->set_magnetic_field_number_points_x(100);
-    // settings->set_magnetic_field_number_points_y(100);
+    // settings.set_magnetic_field_number_points_x(100);
+    // settings.set_magnetic_field_number_points_y(100);
     // std::vector<double> turnsRatios = magnetic.get_turns_ratios();
 
     // auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, 0.001, 25, turnsRatios, {sqrt(2), sqrt(2), 0});
@@ -706,8 +706,8 @@ TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physica
     // // if (true) {
     //     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     //     auto outFile = outputFilePath;
-    //     settings->set_painter_include_fringing(false);
-    //     settings->set_painter_mode(PainterModes::CONTOUR);
+    //     settings.set_painter_include_fringing(false);
+    //     settings.set_painter_mode(PainterModes::CONTOUR);
     //     outFile.append("Test_Leakage_Inductance_Planar.svg");
     //     std::filesystem::remove(outFile);
     //     Painter painter(outFile, true);
@@ -719,7 +719,7 @@ TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physica
     // // }
 
 
-    settings->reset();
+    settings.reset();
 }
 
 
@@ -732,8 +732,8 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 3", "
 
     double frequency = 100000;
     double expectedLeakageInductance = 1.4e-6;
-    // settings->set_magnetic_field_number_points_x(100);
-    // settings->set_magnetic_field_number_points_y(100);
+    // settings.set_magnetic_field_number_points_x(100);
+    // settings.set_magnetic_field_number_points_y(100);
     // std::vector<double> turnsRatios = magnetic.get_turns_ratios();
 
     // auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, 0.001, 25, turnsRatios, {sqrt(2), sqrt(2), 0});
@@ -744,8 +744,8 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 3", "
     // // if (true) {
     //     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     //     auto outFile = outputFilePath;
-    //     settings->set_painter_include_fringing(false);
-    //     settings->set_painter_mode(PainterModes::CONTOUR);
+    //     settings.set_painter_include_fringing(false);
+    //     settings.set_painter_mode(PainterModes::CONTOUR);
     //     outFile.append("Test_Leakage_Inductance_Planar.svg");
     //     std::filesystem::remove(outFile);
     //     Painter painter(outFile, true);
@@ -757,5 +757,5 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 3", "
     // // }
 
 
-    settings->reset();
+    settings.reset();
 }

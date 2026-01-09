@@ -4,12 +4,13 @@
 #include "support/Utils.h"
 
 #include "TestingUtils.h"
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(WindingOhmicLosses) {
+namespace {
     double maximumError = 0.05;
 
     OperatingPoint get_operating_point_with_dc_current(std::vector<double> dcCurrents) {
@@ -46,7 +47,7 @@ SUITE(WindingOhmicLosses) {
         return winding;
     }
 
-    TEST(Test_Round_Wire_20C) {
+    TEST_CASE("Test_Round_Wire_20C", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -59,10 +60,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 211.1e-3;
-        CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
+        REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST(Test_Round_Wire_200C) {
+    TEST_CASE("Test_Round_Wire_200C", "[physical-model][ohmic-losses]") {
         double temperature = 200;
         Turn turn;
         turn.set_length(1);
@@ -75,10 +76,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 357e-3;
-        CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
+        REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST(Test_Litz_Wire_Small) {
+    TEST_CASE("Test_Litz_Wire_Small", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -97,10 +98,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 0.4625;
-        CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
+        REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST(Test_Litz_Wire_Large) {
+    TEST_CASE("Test_Litz_Wire_Large", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -119,10 +120,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 0.0025;
-        CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
+        REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST(Test_Foil_Wire_20C) {
+    TEST_CASE("Test_Foil_Wire_20C", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -136,10 +137,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 3.3e-3;
-        CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
+        REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST(Test_Rectangular_Wire_20C) {
+    TEST_CASE("Test_Rectangular_Wire_20C", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -153,10 +154,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 3.3e-3;
-        CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
+        REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST(Test_Winding_Ohmic_Losses_One_Turn) {
+    TEST_CASE("Test_Winding_Ohmic_Losses_One_Turn", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
@@ -167,10 +168,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 3.1e-3;
-        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
+        REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST(Test_Winding_Ohmic_Losses_Two_Turns) {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Turns", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {1};
@@ -181,10 +182,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 6.2e-3;
-        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
+        REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST(Test_Winding_Ohmic_Losses_Two_Turns_Two_Parallels) {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Turns_Two_Parallels", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {2};
@@ -195,10 +196,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 3.1e-3;
-        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
+        REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST(Test_Winding_Ohmic_Losses_One_Turn_Double_Current) {
+    TEST_CASE("Test_Winding_Ohmic_Losses_One_Turn_Double_Current", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
@@ -209,10 +210,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 12.4e-3;
-        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
+        REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST(Test_Winding_Ohmic_Losses_Two_Windings) {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {1, 2};
         std::vector<int64_t> numberParallels = {1, 2};
@@ -223,10 +224,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 6.55e-3;
-        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
+        REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST(Test_Winding_Ohmic_Losses_Two_Windings_Double_Turns) {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings_Double_Turns", "[physical-model][ohmic-losses]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {2, 4};
         std::vector<int64_t> numberParallels = {1, 2};
@@ -237,10 +238,10 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 2 * 6.55e-3;
-        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
+        REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST(Test_Winding_Ohmic_Losses_Two_Windings_High_Temp) {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings_High_Temp", "[physical-model][ohmic-losses]") {
         double temperature = 120;
         std::vector<int64_t> numberTurns = {1, 2};
         std::vector<int64_t> numberParallels = {1, 2};
@@ -251,7 +252,8 @@ SUITE(WindingOhmicLosses) {
         auto windingOhmicLosses = WindingOhmicLosses();
         double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 9.2e-3;
-        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
+        REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-}
+
+}  // namespace

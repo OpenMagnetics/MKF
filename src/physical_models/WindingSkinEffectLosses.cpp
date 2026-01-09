@@ -11,6 +11,7 @@
 #include <streambuf>
 #include <vector>
 #include <functional>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -34,7 +35,7 @@ std::shared_ptr<WindingSkinEffectLossesModel>  WindingSkinEffectLossesModel::fac
         return std::make_shared<WindingSkinEffectLossesKutkutModel>();
     }
     else
-        throw std::runtime_error("Unknown wire skin effect losses mode, available options are: {DOWELL, WOJDA, ALBACH, PAYNE, NAN, VANDELAC_ZIOGAS, KAZIMIERCZUK, KUTKUT, FERREIRA, DIMITRAKAKIS, WANG, HOLGUIN, PERRY}");
+        throw ModelNotAvailableException("Unknown wire skin effect losses mode, available options are: {DOWELL, WOJDA, ALBACH, PAYNE, NAN, VANDELAC_ZIOGAS, KAZIMIERCZUK, KUTKUT, FERREIRA, DIMITRAKAKIS, WANG, HOLGUIN, PERRY}");
 }
 
 std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model(WireType wireType) {
@@ -56,7 +57,7 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model
             return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::KUTKUT);
         }
         default:
-            throw std::runtime_error("Unknown type of wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 }
 
@@ -86,7 +87,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
     auto model = get_model(wire.get_type());
 
     if (!current.get_harmonics()) {
-        throw std::runtime_error("Current is missing harmonics");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing harmonics");
     }
     auto harmonics = current.get_harmonics().value();
 
@@ -112,7 +113,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 
 WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold) {
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Winding does not have turns description");
+        throw CoilNotProcessedException("Winding does not have turns description");
     }
     auto turns = coil.get_turns_description().value();
     auto currentDividerPerTurn = windingLossesOutput.get_current_divider_per_turn().value();
@@ -120,7 +121,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform() || 
         operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform()->get_data().size() == 0)
     {
-        throw std::runtime_error("Input has no waveform. TODO: get waveform from processed data");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Input has no waveform. TODO: get waveform from processed data");
     }
     operatingPoint = Inputs::prune_harmonics(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
@@ -220,7 +221,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
         }
         case WireType::LITZ: {
             if (!wire.get_strand())
-                throw std::runtime_error("Litz wire is missing strand information");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Litz wire is missing strand information");
 
             auto strand = Wire::resolve_strand(wire);
             penetrationRatio = pow(std::numbers::pi / 4, 3 / 4) * resolve_dimensional_values(strand.get_conducting_diameter()) / skinDepth * sqrt(resolve_dimensional_values(strand.get_conducting_diameter()) / resolve_dimensional_values(strand.get_outer_diameter().value()));
@@ -237,7 +238,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
             break;
         }
         default:
-            throw std::runtime_error("Unknown type of wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
     return penetrationRatio;
@@ -285,7 +286,7 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
         wireOuterRadius = resolve_dimensional_values(strand.get_outer_diameter().value()) / 2;
     }
     else {
-        throw std::runtime_error("Unknown type of wire");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
     std::complex<double> alpha(1, 1);
@@ -356,7 +357,7 @@ double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(const Wire& w
         wireHeight = resolve_dimensional_values(wire.get_conducting_diameter().value());
     }
     else {
-        throw std::runtime_error("Unknown type of wire");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
     double xi = wireHeight / skinDepth;
@@ -397,7 +398,7 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[may
         a = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
     }
     else {
-        throw std::runtime_error("Unknown type of wire");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
     double c = sqrt(pow(b, 2) - pow(a, 2));
@@ -423,7 +424,7 @@ double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(Wire wire, doub
         aPrima = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
     }
     else {
-        throw std::runtime_error("Unknown type of wire");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
     auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);

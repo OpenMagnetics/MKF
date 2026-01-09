@@ -4,6 +4,7 @@
 #include "processors/MagneticSimulator.h"
 #include "support/Painter.h"
 #include <magic_enum_utility.hpp>
+#include "support/Logger.h"
 
 
 namespace OpenMagnetics {
@@ -60,9 +61,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     std::vector<Mas> masData;
 
     if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
-        settings->set_use_toroidal_cores(true);
-        settings->set_use_only_cores_in_stock(false);
-        settings->set_use_concentric_cores(false);
+        settings.set_use_toroidal_cores(true);
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_concentric_cores(false);
     }
 
     if (coreDatabase.empty()) {
@@ -72,8 +73,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         load_wires();
     }
 
-    bool previousCoilIncludeAdditionalCoordinates = settings->get_coil_include_additional_coordinates();
-    settings->set_coil_include_additional_coordinates(false);
+    bool previousCoilIncludeAdditionalCoordinates = settings.get_coil_include_additional_coordinates();
+    settings.set_coil_include_additional_coordinates(false);
 
     std::map<CoreAdviser::CoreAdviserFilters, double> coreWeights;
     for (auto flowStep : filterFlow) {
@@ -145,9 +146,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 }
 
                 if (previousCoilIncludeAdditionalCoordinates) {
-                    settings->set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
+                    settings.set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
                     mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
-                    settings->set_coil_include_additional_coordinates(false);
+                    settings.set_coil_include_additional_coordinates(false);
                 }
                 mas = magneticSimulator.simulate(mas);
 
@@ -176,54 +177,54 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
     }
 
-    settings->set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
+    settings.set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
     return masMagneticsWithScoring;
 }
 
-std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, size_t maximumNumberResults, bool strict) {
-    return get_advised_magnetic(inputs, catalogMagnetics, _defaultCatalogMagneticFilterFlow, maximumNumberResults, strict);
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogueMagnetics, size_t maximumNumberResults, bool strict) {
+    return get_advised_magnetic(inputs, catalogueMagnetics, _defaultCatalogueMagneticFilterFlow, maximumNumberResults, strict);
 }
 
-std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
-    std::vector<Mas> catalogMagneticsWithInputs;
-    for (auto magnetic : catalogMagnetics) {
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
+    std::vector<Mas> catalogueMagneticsWithInputs;
+    for (auto magnetic : catalogueMagnetics) {
         if (inputs.get_operating_points().size() > 0 && magnetic.get_mutable_coil().get_functional_description().size() != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
             continue;
         }
         Mas mas;
         mas.set_inputs(inputs);
         mas.set_magnetic(magnetic);
-        catalogMagneticsWithInputs.push_back(mas);
+        catalogueMagneticsWithInputs.push_back(mas);
     }
 
-    return get_advised_magnetic(catalogMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
+    return get_advised_magnetic(catalogueMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
 }
 
-std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<std::string, Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
-    std::vector<Mas> catalogMagneticsWithInputs;
-    for (auto [reference, magnetic] : catalogMagnetics) {
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<std::string, Magnetic> catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
+    std::vector<Mas> catalogueMagneticsWithInputs;
+    for (auto [reference, magnetic] : catalogueMagnetics) {
         if (inputs.get_operating_points().size() > 0 && magnetic.get_mutable_coil().get_functional_description().size() != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
             continue;
         }
         Mas mas;
         mas.set_inputs(inputs);
         mas.set_magnetic(magnetic);
-        catalogMagneticsWithInputs.push_back(mas);
+        catalogueMagneticsWithInputs.push_back(mas);
     }
 
-    return get_advised_magnetic(catalogMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
+    return get_advised_magnetic(catalogueMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
 }
 
-std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogueMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
 
-    load_filter_flow(filterFlow, catalogMagneticsWithInputs[0].get_inputs());
+    load_filter_flow(filterFlow, catalogueMagneticsWithInputs[0].get_inputs());
     std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;
     std::vector<MagneticFilterOperation> nonStrictlyRequiredFilterFlow;
     std::vector<Mas> validMas;
     MagneticSimulator magneticSimulator;
 
     std::map<std::string, double> scoringPerReference;
-    std::vector<Mas> catalogMasWithStriclyRequirementsPassed;
+    std::vector<Mas> catalogueMasWithStriclyRequirementsPassed;
     for (auto filterConfiguration : filterFlow) {
         if (filterConfiguration.get_strictly_required()) {
             strictlyRequiredFilterFlow.push_back(filterConfiguration);
@@ -233,8 +234,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             nonStrictlyRequiredFilterFlow.push_back(filterConfiguration);
         }
     }
-    for (size_t index = 0; index < catalogMagneticsWithInputs.size(); ++index) {
-        auto mas = catalogMagneticsWithInputs[index];
+    for (size_t index = 0; index < catalogueMagneticsWithInputs.size(); ++index) {
+        auto mas = catalogueMagneticsWithInputs[index];
         std::vector<Outputs> outputs;
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
@@ -263,12 +264,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             resultMas.set_magnetic(magnetic);
             resultMas.set_inputs(inputs);
             resultMas.set_outputs(outputs);
-            catalogMasWithStriclyRequirementsPassed.push_back(resultMas);
+            catalogueMasWithStriclyRequirementsPassed.push_back(resultMas);
         }
     }
 
-    for (size_t index = 0; index < catalogMasWithStriclyRequirementsPassed.size(); ++index) {
-        auto mas = catalogMasWithStriclyRequirementsPassed[index];
+    for (size_t index = 0; index < catalogueMasWithStriclyRequirementsPassed.size(); ++index) {
+        auto mas = catalogueMasWithStriclyRequirementsPassed[index];
         std::vector<Outputs> outputs;
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
@@ -333,8 +334,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
 
     }
     else {
-        if (catalogMasWithStriclyRequirementsPassed.size() > 0) {
-            return get_advised_magnetic(catalogMasWithStriclyRequirementsPassed, filterFlow, maximumNumberResults, false);
+        if (catalogueMasWithStriclyRequirementsPassed.size() > 0) {
+            return get_advised_magnetic(catalogueMasWithStriclyRequirementsPassed, filterFlow, maximumNumberResults, false);
         }
         return {};
     }
@@ -516,12 +517,12 @@ bool is_number(const std::string& s)
 
 //             outputFilename.replace_extension("svg");
 //             OpenMagnetics::Painter painter(outputFilename);
-//             settings->set_painter_mode(OpenMagnetics::PainterModes::CONTOUR);
+//             settings.set_painter_mode(OpenMagnetics::PainterModes::CONTOUR);
 
-//             settings->set_painter_number_points_x(20);
-//             settings->set_painter_number_points_y(20);
-//             settings->set_painter_include_fringing(false);
-//             settings->set_painter_mirroring_dimension(0);
+//             settings.set_painter_number_points_x(20);
+//             settings.set_painter_number_points_y(20);
+//             settings.set_painter_include_fringing(false);
+//             settings.set_painter_mirroring_dimension(0);
 
 //             painter.paint_magnetic_field(masMagnetics[i].first.get_mutable_inputs().get_operating_point(0), masMagnetics[i].first.get_mutable_magnetic());
 //             painter.paint_core(masMagnetics[i].first.get_mutable_magnetic());

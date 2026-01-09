@@ -5,14 +5,14 @@
 #include "processors/Inputs.h"
 #include "TestingUtils.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <vector>
 
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(WireAdviser) {
-    auto settings = Settings::GetInstance();
+namespace {
     OpenMagnetics::Winding coilFunctionalDescription;
     Section section;
     SignalDescriptor current;
@@ -25,7 +25,6 @@ SUITE(WireAdviser) {
     double temperature = 22;
     uint8_t numberSections = 1;
     size_t maximumNumberResults = 1;
-
 
     void setup() {
         coilFunctionalDescription.set_isolation_side(IsolationSide::PRIMARY);
@@ -46,29 +45,28 @@ SUITE(WireAdviser) {
         current.set_processed(processed);
     }
 
-    TEST(Test_Round) {
-        settings->reset();
+    TEST_CASE("Test_Round", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 2;
         currentRms = 10;
         currentEffectiveFrequency = 134567;
         setup();
         WireAdviser wireAdviser;
-        settings->set_wire_adviser_include_foil(false);
-        settings->set_wire_adviser_include_rectangular(false);
-        settings->set_wire_adviser_include_litz(false);
-        settings->set_wire_adviser_include_round(true);
+        settings.set_wire_adviser_include_foil(false);
+        settings.set_wire_adviser_include_rectangular(false);
+        settings.set_wire_adviser_include_litz(false);
+        settings.set_wire_adviser_include_round(true);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
+        REQUIRE(masMagneticsWithCoil.size() > 0);
 
-        CHECK(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-
-    TEST(Test_Round_IEC_60317) {
-        settings->reset();
+    TEST_CASE("Test_Round_IEC_60317", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 2;
         currentRms = 10;
@@ -76,20 +74,20 @@ SUITE(WireAdviser) {
         setup();
         WireAdviser wireAdviser;
         wireAdviser.set_common_wire_standard(WireStandard::IEC_60317);
-        settings->set_wire_adviser_include_foil(false);
-        settings->set_wire_adviser_include_rectangular(false);
-        settings->set_wire_adviser_include_litz(false);
-        settings->set_wire_adviser_include_round(true);
+        settings.set_wire_adviser_include_foil(false);
+        settings.set_wire_adviser_include_rectangular(false);
+        settings.set_wire_adviser_include_litz(false);
+        settings.set_wire_adviser_include_round(true);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_standard().value() == WireStandard::IEC_60317);
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_standard().value() == WireStandard::IEC_60317);
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_Round_NEMA_MW_1000_C) {
-        settings->reset();
+    TEST_CASE("Test_Round_NEMA_MW_1000_C", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 2;
         currentRms = 10;
@@ -97,77 +95,77 @@ SUITE(WireAdviser) {
         setup();
         WireAdviser wireAdviser;
         wireAdviser.set_common_wire_standard(WireStandard::NEMA_MW_1000_C);
-        settings->set_wire_adviser_include_foil(false);
-        settings->set_wire_adviser_include_rectangular(false);
-        settings->set_wire_adviser_include_litz(false);
-        settings->set_wire_adviser_include_round(true);
+        settings.set_wire_adviser_include_foil(false);
+        settings.set_wire_adviser_include_rectangular(false);
+        settings.set_wire_adviser_include_litz(false);
+        settings.set_wire_adviser_include_round(true);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_standard().value() == WireStandard::NEMA_MW_1000_C);
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_standard().value() == WireStandard::NEMA_MW_1000_C);
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_Litz) {
-        settings->reset();
+    TEST_CASE("Test_Litz", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 2;
         currentRms = 10;
         currentEffectiveFrequency = 134567;
         setup();
         WireAdviser wireAdviser;
-        settings->set_wire_adviser_include_foil(false);
-        settings->set_wire_adviser_include_rectangular(false);
-        settings->set_wire_adviser_include_litz(true);
-        settings->set_wire_adviser_include_round(false);
+        settings.set_wire_adviser_include_foil(false);
+        settings.set_wire_adviser_include_rectangular(false);
+        settings.set_wire_adviser_include_litz(true);
+        settings.set_wire_adviser_include_round(false);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_Rectangular) {
-        settings->reset();
+    TEST_CASE("Test_Rectangular", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 2;
         currentRms = 10;
         currentEffectiveFrequency = 134567;
         setup();
         WireAdviser wireAdviser;
-        settings->set_wire_adviser_include_foil(false);
-        settings->set_wire_adviser_include_rectangular(true);
-        settings->set_wire_adviser_include_litz(false);
-        settings->set_wire_adviser_include_round(false);
+        settings.set_wire_adviser_include_foil(false);
+        settings.set_wire_adviser_include_rectangular(true);
+        settings.set_wire_adviser_include_litz(false);
+        settings.set_wire_adviser_include_round(false);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::RECTANGULAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::RECTANGULAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_Foil) {
-        settings->reset();
+    TEST_CASE("Test_Foil", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 2;
         currentRms = 10;
         currentEffectiveFrequency = 134567;
         setup();
         WireAdviser wireAdviser;
-        settings->set_wire_adviser_include_foil(true);
-        settings->set_wire_adviser_include_rectangular(false);
-        settings->set_wire_adviser_include_litz(false);
-        settings->set_wire_adviser_include_round(false);
+        settings.set_wire_adviser_include_foil(true);
+        settings.set_wire_adviser_include_rectangular(false);
+        settings.set_wire_adviser_include_litz(false);
+        settings.set_wire_adviser_include_round(false);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::FOIL == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::FOIL == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_Planar) {
-        settings->reset();
+    TEST_CASE("Test_Planar_2", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 20;
         currentRms = 10;
@@ -184,12 +182,12 @@ SUITE(WireAdviser) {
         auto masMagneticsWithCoil = wireAdviser.get_advised_planar_wire(coilFunctionalDescription, section, current, temperature, 3, 1000);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::PLANAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::PLANAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_WireAdviser_Low_Frequency_Few_Turns) {
-        settings->reset();
+    TEST_CASE("Test_WireAdviser_Low_Frequency_Few_Turns", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 2;
         currentRms = 100;
@@ -199,12 +197,12 @@ SUITE(WireAdviser) {
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::RECTANGULAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::RECTANGULAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_WireAdviser_Low_Frequency_Many_Turns) {
-        settings->reset();
+    TEST_CASE("Test_WireAdviser_Low_Frequency_Many_Turns", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 42;
         currentRms = 2;
@@ -219,12 +217,12 @@ SUITE(WireAdviser) {
                                                                  maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_WireAdviser_Low_Frequency_Gazillion_Turns) {
-        settings->reset();
+    TEST_CASE("Test_WireAdviser_Low_Frequency_Gazillion_Turns", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 666;
         currentRms = 0.2;
@@ -239,13 +237,12 @@ SUITE(WireAdviser) {
                                                                  maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
-
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_WireAdviser_Medium_Frequency_Few_Turns) {
-        settings->reset();
+    TEST_CASE("Test_WireAdviser_Medium_Frequency_Few_Turns", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 2;
         currentRms = 2;
@@ -260,14 +257,13 @@ SUITE(WireAdviser) {
                                                                  maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
-        CHECK(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_number_conductors().value() < 500);
-
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_number_conductors().value() < 500);
     }
 
-    TEST(Test_WireAdviser_Medium_High_Frequency_Many_Turns) {
-        settings->reset();
+    TEST_CASE("Test_WireAdviser_Medium_High_Frequency_Many_Turns", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 42;
         currentRms = 2;
@@ -282,13 +278,13 @@ SUITE(WireAdviser) {
                                                                  maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
-        CHECK(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_number_conductors().value() < 100);
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_number_conductors().value() < 100);
     }
 
-    TEST(Test_WireAdviser_High_Frequency_Few_Turns_High_Current) {
-        settings->reset();
+    TEST_CASE("Test_WireAdviser_High_Frequency_Few_Turns_High_Current", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 5;
         currentRms = 50;
@@ -303,12 +299,12 @@ SUITE(WireAdviser) {
                                                                  maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-        CHECK(masMagneticsWithCoil.size() > 0);
-        CHECK(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+        REQUIRE(masMagneticsWithCoil.size() > 0);
+        REQUIRE(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST(Test_WireAdviser_High_Frequency_High_Current) {
-        settings->reset();
+    TEST_CASE("Test_WireAdviser_High_Frequency_High_Current", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
         numberTurns = 10;
         currentRms = 50;
@@ -321,18 +317,18 @@ SUITE(WireAdviser) {
                                                                  temperature,
                                                                  numberSections,
                                                                  maximumNumberResults);
-        CHECK(masMagneticsWithCoil.size() > 0);
+        REQUIRE(masMagneticsWithCoil.size() > 0);
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
-            CHECK(WireType::RECTANGULAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+            REQUIRE(WireType::RECTANGULAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
         }
     }
 
-    TEST(Test_WireAdviser_Web_0) {
-        settings->reset();
+    TEST_CASE("Test_WireAdviser_Web_0", "[constructive-model][wire-adviser]") {
+        settings.reset();
         clear_databases();
-        settings->set_painter_simple_litz(false);
+        settings.set_painter_simple_litz(false);
 
         WireAdviser wireAdviser;
         OpenMagnetics::Winding coilFunctionalDescription(json::parse(R"({"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":1,"numberTurns":1,"wire":"Dummy"})"));
@@ -362,4 +358,5 @@ SUITE(WireAdviser) {
             painter.export_svg();
         }
     }
-}
+
+}  // namespace

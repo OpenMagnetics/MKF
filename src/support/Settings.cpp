@@ -2,14 +2,11 @@
 #include "support/Settings.h"
 
 namespace OpenMagnetics {
-    Settings* Settings::settings_= nullptr;
 
-    Settings *Settings::GetInstance()
+    Settings& Settings::GetInstance()
     {
-        if(settings_==nullptr){
-            settings_ = new Settings();
-        }
-        return settings_;
+        static Settings instance;
+        return instance;
     }
 
     Settings::Settings() {

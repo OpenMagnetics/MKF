@@ -3,6 +3,7 @@
 
 #include "support/Utils.h"
 #include <math.h>
+#include "support/Exceptions.h"
 
 
 namespace OpenMagnetics {
@@ -67,7 +68,7 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
     auto imaginaryPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(imaginaryPart);
 
     if (realPermeabilityPoints.size() < 2) {
-        throw std::runtime_error("Not enough complex permeability data for  " + coreMaterial.get_name());
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Not enough complex permeability data for  " + coreMaterial.get_name());
     }
 
     if (!complexPermeabilityRealInterps.contains(coreMaterial.get_name()))
@@ -94,7 +95,7 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
     double complexPermeabilityRealValue = std::max(1., complexPermeabilityRealInterps[coreMaterial.get_name()](frequency));
 
     if (std::isnan(complexPermeabilityRealValue)) {
-        throw std::runtime_error("complex Permeability real part must be a number, not NaN");
+        throw NaNResultException("complex Permeability real part must be a number, not NaN");
     }
 
     if (!complexPermeabilityImaginaryInterps.contains(coreMaterial.get_name()))
@@ -120,7 +121,7 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
     double complexPermeabilityImaginaryValue = complexPermeabilityImaginaryInterps[coreMaterial.get_name()](frequency);
 
     if (std::isnan(complexPermeabilityImaginaryValue)) {
-        throw std::runtime_error("complex Permeability imaginary part must be a number, not NaN");
+        throw NaNResultException("complex Permeability imaginary part must be a number, not NaN");
     }
 
     return {complexPermeabilityRealValue, complexPermeabilityImaginaryValue};

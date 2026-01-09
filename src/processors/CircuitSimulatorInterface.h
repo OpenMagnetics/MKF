@@ -5,6 +5,7 @@
 #include "support/Utils.h"
 #include <random>
 #include <chrono>
+#include "support/Exceptions.h"
 
 using ordered_json = nlohmann::ordered_json;
 

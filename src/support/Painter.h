@@ -6,6 +6,7 @@
 #include <MAS.hpp>
 #include "svg.hpp"
 #include <matplot/matplot.h>
+#include "support/Exceptions.h"
 
 using namespace MAS;
 
@@ -124,7 +125,7 @@ class PainterInterface {
             size_t numberLines = 0;
             double strokeWidth = 0;
             double lineRadiusIncrease = 0;
-            auto coatingColor = settings->get_painter_color_insulation();
+            auto coatingColor = settings.get_painter_color_insulation();
 
             switch (insulationWireCoatingType) {
                 case InsulationWireCoatingType::BARE:
@@ -135,7 +136,7 @@ class PainterInterface {
                     }
                     numberLines = coating.get_grade().value() + 1;
                     lineRadiusIncrease = insulationThickness / coating.get_grade().value() * 2;
-                    coatingColor = settings->get_painter_color_enamel();
+                    coatingColor = settings.get_painter_color_enamel();
                     break;
                 case InsulationWireCoatingType::SERVED:
                 case InsulationWireCoatingType::INSULATED:
@@ -146,23 +147,23 @@ class PainterInterface {
                         numberLines = coating.get_number_layers().value() + 1;
                         lineRadiusIncrease = insulationThickness / coating.get_number_layers().value() * 2;
                         if (insulationWireCoatingType == InsulationWireCoatingType::SERVED) {
-                            coatingColor = settings->get_painter_color_silk();
+                            coatingColor = settings.get_painter_color_silk();
                         }
                         else {
-                            coatingColor = settings->get_painter_color_fep();
+                            coatingColor = settings.get_painter_color_fep();
                             if (coating.get_material()) {
                                 std::string coatingMaterial = Wire::resolve_coating_insulation_material(coating).get_name();
                                 if (coatingMaterial == "PFA") {
-                                    coatingColor = settings->get_painter_color_pfa();
+                                    coatingColor = settings.get_painter_color_pfa();
                                 }
                                 else if (coatingMaterial == "FEP") {
-                                    coatingColor = settings->get_painter_color_fep();
+                                    coatingColor = settings.get_painter_color_fep();
                                 }
                                 else if (coatingMaterial == "ETFE") {
-                                    coatingColor = settings->get_painter_color_etfe();
+                                    coatingColor = settings.get_painter_color_etfe();
                                 }
                                 else if (coatingMaterial == "TCA") {
-                                    coatingColor = settings->get_painter_color_tca();
+                                    coatingColor = settings.get_painter_color_tca();
                                 }
                                 else {
                                     throw std::runtime_error("Unknown insulated wire material");
@@ -253,20 +254,20 @@ class BasicPainter : public PainterInterface {
             _filepath = filepath.remove_filename();
             _root = SVG::SVG();
                 
-            _root.style(".ferrite").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_ferrite()), std::regex("0x"), "#"));
-            _root.style(".bobbin").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_bobbin()), std::regex("0x"), "#"));
-            _root.style(".bobbin_translucent").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_bobbin()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
-            _root.style(".margin").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
-            _root.style(".margin_translucent").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
-            _root.style(".spacer").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_spacer()), std::regex("0x"), "#"));
-            _root.style(".copper").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
-            _root.style(".copper_translucent").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
-            _root.style(".insulation").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
-            _root.style(".insulation_translucent").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
-            _root.style(".fr4").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_fr4()), std::regex("0x"), "#"));
-            _root.style(".fr4_translucent").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_fr4()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
-            _root.style(".current_density").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_current_density()), std::regex("0x"), "#"));
-            _root.style(".text").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_text()), std::regex("0x"), "#"));
+            _root.style(".ferrite").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_ferrite()), std::regex("0x"), "#"));
+            _root.style(".bobbin").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_bobbin()), std::regex("0x"), "#"));
+            _root.style(".bobbin_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_bobbin()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
+            _root.style(".margin").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#"));
+            _root.style(".margin_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
+            _root.style(".spacer").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_spacer()), std::regex("0x"), "#"));
+            _root.style(".copper").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#"));
+            _root.style(".copper_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
+            _root.style(".insulation").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
+            _root.style(".insulation_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
+            _root.style(".fr4").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_fr4()), std::regex("0x"), "#"));
+            _root.style(".fr4_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_fr4()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
+            _root.style(".current_density").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_current_density()), std::regex("0x"), "#"));
+            _root.style(".text").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_text()), std::regex("0x"), "#"));
             _root.style(".white").set_attr("fill", "#ffffff");
             _root.style(".point").set_attr("fill", "#ff0000");
         };

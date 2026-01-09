@@ -2,7 +2,8 @@
 #include "physical_models/Reluctance.h"
 #include "TestingUtils.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -11,7 +12,7 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(Reluctance) {
+namespace {
     double maxError = 0.01;
     std::map<ReluctanceModels, double> maximumErrorReluctances = {
         {ReluctanceModels::ZHANG, 0.26},
@@ -65,7 +66,7 @@ SUITE(Reluctance) {
         if (error > maximumErrorReluctance) {
             std::cout << "error " << error * 100 << " %" << std::endl;
         }
-        CHECK_CLOSE(calculatedReluctance, expectedReluctance, expectedReluctance * maximumErrorReluctance);
+        REQUIRE_THAT(calculatedReluctance, Catch::Matchers::WithinAbs(expectedReluctance, expectedReluctance * maximumErrorReluctance));
         return error;
     }
 
@@ -81,15 +82,15 @@ SUITE(Reluctance) {
             auto result = reluctanceModel->get_gap_reluctance(gap);
             calculatedEnergy += result.get_maximum_storable_magnetic_energy();
 
-            CHECK(result.get_fringing_factor() >= 1);
-            CHECK(result.get_maximum_storable_magnetic_energy() >= 0);
+            REQUIRE(result.get_fringing_factor() >= 1);
+            REQUIRE(result.get_maximum_storable_magnetic_energy() >= 0);
         }
 
         auto error = fabs(expectedEnergy - calculatedEnergy) / expectedEnergy;
         if (error > maximumErrorEnergy) {
             std::cout << "error " << error * 100 << " %" << std::endl;
         }
-        CHECK_CLOSE(calculatedEnergy, expectedEnergy, expectedEnergy * maximumErrorEnergy);
+        REQUIRE_THAT(calculatedEnergy, Catch::Matchers::WithinAbs(expectedEnergy, expectedEnergy * maximumErrorEnergy));
         return error;
     }
 
@@ -233,431 +234,415 @@ SUITE(Reluctance) {
         }
     }
 
-    SUITE(ZhangModel) {
-        TEST(Test_PQ_28_20_Grinded) {
-            test_reluctance_pq_28_20_grinded(ReluctanceModels::ZHANG);
-        }
-
-        TEST(Test_E42_21_20_Spacer) {
-            test_reluctance_e42_21_20_spacer(ReluctanceModels::ZHANG);
-        }
-
-        TEST(Test_ETD_59_Spacer) {
-            test_reluctance_etd_59_spacer(ReluctanceModels::ZHANG);
-        }
-
-        TEST(Test_E_55_28_21_Spacer) {
-            test_reluctance_e_55_28_21_spacer(ReluctanceModels::ZHANG);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.03255}};
-
-            run_test_energy(ReluctanceModels::ZHANG, "PQ 40/40",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.122}};
-
-            run_test_energy(ReluctanceModels::ZHANG, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.2234}};
-
-            run_test_energy(ReluctanceModels::ZHANG, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
-        }
-
-        TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.3245}};
-
-            run_test_energy(ReluctanceModels::ZHANG, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Distributed) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.092}};
-
-            run_test_energy(ReluctanceModels::ZHANG, "PQ 40/40",
-                            OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
-        }
+    TEST_CASE("Test_Zhang_PQ_28_20_Grinded", "[physical-model][reluctance][zhang-reluctance-model]") {
+        test_reluctance_pq_28_20_grinded(ReluctanceModels::ZHANG);
     }
 
-    SUITE(MuehlethalerModel) {
-        TEST(Test_PQ_28_20_Grinded) {
-            test_reluctance_pq_28_20_grinded(ReluctanceModels::MUEHLETHALER);
-        }
-
-        TEST(Test_E42_21_20_Spacer) {
-            test_reluctance_e42_21_20_spacer(ReluctanceModels::MUEHLETHALER);
-        }
-
-        TEST(Test_ETD_59_Spacer) {
-            test_reluctance_etd_59_spacer(ReluctanceModels::MUEHLETHALER);
-        }
-
-        TEST(Test_E_55_28_21_Spacer) {
-            test_reluctance_e_55_28_21_spacer(ReluctanceModels::MUEHLETHALER);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.035}};
-
-            run_test_energy(ReluctanceModels::MUEHLETHALER, "PQ 40/40",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.142}};
-
-            run_test_energy(ReluctanceModels::MUEHLETHALER, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.248}};
-
-            run_test_energy(ReluctanceModels::MUEHLETHALER, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
-        }
-
-        TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.355}};
-
-            run_test_energy(ReluctanceModels::MUEHLETHALER, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Distributed) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.099}};
-
-            run_test_energy(ReluctanceModels::MUEHLETHALER, "PQ 40/40",
-                            OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
-        }
+    TEST_CASE("Test_Zhang_E42_21_20_Spacer", "[physical-model][reluctance][zhang-reluctance-model]") {
+        test_reluctance_e42_21_20_spacer(ReluctanceModels::ZHANG);
     }
 
-    SUITE(EffectiveAreaModel) {
-        TEST(Test_PQ_28_20_Grinded) {
-            test_reluctance_pq_28_20_grinded(ReluctanceModels::EFFECTIVE_AREA);
-        }
-
-        TEST(Test_E42_21_20_Spacer) {
-            test_reluctance_e42_21_20_spacer(ReluctanceModels::EFFECTIVE_AREA);
-        }
-
-        TEST(Test_ETD_59_Spacer) {
-            test_reluctance_etd_59_spacer(ReluctanceModels::EFFECTIVE_AREA);
-        }
-
-        TEST(Test_E_55_28_21_Spacer) {
-            test_reluctance_e_55_28_21_spacer(ReluctanceModels::EFFECTIVE_AREA);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.02872}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "PQ 40/40",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1038}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1945}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
-        }
-
-        TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.2852}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Distributed) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.086}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "PQ 40/40",
-                            OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
-        }
+    TEST_CASE("Test_Zhang_ETD_59_Spacer", "[physical-model][reluctance][zhang-reluctance-model]") {
+        test_reluctance_etd_59_spacer(ReluctanceModels::ZHANG);
     }
 
-    SUITE(EffectiveLengthModel) {
-        TEST(Test_PQ_28_20_Grinded) {
-            test_reluctance_pq_28_20_grinded(ReluctanceModels::EFFECTIVE_LENGTH);
-        }
-
-        TEST(Test_E42_21_20_Spacer) {
-            test_reluctance_e42_21_20_spacer(ReluctanceModels::EFFECTIVE_LENGTH);
-        }
-
-        TEST(Test_ETD_59_Spacer) {
-            test_reluctance_etd_59_spacer(ReluctanceModels::EFFECTIVE_LENGTH);
-        }
-
-        TEST(Test_E_55_28_21_Spacer) {
-            test_reluctance_e_55_28_21_spacer(ReluctanceModels::EFFECTIVE_LENGTH);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.02872}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "PQ 40/40",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1038}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1945}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
-        }
-
-        TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.2852}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Distributed) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.086}};
-
-            run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "PQ 40/40",
-                            OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
-        }
+    TEST_CASE("Test_Zhang_E_55_28_21_Spacer", "[physical-model][reluctance][zhang-reluctance-model]") {
+        test_reluctance_e_55_28_21_spacer(ReluctanceModels::ZHANG);
     }
 
-    SUITE(PartridgeModel) {
-        TEST(Test_PQ_28_20_Grinded) {
-            test_reluctance_pq_28_20_grinded(ReluctanceModels::PARTRIDGE);
-        }
+    TEST_CASE("Test_Zhang_Energy_PQ_40_40_Grinded", "[physical-model][reluctance][magnetic-energy][zhang-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.03255}};
 
-        TEST(Test_E42_21_20_Spacer) {
-            test_reluctance_e42_21_20_spacer(ReluctanceModels::PARTRIDGE);
-        }
-
-        TEST(Test_ETD_59_Spacer) {
-            test_reluctance_etd_59_spacer(ReluctanceModels::PARTRIDGE);
-        }
-
-        TEST(Test_E_55_28_21_Spacer) {
-            test_reluctance_e_55_28_21_spacer(ReluctanceModels::PARTRIDGE);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.033}};
-
-            run_test_energy(ReluctanceModels::PARTRIDGE, "PQ 40/40",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.12}};
-
-            run_test_energy(ReluctanceModels::PARTRIDGE, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.216}};
-
-            run_test_energy(ReluctanceModels::PARTRIDGE, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
-        }
-
-        TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.308}};
-
-            run_test_energy(ReluctanceModels::PARTRIDGE, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Distributed) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.095}};
-
-            run_test_energy(ReluctanceModels::PARTRIDGE, "PQ 40/40",
-                            OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
-        }
+        run_test_energy(ReluctanceModels::ZHANG, "PQ 40/40",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
     }
 
-    SUITE(StengleinModel) {
-        TEST(Test_PQ_28_20_Grinded) {
-            test_reluctance_pq_28_20_grinded(ReluctanceModels::STENGLEIN);
-        }
+    TEST_CASE("Test_Zhang_Energy_E_80_38_20_Grinded", "[physical-model][reluctance][magnetic-energy][zhang-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.122}};
 
-        TEST(Test_E42_21_20_Spacer) {
-            test_reluctance_e42_21_20_spacer(ReluctanceModels::STENGLEIN);
-        }
-
-        TEST(Test_ETD_59_Spacer) {
-            test_reluctance_etd_59_spacer(ReluctanceModels::STENGLEIN);
-        }
-
-        TEST(Test_E_55_28_21_Spacer) {
-            test_reluctance_e_55_28_21_spacer(ReluctanceModels::STENGLEIN);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.02528}};
-
-            run_test_energy(ReluctanceModels::STENGLEIN, "PQ 40/40",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.09}};
-
-            run_test_energy(ReluctanceModels::STENGLEIN, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1629}};
-
-            run_test_energy(ReluctanceModels::STENGLEIN, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
-        }
-
-        TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.24}};
-
-            run_test_energy(ReluctanceModels::STENGLEIN, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Distributed) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.165}};
-
-            run_test_energy(ReluctanceModels::STENGLEIN, "PQ 40/40",
-                            OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
-        }
+        run_test_energy(ReluctanceModels::ZHANG, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
     }
 
-    SUITE(BalakrishnanModel) {
-        TEST(Test_PQ_28_20_Grinded) {
-            test_reluctance_pq_28_20_grinded(ReluctanceModels::BALAKRISHNAN);
-        }
+    TEST_CASE("Test_Zhang_Energy_E_80_38_20_2_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][zhang-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.2234}};
 
-        TEST(Test_E42_21_20_Spacer) {
-            test_reluctance_e42_21_20_spacer(ReluctanceModels::BALAKRISHNAN);
-        }
-
-        TEST(Test_ETD_59_Spacer) {
-            test_reluctance_etd_59_spacer(ReluctanceModels::BALAKRISHNAN);
-        }
-
-        TEST(Test_E_55_28_21_Spacer) {
-            test_reluctance_e_55_28_21_spacer(ReluctanceModels::BALAKRISHNAN);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.030}};
-
-            run_test_energy(ReluctanceModels::BALAKRISHNAN, "PQ 40/40",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.106}};
-
-            run_test_energy(ReluctanceModels::BALAKRISHNAN, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.212}};
-
-            run_test_energy(ReluctanceModels::BALAKRISHNAN, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
-        }
-
-        TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.319}};
-
-            run_test_energy(ReluctanceModels::BALAKRISHNAN, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Distributed) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.087}};
-
-            run_test_energy(ReluctanceModels::BALAKRISHNAN, "PQ 40/40",
-                            OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
-        }
+        run_test_energy(ReluctanceModels::ZHANG, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
     }
 
-    SUITE(ClassicModel) {
-        TEST(Test_PQ_28_20_Grinded) {
-            test_reluctance_pq_28_20_grinded(ReluctanceModels::CLASSIC);
-        }
+    TEST_CASE("Test_Zhang_Energy_E_80_38_20_3_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][zhang-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.3245}};
 
-        TEST(Test_E42_21_20_Spacer) {
-            test_reluctance_e42_21_20_spacer(ReluctanceModels::CLASSIC);
-        }
-
-        TEST(Test_ETD_59_Spacer) {
-            test_reluctance_etd_59_spacer(ReluctanceModels::CLASSIC);
-        }
-
-        TEST(Test_E_55_28_21_Spacer) {
-            test_reluctance_e_55_28_21_spacer(ReluctanceModels::CLASSIC);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.02528}};
-
-            run_test_energy(ReluctanceModels::CLASSIC, "PQ 40/40",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.09}};
-
-            run_test_energy(ReluctanceModels::CLASSIC, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
-        }
-
-        TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1629}};
-
-            run_test_energy(ReluctanceModels::CLASSIC, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
-        }
-
-        TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded) {
-            std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.24}};
-
-            run_test_energy(ReluctanceModels::CLASSIC, "E 80/38/20",
-                            OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
-        }
-
-        TEST(Test_Energy_PQ_40_40_Distributed) {
-            std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.076}};
-
-            run_test_energy(ReluctanceModels::CLASSIC, "PQ 40/40",
-                            OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
-        }
+        run_test_energy(ReluctanceModels::ZHANG, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
     }
 
-    TEST(Test_Gap_By_Fringing_Factor) {
+    TEST_CASE("Test_Zhang_Energy_PQ_40_40_Distributed", "[physical-model][reluctance][magnetic-energy][zhang-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.092}};
+
+        run_test_energy(ReluctanceModels::ZHANG, "PQ 40/40",
+                        OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+    }
+
+    TEST_CASE("Test_Muehlethaler_PQ_28_20_Grinded", "[physical-model][reluctance][muehlethaler-reluctance-model]") {
+        test_reluctance_pq_28_20_grinded(ReluctanceModels::MUEHLETHALER);
+    }
+
+    TEST_CASE("Test_Muehlethaler_E42_21_20_Spacer", "[physical-model][reluctance][muehlethaler-reluctance-model]") {
+        test_reluctance_e42_21_20_spacer(ReluctanceModels::MUEHLETHALER);
+    }
+
+    TEST_CASE("Test_Muehlethaler_ETD_59_Spacer", "[physical-model][reluctance][muehlethaler-reluctance-model]") {
+        test_reluctance_etd_59_spacer(ReluctanceModels::MUEHLETHALER);
+    }
+
+    TEST_CASE("Test_Muehlethaler_E_55_28_21_Spacer", "[physical-model][reluctance][muehlethaler-reluctance-model]") {
+        test_reluctance_e_55_28_21_spacer(ReluctanceModels::MUEHLETHALER);
+    }
+
+    TEST_CASE("Test_Muehlethaler_Energy_PQ_40_40_Grinded", "[physical-model][reluctance][magnetic-energy][muehlethaler-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.035}};
+
+        run_test_energy(ReluctanceModels::MUEHLETHALER, "PQ 40/40",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Muehlethaler_Energy_E_80_38_20_Grinded", "[physical-model][reluctance][magnetic-energy][muehlethaler-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.142}};
+
+        run_test_energy(ReluctanceModels::MUEHLETHALER, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Muehlethaler_Energy_E_80_38_20_2_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][muehlethaler-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.248}};
+
+        run_test_energy(ReluctanceModels::MUEHLETHALER, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
+    }
+
+    TEST_CASE("Test_Muehlethaler_Energy_E_80_38_20_3_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][muehlethaler-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.355}};
+
+        run_test_energy(ReluctanceModels::MUEHLETHALER, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
+    }
+
+    TEST_CASE("Test_Muehlethaler_Energy_PQ_40_40_Distributed", "[physical-model][reluctance][magnetic-energy][muehlethaler-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.099}};
+
+        run_test_energy(ReluctanceModels::MUEHLETHALER, "PQ 40/40",
+                        OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+    }
+
+    TEST_CASE("Test_EffectiveArea_PQ_28_20_Grinded", "[physical-model][reluctance][effective-area-reluctance-model]") {
+        test_reluctance_pq_28_20_grinded(ReluctanceModels::EFFECTIVE_AREA);
+    }
+
+    TEST_CASE("Test_EffectiveArea_E42_21_20_Spacer", "[physical-model][reluctance][effective-area-reluctance-model]") {
+        test_reluctance_e42_21_20_spacer(ReluctanceModels::EFFECTIVE_AREA);
+    }
+
+    TEST_CASE("Test_EffectiveArea_ETD_59_Spacer", "[physical-model][reluctance][effective-area-reluctance-model]") {
+        test_reluctance_etd_59_spacer(ReluctanceModels::EFFECTIVE_AREA);
+    }
+
+    TEST_CASE("Test_EffectiveArea_E_55_28_21_Spacer", "[physical-model][reluctance][effective-area-reluctance-model]") {
+        test_reluctance_e_55_28_21_spacer(ReluctanceModels::EFFECTIVE_AREA);
+    }
+
+    TEST_CASE("Test_EffectiveArea_Energy_PQ_40_40_Grinded", "[physical-model][reluctance][magnetic-energy][effective-area-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.02872}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "PQ 40/40",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_EffectiveArea_Energy_E_80_38_20_Grinded", "[physical-model][reluctance][magnetic-energy][effective-area-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1038}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_EffectiveArea_Energy_E_80_38_20_2_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][effective-area-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1945}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
+    }
+
+    TEST_CASE("Test_EffectiveArea_Energy_E_80_38_20_3_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][effective-area-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.2852}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
+    }
+
+    TEST_CASE("Test_EffectiveArea_Energy_PQ_40_40_Distributed", "[physical-model][reluctance][magnetic-energy][effective-area-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.086}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_AREA, "PQ 40/40",
+                        OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+    }
+
+    TEST_CASE("Test_EffectiveLength_PQ_28_20_Grinded", "[physical-model][reluctance][effective-length-reluctance-model]") {
+        test_reluctance_pq_28_20_grinded(ReluctanceModels::EFFECTIVE_LENGTH);
+    }
+
+    TEST_CASE("Test_EffectiveLength_E42_21_20_Spacer", "[physical-model][reluctance][effective-length-reluctance-model]") {
+        test_reluctance_e42_21_20_spacer(ReluctanceModels::EFFECTIVE_LENGTH);
+    }
+
+    TEST_CASE("Test_EffectiveLength_ETD_59_Spacer", "[physical-model][reluctance][effective-length-reluctance-model]") {
+        test_reluctance_etd_59_spacer(ReluctanceModels::EFFECTIVE_LENGTH);
+    }
+
+    TEST_CASE("Test_EffectiveLength_E_55_28_21_Spacer", "[physical-model][reluctance][effective-length-reluctance-model]") {
+        test_reluctance_e_55_28_21_spacer(ReluctanceModels::EFFECTIVE_LENGTH);
+    }
+
+    TEST_CASE("Test_EffectiveLength_Energy_PQ_40_40_Grinded", "[physical-model][reluctance][magnetic-energy][effective-length-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.02872}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "PQ 40/40",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_EffectiveLength_Energy_E_80_38_20_Grinded", "[physical-model][reluctance][magnetic-energy][effective-length-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1038}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_EffectiveLength_Energy_E_80_38_20_2_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][effective-length-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1945}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
+    }
+
+    TEST_CASE("Test_EffectiveLength_Energy_E_80_38_20_3_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][effective-length-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.2852}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
+    }
+
+    TEST_CASE("Test_EffectiveLength_Energy_PQ_40_40_Distributed", "[physical-model][reluctance][magnetic-energy][effective-length-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.086}};
+
+        run_test_energy(ReluctanceModels::EFFECTIVE_LENGTH, "PQ 40/40",
+                        OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+    }
+
+    TEST_CASE("Test_Partridge_PQ_28_20_Grinded", "[physical-model][reluctance][partridge-reluctance-model]") {
+        test_reluctance_pq_28_20_grinded(ReluctanceModels::PARTRIDGE);
+    }
+
+    TEST_CASE("Test_Partridge_E42_21_20_Spacer", "[physical-model][reluctance][partridge-reluctance-model]") {
+        test_reluctance_e42_21_20_spacer(ReluctanceModels::PARTRIDGE);
+    }
+
+    TEST_CASE("Test_Partridge_ETD_59_Spacer", "[physical-model][reluctance][partridge-reluctance-model]") {
+        test_reluctance_etd_59_spacer(ReluctanceModels::PARTRIDGE);
+    }
+
+    TEST_CASE("Test_Partridge_E_55_28_21_Spacer", "[physical-model][reluctance][partridge-reluctance-model]") {
+        test_reluctance_e_55_28_21_spacer(ReluctanceModels::PARTRIDGE);
+    }
+
+    TEST_CASE("Test_Partridge_Energy_PQ_40_40_Grinded", "[physical-model][reluctance][magnetic-energy][partridge-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.033}};
+
+        run_test_energy(ReluctanceModels::PARTRIDGE, "PQ 40/40",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Partridge_Energy_E_80_38_20_Grinded", "[physical-model][reluctance][magnetic-energy][partridge-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.12}};
+
+        run_test_energy(ReluctanceModels::PARTRIDGE, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Partridge_Energy_E_80_38_20_2_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][partridge-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.216}};
+
+        run_test_energy(ReluctanceModels::PARTRIDGE, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
+    }
+
+    TEST_CASE("Test_Partridge_Energy_E_80_38_20_3_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][partridge-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.308}};
+
+        run_test_energy(ReluctanceModels::PARTRIDGE, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
+    }
+
+    TEST_CASE("Test_Partridge_Energy_PQ_40_40_Distributed", "[physical-model][reluctance][magnetic-energy][partridge-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.095}};
+
+        run_test_energy(ReluctanceModels::PARTRIDGE, "PQ 40/40",
+                        OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+    }
+
+    TEST_CASE("Test_Stenglein_PQ_28_20_Grinded", "[physical-model][reluctance][stenglein-reluctance-model]") {
+        test_reluctance_pq_28_20_grinded(ReluctanceModels::STENGLEIN);
+    }
+
+    TEST_CASE("Test_Stenglein_E42_21_20_Spacer", "[physical-model][reluctance][stenglein-reluctance-model]") {
+        test_reluctance_e42_21_20_spacer(ReluctanceModels::STENGLEIN);
+    }
+
+    TEST_CASE("Test_Stenglein_ETD_59_Spacer", "[physical-model][reluctance][stenglein-reluctance-model]") {
+        test_reluctance_etd_59_spacer(ReluctanceModels::STENGLEIN);
+    }
+
+    TEST_CASE("Test_Stenglein_E_55_28_21_Spacer", "[physical-model][reluctance][stenglein-reluctance-model]") {
+        test_reluctance_e_55_28_21_spacer(ReluctanceModels::STENGLEIN);
+    }
+
+    TEST_CASE("Test_Stenglein_Energy_PQ_40_40_Grinded", "[physical-model][reluctance][magnetic-energy][stenglein-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.02528}};
+
+        run_test_energy(ReluctanceModels::STENGLEIN, "PQ 40/40",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Stenglein_Energy_E_80_38_20_Grinded", "[physical-model][reluctance][magnetic-energy][stenglein-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.09}};
+
+        run_test_energy(ReluctanceModels::STENGLEIN, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Stenglein_Energy_E_80_38_20_2_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][stenglein-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1629}};
+
+        run_test_energy(ReluctanceModels::STENGLEIN, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
+    }
+
+    TEST_CASE("Test_Stenglein_Energy_E_80_38_20_3_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][stenglein-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.24}};
+
+        run_test_energy(ReluctanceModels::STENGLEIN, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
+    }
+
+    TEST_CASE("Test_Stenglein_Energy_PQ_40_40_Distributed", "[physical-model][reluctance][magnetic-energy][stenglein-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.165}};
+
+        run_test_energy(ReluctanceModels::STENGLEIN, "PQ 40/40",
+                        OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+    }
+
+    TEST_CASE("Test_Balakrishnan_PQ_28_20_Grinded", "[physical-model][reluctance][balakrishnan-reluctance-model]") {
+        test_reluctance_pq_28_20_grinded(ReluctanceModels::BALAKRISHNAN);
+    }
+
+    TEST_CASE("Test_Balakrishnan_E42_21_20_Spacer", "[physical-model][reluctance][balakrishnan-reluctance-model]") {
+        test_reluctance_e42_21_20_spacer(ReluctanceModels::BALAKRISHNAN);
+    }
+
+    TEST_CASE("Test_Balakrishnan_ETD_59_Spacer", "[physical-model][reluctance][balakrishnan-reluctance-model]") {
+        test_reluctance_etd_59_spacer(ReluctanceModels::BALAKRISHNAN);
+    }
+
+    TEST_CASE("Test_Balakrishnan_E_55_28_21_Spacer", "[physical-model][reluctance][balakrishnan-reluctance-model]") {
+        test_reluctance_e_55_28_21_spacer(ReluctanceModels::BALAKRISHNAN);
+    }
+
+    TEST_CASE("Test_Balakrishnan_Energy_PQ_40_40_Grinded", "[physical-model][reluctance][magnetic-energy][balakrishnan-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.030}};
+
+        run_test_energy(ReluctanceModels::BALAKRISHNAN, "PQ 40/40",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Balakrishnan_Energy_E_80_38_20_Grinded", "[physical-model][reluctance][magnetic-energy][balakrishnan-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.106}};
+
+        run_test_energy(ReluctanceModels::BALAKRISHNAN, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Balakrishnan_Energy_E_80_38_20_2_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][balakrishnan-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.212}};
+
+        run_test_energy(ReluctanceModels::BALAKRISHNAN, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
+    }
+
+    TEST_CASE("Test_Balakrishnan_Energy_E_80_38_20_3_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][balakrishnan-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.319}};
+
+        run_test_energy(ReluctanceModels::BALAKRISHNAN, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
+    }
+
+    TEST_CASE("Test_Balakrishnan_Energy_PQ_40_40_Distributed", "[physical-model][reluctance][magnetic-energy][balakrishnan-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.087}};
+
+        run_test_energy(ReluctanceModels::BALAKRISHNAN, "PQ 40/40",
+                        OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+    }
+
+    TEST_CASE("Test_Classic_PQ_28_20_Grinded", "[physical-model][reluctance][classic-reluctance-model]") {
+        test_reluctance_pq_28_20_grinded(ReluctanceModels::CLASSIC);
+    }
+
+    TEST_CASE("Test_Classic_E42_21_20_Spacer", "[physical-model][reluctance][classic-reluctance-model]") {
+        test_reluctance_e42_21_20_spacer(ReluctanceModels::CLASSIC);
+    }
+
+    TEST_CASE("Test_Classic_ETD_59_Spacer", "[physical-model][reluctance][classic-reluctance-model]") {
+        test_reluctance_etd_59_spacer(ReluctanceModels::CLASSIC);
+    }
+
+    TEST_CASE("Test_Classic_E_55_28_21_Spacer", "[physical-model][reluctance][classic-reluctance-model]") {
+        test_reluctance_e_55_28_21_spacer(ReluctanceModels::CLASSIC);
+    }
+
+    TEST_CASE("Test_Classic_Energy_PQ_40_40_Grinded", "[physical-model][reluctance][magnetic-energy][classic-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.02528}};
+
+        run_test_energy(ReluctanceModels::CLASSIC, "PQ 40/40",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Classic_Energy_E_80_38_20_Grinded", "[physical-model][reluctance][magnetic-energy][classic-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.09}};
+
+        run_test_energy(ReluctanceModels::CLASSIC, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"]);
+    }
+
+    TEST_CASE("Test_Classic_Energy_E_80_38_20_2_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][classic-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.1629}};
+
+        run_test_energy(ReluctanceModels::CLASSIC, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 2);
+    }
+
+    TEST_CASE("Test_Classic_Energy_E_80_38_20_3_Stacks_Grinded", "[physical-model][reluctance][magnetic-energy][classic-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.003}, {"expectedEnergy", 0.24}};
+
+        run_test_energy(ReluctanceModels::CLASSIC, "E 80/38/20",
+                        OpenMagneticsTesting::get_ground_gap(test["gapLength"]), test["expectedEnergy"], 3);
+    }
+
+    TEST_CASE("Test_Classic_Energy_PQ_40_40_Distributed", "[physical-model][reluctance][magnetic-energy][classic-reluctance-model]") {
+        std::map<std::string, double> test = {{"gapLength", 0.002}, {"expectedEnergy", 0.076}};
+
+        run_test_energy(ReluctanceModels::CLASSIC, "PQ 40/40",
+                        OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+    }
+
+    TEST_CASE("Test_Gap_By_Fringing_Factor", "[physical-model][reluctance][gap]") {
         srand (time(NULL));
         for (size_t i = 0; i < 100; ++i)
         {
@@ -670,13 +655,11 @@ SUITE(Reluctance) {
             auto fringingFactor = reluctanceModel->get_core_reluctance(core).get_maximum_fringing_factor().value();
 
             double gap = reluctanceModel->get_gapping_by_fringing_factor(core, fringingFactor);
-            CHECK_CLOSE(expectedGap, gap, expectedGap * maxError);
+            REQUIRE_THAT(expectedGap, Catch::Matchers::WithinAbs(gap, expectedGap * maxError));
         }
     }
-}
 
-SUITE(ReluctanceUngappedCore) {
-    TEST(Test_Reluctance_3C96) {
+    TEST_CASE("Test_Reluctance_3C96", "[physical-model][reluctance]") {
         double dcCurrent = 10;
         double ambientTemperature = 50;
         double dutyCycle = 0.75;
@@ -714,15 +697,12 @@ SUITE(ReluctanceUngappedCore) {
         double calculatedReluctanceAt200 =
             reluctanceModel->get_ungapped_core_reluctance(core, inputs.get_mutable_operating_points()[0]);
 
-        CHECK(calculatedReluctanceAt50 > calculatedReluctanceAt100);
-        CHECK(calculatedReluctanceAt150 > calculatedReluctanceAt100);
-        CHECK(calculatedReluctanceAt150 > calculatedReluctanceAt200);
+        REQUIRE(calculatedReluctanceAt50 > calculatedReluctanceAt100);
+        REQUIRE(calculatedReluctanceAt150 > calculatedReluctanceAt100);
+        REQUIRE(calculatedReluctanceAt150 > calculatedReluctanceAt200);
     }
-}
 
-
-SUITE(WebReluctance) {
-    TEST(Test_Web_0) {
+    TEST_CASE("Test_Web_0", "[physical-model][reluctance][gap][bug]") {
         std::string coreGapData = R"({"area":0.000123,"coordinates":[0,0.0005,0],"distanceClosestNormalSurface":0.014098,"distanceClosestParallelSurface":0.0088,"length":0.000005,"sectionDimensions":[0.0125,0.0125],"shape":"round","type":"subtractive"})";
         std::string modelNameString = "Zhang";
         std::string modelNameStringUpper = modelNameString;
@@ -735,4 +715,5 @@ SUITE(WebReluctance) {
 
         auto coreGapResult = reluctanceModel->get_gap_reluctance(coreGap);
     }
-}
+
+}  // namespace

@@ -9,10 +9,8 @@ namespace OpenMagnetics {
 
 class Settings
 {
-    protected:
+    private:
         Settings();
-
-        static Settings* settings_;
         std::string selfFilePath = __FILE__;
 
         bool _useToroidalCores = true;
@@ -106,8 +104,10 @@ class Settings
         bool _debug = false;
         Settings(Settings &other) = delete;
         void operator=(const Settings &) = delete;
+        Settings(Settings &&other) = delete;
+        void operator=(Settings &&) = delete;
 
-        static Settings *GetInstance();
+        static Settings& GetInstance();
 
         void reset();
 

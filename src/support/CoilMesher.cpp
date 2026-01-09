@@ -12,6 +12,8 @@
 #include <matplot/matplot.h>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 
 namespace OpenMagnetics {
@@ -24,7 +26,7 @@ std::shared_ptr<CoilMesherModel> CoilMesherModel::factory(CoilMesherModels model
         return std::make_shared<CoilMesherWangModel>();
     }
     else
-        throw std::runtime_error("Unknown coil breaker mode, available options are: {WANG, CENTER}");
+        throw ModelNotAvailableException("Unknown coil breaker mode, available options are: {WANG, CENTER}");
 }
 
 
@@ -40,10 +42,10 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint opera
 
 bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
     for (auto turn : turns) {
-        double distanceX = fabs(turn.get_coordinates()[0] - pointX) * settings->get_coil_mesher_inside_turns_factor();
-        double distanceY = fabs(turn.get_coordinates()[1] - pointY) * settings->get_coil_mesher_inside_turns_factor();
+        double distanceX = fabs(turn.get_coordinates()[0] - pointX) * settings.get_coil_mesher_inside_turns_factor();
+        double distanceY = fabs(turn.get_coordinates()[1] - pointY) * settings.get_coil_mesher_inside_turns_factor();
         if (!turn.get_dimensions()) {
-            throw std::runtime_error("Turns is missing dimensions, which is needed for leakage inductance calculation");
+            throw CoilNotProcessedException("Turns is missing dimensions, which is needed for leakage inductance calculation");
         }
         if (!turn.get_cross_sectional_shape()) {
             if (distanceX < turn.get_dimensions().value()[0] / 2 && distanceY < turn.get_dimensions().value()[1] / 2) {
@@ -70,7 +72,7 @@ bool is_far_from_turns(std::vector<Turn> turns, double pointX, double pointY) {
         double distanceX = fabs(turn.get_coordinates()[0] - pointX);
         double distanceY = fabs(turn.get_coordinates()[1] - pointY);
         if (!turn.get_dimensions()) {
-            throw std::runtime_error("Turns is missing dimensions, which is needed for leakage inductance calculation");
+            throw CoilNotProcessedException("Turns is missing dimensions, which is needed for leakage inductance calculation");
         }
         if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 2) {
         // if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 1) {
@@ -143,7 +145,7 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
     auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Winding does not have turns description");
+        throw CoilNotProcessedException("Winding does not have turns description");
 
     }
     auto turns = coil.get_turns_description().value();
@@ -189,7 +191,7 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
 std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Winding does not have turns description");
+        throw CoilNotProcessedException("Winding does not have turns description");
 
     }
     auto wirePerWinding = coil.get_wires();
@@ -212,7 +214,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform() || 
         operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform()->get_data().size() == 0)
     {
-        throw std::runtime_error("Input has no waveform. TODO: get waveform from processed data");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Input has no waveform. TODO: get waveform from processed data");
     }
 
     std::vector<std::shared_ptr<CoilMesherModel>> breakdownModelPerWinding;
@@ -246,7 +248,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
                     break;
                 }
                 default:
-                    throw std::runtime_error("Unknown type of wire");
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
             }
         }
 
@@ -265,7 +267,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
             }
         }
         if (field.get_frequency() == 0) {
-            throw std::runtime_error("0 frequency found in Coil Mesher");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "0 frequency found in Coil Mesher");
         }
         tempFieldPerHarmonic[harmonicIndex] = field;
     }
@@ -287,7 +289,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
             }
             auto harmonicCurrentPeakInTurn = harmonicCurrentPeak * currentDividerPerTurn[turnIndex];
             if (std::isnan(harmonicCurrentPeakInTurn)) {
-                throw std::runtime_error("NaN found in harmonicCurrentPeakInTurn value");
+                throw NaNResultException("NaN found in harmonicCurrentPeakInTurn value");
             }
             harmonicCurrentPeakInTurn *= currentDirectionPerWinding[windingIndex];
             for (auto& fieldPoint : fieldPoints) {
@@ -308,7 +310,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
 
         if (std::isnan(inducingFieldPoint.get_value())) {
             std::cerr << "inducingFieldPoint.get_value(): " << inducingFieldPoint.get_value() << std::endl;
-            throw std::runtime_error("NaN found in inducingFieldPoint value");
+            throw NaNResultException("NaN found in inducingFieldPoint value");
         }
     }
 
@@ -318,7 +320,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
 std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Winding does not have turns description");
+        throw CoilNotProcessedException("Winding does not have turns description");
 
     }
     auto wirePerWinding = coil.get_wires();
@@ -352,7 +354,7 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, Ope
                 break;
             }
             default:
-                throw std::runtime_error("Unknown type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
 
         breakdownModelPerWinding.push_back(model);
@@ -397,7 +399,7 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, Ope
 }
 
 std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn turn, [[maybe_unused]] Wire wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, Core core) {
-    auto mirroringDimension = settings->get_magnetic_field_mirroring_dimension();
+    auto mirroringDimension = settings.get_magnetic_field_mirroring_dimension();
     std::vector<FieldPoint> fieldPoints;
 
     int M = mirroringDimension;
@@ -405,7 +407,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
 
     double corePermeability = core.get_initial_permeability(defaults.ambientTemperature);
     if (!core.get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
 
     auto processedDescription = core.get_processed_description().value();
@@ -459,7 +461,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
         FieldPoint fieldPoint;
         fieldPoint.set_value(1);  // Will be multiplied later
         if (!turn.get_rotation()) {
-            throw std::runtime_error("Toroidal cores should have rotation in the turn, even if it is 0");
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal cores should have rotation in the turn, even if it is 0");
         }
 
         fieldPoint.set_rotation(turn.get_rotation().value());
@@ -471,10 +473,10 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
         }
 
         if (!turn.get_coordinate_system()) {
-            throw std::runtime_error("Turn is missing coordinate system");
+            throw CoilNotProcessedException("Turn is missing coordinate system");
         }
         if (turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
-            throw std::runtime_error("CoilMesher: Turn coordinates are not in cartesian");
+            throw CoilNotProcessedException("CoilMesher: Turn coordinates are not in cartesian");
         }
 
         fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1]});
@@ -540,7 +542,7 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn tu
     auto bobbinColumnShape = core.get_processed_description().value().get_winding_windows()[0].get_shape();
 
     if (bobbinColumnShape == WindingWindowShape::ROUND) {
-        throw std::runtime_error("Wang Mesher model not implemented yet for toroidal cores");
+        throw NotImplementedException("Wang Mesher model not implemented yet for toroidal cores");
     }
     // if (wire.get_type() != WireType::PLANAR) {
     //     throw std::runtime_error("Wang model only supported for Planar");

@@ -4,6 +4,7 @@
 #include "processors/Outputs.h"
 #include "physical_models/Reluctance.h"
 #include "support/Utils.h"
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -155,7 +156,7 @@ bool Magnetic::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
         }
     }
     else {
-        throw std::runtime_error("Not sure how this happened");
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Not sure how this happened");
     }
 }
 

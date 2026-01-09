@@ -4,7 +4,8 @@
 #include "support/Utils.h"
 #include "json.hpp"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -17,19 +18,19 @@ using namespace OpenMagnetics;
 
 using json = nlohmann::json;
 
-SUITE(Mas) {
-    TEST(Test_Expand_Magnetic) {
+namespace {
+    TEST_CASE("Test_Expand_Magnetic", "[constructive-model][mas]") {
 
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/example_basic.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        CHECK(!mas.get_magnetic().get_core().get_processed_description());
+        REQUIRE(!mas.get_magnetic().get_core().get_processed_description());
 
         auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
         auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
-        CHECK(magnetic.get_core().get_processed_description());
+        REQUIRE(magnetic.get_core().get_processed_description());
 
     }
 
-}
+}  // namespace
