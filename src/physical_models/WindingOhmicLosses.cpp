@@ -9,6 +9,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -19,7 +20,7 @@ double WindingOhmicLosses::calculate_dc_resistance(Turn turn, const Wire& wire, 
 
 double WindingOhmicLosses::calculate_dc_resistance(double wireLength, const Wire& wire, double temperature) {
     if (std::isnan(wireLength)) {
-        throw std::runtime_error("NaN found in wireLength value");
+        throw NaNResultException("NaN found in wireLength value");
     }
 
     return calculate_dc_resistance_per_meter(wire, temperature) * wireLength;
@@ -37,10 +38,10 @@ double WindingOhmicLosses::calculate_dc_resistance_per_meter(Wire wire, double t
     double dcResistancePerMeter = resistivity / wireConductingArea;
 
     if (std::isnan(dcResistancePerMeter)) {
-        throw std::runtime_error("NaN found in dcResistancePerMeter value");
+        throw NaNResultException("NaN found in dcResistancePerMeter value");
     }
     if (dcResistancePerMeter <= 0) {
-        throw std::runtime_error("dcResistancePerMeter must be positive");
+        throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT, "dcResistancePerMeter must be positive");
     }
     return dcResistancePerMeter;
 };
@@ -59,7 +60,7 @@ double WindingOhmicLosses::calculate_effective_resistance_per_meter(Wire wire, d
 
 std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil coil, double temperature) {
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Missing turns description");
+        throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = coil.get_turns_description().value();
     std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
@@ -91,7 +92,7 @@ std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil
 
 WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, OperatingPoint operatingPoint, double temperature) {
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Missing turns description");
+        throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = coil.get_turns_description().value();
     std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
@@ -145,7 +146,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         windingLossesPerTurn.push_back(windingLossesThisTurn);
 
         if (std::isnan(currentDividerThisTurn)) {
-            throw std::runtime_error("NaN found in currentDividerThisTurn value");
+            throw NaNResultException("NaN found in currentDividerThisTurn value");
         }
         currentDividerPerTurn.push_back(currentDividerThisTurn);
     }
@@ -189,10 +190,10 @@ double WindingOhmicLosses::calculate_ohmic_losses_per_meter(Wire wire, SignalDes
 
     double dcResistancePerMeter = calculate_dc_resistance_per_meter(wire, temperature);
     if (!current.get_processed()) {
-        throw std::runtime_error("Current is not processed");
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
     }
     if (!current.get_processed()->get_rms()) {
-        throw std::runtime_error("Current processed is missing field RMS");
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current processed is missing field RMS");
     }
     auto currentRms = current.get_processed()->get_rms().value();
 

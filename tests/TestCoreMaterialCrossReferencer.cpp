@@ -3,7 +3,8 @@
 #include "support/Utils.h"
 #include "processors/Inputs.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -14,12 +15,14 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
+namespace {  // Anonymous namespace to isolate test globals
 
-SUITE(CoreMaterialCrossReferencer) {
-    auto settings = Settings::GetInstance();
 
-    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials) {
-        settings->reset();
+
+// Converted from SUITE(CoreMaterialCrossReferencer)
+
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials", "[adviser][core-material-cross-referencer]") {
+        settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "STEINMETZ"}});
@@ -30,9 +33,9 @@ SUITE(CoreMaterialCrossReferencer) {
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
 
-        CHECK(crossReferencedCoreMaterials.size() > 0);
+        REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
         auto scoredValues = coreMaterialCrossReferencer.get_scored_values();
@@ -55,15 +58,15 @@ SUITE(CoreMaterialCrossReferencer) {
 
                 result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()];
                 result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()];
-                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()]));
-                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()]));
+                REQUIRE(!std::isnan(scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()]));
+                REQUIRE(!std::isnan(scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencerFilters>(filterString).value()]));
             };
             results["data"].push_back(result);
         }
     }
 
-    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_TDK) {
-        settings->reset();
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_TDK", "[adviser][core-material-cross-referencer]") {
+        settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
@@ -75,13 +78,13 @@ SUITE(CoreMaterialCrossReferencer) {
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
 
-        CHECK(crossReferencedCoreMaterials.size() > 0);
+        REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
     }
 
-    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder) {
-        settings->reset();
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder", "[adviser][core-material-cross-referencer]") {
+        settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
@@ -92,13 +95,13 @@ SUITE(CoreMaterialCrossReferencer) {
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
 
-        CHECK(crossReferencedCoreMaterials.size() > 0);
+        REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "Kool Mµ Hƒ 26");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Kool Mµ Hƒ 26");
     }
 
-    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals) {
-        settings->reset();
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals", "[adviser][core-material-cross-referencer]") {
+        settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
@@ -110,13 +113,13 @@ SUITE(CoreMaterialCrossReferencer) {
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
 
-        CHECK(crossReferencedCoreMaterials.size() > 0);
+        REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "SM 40");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "SM 40");
     }
 
-    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals_Ferrite) {
-        settings->reset();
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals_Ferrite", "[adviser][core-material-cross-referencer]") {
+        settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
@@ -128,13 +131,13 @@ SUITE(CoreMaterialCrossReferencer) {
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
 
-        CHECK(crossReferencedCoreMaterials.size() > 0);
+        REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "MS 160");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "MS 160");
     }
 
-    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses) {
-        settings->reset();
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses", "[adviser][core-material-cross-referencer]") {
+        settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
@@ -153,13 +156,13 @@ SUITE(CoreMaterialCrossReferencer) {
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, weights, 5);
 
-        CHECK(crossReferencedCoreMaterials.size() > 0);
+        REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "JNP96A");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "JNP96A");
     }
 
-    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses_Powder) {
-        settings->reset();
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses_Powder", "[adviser][core-material-cross-referencer]") {
+        settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
@@ -178,18 +181,18 @@ SUITE(CoreMaterialCrossReferencer) {
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, weights, 5);
 
-        CHECK(crossReferencedCoreMaterials.size() > 0);
+        REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "Mix 40");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Mix 40");
     }
 
-    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Fair_Rite) {
-        settings->reset();
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Fair_Rite", "[adviser][core-material-cross-referencer]") {
+        settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
         coreMaterialCrossReferencer.use_only_manufacturer("Fair-Rite");
-        settings->set_use_only_cores_in_stock(false);
+        settings.set_use_only_cores_in_stock(false);
 
         std::string coreMaterialName = "3C97";
         CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
@@ -222,9 +225,11 @@ SUITE(CoreMaterialCrossReferencer) {
             results["data"].push_back(result);
         }
 
-        CHECK(crossReferencedCoreMaterials.size() > 0);
+        REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "95");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "95");
     }
 
-}
+// End of SUITE
+
+}  // namespace

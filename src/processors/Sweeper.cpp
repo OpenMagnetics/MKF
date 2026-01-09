@@ -7,6 +7,7 @@
 #include "physical_models/InitialPermeability.h"
 #include "support/Settings.h"
 #include <cmath>
+#include "support/Exceptions.h"
 
 
 namespace OpenMagnetics {
@@ -21,7 +22,7 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
         frequencies = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
     std::vector<double> impedances;
@@ -44,7 +45,7 @@ Curve2D Sweeper::sweep_q_factor_over_frequency(Magnetic magnetic, double start, 
         frequencies = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
     std::vector<double> qFactors;
@@ -67,7 +68,7 @@ Curve2D Sweeper::sweep_magnetizing_inductance_over_frequency(Magnetic magnetic, 
         frequencies = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
     auto magnetizingInductanceModel = MagnetizingInductance();
@@ -98,7 +99,7 @@ Curve2D Sweeper::sweep_magnetizing_inductance_over_temperature(Magnetic magnetic
         temperatures = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
     auto magnetizingInductanceModel = MagnetizingInductance();
@@ -129,7 +130,7 @@ Curve2D Sweeper::sweep_magnetizing_inductance_over_dc_bias(Magnetic magnetic, do
         currentOffsets = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
     auto magnetizingInductanceModel = MagnetizingInductance();
@@ -163,7 +164,7 @@ Curve2D Sweeper::sweep_winding_resistance_over_frequency(Magnetic magnetic, doub
         frequencies = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
     std::vector<double> effectiveResistances;
@@ -184,7 +185,7 @@ Curve2D Sweeper::sweep_resistance_over_frequency(Magnetic magnetic, double start
         frequencies = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
     auto magnetizingInductanceModel = MagnetizingInductance();
@@ -217,7 +218,7 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double 
         frequencies = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
@@ -256,7 +257,7 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
         frequencies = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
@@ -329,7 +330,7 @@ Curve2D Sweeper::sweep_winding_losses_over_frequency(Magnetic magnetic, Operatin
         frequencies = logarithmic_spaced_array(start, stop, numberElements);
     }
     else {
-        throw std::runtime_error("Unknown spaced array mode");
+        throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
     auto magnetizingInductanceModel = MagnetizingInductance();

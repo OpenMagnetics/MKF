@@ -8,6 +8,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -116,7 +117,7 @@ DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(Inputs
     double magnetizingCurrentPeak = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         if (!Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current()) {
-            throw std::runtime_error("Missing magnetizing current");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Missing magnetizing current");
         }
         if (!Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current()->get_processed()) {
             auto excitation = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex));

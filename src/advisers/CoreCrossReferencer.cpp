@@ -15,6 +15,8 @@
 #include <magic_enum_utility.hpp>
 #include <list>
 #include <cmrc/cmrc.hpp>
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 CMRC_DECLARE(data);
 
@@ -210,7 +212,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPerm
     }
 
     if (filteredCoresWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoresWithScoring.size() > 0) {
@@ -227,7 +229,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterWind
     std::vector<double> newScoring;
     std::vector<std::pair<Core, double>> filteredCoresWithScoring;
     if (!referenceCore.get_winding_windows()[0].get_area()) {
-        throw std::runtime_error("Winding window is missing area");
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Winding window is missing area");
     }
     double referenceWindingWindowArea = referenceCore.get_winding_windows()[0].get_area().value();
     add_scored_value("Reference", CoreCrossReferencerFilters::WINDING_WINDOW_AREA, referenceWindingWindowArea);
@@ -248,7 +250,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterWind
             }
         }
         if (!core.get_winding_windows()[0].get_area()) {
-            throw std::runtime_error("Winding window is missing area");
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Winding window is missing area");
         }
         double windingWindowArea = core.get_winding_windows()[0].get_area().value();
 
@@ -274,7 +276,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterWind
     }
 
     if (filteredCoresWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoresWithScoring.size() > 0) {
@@ -291,7 +293,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
     std::vector<double> newScoring;
     std::vector<std::pair<Core, double>> filteredCoresWithScoring;
     if (!referenceCore.get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
     double referenceEffectiveArea = referenceCore.get_processed_description()->get_effective_parameters().get_effective_area();
     add_scored_value("Reference", CoreCrossReferencerFilters::EFFECTIVE_AREA, referenceEffectiveArea);
@@ -312,7 +314,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
             }
         }
         if (!core.get_processed_description()) {
-            throw std::runtime_error("Core is not processed");
+            throw CoreNotProcessedException("Core is not processed");
         }
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
 
@@ -338,7 +340,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
     }
 
     if (filteredCoresWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoresWithScoring.size() > 0) {
@@ -399,7 +401,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEnve
     }
 
     if (filteredCoresWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoresWithScoring.size() > 0) {
@@ -448,7 +450,7 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
         }
 
         if (coreLossesModelForMaterial == nullptr) {
-            throw std::runtime_error("No model found for material: " + core.resolve_material().get_name());
+            throw ModelNotAvailableException("No model found for material: " + core.resolve_material().get_name());
         }
         double averageCoreLosses = 0;
         double maximumMagneticFluxDensitySaturationPeak = 0;
@@ -563,7 +565,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
     }
 
     if (filteredCoresWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoresWithScoring.size() > 0) {

@@ -8,6 +8,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -48,6 +49,6 @@ std::shared_ptr<ResistivityModel> ResistivityModel::factory(ResistivityModels mo
         return std::make_shared<ResistivityWireMaterialModel>();
     }
     else
-        throw std::runtime_error("Unknown Resistivity model, available options are: {CORE_MATERIAL, WIRE_MATERIAL}");
+        throw ModelNotAvailableException("Unknown Resistivity model, available options are: {CORE_MATERIAL, WIRE_MATERIAL}");
 }
 } // namespace OpenMagnetics

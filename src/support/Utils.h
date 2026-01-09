@@ -20,6 +20,7 @@
 #include "support/Settings.h"
 #include "Definitions.h"
 #include "Cache.h"
+#include "support/Logger.h"
 
 using namespace MAS;
 
@@ -27,10 +28,8 @@ namespace OpenMagnetics {
 
 inline OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
 inline OpenMagnetics::Constants constants = OpenMagnetics::Constants();
-inline OpenMagnetics::Settings* settings = OpenMagnetics::Settings::GetInstance();
+inline OpenMagnetics::Settings& settings = OpenMagnetics::Settings::GetInstance();
 
-inline std::string _log;
-inline uint8_t _logVerbosity;
 inline std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
 
 inline std::vector<OpenMagnetics::Core> coreDatabase;
@@ -48,10 +47,10 @@ void add_scoring(std::string name, OpenMagnetics::MagneticFilters filter, double
 void clear_scoring();
 std::optional<double> get_scoring(std::string name, OpenMagnetics::MagneticFilters filter);
 
+// Legacy logging interface - prefer using Logger directly
+// Verbosity levels: 0=ERROR, 1=WARNING, 2=INFO, 3+=DEBUG
 void logEntry(std::string entry, std::string module = "", uint8_t entryVerbosity = 1);
 std::string read_log();
-uint8_t get_log_verbosity();
-void set_log_verbosity(uint8_t logVerbosity);
 
 bool check_requirement(DimensionWithTolerance requirement, double value);
 Core find_core_by_name(std::string name);

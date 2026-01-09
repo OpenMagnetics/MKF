@@ -3,13 +3,14 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
     double IsolatedBuck::calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency) {
         auto dutyCycle = outputVoltage / inputVoltage * efficiency;
         if (dutyCycle >= 1) {
-            throw std::runtime_error("Duty cycle must be smaller than 1");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Duty cycle must be smaller than 1");
         }
         return dutyCycle;
     }
@@ -131,27 +132,27 @@ namespace OpenMagnetics {
             if (!assert) {
                 return false;
             }
-            throw std::runtime_error("At least one operating point is needed");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "At least one operating point is needed");
         }
         for (size_t isolatedbuckOperatingPointIndex = 1; isolatedbuckOperatingPointIndex < get_operating_points().size(); ++isolatedbuckOperatingPointIndex) {
             if (get_operating_points()[isolatedbuckOperatingPointIndex].get_output_voltages().size() != get_operating_points()[0].get_output_voltages().size()) {
                 if (!assert) {
                     return false;
                 }
-                throw std::runtime_error("Different operating points cannot have different number of output voltages");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output voltages");
             }
             if (get_operating_points()[isolatedbuckOperatingPointIndex].get_output_currents().size() != get_operating_points()[0].get_output_currents().size()) {
                 if (!assert) {
                     return false;
                 }
-                throw std::runtime_error("Different operating points cannot have different number of output currents");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output currents");
             }
         }
         if (!get_input_voltage().get_nominal() && !get_input_voltage().get_maximum() && !get_input_voltage().get_minimum()) {
             if (!assert) {
                 return false;
             }
-            throw std::runtime_error("No input voltage introduced");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "No input voltage introduced");
         }
 
         return true;

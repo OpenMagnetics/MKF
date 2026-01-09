@@ -22,7 +22,7 @@ class MagneticAdviser{
             MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, 1.0),
         };
 
-        std::vector<MagneticFilterOperation> _defaultCatalogMagneticFilterFlow{
+        std::vector<MagneticFilterOperation> _defaultCatalogueMagneticFilterFlow{
             MagneticFilterOperation(MagneticFilters::TURNS_RATIOS, true, false, true, 1.0),
             MagneticFilterOperation(MagneticFilters::MAXIMUM_DIMENSIONS, true, false, 1.0),
             MagneticFilterOperation(MagneticFilters::SATURATION, true, false, 1.0),
@@ -52,10 +52,10 @@ class MagneticAdviser{
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::map<MagneticFilters, double> weights, size_t maximumNumberResults);
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults);
-        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, size_t maximumNumberResults=1, bool strict=true);
-        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
-        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::map<std::string, Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
-        std::vector<std::pair<Mas, double>> get_advised_magnetic(std::vector<Mas> catalogMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogueMagnetics, size_t maximumNumberResults=1, bool strict=true);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::map<std::string, Magnetic> catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(std::vector<Mas> catalogueMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
         std::vector<std::pair<Mas, double>> score_magnetics(std::vector<Mas> masMagneticsWithCoil, std::vector<MagneticFilterOperation> filterFlow);
         static void preview_magnetic(Mas mas);
         void load_filter_flow(std::vector<MagneticFilterOperation> flow, std::optional<Inputs> inputs = std::nullopt);

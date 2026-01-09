@@ -11,6 +11,7 @@
 #include <streambuf>
 #include <vector>
 #include "Definitions.h"
+#include "support/Exceptions.h"
 using json = nlohmann::json;
 
 using namespace MAS;

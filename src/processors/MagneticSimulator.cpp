@@ -2,6 +2,7 @@
 #include "physical_models/LeakageInductance.h"
 #include "support/Settings.h"
 #include <MAS.hpp>
+#include "support/Exceptions.h"
 
 
 namespace OpenMagnetics {
@@ -60,9 +61,9 @@ LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(Magnetic
 }
 
 WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& operatingPoint, Magnetic magnetic, std::optional<double> temperature){
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto oldMagneticFieldMirroringDimension = settings->get_magnetic_field_mirroring_dimension();
-    settings->set_magnetic_field_mirroring_dimension(1);
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    auto oldMagneticFieldMirroringDimension = settings.get_magnetic_field_mirroring_dimension();
+    settings.set_magnetic_field_mirroring_dimension(1);
 
     double simulationTemperature;
     if (!temperature) {
@@ -74,14 +75,14 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
     WindingLosses windingLosses;
     // windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.01);
     auto losses = windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
-    settings->set_magnetic_field_mirroring_dimension(oldMagneticFieldMirroringDimension);
+    settings.set_magnetic_field_mirroring_dimension(oldMagneticFieldMirroringDimension);
     return losses;
 }
 
 CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic) {
     OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
     if (!excitation.get_current()) {
-        throw std::runtime_error("Missing current in operating point");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current in operating point");
     }
 
     double temperature = operatingPoint.get_conditions().get_ambient_temperature();

@@ -3,6 +3,7 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -46,7 +47,7 @@ namespace OpenMagnetics {
         }
         else {
             if (!currentRippleRatio) {
-                throw std::runtime_error("Either current ripple ratio or mode is needed for the Flyback OperatingPoint Mode");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Either current ripple ratio or mode is needed for the Flyback OperatingPoint Mode");
             }
             auto mode = currentRippleRatio.value() < 1? FlybackModes::CONTINUOUS_CONDUCTION_MODE : FlybackModes::DISCONTINUOUS_CONDUCTION_MODE;
             return mode;
@@ -58,22 +59,22 @@ namespace OpenMagnetics {
         }
         else {
             if (!get_mode()) {
-                throw std::runtime_error("Either switching frequency or mode is needed for the Flyback OperatingPoint");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Either switching frequency or mode is needed for the Flyback OperatingPoint");
             }
             auto mode = get_mode().value();
             switch (mode) {
                 case FlybackModes::CONTINUOUS_CONDUCTION_MODE: {
-                    throw std::runtime_error("Switching Frequency is needed for CCM");
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Switching Frequency is needed for CCM");
                 }
                 case FlybackModes::DISCONTINUOUS_CONDUCTION_MODE: {
-                    throw std::runtime_error("Switching Frequency is needed for DCM");
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Switching Frequency is needed for DCM");
                 }
                 case FlybackModes::QUASI_RESONANT_MODE: {
                     if (!inductance) {
-                        throw std::runtime_error("Inductance in missing for switching frequency calculation");
+                        throw InvalidInputException(ErrorCode::MISSING_DATA, "Inductance in missing for switching frequency calculation");
                     }
                     if (!turnsRatios) {
-                        throw std::runtime_error("TurnsRatios in missing for switching frequency calculation");
+                        throw InvalidInputException(ErrorCode::MISSING_DATA, "TurnsRatios in missing for switching frequency calculation");
                     }
                     double totalOutputVoltageReflectedPrimaryMinusDiode = 0;
 
@@ -90,10 +91,10 @@ namespace OpenMagnetics {
                 }
                 case FlybackModes::BOUNDARY_MODE_OPERATION: {
                     if (!inductance) {
-                        throw std::runtime_error("Inductance in missing for switching frequency calculation");
+                        throw InvalidInputException(ErrorCode::MISSING_DATA, "Inductance in missing for switching frequency calculation");
                     }
                     if (!turnsRatios) {
-                        throw std::runtime_error("TurnsRatios in missing for switching frequency calculation");
+                        throw InvalidInputException(ErrorCode::MISSING_DATA, "TurnsRatios in missing for switching frequency calculation");
                     }
                     double currentPeak = 0;
                     double switchingFrequency = 0;
@@ -111,7 +112,7 @@ namespace OpenMagnetics {
                     return switchingFrequency;
                 }
                 default:
-                  throw std::runtime_error("Unknown mode in Flyback");
+                  throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown mode in Flyback");
             }
         }
     }
@@ -153,7 +154,7 @@ namespace OpenMagnetics {
         }
 
         if (dutyCycle > 1 ) {
-            throw std::runtime_error("dutyCycle cannot be larger than one: " + std::to_string(dutyCycle));
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "dutyCycle cannot be larger than one: " + std::to_string(dutyCycle));
         }
 
         double primaryCurrentAverage = centerPrimaryCurrentRamp;
@@ -284,27 +285,27 @@ namespace OpenMagnetics {
             if (!assert) {
                 return false;
             }
-            throw std::runtime_error("At least one operating point is needed");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "At least one operating point is needed");
         }
         for (size_t flybackOperatingPointIndex = 1; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
             if (get_operating_points()[flybackOperatingPointIndex].get_output_voltages().size() != get_operating_points()[0].get_output_voltages().size()) {
                 if (!assert) {
                     return false;
                 }
-                throw std::runtime_error("Different operating points cannot have different number of output voltages");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output voltages");
             }
             if (get_operating_points()[flybackOperatingPointIndex].get_output_currents().size() != get_operating_points()[0].get_output_currents().size()) {
                 if (!assert) {
                     return false;
                 }
-                throw std::runtime_error("Different operating points cannot have different number of output currents");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output currents");
             }
         }
         if (!get_input_voltage().get_nominal() && !get_input_voltage().get_maximum() && !get_input_voltage().get_minimum()) {
             if (!assert) {
                 return false;
             }
-            throw std::runtime_error("No input voltage introduced");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "No input voltage introduced");
         }
 
         return true;
@@ -527,13 +528,13 @@ namespace OpenMagnetics {
             for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
                 std::optional<double> customDeadTime = std::nullopt;
                 if (get_desired_duty_cycle().size() <= flybackOperatingPointIndex) {
-                    throw std::runtime_error("Missing duty cycle for flybackOperatingPointIndex: " + std::to_string(flybackOperatingPointIndex));
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing duty cycle for flybackOperatingPointIndex: " + std::to_string(flybackOperatingPointIndex));
                 }
                 double customDutyCycle = get_desired_duty_cycle()[flybackOperatingPointIndex][inputVoltageIndex];
 
                 if (get_desired_dead_time()) {
                     if (get_desired_dead_time()->size() <= flybackOperatingPointIndex) {
-                        throw std::runtime_error("Missing dead time for flybackOperatingPointIndex: " + std::to_string(flybackOperatingPointIndex));
+                        throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing dead time for flybackOperatingPointIndex: " + std::to_string(flybackOperatingPointIndex));
                     }
                     customDeadTime = get_desired_dead_time().value()[flybackOperatingPointIndex];
                 }

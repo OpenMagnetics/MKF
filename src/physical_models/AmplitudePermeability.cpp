@@ -1,4 +1,5 @@
 #include "physical_models/AmplitudePermeability.h"
+#include "support/Exceptions.h"
 
 
 namespace OpenMagnetics {
@@ -12,7 +13,7 @@ std::optional<double> AmplitudePermeability::get_amplitude_permeability(CoreMate
     // TODO: Add more ways of getting this, like data from the manufacturer
     double amplitudePermeability = 1;
     if (!(magneticFieldStrengthPeak && !magneticFluxDensityPeak)) {
-        throw std::runtime_error("Either H or B must be specified");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Either H or B must be specified");
     }
     if (magneticFieldStrengthPeak) {
         auto [upperPath, lowerPath] = BHLoopRoshenModel().get_hysteresis_loop(coreMaterial, temperature, std::nullopt, magneticFieldStrengthPeak.value());

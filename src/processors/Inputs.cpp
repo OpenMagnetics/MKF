@@ -21,6 +21,7 @@
 #include <valarray>
 #include <vector>
 #include <list>
+#include "support/Exceptions.h"
 
 
 using json = nlohmann::json;
@@ -292,17 +293,17 @@ double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label) {
 
     double maximum = *max_element(diff_diff_data.begin(), diff_diff_data.end());
     size_t maximum_index = 0;
-    size_t distanceToMiddle = settings->get_inputs_number_points_sampled_waveforms();
+    size_t distanceToMiddle = settings.get_inputs_number_points_sampled_waveforms();
     for (size_t i = 0; i < diff_diff_data.size(); ++i)
     {
         if (diff_diff_data[i] == maximum) {
-            if (fabs(double(settings->get_inputs_number_points_sampled_waveforms()) / 2 - i) < distanceToMiddle) {
-                distanceToMiddle = fabs(double(settings->get_inputs_number_points_sampled_waveforms()) / 2 - i);
+            if (fabs(double(settings.get_inputs_number_points_sampled_waveforms()) / 2 - i) < distanceToMiddle) {
+                distanceToMiddle = fabs(double(settings.get_inputs_number_points_sampled_waveforms()) / 2 - i);
                 maximum_index = i;
             }
         }
     }
-    auto dutyCycle = roundFloat((maximum_index + 1.0) / settings->get_inputs_number_points_sampled_waveforms(), 2);
+    auto dutyCycle = roundFloat((maximum_index + 1.0) / settings.get_inputs_number_points_sampled_waveforms(), 2);
 
     if (dutyCycle <= 0.03 || dutyCycle >= 0.97) {
 
@@ -345,7 +346,7 @@ SignalDescriptor Inputs::standardize_waveform(SignalDescriptor signal, double fr
     SignalDescriptor standardized_signal(signal);
     if (!signal.get_waveform()) {
         if (!signal.get_processed() && !signal.get_harmonics()) {
-            throw std::runtime_error("Signal is not processed");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Signal is not processed");
         }
         if (signal.get_processed()) {
             auto waveform = create_waveform(signal.get_processed().value(), frequency);
@@ -368,7 +369,7 @@ SignalDescriptor Inputs::standardize_waveform(SignalDescriptor signal, double fr
 }
 
 Waveform Inputs::reconstruct_signal(Harmonics harmonics, double frequency) {
-    size_t numberPoints = std::max(settings->get_inputs_number_points_sampled_waveforms(), 16 * round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
+    size_t numberPoints = std::max(settings.get_inputs_number_points_sampled_waveforms(), 16 * round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
     std::vector<double> data = std::vector<double>(numberPoints, 0);
             
 
@@ -395,7 +396,7 @@ Waveform Inputs::reconstruct_signal(Harmonics harmonics, double frequency) {
 
 Waveform Inputs::create_waveform(Processed processed, double frequency) {
     if (!processed.get_peak_to_peak()) {
-        throw std::runtime_error("Signal is missing peak to peak");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Signal is missing peak to peak");
     }
 
     auto label = processed.get_label();
@@ -540,9 +541,9 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
             break;
         }
         case WaveformLabel::SINUSOIDAL: {
-            for (size_t i = 0; i < settings->get_inputs_number_points_sampled_waveforms(); ++i) {
-                double angle = i * 2 * std::numbers::pi / (settings->get_inputs_number_points_sampled_waveforms() - 1);
-                time.push_back(i * period / (settings->get_inputs_number_points_sampled_waveforms() - 1));
+            for (size_t i = 0; i < settings.get_inputs_number_points_sampled_waveforms(); ++i) {
+                double angle = i * 2 * std::numbers::pi / (settings.get_inputs_number_points_sampled_waveforms() - 1);
+                time.push_back(i * period / (settings.get_inputs_number_points_sampled_waveforms() - 1));
                 data.push_back((sin(angle) * peakToPeak / 2) + offset);
             }
             break;
@@ -578,7 +579,7 @@ bool Inputs::is_waveform_sampled(Waveform waveform) {
         return is_size_power_of_2(waveform.get_data());
     }
     else {
-        return waveform.get_data().size() == settings->get_inputs_number_points_sampled_waveforms();
+        return waveform.get_data().size() == settings.get_inputs_number_points_sampled_waveforms();
     }
 
 }
@@ -588,7 +589,7 @@ bool Inputs::is_waveform_imported(Waveform waveform) {
         return false;
     }
     else {
-        return waveform.get_data().size() > settings->get_inputs_number_points_sampled_waveforms();
+        return waveform.get_data().size() > settings.get_inputs_number_points_sampled_waveforms();
     }
 
 }
@@ -668,7 +669,7 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
     OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
 
     if (!excitation.get_current()->get_processed()) {
-        throw std::runtime_error("Current is not processed");
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
     }
 
     double rms = excitation.get_current()->get_processed()->get_rms().value();
@@ -744,7 +745,7 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
         // }
     }
 
-    size_t numberPointsForSampling = settings->get_inputs_number_points_sampled_waveforms();
+    size_t numberPointsForSampling = settings.get_inputs_number_points_sampled_waveforms();
     if (numberPoints) {
         numberPointsForSampling = numberPoints.value();
     }
@@ -804,7 +805,7 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
 
 SignalDescriptor Inputs::calculate_induced_voltage(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress) {
     if (!excitation.get_current()->get_waveform()) {
-        throw std::runtime_error("Current waveform is missing");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current waveform is missing");
     }
     Waveform sourceWaveform = excitation.get_current()->get_waveform().value();
     std::vector<double> source = sourceWaveform.get_data();
@@ -1000,10 +1001,10 @@ SignalDescriptor Inputs::add_offset_to_excitation(SignalDescriptor signalDescrip
 
 OperatingPointExcitation Inputs::get_excitation_with_proportional_current(OperatingPointExcitation excitation, double proportion) {
     if (!excitation.get_current()) {
-        throw std::runtime_error("Excitation is missing current");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Excitation is missing current");
     }
     if (!excitation.get_current()->get_waveform()) {
-        throw std::runtime_error("Current is missing waveform");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing waveform");
     }
     auto current = excitation.get_current().value();
     auto multipliedWaveform = multiply_waveform(current.get_waveform().value(), proportion);
@@ -1018,10 +1019,10 @@ OperatingPointExcitation Inputs::get_excitation_with_proportional_current(Operat
 
 OperatingPointExcitation Inputs::get_excitation_with_proportional_voltage(OperatingPointExcitation excitation, double proportion) {
     if (!excitation.get_voltage()) {
-        throw std::runtime_error("Excitation is missing voltage");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Excitation is missing voltage");
     }
     if (!excitation.get_voltage()->get_waveform()) {
-        throw std::runtime_error("voltage is missing waveform");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "voltage is missing waveform");
     }
     auto voltage = excitation.get_voltage().value();
     auto multipliedWaveform = multiply_waveform(voltage.get_waveform().value(), proportion);
@@ -1334,7 +1335,7 @@ Processed Inputs::calculate_processed_data(Harmonics harmonics,
                                             std::optional<Processed> processed) {
     auto sampledDataToProcess = waveform;
 
-    if (waveform.get_time() && waveform.get_data().size() < settings->get_inputs_number_points_sampled_waveforms()) {
+    if (waveform.get_time() && waveform.get_data().size() < settings.get_inputs_number_points_sampled_waveforms()) {
         auto frequency = harmonics.get_frequencies()[1];
         sampledDataToProcess = calculate_sampled_waveform(waveform, frequency);
     }
@@ -1420,7 +1421,7 @@ Processed Inputs::calculate_processed_data(Harmonics harmonics,
 }
 
 Harmonics Inputs::calculate_harmonics_data(Waveform waveform, double frequency) {
-    bool trimHarmonics = settings->get_inputs_trim_harmonics();
+    bool trimHarmonics = settings.get_inputs_trim_harmonics();
     bool isWaveformImported = is_waveform_imported(waveform);
     Harmonics harmonics;
 
@@ -1444,7 +1445,7 @@ Harmonics Inputs::calculate_harmonics_data(Waveform waveform, double frequency) 
 
 
     if (isWaveformImported && trimHarmonics) {
-        auto mainHarmonicIndexes = get_main_harmonic_indexes(harmonics, settings->get_harmonic_amplitude_threshold());
+        auto mainHarmonicIndexes = get_main_harmonic_indexes(harmonics, settings.get_harmonic_amplitude_threshold());
         Harmonics reducedHarmonics;
         reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[0]);
         reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[1]);
@@ -1479,7 +1480,7 @@ OperatingPointExcitation Inputs::prune_harmonics(OperatingPointExcitation excita
 
 SignalDescriptor Inputs::prune_harmonics(SignalDescriptor signalDescriptor, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
     if (!signalDescriptor.get_harmonics()) {
-        throw std::runtime_error("Signal has no harmonics to prune");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Signal has no harmonics to prune");
     }
     auto unprunedHarmonics = signalDescriptor.get_harmonics().value();
     Harmonics prunedHarmonics;
@@ -1702,7 +1703,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
                                                                 bool addOffset) {
     double dcCurrent = 0;
     if (magnetizingInductance <= 0) {
-        throw std::runtime_error("magnetizingInductance cannot be zero or negative");
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "magnetizingInductance cannot be zero or negative");
     }
 
     if (addOffset && excitation.get_current()) {
@@ -1807,7 +1808,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
                                                                 bool compress,
                                                                 double dcCurrent) {
     if (magnetizingInductance <= 0) {
-        throw std::runtime_error("magnetizingInductance cannot be zero or negative");
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "magnetizingInductance cannot be zero or negative");
     }
 
 
@@ -2419,7 +2420,7 @@ double Inputs::calculate_waveform_coefficient(OperatingPoint* operatingPoint) {
     double frequency = excitation.get_frequency();
     Waveform sampledWaveform = excitation.get_voltage()->get_waveform().value();
 
-    if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < settings->get_inputs_number_points_sampled_waveforms()) {
+    if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < settings.get_inputs_number_points_sampled_waveforms()) {
         sampledWaveform = calculate_sampled_waveform(sampledWaveform, frequency);
     }
 
@@ -2445,31 +2446,31 @@ double Inputs::calculate_waveform_coefficient(OperatingPoint* operatingPoint) {
 double Inputs::calculate_instantaneous_power(OperatingPointExcitation excitation) {
     double frequency = excitation.get_frequency();
     if (!excitation.get_voltage()) {
-        throw std::runtime_error("Voltage signal is missing");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Voltage signal is missing");
     }
     if (!excitation.get_voltage()->get_waveform()) {
-        throw std::runtime_error("Voltage waveform is missing");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Voltage waveform is missing");
     }
     if (!excitation.get_current()) {
-        throw std::runtime_error("Current signal is missing");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current signal is missing");
     }
     if (!excitation.get_current()->get_waveform()) {
-        throw std::runtime_error("Current waveform is missing");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current waveform is missing");
     }
     Waveform voltageSampledWaveform = excitation.get_voltage()->get_waveform().value();
     Waveform currentSampledWaveform = excitation.get_current()->get_waveform().value();
 
-    if (voltageSampledWaveform.get_time() && voltageSampledWaveform.get_data().size() != settings->get_inputs_number_points_sampled_waveforms()) {
+    if (voltageSampledWaveform.get_time() && voltageSampledWaveform.get_data().size() != settings.get_inputs_number_points_sampled_waveforms()) {
         voltageSampledWaveform = calculate_sampled_waveform(voltageSampledWaveform, frequency);
     }
 
-    if (currentSampledWaveform.get_time() && currentSampledWaveform.get_data().size() != settings->get_inputs_number_points_sampled_waveforms()) {
+    if (currentSampledWaveform.get_time() && currentSampledWaveform.get_data().size() != settings.get_inputs_number_points_sampled_waveforms()) {
         currentSampledWaveform = calculate_sampled_waveform(currentSampledWaveform, frequency);
     }
 
     std::vector<double> powerPoints;
 
-    for (size_t i = 0; i < settings->get_inputs_number_points_sampled_waveforms(); i++) {
+    for (size_t i = 0; i < settings.get_inputs_number_points_sampled_waveforms(); i++) {
         powerPoints.push_back(fabs(voltageSampledWaveform.get_data()[i] * currentSampledWaveform.get_data()[i]));
     }
 
@@ -2497,81 +2498,81 @@ WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
     }
     else if (compressedWaveform.get_time()) {
         if (compressedWaveform.get_data().size() == 4 &&
-            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3]) {
                 return WaveformLabel::UNIPOLAR_TRIANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
             !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
                 return WaveformLabel::UNIPOLAR_RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
             !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
                 return WaveformLabel::UNIPOLAR_RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
             is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
                 return WaveformLabel::RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
             is_close_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
                 return WaveformLabel::RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 10 &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
-            is_close_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[6] == compressedWaveform.get_data()[7] &&
-            is_close_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[8] == compressedWaveform.get_data()[9] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[9]) {
                 return WaveformLabel::BIPOLAR_RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 6 &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-            is_close_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
             compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[5]) {
                 return WaveformLabel::BIPOLAR_TRIANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[1] < compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
                 return WaveformLabel::FLYBACK_PRIMARY;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[2] > compressedWaveform.get_data()[3] &&
-            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings.get_inputs_number_points_sampled_waveforms()) &&
             compressedWaveform.get_data()[0] == waveform.get_data()[4]) {
                 return WaveformLabel::FLYBACK_SECONDARY;
         }
@@ -2585,7 +2586,7 @@ WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
             double offset = (maximum - minimum) / 2;
 
             for (size_t i = 0; i < waveform.get_data().size(); ++i) {
-                double angle = i * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
+                double angle = i * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
                 double calculated_data = (sin(angle) * peakToPeak / 2) + offset;
                 area += fabs(waveform.get_data()[i]);
                 error += fabs(calculated_data - waveform.get_data()[i]);
@@ -2610,7 +2611,7 @@ WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
         double offset = (maximum - minimum) / 2;
 
         for (size_t i = 0; i < waveform.get_data().size(); ++i) {
-            double angle = i * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
+            double angle = i * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
             double calculated_data = (sin(angle) * peakToPeak / 2) + offset;
             area += fabs(waveform.get_data()[i]);
             error += fabs(calculated_data - waveform.get_data()[i]);
@@ -3169,10 +3170,10 @@ SignalDescriptor Inputs::get_current_with_effective_maximum(size_t windingIndex)
     double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < get_operating_points().size(); ++operatingPointIndex) {
         if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()) {
-            throw std::runtime_error("Current is missing");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is missing");
         }
         if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()) {
-            throw std::runtime_error("Current is not processed");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
         }
         if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
             auto current = get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
@@ -3182,7 +3183,7 @@ SignalDescriptor Inputs::get_current_with_effective_maximum(size_t windingIndex)
                 get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
             }
             else {
-                throw std::runtime_error("Current is not processed");
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
             }
         }
         double effectiveFrequency = get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency().value();

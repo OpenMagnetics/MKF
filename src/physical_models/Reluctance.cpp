@@ -9,6 +9,8 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 namespace OpenMagnetics {
 
@@ -25,7 +27,7 @@ double ReluctanceModel::get_ungapped_core_reluctance(const Core& core, double in
 
 double ReluctanceModel::get_air_cored_reluctance(Bobbin bobbin) {
     if (!bobbin.get_processed_description()) {
-        throw std::runtime_error("Bobbin not processed");
+        throw CoilNotProcessedException("Bobbin not processed");
     }
     double airArea;
     auto bobbinDimensions = bobbin.get_winding_window_dimensions();
@@ -42,7 +44,7 @@ double ReluctanceModel::get_air_cored_reluctance(Bobbin bobbin) {
         airArea = 4 * (columnWidth - columnThickness) * (columnDepth - columnThickness);
     }
     else {
-        throw std::runtime_error("Column shape not implemented yet");
+        throw NotImplementedException("Column shape not implemented yet");
     }
 
     auto constants = Constants();
@@ -77,11 +79,11 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, std:
     auto magnetizingInductanceOutput = get_gapping_reluctance(core);
 
     if (std::isnan(ungappedCoreReluctance)) {
-        throw std::runtime_error("Core Reluctance must be a number, not NaN");
+        throw NaNResultException("Core Reluctance must be a number, not NaN");
     }
     double calculatedReluctance = ungappedCoreReluctance + magnetizingInductanceOutput.get_gapping_reluctance().value();
     if (std::isnan(calculatedReluctance)) {
-        throw std::runtime_error("Reluctance must be a number, not NaN");
+        throw NaNResultException("Reluctance must be a number, not NaN");
     }
 
     if (operatingPoint) {
@@ -161,16 +163,16 @@ AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo)
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
-        throw std::runtime_error("Gap Area is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
     }
     if (!gapInfo.get_shape()) {
-        throw std::runtime_error("Gap Shape is not set");
+        throw GapException(ErrorCode::GAP_SHAPE_NOT_SET, "Gap Shape is not set");
     }
     if (!gapInfo.get_section_dimensions()) {
-        throw std::runtime_error("Gap Section Dimensions are not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Section Dimensions are not set");
     }
     if (!gapInfo.get_distance_closest_normal_surface()) {
-        throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Distance Closest Normal Surface is not set");
     }
     auto gapArea = *(gapInfo.get_area());
     auto gapShape = *(gapInfo.get_shape());
@@ -195,11 +197,11 @@ AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo)
                                                   log((2 * distanceClosestNormalSurface + gapLength) / gapLength));
 
         if (std::isnan(reluctanceInternal) || reluctanceInternal == 0) {
-            throw std::runtime_error("reluctanceInternal cannot be 0 or NaN");
+            throw NaNResultException("reluctanceInternal cannot be 0 or NaN");
         }
 
         if (std::isnan(reluctanceFringing) || reluctanceFringing == 0) {
-            throw std::runtime_error("reluctanceFringing cannot be 0 or NaN");
+            throw NaNResultException("reluctanceFringing cannot be 0 or NaN");
         }
 
         reluctance = 1. / (1. / reluctanceInternal + 1. / reluctanceFringing);
@@ -232,13 +234,13 @@ AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap g
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_shape()) {
-        throw std::runtime_error("Gap Shape is not set");
+        throw GapException(ErrorCode::GAP_SHAPE_NOT_SET, "Gap Shape is not set");
     }
     if (!gapInfo.get_section_dimensions()) {
-        throw std::runtime_error("Gap Section Dimensions are not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Section Dimensions are not set");
     }
     if (!gapInfo.get_distance_closest_normal_surface()) {
-        throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Distance Closest Normal Surface is not set");
     }
     auto gapShape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
@@ -279,13 +281,13 @@ AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap 
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
-        throw std::runtime_error("Gap Area is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
     }
     if (!gapInfo.get_shape()) {
-        throw std::runtime_error("Gap Shape is not set");
+        throw GapException(ErrorCode::GAP_SHAPE_NOT_SET, "Gap Shape is not set");
     }
     if (!gapInfo.get_section_dimensions()) {
-        throw std::runtime_error("Gap Section Dimensions are not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Section Dimensions are not set");
     }
     auto gapArea = *(gapInfo.get_area());
     auto gapShape = *(gapInfo.get_shape());
@@ -321,13 +323,13 @@ AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGa
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
-        throw std::runtime_error("Gap Area is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
     }
     if (!gapInfo.get_shape()) {
-        throw std::runtime_error("Gap Shape is not set");
+        throw GapException(ErrorCode::GAP_SHAPE_NOT_SET, "Gap Shape is not set");
     }
     if (!gapInfo.get_section_dimensions()) {
-        throw std::runtime_error("Gap Section Dimensions are not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Section Dimensions are not set");
     }
     auto gapArea = *(gapInfo.get_area());
     auto gapShape = *(gapInfo.get_shape());
@@ -362,13 +364,13 @@ AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapI
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
-        throw std::runtime_error("Gap Area is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
     }
     if (!gapInfo.get_section_dimensions()) {
-        throw std::runtime_error("Gap Section Dimensions are not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Section Dimensions are not set");
     }
     if (!gapInfo.get_distance_closest_normal_surface()) {
-        throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Distance Closest Normal Surface is not set");
     }
     auto gapArea = *(gapInfo.get_area());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
@@ -396,22 +398,22 @@ AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapI
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
-        throw std::runtime_error("Gap Area is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
     }
     if (!gapInfo.get_shape()) {
-        throw std::runtime_error("Gap Shape is not set");
+        throw GapException(ErrorCode::GAP_SHAPE_NOT_SET, "Gap Shape is not set");
     }
     if (!gapInfo.get_section_dimensions()) {
-        throw std::runtime_error("Gap Section Dimensions are not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Section Dimensions are not set");
     }
     if (!gapInfo.get_distance_closest_normal_surface()) {
-        throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Distance Closest Normal Surface is not set");
     }
     if (!gapInfo.get_coordinates()) {
-        throw std::runtime_error("Gap Corrdinates are not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Coordinates are not set");
     }
     if (!gapInfo.get_distance_closest_parallel_surface()) {
-        throw std::runtime_error("Gap Distance Closest Parallel Surface is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Distance Closest Parallel Surface is not set");
     }
     auto gapArea = *(gapInfo.get_area());
     auto gapCoordinates = *(gapInfo.get_coordinates());
@@ -453,7 +455,7 @@ AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInf
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
-        throw std::runtime_error("Gap Area is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
     }
     auto gapArea = *(gapInfo.get_area());
     double reluctance;
@@ -475,7 +477,7 @@ AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap g
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
-        throw std::runtime_error("Gap Area is not set");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
     }
     auto gapArea = *(gapInfo.get_area());
     double reluctance;
@@ -536,7 +538,7 @@ std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels model
     }
 
     else
-        throw std::runtime_error("Unknown Reluctance mode, available options are: {ZHANG, PARTRIDGE, EFFECTIVE_AREA, "
+        throw ModelNotAvailableException("Unknown Reluctance mode, available options are: {ZHANG, PARTRIDGE, EFFECTIVE_AREA, "
                                  "EFFECTIVE_LENGTH, MUEHLETHALER, STENGLEIN, BALAKRISHNAN, CLASSIC}");
 }
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory() {
@@ -546,7 +548,7 @@ std::shared_ptr<ReluctanceModel> ReluctanceModel::factory() {
 double ReluctanceModel::get_gapping_by_fringing_factor(Core core, double fringingFactor) {
     auto centralColumns = core.find_columns_by_type(ColumnType::CENTRAL);
     if (centralColumns.size() == 0) {
-        throw std::runtime_error("No columns found in core");
+        throw CoreNotProcessedException("No columns found in core");
     }
     double gapLength = centralColumns[0].get_height();
     double gapIncrease = gapLength / 2;

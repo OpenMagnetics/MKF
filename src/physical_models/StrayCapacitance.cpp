@@ -9,6 +9,7 @@
 #include <matplot/matplot.h>
 #include <cfloat>
 #include <set>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -409,7 +410,7 @@ StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(Coil coil, 
     std::map<std::string, double> voltageRmsPerWinding;
     for (size_t windingIndex = 0; windingIndex <  coil.get_functional_description().size(); ++windingIndex) {
         if (windingIndex >= operatingPoint.get_excitations_per_winding().size()) {
-            throw std::runtime_error("Missing excitation for windingIndex: " + std::to_string(windingIndex));
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing excitation for windingIndex: " + std::to_string(windingIndex));
         }
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
         if (!excitation.get_voltage()) {
@@ -465,10 +466,10 @@ StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(Coil coil, 
         voltageDividerEndPerTurn.push_back(voltageDividerEndThisTurn);
         double voltage = voltageRmsPerWinding[turnWinding] * voltageDividerCenterThisTurn;
         if (std::isnan(voltage)) {
-            throw std::runtime_error("voltage cannot be nan");
+            throw NaNResultException("voltage cannot be nan");
         }
         if (std::isinf(voltage)) {
-            throw std::runtime_error("voltage cannot be inf");
+            throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT, "voltage cannot be inf");
         }
         voltagePerTurn.push_back(voltageRmsPerWinding[turnWinding] * voltageDividerCenterThisTurn);
         turnIndexPerWindingPerParallel[turnWinding][turnParallel]++;
@@ -487,7 +488,7 @@ double get_effective_relative_permittivity(double firstThickness, double firstRe
 
 double get_wire_insulation_relative_permittivity(Wire wire) {
     if (wire.get_type() != WireType::ROUND) {
-        throw std::runtime_error("Other wires not implemented yet, check Albach's book");
+        throw NotImplementedException("Other wires not implemented yet, check Albach's book");
     }
     auto conductingRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
     return 2.5 + 0.7 / sqrt(2 * conductingRadius * 1000);
@@ -509,12 +510,12 @@ std::shared_ptr<StrayCapacitanceModel> StrayCapacitanceModel::factory(StrayCapac
     }
 
     else
-        throw std::runtime_error("Unknown Stray capacitance model, available options are: {KOCH, ALBACH, DUERDOTH, MASSARINI}");
+        throw ModelNotAvailableException("Unknown Stray capacitance model, available options are: {KOCH, ALBACH, DUERDOTH, MASSARINI}");
 }
 
 std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
     if (firstWire.get_type() != WireType::ROUND || secondWire.get_type() != WireType::ROUND) {
-        throw std::runtime_error("Other wires not implemented yet, check Albach's book");
+        throw NotImplementedException("Other wires not implemented yet, check Albach's book");
     }
 
     InsulationMaterial insulationMaterial = find_insulation_material_by_name(Defaults().defaultInsulationMaterial);
@@ -614,7 +615,7 @@ std::vector<double> StrayCapacitanceParallelPlateModel::preprocess_data_for_plan
 
     auto coatingInsulationMaterial = find_insulation_material_by_name(defaults.defaultPcbInsulationMaterial);
     if (!coatingInsulationMaterial.get_relative_permittivity())
-        throw std::runtime_error("FR4 insulation material is missing dielectric constant");
+        throw InvalidInputException(ErrorCode::INVALID_INSULATION_DATA, "FR4 insulation material is missing dielectric constant");
     double effectiveRelativePermittivityLayers = coatingInsulationMaterial.get_relative_permittivity().value();
 
     auto averageTurnLength = (firstTurn.get_length() + secondTurn.get_length()) / 2;
@@ -929,7 +930,7 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
                             voltageDropBetweenTurnsMap[turnsKey] = voltageDropAmongTurns;
 
                             if (std::isnan(energyInBetweenTheseWindings)) {
-                                throw std::runtime_error("Energy cannot be nan");
+                                throw NaNResultException("Energy cannot be nan");
                             }
                         }
                     }
@@ -1033,7 +1034,7 @@ std::vector<ScalarMatrixAtFrequency> StrayCapacitance::calculate_maxwell_capacit
             }
             else {
                 capacitanceSum += capacitanceAmongWindings[secondWindingName][firstWindingName];
-                throw std::runtime_error("Old code, this should not happen");
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Old code, this should not happen");
                 if (firstWindingName != secondWindingName) {
                     auto capacitance = capacitanceAmongWindings[secondWindingName][firstWindingName];
                     scalarMatrixAtFrequency.get_mutable_magnitude()[firstWindingName][secondWindingName].set_nominal(-capacitance);
@@ -1106,7 +1107,7 @@ double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil) {
     double casValue = cas(numberTurns, ctt, cts);
 
     if (std::isnan(casValue)) {
-        throw std::runtime_error("capacitance cannot be NaN");
+        throw NaNResultException("capacitance cannot be NaN");
     }
 
     if (numberTurns > 1) {

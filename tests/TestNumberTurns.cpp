@@ -1,26 +1,27 @@
 #include "constructive_models/NumberTurns.h"
 #include "TestingUtils.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <vector>
 
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(NumberTurns) {
-    TEST(Number_Turns_Inductor) {
+namespace { 
+    TEST_CASE("Number_Turns_Inductor", "[constructive-model][number-turns]") {
         DesignRequirements designRequirements;
         designRequirements.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         uint64_t initialPrimaryNumberTurns = 42;
 
         NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
         std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns);
+        REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns);
         numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
+        REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
     }
 
-    TEST(Number_Turns_Two_Windings_Turns_Ratio_1) {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_1", "[constructive-model][number-turns]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
         double turnsRatioValue = 1;
@@ -30,14 +31,14 @@ SUITE(NumberTurns) {
 
         NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
         std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns);
-        CHECK(numberTurnsCombination[1] == initialPrimaryNumberTurns * 1);
+        REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns);
+        REQUIRE(numberTurnsCombination[1] == initialPrimaryNumberTurns * 1);
         numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
-        CHECK(numberTurnsCombination[1] == (initialPrimaryNumberTurns + 1) * 1);
+        REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
+        REQUIRE(numberTurnsCombination[1] == (initialPrimaryNumberTurns + 1) * 1);
     }
 
-    TEST(Number_Turns_Two_Windings_Turns_Ratio_8) {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_8", "[constructive-model][number-turns]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
         double turnsRatioValue = 8;
@@ -49,15 +50,15 @@ SUITE(NumberTurns) {
 
         NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
         std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns);
-        CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+        REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns);
+        REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
         numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
-        CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+        REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
+        REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
     }
 
-    TEST(Number_Turns_Two_Windings_Turns_Ratio_0_001) {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_0_001", "[constructive-model][number-turns]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
         double turnsRatioValue = 0.001;
@@ -69,15 +70,15 @@ SUITE(NumberTurns) {
 
         NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
         std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns);
-        CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+        REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns);
+        REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
         numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
-        CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+        REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
+        REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
     }
 
-    TEST(Number_Turns_Two_Windings_Turns_Ratio_Random) {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random", "[constructive-model][number-turns]") {
         srand (time(NULL));
         for (size_t i = 0; i < 1000; ++i)
         {
@@ -95,15 +96,15 @@ SUITE(NumberTurns) {
             
             NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
             std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-            CHECK(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
-            CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+            REQUIRE(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
+            REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
             numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-            CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+            REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
         }
     }
 
-    TEST(Number_Turns_Many_Windings_Turns_Ratio_Random) {
+    TEST_CASE("Number_Turns_Many_Windings_Turns_Ratio_Random", "[constructive-model][number-turns]") {
         srand (time(NULL));
         for (size_t i = 0; i < 1000; ++i)
         {
@@ -127,22 +128,22 @@ SUITE(NumberTurns) {
             
             NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
             std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-            CHECK(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
+            REQUIRE(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
             for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex)
             {
-                CHECK(check_requirement(turnsRatios[turnRatioIndex], double(numberTurnsCombination[0]) / numberTurnsCombination[turnRatioIndex + 1]));
+                REQUIRE(check_requirement(turnsRatios[turnRatioIndex], double(numberTurnsCombination[0]) / numberTurnsCombination[turnRatioIndex + 1]));
             }
 
             numberTurnsCombination = numberTurns.get_next_number_turns_combination();
             for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex)
             {
-                CHECK(check_requirement(turnsRatios[turnRatioIndex], double(numberTurnsCombination[0]) / numberTurnsCombination[turnRatioIndex + 1]));
+                REQUIRE(check_requirement(turnsRatios[turnRatioIndex], double(numberTurnsCombination[0]) / numberTurnsCombination[turnRatioIndex + 1]));
             }
 
         }
     }
 
-    TEST(Number_Turns_Two_Windings_Turns_Ratio_Random_0) {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random_0", "[constructive-model][number-turns]") {
         srand (time(NULL));
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
@@ -155,14 +156,14 @@ SUITE(NumberTurns) {
         
         NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
         std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
-        CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+        REQUIRE(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
+        REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
         numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+        REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
     }
 
-    TEST(Number_Turns_Two_Windings_Turns_Ratio_Random_1) {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random_1", "[constructive-model][number-turns]") {
         srand (time(NULL));
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
@@ -175,11 +176,13 @@ SUITE(NumberTurns) {
         
         NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
         std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
-        CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+        REQUIRE(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
+        REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
         numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-        CHECK(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
+        REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
     }
 
-}
+// End of SUITE
+
+}  // namespace
