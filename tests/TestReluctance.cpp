@@ -1,3 +1,4 @@
+#include "RandomUtils.h"
 #include "support/Utils.h"
 #include "physical_models/Reluctance.h"
 #include "TestingUtils.h"
@@ -643,10 +644,9 @@ namespace {
     }
 
     TEST_CASE("Test_Gap_By_Fringing_Factor", "[physical-model][reluctance][gap]") {
-        srand (time(NULL));
         for (size_t i = 0; i < 100; ++i)
         {
-            double randomPercentage = double(std::rand() % 50 + 1L) * 1e-2;
+            double randomPercentage = double(OpenMagnetics::TestUtils::randomInt64(1, 50 + 1 - 1)) * 1e-2;
             auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
             auto centralColumns = core.find_columns_by_type(ColumnType::CENTRAL);
             double expectedGap = centralColumns[0].get_height() * randomPercentage;

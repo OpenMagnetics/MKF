@@ -1,3 +1,5 @@
+#include "RandomUtils.h"
+#include <source_location>
 #include "support/Painter.h"
 #include "processors/MagneticSimulator.h"
 #include "advisers/MagneticAdviser.h"
@@ -12,9 +14,8 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace { 
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     TEST_CASE("MagneticSimulator", "[processor][magnetic-simulator]") {
-        srand (time(NULL));
 
         std::vector<double> turnsRatios;
 
@@ -72,7 +73,7 @@ namespace {
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             auto simulatedMas = masMagnetics[i].first;
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticSimulator_" + std::to_string(i) + "_" + simulatedMas.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";
             filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex(" "), "_")).string();
@@ -116,7 +117,7 @@ namespace {
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             auto simulatedMas = masMagnetics[i].first;
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticSimulator_" + std::to_string(i) + "_" + simulatedMas.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";
             filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex(" "), "_")).string();
@@ -1138,7 +1139,7 @@ namespace {
 
     TEST_CASE("Test_Simulator_Web_2", "[processor][magnetic-simulator][bug]") {
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_contiguous.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -1149,7 +1150,7 @@ namespace {
     }
 
     TEST_CASE("Test_Simulator_Web_3", "[processor][magnetic-simulator][bug]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_partialWinding_missing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -1160,7 +1161,7 @@ namespace {
     }
 
     TEST_CASE("Test_Simulator_Web_4", "[processor][magnetic-simulator][bug]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_empty_field.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 

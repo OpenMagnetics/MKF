@@ -1,3 +1,4 @@
+#include <source_location>
 #include "processors/Sweeper.h"
 #include "support/Painter.h"
 #include "support/Settings.h"
@@ -9,7 +10,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace {
-    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
     TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Many_Turns", "[processor][sweeper]") {
         settings.set_coil_wind_even_if_not_fit(true);
@@ -927,7 +928,7 @@ namespace {
 
     TEST_CASE("Test_Sweeper_Winding_Losses_Over_Frequency_Web_0", "[processor][sweeper]") {
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_winding_losses_sweep.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 

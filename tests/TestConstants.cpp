@@ -11,7 +11,7 @@ using json = nlohmann::json;
 
 namespace {
 
-TEST_CASE("AccessConstants", "[support][constants]") {
+TEST_CASE("AccessConstants", "[support][constants][smoke-test]") {
     REQUIRE_THAT(OpenMagnetics::constants.residualGap, Catch::Matchers::WithinAbs(5.0e-6, 1e-8));
 }
 

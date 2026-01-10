@@ -347,7 +347,11 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
         averageVolumetricLosses /= _magneticFluxDensities.size() * _frequencies.size();
         return averageVolumetricLosses;
     }
-    catch(const std::runtime_error& re)
+    catch(const ModelNotAvailableException& re)
+    {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    catch(const InvalidInputException& re)
     {
         return std::numeric_limits<double>::quiet_NaN();
     }

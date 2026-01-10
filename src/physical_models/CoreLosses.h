@@ -129,8 +129,8 @@ class CoreLossesModel {
         std::vector<std::string> methodsString;
         auto methods = get_methods(material);
         for (auto method : methods) {
-            auto methodString = to_string(method);
-            std::transform(methodString.begin(), methodString.end(), methodString.begin(), ::tolower);
+            json methodString;
+            to_json(methodString, method);
             methodsString.push_back(methodString);
         }
         return methodsString;

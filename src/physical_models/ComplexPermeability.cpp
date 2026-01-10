@@ -54,7 +54,7 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
             complexPermeabilityData = calculate_complex_permeability_from_frequency_dependent_initial_permeability(coreMaterial);
         }
         else {
-            throw missing_material_data_exception("Missing complex data in material " + coreMaterial.get_name());
+            throw MaterialDataMissingException(coreMaterial.get_name(), "Complex permeability");
         }
     }
     else {

@@ -1,7 +1,7 @@
 #include "support/Painter.h"
 #include "json.hpp"
 #include "TestingUtils.h"
-
+#include <source_location>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -17,7 +17,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace { 
-    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    const auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
     TEST_CASE("Test_Painter_Contour_Many_Turns", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
         std::vector<int64_t> numberTurns = {23, 13};
@@ -971,7 +971,7 @@ namespace {
 
     TEST_CASE("Test_Coil_Magnetic_Field_Basic_Painter_Planar", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
         OpenMagnetics::Mas mas;
         OpenMagnetics::from_file(path, mas);
@@ -1125,7 +1125,7 @@ namespace {
 
     TEST_CASE("Test_Coil_Electric_Field_Basic_Painter_Planar", "[support][painter][electric-field-painter][rectangular-winding-window]") {
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
         OpenMagnetics::Mas mas;
         OpenMagnetics::from_file(path, mas);
@@ -1207,7 +1207,7 @@ namespace {
         settings.reset();
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_Toroid_Round_Wires.svg");
             std::filesystem::remove(outFile);
@@ -1538,7 +1538,7 @@ namespace {
         settings.reset();
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_Toroid_Rectangular_Wires.svg");
             std::filesystem::remove(outFile);
@@ -1918,7 +1918,7 @@ namespace {
     TEST_CASE("Test_Coil_Painter_Web_7", "[support][painter][magnetic-painter][round-winding-window]") {
         clear_databases();
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/error_C_shape.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
         auto magnetic = mas.get_magnetic();
@@ -1937,7 +1937,7 @@ namespace {
     TEST_CASE("Test_Coil_Painter_Web_8", "[support][painter][magnetic-painter][round-winding-window]") {
         clear_databases();
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/error_paint_field.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
         auto magnetic = mas.get_magnetic();
@@ -3700,8 +3700,6 @@ namespace {
         double voltagePeakToPeak = 2000;
         std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
         std::vector<size_t> stackUp = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
-        double bobbinHeight = 0.01;
-        double bobbinWidth = 0.02;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "3C95");
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
@@ -3857,7 +3855,7 @@ namespace {
         auto wire = find_wire_by_name("Round 0.335 - Grade 1");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Round_Enamelled_Grade_1.svg");
             std::filesystem::remove(outFile);
@@ -3874,7 +3872,7 @@ namespace {
         auto wire = find_wire_by_name("Round 0.335 - Grade 2");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Round_Enamelled_Grade_2.svg");
             std::filesystem::remove(outFile);
@@ -3891,7 +3889,7 @@ namespace {
         auto wire = find_wire_by_name("Round 0.071 - FIW 9");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Round_Enamelled_Grade_9.svg");
             std::filesystem::remove(outFile);
@@ -3908,7 +3906,7 @@ namespace {
         auto wire = find_wire_by_name("Round T17A01PXXX-1.5");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Round_TIW_PFA.svg");
             std::filesystem::remove(outFile);
@@ -3925,7 +3923,7 @@ namespace {
         auto wire = find_wire_by_name("Round D32A01TXX-3");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Round_DIW_ETFE.svg");
             std::filesystem::remove(outFile);
@@ -3942,7 +3940,7 @@ namespace {
         auto wire = find_wire_by_name("Round S24A01FX-2");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Round_SIW_PEF.svg");
             std::filesystem::remove(outFile);
@@ -3959,7 +3957,7 @@ namespace {
         auto wire = find_wire_by_name("Round TCA1 31 AWG");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Round_SIW_TCA.svg");
             std::filesystem::remove(outFile);
@@ -3976,7 +3974,7 @@ namespace {
         auto wire = find_wire_by_name("Rectangular 2x0.80 - Grade 1");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Rectangular_Enamelled_Grade_1.svg");
             std::filesystem::remove(outFile);
@@ -3993,7 +3991,7 @@ namespace {
         auto wire = find_wire_by_name("Rectangular 2x0.80 - Grade 2");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Rectangular_Enamelled_Grade_2.svg");
             std::filesystem::remove(outFile);
@@ -4015,7 +4013,7 @@ namespace {
         wire.set_outer_height(dimensionWithTolerance);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Foil_Bare.svg");
             std::filesystem::remove(outFile);
@@ -4032,7 +4030,7 @@ namespace {
         auto wire = find_wire_by_name("Litz TXXL07/28FXXX-2(MWXX)");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Litz_Simple_Insulation.svg");
             std::filesystem::remove(outFile);
@@ -4049,7 +4047,7 @@ namespace {
         auto wire = find_wire_by_name("Litz 75x0.3 - Grade 1 - Unserved");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Litz_Simple_Bare.svg");
             std::filesystem::remove(outFile);
@@ -4066,7 +4064,7 @@ namespace {
         auto wire = find_wire_by_name("Litz 75x0.3 - Grade 1 - Single Served");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Litz_Simple_Single_Served.svg");
             std::filesystem::remove(outFile);
@@ -4085,7 +4083,7 @@ namespace {
         auto wire = find_wire_by_name("Litz 270x0.02 - Grade 1 - Single Served");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Litz_Simple_Double_Served.svg");
             std::filesystem::remove(outFile);
@@ -4104,7 +4102,7 @@ namespace {
         auto wire = find_wire_by_name("Litz DXXL550/44TXX-3(MWXX)");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Litz_Simple_Insulated.svg");
             std::filesystem::remove(outFile);
@@ -4123,7 +4121,7 @@ namespace {
         auto wire = find_wire_by_name("Litz 4x0.071 - Grade 2 - Double Served");
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Litz_Few_Strands.svg");
             std::filesystem::remove(outFile);
@@ -4142,7 +4140,7 @@ namespace {
         OpenMagnetics::Wire wire(json::parse(R"({"standard": "IEC 60317", "type": "litz", "strand": "Round 0.2 - Grade 1", "numberConductors": 17, "coating": {"breakdownVoltage": null, "grade": null, "material": null, "numberLayers": 1, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "served"}})"));
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Litz_Few_Strands.svg");
             std::filesystem::remove(outFile);
@@ -4167,7 +4165,7 @@ namespace {
             wire.set_nominal_value_conducting_width(4e-6);
             wire.set_nominal_value_outer_height(OpenMagnetics::Wire::get_outer_height_rectangular(2e-6, 2, WireStandard::IEC_60317));
             wire.set_nominal_value_outer_width(OpenMagnetics::Wire::get_outer_height_rectangular(4e-6, 2, WireStandard::IEC_60317));
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Rectangular_Wire_Tiny.svg");
             std::filesystem::remove(outFile);
@@ -4186,7 +4184,7 @@ namespace {
             wire.set_nominal_value_conducting_width(5e-6);
             wire.set_nominal_value_outer_height(OpenMagnetics::Wire::get_outer_height_rectangular(2e-6, 2, WireStandard::IEC_60317));
             wire.set_nominal_value_outer_width(OpenMagnetics::Wire::get_outer_height_rectangular(5e-6, 2, WireStandard::IEC_60317));
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Rectangular_Wire_Tiny2.svg");
             std::filesystem::remove(outFile);
@@ -4206,7 +4204,7 @@ namespace {
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
@@ -4229,7 +4227,7 @@ namespace {
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Simple_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
@@ -4252,7 +4250,7 @@ namespace {
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
@@ -4275,7 +4273,7 @@ namespace {
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_Many_Strands_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
@@ -4298,7 +4296,7 @@ namespace {
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Advanced_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
@@ -4318,7 +4316,7 @@ namespace {
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Rectangular_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
@@ -4342,7 +4340,7 @@ namespace {
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Foil_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
@@ -4362,7 +4360,7 @@ namespace {
         // settings.set_painter_advanced_litz(false);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Web_0.svg");
             std::filesystem::remove(outFile);
@@ -4381,7 +4379,7 @@ namespace {
         // settings.set_painter_advanced_litz(false);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Web_1.svg");
             std::filesystem::remove(outFile);
@@ -4401,7 +4399,7 @@ namespace {
         // settings.set_painter_advanced_litz(false);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Web_2.svg");
             std::filesystem::remove(outFile);

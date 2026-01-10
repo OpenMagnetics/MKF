@@ -1,3 +1,4 @@
+#include <source_location>
 #include "physical_models/LeakageInductance.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
@@ -17,7 +18,7 @@ using Catch::Matchers::WithinRel;
 using Catch::Matchers::WithinAbs;
 
 static double maximumError = 0.2;
-static auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+static auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
 static bool plot = false;
 
 TEST_CASE("Calculate leakage inductance for a E core with same number of turns", "[physical-model][leakage-inductance]") {
@@ -98,7 +99,7 @@ TEST_CASE("Calculate leakage inductance for a E core with different number of tu
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Leakage_Inductance_E_2.svg");
         std::filesystem::remove(outFile);
@@ -216,7 +217,7 @@ TEST_CASE("Calculate leakage inductance for a PQ core with with several parallel
     auto leakageMagneticField = LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency);
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Leakage_Inductance_Parallels_Interleaving.svg");
         std::filesystem::remove(outFile);
@@ -292,7 +293,7 @@ TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding or
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Leakage_Inductance_Failing_Test.json");
         OpenMagnetics::to_file(outFile, magnetic);
@@ -389,7 +390,7 @@ TEST_CASE("Calculate leakage inductance for a PQ core with contiguous winding or
 
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, localMaximumError));
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Leakage_Inductance_Failing_Test.json");
         OpenMagnetics::to_file(outFile, magnetic);
@@ -472,7 +473,7 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
         settings.set_painter_mode(PainterModes::QUIVER);
         auto leakageMagneticField = LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 1);
 
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Leakage_Inductance_T_0.svg");
         std::filesystem::remove(outFile);
@@ -522,7 +523,7 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     if (true) {
         // auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, 0.001, 25, turnsRatios, {sqrt(2), sqrt(2)});
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Leakage_Inductance_T_1.svg");
         std::filesystem::remove(outFile);
@@ -540,7 +541,7 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
 }
 
 TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physical-model][leakage-inductance][planar]") {
-    std::string file_path = __FILE__;
+    std::string file_path = std::source_location::current().file_name();
     auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
@@ -558,7 +559,7 @@ TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physic
     std::cout << "leakageInductance: " << leakageInductance << std::endl;
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     // if (true) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         settings.set_painter_include_fringing(false);
         settings.set_painter_mode(PainterModes::CONTOUR);
@@ -579,7 +580,7 @@ TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physic
 TEST_CASE("Checks that increasing insulation between layers keeps leakage inductance consistent", "[physical-model][leakage-inductance][planar][bug]") {
     settings.set_leakage_inductance_grid_auto_scaling(true);
     settings.set_coil_maximum_layers_planar(60);
-    std::string file_path = __FILE__;
+    std::string file_path = std::source_location::current().file_name();
     auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_unstable_leakage.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
@@ -609,7 +610,7 @@ TEST_CASE("Checks that increasing insulation between layers keeps leakage induct
 
     if (plot) {
         auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, 0.001, 25, turnsRatios, {sqrt(2), sqrt(2), 0});
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         settings.set_painter_include_fringing(false);
         settings.set_painter_mode(PainterModes::CONTOUR);
@@ -630,7 +631,7 @@ TEST_CASE("Checks that increasing insulation between layers keeps leakage induct
 TEST_CASE("Benchmarks leakage inductance calculation in planar", "[physical-model][leakage-inductance][!benchmark]") {
     BENCHMARK_ADVANCED("measures computation time")(Catch::Benchmark::Chronometer meter) {
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
         OpenMagnetics::Mas mas;
         OpenMagnetics::from_file(path, mas);
@@ -652,7 +653,7 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web", "[p
     std::cout << "leakageInductance: " << leakageInductance << std::endl;
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Leakage_Inductance_Failing_Test.json");
         OpenMagnetics::to_file(outFile, magnetic);
@@ -675,7 +676,7 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Leakage_Inductance_Failing_Test_2.json");
         OpenMagnetics::to_file(outFile, magnetic);
@@ -686,7 +687,7 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "
 
 
 TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physical-model][leakage-inductance][planar]") {
-    std::string file_path = __FILE__;
+    std::string file_path = std::source_location::current().file_name();
     auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simplest_leakage_inductance_planar.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
@@ -704,7 +705,7 @@ TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physica
     std::cout << "leakageInductance: " << leakageInductance << std::endl;
     // CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     // // if (true) {
-    //     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    //     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     //     auto outFile = outputFilePath;
     //     settings.set_painter_include_fringing(false);
     //     settings.set_painter_mode(PainterModes::CONTOUR);
@@ -724,7 +725,7 @@ TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physica
 
 
 TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 3", "[physical-model][leakage-inductance][planar]") {
-    std::string file_path = __FILE__;
+    std::string file_path = std::source_location::current().file_name();
     auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/OM Oyang paper example.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
@@ -742,7 +743,7 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 3", "
     std::cout << "leakageInductance: " << leakageInductance << std::endl;
     // CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
     // // if (true) {
-    //     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    //     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     //     auto outFile = outputFilePath;
     //     settings.set_painter_include_fringing(false);
     //     settings.set_painter_mode(PainterModes::CONTOUR);

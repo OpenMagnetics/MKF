@@ -467,6 +467,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                     delimit_and_compact();
                 }
             }
+
             if (tryRewind && (!are_sections_and_layers_fitting() || !get_turns_description())) {
                 logEntry("Trying to rewind", "Coil", 2);
                 try_rewind();
@@ -1029,7 +1030,6 @@ bool Coil::are_sections_and_layers_fitting() {
     auto layers = get_layers_description().value();
 
     for (auto& section: sections) {
-
         if (roundFloat(section.get_filling_factor().value(), 6) > 1 || roundFloat(overlapping_filling_factor(section), 6) > 1 || roundFloat(contiguous_filling_factor(section), 6) > 1) {
             windTurns = false;
         }
@@ -1039,6 +1039,7 @@ bool Coil::are_sections_and_layers_fitting() {
             windTurns = false;
         }
     }
+
     return windTurns;
 }
 
@@ -3868,7 +3869,7 @@ bool Coil::wind_by_round_layers() {
                 layer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
                 layer.set_coordinate_system(CoordinateSystem::POLAR);
 
-                double layerPerimeter = 2 * std::numbers::pi * (layerAngle / 360) * (windingWindowRadialHeight - layerRadialHeight);
+                double layerPerimeter = 2 * std::numbers::pi * (layerAngle / 360) * (windingWindowRadialHeight - layerRadialHeight / 2);
                 layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerPerimeter * layerRadialHeight));
                 layer.set_winding_style(windByConsecutiveTurns);
                 layers.push_back(layer);

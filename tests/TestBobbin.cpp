@@ -1,3 +1,4 @@
+#include <source_location>
 #include "constructive_models/Bobbin.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
@@ -17,10 +18,10 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace {
-auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
-double max_error = 0.05;
+const auto masPath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("MAS/").string();
+const double max_error = 0.05;
 
-TEST_CASE("Sample_Bobbin", "[constructive-model][bobbin]") {
+TEST_CASE("Sample_Bobbin", "[constructive-model][bobbin][smoke-test]") {
     auto wireFilePath = masPath + "samples/magnetic/bobbin/bobbin_E19_5.json";
     std::ifstream json_file(wireFilePath);
     auto bobbinJson = json::parse(json_file);
@@ -34,7 +35,7 @@ TEST_CASE("Sample_Bobbin", "[constructive-model][bobbin]") {
     REQUIRE_THAT(expectedWallThickness, Catch::Matchers::WithinAbs(bobbin.get_processed_description().value().get_wall_thickness(), max_error * expectedWallThickness));
 }
 
-TEST_CASE("Get_Filling_Factors_Bobbin_Medium", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Filling_Factors_Bobbin_Medium", "[constructive-model][bobbin][smoke-test]") {
     auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.009, 0.0275);
 
     double expectedValue = 0.715;
@@ -42,7 +43,7 @@ TEST_CASE("Get_Filling_Factors_Bobbin_Medium", "[constructive-model][bobbin]") {
     REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
 }
 
-TEST_CASE("Get_Filling_Factors_Bobbin_Small", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Filling_Factors_Bobbin_Small", "[constructive-model][bobbin][smoke-test]") {
     auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.002, 0.005);
 
     double expectedValue = 0.53;
@@ -50,7 +51,7 @@ TEST_CASE("Get_Filling_Factors_Bobbin_Small", "[constructive-model][bobbin]") {
     REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
 }
 
-TEST_CASE("Get_Filling_Factors_Bobbin_Large", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Filling_Factors_Bobbin_Large", "[constructive-model][bobbin][smoke-test]") {
     auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.019, 0.057);
 
     double expectedValue = 0.725;
@@ -58,7 +59,7 @@ TEST_CASE("Get_Filling_Factors_Bobbin_Large", "[constructive-model][bobbin]") {
     REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
 }
 
-TEST_CASE("Get_Filling_Factors_Bobbin_Outside_Above", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Filling_Factors_Bobbin_Outside_Above", "[constructive-model][bobbin][smoke-test]") {
     auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(1, 1);
 
     double expectedValue = 0.79;
@@ -66,7 +67,7 @@ TEST_CASE("Get_Filling_Factors_Bobbin_Outside_Above", "[constructive-model][bobb
     REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
 }
 
-TEST_CASE("Get_Filling_Factors_Bobbin_Outside_Below", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Filling_Factors_Bobbin_Outside_Below", "[constructive-model][bobbin][smoke-test]") {
     auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0, 0);
 
     double expectedValue = 0.377;
@@ -74,7 +75,7 @@ TEST_CASE("Get_Filling_Factors_Bobbin_Outside_Below", "[constructive-model][bobb
     REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
 }
 
-TEST_CASE("Get_Winding_Window_Dimensions_Medium", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Winding_Window_Dimensions_Medium", "[constructive-model][bobbin][smoke-test]") {
     auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.012, 0.027);
 
     double expectedWidthValue = 0.00985;
@@ -86,7 +87,7 @@ TEST_CASE("Get_Winding_Window_Dimensions_Medium", "[constructive-model][bobbin]"
     REQUIRE_THAT(expectedHeightValue, Catch::Matchers::WithinAbs(height, max_error * expectedHeightValue));
 }
 
-TEST_CASE("Get_Winding_Window_Dimensions_Too_Small", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Winding_Window_Dimensions_Too_Small", "[constructive-model][bobbin][smoke-test]") {
     auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.001, 0.002);
 
     double expectedWidthValue = 0.0005;
@@ -98,7 +99,7 @@ TEST_CASE("Get_Winding_Window_Dimensions_Too_Small", "[constructive-model][bobbi
     REQUIRE_THAT(expectedHeightValue, Catch::Matchers::WithinAbs(height, max_error * expectedHeightValue));
 }
 
-TEST_CASE("Get_Winding_Window_Dimensions_Too_Large", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Winding_Window_Dimensions_Too_Large", "[constructive-model][bobbin][smoke-test]") {
     auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.1, 0.1);
 
     double expectedWidthValue = 0.0951;
@@ -110,7 +111,7 @@ TEST_CASE("Get_Winding_Window_Dimensions_Too_Large", "[constructive-model][bobbi
     REQUIRE_THAT(expectedHeightValue, Catch::Matchers::WithinAbs(height, max_error * expectedHeightValue));
 }
 
-TEST_CASE("Get_Winding_Window_Dimensions_Error", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Winding_Window_Dimensions_Error", "[constructive-model][bobbin][smoke-test]") {
     auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.003325, 0.0108);
 
     double expectedWidthValue =  0.00245;
@@ -122,7 +123,7 @@ TEST_CASE("Get_Winding_Window_Dimensions_Error", "[constructive-model][bobbin]")
     REQUIRE_THAT(expectedHeightValue, Catch::Matchers::WithinAbs(height, max_error * expectedHeightValue));
 }
 
-TEST_CASE("Get_Winding_Window_Dimensions_E_51", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Winding_Window_Dimensions_E_51", "[constructive-model][bobbin][smoke-test]") {
     auto core = OpenMagneticsTesting::get_quick_core("ER 51/10/38", json::parse("[]"), 1, "Dummy");
     auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
     auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
@@ -133,7 +134,7 @@ TEST_CASE("Get_Winding_Window_Dimensions_E_51", "[constructive-model][bobbin]") 
     REQUIRE(heightThickness <= widthThickness * 1.2);
 }
 
-TEST_CASE("Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin", "[constructive-model][bobbin]") {
+TEST_CASE("Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin", "[constructive-model][bobbin][smoke-test]") {
     settings.set_use_toroidal_cores(true);
     auto shapeNames = get_core_shape_names();
     for (auto shapeName : shapeNames) {
@@ -146,7 +147,7 @@ TEST_CASE("Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin", "[constructive
     }
 }
 
-TEST_CASE("Create_Bobbin_With_Thickness", "[constructive-model][bobbin]") {
+TEST_CASE("Create_Bobbin_With_Thickness", "[constructive-model][bobbin][smoke-test]") {
     settings.set_use_toroidal_cores(true);
     auto shapeNames = get_core_shape_names();
     for (auto shapeName : shapeNames) {

@@ -1,3 +1,4 @@
+#include <source_location>
 #include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "constructive_models/Bobbin.h"
@@ -1068,7 +1069,7 @@ namespace {
         OpenMagnetics::Inputs inputs;
         MagnetizingInductance magnetizing_inductance("ZHANG");
         double expectedValue = 30e-6;
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
 
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Error_inductance_with_Csv.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);

@@ -1,3 +1,4 @@
+#include <source_location>
 #include "support/Painter.h"
 #include "converter_models/PushPull.h"
 #include "support/Utils.h"
@@ -16,7 +17,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace {
-    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
 
     TEST_CASE("Test_PushPull_CCM", "[converter-model][push-pull-topology]") {

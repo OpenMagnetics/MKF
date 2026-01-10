@@ -59,7 +59,7 @@ std::optional<double> get_scoring(std::string name, MagneticFilters filter) {
         
 std::string read_log() {
     // Use the StringSink from Logger if available
-    auto& logger = Logger::getInstance();
+    // auto& logger = Logger::getInstance();
     // For now, return empty - logs should be accessed via Logger
     return "";
 }
@@ -489,7 +489,7 @@ Core find_core_by_name(std::string name) {
         load_cores();
     }
     for (auto core : coreDatabase) {
-        if (core.get_name() == name) {
+        if (core.get_name().value() == name) {
             return core;
         }
     }
@@ -517,7 +517,7 @@ CoreMaterial find_core_material_by_name(std::string name) {
                 return coreMaterial;
             }
         }
-        throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA, "Core material not found: " + name);
+        throw CoreMaterialNotFoundException(name);
     }
 }
 
@@ -536,7 +536,7 @@ CoreShape find_core_shape_by_name(std::string name) {
                 return value;
             }
         }
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core shape not found: " + name);
+        throw CoreShapeNotFoundException(name);
     }
 }
 
