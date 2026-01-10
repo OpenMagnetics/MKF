@@ -1,3 +1,5 @@
+#include "RandomUtils.h"
+#include <source_location>
 #include "physical_models/InitialPermeability.h"
 #include "physical_models/ComplexPermeability.h"
 #include "physical_models/AmplitudePermeability.h"
@@ -20,7 +22,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace { 
-    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
     TEST_CASE("Test_Initial_Permeability_3C97", "[physical-model][initial-permeability]") {
         InitialPermeability initialPermeability;
@@ -348,7 +350,6 @@ namespace {
     }
 
     TEST_CASE("Test_Frequency_For_Initial_Permeability_Drop_Nanoperm_80000", "[physical-model][initial-permeability]") {
-        srand (time(NULL));
         InitialPermeability initialPermeability;
         std::string materialName = "Nanoperm 80000";
         auto materialData = find_core_material_by_name(materialName);
@@ -366,7 +367,6 @@ namespace {
     }
 
     TEST_CASE("Test_Frequency_For_Initial_Permeability_Drop_XFlux_60", "[physical-model][initial-permeability]") {
-        srand (time(NULL));
         InitialPermeability initialPermeability;
         std::string materialName = "XFlux 60";
         auto materialData = find_core_material_by_name(materialName);
@@ -443,7 +443,7 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
 
         auto complexPermeabilityValues = complexPermeability.calculate_complex_permeability_from_frequency_dependent_initial_permeability(materialData);
-        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
         {
             OpenMagnetics::Curve2D curve;
             for (auto point : std::get<std::vector<PermeabilityPoint>>(complexPermeabilityValues.get_real())) {

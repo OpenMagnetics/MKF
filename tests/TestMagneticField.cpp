@@ -1,3 +1,4 @@
+#include <source_location>
 #include "support/Painter.h"
 #include "physical_models/MagneticField.h"
 #include "json.hpp"
@@ -15,7 +16,7 @@ using namespace OpenMagnetics;
 
 namespace { 
     double maximumError = 0.05;
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     bool plot = false;
 
     std::vector<int64_t> numberTurns = {1};
@@ -132,7 +133,7 @@ namespace {
             settings.set_magnetic_field_number_points_x(50);
             settings.set_magnetic_field_number_points_y(50);
 
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Round.svg");
             std::filesystem::remove(outFile);

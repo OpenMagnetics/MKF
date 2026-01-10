@@ -1290,17 +1290,17 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
     double percentile05Value = modules[index05];
     double percentile95Value = modules[index95];
 
-    if (!settings.get_painter_maximum_value_colorbar()) {
+    if (!settings.get_painter_maximum_value_colorbar().has_value()) {
         maximumModule = percentile95Value;
     }
-    if (!settings.get_painter_minimum_value_colorbar()) {
+    if (!settings.get_painter_minimum_value_colorbar().has_value()) {
         minimumModule = percentile05Value;
     }
 
-    if (settings.get_painter_maximum_value_colorbar()) {
+    if (settings.get_painter_maximum_value_colorbar().has_value()) {
         maximumModule = settings.get_painter_maximum_value_colorbar().value();
     }
-    if (settings.get_painter_minimum_value_colorbar()) {
+    if (settings.get_painter_minimum_value_colorbar().has_value()) {
         minimumModule = settings.get_painter_minimum_value_colorbar().value();
     }
     if (minimumModule == maximumModule) {
@@ -1367,17 +1367,17 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     double percentile05Value = modules[index05];
     double percentile95Value = modules[index95];
 
-    if (!settings.get_painter_maximum_value_colorbar()) {
+    if (!settings.get_painter_maximum_value_colorbar().has_value()) {
         maximumModule = percentile95Value;
     }
-    if (!settings.get_painter_minimum_value_colorbar()) {
+    if (!settings.get_painter_minimum_value_colorbar().has_value()) {
         minimumModule = percentile05Value;
     }
 
-    if (settings.get_painter_maximum_value_colorbar()) {
+    if (settings.get_painter_maximum_value_colorbar().has_value()) {
         maximumModule = settings.get_painter_maximum_value_colorbar().value();
     }
-    if (settings.get_painter_minimum_value_colorbar()) {
+    if (settings.get_painter_minimum_value_colorbar().has_value()) {
         minimumModule = settings.get_painter_minimum_value_colorbar().value();
     }
     if (minimumModule == maximumModule) {

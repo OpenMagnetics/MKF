@@ -1,3 +1,4 @@
+#include <source_location>
 #include "support/Settings.h"
 #include "support/Painter.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -22,7 +23,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace TestWindingLossesRound {
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.15;
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Stacked", "[physical-model][winding-losses][round][rectangle-winding-window]") {
@@ -168,7 +169,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate skin effect losses, as no fringing or proximity are present
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -227,7 +228,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -286,7 +287,7 @@ namespace TestWindingLossesRound {
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangle-winding-window]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -346,7 +347,7 @@ namespace TestWindingLossesRound {
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Worst error in this one
         double maximumError = 0.4;
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -405,7 +406,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -543,7 +544,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -602,7 +603,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -661,7 +662,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangle-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -795,7 +796,7 @@ namespace TestWindingLossesRound {
 
 
 namespace TestWindingLossesLitz {
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.15;
     bool plot = false;
 
@@ -1423,12 +1424,12 @@ namespace TestWindingLossesLitz {
 
 
 namespace TestWindingLossesRectangular {
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
     double maximumError = 0.2;
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -1862,7 +1863,7 @@ namespace TestWindingLossesRectangular {
 
 
 namespace TestWindingLossesFoil {
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.3;
     TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
         settings.reset();
@@ -2107,7 +2108,7 @@ namespace TestWindingLossesFoil {
 
 
 namespace TestWindingLossesToroidalCores {
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.15;
     bool plot = false;
 
@@ -2182,7 +2183,7 @@ namespace TestWindingLossesToroidalCores {
         settings.reset();
 
         if (plot) {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Winding_Losses_Toroidal_Core_One_Turn_Round_Tendency.svg");
             std::filesystem::remove(outFile);
@@ -2436,7 +2437,7 @@ namespace TestWindingLossesToroidalCores {
                                                                                                   offset);
 
             if (plot) {
-                auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+                auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
                 auto outFile = outputFilePath;
                 outFile.append("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire" + std::to_string(expectedValue) + ".svg");
                 std::filesystem::remove(outFile);
@@ -2538,7 +2539,7 @@ namespace TestWindingLossesToroidalCores {
                                                                                                   offset);
 
             if (plot) {
-                auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+                auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
                 auto outFile = outputFilePath;
                 outFile.append("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire" + std::to_string(expectedValue) + ".svg");
                 std::filesystem::remove(outFile);
@@ -2571,12 +2572,12 @@ namespace TestWindingLossesToroidalCores {
 
 
 namespace TestWindingLossesPlanar {
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
     double maximumError = 0.3;
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2626,7 +2627,7 @@ namespace TestWindingLossesPlanar {
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing", "[physical-model][winding-losses][planar]") {
         // Not sure about that many losses due to fringing losses in a small piece
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2676,7 +2677,7 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2725,7 +2726,7 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2774,7 +2775,7 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][planar]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2823,7 +2824,7 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving", "[physical-model][winding-losses][planar]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2874,7 +2875,7 @@ namespace TestWindingLossesPlanar {
 
 
 namespace TestWindingLossesResistanceMatrix {
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     TEST_CASE("Test_Resistance_Matrix", "[physical-model][winding-losses]") {
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
@@ -2936,9 +2937,9 @@ namespace TestWindingLossesResistanceMatrix {
 
 
 namespace TestWindingLossesWeb {
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     TEST_CASE("Test_Winding_Losses_Web_0", "[physical-model][winding-losses][bug]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/negative_losses.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2955,7 +2956,7 @@ namespace TestWindingLossesWeb {
     }
 
     TEST_CASE("Test_Winding_Losses_Web_1", "[physical-model][winding-losses][bug]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/slow_simulation.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2974,7 +2975,7 @@ namespace TestWindingLossesWeb {
     TEST_CASE("Test_Winding_Losses_Web_2", "[physical-model][winding-losses][bug]") {
         settings.set_magnetic_field_include_fringing(false);
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/huge_losses.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2991,7 +2992,7 @@ namespace TestWindingLossesWeb {
         settings.set_magnetic_field_include_fringing(false);
         settings.set_magnetic_field_mirroring_dimension(3);
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         OpenMagnetics::Mas mas1;
         OpenMagnetics::Mas mas2;
         OpenMagnetics::Mas mas3;
@@ -3076,7 +3077,7 @@ namespace TestWindingLossesWeb {
     TEST_CASE("Test_Winding_Losses_Web_4", "[physical-model][winding-losses][bug]") {
         settings.set_magnetic_field_include_fringing(false);
 
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_with_csv.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 

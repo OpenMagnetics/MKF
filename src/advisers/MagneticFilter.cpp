@@ -1070,7 +1070,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                 }
 
             }
-            catch (const missing_material_data_exception &exc) {
+            catch (const ModelNotAvailableException &exc) {
                 validMaterial = false;
             }
         }

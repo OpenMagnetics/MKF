@@ -1,3 +1,4 @@
+#include <source_location>
 #include "constructive_models/Core.h"
 #include "TestingUtils.h"
 #include "support/Utils.h"
@@ -20,11 +21,11 @@ using namespace OpenMagnetics;
 
 namespace { 
 
-auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
-std::string filePath = __FILE__;
+auto masPath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("MAS/").string();
+std::string filePath = std::source_location::current().file_name();
 double maximumError = 0.05;
 
-TEST_CASE("E_55_21", "[constructive-model][core][processed-description]") {
+TEST_CASE("E_55_21", "[constructive-model][core][processed-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -57,7 +58,7 @@ TEST_CASE("E_55_21", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("E_55_28_21", "[constructive-model][core][processed-description]") {
+TEST_CASE("E_55_28_21", "[constructive-model][core][processed-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_28_21_3C95_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -89,7 +90,7 @@ TEST_CASE("E_55_28_21", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("E_19_8_5", "[constructive-model][core][processed-description]") {
+TEST_CASE("E_19_8_5", "[constructive-model][core][processed-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_19_8_5_N87_substractive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -121,7 +122,7 @@ TEST_CASE("E_19_8_5", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("ETD_39_20_13", "[constructive-model][core][processed-description]") {
+TEST_CASE("ETD_39_20_13", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_ETD_39_20_13_N97_substractive";
@@ -154,7 +155,7 @@ TEST_CASE("ETD_39_20_13", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("ETD_19_14_8", "[constructive-model][core][processed-description]") {
+TEST_CASE("ETD_19_14_8", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_ETD_19_14_8_N97_substractive";
@@ -187,7 +188,7 @@ TEST_CASE("ETD_19_14_8", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("ETD_54_28_19", "[constructive-model][core][processed-description]") {
+TEST_CASE("ETD_54_28_19", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_ETD_54_28_19_N97_substractive";
@@ -220,7 +221,7 @@ TEST_CASE("ETD_54_28_19", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("ER_54_18_18", "[constructive-model][core][processed-description]") {
+TEST_CASE("ER_54_18_18", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_ER_54_18_18_N97_substractive";
@@ -253,7 +254,7 @@ TEST_CASE("ER_54_18_18", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("ER_18_3_10", "[constructive-model][core][processed-description]") {
+TEST_CASE("ER_18_3_10", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_ER_18_3_10_N97_substractive";
@@ -286,7 +287,7 @@ TEST_CASE("ER_18_3_10", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("E_102_20_38", "[constructive-model][core][processed-description]") {
+TEST_CASE("E_102_20_38", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_E_102_20_38_N97_substractive";
@@ -322,7 +323,7 @@ TEST_CASE("E_102_20_38", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("E_14_3_5_5", "[constructive-model][core][processed-description]") {
+TEST_CASE("E_14_3_5_5", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_E_14_3.5_5_N97_substractive";
@@ -358,7 +359,7 @@ TEST_CASE("E_14_3_5_5", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("EL_25_4_3", "[constructive-model][core][processed-description]") {
+TEST_CASE("EL_25_4_3", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_E_25_4.3_N97_substractive";
@@ -393,7 +394,7 @@ TEST_CASE("EL_25_4_3", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("EL_11_2", "[constructive-model][core][processed-description]") {
+TEST_CASE("EL_11_2", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_E_11_2_N97_substractive";
@@ -428,7 +429,7 @@ TEST_CASE("EL_11_2", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("EC_70", "[constructive-model][core][processed-description]") {
+TEST_CASE("EC_70", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EC_70_N97_substractive";
@@ -461,7 +462,7 @@ TEST_CASE("EC_70", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("EFD_10_5_3", "[constructive-model][core][processed-description]") {
+TEST_CASE("EFD_10_5_3", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EFD_10_5_3_N97_substractive";
@@ -496,7 +497,7 @@ TEST_CASE("EFD_10_5_3", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("EFD_30_15_9", "[constructive-model][core][processed-description]") {
+TEST_CASE("EFD_30_15_9", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EFD_30_15_9_N97_substractive";
@@ -531,7 +532,7 @@ TEST_CASE("EFD_30_15_9", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("EQ_30_8_20", "[constructive-model][core][processed-description]") {
+TEST_CASE("EQ_30_8_20", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EQ_30_8_20_N97_substractive";
@@ -564,7 +565,7 @@ TEST_CASE("EQ_30_8_20", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("EPX_10", "[constructive-model][core][processed-description]") {
+TEST_CASE("EPX_10", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EPX_10_N97_substractive";
@@ -596,7 +597,7 @@ TEST_CASE("EPX_10", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("EPX_7", "[constructive-model][core][processed-description]") {
+TEST_CASE("EPX_7", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EPX_7_N97_substractive";
@@ -626,7 +627,7 @@ TEST_CASE("EPX_7", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("EPO_13", "[constructive-model][core][processed-description]") {
+TEST_CASE("EPO_13", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EPO_13_N97_substractive";
@@ -658,7 +659,7 @@ TEST_CASE("EPO_13", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("LP_42_25_15_8", "[constructive-model][core][processed-description]") {
+TEST_CASE("LP_42_25_15_8", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_LP_42_25_15_8_N97_substractive";
@@ -690,7 +691,7 @@ TEST_CASE("LP_42_25_15_8", "[constructive-model][core][processed-description]") 
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("EP_7", "[constructive-model][core][processed-description]") {
+TEST_CASE("EP_7", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EP_7_N97_substractive";
@@ -721,7 +722,7 @@ TEST_CASE("EP_7", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("EP_20", "[constructive-model][core][processed-description]") {
+TEST_CASE("EP_20", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_EP_20_N97_substractive";
@@ -752,7 +753,7 @@ TEST_CASE("EP_20", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("RM_14", "[constructive-model][core][processed-description]") {
+TEST_CASE("RM_14", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_RM_14_N97_substractive";
@@ -783,7 +784,7 @@ TEST_CASE("RM_14", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("RM_7LP", "[constructive-model][core][processed-description]") {
+TEST_CASE("RM_7LP", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_RM_7LP_N97_substractive";
@@ -814,7 +815,7 @@ TEST_CASE("RM_7LP", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("PQ_20_16", "[constructive-model][core][processed-description]") {
+TEST_CASE("PQ_20_16", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_PQ_20_16_N97_substractive";
@@ -845,7 +846,7 @@ TEST_CASE("PQ_20_16", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("PQ_107_87", "[constructive-model][core][processed-description]") {
+TEST_CASE("PQ_107_87", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_PQ_107_87_N97_substractive";
@@ -876,7 +877,7 @@ TEST_CASE("PQ_107_87", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("PM_114_93", "[constructive-model][core][processed-description]") {
+TEST_CASE("PM_114_93", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_PM_114_93_N97_substractive";
@@ -907,7 +908,7 @@ TEST_CASE("PM_114_93", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("P_150_30", "[constructive-model][core][processed-description]") {
+TEST_CASE("P_150_30", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_P_150_30_N97_substractive";
@@ -938,7 +939,7 @@ TEST_CASE("P_150_30", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("P_11_7", "[constructive-model][core][processed-description]") {
+TEST_CASE("P_11_7", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_P_11_7_N97_substractive";
@@ -969,7 +970,7 @@ TEST_CASE("P_11_7", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("P_7_4", "[constructive-model][core][processed-description]") {
+TEST_CASE("P_7_4", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_P_7_4_N97_substractive";
@@ -1000,7 +1001,7 @@ TEST_CASE("P_7_4", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[2].get_shape() == ColumnShape::IRREGULAR);
 }
 
-TEST_CASE("U_79_129_31", "[constructive-model][core][processed-description]") {
+TEST_CASE("U_79_129_31", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_U_79_129_31_N97_substractive";
@@ -1032,7 +1033,7 @@ TEST_CASE("U_79_129_31", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("U_26_22_16", "[constructive-model][core][processed-description]") {
+TEST_CASE("U_26_22_16", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_U_26_22_16_N97_substractive";
@@ -1064,7 +1065,7 @@ TEST_CASE("U_26_22_16", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("UR_48_39_17", "[constructive-model][core][processed-description]") {
+TEST_CASE("UR_48_39_17", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_UR_48_39_17_N97_substractive";
@@ -1096,7 +1097,7 @@ TEST_CASE("UR_48_39_17", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("UR_70_33_17", "[constructive-model][core][processed-description]") {
+TEST_CASE("UR_70_33_17", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_UR_70_33_17_N97_substractive";
@@ -1127,7 +1128,7 @@ TEST_CASE("UR_70_33_17", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::ROUND);
 }
 
-TEST_CASE("UR_55_39_36", "[constructive-model][core][processed-description]") {
+TEST_CASE("UR_55_39_36", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_UR_55_39_36_N97_substractive";
@@ -1159,7 +1160,7 @@ TEST_CASE("UR_55_39_36", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("UR_64_40_20", "[constructive-model][core][processed-description]") {
+TEST_CASE("UR_64_40_20", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_UR_64_40_20_N97_substractive";
@@ -1190,7 +1191,7 @@ TEST_CASE("UR_64_40_20", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() == ColumnShape::ROUND);
 }
 
-TEST_CASE("UT_20", "[constructive-model][core][processed-description]") {
+TEST_CASE("UT_20", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_UT_20_N97";
@@ -1225,7 +1226,7 @@ TEST_CASE("UT_20", "[constructive-model][core][processed-description]") {
           ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("T_40_24_16", "[constructive-model][core][processed-description]") {
+TEST_CASE("T_40_24_16", "[constructive-model][core][processed-description][smoke-test]") {
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_T_40_24_16_N97_substractive";
@@ -1253,7 +1254,7 @@ TEST_CASE("T_40_24_16", "[constructive-model][core][processed-description]") {
     REQUIRE(core.get_processed_description()->get_columns()[0].get_shape() == ColumnShape::RECTANGULAR);
 }
 
-TEST_CASE("Core_Processed_Description_Web_0", "[constructive-model][core][processed-description][bug]") {
+TEST_CASE("Core_Processed_Description_Web_0", "[constructive-model][core][processed-description][bug][smoke-test]") {
     auto coreJson = json::parse(
         "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000123, \"coordinates\": "
         "[0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.01455, \"length\": 0.0001, \"sectionDimensions\": "
@@ -1272,7 +1273,7 @@ TEST_CASE("Core_Processed_Description_Web_0", "[constructive-model][core][proces
     REQUIRE(core.get_processed_description()->get_columns().size() == 2u);
 }
 
-TEST_CASE("Core_Processed_Description_Web_1", "[constructive-model][core][processed-description][bug]") {
+TEST_CASE("Core_Processed_Description_Web_1", "[constructive-model][core][processed-description][bug][smoke-test]") {
     auto coreJson = json::parse(
         "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", "
         "\"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0308, \"B\": 0.0264, \"C\": "
@@ -1285,7 +1286,7 @@ TEST_CASE("Core_Processed_Description_Web_1", "[constructive-model][core][proces
     auto functionalDescription = core.get_functional_description();
 }
 
-TEST_CASE("Test_Core_All_Shapes", "[constructive-model][core][processed-description]") {
+TEST_CASE("Test_Core_All_Shapes", "[constructive-model][core][processed-description][smoke-test]") {
     settings.set_use_toroidal_cores(true);
     auto shapeNames = get_core_shape_names();
     for (auto shapeName : shapeNames) {
@@ -1293,13 +1294,13 @@ TEST_CASE("Test_Core_All_Shapes", "[constructive-model][core][processed-descript
             continue;
         }
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
-        if ((core.get_processed_description()->get_effective_parameters().get_effective_area() <= 0) ||
-            (core.get_processed_description()->get_effective_parameters().get_effective_length() <= 0) ||
-            (core.get_processed_description()->get_effective_parameters().get_effective_volume() <= 0) ||
-            (core.get_processed_description()->get_effective_parameters().get_minimum_area() <= 0)) {
+        // if ((core.get_processed_description()->get_effective_parameters().get_effective_area() <= 0) ||
+        //     (core.get_processed_description()->get_effective_parameters().get_effective_length() <= 0) ||
+        //     (core.get_processed_description()->get_effective_parameters().get_effective_volume() <= 0) ||
+        //     (core.get_processed_description()->get_effective_parameters().get_minimum_area() <= 0)) {
 
-            std::cout << "shapeName: " << shapeName << std::endl;
-        }
+        //     std::cout << "shapeName: " << shapeName << std::endl;
+        // }
 
         REQUIRE(core.get_processed_description()->get_effective_parameters().get_effective_area() > 0);
         REQUIRE(core.get_processed_description()->get_effective_parameters().get_effective_length() > 0);
@@ -1308,7 +1309,7 @@ TEST_CASE("Test_Core_All_Shapes", "[constructive-model][core][processed-descript
     }
 }
 
-TEST_CASE("Core_Processed_Description_Web_2", "[constructive-model][core][processed-description][bug]") {
+TEST_CASE("Core_Processed_Description_Web_2", "[constructive-model][core][processed-description][bug][smoke-test]") {
     auto coreJson = json::parse(R"({"functionalDescription": {"type": "two-piece set", "name": "150-2646", "shape": {"aliases": ["ER 9.5/5", "ER 9.5"], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00955, "minimum": 0.00915, "nominal": null}, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00253, "minimum": 0.00238, "nominal": null}, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.005, "minimum": 0.0048, "nominal": null}, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00175, "minimum": 0.0016, "nominal": null}, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00775, "minimum": 0.0075, "nominal": null}, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00355, "minimum": 0.00325, "nominal": null}, "G": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0074, "minimum": 0.007, "nominal": null}}, "family": "planar er", "familySubtype": null, "magneticCircuit": "open", "name": "ER 9.5/2.5/5", "type": "standard"}, "material": {"alternatives": null, "application": null, "bhCycle": null, "coerciveForce": [{"magneticField": 27.2, "magneticFluxDensity": 0.0, "temperature": 100.0}, {"magneticField": 36.5, "magneticFluxDensity": 0.0, "temperature": 25.0}], "commercialName": null, "curieTemperature": 240.0, "density": 4700.0, "family": "TP", "heatCapacity": null, "heatConductivity": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "description": null, "family": null, "name": "TDG", "orderCode": null, "reference": null, "status": null}, "massLosses": null, "material": "ferrite", "materialComposition": "MnZn", "name": "TP5", "permeability": {"amplitude": null, "complex": null, "initial": [{"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": -38.0172, "tolerance": null, "value": 964.291}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": -32.5809, "tolerance": null, "value": 976.475}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": -27.3041, "tolerance": null, "value": 989.988}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": -22.0269, "tolerance": null, "value": 1007.57}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": -16.7495, "tolerance": null, "value": 1026.22}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": -11.6628, "tolerance": null, "value": 1053.38}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": -6.19159, "tolerance": null, "value": 1087.54}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": -0.741648, "tolerance": null, "value": 1116.03}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 4.36765, "tolerance": null, "value": 1158.76}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 9.64787, "tolerance": null, "value": 1198.91}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 14.9285, "tolerance": null, "value": 1242.43}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 20.2095, "tolerance": null, "value": 1288.29}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 25.4907, "tolerance": null, "value": 1335.71}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 30.772100000000002, "tolerance": null, "value": 1384.68}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 36.3101, "tolerance": null, "value": 1440.25}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 42.6696, "tolerance": null, "value": 1503.07}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 47.6867, "tolerance": null, "value": 1537.3}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 52.8575, "tolerance": null, "value": 1586.52}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 58.1382, "tolerance": null, "value": 1630.56}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 63.4186, "tolerance": null, "value": 1671.75}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 68.6985, "tolerance": null, "value": 1709.57}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 73.9781, "tolerance": null, "value": 1744.79}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 79.3364, "tolerance": null, "value": 1771.53}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 84.5358, "tolerance": null, "value": 1804.85}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 89.8141, "tolerance": null, "value": 1830.21}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 95.0919, "tolerance": null, "value": 1852.2}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 100.369, "tolerance": null, "value": 1864.85}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 105.644, "tolerance": null, "value": 1866.34}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 110.918, "tolerance": null, "value": 1865.76}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 116.193, "tolerance": null, "value": 1862.84}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 121.387, "tolerance": null, "value": 1858.06}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 126.742, "tolerance": null, "value": 1855.7}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 132.016, "tolerance": null, "value": 1850.71}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 137.291, "tolerance": null, "value": 1848.05}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 142.565, "tolerance": null, "value": 1844.09}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 147.84, "tolerance": null, "value": 1842.99}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 153.115, "tolerance": null, "value": 1842.93}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 158.55, "tolerance": null, "value": 1843.81}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 163.665, "tolerance": null, "value": 1849.28}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 168.941, "tolerance": null, "value": 1855.18}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 174.217, "tolerance": null, "value": 1861.35}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 179.493, "tolerance": null, "value": 1868.03}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 184.769, "tolerance": null, "value": 1875.23}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 190.044, "tolerance": null, "value": 1880.61}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 195.319, "tolerance": null, "value": 1880.29}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 200.593, "tolerance": null, "value": 1874.25}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 207.786, "tolerance": null, "value": 1871.05}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 213.062, "tolerance": null, "value": 1879.29}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 218.338, "tolerance": null, "value": 1889.6}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 223.614, "tolerance": null, "value": 1898.88}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 228.89, "tolerance": null, "value": 1906.34}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 234.166, "tolerance": null, "value": 1914.06}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 239.521, "tolerance": null, "value": 1917.97}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 244.719, "tolerance": null, "value": 1933.65}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 249.996, "tolerance": null, "value": 1952.0}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 255.274, "tolerance": null, "value": 1978.06}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 260.707, "tolerance": null, "value": 1965.15}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 263.777, "tolerance": null, "value": 1911.43}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 265.92, "tolerance": null, "value": 1491.87}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 264.844, "tolerance": null, "value": 1819.13}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 266.953, "tolerance": null, "value": 994.433}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 265.723, "tolerance": null, "value": 1733.09}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 265.973, "tolerance": null, "value": 1652.04}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 266.251, "tolerance": null, "value": 1577.83}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 266.707, "tolerance": null, "value": 1402.02}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 266.539, "tolerance": null, "value": 1337.81}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 267.166, "tolerance": null, "value": 1247.08}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 266.996, "tolerance": null, "value": 1170.84}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 267.338, "tolerance": null, "value": 1094.92}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 268.075, "tolerance": null, "value": 867.595}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 267.904, "tolerance": null, "value": 781.74}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 268.452, "tolerance": null, "value": 698.017}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 268.363, "tolerance": null, "value": 624.291}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 268.993, "tolerance": null, "value": 554.361}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 269.313, "tolerance": null, "value": 383.526}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 269.278, "tolerance": null, "value": 295.597}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 269.158, "tolerance": null, "value": 471.599}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 269.798, "tolerance": null, "value": 193.482}, {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak": null, "modifiers": null, "temperature": 269.896, "tolerance": null, "value": 130.059}]}, "remanence": [{"magneticField": 0.0, "magneticFluxDensity": 0.098, "temperature": 100.0}, {"magneticField": 0.0, "magneticFluxDensity": 0.14, "temperature": 25.0}], "resistivity": [{"temperature": 20.0, "value": 8.0}], "saturation": [{"magneticField": 1194.0, "magneticFluxDensity": 0.38, "temperature": 100.0}, {"magneticField": 1194.0, "magneticFluxDensity": 0.47000000000000003, "temperature": 25.0}], "type": "commercial", "volumetricLosses": {"default": [{"a": null, "b": null, "c": null, "coefficients": null, "d": null, "factors": null, "method": "steinmetz", "ranges": [{"alpha": 1.5832445907356367, "beta": 3.447276210669818, "ct0": 0.0006981954642389527, "ct1": -0.02648487944707231, "ct2": -0.0001649186139824856, "k": 2.0736187833042155, "maximumFrequency": 150000.0, "minimumFrequency": 1.0}, {"alpha": 2.0382319724990148, "beta": 3.044361726422575, "ct0": 10.063670862549936, "ct1": 7.787255730814788, "ct2": -101.06805047707402, "k": 0.002087675611586363, "maximumFrequency": 1000000.0, "minimumFrequency": 150000.0}, {"alpha": 1.443736158982313, "beta": 2.492266808268583, "ct0": 0.0006461213260757808, "ct1": -0.024170654037881944, "ct2": -0.00014177115251103593, "k": 1.7406282450344872, "maximumFrequency": 1000000000.0, "minimumFrequency": 1000000.0}], "referenceVolumetricLosses": null}]}}, "numberStacks": 1, "gapping": []}})");
 
     Core ungappedCore(coreJson, true);
@@ -1328,13 +1329,12 @@ TEST_CASE("Core_Processed_Description_Web_2", "[constructive-model][core][proces
     inputs.set_design_requirements(designRequirements);
 
     auto gapping =  magnetizingInductanceModel.calculate_gapping_from_number_turns_and_inductance(ungappedCore, coil, &inputs, OpenMagnetics::GappingType::GROUND);
-    std::cout << gapping[0].get_length() << std::endl;
     ungappedCore.get_mutable_functional_description().set_gapping(gapping);
     ungappedCore.process_gap();
     auto functionalDescription = ungappedCore.get_functional_description();
 }
 
-TEST_CASE("E_19_8_5_Geometrical_Description", "[constructive-model][core][geometrical-description]") {
+TEST_CASE("E_19_8_5_Geometrical_Description", "[constructive-model][core][geometrical-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_19_8_5_N87_substractive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1354,7 +1354,7 @@ TEST_CASE("E_19_8_5_Geometrical_Description", "[constructive-model][core][geomet
     REQUIRE(geometrical_description[1].get_type() == CoreGeometricalDescriptionElementType::HALF_SET);
 }
 
-TEST_CASE("E_55_21_GeometricalDescription", "[constructive-model][core][geometrical-description]") {
+TEST_CASE("E_55_21_GeometricalDescription", "[constructive-model][core][geometrical-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1378,7 +1378,7 @@ TEST_CASE("E_55_21_GeometricalDescription", "[constructive-model][core][geometri
     REQUIRE(geometrical_description[5].get_type() == CoreGeometricalDescriptionElementType::SPACER);
 }
 
-TEST_CASE("T_40_24_16_2", "[constructive-model][core][geometrical-description]") {
+TEST_CASE("T_40_24_16_2", "[constructive-model][core][geometrical-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_T_40_24_16_N97.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1394,7 +1394,7 @@ TEST_CASE("T_40_24_16_2", "[constructive-model][core][geometrical-description]")
     REQUIRE(geometrical_description.size() == 1u);
 }
 
-TEST_CASE("Core_Web_0", "[constructive-model][core][geometrical-description]") {
+TEST_CASE("Core_Web_0", "[constructive-model][core][geometrical-description][smoke-test]") {
     auto coreJson = json::parse(R"(
         {"name": "Custom_0", "functionalDescription": {"gapping": [{"area": 0.000114, "coordinates":
         [0.0, -0.00425, 0.0], "distanceClosestNormalSurface": 0.004201, "length": 0.0001,
@@ -1429,7 +1429,7 @@ TEST_CASE("Core_Web_0", "[constructive-model][core][geometrical-description]") {
     REQUIRE(geometrical_description[1].get_type() == CoreGeometricalDescriptionElementType::HALF_SET);
 }
 
-TEST_CASE("Test_Core_Geometrical_Description_Web_1", "[constructive-model][core][geometrical-description]") {
+TEST_CASE("Test_Core_Geometrical_Description_Web_1", "[constructive-model][core][geometrical-description][smoke-test]") {
     auto coreJson = json::parse(
         "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000135, \"coordinates\": "
         "[0.0, 0.0078, 0.0], \"distanceClosestNormalSurface\": 0.00515, \"length\": 0.0001, \"sectionDimensions\": "
@@ -1462,7 +1462,7 @@ TEST_CASE("Test_Core_Geometrical_Description_Web_1", "[constructive-model][core]
     REQUIRE(geometrical_description[1].get_type() == CoreGeometricalDescriptionElementType::HALF_SET);
 }
 
-TEST_CASE("E_55_21_all_gaps_residual", "[constructive-model][core][functional-description]") {
+TEST_CASE("E_55_21_all_gaps_residual", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1487,7 +1487,7 @@ TEST_CASE("E_55_21_all_gaps_residual", "[constructive-model][core][functional-de
           -(*functionalDescription.get_gapping()[2].get_coordinates())[0]);
 }
 
-TEST_CASE("E_55_21_central_gap", "[constructive-model][core][functional-description]") {
+TEST_CASE("E_55_21_central_gap", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1511,7 +1511,7 @@ TEST_CASE("E_55_21_central_gap", "[constructive-model][core][functional-descript
           -(*functionalDescription.get_gapping()[2].get_coordinates())[0]);
 }
 
-TEST_CASE("E_55_21_gap_all_columns", "[constructive-model][core][functional-description]") {
+TEST_CASE("E_55_21_gap_all_columns", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1538,7 +1538,7 @@ TEST_CASE("E_55_21_gap_all_columns", "[constructive-model][core][functional-desc
           -(*functionalDescription.get_gapping()[2].get_coordinates())[0]);
 }
 
-TEST_CASE("E_55_21_central_distributed_gap_even", "[constructive-model][core][functional-description]") {
+TEST_CASE("E_55_21_central_distributed_gap_even", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1571,7 +1571,7 @@ TEST_CASE("E_55_21_central_distributed_gap_even", "[constructive-model][core][fu
           -(*functionalDescription.get_gapping()[3].get_coordinates())[0]);
 }
 
-TEST_CASE("E_55_21_central_distributed_gap_odd", "[constructive-model][core][functional-description]") {
+TEST_CASE("E_55_21_central_distributed_gap_odd", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1613,7 +1613,7 @@ TEST_CASE("E_55_21_central_distributed_gap_odd", "[constructive-model][core][fun
           -(*functionalDescription.get_gapping()[4].get_coordinates())[0]);
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_0", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_0", "[constructive-model][core][functional-description][bug][smoke-test]") {
     auto coreJson = json::parse(
         ""
         "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", \"shape\": "
@@ -1628,7 +1628,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_0", "[constructive-model][core][
     auto functionalDescription = core.get_functional_description();
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_1", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_1", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Tests that a missaligned gapping get recalculated
     auto coreJson = json::parse(
         "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000123, \"coordinates\": "
@@ -1657,7 +1657,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_1", "[constructive-model][core][
     REQUIRE((*functionalDescription.get_gapping()[1].get_coordinates())[2] != 0);
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_2", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_2", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Tests that a distributed but aligned gapping does not get recalculated
     auto coreJson = json::parse(
         "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 1.5e-05, \"coordinates\": "
@@ -1675,8 +1675,6 @@ TEST_CASE("Test_Core_Functional_Description_Web_2", "[constructive-model][core][
 
     Core core(coreJson, true);
 
-    std::cout << coreJson["functionalDescription"]["gapping"].size() << std::endl;
-
     auto functionalDescription = core.get_functional_description();
 
     REQUIRE(functionalDescription.get_gapping().size() == 3u);
@@ -1693,7 +1691,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_2", "[constructive-model][core][
     REQUIRE((*functionalDescription.get_gapping()[2].get_coordinates())[2] != 0);
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_3", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_3", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Check for segmentation fault
     auto coreJson = json::parse(
         "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 1.5e-05, \"coordinates\": "
@@ -1711,7 +1709,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_3", "[constructive-model][core][
     auto functionalDescription = core.get_functional_description();
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_4", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_4", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Check for segmentation fault
     auto coreJson = json::parse(
         "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000175, \"coordinates\": "
@@ -1733,7 +1731,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_4", "[constructive-model][core][
     auto functionalDescription = core.get_functional_description();
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_5", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_5", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Check for segmentation fault
     auto coreJson = json::parse(
         "{\"name\": \"dummy\", \"functionalDescription\": {\"gapping\": [{\"length\": 0.001, \"type\": "
@@ -1751,7 +1749,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_5", "[constructive-model][core][
     REQUIRE(functionalDescription.get_gapping().size() == 5u);
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_6", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_6", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Check for segmentation fault
     auto coreJson = json::parse(
         "{\"name\": \"My Core test 2\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000199, "
@@ -1775,7 +1773,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_6", "[constructive-model][core][
     REQUIRE(functionalDescription.get_gapping().size() == 2u);
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_7", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_7", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Check for segmentation fault
     auto coreJson = json::parse(R"({"name":"My Core","functionalDescription":{"coating":null,"gapping":[{"area":0.000057,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0085,0.0085],"shape":"round","type":"residual"},{"area":0.000028,"coordinates":[0.01075,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0029,0.0085],"shape":"irregular","type":"residual"},{"area":0.000028,"coordinates":[-0.01075,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0029,0.0085],"shape":"irregular","type":"residual"}],"material":"3C97","numberStacks":1,"shape":{"aliases":[],"dimensions":{"A":0.0576,"B":0.028399999999999998,"C":0.0155,"D":0.016,"H":0.0159,"G":0},"family":"ur","familySubtype":"2","name":"UR 57/28/16","type":"standard"},"type":"two-piece set"}})");
 
@@ -1785,7 +1783,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_7", "[constructive-model][core][
     REQUIRE(functionalDescription.get_gapping().size() == 2u);
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_8", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_8", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Check for segmentation fault
     auto coreJson = json::parse(R"({"functionalDescription": {"type": "two-piece set", "material": "3C97", "shape": "U 80/150/30", "gapping": [{"length": 0.003, "type": "additive", "coordinates": [0, 0, 0 ] }, {"length": 0.003, "type": "additive", "coordinates": [0.0595, 0, 0 ] } ], "numberStacks": 1 }, "name": "My Core", "geometricalDescription": null, "processedDescription": null })");
 
@@ -1795,7 +1793,7 @@ TEST_CASE("Test_Core_Functional_Description_Web_8", "[constructive-model][core][
     REQUIRE(functionalDescription.get_gapping().size() == 2u);
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_9", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_9", "[constructive-model][core][functional-description][bug][smoke-test]") {
     Core core = json::parse(R"({"distributorsInfo":[{"cost":1.17,"country":"USA","distributedArea":"International","email":null,"link":"https://www.digikey.com/en/products/detail/ferroxcube/E18-4-10-R-3F36/7041469","name":"Digi-Key","phone":null,"quantity":7063,"reference":"1779-1009-ND","updatedAt":"05/10/2023"},{"cost":null,"country":"UK","distributedArea":"International","email":null,"link":"https://www.shop.gatewaycando.com/magnetics/cores","name":"Gateway","phone":null,"quantity":5,"reference":"E18/4/10/R-3F36","updatedAt":"05/10/2023"}],"functionalDescription":{"coating":null,"gapping":[{"area":0.00004,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.0019975,"distanceClosestParallelSurface":0.005,"length":0.000005,"sectionDimensions":[0.004,0.01],"shape":"rectangular","type":"residual"},{"area":0.000021,"coordinates":[0.008,0,0],"distanceClosestNormalSurface":0.0019975,"distanceClosestParallelSurface":0.005,"length":0.000005,"sectionDimensions":[0.002001,0.01],"shape":"rectangular","type":"residual"},{"area":0.000021,"coordinates":[-0.008,0,0],"distanceClosestNormalSurface":0.0019975,"distanceClosestParallelSurface":0.005,"length":0.000005,"sectionDimensions":[0.002001,0.01],"shape":"rectangular","type":"residual"}],"material":{"bhCycle":null,"coerciveForce":[{"magneticField":32,"magneticFluxDensity":0,"temperature":100},{"magneticField":37,"magneticFluxDensity":0,"temperature":25}],"curieTemperature":230,"density":4750,"family":"3F","heatCapacity":{"excludeMaximum":null,"excludeMinimum":null,"maximum":800,"minimum":700,"nominal":null},"heatConductivity":{"excludeMaximum":null,"excludeMinimum":null,"maximum":5,"minimum":3.5,"nominal":null},"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Ferroxcube","reference":null,"status":null},"material":"ferrite","name":"3F36","permeability":{"amplitude":null,"initial":[{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":-40,"tolerance":null,"value":1577},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":-30,"tolerance":null,"value":1590},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":-20,"tolerance":null,"value":1611},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":-10,"tolerance":null,"value":1633},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":0,"tolerance":null,"value":1657},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":10,"tolerance":null,"value":1683},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":20,"tolerance":null,"value":1710},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":30,"tolerance":null,"value":1767},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":40,"tolerance":null,"value":1792},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":50,"tolerance":null,"value":1818},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":60,"tolerance":null,"value":1842},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":70,"tolerance":null,"value":1780},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":80,"tolerance":null,"value":1794},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":90,"tolerance":null,"value":1807},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":100,"tolerance":null,"value":1818},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":110,"tolerance":null,"value":1893},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":120,"tolerance":null,"value":1897},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":130,"tolerance":null,"value":1901},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":140,"tolerance":null,"value":1907},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":150,"tolerance":null,"value":1848},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":160,"tolerance":null,"value":1855},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":170,"tolerance":null,"value":1865},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":180,"tolerance":null,"value":1878}]},"remanence":[{"magneticField":0,"magneticFluxDensity":0.105,"temperature":100},{"magneticField":0,"magneticFluxDensity":0.125,"temperature":25}],"resistivity":[{"temperature":25,"value":12}],"saturation":[{"magneticField":1200,"magneticFluxDensity":0.42,"temperature":100},{"magneticField":1200,"magneticFluxDensity":0.52,"temperature":25}],"type":"commercial","volumetricLosses":{"default":[{"a":null,"b":null,"c":null,"coefficients":{"excessLossesCoefficient":1.82280296e-20,"resistivityFrequencyCoefficient":4.25672064e-28,"resistivityMagneticFluxDensityCoefficient":14.7587264,"resistivityOffset":6.465016450000001e-17,"resistivityTemperatureCoefficient":5.84938089e-16},"d":null,"method":"roshen","ranges":null,"referenceVolumetricLosses":null},{"a":null,"b":null,"c":null,"coefficients":null,"d":null,"method":"steinmetz","ranges":[{"alpha":1.43902,"beta":3.26718,"ct0":1.232717265,"ct1":0.010783518,"ct2":0.00008394600000000001,"k":6.83,"maximumFrequency":499999,"minimumFrequency":100000},{"alpha":2.19515,"beta":2.71986,"ct0":1.28161335,"ct1":0.011719438,"ct2":0.0000892639,"k":0.00011249900000000001,"maximumFrequency":800000,"minimumFrequency":500000},{"alpha":2.61053,"beta":2.49772,"ct0":1.010843873,"ct1":0.006141983,"ct2":0.0000611871,"k":2.23928e-7,"maximumFrequency":1200000,"minimumFrequency":800000}],"referenceVolumetricLosses":null}]}},"numberStacks":1,"shape":{"aliases":["ELP 18/4/10","E 18/4/10/R","E18/4","E18/8"],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.01835,"minimum":0.017650000000000002,"nominal":null},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0041,"minimum":0.0039000000000000003,"nominal":null},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0102,"minimum":0.0098,"nominal":null},"D":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0021000000000000003,"minimum":0.0019,"nominal":null},"E":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0143,"minimum":0.0137,"nominal":null},"F":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0041,"minimum":0.0039000000000000003,"nominal":null}},"family":"planar e","familySubtype":null,"magneticCircuit":"open","name":"E 18/4/10/R","type":"standard"},"type":"two-piece set"},"geometricalDescription":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Ferroxcube","reference":"E18/4/10/R-3F36","status":"production"},"name":"E 18/4/10/R - 3F36 - Ungapped","processedDescription":{"columns":[{"area":0.00004,"coordinates":[0,0,0],"depth":0.01,"height":0.004,"minimumDepth":null,"minimumWidth":null,"shape":"rectangular","type":"central","width":0.004},{"area":0.000021,"coordinates":[0.008,0,0],"depth":0.01,"height":0.004,"minimumDepth":null,"minimumWidth":null,"shape":"rectangular","type":"lateral","width":0.002001},{"area":0.000021,"coordinates":[-0.008,0,0],"depth":0.01,"height":0.004,"minimumDepth":null,"minimumWidth":null,"shape":"rectangular","type":"lateral","width":0.002001}],"depth":0.01,"effectiveParameters":{"effectiveArea":0.00004,"effectiveLength":0.024283185307179586,"effectiveVolume":9.713274122871836e-7,"minimumArea":0.00004},"height":0.008,"width":0.018000000000000002,"windingWindows":[{"angle":null,"area":0.00002,"coordinates":[0.002,0],"height":0.004,"radialHeight":null,"width":0.005}]}})");
 
     auto magneticFluxDensity = core.get_magnetic_flux_density_saturation(25.0, false);
@@ -1808,13 +1806,13 @@ TEST_CASE("Test_Core_Functional_Description_Web_9", "[constructive-model][core][
     REQUIRE_THAT(expectedMagneticFluxDensity, Catch::Matchers::WithinAbs(magneticFluxDensity, expectedMagneticFluxDensity * maximumError));
 }
 
-TEST_CASE("Test_Core_Functional_Description_Web_10", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Test_Core_Functional_Description_Web_10", "[constructive-model][core][functional-description][bug][smoke-test]") {
     auto coreJson = json::parse(R"({"distributorsInfo":[],"functionalDescription":{"coating":null,"gapping":[{"area":0.00003,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.007198,"distanceClosestParallelSurface":0.00435,"length":0.000005,"sectionDimensions":[0.0057,0.0051],"shape":"rectangular","type":"residual"},{"area":0.000015,"coordinates":[0.008625,0,0],"distanceClosestNormalSurface":0.007198,"distanceClosestParallelSurface":0.00435,"length":0.000005,"sectionDimensions":[0.00285,0.0051],"shape":"rectangular","type":"residual"},{"area":0.000015,"coordinates":[-0.008625,0,0],"distanceClosestNormalSurface":0.007198,"distanceClosestParallelSurface":0.00435,"length":0.000005,"sectionDimensions":[0.00285,0.0051],"shape":"rectangular","type":"residual"}],"material":"3C90","numberStacks":1,"shape":{"aliases":["R 140/103/25"],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.14},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.103},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.025}},"family":"t","familySubtype":null,"magneticCircuit":"closed","name":"T 140/103/25","type":"standard"},"type":"two-piece set"},"geometricalDescription":null,"manufacturerInfo":{"cost":null,"datasheetUrl":"https://ferroxcube.com/upload/media/product/file/Pr_ds/E20_10_5.pdf","family":null,"name":"Ferroxcube","orderCode":null,"reference":"E20/10/5-3C90","status":"production"},"name":"E 20/10/5 - 3C90 - Ungapped","processedDescription":null})");
     SKIP("Test needs investigation");
     Core core(coreJson, true);
 }
 
-TEST_CASE("Missing_Core_Hermes", "[constructive-model][core][functional-description][bug]") {
+TEST_CASE("Missing_Core_Hermes", "[constructive-model][core][functional-description][bug][smoke-test]") {
     // Check for segmentation fault
     auto coreJson = json::parse(R"({"functionalDescription": {"gapping": [], "material": "3C91", "numberStacks": 1, "shape": "P 11/7/I", "type": "two-piece set"}, "name": "temp"})");
     Core core(coreJson, true);
@@ -1822,7 +1820,7 @@ TEST_CASE("Missing_Core_Hermes", "[constructive-model][core][functional-descript
     auto functionalDescription = core.get_functional_description();
 }
 
-TEST_CASE("Test_Core_Initial_Permeability", "[constructive-model][core][functional-description]") {
+TEST_CASE("Test_Core_Initial_Permeability", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1840,7 +1838,7 @@ TEST_CASE("Test_Core_Initial_Permeability", "[constructive-model][core][function
     REQUIRE_THAT(expectedInitialPermeability, Catch::Matchers::WithinAbs(initialPermeability, expectedInitialPermeability * maximumError));
 }
 
-TEST_CASE("Test_Core_Effective_Permeability", "[constructive-model][core][functional-description]") {
+TEST_CASE("Test_Core_Effective_Permeability", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1858,7 +1856,7 @@ TEST_CASE("Test_Core_Effective_Permeability", "[constructive-model][core][functi
     REQUIRE_THAT(expectedEffectivePermeability, Catch::Matchers::WithinAbs(effectivePermeability, expectedEffectivePermeability * maximumError));
 }
 
-TEST_CASE("Test_Core_Reluctance", "[constructive-model][core][functional-description]") {
+TEST_CASE("Test_Core_Reluctance", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 
@@ -1876,7 +1874,7 @@ TEST_CASE("Test_Core_Reluctance", "[constructive-model][core][functional-descrip
     REQUIRE_THAT(expectedReluctance, Catch::Matchers::WithinAbs(reluctance, expectedReluctance * maximumError));
 }
 
-TEST_CASE("Test_Core_Resistivity", "[constructive-model][core][functional-description]") {
+TEST_CASE("Test_Core_Resistivity", "[constructive-model][core][functional-description][smoke-test]") {
     auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
     std::ifstream json_file(coreFilePath);
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <source_location>
 #include "MAS.hpp"
 #include "Definitions.h"
 #include "Models.h"
@@ -11,7 +12,7 @@ class Settings
 {
     private:
         Settings();
-        std::string selfFilePath = __FILE__;
+        std::string selfFilePath = std::source_location::current().file_name();
 
         bool _useToroidalCores = true;
         bool _useConcentricCores = true;

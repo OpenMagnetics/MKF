@@ -1,3 +1,4 @@
+#include <source_location>
 #include "support/Painter.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
@@ -55,7 +56,7 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance]") {
     {
         auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 4000000, 1000);
 
-        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
 
         outFile.append("Test_Impedance_0.svg");
@@ -67,7 +68,7 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance]") {
 
     }
     {
-        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         std::string filename = "Test_Impedance_0_magnetic.svg";
         outFile.append(filename);
@@ -131,7 +132,7 @@ TEST_CASE("Test_Impedance_Many_Turns", "[physical-model][impedance]") {
     // {
     //     auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 400000, 1000);
 
-    //     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    //     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     //     auto outFile = outputFilePath;
 
     //     outFile.append("Test_Impedance_Many_Turns.svg");

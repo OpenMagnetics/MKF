@@ -7,22 +7,6 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
-class missing_material_data_exception : public std::exception {
-private:
-    std::string message;
-
-public:
-    missing_material_data_exception(std::string msg)
-        : message(msg)
-    {
-    }
-
-    const char* what() const throw()
-    {
-        return message.c_str();
-    }
-};
-
 enum class DimensionalValues : int {
     MAXIMUM,
     NOMINAL,
@@ -299,12 +283,12 @@ inline void to_json(json & j, const CoreLossesModels & x) {
     switch (x) {
         case CoreLossesModels::PROPRIETARY: j = "Proprietary"; break;
         case CoreLossesModels::STEINMETZ: j = "Steinmetz"; break;
-        case CoreLossesModels::IGSE: j = "Igse"; break;
+        case CoreLossesModels::IGSE: j = "IGSE"; break;
         case CoreLossesModels::BARG: j = "Barg"; break;
         case CoreLossesModels::ROSHEN: j = "Roshen"; break;
         case CoreLossesModels::ALBACH: j = "Albach"; break;
-        case CoreLossesModels::NSE: j = "Nse"; break;
-        case CoreLossesModels::MSE: j = "Mse"; break;
+        case CoreLossesModels::NSE: j = "NSE"; break;
+        case CoreLossesModels::MSE: j = "MSE"; break;
         case CoreLossesModels::LOSS_FACTOR: j = "LossFactor"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"CoreLossesModels\": " + std::to_string(static_cast<int>(x)));
     }

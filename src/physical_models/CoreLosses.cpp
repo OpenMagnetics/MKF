@@ -5,6 +5,8 @@
 #include "processors/Inputs.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagneticField.h"
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 #include <cmath>
 #include <cfloat>
@@ -20,8 +22,6 @@
 #include <streambuf>
 #include <vector>
 #include "levmar.h"
-#include "support/Exceptions.h"
-#include "support/Logger.h"
 
 
 namespace OpenMagnetics {

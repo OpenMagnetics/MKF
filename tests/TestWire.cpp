@@ -1,3 +1,4 @@
+#include <source_location>
 #include "constructive_models/Wire.h"
 #include "support/Utils.h"
 #include "json.hpp"
@@ -16,7 +17,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace {
-    auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
+    auto masPath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("MAS/").string();
     double max_error = 0.05;
     auto label = WaveformLabel::TRIANGULAR;
     double offset = 0;

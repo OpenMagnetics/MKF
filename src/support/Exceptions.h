@@ -139,7 +139,7 @@ inline std::string to_string(ErrorCode code) {
  * @brief Base exception class for all OpenMagnetics exceptions
  */
 class OpenMagneticsException : public std::exception {
-protected:
+private:
     ErrorCode _code;
     std::string _message;
     std::string _fullMessage;

@@ -1,4 +1,5 @@
 #include "processors/Inputs.h"
+#include <source_location>
 #include "advisers/MagneticAdviser.h"
 #include "physical_models/Impedance.h"
 #include "processors/MagneticSimulator.h"
@@ -99,7 +100,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
     size_t coresWound = 0;
 
-    std::cout << "Getting core" << std::endl;
+    logEntry("Getting core", "MagneticAdviser", 2);
     size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
     size_t requestedCores = expectedWoundCores;
     std::vector<std::string> evaluatedCores;
@@ -121,13 +122,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 evaluatedCores.push_back(mas.get_magnetic().get_core().get_name().value());
             }
 
-            std::cout << "core:                                                                 " << mas.get_magnetic().get_core().get_name().value() << std::endl;
-            std::cout << "Getting coil" << std::endl;
+            logEntry("core: " + mas.get_magnetic().get_core().get_name().value(), "MagneticAdviser", 2);
+            logEntry("Getting coil", "MagneticAdviser", 2);
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
 
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             if (masMagneticsWithCoreAndCoil.size() > 0) {
-                std::cout << "Core wound!" << std::endl;
+                logEntry("Core wound!", "MagneticAdviser", 2);
 
                 coresWound++;
             }
@@ -166,7 +167,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         }
     }
 
-    logEntry("Found " + std::to_string(masData.size()) + " magnetics", "MagneticAdviser");
+    logEntry("Found " + std::to_string(masData.size()) + " magnetics", "MagneticAdviser", 2);
     auto masMagneticsWithScoring = score_magnetics(masData, filterFlow);
 
     sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
@@ -463,7 +464,7 @@ bool is_number(const std::string& s)
 //     else {
 //         int numberMagnetics = 1;
 //         std::filesystem::path inputFilepath = argv[1];
-//         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+//         auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 //         if (argc >= 3) {
 //             if (is_number(argv[2])) {
 //                 numberMagnetics = std::stoi(argv[2]);

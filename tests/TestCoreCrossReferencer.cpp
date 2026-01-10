@@ -17,8 +17,9 @@ using namespace OpenMagnetics;
 
 namespace { 
 TEST_CASE("Test_All_Core_Materials", "[adviser][core-cross-referencer]") {
-    SKIP("Test needs investigation");
     settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+
     clear_databases();
     OperatingPoint operatingPoint;
     CoreCrossReferencer coreCrossReferencer;
@@ -48,12 +49,12 @@ TEST_CASE("Test_All_Core_Materials", "[adviser][core-cross-referencer]") {
 
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name() == "EC 35/17/10 - 3C94 - Gapped 1.000 mm");
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 35 - Kool Mµ 26 - Ungapped");
 }
 
-TEST_CASE("Test_All_Core_Materials_Same_Material", "[adviser][core-cross-referencer]") {
-    SKIP("Test needs investigation");
+TEST_CASE("Test_All_Core_Materials_Same_Material", "[adviser][core-cross-referencer][smoke-test]") {
     settings.reset();
+    settings.set_use_only_cores_in_stock(false);
     clear_databases();
     OperatingPoint operatingPoint;
     CoreCrossReferencer coreCrossReferencer;
@@ -84,12 +85,12 @@ TEST_CASE("Test_All_Core_Materials_Same_Material", "[adviser][core-cross-referen
 
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name() == "EP 20 - 3C91 - Gapped 0.605 mm");
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "EC 41/19/12 - 3C91 - Gapped 1.000 mm");
 }
 
-TEST_CASE("Test_All_Core_Materials_Same_Material_Maximum_Height", "[adviser][core-cross-referencer]") {
-    SKIP("Test needs investigation");
+TEST_CASE("Test_All_Core_Materials_Same_Material_Maximum_Height", "[adviser][core-cross-referencer][smoke-test]") {
     settings.reset();
+    settings.set_use_only_cores_in_stock(false);
     clear_databases();
     OperatingPoint operatingPoint;
     CoreCrossReferencer coreCrossReferencer;
@@ -126,12 +127,12 @@ TEST_CASE("Test_All_Core_Materials_Same_Material_Maximum_Height", "[adviser][cor
 
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name() == "EP 20 - 3C91 - Gapped 0.605 mm");
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "EP 20 - 3C91 - Gapped 0.605 mm");
 }
 
 TEST_CASE("Test_All_Core_Materials_Only_TDK", "[adviser][core-cross-referencer]") {
-    SKIP("Test needs investigation");
     settings.reset();
+    settings.set_use_only_cores_in_stock(false);
     clear_databases();
     OperatingPoint operatingPoint;
     CoreCrossReferencer coreCrossReferencer;
@@ -162,12 +163,12 @@ TEST_CASE("Test_All_Core_Materials_Only_TDK", "[adviser][core-cross-referencer]"
 
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name() == "ETD 34/17/11 - N87 - Gapped 2.500 mm");
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "ETD 34/17/11 - N87 - Gapped 2.500 mm");
 }
 
 TEST_CASE("Test_All_Core_Materials_Powder", "[adviser][core-cross-referencer]") {
-    SKIP("Test needs investigation");
     settings.reset();
+    settings.set_use_only_cores_in_stock(false);
     clear_databases();
     OperatingPoint operatingPoint;
     CoreCrossReferencer coreCrossReferencer;
@@ -197,12 +198,12 @@ TEST_CASE("Test_All_Core_Materials_Powder", "[adviser][core-cross-referencer]") 
 
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name() == "E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped");
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 25/9.5/6.3 - MS 75 - Ungapped");
 }
 
-TEST_CASE("Test_All_Core_Materials_Only_Micrometals", "[adviser][core-cross-referencer]") {
-    SKIP("Test needs investigation");
+TEST_CASE("Test_All_Core_Materials_Only_Micrometals", "[adviser][core-cross-referencer][smoke-test]") {
     settings.reset();
+    settings.set_use_only_cores_in_stock(false);
     clear_databases();
     OperatingPoint operatingPoint;
     CoreCrossReferencer coreCrossReferencer;
@@ -233,11 +234,10 @@ TEST_CASE("Test_All_Core_Materials_Only_Micrometals", "[adviser][core-cross-refe
 
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name() == "E 25/9.5/6.3 - FS 26 - Ungapped");
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 25/9.5/6.3 - MS 75 - Ungapped");
 }
 
 TEST_CASE("Test_Cross_Reference_Core_Web_0", "[adviser][core-cross-referencer][bug]") {
-    SKIP("Test needs investigation");
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
     clear_databases();
@@ -271,7 +271,7 @@ TEST_CASE("Test_Cross_Reference_Core_Web_0", "[adviser][core-cross-referencer][b
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 20);
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name() == "EQ 42/20/28 - Kool Mµ MAX 26 - Ungapped");
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "EQ 42/20/28 - High Flux 26 - Ungapped");
 
     auto scorings = coreCrossReferencer.get_scorings();
     auto scoredValues = coreCrossReferencer.get_scored_values();

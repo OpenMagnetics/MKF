@@ -1,3 +1,4 @@
+#include <source_location>
 #include "support/CoilMesher.h"
 #include "support/Painter.h"
 #include "physical_models/InitialPermeability.h"
@@ -21,7 +22,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace {
-auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
 TEST_CASE("Test_One_Operating_Point_One_Winding_Triangular", "[processor][inputs]") {
     json inputsJson;
@@ -2091,7 +2092,7 @@ TEST_CASE("Test_Flyback_Json", "[processor][inputs]") {
 }
 
 TEST_CASE("Test_PFC_Json", "[processor][inputs]") {
-    std::string file_path = __FILE__;
+    std::string file_path = std::source_location::current().file_name();
     auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/pfc_current_waveform.ndjson");
     std::ifstream ndjsonFile(inventory_path);
     std::string jsonLine;
@@ -2137,7 +2138,7 @@ TEST_CASE("Test_PFC_Json", "[processor][inputs]") {
 }
 
 TEST_CASE("Test_Simplify_PFC_Json", "[processor][inputs]") {
-    std::string file_path = __FILE__;
+    std::string file_path = std::source_location::current().file_name();
     auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/pfc_current_waveform.ndjson");
     std::ifstream ndjsonFile(inventory_path);
     std::string jsonLine;

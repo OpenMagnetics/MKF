@@ -1,3 +1,4 @@
+#include <source_location>
 #include "support/Painter.h"
 #include "advisers/CoreAdviser.h"
 #include "support/Settings.h"
@@ -342,7 +343,7 @@ namespace {
                                                                  1);
 
         {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_WireAdviser_Web_0.svg");
             std::filesystem::remove(outFile);

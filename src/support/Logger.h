@@ -56,7 +56,7 @@ inline std::string to_string(LogLevel level) {
 class LogSink {
 public:
     virtual ~LogSink() = default;
-    virtual void write(LogLevel level, const std::string& module, 
+    virtual void write(LogLevel level, const std::string& moduleOfOrigin, 
                        const std::string& message, 
                        const std::string& timestamp) = 0;
     virtual void flush() = 0;
@@ -69,7 +69,7 @@ class ConsoleSink : public LogSink {
 public:
     explicit ConsoleSink(bool useColors = true) : _useColors(useColors) {}
     
-    void write(LogLevel level, const std::string& module, 
+    void write(LogLevel level, const std::string& moduleOfOrigin, 
                const std::string& message, 
                const std::string& timestamp) override {
         std::ostream& out = (level >= LogLevel::ERROR) ? std::cerr : std::cout;
@@ -81,8 +81,8 @@ public:
         out << "[" << timestamp << "] "
             << "[" << to_string(level) << "] ";
         
-        if (!module.empty()) {
-            out << "[" << module << "] ";
+        if (!moduleOfOrigin.empty()) {
+            out << "[" << moduleOfOrigin << "] ";
         }
         
         out << message;
@@ -129,15 +129,15 @@ public:
         }
     }
     
-    void write(LogLevel level, const std::string& module, 
+    void write(LogLevel level, const std::string& moduleOfOrigin, 
                const std::string& message, 
                const std::string& timestamp) override {
         if (_file.is_open()) {
             _file << "[" << timestamp << "] "
                   << "[" << to_string(level) << "] ";
             
-            if (!module.empty()) {
-                _file << "[" << module << "] ";
+            if (!moduleOfOrigin.empty()) {
+                _file << "[" << moduleOfOrigin << "] ";
             }
             
             _file << message << std::endl;
@@ -159,20 +159,21 @@ private:
  */
 class StringSink : public LogSink {
 public:
-    void write(LogLevel level, const std::string& module, 
+    void write(LogLevel level, const std::string& moduleOfOrigin, 
                const std::string& message, 
                const std::string& timestamp) override {
         std::lock_guard<std::mutex> lock(_mutex);
         _buffer << "[" << timestamp << "] "
                 << "[" << to_string(level) << "] ";
         
-        if (!module.empty()) {
-            _buffer << "[" << module << "] ";
+        if (!moduleOfOrigin.empty()) {
+            _buffer << "[" << moduleOfOrigin << "] ";
         }
         
         _buffer << message << "\n";
     }
     
+    // No-op: StringSink buffers in memory and doesn't need flushing to external storage
     void flush() override {}
     
     std::string getContents() const {
@@ -247,7 +248,7 @@ public:
      * @param module Module name (optional)
      * @param message The message to log
      */
-    void log(LogLevel level, const std::string& module, const std::string& message) {
+    void log(LogLevel level, const std::string& moduleOfOrigin, const std::string& message) {
         if (level < _level) {
             return;
         }
@@ -257,7 +258,7 @@ public:
         auto timestamp = getTimestamp();
         
         for (auto& sink : _sinks) {
-            sink->write(level, module, message, timestamp);
+            sink->write(level, moduleOfOrigin, message, timestamp);
         }
     }
     
@@ -272,28 +273,28 @@ public:
     }
     
     // Convenience methods
-    void trace(const std::string& message, const std::string& module = "") {
-        log(LogLevel::TRACE, module, message);
+    void trace(const std::string& message, const std::string& moduleOfOrigin = "") {
+        log(LogLevel::TRACE, moduleOfOrigin, message);
     }
     
-    void debug(const std::string& message, const std::string& module = "") {
-        log(LogLevel::DEBUG, module, message);
+    void debug(const std::string& message, const std::string& moduleOfOrigin = "") {
+        log(LogLevel::DEBUG, moduleOfOrigin, message);
     }
     
-    void info(const std::string& message, const std::string& module = "") {
-        log(LogLevel::INFO, module, message);
+    void info(const std::string& message, const std::string& moduleOfOrigin = "") {
+        log(LogLevel::INFO, moduleOfOrigin, message);
     }
     
-    void warning(const std::string& message, const std::string& module = "") {
-        log(LogLevel::WARNING, module, message);
+    void warning(const std::string& message, const std::string& moduleOfOrigin = "") {
+        log(LogLevel::WARNING, moduleOfOrigin, message);
     }
     
-    void error(const std::string& message, const std::string& module = "") {
-        log(LogLevel::ERROR, module, message);
+    void error(const std::string& message, const std::string& moduleOfOrigin = "") {
+        log(LogLevel::ERROR, moduleOfOrigin, message);
     }
     
-    void critical(const std::string& message, const std::string& module = "") {
-        log(LogLevel::CRITICAL, module, message);
+    void critical(const std::string& message, const std::string& moduleOfOrigin = "") {
+        log(LogLevel::CRITICAL, moduleOfOrigin, message);
     }
     
 private:
@@ -309,8 +310,14 @@ private:
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             now.time_since_epoch()) % 1000;
         
+        std::tm tm_buf{};
+#ifdef _WIN32
+        localtime_s(&tm_buf, &time);
+#else
+        localtime_r(&time, &tm_buf);
+#endif
         std::ostringstream oss;
-        oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S")
+        oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S")
             << '.' << std::setfill('0') << std::setw(3) << ms.count();
         return oss.str();
     }
@@ -327,8 +334,8 @@ private:
 #define OM_LOG(level, message) \
     OpenMagnetics::Logger::getInstance().log(level, "", message)
 
-#define OM_LOG_MODULE(level, module, message) \
-    OpenMagnetics::Logger::getInstance().log(level, module, message)
+#define OM_LOG_MODULE(level, moduleName, message) \
+    OpenMagnetics::Logger::getInstance().log(level, moduleName, message)
 
 #define OM_TRACE(message) \
     OpenMagnetics::Logger::getInstance().trace(message)
@@ -349,22 +356,22 @@ private:
     OpenMagnetics::Logger::getInstance().critical(message)
 
 // Module-specific logging
-#define OM_TRACE_M(module, message) \
-    OpenMagnetics::Logger::getInstance().trace(message, module)
+#define OM_TRACE_M(moduleName, message) \
+    OpenMagnetics::Logger::getInstance().trace(message, moduleName)
 
-#define OM_DEBUG_M(module, message) \
-    OpenMagnetics::Logger::getInstance().debug(message, module)
+#define OM_DEBUG_M(moduleName, message) \
+    OpenMagnetics::Logger::getInstance().debug(message, moduleName)
 
-#define OM_INFO_M(module, message) \
-    OpenMagnetics::Logger::getInstance().info(message, module)
+#define OM_INFO_M(moduleName, message) \
+    OpenMagnetics::Logger::getInstance().info(message, moduleName)
 
-#define OM_WARNING_M(module, message) \
-    OpenMagnetics::Logger::getInstance().warning(message, module)
+#define OM_WARNING_M(moduleName, message) \
+    OpenMagnetics::Logger::getInstance().warning(message, moduleName)
 
-#define OM_ERROR_M(module, message) \
-    OpenMagnetics::Logger::getInstance().error(message, module)
+#define OM_ERROR_M(moduleName, message) \
+    OpenMagnetics::Logger::getInstance().error(message, moduleName)
 
-#define OM_CRITICAL_M(module, message) \
-    OpenMagnetics::Logger::getInstance().critical(message, module)
+#define OM_CRITICAL_M(moduleName, message) \
+    OpenMagnetics::Logger::getInstance().critical(message, moduleName)
 
 } // namespace OpenMagnetics

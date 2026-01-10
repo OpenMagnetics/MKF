@@ -1,3 +1,5 @@
+#include "RandomUtils.h"
+#include <source_location>
 #include "support/Settings.h"
 #include "support/Painter.h"
 #include "constructive_models/Coil.h"
@@ -24,17 +26,17 @@ using namespace OpenMagnetics;
 
 namespace {
 
-auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 bool plot = false;
 
-TEST_CASE("Test_Coil_Json_0", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_0", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"Primary","name":"Primary","numberParallels":1,"numberTurns":23,"wire":"Dummy"}]})";
 
     auto coilJson = json::parse(coilString);
     auto Coil(coilJson);
 }
 
-TEST_CASE("Test_Coil_Json_1", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_1", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"_interleavingLevel":3,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":1,"numberTurns":9,"wire":"Round 0.475 - Grade 1"}]})";
 
     auto coilJson = json::parse(coilString);
@@ -69,7 +71,7 @@ TEST_CASE("Test_Coil_Json_1", "[constructive-model][coil][bug]") {
     REQUIRE(!std::isnan(section.get_dimensions()[1]));
 }
 
-TEST_CASE("Test_Coil_Json_2", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_2", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"overlapping","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":27,"numberTurns":36,"wire":"Round 0.475 - Grade 1"}]})";
     settings.set_coil_wind_even_if_not_fit(false);
 
@@ -100,7 +102,7 @@ TEST_CASE("Test_Coil_Json_2", "[constructive-model][coil][bug]") {
     REQUIRE(!std::isnan(section.get_dimensions()[0]));
     REQUIRE(!std::isnan(section.get_dimensions()[1]));
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Json_2.svg");
         std::filesystem::remove(outFile);
@@ -114,7 +116,7 @@ TEST_CASE("Test_Coil_Json_2", "[constructive-model][coil][bug]") {
     }
 }
 
-TEST_CASE("Test_Coil_Json_3", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_3", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":88,"numberTurns":1,"wire":"Round 0.475 - Grade 1"}]})";
     settings.set_coil_delimit_and_compact(false);
 
@@ -149,7 +151,7 @@ TEST_CASE("Test_Coil_Json_3", "[constructive-model][coil][bug]") {
     uint8_t interleavingLevel = 7;
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, WindingOrientation::CONTIGUOUS);
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Coil_Json_3.svg");
         std::filesystem::remove(outFile);
@@ -163,7 +165,7 @@ TEST_CASE("Test_Coil_Json_3", "[constructive-model][coil][bug]") {
     }
 }
 
-TEST_CASE("Test_Coil_Json_4", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_4", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.006,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0032500000000000003,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.0002835287369864788,"coordinates":[0.0095,0,0],"height":null,"radialHeight":0.0095,"sectionsAlignment":"outer or bottom","sectionsOrientation":"contiguous","shape":"round","width":null}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":1,"numberTurns":27,"wire":{"coating":{"breakdownVoltage":2700,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":4.116868676970209e-7},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.000724},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Nearson","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 21.0 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.000757},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"21 AWG","strand":null,"type":"round"}},{"connections":null,"isolationSide":"secondary","name":"Secondary","numberParallels":1,"numberTurns":27,"wire":{"coating":{"breakdownVoltage":5000,"grade":2,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":4.620411001469214e-7},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.000767},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Nearson","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 20.5 - Heavy Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.000831},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"20.5 AWG","strand":null,"type":"round"}}],"layersDescription":null,"sectionsDescription": null, "turnsDescription":null,"_turnsAlignment":{"Primary section 0":"spread","Secondary section 0":"spread"},"_layersOrientation":{"Primary section 0":"overlapping","Secondary section 0":"overlapping"}})";
 
     std::vector<size_t> pattern = {0, 1};
@@ -231,7 +233,7 @@ TEST_CASE("Test_Coil_Json_4", "[constructive-model][coil][bug]") {
     REQUIRE(bool(coil.get_turns_description()));
 }
 
-TEST_CASE("Test_Coil_Json_5", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_5", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.004347500000000001,"columnShape":"round","columnThickness":0.0007975000000000005,"columnWidth":0.004347500000000001,"coordinates":[0,0,0],"pins":null,"wallThickness":0.0008723921229391407,"windingWindows":[{"angle":null,"area":0.000022027638255648275,"coordinates":[0.0059425,0,0],"height":0.006905215754121718,"radialHeight":null,"sectionsAlignment":"inner or top","sectionsOrientation":"overlapping","shape":"rectangular","width":0.0031899999999999993}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":1,"numberTurns":7,"wire":{"coating":{"breakdownVoltage":2359,"grade":3,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":3.1172453105244723e-7},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.00063},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Elektrisola","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 0.63 - FIW 3","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0007279999999999999,"minimum":0.000705,"nominal":null},"outerHeight":null,"outerWidth":null,"standard":"IEC 60317","standardName":"0.63 mm","strand":null,"type":"round"}},{"connections":null,"isolationSide":"secondary","name":"Secondary","numberParallels":1,"numberTurns":19,"wire":{"coating":{"breakdownVoltage":2700,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":3.6637960384511227e-7},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.000683},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Nearson","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 21.5 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.000716},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"21.5 AWG","strand":null,"type":"round"}}],"layersDescription":[{"additionalCoordinates":null,"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,2.168404344971009e-19],"dimensions":[0.0007164999999999999,0.006635254],"fillingFactor":0.7263350166873861,"insulationMaterial":null,"name":"Primary section 0 layer 0","orientation":"overlapping","partialWindings":[{"connections":null,"parallelsProportion":[1],"winding":"Primary"}],"section":"Primary section 0","turnsAlignment":"spread","type":"conduction","windingStyle":"windByConsecutiveTurns"},{"additionalCoordinates":null,"coordinateSystem":"cartesian","coordinates":[0.0050765,0],"dimensions":[0.000025,0.006905215754121718],"fillingFactor":1,"insulationMaterial":null,"name":"Insulation between Primary and Primary section 1 layer 0","orientation":"overlapping","partialWindings":[],"section":"Insulation between Primary and Primary section 1","turnsAlignment":"spread","type":"insulation","windingStyle":null},{"additionalCoordinates":null,"coordinateSystem":"cartesian","coordinates":[0.005447000000000002,2.168404344971009e-19],"dimensions":[0.000716,0.006634754],"fillingFactor":0.7258281534517355,"insulationMaterial":null,"name":"Secondary section 0 layer 0","orientation":"overlapping","partialWindings":[{"connections":null,"parallelsProportion":[0.3684210526315789],"winding":"Secondary"}],"section":"Secondary section 0","turnsAlignment":"spread","type":"conduction","windingStyle":"windByConsecutiveTurns"},{"additionalCoordinates":null,"coordinateSystem":"cartesian","coordinates":[0.006163000000000003,-4.999999995199816e-10],"dimensions":[0.000716,0.006470344999999999],"fillingFactor":0.6221384172443447,"insulationMaterial":null,"name":"Secondary section 0 layer 1","orientation":"overlapping","partialWindings":[{"connections":null,"parallelsProportion":[0.3157894736842105],"winding":"Secondary"}],"section":"Secondary section 0","turnsAlignment":"spread","type":"conduction","windingStyle":"windByConsecutiveTurns"},{"additionalCoordinates":null,"coordinateSystem":"cartesian","coordinates":[0.006879000000000002,-4.999999995199816e-10],"dimensions":[0.000716,0.006470344999999999],"fillingFactor":0.6221384172443447,"insulationMaterial":null,"name":"Secondary section 0 layer 2","orientation":"overlapping","partialWindings":[{"connections":null,"parallelsProportion":[0.3157894736842105],"winding":"Secondary"}],"section":"Secondary section 0","turnsAlignment":"spread","type":"conduction","windingStyle":"windByConsecutiveTurns"},{"additionalCoordinates":null,"coordinateSystem":"cartesian","coordinates":[0.007249500000000002,0],"dimensions":[0.000025,0.006905215754121718],"fillingFactor":1,"insulationMaterial":null,"name":"Insulation between Secondary and Secondary section 3 layer 0","orientation":"overlapping","partialWindings":[],"section":"Insulation between Secondary and Secondary section 3","turnsAlignment":"spread","type":"insulation","windingStyle":null}],"sectionsDescription":[{"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,0],"dimensions":[0.0007164999999999999,0.006635254],"fillingFactor":0.6629541903904612,"layersAlignment":null,"orientation":"overlapping","margin":[0,0],"name":"Primary section 0","partialWindings":[{"connections":null,"parallelsProportion":[1],"winding":"Primary"}],"type":"conduction","windingStyle":"windByConsecutiveTurns"},{"coordinateSystem":"cartesian","coordinates":[0.005076500000000001,0],"dimensions":[0.000025,0.006905215754121718],"fillingFactor":1,"layersAlignment":null,"orientation":"overlapping","margin":null,"name":"Insulation between Primary and Primary section 1","partialWindings":[],"type":"insulation","windingStyle":null},{"coordinateSystem":"cartesian","coordinates":[0.006163000000000002,0],"dimensions":[0.002148,0.006634754],"fillingFactor":0.5926870467921613,"layersAlignment":null,"orientation":"overlapping","margin":[0,0],"name":"Secondary section 0","partialWindings":[{"connections":null,"parallelsProportion":[1],"winding":"Secondary"}],"type":"conduction","windingStyle":"windByConsecutiveTurns"},{"coordinateSystem":"cartesian","coordinates":[0.0072495000000000025,0],"dimensions":[0.000025,0.006905215754121718],"fillingFactor":1,"layersAlignment":null,"orientation":"overlapping","margin":null,"name":"Insulation between Secondary and Secondary section 3","partialWindings":[],"type":"insulation","windingStyle":null}],"turnsDescription":[{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,0.0029593770000000004],"dimensions":[0.0007164999999999999,0.0007164999999999999],"layer":"Primary section 0 layer 0","length":0.029567099259260342,"name":"Primary parallel 0 turn 0","orientation":"clockwise","parallel":0,"rotation":0,"section":"Primary section 0","winding":"Primary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,0.0019729180000000006],"dimensions":[0.0007164999999999999,0.0007164999999999999],"layer":"Primary section 0 layer 0","length":0.029567099259260342,"name":"Primary parallel 0 turn 1","orientation":"clockwise","parallel":0,"rotation":0,"section":"Primary section 0","winding":"Primary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,0.0009864590000000003],"dimensions":[0.0007164999999999999,0.0007164999999999999],"layer":"Primary section 0 layer 0","length":0.029567099259260342,"name":"Primary parallel 0 turn 2","orientation":"clockwise","parallel":0,"rotation":0,"section":"Primary section 0","winding":"Primary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,2.168404344971009e-19],"dimensions":[0.0007164999999999999,0.0007164999999999999],"layer":"Primary section 0 layer 0","length":0.029567099259260342,"name":"Primary parallel 0 turn 3","orientation":"clockwise","parallel":0,"rotation":0,"section":"Primary section 0","winding":"Primary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,-0.0009864589999999999],"dimensions":[0.0007164999999999999,0.0007164999999999999],"layer":"Primary section 0 layer 0","length":0.029567099259260342,"name":"Primary parallel 0 turn 4","orientation":"clockwise","parallel":0,"rotation":0,"section":"Primary section 0","winding":"Primary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,-0.0019729179999999997],"dimensions":[0.0007164999999999999,0.0007164999999999999],"layer":"Primary section 0 layer 0","length":0.029567099259260342,"name":"Primary parallel 0 turn 5","orientation":"clockwise","parallel":0,"rotation":0,"section":"Primary section 0","winding":"Primary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.004705750000000001,-0.002959377],"dimensions":[0.0007164999999999999,0.0007164999999999999],"layer":"Primary section 0 layer 0","length":0.029567099259260342,"name":"Primary parallel 0 turn 6","orientation":"clockwise","parallel":0,"rotation":0,"section":"Primary section 0","winding":"Primary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.005447000000000002,0.0029593770000000004],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 0","length":0.03422451036820722,"name":"Secondary parallel 0 turn 0","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.005447000000000002,0.0019729180000000006],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 0","length":0.03422451036820722,"name":"Secondary parallel 0 turn 1","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.005447000000000002,0.0009864590000000003],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 0","length":0.03422451036820722,"name":"Secondary parallel 0 turn 2","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.005447000000000002,2.168404344971009e-19],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 0","length":0.03422451036820722,"name":"Secondary parallel 0 turn 3","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.005447000000000002,-0.0009864589999999999],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 0","length":0.03422451036820722,"name":"Secondary parallel 0 turn 4","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.005447000000000002,-0.0019729179999999997],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 0","length":0.03422451036820722,"name":"Secondary parallel 0 turn 5","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.005447000000000002,-0.002959377],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 0","length":0.03422451036820722,"name":"Secondary parallel 0 turn 6","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006163000000000003,0.0028771720000000003],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 1","length":0.03872327104814781,"name":"Secondary parallel 0 turn 7","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006163000000000003,0.0017263030000000004],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 1","length":0.03872327104814781,"name":"Secondary parallel 0 turn 8","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006163000000000003,0.0005754340000000005],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 1","length":0.03872327104814781,"name":"Secondary parallel 0 turn 9","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006163000000000003,-0.0005754349999999994],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 1","length":0.03872327104814781,"name":"Secondary parallel 0 turn 10","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006163000000000003,-0.0017263039999999993],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 1","length":0.03872327104814781,"name":"Secondary parallel 0 turn 11","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006163000000000003,-0.0028771729999999994],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 1","length":0.03872327104814781,"name":"Secondary parallel 0 turn 12","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006879000000000002,0.0028771720000000003],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 2","length":0.04322203172808839,"name":"Secondary parallel 0 turn 13","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006879000000000002,0.0017263030000000004],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 2","length":0.04322203172808839,"name":"Secondary parallel 0 turn 14","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006879000000000002,0.0005754340000000005],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 2","length":0.04322203172808839,"name":"Secondary parallel 0 turn 15","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006879000000000002,-0.0005754349999999994],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 2","length":0.04322203172808839,"name":"Secondary parallel 0 turn 16","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006879000000000002,-0.0017263039999999993],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 2","length":0.04322203172808839,"name":"Secondary parallel 0 turn 17","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"},{"additionalCoordinates":null,"angle":null,"coordinateSystem":"cartesian","coordinates":[0.006879000000000002,-0.0028771729999999994],"dimensions":[0.000716,0.000716],"layer":"Secondary section 0 layer 2","length":0.04322203172808839,"name":"Secondary parallel 0 turn 18","orientation":"clockwise","parallel":0,"rotation":0,"section":"Secondary section 0","winding":"Secondary"}],"_turnsAlignment":{"Primary section 0":"spread","Secondary section 0":"spread"},"_layersOrientation":{"Primary section 0":"overlapping","Secondary section 0":"overlapping"}})";
 
     std::vector<size_t> pattern = {0, 1};
@@ -300,8 +302,7 @@ TEST_CASE("Test_Coil_Json_5", "[constructive-model][coil][bug]") {
     REQUIRE(bool(coil.are_sections_and_layers_fitting()));
 }
 
-TEST_CASE("Test_Coil_Json_6", "[constructive-model][coil][bug]") {
-    SKIP("Test needs investigation");
+TEST_CASE("Test_Coil_Json_6", "[constructive-model][coil][bug][smoke-test]") {
     json coilJson = json::parse(R"({"_sectionsAlignment":"spread","_turnsAlignment":"centered","bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.0075,"columnShape":"rectangular","columnThickness":0.0,"columnWidth":0.0026249999999999997,"coordinates":[0.0,0.0,0.0],"pins":null,"wallThickness":0.0,"windingWindows":[{"angle":360.0,"area":0.00017203361371057708,"coordinates":[0.0074,0.0,0.0],"height":null,"radialHeight":0.0074,"sectionsAlignment":"spread","sectionsOrientation":"contiguous","shape":"round","width":null}]}},"functionalDescription":[{"isolationSide":"primary","name":"primary","numberParallels":1,"numberTurns":15,"wire":{"coating":{"breakdownVoltage":2700.0,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":null,"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.00125},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Round 1.25 - Grade 1","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001316},"outerHeight":null,"outerWidth":null,"standard":"IEC 60317","standardName":"1.25 mm","strand":null,"type":"round"}},{"isolationSide":"secondary","name":"secondary","numberParallels":1,"numberTurns":15,"wire":{"coating":{"breakdownVoltage":2700.0,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":null,"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.00125},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Round 1.25 - Grade 1","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001316},"outerHeight":null,"outerWidth":null,"standard":"IEC 60317","standardName":"1.25 mm","strand":null,"type":"round"}}]})");
     size_t repetitions = 1;
     json proportionPerWindingJson = json::parse(R"([])");
@@ -422,10 +423,6 @@ TEST_CASE("Test_Coil_Json_6", "[constructive-model][coil][bug]") {
         }
     }
 
-
-    // std::cout << bool(coil.get_sections_description()) << std::endl;
-    // std::cout << bool(coil.get_layers_description()) << std::endl;
-    // std::cout << bool(coil.get_turns_description()) << std::endl;
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Turns not created");
     }
@@ -434,7 +431,7 @@ TEST_CASE("Test_Coil_Json_6", "[constructive-model][coil][bug]") {
     to_json(result, coil);
 }
 
-TEST_CASE("Test_Coil_Json_7", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_7", "[constructive-model][coil][bug][smoke-test]") {
     // json coilJson = json::parse(R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.00356,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0022725,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.0000637587014444212,"coordinates":[0.004505,0,0],"height":null,"radialHeight":0.004505,"sectionsAlignment":"inner or top","sectionsOrientation":"overlapping","shape":"round","width":null}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":3,"numberTurns":55,"wire":{"coating":{"breakdownVoltage":1220,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":8.042477193189871e-8},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000323,"minimum":0.00031800000000000003,"nominal":0.00032},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Elektrisola","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 28.0 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000356,"minimum":0.00033800000000000003,"nominal":0.000347},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"28 AWG","strand":null,"type":"round"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread"],"_layersOrientation":["overlapping"]})");
     json coilJson = json::parse(R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.00356,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0022725,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.0000637587014444212,"coordinates":[0.004505,0,0],"height":null,"radialHeight":0.004505,"sectionsAlignment":"inner or top","sectionsOrientation":"overlapping","shape":"round","width":null}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":3,"numberTurns":55,"wire":{"coating":{"breakdownVoltage":1220,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":8.042477193189871e-8},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000323,"minimum":0.00031800000000000003,"nominal":0.00032},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Elektrisola","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 28.0 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000356,"minimum":0.00033800000000000003,"nominal":0.000347},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"28 AWG","strand":null,"type":"round"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread"],"_layersOrientation":["overlapping"]})");
     size_t repetitions = 1;
@@ -564,27 +561,22 @@ TEST_CASE("Test_Coil_Json_7", "[constructive-model][coil][bug]") {
     to_json(result, coil);
 }
 
-TEST_CASE("Test_Coil_Json_8", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_8", "[constructive-model][coil][bug][smoke-test]") {
     json coilJson = json::parse(R"({"bobbin": {"processedDescription": {"columnDepth": 0.0037755, "columnShape": "rectangular", "columnThickness": 0.0009500000000000003, "wallThickness": 0.0008999999999999998, "windingWindows": [{"area": 4.283999999999999e-05, "coordinates": [0.0055, 0.0, 0.0], "height": 0.0126, "sectionsAlignment": "inner or top", "sectionsOrientation": "overlapping", "shape": "rectangular", "width": 0.0033999999999999994}], "columnWidth": 0.0038000000000000004, "coordinates": [0.0, 0.0, 0.0]}}, "functionalDescription": [{"isolationSide": "primary", "name": "PRI", "numberParallels": 1, "numberTurns": 10, "wire": {"type": "round", "conductingDiameter": {"maximum": 0.000257, "minimum": 0.000251, "nominal": 0.000254}, "material": "copper", "outerDiameter": {"maximum": 0.000283999999999, "minimum": 0.00026900000000000003, "nominal": 0.000277}, "coating": {"breakdownVoltage": 1190.0, "grade": 1, "material": {"dielectricStrength": [{"value": 160000000.0, "temperature": 23.0, "thickness": 2.5e-05}], "name": "ETFE", "aliases": ["Tefzel ETFE"], "composition": "Ethylene Tetrafluoroethylene", "manufacturer": "Chemours", "meltingPoint": 220.0, "relativePermittivity": 2.7, "resistivity": [{"value": 1000000000000000.0, "temperature": 170.0}], "specificHeat": 1172.0, "temperatureClass": 155.0, "thermalConductivity": 0.24}, "type": "enamelled"}, "manufacturerInfo": {"name": "Elektrisola"}, "name": "Round 30.0 - Single Build", "numberConductors": 1, "standard": "NEMA MW 1000 C", "standardName": "30 AWG"}}, {"isolationSide": "secondary", "name": "SEC", "numberParallels": 1, "numberTurns": 10, "wire": {"type": "round", "conductingDiameter": {"maximum": 0.00022899999999900002, "minimum": 0.000224, "nominal": 0.00022600000000000002}, "material": "copper", "outerDiameter": {"maximum": 0.000254, "minimum": 0.00023899999999900002, "nominal": 0.000245999999999}, "coating": {"breakdownVoltage": 1020.0, "grade": 1, "material": {"dielectricStrength": [{"value": 160000000.0, "temperature": 23.0, "thickness": 2.5e-05}], "name": "ETFE", "aliases": ["Tefzel ETFE"], "composition": "Ethylene Tetrafluoroethylene", "manufacturer": "Chemours", "meltingPoint": 220.0, "relativePermittivity": 2.7, "resistivity": [{"value": 1000000000000000.0, "temperature": 170.0}], "specificHeat": 1172.0, "temperatureClass": 155.0, "thermalConductivity": 0.24}, "type": "enamelled"}, "manufacturerInfo": {"name": "Elektrisola"}, "name": "Round 31.0 - Single Build", "numberConductors": 1, "standard": "NEMA MW 1000 C", "standardName": "31 AWG"}}, {"isolationSide": "primary", "name": "AUX", "numberParallels": 1, "numberTurns": 10, "wire": {"type": "round", "conductingDiameter": {"maximum": 0.000257, "minimum": 0.000251, "nominal": 0.000254}, "material": "copper", "outerDiameter": {"maximum": 0.000283999999999, "minimum": 0.00026900000000000003, "nominal": 0.000277}, "coating": {"breakdownVoltage": 1190.0, "grade": 1, "material": {"dielectricStrength":[{"value": 160000000.0, "temperature": 23.0, "thickness": 2.5e-05}], "name": "ETFE", "aliases": ["Tefzel ETFE"], "composition": "Ethylene Tetrafluoroethylene", "manufacturer": "Chemours", "meltingPoint": 220.0, "relativePermittivity": 2.7, "res sistivity": [{"value": 1000000000000000.0, "temperature": 170.0}], "specificHeat": 1172.0, "temperatureClass": 155.0, "thermalConductivity": 0.24}, "type": "enamelled"}, "manufacturerInfo": {"name": "Elektrisola"}, "name": "Round 30.0 - Single B Build", "numberConductors": 1, "standard": "NEMA MW 1000 C", "standardName": "30 AWG"}}], "layersDescription": [{"coordinates": [0.0039385, 0.0], "dimensions": [0.000277, 0.010357], "name": "PRI section 0 layer 0", "orientation": "overlapping", "partialWindings": [{"parallelsProportion": [0.5], "winding": "PRI"}], "type": "conduction", "coordinateSystem": "cartesian", "fillingFactor": 0.10992063492063493, "insulationMaterial": {"dielectricStrength": [{"value": 303000000.0, "temperature": 23.0, "thickness": 2.5e-05}, {"value": 240000000.0, "temperature": 23.0, "thickness": 5e-05}, {"value": 201000000.0, "temperature": 23.0, "thickness": 7.5e-05}, {"value": 154000000.0, "temperature": 23.0, "thickness": 0.000125}], "name": "Kapton HN", "aliases": [], "composition": "Polyimide", "manufacturer": "DuPont", "meltingPoint": 520.0, "relativePermittivity": 3.4, "resistivity": [{"value": 1500000000000000.0}], "specificHeat": 1090.0, "temperatureClass": 180.0, "thermalConductivity": 0.2}, "section": "PRI section 0", "turnsAlignment": "spread", "windingStyle": "windByConsecutiveParallels"}, {"coordinates": [0.0040895, 0.0], "dimensions": [2.5e-05, 0.0126], "name": "Insulation between PRI and SEC section 1 layer 0", "orientation": "overlapping", "partialWindings": [], "type": "insulation", "coordinateSystem": "cartesian", "fillingFactor": 1.0, "insulationMaterial": {"dielectricStrength": [{"value": 303000000.0, "temperature": 23.0, "thickness": 2.5e-05}, {"value": 240000000.0, "temperature": 23.0, "thickness": 5e-05}, {"value": 201000000.0, "temperature": 23.0, "thickness": 7.5e-05}, {"value": 154000000.0, "temperature": 23.0, "thickness": 0.000125}], "name": "Kapton HN", "aliases": [], "composition": "Polyimide", "manufacturer": "DuPont", "meltingPoint": 520.0, "relativePermittivity": 3.4, "resistivity": [{"value": 1500000000000000.0}], "specificHeat": 1090.0, "temperatureClass": 180.0, "thermalConductivity": 0.2}, "section": "Insulation between PRI and SEC section 1", "turnsAlignment": "spread"}, {"coordinates": [0.004224999999999501, 0.0], "dimensions": [0.000245999999999, 0.011585999999999], "name": "SEC section 0 layer 0", "orientation": "overlapping", "partialWindings": [{"parallelsProportion": [1.0], "winding": "SEC"}], "type": "conduction", "coordinateSystem": "cartesian", "fillingFactor": 0.1952380952373016, "insulationMaterial": {"dielectricStrength": [{"value": 303000000.0, "temperature": 23.0, "thickness": 2.5e-05}, {"value": 240000000.0, "temperature": 23.0, "thickness": 5e-05}, {"value": 201000000.0, "temperature": 23.0, "thickness": 7.5e-05}, {"value": 154000000.0, "temperature": 23.0, "thickness": 0.000125}], "name": "Kapton HN", "aliases": [], "composition": "Polyimide", "manufacturer": "DuPont", "meltingPoint": 520.0, "relativePermittivity": 3.4, "resistivity": [{"value": 1500000000000000.0}], "specificHeat": 1090.0, "temperatureClass": 180.0, "thermalConductivity": 0.2}, "section": "SEC section 0", "turnsAlignment": "spread", "windingStyle": "windByConsecutiveTurns"}, {"coordinates": [0.004360499999999001, 0.0], "dimensions": [2.5e-05, 0.0126], "name": "Insulation between SEC and PRI section 3 layer 0", "orientation": "overlapping", "partialWindings": [], "type": "insulation", "coordinateSystem": "cartesian", "fillingFactor": 1.0, "section": "Insulation between SEC and PRI section 3", "turnsAlignment": "spread"}, {"coordinates": [0.0045114999999990016, 0.0], "dimensions": [0.000277, 0.010357], "name": "PRI section 1 layer 0", "orientation": "overlapping", "partialWindings": [{"parallelsProportion": [0.5], "winding": "PRI"}], "type": "conduction", "coordinateSystem": "cartesian", "fillingFactor": 0.10992063492063493, "section": "PRI section 1", "turnsAlignment": "spread", "windingStyle": "windByConsecutiveParallels"}, {"coordinates": [0.004662499999999002, 0.0], "dimensions": [2.5e-05, 0.0126], "name": "Insulation between PRI and AUX section 5 layer 0", "orientation": "overlapping", "partialWindings": [], "type": "insulation", "coordinateSystem": "cartesian", "fillingFactor": 1.0, "section": "Insulation between PRI and AUX section 5", "turnsAlignment": "spread"}, {"coordinates": [0.004813499999999002, 0.0], "dimensions": [0.000277, 0.011616999999999999], "name": "AUX section 0 layer 0", "orientation": "overlapping", "partialWindings": [{"parallelsProportion": [1.0], "winding": "AUX"}], "type": "conduction", "coordinateSystem": "cartesian", "fillingFactor": 0.21984126984126987, "section": "AUX section 0", "turnsAlignment": "spread", "windingStyle": "windByConsecutiveTurns"}, {"coordinates": [0.004964499999999002, 0.0], "dimensions": [2.5e-05, 0.0126], "name": "Insulation between AUX and PRI section 7 layer 0", "orientation": "overlapping", "partialWindings": [], "type": "insulation", "coordinateSystem": "cartesian", "fillingFactor": 1.0, "section": "Insulation between AUX and PRI section 7", "turnsAlignment": "spread"}], "sectionsDescription": [{"coordinates": [0.0039385, 0.0], "dimensions": [0.000277, 0.010357], "layersOrientation": "overlapping", "name": "PRI section 0", "partialWindings": [{"parallelsProportion": [0.5], "winding": "PRI"}], "type": "conduction", "coordinateSystem": "cartesian", "fillingFactor": 0.05494375499265723, "margin": [0.0, 0.0], "windingStyle": "windByConsecutiveParallels"}, {"coordinates": [0.0040895, 0.0], "dimensions": [2.5e-05, 0.0126], "layersOrientation": "overlapping", "name": "Insulation between PRI and SEC section 1", "partialWindings": [], "type": "insulation", "coordinateSystem": "cartesian", "fillingFactor": 1.0}, {"coordinates": [0.004224999999999501, 0.0], "dimensions": [0.00024599999999900006, 0.011585999999999], "layersOrientation": "overlapping", "name": "SEC section 0", "partialWindings": [{"parallelsProportion": [1.0], "winding": "SEC"}], "type": "conduction", "coordinateSystem": "cartesian", "fillingFactor": 0.0433340624416858, "margin": [0.0, 0.0], "windingStyle": "windByConsecutiveTurns"}, {"coordinates": [0.0043604999999990015, 0.0], "dimensions": [2.5e-05, 0.0126], "layersOrientation": "overlapping", "name": "Insulation between SEC and PRI section 3", "partialWindings": [], "type": "insulation", "coordinateSystem": "cartesian", "fillingFactor": 1.0}, {"coordinates": [0.0045114999999990016, 0.0], "dimensions": [0.000277, 0.010357], "layersOrientation": "overlapping", "name": "PRI section 1", "partialWindings": [{"parallelsProportion": [0.5], "winding": "PRI"}], "type": "conduction", "coordinateSystem": "cartesian", "fillingFactor": 0.056211687019914226, "margin": [0.0, 0.0], "windingStyle": "windByConsecutiveParallels"}, {"coordinates": [0.004662499999999002, 0.0], "dimensions": [2.5e-05, 0.0126], "layersOrientation": "overlapping", "name": "Insulation between PRI and AUX section 5", "partialWindings": [], "type": "insulation", "coordinateSystem": "cartesian", "fillingFactor": 1.0}, {"coordinates": [0.004813499999999002, 0.0], "dimensions": [0.00027699999999999996, 0.011616999999999999], "layersOrientation": "overlapping", "name": "AUX section 0", "partialWindings": [{"parallelsProportion": [1.0], "winding": "AUX"}], "type": "conduction", "coordinateSystem": "cartesian", "fillingFactor": 0.054331048199001766, "margin": [0.0, 0.0], "windingStyle": "windByConsecutiveTurns"}, {"coordinates": [0.004964499999999002, 0.0], "dimensions": [2.5e-05, 0.0126], "layersOrientation": "overlapping", "name": "Insulation between AUX and PRI section 7", "partialWindings": [], "type": "insulation", "coordinateSystem": "cartesian", "fillingFactor": 1.0}], "turnsDescription": [{"coordinates": [0.0039385, 0.00504], "length": 0.031172221165044374, "name": "PRI parallel 0 turn 0", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 0"}, {"coordinates": [0.0039385, 0.00252], "length": 0.031172221165044374, "name": "PRI parallel 0 turn 1", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 0"}, {"coordinates": [0.0039385, 0.0], "length": 0.031172221165044374, "name": "PRI parallel 0 turn 2", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 0"}, {"coordinates": [0.0039385, -0.00252], "length": 0.031172221165044374, "name": "PRI parallel 0 turn 3", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 0"}, {"coordinates": [0.0039385, -0.00504], "length": 0.031172221165044374, "name": "PRI parallel 0 turn 4", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 0"}, {"coordinates": [0.004224999999999501, 0.00567], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 0", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, 0.00441], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 1", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, 0.00315], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 2", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, 0.00189], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 3", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, 0.0006299999999999999], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 4", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, -0.0006300000000000001], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 5", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, -0.0018900000000000002], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 6", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, -0.00315], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 7", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, -0.00441], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 8", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.004224999999999501, -0.00567], "length": 0.03297235375554819, "name": "SEC parallel 0 turn 9", "parallel": 0, "winding": "SEC", "coordinateSystem": "cartesian", "dimensions": [0.000245999999999, 0.000245999999999], "layer": "SEC section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "SEC section 0"}, {"coordinates": [0.0045114999999990016, 0.00504], "length": 0.034772486346052005, "name": "PRI parallel 0 turn 5", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 1 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 1"}, {"coordinates": [0.0045114999999990016, 0.00252], "length": 0.034772486346052005, "name": "PRI parallel 0 turn 6", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 1 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 1"}, {"coordinates": [0.0045114999999990016, 0.0], "length": 0.034772486346052005, "name": "PRI parallel 0 turn 7", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 1 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 1"}, {"coordinates": [0.0045114999999990016, -0.00252], "length": 0.034772486346052005, "name": "PRI parallel 0 turn 8", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 1 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 1"}, {"coordinates": [0.0045114999999990016, -0.00504], "length": 0.034772486346052005, "name": "PRI parallel 0 turn 9", "parallel": 0, "winding": "PRI", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "PRI section 1 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "PRI section 1"}, {"coordinates": [0.004813499999999002, 0.00567], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 0", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, 0.00441], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 1", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, 0.00315], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 2", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, 0.00189], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 3", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, 0.0006299999999999999], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 4", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, -0.0006300000000000001], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 5", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, -0.0018900000000000002], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 6", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, -0.00315], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 7", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, -0.00441], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 8", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}, {"coordinates": [0.004813499999999002, -0.00567], "length": 0.03667000830882024, "name": "AUX parallel 0 turn 9", "parallel": 0, "winding": "AUX", "coordinateSystem": "cartesian", "dimensions": [0.000277, 0.000277], "layer": "AUX section 0 layer 0", "orientation": "clockwise", "rotation": 0.0, "section": "AUX section 0"}]})");
     OpenMagnetics::Coil coil(coilJson, false);
     auto layers = coil.get_layers_description().value();
 
     for (auto layer : layers) {
         if (layer.get_type() == ElectricalType::INSULATION) {
-            std::cout << layer.get_name() << std::endl;
-            std::cout << "Insulation between SEC and PRI section 3 layer 0" << std::endl;
-            std::cout << (layer.get_name() == "Insulation between SEC and PRI section 3 layer 0") << std::endl;
-
             auto material = OpenMagnetics::Coil::resolve_insulation_layer_insulation_material(coil, layer.get_name());
             json mierda;
             to_json(mierda, material);
-            std::cout << mierda << std::endl;
         }
 
     }
 }
 
-TEST_CASE("Test_Coil_Json_9", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_9", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"bobbin": {"distributorsInfo": null, "functionalDescription": null, "manufacturerInfo": null, "name": null, "processedDescription": {"columnDepth": 0.01295, "columnShape": "round", "columnThickness": 0.0, "columnWidth": 0.01295, "coordinates": [0.0, 0.0, 0.0 ], "pins": null, "wallThickness": 0.0, "windingWindows": [{"angle": null, "area": 0.0001596, "coordinates": [0.0196, 0.0, 0.0 ], "height": 0.012, "radialHeight": null, "sectionsAlignment": "centered", "sectionsOrientation": "contiguous", "shape": "rectangular", "width": 0.0133 } ] } }, "functionalDescription": [{"connections": null, "isolationSide": "primary", "name": "Primary", "numberParallels": 3, "numberTurns": 12, "wire": {"coating": {"breakdownVoltage": null, "grade": null, "material": {"aliases": ["Tefzel ETFE" ], "composition": "Ethylene Tetrafluoroethylene", "dielectricStrength": [{"humidity": null, "temperature": 23.0, "thickness": 2.5e-05, "value": 160000000.0 } ], "manufacturer": "Chemours", "meltingPoint": 220.0, "name": "ETFE", "relativePermittivity": 2.7, "resistivity": [{"temperature": 170.0, "value": 1000000000000000.0 } ], "specificHeat": 1172.0, "temperatureClass": 155.0, "thermalConductivity": 0.24 }, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "bare" }, "conductingArea": null, "conductingDiameter": null, "conductingHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00020999999999999998 }, "conductingWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.002 }, "edgeRadius": null, "manufacturerInfo": null, "material": "copper", "name": null, "numberConductors": 1, "outerDiameter": null, "outerHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00021020999999999995 }, "outerWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.002002 }, "standard": null, "standardName": null, "strand": null, "type": "rectangular" } }, {"connections": null, "isolationSide": "secondary", "name": "Secondary", "numberParallels": 3, "numberTurns": 15, "wire": {"coating": {"breakdownVoltage": null, "grade": null, "material": {"aliases": [], "composition": "Polyurethane", "dielectricStrength": [{"humidity": null, "temperature": null, "thickness": 0.0001, "value": 25000000.0 } ], "manufacturer": "MWS Wire", "meltingPoint": null, "name": "Polyurethane 155", "relativePermittivity": 3.7, "resistivity": [{"temperature": null, "value": 1e+16 } ], "specificHeat": null, "temperatureClass": 155.0, "thermalConductivity": null }, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled" }, "conductingArea": null, "conductingDiameter": null, "conductingHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00020999999999999998 }, "conductingWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.002 }, "edgeRadius": null, "manufacturerInfo": null, "material": "copper", "name": null, "numberConductors": 1, "outerDiameter": null, "outerHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00021020999999999995 }, "outerWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.002002 }, "standard": null, "standardName": null, "strand": null, "type": "rectangular" } } ], "layersOrientation": "contiguous", "turnsAlignment": "spread" })";
     auto coilJson = json::parse(coilString);
     size_t repetitions = 1;
@@ -646,7 +638,7 @@ TEST_CASE("Test_Coil_Json_9", "[constructive-model][coil][bug]") {
     to_json(result, coil);
 }
 
-TEST_CASE("Test_Coil_Json_10", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_10", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"bobbin": {"distributorsInfo": null, "functionalDescription": null, "manufacturerInfo": null, "name": null, "processedDescription": {"columnDepth": 0.0047, "columnShape": "round", "columnThickness": 0.0, "columnWidth": 0.0047, "coordinates": [0.0, 0.0, 0.0], "pins": null, "wallThickness": 0.0, "windingWindows": [{"angle": null, "area": 3.813000000000001e-05, "coordinates": [0.007775000000000001, 0.0, 0.0], "height": 0.006200000000000001, "radialHeight": null, "sectionsAlignment": "centered", "sectionsOrientation": "contiguous", "shape": "rectangular", "width": 0.006150000000000001}]}}, "functionalDescription": [{"connections": null, "isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 33, "wire": {"coating": {"breakdownVoltage": null, "grade": null, "material": {"aliases": ["Tefzel ETFE"], "composition": "Ethylene Tetrafluoroethylene", "dielectricStrength": [{"humidity": null, "temperature": 23.0, "thickness": 2.5e-05, "value": 160000000.0}], "manufacturer": "Chemours", "meltingPoint": 220.0, "name": "ETFE", "relativePermittivity": 2.7, "resistivity": [{"temperature": 170.0, "value": 1000000000000000.0}], "specificHeat": 1172.0, "temperatureClass": 155.0, "thermalConductivity": 0.24}, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "bare"}, "conductingArea": null, "conductingDiameter": null, "conductingHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00013900000000000002}, "conductingWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.003705}, "edgeRadius": null, "manufacturerInfo": null, "material": "copper", "name": null, "numberConductors": 1, "outerDiameter": null, "outerHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.000139139}, "outerWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0037087049999999996}, "standard": null, "standardName": null, "strand": null, "type": "rectangular"}}, {"connections": null, "isolationSide": "secondary", "name": "Secondary", "numberParallels": 1, "numberTurns": 30, "wire": {"coating": {"breakdownVoltage": null, "grade": null, "material": {"aliases": [], "composition": "Polyurethane", "dielectricStrength": [{"humidity": null, "temperature": null, "thickness": 0.0001, "value": 25000000.0}], "manufacturer": "MWS Wire", "meltingPoint": null, "name": "Polyurethane 155", "relativePermittivity": 3.7, "resistivity": [{"temperature": null, "value": 1e+16}], "specificHeat": null, "temperatureClass": 155.0, "thermalConductivity": null}, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled"}, "conductingArea": null, "conductingDiameter": null, "conductingHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00013900000000000002}, "conductingWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.003705}, "edgeRadius": null, "manufacturerInfo": null, "material": "copper", "name": null, "numberConductors": 1, "outerDiameter": null, "outerHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.000139139}, "outerWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0037087049999999996}, "standard": null, "standardName": null, "strand": null, "type": "rectangular"}}], "layersDescription": [{"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.002984091, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 0 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 0", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.002663182, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 0 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 0", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.002367273, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 1 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 1", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.002071364, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 1 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 1", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.001775455, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 2 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 2", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.001479546, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 2 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 2", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.001183637, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 3 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 3", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.000887728, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 3 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 3", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.000591819, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 4 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 4", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 0.00029591, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 4 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 4", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, 1e-09, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 5 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 5", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.000295908, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 5 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 5", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.000591817, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 6 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 6", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.000887726, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 6 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 6", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.001183635, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 7 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 7", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.001479544, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 7 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 7", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.001775453, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 8 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 8", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.002071362, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 8 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 8", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.002367271, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 9 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 9", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.00266318, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Secondary section 9 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "section": "Secondary section 9", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.007775, -0.002984089, 0.0], "dimensions": [0.006150000000000001, 0.000139139], "fillingFactor": 1.8091243902439018, "insulationMaterial": null, "name": "Primary section 10 layer 0", "orientation": "contiguous", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "section": "Primary section 10", "turnsAlignment": "spread", "type": "conduction", "windingStyle": "windByConsecutiveParallels"}], "sectionsDescription": [{"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0029840910000000003, 0.0], "dimensions": [0.006150000000000001, 0.00023181799999999998], "fillingFactor": 1.0858507904224277, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 0", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0028181820000000002, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 1", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0026631820000000005, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 0", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0025081820000000003, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 3", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0023672730000000005, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 1", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0022263640000000006, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 5", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.002071364000000001, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 1", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.001916364000000001, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 7", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0017754550000000009, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 2", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0016345460000000008, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 9", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0014795460000000006, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 2", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0013245460000000009, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 11", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0011836370000000008, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 3", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0010427280000000008, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 13", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0008877280000000007, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 3", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0007327280000000006, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 15", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0005918190000000006, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 4", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.00045091000000000065, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 17", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0002959100000000007, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 4", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 0.0001409100000000007, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 19", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, 1.0000000007069241e-09, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 5", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0001409079999999993, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 21", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0002959079999999993, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 5", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0004509079999999993, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 23", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0005918169999999994, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 6", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0007327259999999994, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 25", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0008877259999999994, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 6", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0010427259999999992, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 27", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0011836349999999993, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 7", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0013245439999999993, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 29", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0014795439999999995, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 7", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0016345439999999993, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 31", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0017754529999999993, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 8", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0019163619999999994, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 33", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0020713619999999993, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 8", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0022263619999999995, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 35", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.0023672709999999994, 0.0], "dimensions": [0.006150000000000001, 0.00018181799999999999], "fillingFactor": 1.3844600563978613, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 9", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.002508179999999999, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Primary and Secondary section 37", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.002663179999999999, 0.0], "dimensions": [0.006150000000000001, 0.00020999999999999998], "fillingFactor": 1.1986655168292681, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Secondary section 9", "partialWindings": [{"connections": null, "parallelsProportion": [0.1], "winding": "Secondary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.002818179999999999, 0.0], "dimensions": [0.006150000000000001, 0.0001], "fillingFactor": 1.0, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": null, "name": "Insulation between Secondary and Primary section 39", "partialWindings": [], "type": "insulation", "windingStyle": null}, {"coordinateSystem": "cartesian", "coordinates": [0.007775000000000001, -0.002984088999999999, 0.0], "dimensions": [0.006150000000000001, 0.00023181799999999998], "fillingFactor": 1.0858507904224277, "group": "Default group", "layersAlignment": null, "layersOrientation": "contiguous", "margin": [0.0, 0.0], "name": "Primary section 10", "partialWindings": [{"connections": null, "parallelsProportion": [0.09090909090909091], "winding": "Primary"}], "type": "conduction", "windingStyle": "windByConsecutiveParallels"}], "turnsDescription": null})";
     auto coilJson = json::parse(coilString);
 
@@ -679,10 +671,9 @@ TEST_CASE("Test_Coil_Json_10", "[constructive-model][coil][bug]") {
 
     json result;
     to_json(result, coil);
-    std::cout << bool(coil.get_turns_description()) << std::endl;
 }
 
-TEST_CASE("Test_Coil_Json_11", "[constructive-model][coil][bug]") {
+TEST_CASE("Test_Coil_Json_11", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.006175,"columnShape":"round","columnThickness":0,"columnWidth":0.006175,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":null,"area":0.000041283000000000004,"coordinates":[0.0098875,0,0],"height":0.00556,"radialHeight":null,"sectionsAlignment":"inner or top","sectionsOrientation":"contiguous","shape":"rectangular","width":0.007425000000000001}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"primary","numberParallels":1,"numberTurns":5,"wire":{"coating":null,"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":1.2293100000000003e-7},"conductingDiameter":null,"conductingHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000522},"conductingWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0023550000000000008},"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Planar 52.20 µm","numberConductors":1,"outerDiameter":null,"outerHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000522},"outerWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0023550000000000008},"standard":"IPC-6012","standardName":"1.5 oz.","strand":null,"type":"planar"}},{"connections":null,"isolationSide":"secondary","name":"SECONDARY","numberParallels":1,"numberTurns":3,"wire":{"coating":null,"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":1.2449700000000003e-7},"conductingDiameter":null,"conductingHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000348},"conductingWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.003577500000000001},"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Planar 34.80 µm","numberConductors":1,"outerDiameter":null,"outerHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000348},"outerWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.003577500000000001},"standard":"IPC-6012","standardName":"1 oz.","strand":null,"type":"planar"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread","spread","spread","spread"],"_layersOrientation":["contiguous","contiguous","contiguous","contiguous"],"_interlayerInsulationThickness":0,"_intersectionInsulationThickness":0.0001})";
 
     std::vector<size_t> pattern = {0, 1, 0, 1};
@@ -750,27 +741,7 @@ TEST_CASE("Test_Coil_Json_11", "[constructive-model][coil][bug]") {
     REQUIRE(bool(coil.get_turns_description()));
 }
 
-TEST_CASE("Test_Coil_Json_12", "[constructive-model][coil][bug]") {
-    SKIP("Test needs investigation");
-    std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"primary","name":"Primary","numberParallels":1,"numberTurns":1,"wire":{"coating":null,"conductingArea":null,"conductingDiameter":null,"conductingHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000348},"conductingWidth":{"nominal":0.002},"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Planar 34.80 µm","numberConductors":1,"outerDiameter":null,"outerHeight":{"nominal":0.0000348},"outerWidth":{"nominal":0.002},"standard":"IPC-6012","standardName":"1 oz.","strand":null,"type":"planar"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null})";
-
-    settings.set_coil_wind_even_if_not_fit(true);
-    auto coilJson = json::parse(coilString);
-    auto coil = OpenMagnetics::Coil(coilJson, false);
-    std::vector<size_t> stackUp = {0};
-
-    coil.set_strict(false);
-    coil.wind_planar(stackUp);
-
-    if (!coil.get_turns_description()) {
-        throw std::runtime_error("Turns not created");
-    }
-
-    json result;
-    to_json(result, coil);
-}
-
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin][smoke-test]") {
     settings.reset();
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
@@ -809,7 +780,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered"
     auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered.svg");
         std::filesystem::remove(outFile);
@@ -832,7 +803,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered"
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered.svg");
         std::filesystem::remove(outFile);
@@ -859,7 +830,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered"
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 25, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -891,7 +862,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -922,7 +893,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -949,7 +920,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -984,7 +955,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -1011,7 +982,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top", "[c
 
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top.svg");
         std::filesystem::remove(outFile);
@@ -1038,7 +1009,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top", "[c
     auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top.svg");
         std::filesystem::remove(outFile);
@@ -1061,7 +1032,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top", "[c
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_top.svg");
         std::filesystem::remove(outFile);
@@ -1088,7 +1059,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top", "[c
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 25, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -1119,7 +1090,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three
 
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1151,7 +1122,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1179,7 +1150,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three
     auto marginAfterMarginFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1217,7 +1188,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -1244,7 +1215,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom", 
 
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom.svg");
         std::filesystem::remove(outFile);
@@ -1271,7 +1242,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom", 
     auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom.svg");
         std::filesystem::remove(outFile);
@@ -1294,7 +1265,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom", 
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom.svg");
         std::filesystem::remove(outFile);
@@ -1321,7 +1292,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom", 
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 25, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -1352,7 +1323,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Th
 
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1384,7 +1355,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Th
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1412,7 +1383,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Th
     auto marginAfterMarginFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1450,7 +1421,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Th
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -1477,7 +1448,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread", 
 
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread.svg");
         std::filesystem::remove(outFile);
@@ -1504,7 +1475,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread", 
     auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread.svg");
         std::filesystem::remove(outFile);
@@ -1527,7 +1498,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread", 
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread.svg");
         std::filesystem::remove(outFile);
@@ -1554,7 +1525,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread", 
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 25, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -1585,7 +1556,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Th
 
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1617,7 +1588,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Th
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1645,7 +1616,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Th
     auto marginAfterMarginFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1683,7 +1654,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Th
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -1721,7 +1692,7 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered", "
     auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered.svg");
         std::filesystem::remove(outFile);
@@ -1744,7 +1715,7 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered", "
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered.svg");
         std::filesystem::remove(outFile);
@@ -1771,7 +1742,7 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered", "
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 25, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -1801,7 +1772,7 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Thr
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -1832,7 +1803,7 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Thr
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1859,7 +1830,7 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Thr
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -1894,7 +1865,7 @@ TEST_CASE("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Thr
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -1932,7 +1903,7 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered", "
     auto sectionEndingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] + coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered.svg");
         std::filesystem::remove(outFile);
@@ -1955,7 +1926,7 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered", "
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered.svg");
         std::filesystem::remove(outFile);
@@ -1982,7 +1953,7 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered", "
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 25, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -2012,7 +1983,7 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Thr
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -2043,7 +2014,7 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Thr
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2070,7 +2041,7 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Thr
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2105,7 +2076,7 @@ TEST_CASE("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Thr
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -2143,7 +2114,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered", 
     auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered.svg");
         std::filesystem::remove(outFile);
@@ -2166,7 +2137,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered", 
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered.svg");
         std::filesystem::remove(outFile);
@@ -2193,7 +2164,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered", 
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 25, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -2223,7 +2194,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Th
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -2254,7 +2225,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Th
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2281,7 +2252,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Th
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2316,7 +2287,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Th
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -2349,7 +2320,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered", 
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered.svg");
         std::filesystem::remove(outFile);
@@ -2373,7 +2344,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered", 
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered.svg");
         std::filesystem::remove(outFile);
@@ -2400,7 +2371,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered", 
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -2430,7 +2401,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Th
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -2462,7 +2433,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Th
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2490,7 +2461,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Th
     auto marginAfterMarginFill_2 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[2]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2525,7 +2496,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Th
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -2558,7 +2529,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top", "[con
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top.svg");
         std::filesystem::remove(outFile);
@@ -2582,7 +2553,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top", "[con
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top.svg");
         std::filesystem::remove(outFile);
@@ -2608,7 +2579,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top", "[con
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -2638,7 +2609,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_D
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -2669,7 +2640,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_D
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2696,7 +2667,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_D
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2731,7 +2702,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_D
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -2764,7 +2735,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom", "[
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom.svg");
         std::filesystem::remove(outFile);
@@ -2788,7 +2759,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom", "[
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom.svg");
         std::filesystem::remove(outFile);
@@ -2814,7 +2785,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom", "[
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -2844,7 +2815,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Thre
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -2875,7 +2846,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Thre
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2902,7 +2873,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Thre
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -2937,7 +2908,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Thre
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -2970,7 +2941,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread", "[
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread.svg");
         std::filesystem::remove(outFile);
@@ -2994,7 +2965,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread", "[
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread.svg");
         std::filesystem::remove(outFile);
@@ -3020,7 +2991,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread", "[
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -3050,7 +3021,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Thre
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -3081,7 +3052,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Thre
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3108,7 +3079,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Thre
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3143,7 +3114,7 @@ TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Thre
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -3176,7 +3147,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered", "[con
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered.svg");
         std::filesystem::remove(outFile);
@@ -3200,7 +3171,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered", "[con
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered.svg");
         std::filesystem::remove(outFile);
@@ -3227,7 +3198,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered", "[con
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -3257,7 +3228,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_D
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -3288,7 +3259,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_D
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3315,7 +3286,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_D
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3350,7 +3321,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_D
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -3383,7 +3354,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner", "[constr
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner.svg");
         std::filesystem::remove(outFile);
@@ -3407,7 +3378,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner", "[constr
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner.svg");
         std::filesystem::remove(outFile);
@@ -3434,7 +3405,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner", "[constr
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -3464,7 +3435,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Diff
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -3495,7 +3466,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Diff
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3522,7 +3493,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Diff
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3557,7 +3528,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Diff
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -3590,7 +3561,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer", "[constr
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer.svg");
         std::filesystem::remove(outFile);
@@ -3614,7 +3585,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer", "[constr
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer.svg");
         std::filesystem::remove(outFile);
@@ -3641,7 +3612,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer", "[constr
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -3671,7 +3642,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Diff
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -3702,7 +3673,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Diff
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3729,7 +3700,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Diff
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3764,7 +3735,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Diff
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -3797,7 +3768,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread", "[const
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread.svg");
         std::filesystem::remove(outFile);
@@ -3821,7 +3792,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread", "[const
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread.svg");
         std::filesystem::remove(outFile);
@@ -3848,7 +3819,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread", "[const
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -3878,7 +3849,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Dif
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -3909,7 +3880,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Dif
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3936,7 +3907,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Dif
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -3971,7 +3942,7 @@ TEST_CASE("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Dif
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -4004,7 +3975,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered", "[
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered.svg");
         std::filesystem::remove(outFile);
@@ -4028,7 +3999,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered", "[
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered.svg");
         std::filesystem::remove(outFile);
@@ -4055,7 +4026,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered", "[
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -4085,7 +4056,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Thre
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -4116,7 +4087,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Thre
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4143,7 +4114,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Thre
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4175,7 +4146,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Thre
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -4208,7 +4179,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner", "[con
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner.svg");
         std::filesystem::remove(outFile);
@@ -4232,7 +4203,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner", "[con
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner.svg");
         std::filesystem::remove(outFile);
@@ -4259,7 +4230,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner", "[con
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -4289,7 +4260,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_D
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -4320,7 +4291,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_D
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4347,7 +4318,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_D
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4382,7 +4353,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_D
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -4415,7 +4386,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer", "[con
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer.svg");
         std::filesystem::remove(outFile);
@@ -4439,7 +4410,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer", "[con
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer.svg");
         std::filesystem::remove(outFile);
@@ -4466,7 +4437,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer", "[con
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -4496,7 +4467,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_D
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -4527,7 +4498,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_D
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4554,7 +4525,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_D
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4589,7 +4560,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_D
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -4622,7 +4593,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread", "[co
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread.svg");
         std::filesystem::remove(outFile);
@@ -4646,7 +4617,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread", "[co
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread.svg");
         std::filesystem::remove(outFile);
@@ -4673,7 +4644,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread", "[co
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -4703,7 +4674,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -4734,7 +4705,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4761,7 +4732,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4796,7 +4767,7 @@ TEST_CASE("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -4829,7 +4800,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered", "[
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered.svg");
         std::filesystem::remove(outFile);
@@ -4853,7 +4824,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered", "[
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered.svg");
         std::filesystem::remove(outFile);
@@ -4880,7 +4851,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered", "[
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -4910,7 +4881,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Thre
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -4941,7 +4912,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Thre
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -4968,7 +4939,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Thre
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -5003,7 +4974,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Thre
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -5036,7 +5007,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner", "[con
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner.svg");
         std::filesystem::remove(outFile);
@@ -5060,7 +5031,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner", "[con
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner.svg");
         std::filesystem::remove(outFile);
@@ -5087,7 +5058,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner", "[con
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -5117,7 +5088,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_D
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -5148,7 +5119,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_D
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -5175,7 +5146,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_D
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -5210,7 +5181,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_D
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -5243,7 +5214,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer", "[con
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer.svg");
         std::filesystem::remove(outFile);
@@ -5267,7 +5238,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer", "[con
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer.svg");
         std::filesystem::remove(outFile);
@@ -5294,7 +5265,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer", "[con
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -5324,7 +5295,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_D
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -5355,7 +5326,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_D
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -5382,7 +5353,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_D
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -5417,7 +5388,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_D
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {47};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -5450,7 +5421,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread", "[co
     auto marginAfterMarginNoFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread.svg");
         std::filesystem::remove(outFile);
@@ -5474,7 +5445,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread", "[co
     auto marginAfterMarginFill = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread.svg");
         std::filesystem::remove(outFile);
@@ -5501,7 +5472,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread", "[co
     settings.reset();
 }
 
-TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins", "[constructive-model][coil][margin]") {
+TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins", "[constructive-model][coil][margin][smoke-test]") {
     std::vector<int64_t> numberTurns = {34, 12, 10};
     std::vector<int64_t> numberParallels = {1, 1, 1};
     uint8_t interleavingLevel = 1;
@@ -5531,7 +5502,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_
     auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
         std::filesystem::remove(outFile);
@@ -5562,7 +5533,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_
     auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -5589,7 +5560,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_
     auto marginAfterMarginFill_1 = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[1]);
 
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
         std::filesystem::remove(outFile);
@@ -5624,7 +5595,7 @@ TEST_CASE("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_
     settings.reset();
 }
 
-TEST_CASE("Test_Wind_By_Section_Wind_By_Consecutive_Parallels", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Section_Wind_By_Consecutive_Parallels", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {42};
     std::vector<int64_t> numberParallels = {3};
     double bobbinHeight = 0.01;
@@ -5637,7 +5608,7 @@ TEST_CASE("Test_Wind_By_Section_Wind_By_Consecutive_Parallels", "[constructive-m
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
 }
 
-TEST_CASE("Test_Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {41};
     std::vector<int64_t> numberParallels = {3};
     double bobbinHeight = 0.01;
@@ -5650,7 +5621,7 @@ TEST_CASE("Test_Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced", "[c
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
 }
 
-TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Turns", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Turns", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {2};
     std::vector<int64_t> numberParallels = {7};
     double bobbinHeight = 0.01;
@@ -5663,7 +5634,7 @@ TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Turns", "[constructive-model][coil]
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
 }
 
-TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Parallels", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Parallels", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {2};
     std::vector<int64_t> numberParallels = {7};
     double bobbinHeight = 0.01;
@@ -5676,7 +5647,7 @@ TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Parallels", "[constructive-model][c
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
 }
 
-TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Parallels_Multiwinding", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Parallels_Multiwinding", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {2, 5};
     std::vector<int64_t> numberParallels = {7, 7};
     double bobbinHeight = 0.01;
@@ -5689,7 +5660,7 @@ TEST_CASE("Test_Wind_By_Section_Wind_By_Full_Parallels_Multiwinding", "[construc
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
 }
 
-TEST_CASE("Test_Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced_Vertical", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced_Vertical", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {41};
     std::vector<int64_t> numberParallels = {3};
     double bobbinHeight = 0.01;
@@ -5795,18 +5766,17 @@ TEST_CASE("Test_Wind_By_Section_Random_6", "[constructive-model][coil][rectangul
 
 TEST_CASE("Test_Wind_By_Section_Random", "[constructive-model][coil][rectangular-winding-window]") {
     settings.set_coil_try_rewind(false);
-    srand (time(NULL));
     for (size_t i = 0; i < 1000; ++i)
     {
-        std::vector<int64_t> numberTurns = {std::rand() % 100 + 1L};
-        std::vector<int64_t> numberParallels = {std::rand() % 100 + 1L};
+        std::vector<int64_t> numberTurns = {OpenMagnetics::TestUtils::randomInt64(1, 100 + 1 - 1)};
+        std::vector<int64_t> numberParallels = {OpenMagnetics::TestUtils::randomInt64(1, 100 + 1 - 1)};
         double bobbinHeight = 0.01;
         double bobbinWidth = 0.01;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         int64_t numberPhysicalTurns = numberTurns[0] * numberParallels[0];
-        uint8_t interleavingLevel = uint8_t(std::rand() % 10 + 1);
+        uint8_t interleavingLevel = uint8_t(OpenMagnetics::TestUtils::randomInt(1, 10 + static_cast<int>(1) - 1));
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-        auto windingOrientation = std::rand() % 2? WindingOrientation::CONTIGUOUS : WindingOrientation::OVERLAPPING;
+        auto windingOrientation = OpenMagnetics::TestUtils::randomInt(0, 2 - 1)? WindingOrientation::CONTIGUOUS : WindingOrientation::OVERLAPPING;
 
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, windingOrientation);
@@ -5816,24 +5786,23 @@ TEST_CASE("Test_Wind_By_Section_Random", "[constructive-model][coil][rectangular
 
 TEST_CASE("Test_Wind_By_Section_Random_Multiwinding", "[constructive-model][coil][rectangular-winding-window]") {
     settings.set_coil_try_rewind(false);
-    srand (time(NULL));
     for (size_t i = 0; i < 1000; ++i)
     {
         std::vector<int64_t> numberTurns;
         std::vector<int64_t> numberParallels;
         int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
-        for (size_t windingIndex = 0; windingIndex < std::rand() % 10 + 1UL; ++windingIndex)
+        for (size_t windingIndex = 0; windingIndex < OpenMagnetics::TestUtils::randomSize(1, 10 + 1 - 1); ++windingIndex)
         {
-            numberTurns.push_back(std::rand() % 100 + 1L);
-            numberParallels.push_back(std::rand() % 100 + 1L);
+            numberTurns.push_back(OpenMagnetics::TestUtils::randomInt64(1, 100 + 1 - 1));
+            numberParallels.push_back(OpenMagnetics::TestUtils::randomInt64(1, 100 + 1 - 1));
             numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns.back() * numberParallels.back());
         }
         double bobbinHeight = 0.01;
         double bobbinWidth = 0.01;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        int64_t interleavingLevel = std::rand() % 10 + 1;
+        int64_t interleavingLevel = OpenMagnetics::TestUtils::randomInt(1, 10 + static_cast<int>(1) - 1);
         interleavingLevel = std::min(numberPhysicalTurns, interleavingLevel);
-        auto windingOrientation = std::rand() % 2? WindingOrientation::CONTIGUOUS : WindingOrientation::OVERLAPPING;
+        auto windingOrientation = OpenMagnetics::TestUtils::randomInt(0, 2 - 1)? WindingOrientation::CONTIGUOUS : WindingOrientation::OVERLAPPING;
         if (windingOrientation == WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
         }
@@ -5847,7 +5816,7 @@ TEST_CASE("Test_Wind_By_Section_Random_Multiwinding", "[constructive-model][coil
     settings.reset();
 }
 
-TEST_CASE("Test_Wind_By_Section_With_Insulation_Sections", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Section_With_Insulation_Sections", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {23, 42};
     std::vector<int64_t> numberParallels = {2, 1};
     double bobbinHeight = 0.01;
@@ -5873,7 +5842,7 @@ TEST_CASE("Test_Wind_By_Section_With_Insulation_Sections", "[constructive-model]
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, sectionOrientation);
 }
 
-TEST_CASE("Test_Wind_By_Section_Pattern", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Section_Pattern", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {21, 21};
     std::vector<int64_t> numberParallels = {2, 2};
     double bobbinHeight = 0.01;
@@ -5890,7 +5859,7 @@ TEST_CASE("Test_Wind_By_Section_Pattern", "[constructive-model][coil][rectangula
     OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -5909,7 +5878,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer", "[constructive-model
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_Two_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_Two_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -5928,7 +5897,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_Two_Layers", "[constructive-mode
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer_Two_Parallels", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer_Two_Parallels", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -5947,7 +5916,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer_Two_Parallels", "[cons
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_Two_Layers_Two_Parallels", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_Two_Layers_Two_Parallels", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -5966,7 +5935,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_Two_Layers_Two_Parallels", "[con
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_Two_Layers_Two_Parallels", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_Two_Layers_Two_Parallels", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -5985,7 +5954,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_Two_Layers_Two_Parallels", "[co
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_One_Layer_One_Parallel", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_One_Layer_One_Parallel", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6004,7 +5973,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_One_Layer_One_Parallel", "[cons
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_One_Layer_Two_Parallels", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_One_Layer_Two_Parallels", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6023,7 +5992,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_One_Layer_Two_Parallels", "[con
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_Two_Layers_One_Parallel", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_Two_Layers_One_Parallel", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6042,7 +6011,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_Two_Sections_Two_Layers_One_Parallel", "[con
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Vertical_Winding_Horizontal_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Vertical_Winding_Horizontal_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6062,7 +6031,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_Vertical_Winding_Horizontal_Layers", "[const
     OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Vertical_Winding_Vertical_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Vertical_Winding_Vertical_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6083,7 +6052,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_Vertical_Winding_Vertical_Layers", "[constru
     OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Horizontal_Winding_Horizontal_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Horizontal_Winding_Horizontal_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6104,7 +6073,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_Horizontal_Winding_Horizontal_Layers", "[con
     OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Horizontal_Winding_Vertical_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Horizontal_Winding_Vertical_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6125,7 +6094,7 @@ TEST_CASE("Test_Wind_By_Layers_Wind_Horizontal_Winding_Vertical_Layers", "[const
     OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_Horizontal_Winding", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_Wind_Horizontal_Winding", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6168,15 +6137,14 @@ TEST_CASE("Test_Wind_By_Layers_Random", "[constructive-model][coil][rectangular-
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
-    srand (time(NULL));
     for (size_t i = 0; i < 1000; ++i)
     {
-        std::vector<int64_t> numberTurns = {std::rand() % 10 + 1L};
-        std::vector<int64_t> numberParallels = {std::rand() % 3 + 1L};
+        std::vector<int64_t> numberTurns = {OpenMagnetics::TestUtils::randomInt64(1, 10 + 1 - 1)};
+        std::vector<int64_t> numberParallels = {OpenMagnetics::TestUtils::randomInt64(1, 3 + 1 - 1)};
         double wireDiameter = 0.000509;
-        int64_t numberMaximumTurnsPerLayer = std::rand() % 4 + 1L;
-        int64_t numberMaximumLayers = std::rand() % 3 + 1L;
-        uint8_t interleavingLevel = std::rand() % 10 + 1;
+        int64_t numberMaximumTurnsPerLayer = OpenMagnetics::TestUtils::randomInt64(1, 4 + 1 - 1);
+        int64_t numberMaximumLayers = OpenMagnetics::TestUtils::randomInt64(1, 3 + 1 - 1);
+        uint8_t interleavingLevel = OpenMagnetics::TestUtils::randomInt(1, 10 + static_cast<int>(1) - 1);
         int64_t numberPhysicalTurns = numberTurns[0] * numberParallels[0];
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
         double bobbinHeight = double(numberMaximumTurnsPerLayer) * wireDiameter;
@@ -6188,7 +6156,7 @@ TEST_CASE("Test_Wind_By_Layers_Random", "[constructive-model][coil][rectangular-
     }
 }
 
-TEST_CASE("Test_Wind_By_Layers_With_Insulation_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Layers_With_Insulation_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -6217,7 +6185,7 @@ TEST_CASE("Test_Wind_By_Layers_With_Insulation_Layers", "[constructive-model][co
     OpenMagneticsTesting::check_layers_description(coil);
 }
 
-TEST_CASE("Test_External_Insulation_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_External_Insulation_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
 
     std::string insulationLayersString = "{\"(0, 1)\":[{\"coordinates\":[0.0035501599999999997,0],\"dimensions\":[2.032e-05,0.0102],\"orientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_1_insulation_layer_0\",\"partialWindings\":[],\"type\":\"insulation\"},{\"coordinates\":[0.00709016,0],\"dimensions\":[2.032e-05,0.0102],\"orientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_1_insulation_layer_1\",\"partialWindings\":[],\"type\":\"insulation\"}],\"(1, 2)\":[{\"coordinates\":[0.004212799999998001,0],\"dimensions\":[2.032e-05,0.0102],\"orientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_3_insulation_layer_0\",\"partialWindings\":[],\"type\":\"insulation\"},{\"coordinates\":[0.008415439999996001,0],\"dimensions\":[2.032e-05,0.0102],\"orientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_3_insulation_layer_1\",\"partialWindings\":[],\"type\":\"insulation\"}],\"(2, 0)\":[{\"coordinates\":[0.004423439999998001,0],\"dimensions\":[2.032e-05,0.0102],\"orientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_5_insulation_layer_0\",\"partialWindings\":[],\"type\":\"insulation\"},{\"coordinates\":[0.008836719999996,0],\"dimensions\":[2.032e-05,0.0102],\"orientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_5_insulation_layer_1\",\"partialWindings\":[],\"type\":\"insulation\"}]}";
     auto insulationLayersJson = json::parse(insulationLayersString);
@@ -6240,7 +6208,7 @@ TEST_CASE("Test_External_Insulation_Layers", "[constructive-model][coil][rectang
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     std::vector<int64_t> numberTurns = {7};
     std::vector<int64_t> numberParallels = {1};
@@ -6259,7 +6227,6 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer", "[constructive-model][
 
 TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding", "[constructive-model][coil][rectangular-winding-window]") {
     settings.set_coil_wind_even_if_not_fit(false);
-    srand (time(NULL));
     auto numberReallyTestedWound = std::vector<int>(2, 0);
     for (size_t testIndex = 0; testIndex < 2; ++testIndex) {
         if (testIndex == 0) {
@@ -6274,11 +6241,11 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding", "[constructive-model][coil][r
             std::vector<int64_t> numberTurns;
             std::vector<int64_t> numberParallels;
             int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
-            for (size_t windingIndex = 0; windingIndex < std::rand() % 2 + 1UL; ++windingIndex)
-            // for (size_t windingIndex = 0; windingIndex < std::rand() % 10 + 1UL; ++windingIndex)
+            for (size_t windingIndex = 0; windingIndex < OpenMagnetics::TestUtils::randomSize(1, 2 + 1 - 1); ++windingIndex)
+            // for (size_t windingIndex = 0; windingIndex < OpenMagnetics::TestUtils::randomSize(1, 10 + 1 - 1); ++windingIndex)
             {
-                int64_t numberPhysicalTurnsThisWinding = std::rand() % 300 + 1UL;
-                int64_t numberTurnsThisWinding = std::rand() % 100 + 1L;
+                int64_t numberPhysicalTurnsThisWinding = OpenMagnetics::TestUtils::randomSize(1, 300 + 1 - 1);
+                int64_t numberTurnsThisWinding = OpenMagnetics::TestUtils::randomInt64(1, 100 + 1 - 1);
                 int64_t numberParallelsThisWinding = std::max(1.0, std::ceil(double(numberPhysicalTurnsThisWinding) / numberTurnsThisWinding));
                 numberTurns.push_back(numberTurnsThisWinding);
                 numberParallels.push_back(numberParallelsThisWinding);
@@ -6287,12 +6254,12 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding", "[constructive-model][coil][r
             double bobbinHeight = 0.01;
             double bobbinWidth = 0.01;
             std::vector<double> bobbinCenterCoodinates = {0.05, 0, 0};
-            uint8_t interleavingLevel = std::rand() % 10 + 1;
+            uint8_t interleavingLevel = OpenMagnetics::TestUtils::randomInt(1, 10 + static_cast<int>(1) - 1);
             interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-            int windingOrientationIndex = std::rand() % 2;
+            int windingOrientationIndex = OpenMagnetics::TestUtils::randomInt(0, 2 - 1);
             WindingOrientation windingOrientation = magic_enum::enum_cast<WindingOrientation>(windingOrientationIndex).value();
 
-            // auto windingOrientation = std::rand() % 2? WindingOrientation::CONTIGUOUS : WindingOrientation::OVERLAPPING;
+            // auto windingOrientation = OpenMagnetics::TestUtils::randomInt(0, 2 - 1)? WindingOrientation::CONTIGUOUS : WindingOrientation::OVERLAPPING;
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
                 bobbinWidth *= numberTurns.size();
                 // bobbinCenterCoodinates[0] += bobbinWidth / 2;
@@ -6436,7 +6403,7 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding_2", "[constructive-model][coil]
 
     OpenMagneticsTesting::check_turns_description(coil);
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Wind_By_Turn_Random_Multiwinding_2.svg");
         std::filesystem::remove(outFile);
@@ -6511,7 +6478,7 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding_4", "[constructive-model][coil]
 
     OpenMagneticsTesting::check_turns_description(coil);
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
         std::filesystem::remove(outFile);
@@ -6554,7 +6521,7 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding_5", "[constructive-model][coil]
 
     OpenMagneticsTesting::check_turns_description(coil);
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
         std::filesystem::remove(outFile);
@@ -6627,7 +6594,7 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding_7", "[constructive-model][coil]
 
     OpenMagneticsTesting::check_turns_description(coil);
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
         std::filesystem::remove(outFile);
@@ -6643,7 +6610,7 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding_7", "[constructive-model][coil]
     settings.reset();
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Rectangular_No_Bobbin", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Rectangular_No_Bobbin", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     std::vector<int64_t> numberTurns = {7};
     std::vector<int64_t> numberParallels = {1};
@@ -6679,7 +6646,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Rectangular_No_Bobbin", 
     settings.reset();
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     // settings.set_coil_delimit_and_compact(false);
     settings.set_coil_try_rewind(false);
     settings.set_coil_wind_even_if_not_fit(true);
@@ -6711,7 +6678,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers", "[constr
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Before.svg");
         std::filesystem::remove(outFile);
@@ -6729,7 +6696,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers", "[constr
     coil.set_interlayer_insulation(0.0001);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_After.svg");
         std::filesystem::remove(outFile);
@@ -6748,7 +6715,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers", "[constr
     settings.reset();
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -6778,7 +6745,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times"
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times_Before.svg");
         std::filesystem::remove(outFile);
@@ -6796,7 +6763,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times"
     coil.set_interlayer_insulation(0.0002);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times_After.svg");
         std::filesystem::remove(outFile);
@@ -6816,7 +6783,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times"
     coil.set_interlayer_insulation(0.0001);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times_After_After.svg");
         std::filesystem::remove(outFile);
@@ -6836,7 +6803,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times"
     coil.set_interlayer_insulation(0);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times_After_After_After.svg");
         std::filesystem::remove(outFile);
@@ -6854,7 +6821,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times"
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {3, 2};
@@ -6884,7 +6851,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_C
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core_Before.svg");
         std::filesystem::remove(outFile);
@@ -6902,7 +6869,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_C
     coil.set_interlayer_insulation(0.0005);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core_After.svg");
         std::filesystem::remove(outFile);
@@ -6920,7 +6887,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_C
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core_Contiguous", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core_Contiguous", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     // settings.set_coil_delimit_and_compact(false);
     // settings.set_coil_try_rewind(false);
     settings.set_coil_wind_even_if_not_fit(true);
@@ -6952,7 +6919,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_C
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core_Contiguous_Before.svg");
         std::filesystem::remove(outFile);
@@ -6970,7 +6937,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_C
     coil.set_interlayer_insulation(0.0001);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core_Contiguous_After.svg");
         std::filesystem::remove(outFile);
@@ -6988,7 +6955,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_C
     settings.reset();
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {3, 2};
@@ -7018,7 +6985,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary", "[cons
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary_Before.svg");
         std::filesystem::remove(outFile);
@@ -7036,7 +7003,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary", "[cons
     coil.set_interlayer_insulation(0.0001, std::nullopt, "winding 0");
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary_After.svg");
         std::filesystem::remove(outFile);
@@ -7054,7 +7021,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary", "[cons
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Secondary", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Secondary", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {3, 2};
@@ -7084,7 +7051,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Secondary", "[co
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Secondary_Before.svg");
         std::filesystem::remove(outFile);
@@ -7102,7 +7069,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Secondary", "[co
     coil.set_interlayer_insulation(0.0001, std::nullopt, "winding 1");
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Secondary_After.svg");
         std::filesystem::remove(outFile);
@@ -7120,7 +7087,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Secondary", "[co
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous_Layers", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous_Layers", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     // settings.set_coil_delimit_and_compact(false);
     // settings.set_coil_try_rewind(false);
     settings.set_coil_wind_even_if_not_fit(true);
@@ -7152,7 +7119,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous_Layers_Before.svg");
         std::filesystem::remove(outFile);
@@ -7171,7 +7138,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous
     coil.set_interlayer_insulation(0.0001);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous_Layers_After.svg");
         std::filesystem::remove(outFile);
@@ -7189,7 +7156,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {3, 2};
@@ -7219,7 +7186,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections", "[co
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Before.svg");
         std::filesystem::remove(outFile);
@@ -7237,7 +7204,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections", "[co
     coil.set_intersection_insulation(0.0002, 1);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_After.svg");
         std::filesystem::remove(outFile);
@@ -7255,7 +7222,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections", "[co
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {3, 2};
@@ -7285,7 +7252,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interl
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved_Before.svg");
         std::filesystem::remove(outFile);
@@ -7303,7 +7270,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interl
     coil.set_intersection_insulation(0.0001, 1);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved_After.svg");
         std::filesystem::remove(outFile);
@@ -7320,7 +7287,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interl
         settings.reset();
     }
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved_After_Sections.svg");
         std::filesystem::remove(outFile);
@@ -7338,7 +7305,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interl
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contiguous", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contiguous", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {3, 2};
@@ -7368,7 +7335,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contig
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contiguous_Before.svg");
         std::filesystem::remove(outFile);
@@ -7386,7 +7353,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contig
     coil.set_intersection_insulation(0.0002, 1);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contiguous_After.svg");
         std::filesystem::remove(outFile);
@@ -7404,7 +7371,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contig
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core", "[constructive-model][coil][round-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {3, 3};
@@ -7434,7 +7401,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core_Before.svg");
         std::filesystem::remove(outFile);
@@ -7452,7 +7419,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal
     coil.set_intersection_insulation(0.0001, 1);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core_After.svg");
         std::filesystem::remove(outFile);
@@ -7470,7 +7437,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core_Contiguous", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core_Contiguous", "[constructive-model][coil][round-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {20, 20};
     std::vector<int64_t> numberParallels = {3, 2};
@@ -7500,7 +7467,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core_Contiguous_Before.svg");
         std::filesystem::remove(outFile);
@@ -7518,7 +7485,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal
     coil.set_intersection_insulation(0.0001, 1);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core_Contiguous_After.svg");
         std::filesystem::remove(outFile);
@@ -7536,7 +7503,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_And_InterSections_All_Sections", "[constructive-model][coil][rectangular-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_And_InterSections_All_Sections", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {50, 50};
     std::vector<int64_t> numberParallels = {3, 2};
@@ -7566,7 +7533,7 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_And_InterSections_All
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_And_InterSections_All_Sections_Before.svg");
         std::filesystem::remove(outFile);
@@ -7581,12 +7548,11 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_And_InterSections_All
         settings.reset();
     }
 
-std::cout << "Mierdooooooooooooooon" << std::endl;
     coil.set_interlayer_insulation(0.00005);
     coil.set_intersection_insulation(0.0002, 1);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_And_InterSections_All_Sections_After.svg");
         std::filesystem::remove(outFile);
@@ -7604,7 +7570,7 @@ std::cout << "Mierdooooooooooooooon" << std::endl;
     }
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Large_Layer_Toroidal", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Large_Layer_Toroidal", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7640,7 +7606,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Large_Layer_Toroidal", "[const
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Full_Layer_Toroidal", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Full_Layer_Toroidal", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7675,7 +7641,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Full_Layer_Toroidal", "[constr
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_Two_Layers_Toroidal", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_Two_Layers_Toroidal", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7710,7 +7676,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_Two_Layers_Toroidal", "[constructi
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7750,7 +7716,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Cent
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Top", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Top", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7791,7 +7757,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Top"
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Bottom", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Bottom", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7832,7 +7798,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Bott
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Spread", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Spread", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7875,7 +7841,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Spre
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Contiguous_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Contiguous_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7917,7 +7883,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Contiguous_Cen
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Overlapping_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Overlapping_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7956,7 +7922,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Overlapping_Ce
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Turn_Wind_Four_Sections_One_Layer_Toroidal_Overlapping_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_By_Turn_Wind_Four_Sections_One_Layer_Toroidal_Overlapping_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     settings.set_coil_delimit_and_compact(false);
@@ -7997,7 +7963,7 @@ TEST_CASE("Test_Wind_By_Turn_Wind_Four_Sections_One_Layer_Toroidal_Overlapping_C
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8045,7 +8011,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top", "[const
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Bottom", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Bottom", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8092,7 +8058,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Bottom", "[co
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8137,7 +8103,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Centered", "[
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8180,7 +8146,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread", "[co
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8225,7 +8191,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top", "[co
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Bottom", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Bottom", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8270,7 +8236,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Bottom", "
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8312,7 +8278,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Centered",
     // Not clearly what this combination should do, so I check nothing
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Spread", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Spread", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8357,7 +8323,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Spread", "
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8402,7 +8368,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top", "
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Bottom", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Bottom", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8447,7 +8413,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Bottom"
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8488,7 +8454,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Centere
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Spread", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Spread", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8533,7 +8499,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Spread"
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8578,7 +8544,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top",
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Bottom", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Bottom", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8623,7 +8589,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Botto
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8668,7 +8634,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Cente
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Spread", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Spread", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8713,7 +8679,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Sprea
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8757,7 +8723,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top", "
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Bottom", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Bottom", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8802,7 +8768,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Bottom"
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Centered", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Centered", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8847,7 +8813,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Centere
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -8892,7 +8858,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread"
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Different_Wires", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Different_Wires", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 20, 20};
@@ -8940,7 +8906,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Different_Wir
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Different_Wires", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Different_Wires", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 20, 20};
@@ -8988,7 +8954,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Different_Wire
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Huge_Wire", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Huge_Wire", "[constructive-model][coil][round-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns = {3};
     std::vector<int64_t> numberParallels = {1};
     uint8_t interleavingLevel = 1;
@@ -9033,7 +8999,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Huge_Wire", "[constructiv
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_Wire", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_Wire", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {11, 90};
@@ -9076,9 +9042,8 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_W
     // Check this one manually, checking collision between two rotated rectangles is not worth it
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Rectangular_Wire", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Rectangular_Wire", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
-    SKIP("Test needs investigation");
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {6, 90};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -9121,7 +9086,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Rectangular_Wi
     // Check this one manually, checking collision between two rotated rectangles is not worth it
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin", "[constructive-model][coil][round-winding-window][margin]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
     settings.set_coil_equalize_margins(false);
     clear_databases();
     settings.set_use_toroidal_cores(true);
@@ -9175,7 +9140,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin", 
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin", "[constructive-model][coil][round-winding-window][margin]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
     settings.set_coil_equalize_margins(false);
     clear_databases();
     settings.set_use_toroidal_cores(true);
@@ -9225,7 +9190,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Margin", "[constructive-model][coil][round-winding-window][margin]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
     settings.set_coil_equalize_margins(false);
     clear_databases();
     settings.set_use_toroidal_cores(true);
@@ -9275,7 +9240,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Mar
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_Margin", "[constructive-model][coil][round-winding-window][margin]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
     settings.set_coil_equalize_margins(false);
     clear_databases();
     settings.set_use_toroidal_cores(true);
@@ -9325,7 +9290,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_M
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Margin", "[constructive-model][coil][round-winding-window][margin]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
     settings.set_coil_equalize_margins(false);
     clear_databases();
     settings.set_use_toroidal_cores(true);
@@ -9375,7 +9340,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Mar
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_Margin", "[constructive-model][coil][round-winding-window][margin]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
     settings.set_coil_equalize_margins(false);
     clear_databases();
     settings.set_use_toroidal_cores(true);
@@ -9425,7 +9390,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Additional_Coordinates", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Additional_Coordinates", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -9471,7 +9436,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Add
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Additional_Coordinates", "[constructive-model][coil][round-winding-window]") {
+TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Additional_Coordinates", "[constructive-model][coil][round-winding-window][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -9524,7 +9489,7 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Ad
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Planar_One_Layer", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Layers_Planar_One_Layer", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9562,7 +9527,7 @@ TEST_CASE("Test_Wind_By_Layers_Planar_One_Layer", "[constructive-model][coil][pl
     REQUIRE(layersDescription.size() == 1);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Planar_Two_Layers", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Layers_Planar_Two_Layers", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9600,7 +9565,7 @@ TEST_CASE("Test_Wind_By_Layers_Planar_Two_Layers", "[constructive-model][coil][p
     REQUIRE(layersDescription.size() == 3);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9646,7 +9611,7 @@ TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings", "[constructive-model][coil]
     REQUIRE(1 == layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9700,7 +9665,7 @@ TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved", "
     REQUIRE(0.5 == layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved_Odd_Turns", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved_Odd_Turns", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9754,7 +9719,7 @@ TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved_Odd
     REQUIRE(1.0 / 3 == layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9808,7 +9773,7 @@ TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Tu
     REQUIRE(1.0 / 3 == layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
 }
 
-TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9875,7 +9840,7 @@ TEST_CASE("Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Tu
     REQUIRE(1.0 / 3 == layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
 }
 
-TEST_CASE("Test_Wind_By_Turns_Planar_One_Layer", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Turns_Planar_One_Layer", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9914,7 +9879,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_One_Layer", "[constructive-model][coil][pla
     auto turnsDescription = coil.get_turns_description().value();
     REQUIRE(turnsDescription.size() == 7);
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turns_Planar_One_Layer.svg");
         std::filesystem::remove(outFile);
@@ -9929,7 +9894,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_One_Layer", "[constructive-model][coil][pla
     }
 }
 
-TEST_CASE("Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -9975,7 +9940,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Tur
         auto turnsDescription = coil.get_turns_description().value();
         REQUIRE(turnsDescription.size() == 25);
         if (plot) {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation.svg");
             std::filesystem::remove(outFile);
@@ -9991,7 +9956,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Tur
     }
 }
 
-TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -10037,7 +10002,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers", "[constructive-model][coil][p
         auto turnsDescription = coil.get_turns_description().value();
         REQUIRE(turnsDescription.size() == 100);
         if (plot) {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turns_Planar_Many_Layers.svg");
             std::filesystem::remove(outFile);
@@ -10054,7 +10019,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers", "[constructive-model][coil][p
     }
 }
 
-TEST_CASE("Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -10093,7 +10058,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core", "[constructive
     auto turnsDescription = coil.get_turns_description().value();
     REQUIRE(turnsDescription.size() == 7);
     if (plot) {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core.svg");
         std::filesystem::remove(outFile);
@@ -10108,7 +10073,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core", "[constructive
     }
 }
 
-TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field", "[constructive-model][coil][planar]") {
+TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 
@@ -10156,7 +10121,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field", "[constructive
         if (plot) {
             double voltagePeakToPeak = 2000;
             auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, {double(numberTurns[0]) / numberTurns[1]});
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field.svg");
             std::filesystem::remove(outFile);
@@ -10174,7 +10139,7 @@ TEST_CASE("Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field", "[constructive
     }
 }
 
-TEST_CASE("Test_Get_Round_Wire_From_Dc_Resistance", "[constructive-model][coil]") {
+TEST_CASE("Test_Get_Round_Wire_From_Dc_Resistance", "[constructive-model][coil][smoke-test]") {
     clear_databases();
     settings.set_use_toroidal_cores(true);
     std::vector<int64_t> numberTurns = {1, 60};
@@ -10199,12 +10164,9 @@ TEST_CASE("Test_Get_Round_Wire_From_Dc_Resistance", "[constructive-model][coil]"
     auto wires = coil.guess_round_wire_from_dc_resistance(dcResistances, 0.01);
     REQUIRE(wires[0].get_name().value() == "Round 0.63 - Grade 1");
     REQUIRE(wires[1].get_name().value() == "Round 0.106 - Grade 1");
-    for (auto wire : wires) {
-        std::cout << wire.get_name().value() << std::endl;
-    }
 }
 
-TEST_CASE("Test_Wind_By_Sections_Two_Windings_Together", "[constructive-model][coil][groups]") {
+TEST_CASE("Test_Wind_By_Sections_Two_Windings_Together", "[constructive-model][coil][groups][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {5, 5};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -10245,7 +10207,7 @@ TEST_CASE("Test_Wind_By_Sections_Two_Windings_Together", "[constructive-model][c
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Sections_Two_Windings_Together.svg");
         std::filesystem::remove(outFile);
@@ -10262,7 +10224,7 @@ TEST_CASE("Test_Wind_By_Sections_Two_Windings_Together", "[constructive-model][c
     }
 }
 
-TEST_CASE("Test_Wind_By_Sections_Two_Windings_Together_One_Not", "[constructive-model][coil][groups]") {
+TEST_CASE("Test_Wind_By_Sections_Two_Windings_Together_One_Not", "[constructive-model][coil][groups][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {5, 5, 12};
     std::vector<int64_t> numberParallels = {2, 2, 3};
@@ -10308,7 +10270,7 @@ TEST_CASE("Test_Wind_By_Sections_Two_Windings_Together_One_Not", "[constructive-
     OpenMagneticsTesting::check_turns_description(coil);
 
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Sections_Two_Windings_Together_One_Not.svg");
         std::filesystem::remove(outFile);
@@ -10325,7 +10287,7 @@ TEST_CASE("Test_Wind_By_Sections_Two_Windings_Together_One_Not", "[constructive-
     }
 }
 
-TEST_CASE("Test_Wind_By_Layers_Two_Windings_Together", "[constructive-model][coil][groups]") {
+TEST_CASE("Test_Wind_By_Layers_Two_Windings_Together", "[constructive-model][coil][groups][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {5, 5};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -10365,7 +10327,7 @@ TEST_CASE("Test_Wind_By_Layers_Two_Windings_Together", "[constructive-model][coi
 
     OpenMagneticsTesting::check_turns_description(coil);
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Layers_Two_Windings_Together.svg");
         std::filesystem::remove(outFile);
@@ -10382,7 +10344,7 @@ TEST_CASE("Test_Wind_By_Layers_Two_Windings_Together", "[constructive-model][coi
     }
 }
 
-TEST_CASE("Test_Wind_By_Layers_Two_Windings_Together_One_Not", "[constructive-model][coil][groups]") {
+TEST_CASE("Test_Wind_By_Layers_Two_Windings_Together_One_Not", "[constructive-model][coil][groups][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {5, 5, 12};
     std::vector<int64_t> numberParallels = {2, 2, 3};
@@ -10424,7 +10386,7 @@ TEST_CASE("Test_Wind_By_Layers_Two_Windings_Together_One_Not", "[constructive-mo
 
     OpenMagneticsTesting::check_turns_description(coil);
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Layers_Two_Windings_Together_One_Not.svg");
         std::filesystem::remove(outFile);
@@ -10441,7 +10403,7 @@ TEST_CASE("Test_Wind_By_Layers_Two_Windings_Together_One_Not", "[constructive-mo
     }
 }
 
-TEST_CASE("Test_Wind_By_Turns_Two_Windings_Together", "[constructive-model][coil][groups]") {
+TEST_CASE("Test_Wind_By_Turns_Two_Windings_Together", "[constructive-model][coil][groups][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {5, 5};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -10482,7 +10444,7 @@ TEST_CASE("Test_Wind_By_Turns_Two_Windings_Together", "[constructive-model][coil
 
     OpenMagneticsTesting::check_turns_description(coil);
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turns_Two_Windings_Together.svg");
         std::filesystem::remove(outFile);
@@ -10498,7 +10460,7 @@ TEST_CASE("Test_Wind_By_Turns_Two_Windings_Together", "[constructive-model][coil
     }
 }
 
-TEST_CASE("Test_Wind_By_Turns_Two_Windings_Together_One_Not", "[constructive-model][coil][groups]") {
+TEST_CASE("Test_Wind_By_Turns_Two_Windings_Together_One_Not", "[constructive-model][coil][groups][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(true);
     std::vector<int64_t> numberTurns = {5, 5, 12};
     std::vector<int64_t> numberParallels = {2, 2, 3};
@@ -10538,7 +10500,7 @@ TEST_CASE("Test_Wind_By_Turns_Two_Windings_Together_One_Not", "[constructive-mod
 
     OpenMagneticsTesting::check_turns_description(coil);
     {
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Wind_By_Turns_Two_Windings_Together_One_Not.svg");
         std::filesystem::remove(outFile);

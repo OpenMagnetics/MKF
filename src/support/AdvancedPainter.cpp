@@ -107,10 +107,10 @@ void AdvancedPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnet
         field = calculate_magnetic_field(operatingPoint, magnetic, harmonicIndex);
         _extraDimension = Coil::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
     }
-    if (settings.get_painter_maximum_value_colorbar()) {
+    if (settings.get_painter_maximum_value_colorbar().has_value()) {
         forceMaximumModule = settings.get_painter_maximum_value_colorbar().value();
     }
-    if (settings.get_painter_minimum_value_colorbar()) {
+    if (settings.get_painter_minimum_value_colorbar().has_value()) {
         forceMinimumModule = settings.get_painter_minimum_value_colorbar().value();
     }
     if (forceMinimumModule == forceMaximumModule) {
@@ -527,7 +527,7 @@ void AdvancedPainter::paint_toroidal_core(Magnetic magnetic) {
 
     matplot::ellipse(_offsetForColorBar -circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
     _postProcessingChanges[key] = R"(stroke-linecap="round")";
-    _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_ferrite(), 0, 16));
+    _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_ferrite(), nullptr, 16));
 }
 
 void AdvancedPainter::paint_two_piece_set_core(Magnetic magnetic) {
@@ -875,7 +875,7 @@ void AdvancedPainter::paint_toroidal_margin(Magnetic magnetic) {
                             matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-                            _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_margin(), 0, 16));
+                            _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_margin(), nullptr, 16));
                  
                         }
                     }
@@ -897,7 +897,7 @@ void AdvancedPainter::paint_toroidal_margin(Magnetic magnetic) {
                             matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-                            _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_margin(), 0, 16));
+                            _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_margin(), nullptr, 16));
                  
                         }
                     }
@@ -921,7 +921,7 @@ void AdvancedPainter::paint_toroidal_margin(Magnetic magnetic) {
                         matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                         _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                         R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-                        _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_margin(), 0, 16));
+                        _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_margin(), nullptr, 16));
                     }
                 }
                 if (margins[1] > 0) {
@@ -942,7 +942,7 @@ void AdvancedPainter::paint_toroidal_margin(Magnetic magnetic) {
                         matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                         _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                         R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-                        _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_margin(), 0, 16));
+                        _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_margin(), nullptr, 16));
                     }
                 }
             }
@@ -1021,10 +1021,10 @@ void AdvancedPainter::paint_toroidal_winding_sections(Magnetic magnetic) {
             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_copper(), 0, 16));
+                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_copper(), nullptr, 16));
             }
             else {
-                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), 0, 16));
+                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), nullptr, 16));
             }
         }
     }
@@ -1108,10 +1108,10 @@ void AdvancedPainter::paint_toroidal_winding_layers(Magnetic magnetic) {
             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_copper(), 0, 16));
+                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_copper(), nullptr, 16));
             }
             else {
-                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), 0, 16));
+                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), nullptr, 16));
             }
         }
     }
@@ -1427,7 +1427,7 @@ void AdvancedPainter::paint_rectangular_wire(double xCoordinate, double yCoordin
     double currentLineWidth = conductingWidth;
     double currentLineHeight = conductingHeight;
 
-    std::string coatingColor = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), 0, 16));
+    std::string coatingColor = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), nullptr, 16));
     if (coating) {
         InsulationWireCoatingType insulationWireCoatingType = coating->get_type().value();
 
@@ -1441,7 +1441,7 @@ void AdvancedPainter::paint_rectangular_wire(double xCoordinate, double yCoordin
                 numberLines = coating->get_grade().value() + 1;
                 lineWidthIncrease = insulationThicknessInWidth / coating->get_grade().value() * 2;
                 lineHeightIncrease = insulationThicknessInHeight / coating->get_grade().value() * 2;
-                coatingColor = key_to_rgb_color(stoi(settings.get_painter_color_enamel(), 0, 16));
+                coatingColor = key_to_rgb_color(stoi(settings.get_painter_color_enamel(), nullptr, 16));
                 break;
             default:
                 throw NotImplementedException("Coating type plot not implemented yet");
@@ -1470,7 +1470,7 @@ void AdvancedPainter::paint_rectangular_wire(double xCoordinate, double yCoordin
         cornerDataConducting.push_back(xCoordinate + conductingWidth / 2);
         cornerDataConducting.push_back(yCoordinate - conductingHeight / 2);
         auto key = paint_rectangle(cornerDataConducting, true);
-        _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_copper(), 0, 16));
+        _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_copper(), nullptr, 16));
         _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
     }
 
@@ -1483,7 +1483,7 @@ void AdvancedPainter::paint_rectangular_wire(double xCoordinate, double yCoordin
         cornerDataConducting.push_back(xCoordinate + currentLineWidth / 2);
         cornerDataConducting.push_back(yCoordinate - currentLineHeight / 2);
         auto key = paint_rectangle(cornerDataConducting, false, strokeWidth);
-        _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_lines(), 0, 16));
+        _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_lines(), nullptr, 16));
         _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
 
         currentLineWidth += lineWidthIncrease;
@@ -1809,14 +1809,14 @@ void AdvancedPainter::paint_toroidal_winding_turns(Magnetic magnetic) {
             matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-            _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), 0, 16));
+            _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), nullptr, 16));
 
             if (layers[i].get_additional_coordinates()) {
                 circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
                 matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                 _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), 0, 16));
+                _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), nullptr, 16));
             }
 
         }

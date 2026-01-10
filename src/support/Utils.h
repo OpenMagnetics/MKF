@@ -26,8 +26,8 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-inline OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
-inline OpenMagnetics::Constants constants = OpenMagnetics::Constants();
+inline const OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
+inline const OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 inline OpenMagnetics::Settings& settings = OpenMagnetics::Settings::GetInstance();
 
 inline std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;

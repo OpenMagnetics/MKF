@@ -1,3 +1,4 @@
+#include <source_location>
 #include "support/Painter.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
@@ -245,7 +246,7 @@ namespace {
     }
 
     TEST_CASE("Test_Core_Materials_External", "[support][utils]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_materials.ndjson");
 
         std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
@@ -262,7 +263,7 @@ namespace {
     }
 
     TEST_CASE("Test_Core_Materials_External_And_Internal", "[support][utils]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_materials.ndjson");
 
         std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
@@ -359,7 +360,7 @@ namespace {
     }
 
     TEST_CASE("Test_Core_Shapes_External", "[support][utils]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto external_core_shapes_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_shapes.ndjson");
 
         std::ifstream file(external_core_shapes_path, std::ios_base::binary | std::ios_base::in);
@@ -379,7 +380,7 @@ namespace {
     }
 
     TEST_CASE("Test_Core_Shapes_External_And_Internal", "[support][utils]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto external_core_shapes_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_shapes.ndjson");
 
         std::ifstream file(external_core_shapes_path, std::ios_base::binary | std::ios_base::in);
@@ -404,7 +405,7 @@ namespace {
     }
 
     TEST_CASE("Test_Wires_External", "[support][utils]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto external_wires_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_wires.ndjson");
 
         std::ifstream file(external_wires_path, std::ios_base::binary | std::ios_base::in);
@@ -421,7 +422,7 @@ namespace {
     }
 
     TEST_CASE("Test_Wires_External_And_Internal", "[support][utils]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto external_wires_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_wires.ndjson");
 
         std::ifstream file(external_wires_path, std::ios_base::binary | std::ios_base::in);
@@ -655,7 +656,7 @@ namespace {
         REQUIRE(autocompletedMagnetic.get_coil().get_turns_description());
 
 
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Mas_Autocomplete_Only_Magnetic_Edge_Wound.svg");
         std::filesystem::remove(outFile);
@@ -726,7 +727,7 @@ namespace {
         REQUIRE(autocompletedMagnetic.get_coil().get_turns_description());
 
 
-        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("Test_Mas_Autocomplete_Only_Magnetic_Edge_Wound_Configured.svg");
         std::filesystem::remove(outFile);
@@ -738,7 +739,7 @@ namespace {
     }
 
     TEST_CASE("Test_Mas_Autocomplete_Web_0", "[support][utils][bug]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/geometricalDescriptionDebug.mas");
         auto mas = OpenMagneticsTesting::mas_loader(path);
         auto magnetic = mas.get_magnetic();
@@ -751,7 +752,7 @@ namespace {
     }
 
     TEST_CASE("Test_Mas_Autocomplete_Web_1", "[support][utils][bug]") {
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bobbinBug.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
         auto magnetic = mas.get_magnetic();
