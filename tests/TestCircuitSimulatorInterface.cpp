@@ -297,7 +297,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Analytical",
 
     errorAverage /= acResistanceVector.size();
 
-    std::cout << "errorAverage: " << errorAverage << std::endl;
+    // std::cout << "errorAverage: " << errorAverage << std::endl;
     REQUIRE(0.25 > errorAverage);
 }
 
@@ -330,10 +330,10 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder", "[p
     auto frequenciesVector = windingAcResistanceData.get_x_points();
     auto acResistanceVector = windingAcResistanceData.get_y_points();
 
-    for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
-        std::cout << coefficientIndex << std::endl;
-        std::cout << coefficientsPerWinding[0][coefficientIndex] << std::endl;
-    }
+    // for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+    //     std::cout << coefficientIndex << std::endl;
+    //     std::cout << coefficientsPerWinding[0][coefficientIndex] << std::endl;
+    // }
 
     double errorAverage = 0;
     for (size_t index = 0; index < acResistanceVector.size(); ++index) {
@@ -348,7 +348,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder", "[p
     }
 
     errorAverage /= acResistanceVector.size();
-    std::cout << "errorAverage: " << errorAverage << std::endl;
+    // std::cout << "errorAverage: " << errorAverage << std::endl;
 
     REQUIRE(0.01 > errorAverage);
 }
@@ -370,10 +370,10 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder_Plana
     auto frequenciesVector = windingAcResistanceData.get_x_points();
     auto acResistanceVector = windingAcResistanceData.get_y_points();
 
-    for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
-        std::cout << coefficientIndex << std::endl;
-        std::cout << coefficientsPerWinding[0][coefficientIndex] << std::endl;
-    }
+    // for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+    //     std::cout << coefficientIndex << std::endl;
+    //     std::cout << coefficientsPerWinding[0][coefficientIndex] << std::endl;
+    // }
 
     double errorAverage = 0;
     for (size_t index = 0; index < acResistanceVector.size(); ++index) {
@@ -388,7 +388,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder_Plana
     }
 
     errorAverage /= acResistanceVector.size();
-    std::cout << "errorAverage: " << errorAverage << std::endl;
+    // std::cout << "errorAverage: " << errorAverage << std::endl;
 
     REQUIRE(0.01 > errorAverage);
 }
@@ -433,10 +433,10 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
         REQUIRE(std::filesystem::exists(outFile));
 
     }
-    for (size_t coefficientIndex = 0; coefficientIndex < coefficients.size(); ++coefficientIndex) {
-        std::cout << coefficientIndex << std::endl;
-        std::cout << coefficients[coefficientIndex] << std::endl;
-    }
+    // for (size_t coefficientIndex = 0; coefficientIndex < coefficients.size(); ++coefficientIndex) {
+    //     std::cout << coefficientIndex << std::endl;
+    //     std::cout << coefficients[coefficientIndex] << std::endl;
+    // }
 
     std::vector<double> modeledCoreResistances;
     double errorAverage = 0;
@@ -462,7 +462,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
     }
 
     errorAverage /= coreResistanceVector.size();
-    std::cout << "errorAverage: " << errorAverage << std::endl;
+    // std::cout << "errorAverage: " << errorAverage << std::endl;
 
     REQUIRE(0.4 > errorAverage);
 }
@@ -770,7 +770,6 @@ TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_PFC_Only_Current", "[processor][circuit-simulation-reader]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/only_pfc_current_waveform.csv");
 
@@ -868,7 +867,6 @@ TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
 
@@ -930,7 +928,6 @@ TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
 
 TEST_CASE("Test_Plecs", "[processor][circuit-simulation-reader][plecs]") {
     std::string file_path = __FILE__;
-    SKIP("Test needs investigation");
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
 
     double frequency = 50;
@@ -969,7 +966,6 @@ TEST_CASE("Test_Plecs", "[processor][circuit-simulation-reader][plecs]") {
 
 TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader][plecs]") {
     std::string file_path = __FILE__;
-    SKIP("Test needs investigation");
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/wrong_plecs_simulation.csv");
 
     double frequency = 50;
@@ -1027,7 +1023,6 @@ TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader]
 }
 
 TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
 
@@ -1085,7 +1080,6 @@ TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
 }
 
 TEST_CASE("Test_Psim_Harmonics_Size_Error", "[processor][circuit-simulation-reader][psim]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
 
@@ -1135,7 +1129,6 @@ TEST_CASE("Test_Ltspice_Column_Names", "[processor][circuit-simulation-reader][l
 
 TEST_CASE("Test_Plecs_Column_Names", "[processor][circuit-simulation-reader][plecs]") {
     std::string file_path = __FILE__;
-    SKIP("Test needs investigation");
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
 
     double frequency = 50;
@@ -1149,7 +1142,6 @@ TEST_CASE("Test_Plecs_Column_Names", "[processor][circuit-simulation-reader][ple
 }
 
 TEST_CASE("Test_Plecs_Web", "[processor][circuit-simulation-reader][plecs]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
 
@@ -1171,7 +1163,6 @@ TEST_CASE("Test_Plecs_Web", "[processor][circuit-simulation-reader][plecs]") {
 
 TEST_CASE("Test_Plecs_Column_Names_Missing_Windings", "[processor][circuit-simulation-reader][plecs]") {
     std::string file_path = __FILE__;
-    SKIP("Test needs investigation");
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/wrong_plecs_simulation.csv");
 
     double frequency = 50;
@@ -1187,7 +1178,6 @@ TEST_CASE("Test_Plecs_Column_Names_Missing_Windings", "[processor][circuit-simul
 
 TEST_CASE("Test_Psim_Column_Names", "[processor][circuit-simulation-reader][psim]") {
     std::string file_path = __FILE__;
-    SKIP("Test needs investigation");
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
 
     double frequency = 120000;
@@ -1235,7 +1225,6 @@ TEST_CASE("Test_Extract_Column_Names_Web_0", "[processor][circuit-simulation-rea
 }
 
 TEST_CASE("Test_Import_Csv_Web_0", "[processor][circuit-simulation-reader]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_0.csv");
 
@@ -1249,7 +1238,6 @@ TEST_CASE("Test_Import_Csv_Web_0", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Import_Csv_Web_1", "[processor][circuit-simulation-reader]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_1.csv");
 
@@ -1263,7 +1251,6 @@ TEST_CASE("Test_Import_Csv_Web_1", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Import_Csv_Web_2", "[processor][circuit-simulation-reader]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_2.csv");
 
@@ -1277,7 +1264,6 @@ TEST_CASE("Test_Import_Csv_Web_2", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Import_Csv_Web_3", "[processor][circuit-simulation-reader]") {
-    SKIP("Test needs investigation");
     std::string file_path = __FILE__;
     auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_3.csv");
 
