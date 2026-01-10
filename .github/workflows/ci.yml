@@ -31,12 +31,14 @@ jobs:
           libgnuplot-iostream-dev \
           liblapack-dev \
           graphviz \
-          doxygen \
-          quicktype
+          doxygen
         
         # Set GCC 13 as default
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
+    
+    - name: Install quicktype
+      run: npm install -g quicktype
     
     - name: Configure CMake
       run: |
