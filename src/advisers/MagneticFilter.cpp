@@ -265,7 +265,7 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
                 magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _materialScaledMagneticFluxDensities[core.get_material_name()];
             }
         }
-        catch (const std::exception &exc) {
+        catch (...) {
             magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _magneticFluxDensityReference;
         }
         double areaProductRequired = _areaProductRequiredPreCalculations[operatingPointIndex] / (windingWindowUtilizationFactor * magneticFluxDensityPeakAtFrequencyOfReferenceLosses);

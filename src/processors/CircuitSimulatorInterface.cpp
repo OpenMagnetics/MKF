@@ -615,7 +615,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "File not found");
             }
         }
-        catch(const std::runtime_error& re) {
+        catch(const InvalidInputException& re) {
             std::stringstream json_file(filePathOrFile.value());
             simulation = ordered_json::parse(json_file);
         }

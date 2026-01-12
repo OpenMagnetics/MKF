@@ -20,7 +20,7 @@ namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
 
-    TEST_CASE("Test_Buck", "[converter-model][buck-topology]") {
+    TEST_CASE("Test_Buck", "[converter-model][buck-topology][smoke-test]") {
         json buckInputsJson;
         json inputVoltage;
 
@@ -91,7 +91,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
     }
 
-    TEST_CASE("Test_Buck_Drain_Source_Voltage_BMO", "[converter-model][buck-topology]") {
+    TEST_CASE("Test_Buck_Drain_Source_Voltage_BMO", "[converter-model][buck-topology][smoke-test]") {
         json buckInputsJson;
         json inputVoltage;
 
@@ -161,16 +161,13 @@ namespace {
         auto operatingPoints = buckInputs.process_operating_points(magnetic);
     }
 
-    TEST_CASE("Test_Buck_Web_0", "[converter-model][buck-topology]") {
+    TEST_CASE("Test_Buck_Web_0", "[converter-model][buck-topology][smoke-test]") {
         json buckInputsJson = json::parse(R"({"inputVoltage":{"minimum":10,"maximum":12},"diodeVoltageDrop":0.7,"efficiency":0.85,"currentRippleRatio":0.4,"operatingPoints":[{"outputVoltage":5,"outputCurrent":2,"switchingFrequency":100000,"ambientTemperature":25}]})");
         OpenMagnetics::Buck buckInputs(buckInputsJson);
 
         auto inputs = buckInputs.process();
         auto currentProcessed = inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed().value();
 
-        std::cout << "currentProcessed.get_duty_cycle().value()" << std::endl;
-        std::cout << currentProcessed.get_duty_cycle().value() << std::endl;
-        std::cout << currentProcessed.get_duty_cycle().value() << std::endl;
         {
             auto outFile = outputFilePath;
             outFile.append("Test_Buck_Primary_Minimum.svg");

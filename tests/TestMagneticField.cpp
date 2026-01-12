@@ -47,7 +47,7 @@ namespace {
     }
 
 
-    TEST_CASE("Test_Magnetic_Field_Frequencies", "[physical-model][magnetic-field]") {
+    TEST_CASE("Test_Magnetic_Field_Frequencies", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {2};
         numberParallels = {1};
         turnsRatios = {};
@@ -78,7 +78,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Magnetic_Field_One_Turn_Round", "[physical-model][magnetic-field]") {
+    TEST_CASE("Test_Magnetic_Field_One_Turn_Round", "[physical-model][magnetic-field][smoke-test]") {
 
         numberTurns = {1};
         numberParallels = {1};
@@ -150,7 +150,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Same_Current", "[physical-model][magnetic-field]") {
+    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Same_Current", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {2};
         numberParallels = {1};
         turnsRatios = {};
@@ -188,7 +188,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Opposite_Current", "[physical-model][magnetic-field]") {
+    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Opposite_Current", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {1, 1};
         numberParallels = {1, 1};
         turnsRatios = {1};
@@ -226,7 +226,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Opposite_Current_Lammeraner", "[physical-model][magnetic-field]") {
+    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Opposite_Current_Lammeraner", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {1, 1};
         numberParallels = {1, 1};
         turnsRatios = {1};
@@ -265,7 +265,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Magnetic_Image_Method", "[physical-model][magnetic-field]") {
+    TEST_CASE("Test_Magnetic_Image_Method", "[physical-model][magnetic-field][smoke-test]") {
         gapping = OpenMagneticsTesting::get_residual_gap();
         coreShape = "P 9/5";
         std::vector<int64_t> numberTurns = {1};
@@ -323,7 +323,7 @@ namespace {
     }
 
 
-    TEST_CASE("Test_Magnetic_Field_One_Turn_Rectangular", "[physical-model][magnetic-field]") {
+    TEST_CASE("Test_Magnetic_Field_One_Turn_Rectangular", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {1};
         numberParallels = {1};
         turnsRatios = {};
@@ -412,7 +412,7 @@ namespace {
     }
 
 
-    TEST_CASE("Test_Magnetic_Field_One_Turn_Foil", "[physical-model][magnetic-field]") {
+    TEST_CASE("Test_Magnetic_Field_One_Turn_Foil", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {1};
         numberParallels = {1};
         turnsRatios = {};

@@ -510,8 +510,9 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
     for (auto [coreMaterial, scoring] : (*coreMaterials)) {
         auto coreMaterialType = coreMaterial.get_material();
         auto coreMaterialApplication = Core::guess_material_application(coreMaterial);
-        if (coreMaterialApplication == referenceCoreMaterialApplication && coreMaterialType == referenceCoreMaterialType) {
-            rankedCoreMaterials.push_back({coreMaterial, scoring});
+
+        if (coreMaterialApplication == referenceCoreMaterialApplication && (settings.get_core_cross_referencer_allow_different_core_material_type() || coreMaterialType == referenceCoreMaterialType)) {
+            rankedCoreMaterials.push_back({coreMaterial, scoring}); 
         }
     }
 

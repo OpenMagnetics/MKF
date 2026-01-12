@@ -20,7 +20,7 @@ namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
 
-    TEST_CASE("Test_PushPull_CCM", "[converter-model][push-pull-topology]") {
+    TEST_CASE("Test_PushPull_CCM", "[converter-model][push-pull-topology][smoke-test]") {
         json pushPullInputsJson;
         json inputVoltage;
 
@@ -173,7 +173,7 @@ namespace {
 
     }
 
-    TEST_CASE("Test_PushPull_DCM", "[converter-model][push-pull-topology]") {
+    TEST_CASE("Test_PushPull_DCM", "[converter-model][push-pull-topology][smoke-test]") {
         json pushPullInputsJson;
         json inputVoltage;
 

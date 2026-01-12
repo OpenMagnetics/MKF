@@ -22,7 +22,7 @@ namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
 
-    TEST_CASE("Test_SingleSwitchForward_CCM", "[converter-model][single-switch-forward-topology]") {
+    TEST_CASE("Test_SingleSwitchForward_CCM", "[converter-model][single-switch-forward-topology][smoke-test]") {
         json forwardInputsJson;
         json inputVoltage;
 
@@ -120,7 +120,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_SingleSwitchForward_DCM", "[converter-model][single-switch-forward-topology]") {
+    TEST_CASE("Test_SingleSwitchForward_DCM", "[converter-model][single-switch-forward-topology][smoke-test]") {
         json forwardInputsJson;
         json inputVoltage;
 
@@ -217,7 +217,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_ActiveClampForward_CCM", "[converter-model][active-clamp-forward-topology]") {
+    TEST_CASE("Test_ActiveClampForward_CCM", "[converter-model][active-clamp-forward-topology][smoke-test]") {
         json forwardInputsJson;
         json inputVoltage;
 
@@ -294,7 +294,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_ActiveClampForward_DCM", "[converter-model][active-clamp-forward-topology]") {
+    TEST_CASE("Test_ActiveClampForward_DCM", "[converter-model][active-clamp-forward-topology][smoke-test]") {
         json forwardInputsJson;
         json inputVoltage;
 
@@ -371,7 +371,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_TwoSwitchForward_CCM", "[converter-model][two-switch-forward-topology]") {
+    TEST_CASE("Test_TwoSwitchForward_CCM", "[converter-model][two-switch-forward-topology][smoke-test]") {
         json forwardInputsJson;
         json inputVoltage;
 
@@ -448,7 +448,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_TwoSwitchForward_DCM", "[converter-model][two-switch-forward-topology]") {
+    TEST_CASE("Test_TwoSwitchForward_DCM", "[converter-model][two-switch-forward-topology][smoke-test]") {
         json forwardInputsJson;
         json inputVoltage;
 

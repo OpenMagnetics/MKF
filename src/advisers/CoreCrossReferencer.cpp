@@ -491,7 +491,7 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
         
         return {averageCoreLosses, maximumMagneticFluxDensitySaturationPeak};
     }
-    catch(const std::runtime_error& re)
+    catch(...)
     {
         return {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     }

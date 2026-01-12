@@ -7116,7 +7116,6 @@ Coil Coil::create_quick_coil(std::string coreShapeName, std::vector<int64_t> num
     Coil coil;
 
     auto core = Core::create_quick_core(coreShapeName, "Dummy");
-    bool auxUseBobbin = useBobbin;
     OpenMagnetics::Bobbin bobbin;
     if (core.get_shape_family() == CoreShapeFamily::T) {
         bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);

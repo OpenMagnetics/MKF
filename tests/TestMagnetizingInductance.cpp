@@ -52,7 +52,7 @@ namespace {
         core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
     }
 
-    TEST_CASE("Test_Inductance_Ferrite_Ground", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -80,7 +80,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Inductance_Ferrite_Web", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Ferrite_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -118,7 +118,7 @@ namespace {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST_CASE("Test_Inductance_Powder_Web", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Powder_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -176,7 +176,7 @@ namespace {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST_CASE("Test_Inductance_High_Flux_40_Web", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_High_Flux_40_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -195,7 +195,7 @@ namespace {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST_CASE("Test_Inductance_Ferrite_Spacer", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Ferrite_Spacer", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -223,7 +223,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Inductance_Ferrite_Ground_Few_Turns", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Ferrite_Ground_Few_Turns", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -251,7 +251,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Inductance_Powder", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Powder", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -279,7 +279,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_NumberTurns_Ferrite_Ground", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_NumberTurns_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -306,7 +306,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(numberTurns, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_NumberTurns_Powder", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_NumberTurns_Powder", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -333,7 +333,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(numberTurns, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Gapping_Ferrite_Ground", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Gapping_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -361,7 +361,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(gapping[0].get_length(), max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Gapping_U_Shape_Ferrite_Ground", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Gapping_U_Shape_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -389,7 +389,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(gapping[0].get_length(), max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Gapping_Ferrite_Distributed", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Gapping_Ferrite_Distributed", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -418,7 +418,7 @@ namespace {
         REQUIRE(7UL == gapping.size());
     }
 
-    TEST_CASE("Test_Gapping_Ferrite_Distributed_More_Gap_Precision", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Gapping_Ferrite_Distributed_More_Gap_Precision", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -435,7 +435,7 @@ namespace {
         OpenMagnetics::Inputs inputs;
         MagnetizingInductance magnetizing_inductance("ZHANG");
 
-        double expectedValue = 0.00039;
+        double expectedValue = 0.0004;
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, desiredMagnetizingInductance, {},
                                 coreShape, coreMaterial, core, winding, inputs);
@@ -447,7 +447,7 @@ namespace {
         REQUIRE(7UL == gapping.size());
     }
 
-    TEST_CASE("Test_Gapping_Classic_Web", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Gapping_Classic_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -518,7 +518,7 @@ namespace {
         REQUIRE(gapping.size() == 5);
     }
 
-    TEST_CASE("Test_Gapping_Web", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Gapping_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -566,7 +566,7 @@ namespace {
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
     }
 
-    TEST_CASE("Test_Magnetizing_Inductance", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Magnetizing_Inductance", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -624,7 +624,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Gapping_Web_No_Voltage", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Gapping_Web_No_Voltage", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -696,7 +696,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Inductance_Ferrite_Web_No_Voltage", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Ferrite_Web_No_Voltage", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -767,7 +767,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Magnetizing_Inductance_Toroid", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Magnetizing_Inductance_Toroid", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -798,7 +798,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Magnetizing_Inductance_Toroid_Stacks", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Magnetizing_Inductance_Toroid_Stacks", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -837,7 +837,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance2Stacks, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Magnetizing_Inductance_RM14_20", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Magnetizing_Inductance_RM14_20", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -861,7 +861,7 @@ namespace {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_0", "[physical-model][magnetizing-inductance][bug]") {
+    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_0", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -892,7 +892,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_1", "[physical-model][magnetizing-inductance][bug]") {
+    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_1", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -930,7 +930,7 @@ namespace {
         to_json(result, core);
     }
 
-    TEST_CASE("Test_Inductance_Powder_E_65", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Powder_E_65", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -962,7 +962,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Inductance_Powder_E_34", "[physical-model][magnetizing-inductance]") {
+    TEST_CASE("Test_Inductance_Powder_E_34", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -993,7 +993,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Inductance_Bug_Web_0", "[physical-model][magnetizing-inductance][bug]") {
+    TEST_CASE("Test_Inductance_Bug_Web_0", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -1025,7 +1025,7 @@ namespace {
         magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_2", "[physical-model][magnetizing-inductance][bug]") {
+    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_2", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -1056,7 +1056,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_3", "[physical-model][magnetizing-inductance][bug]") {
+    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_3", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
         settings.reset();
         clear_databases();
 

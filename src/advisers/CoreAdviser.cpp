@@ -924,7 +924,7 @@ std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vec
                 continue;
             }
         }
-        catch (const std::exception &exc) {
+        catch (...) {
             continue;
         }
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {

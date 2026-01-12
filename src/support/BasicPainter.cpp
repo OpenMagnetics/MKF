@@ -109,7 +109,7 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
 
 void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
     if (!wire.get_outer_diameter()) {
-        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing outerDiameter");
+        wire.set_nominal_value_outer_diameter(wire.calculate_outer_diameter());
     }
     bool simpleMode = settings.get_painter_simple_litz();
     auto coating = wire.resolve_coating();
@@ -1221,9 +1221,6 @@ void BasicPainter::paint_coil_turns(Magnetic magnetic) {
 }
 
 std::string BasicPainter::get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value) {
-    auto minColor = hex_to_uint(minimumColor);
-    auto maxColor = hex_to_uint(maximumColor);
-    
     // Clamp the value
     value = clamp(value, minimumValue, maximumValue);
     
@@ -1258,7 +1255,6 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
     std::vector<double> modules;
     // settings.set_painter_number_points_x(4);
     // settings.set_painter_number_points_y(4);
-    auto mode = settings.get_painter_mode();
     bool logarithmicScale = settings.get_painter_logarithmic_scale();
 
 
@@ -1335,9 +1331,7 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     std::vector<double> modules;
     // settings.set_painter_number_points_x(4);
     // settings.set_painter_number_points_y(4);
-    auto mode = settings.get_painter_mode();
     bool logarithmicScale = settings.get_painter_logarithmic_scale();
-
 
     Field field;
     if (inputField) {
@@ -1388,8 +1382,6 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     auto magneticFieldMaximumColor = settings.get_painter_color_magnetic_field_maximum();
 
     auto windingWindow = magnetic.get_mutable_core().get_winding_window();
-    json mierda;
-    to_json(mierda, windingWindow);
 
     if (windingWindow.get_width()) {
 

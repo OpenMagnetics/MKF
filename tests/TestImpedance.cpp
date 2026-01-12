@@ -14,7 +14,7 @@ using namespace OpenMagnetics;
 namespace {
 
 double maximumError = 0.25;
-TEST_CASE("Test_Impedance_0", "[physical-model][impedance]") {
+TEST_CASE("Test_Impedance_0", "[physical-model][impedance][smoke-test]") {
 
     std::vector<int64_t> numberTurns = {54, 54};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -82,7 +82,7 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance]") {
     }
 }
 
-TEST_CASE("Test_Impedance_Many_Turns", "[physical-model][impedance]") {
+TEST_CASE("Test_Impedance_Many_Turns", "[physical-model][impedance][smoke-test]") {
 
     std::vector<int64_t> numberTurns = {110, 110};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -145,7 +145,7 @@ TEST_CASE("Test_Impedance_Many_Turns", "[physical-model][impedance]") {
     // }
 }
 
-TEST_CASE("Test_Self_Resonant_Frequency_Many_Turns", "[physical-model][impedance]") {
+TEST_CASE("Test_Self_Resonant_Frequency_Many_Turns", "[physical-model][impedance][smoke-test]") {
 
     std::vector<int64_t> numberTurns = {110, 110};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -183,7 +183,7 @@ TEST_CASE("Test_Self_Resonant_Frequency_Many_Turns", "[physical-model][impedance
     REQUIRE_THAT(expectedSelfResonantFrequency, Catch::Matchers::WithinAbs(selfResonantFrequency, expectedSelfResonantFrequency * maximumError));
 
 }
-TEST_CASE("Test_Impedance_Few_Turns", "[physical-model][impedance]") {
+TEST_CASE("Test_Impedance_Few_Turns", "[physical-model][impedance][smoke-test]") {
 
     std::vector<int64_t> numberTurns = {18, 18};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -231,7 +231,7 @@ TEST_CASE("Test_Impedance_Few_Turns", "[physical-model][impedance]") {
 
 }
 
-TEST_CASE("Test_Impedance_Many_Turns_Larger_Core", "[physical-model][impedance]") {
+TEST_CASE("Test_Impedance_Many_Turns_Larger_Core", "[physical-model][impedance][smoke-test]") {
 
     std::vector<int64_t> numberTurns = {9, 9};
     std::vector<int64_t> numberParallels = {1, 1};
@@ -278,7 +278,7 @@ TEST_CASE("Test_Impedance_Many_Turns_Larger_Core", "[physical-model][impedance]"
     }
 }
 
-TEST_CASE("Test_Impedance_Few_Turns_Larger_Core", "[physical-model][impedance]") {
+TEST_CASE("Test_Impedance_Few_Turns_Larger_Core", "[physical-model][impedance][smoke-test]") {
 
     std::vector<int64_t> numberTurns = {17, 17};
     std::vector<int64_t> numberParallels = {1, 1};

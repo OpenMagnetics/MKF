@@ -32,7 +32,7 @@ namespace {
         core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
     }
 
-    TEST_CASE("Test_Magnetic_Energy_Iron_Powder_Core", "[physical-model][magnetic-energy]") {
+    TEST_CASE("Test_Magnetic_Energy_Iron_Powder_Core", "[physical-model][magnetic-energy][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -57,7 +57,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(totalMagneticEnergy, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Magnetic_Energy_Ferrite_Core", "[physical-model][magnetic-energy]") {
+    TEST_CASE("Test_Magnetic_Energy_Ferrite_Core", "[physical-model][magnetic-energy][smoke-test]") {
         settings.reset();
         clear_databases();
         double ambientTemperature = 25;
@@ -81,7 +81,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(totalMagneticEnergy, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Magnetic_Energy_Gap", "[physical-model][magnetic-energy]") {
+    TEST_CASE("Test_Magnetic_Energy_Gap", "[physical-model][magnetic-energy][smoke-test]") {
         settings.reset();
         clear_databases();
         int numberStacks = 1;
@@ -104,7 +104,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Magnetic_Energy_Input", "[physical-model][magnetic-energy]") {
+    TEST_CASE("Test_Magnetic_Energy_Input", "[physical-model][magnetic-energy][smoke-test]") {
         settings.reset();
         clear_databases();
         double voltagePeakToPeak = 1000;
@@ -129,7 +129,7 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(requiredMagneticEnergy, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Relative_permeability_By_Magnetic_Energy", "[physical-model][magnetic-energy]") {
+    TEST_CASE("Test_Relative_permeability_By_Magnetic_Energy", "[physical-model][magnetic-energy][smoke-test]") {
         settings.reset();
         clear_databases();
         double ambientTemperature = 25;

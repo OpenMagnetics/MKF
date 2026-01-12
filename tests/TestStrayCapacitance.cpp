@@ -18,7 +18,7 @@ static double maximumError = 0.4;
 static auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
 static bool plot = true;
 
-TEST_CASE("Calculate capacitance among two windings each with 1 turn and 1 parallel", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance among two windings each with 1 turn and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
     json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })");
     json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
@@ -50,7 +50,7 @@ TEST_CASE("Calculate capacitance among two windings each with 1 turn and 1 paral
     }
 }
 
-TEST_CASE("Calculate capacitance of a winding with 8 turns and 1 parallel", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance of a winding with 8 turns and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
     json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })");
     json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
@@ -96,7 +96,7 @@ TEST_CASE("Calculate capacitance of a winding with 8 turns and 1 parallel", "[ph
     }
 }
 
-TEST_CASE("Calculate capacitance among two windings each with 8 turns and 1 parallel", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance among two windings each with 8 turns and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
     json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })");
     json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
@@ -143,7 +143,7 @@ TEST_CASE("Calculate capacitance among two windings each with 8 turns and 1 para
     painter.export_svg();
 
 }
-TEST_CASE("Calculate capacitance among two windings one with 16 and another with 8 turns and both 1 parallel", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance among two windings one with 16 and another with 8 turns and both 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
     json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 16, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })");
     json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
@@ -176,7 +176,7 @@ TEST_CASE("Calculate capacitance among two windings one with 16 and another with
 
 }
 
-TEST_CASE("Calculate capacitance among three windings each with 8 turns and 1 parallel", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance among three windings each with 8 turns and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
     json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" }, {"name": "Tertiary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "tertiary", "wire": "Round 1.00 - Grade 1" } ] })");
     json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
@@ -216,7 +216,7 @@ TEST_CASE("Calculate capacitance among three windings each with 8 turns and 1 pa
 
 }
 
-// TEST_CASE("Calculate and compare capacitance matrix of one winding versus two windings", "[physical-model][stray-capacitance]") {
+// TEST_CASE("Calculate and compare capacitance matrix of one winding versus two windings", "[physical-model][stray-capacitance][smoke-test]") {
 //     {
 //         std::vector<int64_t> numberTurns = {110};
 //         std::vector<int64_t> numberParallels = {1};
@@ -329,7 +329,7 @@ TEST_CASE("Benchmakrs stray capacitance calculation", "[physical-model][stray-ca
     };
 }
 
-TEST_CASE("Calculate capacitance of an automatic buck produced in OM with three layers", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance of an automatic buck produced in OM with three layers", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
 
     std::string file_path = std::source_location::current().file_name();
@@ -366,7 +366,7 @@ TEST_CASE("Calculate capacitance of an automatic buck produced in OM with three 
     }
 }
 
-TEST_CASE("Calculate capacitance of an automatic buck produced in OM with two layers", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance of an automatic buck produced in OM with two layers", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
 
     std::string file_path = std::source_location::current().file_name();
@@ -403,7 +403,7 @@ TEST_CASE("Calculate capacitance of an automatic buck produced in OM with two la
     }
 }
 
-TEST_CASE("Calculate area between two round turns", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate area between two round turns", "[physical-model][stray-capacitance][smoke-test]") {
     {
         std::vector<int64_t> numberTurns = {1, 1};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -432,7 +432,7 @@ TEST_CASE("Calculate area between two round turns", "[physical-model][stray-capa
     }
 }
 
-TEST_CASE("Calculate area between two rectangular turns", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate area between two rectangular turns", "[physical-model][stray-capacitance][smoke-test]") {
     {
         std::vector<int64_t> numberTurns = {1, 1};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -462,7 +462,7 @@ TEST_CASE("Calculate area between two rectangular turns", "[physical-model][stra
     }
 }
 
-TEST_CASE("Calculate area between round and rectangular turns", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate area between round and rectangular turns", "[physical-model][stray-capacitance][smoke-test]") {
     {
         std::vector<int64_t> numberTurns = {1, 1};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -501,7 +501,7 @@ TEST_CASE("Calculate area between round and rectangular turns", "[physical-model
     }
 }
 
-TEST_CASE("Calculate area between round and rectangular turns diagonally", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate area between round and rectangular turns diagonally", "[physical-model][stray-capacitance][smoke-test]") {
     {
         std::vector<int64_t> numberTurns = {2, 1};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -541,7 +541,7 @@ TEST_CASE("Calculate area between round and rectangular turns diagonally", "[phy
     }
 }
 
-TEST_CASE("Calculate energy density between two turns", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate energy density between two turns", "[physical-model][stray-capacitance][smoke-test]") {
     {
         std::vector<int64_t> numberTurns = {1, 1};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -579,7 +579,7 @@ TEST_CASE("Calculate energy density between two turns", "[physical-model][stray-
     }
 }
 
-TEST_CASE("Calculate capacitance of a tranformers with low filling factor", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance of a tranformers with low filling factor", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
 
     std::string file_path = std::source_location::current().file_name();
@@ -620,7 +620,7 @@ TEST_CASE("Calculate capacitance of a tranformers with low filling factor", "[ph
     }
 }
 
-TEST_CASE("Calculate capacitance of a one layer inductor", "[physical-model][stray-capacitance]") {
+TEST_CASE("Calculate capacitance of a one layer inductor", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
 
     std::string file_path = std::source_location::current().file_name();
@@ -658,7 +658,7 @@ TEST_CASE("Calculate capacitance of a one layer inductor", "[physical-model][str
     }
 }
 
-TEST_CASE("Calculate capacitance of a simple planar tranformer", "[physical-model][stray-capacitance][planar]") {
+TEST_CASE("Calculate capacitance of a simple planar tranformer", "[physical-model][stray-capacitance][planar][smoke-test]") {
     settings.reset();
 
     std::string file_path = std::source_location::current().file_name();
@@ -698,7 +698,7 @@ TEST_CASE("Calculate capacitance of a simple planar tranformer", "[physical-mode
     }
 }
 
-TEST_CASE("Calculate capacitance of a simple planar tranformer with a turns ratio of 5", "[physical-model][stray-capacitance][planar]") {
+TEST_CASE("Calculate capacitance of a simple planar tranformer with a turns ratio of 5", "[physical-model][stray-capacitance][planar][smoke-test]") {
     settings.reset();
 
     std::string file_path = std::source_location::current().file_name();
@@ -738,7 +738,7 @@ TEST_CASE("Calculate capacitance of a simple planar tranformer with a turns rati
     }
 }
 
-TEST_CASE("Calculate capacitance of a simple planar tranformer with imperfect overlapping", "[physical-model][stray-capacitance][planar]") {
+TEST_CASE("Calculate capacitance of a simple planar tranformer with imperfect overlapping", "[physical-model][stray-capacitance][planar][smoke-test]") {
     settings.reset();
 
     std::string file_path = std::source_location::current().file_name();

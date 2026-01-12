@@ -17,7 +17,7 @@ using namespace OpenMagnetics;
 namespace {
     double maximumError = 0.05;
 
-    TEST_CASE("Test_Core_Material_Resistivity_1_Point", "[physical-model][resistivity]") {
+    TEST_CASE("Test_Core_Material_Resistivity_1_Point", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_core_material_by_name("3C97");
         double temperature = 42;
 
@@ -28,7 +28,7 @@ namespace {
         REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST_CASE("Test_Core_Material_Resistivity_Several_Points", "[physical-model][resistivity]") {
+    TEST_CASE("Test_Core_Material_Resistivity_Several_Points", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_core_material_by_name("3C94");
         double temperature = 42;
 
@@ -39,7 +39,7 @@ namespace {
         REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST_CASE("Test_Wire_Material_Resistivity_Copper_20", "[physical-model][resistivity]") {
+    TEST_CASE("Test_Wire_Material_Resistivity_Copper_20", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_wire_material_by_name("copper");
         double temperature = 20;
 
@@ -50,7 +50,7 @@ namespace {
         REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST_CASE("Test_Wire_Material_Resistivity_Copper_200", "[physical-model][resistivity]") {
+    TEST_CASE("Test_Wire_Material_Resistivity_Copper_200", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_wire_material_by_name("copper");
         double temperature = 200;
 
@@ -61,7 +61,7 @@ namespace {
         REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST_CASE("Test_Wire_Material_Resistivity_Aluminium_20", "[physical-model][resistivity]") {
+    TEST_CASE("Test_Wire_Material_Resistivity_Aluminium_20", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_wire_material_by_name("aluminium");
         double temperature = 20;
 
@@ -72,7 +72,7 @@ namespace {
         REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST_CASE("Test_Wire_Material_Resistivity_Aluminium_200", "[physical-model][resistivity]") {
+    TEST_CASE("Test_Wire_Material_Resistivity_Aluminium_200", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_wire_material_by_name("aluminium");
         double temperature = 200;
 

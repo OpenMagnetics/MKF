@@ -210,123 +210,123 @@ void test_core_temperature_miserable_43(CoreTemperatureModels modelName) {
     }
 }
 
-TEST_CASE("Test_Sotiris_47", "[physical-model][core-temperature][kazimierczuk-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_47", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_47(CoreTemperatureModels::KAZIMIERCZUK);
 }
 
-TEST_CASE("Test_Sotiris_46", "[physical-model][core-temperature][kazimierczuk-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_46", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_46(CoreTemperatureModels::KAZIMIERCZUK);
 }
 
-TEST_CASE("Test_Sotiris_40", "[physical-model][core-temperature][kazimierczuk-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_40", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_40(CoreTemperatureModels::KAZIMIERCZUK);
 }
 
-TEST_CASE("Test_Sotiris_37", "[physical-model][core-temperature][kazimierczuk-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_37", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_37(CoreTemperatureModels::KAZIMIERCZUK);
 }
 
-TEST_CASE("Test_Miserable_40", "[physical-model][core-temperature][kazimierczuk-core-temperature-model]") {
+TEST_CASE("Test_Miserable_40", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_40(CoreTemperatureModels::KAZIMIERCZUK);
 }
 
-TEST_CASE("Test_Miserable_43", "[physical-model][core-temperature][kazimierczuk-core-temperature-model]") {
+TEST_CASE("Test_Miserable_43", "[physical-model][core-temperature][kazimierczuk-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_43(CoreTemperatureModels::KAZIMIERCZUK);
 }
 
-TEST_CASE("Test_Sotiris_47_2", "[physical-model][core-temperature][maniktala-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_47_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_47(CoreTemperatureModels::MANIKTALA);
 }
 
-TEST_CASE("Test_Sotiris_46_2", "[physical-model][core-temperature][maniktala-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_46_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_46(CoreTemperatureModels::MANIKTALA);
 }
 
-TEST_CASE("Test_Sotiris_40_2", "[physical-model][core-temperature][maniktala-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_40_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_40(CoreTemperatureModels::MANIKTALA);
 }
 
-TEST_CASE("Test_Sotiris_37_2", "[physical-model][core-temperature][maniktala-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_37_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_37(CoreTemperatureModels::MANIKTALA);
 }
 
-TEST_CASE("Test_Miserable_40_2", "[physical-model][core-temperature][maniktala-core-temperature-model]") {
+TEST_CASE("Test_Miserable_40_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_40(CoreTemperatureModels::MANIKTALA);
 }
 
-TEST_CASE("Test_Miserable_43_2", "[physical-model][core-temperature][maniktala-core-temperature-model]") {
+TEST_CASE("Test_Miserable_43_2", "[physical-model][core-temperature][maniktala-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_43(CoreTemperatureModels::MANIKTALA);
 }
 
-TEST_CASE("Test_Sotiris_47_3", "[physical-model][core-temperature][tdk-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_47_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_47(CoreTemperatureModels::TDK);
 }
 
-TEST_CASE("Test_Sotiris_46_3", "[physical-model][core-temperature][tdk-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_46_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_46(CoreTemperatureModels::TDK);
 }
 
-TEST_CASE("Test_Sotiris_40_3", "[physical-model][core-temperature][tdk-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_40_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_40(CoreTemperatureModels::TDK);
 }
 
-TEST_CASE("Test_Sotiris_37_3", "[physical-model][core-temperature][tdk-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_37_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_37(CoreTemperatureModels::TDK);
 }
 
-TEST_CASE("Test_Miserable_40_3", "[physical-model][core-temperature][tdk-core-temperature-model]") {
+TEST_CASE("Test_Miserable_40_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_40(CoreTemperatureModels::TDK);
 }
 
-TEST_CASE("Test_Miserable_43_3", "[physical-model][core-temperature][tdk-core-temperature-model]") {
+TEST_CASE("Test_Miserable_43_3", "[physical-model][core-temperature][tdk-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_43(CoreTemperatureModels::TDK);
 }
 
-TEST_CASE("Test_Sotiris_47_4", "[physical-model][core-temperature][dixon-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_47_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_47(CoreTemperatureModels::DIXON);
 }
 
-TEST_CASE("Test_Sotiris_46_4", "[physical-model][core-temperature][dixon-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_46_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_46(CoreTemperatureModels::DIXON);
 }
 
-TEST_CASE("Test_Sotiris_40_4", "[physical-model][core-temperature][dixon-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_40_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_40(CoreTemperatureModels::DIXON);
 }
 
-TEST_CASE("Test_Sotiris_37_4", "[physical-model][core-temperature][dixon-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_37_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_37(CoreTemperatureModels::DIXON);
 }
 
-TEST_CASE("Test_Miserable_40_4", "[physical-model][core-temperature][dixon-core-temperature-model]") {
+TEST_CASE("Test_Miserable_40_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_40(CoreTemperatureModels::DIXON);
 }
 
-TEST_CASE("Test_Miserable_43_4", "[physical-model][core-temperature][dixon-core-temperature-model]") {
+TEST_CASE("Test_Miserable_43_4", "[physical-model][core-temperature][dixon-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_43(CoreTemperatureModels::DIXON);
 }
 
-TEST_CASE("Test_Sotiris_47_5", "[physical-model][core-temperature][amidon-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_47_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_47(CoreTemperatureModels::AMIDON);
 }
 
-TEST_CASE("Test_Sotiris_46_5", "[physical-model][core-temperature][amidon-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_46_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_46(CoreTemperatureModels::AMIDON);
 }
 
-TEST_CASE("Test_Sotiris_40_5", "[physical-model][core-temperature][amidon-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_40_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_40(CoreTemperatureModels::AMIDON);
 }
 
-TEST_CASE("Test_Sotiris_37_5", "[physical-model][core-temperature][amidon-core-temperature-model]") {
+TEST_CASE("Test_Sotiris_37_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
     test_core_temperature_sotiris_37(CoreTemperatureModels::AMIDON);
 }
 
-TEST_CASE("Test_Miserable_40_5", "[physical-model][core-temperature][amidon-core-temperature-model]") {
+TEST_CASE("Test_Miserable_40_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_40(CoreTemperatureModels::AMIDON);
 }
 
-TEST_CASE("Test_Miserable_43_5", "[physical-model][core-temperature][amidon-core-temperature-model]") {
+TEST_CASE("Test_Miserable_43_5", "[physical-model][core-temperature][amidon-core-temperature-model][smoke-test]") {
     test_core_temperature_miserable_43(CoreTemperatureModels::AMIDON);
 }
 
