@@ -42,7 +42,7 @@ namespace {
                                                                                 offset);
     }
 
-    TEST_CASE("Test_Sample_Wire", "[constructive-model][wire]") {
+    TEST_CASE("Test_Sample_Wire", "[constructive-model][wire][smoke-test]") {
         auto wireFilePath = masPath + "samples/magnetic/wire/round/0.000140.json";
         std::ifstream json_file(wireFilePath);
         auto wireJson = json::parse(json_file);
@@ -54,175 +54,175 @@ namespace {
         REQUIRE(conductingDiameter == wireJson["conductingDiameter"]["nominal"]);
     }
 
-    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_1", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(5.4e-05);
         double expectedValue = 0.755;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_1", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(1.1e-05);
         double expectedValue = 0.64;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_1", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.00048);
         double expectedValue = 0.87;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(5.4e-05, 2);
         double expectedValue = 0.616;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(1.1e-05, 2);
         double expectedValue = 0.455;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.00048, 2);
         double expectedValue = 0.8;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_3", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_3", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(5.4e-05, 3);
         double expectedValue = 0.523;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_3", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_3", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(1.1e-05, 3);
         double expectedValue = 0.334;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_3", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_3", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.00048, 3);
         double expectedValue = 0.741;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_1_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_1_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(5.4e-05, 1, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.79;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_1_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_1_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(1.3e-05, 1, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.71;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_1_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_1_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.00048, 1, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.89;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_2_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_2_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(5.4e-05, 2, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.65;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_2_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_2_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(1.3e-05, 2, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.52;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_2_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_2_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.00048, 2, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.81;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_3_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Medium_Round_Enamelled_Wire_Grade_3_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(5.4e-05, 3, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.55;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_3_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Small_Round_Enamelled_Wire_Grade_3_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(4e-05, 3, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.51;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_3_Nema", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Large_Round_Enamelled_Wire_Grade_3_Nema", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.00048, 3, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.74;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Thin_Round_Insulated_Wire_1_Layer_Thin_Layer_Thickness", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Thin_Round_Insulated_Wire_1_Layer_Thin_Layer_Thickness", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.000101, 1, 3.81e-05, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.321961;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Filling_Factors_Thick_Round_Insulated_Wire_1_Layer_Thick_Layer_Thickness", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Thick_Round_Insulated_Wire_1_Layer_Thick_Layer_Thickness", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.00129, 1, 7.62e-05, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.799184;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Outer_Diameter_Thick_Round_Insulated_Wire_1_Layer_Thick_Layer_Thickness", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Thick_Round_Insulated_Wire_1_Layer_Thick_Layer_Thickness", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_outer_diameter_round(0.00129, 1, 7.62e-05, WireStandard::NEMA_MW_1000_C);
         double expectedOuterDiameter = 0.00144;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
 
-    TEST_CASE("Test_Filling_Factors_Thick_Round_Insulated_Wire_3_Layer_Thick_Layer_Thickness", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factors_Thick_Round_Insulated_Wire_3_Layer_Thick_Layer_Thickness", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_round(0.00129, 3, 7.62e-05, WireStandard::NEMA_MW_1000_C);
         double expectedValue = 0.5446;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Outer_Diameter_Thick_Round_Insulated_Wire_3_Layers_Thick_Layer_Thickness", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Thick_Round_Insulated_Wire_3_Layers_Thick_Layer_Thickness", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_outer_diameter_round(0.00129, 3, 7.62e-05, WireStandard::NEMA_MW_1000_C);
         double expectedOuterDiameter = 0.001748;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
 
-    TEST_CASE("Test_Filling_Factor_Thick_Litz_Wire_Served_1_Layer_Few_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factor_Thick_Litz_Wire_Served_1_Layer_Few_Strands", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_served_litz(0.0001, 66, 1, 1, WireStandard::IEC_60317, false);
         double expectedValue = 0.458122;
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
     }
 
-    TEST_CASE("Test_Outer_Diameter_Litz_Wire_Grade_1_Served_1_Layer_Few_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Litz_Wire_Grade_1_Served_1_Layer_Few_Strands", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_outer_diameter_served_litz(2e-05, 10, 1, 1, WireStandard::IEC_60317);
         double expectedMinimumValue = 0.000112;
         double expectedMaximumValue = 0.000142;
@@ -231,140 +231,140 @@ namespace {
         REQUIRE(outerDiameter < expectedMaximumValue);
     }
 
-    TEST_CASE("Test_Outer_Diameter_Litz_Wire_Grade_2_Served_1_Layer_1_Few_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Litz_Wire_Grade_2_Served_1_Layer_1_Few_Strands", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_outer_diameter_served_litz(2e-05, 10, 2, 1, WireStandard::IEC_60317);
         double expectedOuterDiameter = 0.000153;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
 
-    TEST_CASE("Test_Outer_Diameter_Thick_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Few_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Thick_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Few_Strands", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_outer_diameter_insulated_litz(0.000102, 66, 3, 7.62e-05, 1, WireStandard::NEMA_MW_1000_C);
         double expectedOuterDiameter = 0.00152908;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
 
-    TEST_CASE("Test_Outer_Diameter_Thin_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Many_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Thin_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Many_Strands", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_outer_diameter_insulated_litz(5.1e-05, 825, 3, 7.62e-05, 1, WireStandard::NEMA_MW_1000_C);
         double expectedOuterDiameter = 0.00253238;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
 
-    TEST_CASE("Test_Outer_Diameter_Thin_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Many_Strands_Diameter_Not_In_Db", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Thin_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Many_Strands_Diameter_Not_In_Db", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_outer_diameter_insulated_litz(5.42e-05, 825, 3, 7.62e-05, 1, WireStandard::NEMA_MW_1000_C);
         double expectedOuterDiameter = 0.00253238;
 
         REQUIRE(expectedOuterDiameter < outerDiameter);
     }
 
-    TEST_CASE("Test_Filling_Factor_Litz_Wire_Grade_2_Served_1_Layer_1_Few_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factor_Litz_Wire_Grade_2_Served_1_Layer_1_Few_Strands", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_filling_factor_served_litz(2e-05, 10, 2, 1, WireStandard::IEC_60317);
         double expectedOuterDiameter = 0.235;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
 
-    TEST_CASE("Test_Filling_Factor_Thick_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Few_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factor_Thick_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Few_Strands", "[constructive-model][wire][smoke-test]") {
         auto outerDiameter = OpenMagnetics::Wire::get_filling_factor_insulated_litz(0.000102, 66, 3, 7.62e-05, 1, WireStandard::NEMA_MW_1000_C);
         double expectedOuterDiameter = 0.3449;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
 
-    TEST_CASE("Test_Outer_Width_Small_Rectangular_Grade_1", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Width_Small_Rectangular_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto outerWidth = OpenMagnetics::Wire::get_outer_width_rectangular(0.002, 1, WireStandard::IEC_60317);
         double expectedOuterWidth = 0.00206;
 
         REQUIRE_THAT(expectedOuterWidth, Catch::Matchers::WithinAbs(outerWidth, max_error * expectedOuterWidth));
     }
 
-    TEST_CASE("Test_Outer_Width_Small_Rectangular_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Width_Small_Rectangular_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto outerWidth = OpenMagnetics::Wire::get_outer_width_rectangular(0.002, 2, WireStandard::IEC_60317);
         double expectedOuterWidth = 0.00217;
 
         REQUIRE_THAT(expectedOuterWidth, Catch::Matchers::WithinAbs(outerWidth, max_error * expectedOuterWidth));
     }
 
-    TEST_CASE("Test_Outer_Width_Large_Rectangular_Grade_1", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Width_Large_Rectangular_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto outerWidth = OpenMagnetics::Wire::get_outer_width_rectangular(0.016, 1, WireStandard::IEC_60317);
         double expectedOuterWidth = 0.01608;
 
         REQUIRE_THAT(expectedOuterWidth, Catch::Matchers::WithinAbs(outerWidth, max_error * expectedOuterWidth));
     }
 
-    TEST_CASE("Test_Outer_Width_Large_Rectangular_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Width_Large_Rectangular_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto outerWidth = OpenMagnetics::Wire::get_outer_width_rectangular(0.016, 2, WireStandard::IEC_60317);
         double expectedOuterWidth = 0.01614;
 
         REQUIRE_THAT(expectedOuterWidth, Catch::Matchers::WithinAbs(outerWidth, max_error * expectedOuterWidth));
     }
 
-    TEST_CASE("Test_Outer_Height_Small_Rectangular_Grade_1", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Height_Small_Rectangular_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto outerHeight = OpenMagnetics::Wire::get_outer_height_rectangular(0.0008, 1, WireStandard::IEC_60317);
         double expectedOuterHeight = 0.00088;
 
         REQUIRE_THAT(expectedOuterHeight, Catch::Matchers::WithinAbs(outerHeight, max_error * expectedOuterHeight));
     }
 
-    TEST_CASE("Test_Outer_Height_Small_Rectangular_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Height_Small_Rectangular_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto outerHeight = OpenMagnetics::Wire::get_outer_height_rectangular(0.0008, 2, WireStandard::IEC_60317);
         double expectedOuterHeight = 0.00092;
 
         REQUIRE_THAT(expectedOuterHeight, Catch::Matchers::WithinAbs(outerHeight, max_error * expectedOuterHeight));
     }
 
-    TEST_CASE("Test_Outer_Height_Large_Rectangular_Grade_1", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Height_Large_Rectangular_Grade_1", "[constructive-model][wire][smoke-test]") {
         auto outerHeight = OpenMagnetics::Wire::get_outer_height_rectangular(0.0045, 1, WireStandard::IEC_60317);
         double expectedOuterHeight = 0.00456;
 
         REQUIRE_THAT(expectedOuterHeight, Catch::Matchers::WithinAbs(outerHeight, max_error * expectedOuterHeight));
     }
 
-    TEST_CASE("Test_Outer_Height_Large_Rectangular_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Height_Large_Rectangular_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto outerHeight = OpenMagnetics::Wire::get_outer_height_rectangular(0.0045, 2, WireStandard::IEC_60317);
         double expectedOuterHeight = 0.00467;
 
         REQUIRE_THAT(expectedOuterHeight, Catch::Matchers::WithinAbs(outerHeight, max_error * expectedOuterHeight));
     }
 
-    TEST_CASE("Test_Filling_Factor_Small_Rectangular_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factor_Small_Rectangular_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_rectangular(0.002, 0.0008, 2, WireStandard::IEC_60317);
         double expectedFillingFactor = 0.720267;
 
         REQUIRE_THAT(expectedFillingFactor, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedFillingFactor));
     }
 
-    TEST_CASE("Test_Filling_Factor_Large_Rectangular_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Filling_Factor_Large_Rectangular_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto fillingFactor = OpenMagnetics::Wire::get_filling_factor_rectangular(0.016, 0.0045, 2, WireStandard::IEC_60317);
         double expectedFillingFactor = 0.948615;
 
         REQUIRE_THAT(expectedFillingFactor, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedFillingFactor));
     }
 
-    TEST_CASE("Test_Conducting_Area_Small_Rectangular", "[constructive-model][wire]") {
+    TEST_CASE("Test_Conducting_Area_Small_Rectangular", "[constructive-model][wire][smoke-test]") {
         auto conductingArea = OpenMagnetics::Wire::get_conducting_area_rectangular(0.002, 0.0008, WireStandard::IEC_60317);
         double expectedConductingArea = 0.00000146;
 
         REQUIRE_THAT(expectedConductingArea, Catch::Matchers::WithinAbs(conductingArea, max_error * expectedConductingArea));
     }
 
-    TEST_CASE("Test_Conducting_Area_Large_Rectangular", "[constructive-model][wire]") {
+    TEST_CASE("Test_Conducting_Area_Large_Rectangular", "[constructive-model][wire][smoke-test]") {
         auto conductingArea = OpenMagnetics::Wire::get_conducting_area_rectangular(0.016, 0.0045, WireStandard::IEC_60317);
         double expectedConductingArea = 0.00007114;
 
         REQUIRE_THAT(expectedConductingArea, Catch::Matchers::WithinAbs(conductingArea, max_error * expectedConductingArea));
     }
 
-    TEST_CASE("Test_Outer_Height_Tiny_Rectangular_Grade_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Height_Tiny_Rectangular_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto outerHeight = OpenMagnetics::Wire::get_outer_height_rectangular(1e-9, 2, WireStandard::IEC_60317);
         double expectedOuterHeight = 1.2e-9;
 
         REQUIRE_THAT(expectedOuterHeight, Catch::Matchers::WithinAbs(outerHeight, max_error * expectedOuterHeight));
     }
 
-    TEST_CASE("Test_Outer_Diameter_Litz_Wire_Unserved_Medium_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Litz_Wire_Unserved_Medium_Strands", "[constructive-model][wire][smoke-test]") {
         auto diameter = OpenMagnetics::Wire::get_outer_diameter_served_litz(0.000071, 270, 1, 0, WireStandard::IEC_60317);
         double expectedMaximumValue = 0.001767;
         double expectedMinimumValue = 0.001641;
@@ -373,7 +373,7 @@ namespace {
         REQUIRE(diameter < expectedMaximumValue);
     }
 
-    TEST_CASE("Test_Outer_Diameter_Litz_Wire_Served_1_Layer_Medium_Strands", "[constructive-model][wire]") {
+    TEST_CASE("Test_Outer_Diameter_Litz_Wire_Served_1_Layer_Medium_Strands", "[constructive-model][wire][smoke-test]") {
         auto diameter = OpenMagnetics::Wire::get_outer_diameter_served_litz(0.000071, 270, 1, 1, WireStandard::IEC_60317);
         double expectedMaximumValue = 0.001807;
         double expectedMinimumValue = 0.001666;
@@ -382,7 +382,7 @@ namespace {
         REQUIRE(diameter < expectedMaximumValue);
     }
 
-    TEST_CASE("Test_Effective_Current_Density_Medium_Frequency_Round_Operation_Point", "[constructive-model][wire]") {
+    TEST_CASE("Test_Effective_Current_Density_Medium_Frequency_Round_Operation_Point", "[constructive-model][wire][smoke-test]") {
         double frequency = 100000;
         Processed processed;
         processed.set_label(label);
@@ -403,7 +403,7 @@ namespace {
         REQUIRE_THAT(expectedEffectiveCurrentDensity, Catch::Matchers::WithinAbs(effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity));
     }
 
-    TEST_CASE("Test_Effective_Current_Density_Low_Frequency_Round", "[constructive-model][wire]") {
+    TEST_CASE("Test_Effective_Current_Density_Low_Frequency_Round", "[constructive-model][wire][smoke-test]") {
         double frequency = 10;
         auto wire = OpenMagnetics::Wire(find_wire_by_name("Round 0.5 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
@@ -412,7 +412,7 @@ namespace {
         REQUIRE_THAT(expectedEffectiveCurrentDensity, Catch::Matchers::WithinAbs(effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity));
     }
 
-    TEST_CASE("Test_Effective_Current_Density_Medium_Frequency_Round", "[constructive-model][wire]") {
+    TEST_CASE("Test_Effective_Current_Density_Medium_Frequency_Round", "[constructive-model][wire][smoke-test]") {
         double frequency = 100000;
         auto wire = OpenMagnetics::Wire(find_wire_by_name("Round 0.5 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
@@ -421,7 +421,7 @@ namespace {
         REQUIRE_THAT(expectedEffectiveCurrentDensity, Catch::Matchers::WithinAbs(effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity));
     }
 
-    TEST_CASE("Test_Effective_Current_Density_High_Frequency_Round", "[constructive-model][wire]") {
+    TEST_CASE("Test_Effective_Current_Density_High_Frequency_Round", "[constructive-model][wire][smoke-test]") {
         double frequency = 1000000;
         auto wire = OpenMagnetics::Wire(find_wire_by_name("Round 0.5 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
@@ -430,7 +430,7 @@ namespace {
         REQUIRE_THAT(expectedEffectiveCurrentDensity, Catch::Matchers::WithinAbs(effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity));
     }
 
-    TEST_CASE("Test_Effective_Current_Density_Low_Frequency_Litz", "[constructive-model][wire]") {
+    TEST_CASE("Test_Effective_Current_Density_Low_Frequency_Litz", "[constructive-model][wire][smoke-test]") {
         double frequency = 10;
         auto wire = OpenMagnetics::Wire(find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
@@ -439,7 +439,7 @@ namespace {
         REQUIRE_THAT(expectedEffectiveCurrentDensity, Catch::Matchers::WithinAbs(effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity));
     }
 
-    TEST_CASE("Test_Effective_Current_Density_High_Frequency_Litz", "[constructive-model][wire]") {
+    TEST_CASE("Test_Effective_Current_Density_High_Frequency_Litz", "[constructive-model][wire][smoke-test]") {
         double frequency = 10000000;
         auto wire = OpenMagnetics::Wire(find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
@@ -448,7 +448,7 @@ namespace {
         REQUIRE_THAT(expectedEffectiveCurrentDensity, Catch::Matchers::WithinAbs(effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity));
     }
 
-    TEST_CASE("Test_Effective_Current_Density_Low_Frequency_Rectangular", "[constructive-model][wire]") {
+    TEST_CASE("Test_Effective_Current_Density_Low_Frequency_Rectangular", "[constructive-model][wire][smoke-test]") {
         double frequency = 10;
         auto wire = OpenMagnetics::Wire(find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
@@ -457,7 +457,7 @@ namespace {
         REQUIRE_THAT(expectedEffectiveCurrentDensity, Catch::Matchers::WithinAbs(effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity));
     }
 
-    TEST_CASE("Test_Effective_Current_Density_High_Frequency_Rectangular", "[constructive-model][wire]") {
+    TEST_CASE("Test_Effective_Current_Density_High_Frequency_Rectangular", "[constructive-model][wire][smoke-test]") {
         double frequency = 1000000;
         auto wire = OpenMagnetics::Wire(find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
@@ -466,7 +466,7 @@ namespace {
         REQUIRE_THAT(expectedEffectiveCurrentDensity, Catch::Matchers::WithinAbs(effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity));
     }
 
-    TEST_CASE("Test_Conducting_Area_Large_Rectangular_2", "[constructive-model][wire]") {
+    TEST_CASE("Test_Conducting_Area_Large_Rectangular_2", "[constructive-model][wire][smoke-test]") {
         double frequency = 10;
 
         Processed processed;
@@ -488,7 +488,7 @@ namespace {
         // REQUIRE_THAT(expectedConductingArea, Catch::Matchers::WithinAbs(conductingArea, max_error * expectedConductingArea));
     }
 
-    TEST_CASE("Test_Number_Parallels_Low_Frequency_Round_1_Parallel", "[constructive-model][wire]") {
+    TEST_CASE("Test_Number_Parallels_Low_Frequency_Round_1_Parallel", "[constructive-model][wire][smoke-test]") {
         double frequency = 10;
 
         auto inputs = setup_inputs(frequency);
@@ -501,7 +501,7 @@ namespace {
         REQUIRE(expectedNumberParallels == numberParallels);
     }
 
-    TEST_CASE("Test_Number_Parallels_Low_Frequency_Round_2_Parallels", "[constructive-model][wire]") {
+    TEST_CASE("Test_Number_Parallels_Low_Frequency_Round_2_Parallels", "[constructive-model][wire][smoke-test]") {
         double frequency = 10;
 
         auto inputs = setup_inputs(frequency);
@@ -514,7 +514,7 @@ namespace {
         REQUIRE(expectedNumberParallels == numberParallels);
     }
 
-    TEST_CASE("Test_Number_Parallels_High_Frequency_Round_3_Parallels", "[constructive-model][wire]") {
+    TEST_CASE("Test_Number_Parallels_High_Frequency_Round_3_Parallels", "[constructive-model][wire][smoke-test]") {
         double frequency = 1000000;
 
         auto inputs = setup_inputs(frequency);
@@ -527,7 +527,7 @@ namespace {
         REQUIRE(expectedNumberParallels == numberParallels);
     }
 
-    TEST_CASE("Test_Number_Parallels_High_Frequency_Litz_2_Parallels", "[constructive-model][wire]") {
+    TEST_CASE("Test_Number_Parallels_High_Frequency_Litz_2_Parallels", "[constructive-model][wire][smoke-test]") {
         double frequency = 1000000;
 
         auto inputs = setup_inputs(frequency);
@@ -540,7 +540,7 @@ namespace {
         REQUIRE(expectedNumberParallels == numberParallels);
     }
 
-    TEST_CASE("Test_Number_Parallels_Low_Frequency_Rectangular_1_Parallels", "[constructive-model][wire]") {
+    TEST_CASE("Test_Number_Parallels_Low_Frequency_Rectangular_1_Parallels", "[constructive-model][wire][smoke-test]") {
         double frequency = 10;
 
         auto inputs = setup_inputs(frequency);
@@ -553,7 +553,7 @@ namespace {
         REQUIRE(expectedNumberParallels == numberParallels);
     }
 
-    TEST_CASE("Test_Number_Parallels_High_Frequency_Rectangular_4_Parallels", "[constructive-model][wire]") {
+    TEST_CASE("Test_Number_Parallels_High_Frequency_Rectangular_4_Parallels", "[constructive-model][wire][smoke-test]") {
         double frequency = 1000000;
 
         auto inputs = setup_inputs(frequency);
@@ -566,7 +566,7 @@ namespace {
         REQUIRE(expectedNumberParallels == numberParallels);
     }
 
-    TEST_CASE("Test_Coating_Label_Uniqueness", "[constructive-model][wire]") {
+    TEST_CASE("Test_Coating_Label_Uniqueness", "[constructive-model][wire][smoke-test]") {
         auto wires = get_wires();
         std::vector<std::string> coatingLabels;
         for (auto wire : wires) {
@@ -577,7 +577,7 @@ namespace {
         REQUIRE(std::find(coatingLabels.begin(), coatingLabels.end(), "Bare") != coatingLabels.end());
     }
 
-    TEST_CASE("Test_Coating_Decoding", "[constructive-model][wire]") {
+    TEST_CASE("Test_Coating_Decoding", "[constructive-model][wire][smoke-test]") {
         auto wires = get_wires();
         for (auto wire : wires) {
             auto coatingLabel = wire.encode_coating_label();
@@ -601,53 +601,52 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Coating_Relative_Permittivity", "[constructive-model][wire]") {
+    TEST_CASE("Test_Coating_Relative_Permittivity", "[constructive-model][wire][smoke-test]") {
         auto wire = OpenMagnetics::Wire(find_wire_by_name("Round 0.80 - Grade 1"));
         auto relativePermittivity = wire.get_coating_relative_permittivity();
         REQUIRE_THAT(3.7, Catch::Matchers::WithinAbs(relativePermittivity, max_error * 3.7));
     }
 
-    TEST_CASE("Test_Coating_Relative_Permittivity_Web0", "[constructive-model][wire]") {
+    TEST_CASE("Test_Coating_Relative_Permittivity_Web0", "[constructive-model][wire][smoke-test]") {
         auto wire = OpenMagnetics::Wire(json::parse(R"({"type": "round", "conductingDiameter": {"nominal": 0.001}, "material": "copper", "outerDiameter": {"nominal": 0.001062}, "coating": {"breakdownVoltage": 2700.0, "grade": 1, "type": "enamelled"}, "name": "Round 1.00 - Grade 1", "numberConductors": 1, "standard": "IEC 60317", "standardName": "1.00 mm"})"));
         auto relativePermittivity = wire.get_coating_relative_permittivity();
         REQUIRE_THAT(3.7, Catch::Matchers::WithinAbs(relativePermittivity, max_error * 3.7));
     }
 
-    TEST_CASE("Test_Coating_Material", "[constructive-model][wire]") {
+    TEST_CASE("Test_Coating_Material", "[constructive-model][wire][smoke-test]") {
         auto material = find_insulation_material_by_name("ETFE");
-        json mierda;
-        to_json(mierda, material);
-        std::cout << mierda << std::endl;
+        json jsonDta;
+        to_json(jsonDta, material);
     }
 
-    TEST_CASE("Test_Find_Round_By_Dimension_European", "[constructive-model][wire]") {
+    TEST_CASE("Test_Find_Round_By_Dimension_European", "[constructive-model][wire][smoke-test]") {
         auto wire = find_wire_by_dimension(0.00072, WireType::ROUND, WireStandard::IEC_60317, false);
         REQUIRE(wire.get_standard_name().value() == "0.71 mm");
     }
 
-    TEST_CASE("Test_Find_Round_By_Dimension_American", "[constructive-model][wire]") {
+    TEST_CASE("Test_Find_Round_By_Dimension_American", "[constructive-model][wire][smoke-test]") {
         auto wire = find_wire_by_dimension(0.00072, WireType::ROUND, WireStandard::NEMA_MW_1000_C);
         REQUIRE(wire.get_standard_name().value() == "21 AWG");
     }
 
-    TEST_CASE("Test_Find_Among_All_By_Dimension", "[constructive-model][wire]") {
+    TEST_CASE("Test_Find_Among_All_By_Dimension", "[constructive-model][wire][smoke-test]") {
         auto wire = find_wire_by_dimension(0.00072);
         REQUIRE(wire.get_standard_name().value() == "21 AWG");
     }
 
-    TEST_CASE("Test_Find_Rectangular_By_Dimension", "[constructive-model][wire]") {
+    TEST_CASE("Test_Find_Rectangular_By_Dimension", "[constructive-model][wire][smoke-test]") {
         auto wire = find_wire_by_dimension(0.00072, WireType::RECTANGULAR);
         auto conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
         REQUIRE(conductingHeight == 0.0008);
     }
 
-    TEST_CASE("Test_Find_Foil_By_Dimension", "[constructive-model][wire]") {
+    TEST_CASE("Test_Find_Foil_By_Dimension", "[constructive-model][wire][smoke-test]") {
         auto wire = find_wire_by_dimension(0.00072, WireType::FOIL);
         auto conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
         REQUIRE(conductingWidth == 0.0007);
     }
 
-    TEST_CASE("Test_Litz_To_Litz_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Litz_To_Litz_Equivalent", "[constructive-model][wire][smoke-test]") {
         double effectiveFrequency = 1234981;
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::LITZ, effectiveFrequency);
@@ -659,7 +658,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.00005, max_error * 0.00005));
     }
 
-    TEST_CASE("Test_Round_To_Litz_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Round_To_Litz_Equivalent", "[constructive-model][wire][smoke-test]") {
         double effectiveFrequency = 1234981;
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Round 0.5 - Grade 1"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::LITZ, effectiveFrequency);
@@ -671,7 +670,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.00006, max_error * 0.00006));
     }
 
-    TEST_CASE("Test_Rectangular_To_Litz_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Rectangular_To_Litz_Equivalent", "[constructive-model][wire][smoke-test]") {
         double effectiveFrequency = 1234981;
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::LITZ, effectiveFrequency);
@@ -683,7 +682,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.00006, max_error * 0.00006));
     }
 
-    TEST_CASE("Test_Foil_To_Litz_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Foil_To_Litz_Equivalent", "[constructive-model][wire][smoke-test]") {
         double effectiveFrequency = 1234981;
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Foil 0.2"));
         oldWire.set_nominal_value_conducting_height(0.01);
@@ -697,7 +696,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.00006, max_error * 0.00006));
     }
 
-    TEST_CASE("Test_Litz_To_Round_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Litz_To_Round_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::ROUND);
 
@@ -708,7 +707,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0016, max_error * 0.0016));
     }
 
-    TEST_CASE("Test_Round_To_Round_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Round_To_Round_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Round 0.5 - Grade 1"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::ROUND);
 
@@ -719,7 +718,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0005, max_error * 0.0005));
     }
 
-    TEST_CASE("Test_Rectangular_To_Round_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Rectangular_To_Round_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::ROUND);
 
@@ -730,7 +729,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0009, max_error * 0.0009));
     }
 
-    TEST_CASE("Test_Foil_To_Round_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Foil_To_Round_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Foil 0.2"));
         oldWire.set_nominal_value_conducting_height(0.001);
 
@@ -743,7 +742,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0002, max_error * 0.0002));
     }
 
-    TEST_CASE("Test_Litz_To_Rectangular_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Litz_To_Rectangular_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::RECTANGULAR);
 
@@ -754,7 +753,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0016, max_error * 0.0016));
     }
 
-    TEST_CASE("Test_Round_To_Rectangular_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Round_To_Rectangular_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Round 0.80 - Grade 1"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::RECTANGULAR);
 
@@ -765,7 +764,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0008, max_error * 0.0008));
     }
 
-    TEST_CASE("Test_Rectangular_To_Rectangular_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Rectangular_To_Rectangular_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::RECTANGULAR);
 
@@ -776,7 +775,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.00085, max_error * 0.00085));
     }
 
-    TEST_CASE("Test_Foil_To_Rectangular_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Foil_To_Rectangular_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Foil 0.2"));
         oldWire.set_nominal_value_conducting_height(0.001);
 
@@ -789,7 +788,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0008, max_error * 0.0008));
     }
 
-    TEST_CASE("Test_Litz_To_Foil_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Litz_To_Foil_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::FOIL);
 
@@ -800,7 +799,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0016, max_error * 0.0016));
     }
 
-    TEST_CASE("Test_Round_To_Foil_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Round_To_Foil_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Round 0.80 - Grade 1"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::FOIL);
 
@@ -811,7 +810,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0008, max_error * 0.0008));
     }
 
-    TEST_CASE("Test_Rectangular_To_Foil_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Rectangular_To_Foil_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::FOIL);
 
@@ -822,7 +821,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0008, max_error * 0.0008));
     }
 
-    TEST_CASE("Test_Foil_To_Foil_Equivalent", "[constructive-model][wire]") {
+    TEST_CASE("Test_Foil_To_Foil_Equivalent", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Foil 0.2"));
         oldWire.set_nominal_value_conducting_height(0.001);
 
@@ -835,7 +834,7 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.0002, max_error * 0.0002));
     }
 
-    TEST_CASE("Test_Equivalent_Web_0", "[constructive-model][wire]") {
+    TEST_CASE("Test_Equivalent_Web_0", "[constructive-model][wire][smoke-test]") {
         auto oldWire = OpenMagnetics::Wire(json::parse(R"({"coating":{"breakdownVoltage":13500,"grade":null,"material":"FEP","numberLayers":3,"temperatureRating":155,"thickness":null,"thicknessLayers":0.0000762,"type":"insulated"},"conductingArea":null,"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001024},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Nearson","orderCode":null,"reference":null,"status":null},"material":"copper","name":null,"numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001095},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"18 AWG","strand":null,"type":"round"})"));
         WireType newWireType;
         from_json("litz", newWireType);

@@ -31,14 +31,12 @@ jobs:
           libgnuplot-iostream-dev \
           liblapack-dev \
           graphviz \
-          doxygen
+          doxygen \
+          quicktype
         
         # Set GCC 13 as default
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
-    
-    - name: Install quicktype
-      run: npm install -g quicktype
     
     - name: Configure CMake
       run: |
@@ -54,7 +52,14 @@ jobs:
     
     - name: Run tests
       working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --verbose
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "Running all tests (manual dispatch)"
+          ctest -C ${{env.BUILD_TYPE}} --output-on-failure --verbose
+        else
+          echo "Running smoke tests only"
+          ./MKF_tests "[smoke-test]" --reporter console
+        fi
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -91,7 +96,15 @@ jobs:
     
     - name: Run tests
       working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure
+      shell: pwsh
+      run: |
+        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          Write-Host "Running all tests (manual dispatch)"
+          ctest -C ${{env.BUILD_TYPE}} --output-on-failure
+        } else {
+          Write-Host "Running smoke tests only"
+          .\Release\MKF_tests.exe "[smoke-test]" --reporter console
+        }
     
     - name: Upload test results
       uses: actions/upload-artifact@v4

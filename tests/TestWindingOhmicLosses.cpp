@@ -47,7 +47,7 @@ namespace {
         return winding;
     }
 
-    TEST_CASE("Test_Round_Wire_20C", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Round_Wire_20C", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -63,7 +63,7 @@ namespace {
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST_CASE("Test_Round_Wire_200C", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Round_Wire_200C", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 200;
         Turn turn;
         turn.set_length(1);
@@ -79,7 +79,7 @@ namespace {
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST_CASE("Test_Litz_Wire_Small", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Litz_Wire_Small", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -101,7 +101,7 @@ namespace {
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST_CASE("Test_Litz_Wire_Large", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Litz_Wire_Large", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -123,7 +123,7 @@ namespace {
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST_CASE("Test_Foil_Wire_20C", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Foil_Wire_20C", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -140,7 +140,7 @@ namespace {
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST_CASE("Test_Rectangular_Wire_20C", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Rectangular_Wire_20C", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         Turn turn;
         turn.set_length(1);
@@ -157,7 +157,7 @@ namespace {
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
 
-    TEST_CASE("Test_Winding_Ohmic_Losses_One_Turn", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Winding_Ohmic_Losses_One_Turn", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
@@ -171,7 +171,7 @@ namespace {
         REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Turns", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Turns", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {1};
@@ -185,7 +185,7 @@ namespace {
         REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Turns_Two_Parallels", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Turns_Two_Parallels", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {2};
@@ -199,7 +199,7 @@ namespace {
         REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST_CASE("Test_Winding_Ohmic_Losses_One_Turn_Double_Current", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Winding_Ohmic_Losses_One_Turn_Double_Current", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
@@ -213,7 +213,7 @@ namespace {
         REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {1, 2};
         std::vector<int64_t> numberParallels = {1, 2};
@@ -227,7 +227,7 @@ namespace {
         REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings_Double_Turns", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings_Double_Turns", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {2, 4};
         std::vector<int64_t> numberParallels = {1, 2};
@@ -241,7 +241,7 @@ namespace {
         REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
-    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings_High_Temp", "[physical-model][ohmic-losses]") {
+    TEST_CASE("Test_Winding_Ohmic_Losses_Two_Windings_High_Temp", "[physical-model][ohmic-losses][smoke-test]") {
         double temperature = 120;
         std::vector<int64_t> numberTurns = {1, 2};
         std::vector<int64_t> numberParallels = {1, 2};

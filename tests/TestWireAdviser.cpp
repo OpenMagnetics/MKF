@@ -46,7 +46,7 @@ namespace {
         current.set_processed(processed);
     }
 
-    TEST_CASE("Test_Round", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_Round", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 2;
@@ -66,7 +66,7 @@ namespace {
         REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_Round_IEC_60317", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_Round_IEC_60317", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 2;
@@ -87,7 +87,7 @@ namespace {
         REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_Round_NEMA_MW_1000_C", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_Round_NEMA_MW_1000_C", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 2;
@@ -108,7 +108,7 @@ namespace {
         REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_Litz", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_Litz", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 2;
@@ -127,7 +127,7 @@ namespace {
         REQUIRE(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_Rectangular", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_Rectangular", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 2;
@@ -146,7 +146,7 @@ namespace {
         REQUIRE(WireType::RECTANGULAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_Foil", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_Foil", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 2;
@@ -165,7 +165,7 @@ namespace {
         REQUIRE(WireType::FOIL == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_Planar_2", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_Planar_2", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 20;
@@ -187,7 +187,7 @@ namespace {
         REQUIRE(WireType::PLANAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_WireAdviser_Low_Frequency_Few_Turns", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_WireAdviser_Low_Frequency_Few_Turns", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 2;
@@ -202,7 +202,7 @@ namespace {
         REQUIRE(WireType::RECTANGULAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_WireAdviser_Low_Frequency_Many_Turns", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_WireAdviser_Low_Frequency_Many_Turns", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 42;
@@ -222,7 +222,7 @@ namespace {
         REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_WireAdviser_Low_Frequency_Gazillion_Turns", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_WireAdviser_Low_Frequency_Gazillion_Turns", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 666;
@@ -242,7 +242,7 @@ namespace {
         REQUIRE(WireType::ROUND == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_WireAdviser_Medium_Frequency_Few_Turns", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_WireAdviser_Medium_Frequency_Few_Turns", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 2;
@@ -263,7 +263,7 @@ namespace {
         REQUIRE(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_number_conductors().value() < 500);
     }
 
-    TEST_CASE("Test_WireAdviser_Medium_High_Frequency_Many_Turns", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_WireAdviser_Medium_High_Frequency_Many_Turns", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 42;
@@ -284,7 +284,7 @@ namespace {
         REQUIRE(OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_number_conductors().value() < 100);
     }
 
-    TEST_CASE("Test_WireAdviser_High_Frequency_Few_Turns_High_Current", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_WireAdviser_High_Frequency_Few_Turns_High_Current", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 5;
@@ -304,7 +304,7 @@ namespace {
         REQUIRE(WireType::LITZ == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
-    TEST_CASE("Test_WireAdviser_High_Frequency_High_Current", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_WireAdviser_High_Frequency_High_Current", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         numberTurns = 10;
@@ -326,7 +326,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_WireAdviser_Web_0", "[constructive-model][wire-adviser]") {
+    TEST_CASE("Test_WireAdviser_Web_0", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();
         settings.set_painter_simple_litz(false);

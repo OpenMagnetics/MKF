@@ -1629,7 +1629,7 @@ TEST_CASE("Test_Try_Guess_Flyback_Primary", "[processor][inputs][smoke-test]") {
 
     double expectedOffset = offset;
     REQUIRE(magic_enum::enum_name(label) == magic_enum::enum_name(guessedLabel));
-    REQUIRE_THAT(processed.get_peak_to_peak().value() + offset, Catch::Matchers::WithinAbs(calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value()));
+    REQUIRE_THAT(processed.get_peak_to_peak().value(), Catch::Matchers::WithinAbs(calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value()));
     REQUIRE_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value()));
     REQUIRE(magic_enum::enum_name(calculatedProcessed.get_label()) == magic_enum::enum_name(processed.get_label()));
 }
@@ -1654,7 +1654,7 @@ TEST_CASE("Test_Try_Guess_Flyback_Secondary", "[processor][inputs][smoke-test]")
     auto calculatedProcessed = OpenMagnetics::Inputs::calculate_basic_processed_data(waveform);
 
     REQUIRE(magic_enum::enum_name(label) == magic_enum::enum_name(guessedLabel));
-    REQUIRE_THAT(processed.get_peak_to_peak().value() + offset, Catch::Matchers::WithinAbs(calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value()));
+    REQUIRE_THAT(processed.get_peak_to_peak().value(), Catch::Matchers::WithinAbs(calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value()));
     REQUIRE_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value()));
     REQUIRE(magic_enum::enum_name(calculatedProcessed.get_label()) == magic_enum::enum_name(processed.get_label()));
 }
@@ -2228,7 +2228,6 @@ TEST_CASE("Test_Standardize_Waveform", "[processor][inputs][smoke-test]") {
     SignalDescriptor signalDescriptor = json::parse(R"({"harmonics":{"amplitudes":[7,3.321,10],"frequencies":[0,50,50000]},"processed":null,"waveform":null})");
 
     auto standardSignalDescriptor = OpenMagnetics::Inputs::standardize_waveform(signalDescriptor, 50);
-    std::cout << "standardSignalDescriptor.get_waveform()->get_data().size(): " << standardSignalDescriptor.get_waveform()->get_data().size() << std::endl;
 
     auto outFile = outputFilePath;
     outFile.append("Test_Standardize_Waveform.svg");

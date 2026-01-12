@@ -1228,10 +1228,6 @@ Processed Inputs::calculate_processed_data(SignalDescriptor excitation,
 }
 
 double calculate_offset(Waveform waveform, WaveformLabel label) {
-    json mierda;
-    to_json(mierda, label);
-    std::cout << "mierda: " << mierda << std::endl;
-
     switch (label) {
         case WaveformLabel::TRIANGULAR:
             return (waveform.get_data()[0] + waveform.get_data()[1]) / 2;
@@ -1253,22 +1249,11 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
             if (waveform.get_data().size() == 4) {
                 return waveform.get_data()[0];
             }
-            else if (waveform.get_data().size() == 5) {
+            else {
                 return waveform.get_data()[1];
             }
-            else {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Flyback signal must have either 4 or 5 points");
-            }
         case WaveformLabel::FLYBACK_SECONDARY:
-            if (waveform.get_data().size() == 4) {
-                return waveform.get_data()[3];
-            }
-            else if (waveform.get_data().size() == 5) {
-                return waveform.get_data()[3];
-            }
-            else {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Flyback signal must have either 4 or 5 points");
-            }
+            return waveform.get_data()[3];
     }
     return 0;
 }

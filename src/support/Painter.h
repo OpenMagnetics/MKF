@@ -361,6 +361,10 @@ class AdvancedPainter : public PainterInterface {
             _filepath = filepath;
             matplot::gcf()->quiet_mode(true);
             matplot::cla();
+            // Reset axis scales to linear (in case previous operations used loglog)
+            auto ax = matplot::gca();
+            ax->x_axis().scale(matplot::axis_type::axis_scale::linear);
+            ax->y_axis().scale(matplot::axis_type::axis_scale::linear);
             if (!showTicks) {
                 matplot::xticks({});
                 matplot::yticks({});

@@ -645,18 +645,14 @@ bool check_turns_description(OpenMagnetics::Coil coil) {
 bool check_wire_standards(OpenMagnetics::Coil coil) {
     auto wires = coil.get_wires();
     std::optional<WireStandard> firstWireStandard = std::nullopt;
-    std::cout << wires.size() << std::endl;
     for (auto wire : wires) {
         if (wire.get_standard()) {
             if (!firstWireStandard) {
                 firstWireStandard = wire.get_standard().value();
-                std::cout << magic_enum::enum_name(firstWireStandard.value()) << std::endl;
             }
             else {
                 REQUIRE(firstWireStandard.value() == wire.get_standard().value());
-                std::cout << magic_enum::enum_name(wire.get_standard().value()) << std::endl;
                 if (firstWireStandard.value() != wire.get_standard().value()) {
-                    throw std::runtime_error("DEBUG");
                     return false;
                 }
             }

@@ -17,7 +17,7 @@ using namespace OpenMagnetics;
 namespace {
     double maximumError = 0.01;
 
-    TEST_CASE("Test_Skin_Depth_Wire_Material_Data_20C", "[physical-model][skin-losses]") {
+    TEST_CASE("Test_Skin_Depth_Wire_Material_Data_20C", "[physical-model][skin-losses][smoke-test]") {
         auto materialData = find_wire_material_by_name("copper");
         double frequency = 123000;
         double temperature = 20;
@@ -28,7 +28,7 @@ namespace {
         REQUIRE_THAT(skinDepth, Catch::Matchers::WithinAbs(expectedSkinDepth, expectedSkinDepth * maximumError));
     }
 
-    TEST_CASE("Test_Skin_Depth_Wire_Name_20C", "[physical-model][skin-losses]") {
+    TEST_CASE("Test_Skin_Depth_Wire_Name_20C", "[physical-model][skin-losses][smoke-test]") {
         double frequency = 123000;
         double temperature = 20;
 
@@ -38,7 +38,7 @@ namespace {
         REQUIRE_THAT(skinDepth, Catch::Matchers::WithinAbs(expectedSkinDepth, expectedSkinDepth * maximumError));
     }
 
-    TEST_CASE("Test_Skin_Depth_Wire_Material_Data_200C", "[physical-model][skin-losses]") {
+    TEST_CASE("Test_Skin_Depth_Wire_Material_Data_200C", "[physical-model][skin-losses][smoke-test]") {
         auto materialData = find_wire_material_by_name("copper");
         double frequency = 123000;
         double temperature = 120;
