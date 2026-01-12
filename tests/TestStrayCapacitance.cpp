@@ -5,12 +5,14 @@
 #include "support/Utils.h"
 #include "support/Settings.h"
 #include "support/Painter.h"
+#include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 
 using namespace MAS;
 using namespace OpenMagnetics;
+using namespace OpenMagneticsTesting;
 using Catch::Matchers::WithinRel;
 using Catch::Matchers::WithinAbs;
 
@@ -20,16 +22,10 @@ static bool plot = true;
 
 TEST_CASE("Calculate capacitance among two windings each with 1 turn and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
-    json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })");
-    json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+    auto coilJsonStr = R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })";
+    auto coreJsonStr = R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
 
-    auto core = OpenMagnetics::Core(coreJson);
-    auto coil = OpenMagnetics::Coil(coilJson);
-
-    core.process_data();
-    core.process_gap();
-    coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
-    coil.wind();
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
 
     StrayCapacitance strayCapacitance;
 
@@ -52,16 +48,10 @@ TEST_CASE("Calculate capacitance among two windings each with 1 turn and 1 paral
 
 TEST_CASE("Calculate capacitance of a winding with 8 turns and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
-    json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })");
-    json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+    auto coilJsonStr = R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })";
+    auto coreJsonStr = R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
 
-    auto core = OpenMagnetics::Core(coreJson);
-    auto coil = OpenMagnetics::Coil(coilJson);
-
-    core.process_data();
-    core.process_gap();
-    coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
-    coil.wind();
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
 
     StrayCapacitance strayCapacitance;
 
@@ -79,10 +69,7 @@ TEST_CASE("Calculate capacitance of a winding with 8 turns and 1 parallel", "[ph
         }
     }
 
-    OpenMagnetics::Magnetic magnetic;
-    magnetic.set_core(core);
-    magnetic.set_coil(coil);
-
+    auto magnetic = prepare_magnetic_from_json(coreJsonStr, coilJsonStr);
 
     if (plot) {
         auto outFile = outputFilePath;
@@ -98,16 +85,10 @@ TEST_CASE("Calculate capacitance of a winding with 8 turns and 1 parallel", "[ph
 
 TEST_CASE("Calculate capacitance among two windings each with 8 turns and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
-    json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })");
-    json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+    auto coilJsonStr = R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })";
+    auto coreJsonStr = R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
 
-    auto core = OpenMagnetics::Core(coreJson);
-    auto coil = OpenMagnetics::Coil(coilJson);
-
-    core.process_data();
-    core.process_gap();
-    coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
-    coil.wind();
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
 
     StrayCapacitance strayCapacitance;
 
@@ -128,10 +109,7 @@ TEST_CASE("Calculate capacitance among two windings each with 8 turns and 1 para
         }
     }
 
-    OpenMagnetics::Magnetic magnetic;
-    magnetic.set_core(core);
-    magnetic.set_coil(coil);
-
+    auto magnetic = prepare_magnetic_from_json(coreJsonStr, coilJsonStr);
 
     auto outFile = outputFilePath;
     outFile.append("Test_Get_Capacitance_Among_Windings_2_Windings_8_Turns_1_Parallels.svg");
@@ -145,16 +123,10 @@ TEST_CASE("Calculate capacitance among two windings each with 8 turns and 1 para
 }
 TEST_CASE("Calculate capacitance among two windings one with 16 and another with 8 turns and both 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
-    json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 16, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })");
-    json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+    auto coilJsonStr = R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 16, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })";
+    auto coreJsonStr = R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
 
-    auto core = OpenMagnetics::Core(coreJson);
-    auto coil = OpenMagnetics::Coil(coilJson);
-
-    core.process_data();
-    core.process_gap();
-    coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
-    coil.wind();
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
 
     StrayCapacitance strayCapacitance;
 
@@ -178,16 +150,10 @@ TEST_CASE("Calculate capacitance among two windings one with 16 and another with
 
 TEST_CASE("Calculate capacitance among three windings each with 8 turns and 1 parallel", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
-    json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" }, {"name": "Tertiary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "tertiary", "wire": "Round 1.00 - Grade 1" } ] })");
-    json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+    auto coilJsonStr = R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" }, {"name": "Tertiary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "tertiary", "wire": "Round 1.00 - Grade 1" } ] })";
+    auto coreJsonStr = R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
 
-    auto core = OpenMagnetics::Core(coreJson);
-    auto coil = OpenMagnetics::Coil(coilJson);
-
-    core.process_data();
-    core.process_gap();
-    coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
-    coil.wind();
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
 
     StrayCapacitance strayCapacitance;
 
@@ -405,23 +371,11 @@ TEST_CASE("Calculate capacitance of an automatic buck produced in OM with two la
 
 TEST_CASE("Calculate area between two round turns", "[physical-model][stray-capacitance][smoke-test]") {
     {
-        std::vector<int64_t> numberTurns = {1, 1};
-        std::vector<int64_t> numberParallels = {1, 1};
-        std::string coreShapeName = "E 35";
-        std::vector<OpenMagnetics::Wire> wires;
-        auto wire = find_wire_by_name("Round 2.00 - Grade 1");
-        wires.push_back(wire);
-        wires.push_back(wire);
-        
-        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterialName = "A07";
-        std::vector<CoreGap> gapping = {};
-        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        QuickMagneticConfig config;
+        config.numberTurns = {1, 1};
+        config.numberParallels = {1, 1};
+        auto magnetic = create_quick_test_magnetic(config);
+        auto coil = magnetic.get_coil();
 
         StrayCapacitance strayCapacitance;
         auto firstTurn = coil.get_turns_description().value()[0];
@@ -434,23 +388,12 @@ TEST_CASE("Calculate area between two round turns", "[physical-model][stray-capa
 
 TEST_CASE("Calculate area between two rectangular turns", "[physical-model][stray-capacitance][smoke-test]") {
     {
-        std::vector<int64_t> numberTurns = {1, 1};
-        std::vector<int64_t> numberParallels = {1, 1};
-        std::string coreShapeName = "E 35";
-        std::vector<OpenMagnetics::Wire> wires;
-        auto wire = find_wire_by_name("Rectangular 2x0.80 - Grade 1");
-        wires.push_back(wire);
-        wires.push_back(wire);
-        
-        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterialName = "A07";
-        std::vector<CoreGap> gapping = {};
-        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        QuickMagneticConfig config;
+        config.numberTurns = {1, 1};
+        config.numberParallels = {1, 1};
+        config.wireNames = {"Rectangular 2x0.80 - Grade 1", "Rectangular 2x0.80 - Grade 1"};
+        auto magnetic = create_quick_test_magnetic(config);
+        auto coil = magnetic.get_coil();
 
         StrayCapacitance strayCapacitance;
         auto layerThickness = coil.get_layers_description().value()[1].get_dimensions()[0];
@@ -464,24 +407,12 @@ TEST_CASE("Calculate area between two rectangular turns", "[physical-model][stra
 
 TEST_CASE("Calculate area between round and rectangular turns", "[physical-model][stray-capacitance][smoke-test]") {
     {
-        std::vector<int64_t> numberTurns = {1, 1};
-        std::vector<int64_t> numberParallels = {1, 1};
-        std::string coreShapeName = "E 35";
-        std::vector<OpenMagnetics::Wire> wires;
-        auto firstWire = find_wire_by_name("Round 2.00 - Grade 1");
-        wires.push_back(firstWire);
-        auto secondWire = find_wire_by_name("Rectangular 2x0.80 - Grade 1");
-        wires.push_back(secondWire);
-        
-        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterialName = "A07";
-        std::vector<CoreGap> gapping = {};
-        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        QuickMagneticConfig config;
+        config.numberTurns = {1, 1};
+        config.numberParallels = {1, 1};
+        config.wireNames = {"Round 2.00 - Grade 1", "Rectangular 2x0.80 - Grade 1"};
+        auto magnetic = create_quick_test_magnetic(config);
+        auto coil = magnetic.get_coil();
 
         StrayCapacitance strayCapacitance;
         auto firstTurn = coil.get_turns_description().value()[0];
@@ -503,24 +434,12 @@ TEST_CASE("Calculate area between round and rectangular turns", "[physical-model
 
 TEST_CASE("Calculate area between round and rectangular turns diagonally", "[physical-model][stray-capacitance][smoke-test]") {
     {
-        std::vector<int64_t> numberTurns = {2, 1};
-        std::vector<int64_t> numberParallels = {1, 1};
-        std::string coreShapeName = "E 35";
-        std::vector<OpenMagnetics::Wire> wires;
-        auto firstWire = find_wire_by_name("Round 2.00 - Grade 1");
-        wires.push_back(firstWire);
-        auto secondWire = find_wire_by_name("Rectangular 2x0.80 - Grade 1");
-        wires.push_back(secondWire);
-        
-        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterialName = "A07";
-        std::vector<CoreGap> gapping = {};
-        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        QuickMagneticConfig config;
+        config.numberTurns = {2, 1};
+        config.numberParallels = {1, 1};
+        config.wireNames = {"Round 2.00 - Grade 1", "Rectangular 2x0.80 - Grade 1"};
+        auto magnetic = create_quick_test_magnetic(config);
+        auto coil = magnetic.get_coil();
 
         StrayCapacitance strayCapacitance;
         auto firstTurn = coil.get_turns_description().value()[0];
@@ -543,23 +462,12 @@ TEST_CASE("Calculate area between round and rectangular turns diagonally", "[phy
 
 TEST_CASE("Calculate energy density between two turns", "[physical-model][stray-capacitance][smoke-test]") {
     {
-        std::vector<int64_t> numberTurns = {1, 1};
-        std::vector<int64_t> numberParallels = {1, 1};
-        std::string coreShapeName = "E 35";
-        std::vector<OpenMagnetics::Wire> wires;
+        QuickMagneticConfig config;
+        config.numberTurns = {1, 1};
+        config.numberParallels = {1, 1};
+        auto magnetic = create_quick_test_magnetic(config);
+        auto coil = magnetic.get_coil();
         auto wire = find_wire_by_name("Round 2.00 - Grade 1");
-        wires.push_back(wire);
-        wires.push_back(wire);
-        
-        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterialName = "A07";
-        std::vector<CoreGap> gapping = {};
-        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
 
         StrayCapacitance strayCapacitance;
         auto firstTurn = coil.get_turns_description().value()[0];

@@ -23,6 +23,7 @@ using json = nlohmann::json;
 
 using namespace MAS;
 using namespace OpenMagnetics;
+using namespace OpenMagneticsTesting;
 
 namespace {
 
@@ -39,29 +40,11 @@ TEST_CASE("Test_Coil_Json_0", "[constructive-model][coil][bug][smoke-test]") {
 TEST_CASE("Test_Coil_Json_1", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"_interleavingLevel":3,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":1,"numberTurns":9,"wire":"Round 0.475 - Grade 1"}]})";
 
-    auto coilJson = json::parse(coilString);
-    auto coilFunctionalDescription = std::vector<OpenMagnetics::Winding>(coilJson["functionalDescription"]);
-    OpenMagnetics::Coil coil;
-    if (coilJson.contains("_interleavingLevel")) {
-        coil.set_interleaving_level(coilJson["_interleavingLevel"]);
-    }
-    if (coilJson.contains("_windingOrientation")) {
-        coil.set_winding_orientation(coilJson["_windingOrientation"]);
-    }
-    if (coilJson.contains("_layersOrientation")) {
-        coil.set_layers_orientation(coilJson["_layersOrientation"]);
-    }
-    if (coilJson.contains("_turnsAlignment")) {
-        coil.set_turns_alignment(coilJson["_turnsAlignment"]);
-    }
-    if (coilJson.contains("_sectionAlignment")) {
-        coil.set_section_alignment(coilJson["_sectionAlignment"]);
-    }
-    coil.set_bobbin(coilJson["bobbin"]);
-    coil.set_functional_description(coilFunctionalDescription);
+    auto coil = prepare_coil_from_json(coilString);
+    json coilJson;
+    to_json(coilJson, coil);
 
     REQUIRE(coil.get_functional_description().size() > 0);
-    to_json(coilJson, coil);
     REQUIRE(coilJson["functionalDescription"].size() > 0);
 
     coil.wind();
@@ -75,27 +58,7 @@ TEST_CASE("Test_Coil_Json_2", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"overlapping","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":27,"numberTurns":36,"wire":"Round 0.475 - Grade 1"}]})";
     settings.set_coil_wind_even_if_not_fit(false);
 
-    auto coilJson = json::parse(coilString);
-    auto coilFunctionalDescription = std::vector<OpenMagnetics::Winding>(coilJson["functionalDescription"]);
-    OpenMagnetics::Coil coil;
-    if (coilJson.contains("_interleavingLevel")) {
-        coil.set_interleaving_level(coilJson["_interleavingLevel"]);
-    }
-    if (coilJson.contains("_windingOrientation")) {
-        coil.set_winding_orientation(coilJson["_windingOrientation"]);
-    }
-    if (coilJson.contains("_layersOrientation")) {
-        coil.set_layers_orientation(coilJson["_layersOrientation"]);
-    }
-    if (coilJson.contains("_turnsAlignment")) {
-        coil.set_turns_alignment(coilJson["_turnsAlignment"]);
-    }
-    if (coilJson.contains("_sectionAlignment")) {
-        coil.set_section_alignment(coilJson["_sectionAlignment"]);
-    }
-
-    coil.set_bobbin(coilJson["bobbin"]);
-    coil.set_functional_description(coilFunctionalDescription);
+    auto coil = prepare_coil_from_json(coilString);
     coil.wind();
 
     auto section = coil.get_sections_description().value()[0];
@@ -120,27 +83,7 @@ TEST_CASE("Test_Coil_Json_3", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":88,"numberTurns":1,"wire":"Round 0.475 - Grade 1"}]})";
     settings.set_coil_delimit_and_compact(false);
 
-    auto coilJson = json::parse(coilString);
-    auto coilFunctionalDescription = std::vector<OpenMagnetics::Winding>(coilJson["functionalDescription"]);
-    OpenMagnetics::Coil coil;
-    if (coilJson.contains("_interleavingLevel")) {
-        coil.set_interleaving_level(coilJson["_interleavingLevel"]);
-    }
-    if (coilJson.contains("_windingOrientation")) {
-        coil.set_winding_orientation(coilJson["_windingOrientation"]);
-    }
-    if (coilJson.contains("_layersOrientation")) {
-        coil.set_layers_orientation(coilJson["_layersOrientation"]);
-    }
-    if (coilJson.contains("_turnsAlignment")) {
-        coil.set_turns_alignment(coilJson["_turnsAlignment"]);
-    }
-    if (coilJson.contains("_sectionAlignment")) {
-        coil.set_section_alignment(coilJson["_sectionAlignment"]);
-    }
-
-    coil.set_bobbin(coilJson["bobbin"]);
-    coil.set_functional_description(coilFunctionalDescription);
+    auto coil = prepare_coil_from_json(coilString);
     coil.wind();
 
     auto section = coil.get_sections_description().value()[0];
@@ -149,7 +92,7 @@ TEST_CASE("Test_Coil_Json_3", "[constructive-model][coil][bug][smoke-test]") {
     std::vector<int64_t> numberTurns = {1};
     std::vector<int64_t> numberParallels = {88};
     uint8_t interleavingLevel = 7;
-    OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, WindingOrientation::CONTIGUOUS);
+    check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, WindingOrientation::CONTIGUOUS);
     if (plot) {
         auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
@@ -303,259 +246,33 @@ TEST_CASE("Test_Coil_Json_5", "[constructive-model][coil][bug][smoke-test]") {
 }
 
 TEST_CASE("Test_Coil_Json_6", "[constructive-model][coil][bug][smoke-test]") {
-    json coilJson = json::parse(R"({"_sectionsAlignment":"spread","_turnsAlignment":"centered","bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.0075,"columnShape":"rectangular","columnThickness":0.0,"columnWidth":0.0026249999999999997,"coordinates":[0.0,0.0,0.0],"pins":null,"wallThickness":0.0,"windingWindows":[{"angle":360.0,"area":0.00017203361371057708,"coordinates":[0.0074,0.0,0.0],"height":null,"radialHeight":0.0074,"sectionsAlignment":"spread","sectionsOrientation":"contiguous","shape":"round","width":null}]}},"functionalDescription":[{"isolationSide":"primary","name":"primary","numberParallels":1,"numberTurns":15,"wire":{"coating":{"breakdownVoltage":2700.0,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":null,"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.00125},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Round 1.25 - Grade 1","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001316},"outerHeight":null,"outerWidth":null,"standard":"IEC 60317","standardName":"1.25 mm","strand":null,"type":"round"}},{"isolationSide":"secondary","name":"secondary","numberParallels":1,"numberTurns":15,"wire":{"coating":{"breakdownVoltage":2700.0,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":null,"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.00125},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Round 1.25 - Grade 1","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001316},"outerHeight":null,"outerWidth":null,"standard":"IEC 60317","standardName":"1.25 mm","strand":null,"type":"round"}}]})");
-    size_t repetitions = 1;
-    json proportionPerWindingJson = json::parse(R"([])");
-    json patternJson = json::parse(R"([0,1])");
-    json marginPairsJson = json::parse(R"([])");
+    std::string coilString = R"({"_sectionsAlignment":"spread","_turnsAlignment":"centered","bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.0075,"columnShape":"rectangular","columnThickness":0.0,"columnWidth":0.0026249999999999997,"coordinates":[0.0,0.0,0.0],"pins":null,"wallThickness":0.0,"windingWindows":[{"angle":360.0,"area":0.00017203361371057708,"coordinates":[0.0074,0.0,0.0],"height":null,"radialHeight":0.0074,"sectionsAlignment":"spread","sectionsOrientation":"contiguous","shape":"round","width":null}]}},"functionalDescription":[{"isolationSide":"primary","name":"primary","numberParallels":1,"numberTurns":15,"wire":{"coating":{"breakdownVoltage":2700.0,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":null,"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.00125},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Round 1.25 - Grade 1","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001316},"outerHeight":null,"outerWidth":null,"standard":"IEC 60317","standardName":"1.25 mm","strand":null,"type":"round"}},{"isolationSide":"secondary","name":"secondary","numberParallels":1,"numberTurns":15,"wire":{"coating":{"breakdownVoltage":2700.0,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":null,"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.00125},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Round 1.25 - Grade 1","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001316},"outerHeight":null,"outerWidth":null,"standard":"IEC 60317","standardName":"1.25 mm","strand":null,"type":"round"}}]})";
 
-    std::vector<std::vector<double>> marginPairs;
+    CoilWindingConfig config;
+    config.coilJsonStr = coilString;
+    config.pattern = {0, 1};
+    config.repetitions = 1;
 
-    for (auto elem : marginPairsJson) {
-        std::vector<double> vectorElem;
-        for (auto value : elem) {
-            vectorElem.push_back(value);
-        }
-        marginPairs.push_back(vectorElem);
-    }
+    auto coil = prepare_and_wind_coil(config);
 
-    std::vector<double> proportionPerWinding = proportionPerWindingJson;
-    std::vector<size_t> pattern = patternJson;
-    std::vector<OpenMagnetics::Winding> coilFunctionalDescription;
-    for (auto elem : coilJson["functionalDescription"]) {
-        coilFunctionalDescription.push_back(OpenMagnetics::Winding(elem));
-    }
-    OpenMagnetics::Coil coil;
-    coil.set_bobbin(coilJson["bobbin"]);
-    coil.set_functional_description(coilFunctionalDescription);
-    coil.preload_margins(marginPairs);
-    if (coilJson.contains("_layersOrientation")) {
-
-        if (coilJson["_layersOrientation"].is_object()) {
-            std::map<std::string, WindingOrientation> layersOrientationPerSection;
-            for (auto [key, value] : coilJson["_layersOrientation"].items()) {
-                layersOrientationPerSection[key] = value;
-            }
-
-            for (auto [sectionName, layerOrientation] : layersOrientationPerSection) {
-                coil.set_layers_orientation(layerOrientation, sectionName);
-            }
-        }
-        else if (coilJson["_layersOrientation"].is_array()) {
-            coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
-            if (coil.get_sections_description()) {
-                auto sections = coil.get_sections_description_conduction();
-
-                std::vector<WindingOrientation> layersOrientationPerSection;
-                for (auto elem : coilJson["_layersOrientation"]) {
-                    layersOrientationPerSection.push_back(WindingOrientation(elem));
-                }
-
-                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
-                    if (sectionIndex < layersOrientationPerSection.size()) {
-                        coil.set_layers_orientation(layersOrientationPerSection[sectionIndex], sections[sectionIndex].get_name());
-                    }
-                }
-            }
-        }
-        else {
-            WindingOrientation layerOrientation(coilJson["_layersOrientation"]);
-            coil.set_layers_orientation(layerOrientation);
-
-        }
-    }
-
-    if (coilJson.contains("_turnsAlignment")) {
-        if (coilJson["_turnsAlignment"].is_object()) {
-            std::map<std::string, CoilAlignment> turnsAlignmentPerSection;
-            for (auto [key, value] : coilJson["_turnsAlignment"].items()) {
-                turnsAlignmentPerSection[key] = value;
-            }
-
-
-            for (auto [sectionName, turnsAlignment] : turnsAlignmentPerSection) {
-                coil.set_turns_alignment(turnsAlignment, sectionName);
-            }
-        }
-        else if (coilJson["_turnsAlignment"].is_array()) {
-            coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
-            if (coil.get_sections_description()) {
-                auto sections = coil.get_sections_description_conduction();
-
-                std::vector<CoilAlignment> turnsAlignmentPerSection;
-                for (auto elem : coilJson["_turnsAlignment"]) {
-                    turnsAlignmentPerSection.push_back(CoilAlignment(elem));
-                }
-
-                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
-                    if (sectionIndex < turnsAlignmentPerSection.size()) {
-                        coil.set_turns_alignment(turnsAlignmentPerSection[sectionIndex], sections[sectionIndex].get_name());
-                    }
-                }
-            }
-        }
-        else {
-            CoilAlignment turnsAlignment(coilJson["_turnsAlignment"]);
-            coil.set_turns_alignment(turnsAlignment);
-        }
-    }
-
-    if (proportionPerWinding.size() == coilFunctionalDescription.size()) {
-        if (pattern.size() > 0 && repetitions > 0) {
-            coil.wind(proportionPerWinding, pattern, repetitions);
-        }
-        else if (repetitions > 0) {
-            coil.wind(repetitions);
-        }
-        else {
-            coil.wind();
-        }
-    }
-    else {
-        if (pattern.size() > 0 && repetitions > 0) {
-            coil.wind(pattern, repetitions);
-        }
-        else if (repetitions > 0) {
-            coil.wind(repetitions);
-        }
-        else {
-            coil.wind();
-        }
-    }
-
-    if (!coil.get_turns_description()) {
-        throw std::runtime_error("Turns not created");
-    }
+    REQUIRE(coil.get_turns_description().has_value());
 
     json result;
     to_json(result, coil);
 }
 
 TEST_CASE("Test_Coil_Json_7", "[constructive-model][coil][bug][smoke-test]") {
-    // json coilJson = json::parse(R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.00356,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0022725,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.0000637587014444212,"coordinates":[0.004505,0,0],"height":null,"radialHeight":0.004505,"sectionsAlignment":"inner or top","sectionsOrientation":"overlapping","shape":"round","width":null}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":3,"numberTurns":55,"wire":{"coating":{"breakdownVoltage":1220,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":8.042477193189871e-8},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000323,"minimum":0.00031800000000000003,"nominal":0.00032},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Elektrisola","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 28.0 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000356,"minimum":0.00033800000000000003,"nominal":0.000347},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"28 AWG","strand":null,"type":"round"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread"],"_layersOrientation":["overlapping"]})");
-    json coilJson = json::parse(R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.00356,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0022725,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.0000637587014444212,"coordinates":[0.004505,0,0],"height":null,"radialHeight":0.004505,"sectionsAlignment":"inner or top","sectionsOrientation":"overlapping","shape":"round","width":null}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":3,"numberTurns":55,"wire":{"coating":{"breakdownVoltage":1220,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":8.042477193189871e-8},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000323,"minimum":0.00031800000000000003,"nominal":0.00032},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Elektrisola","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 28.0 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000356,"minimum":0.00033800000000000003,"nominal":0.000347},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"28 AWG","strand":null,"type":"round"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread"],"_layersOrientation":["overlapping"]})");
-    size_t repetitions = 1;
-    json proportionPerWindingJson = json::parse(R"([1])");
-    json patternJson = json::parse(R"([0])");
-    json marginPairsJson = json::parse(R"([])");
+    std::string coilString = R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.00356,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0022725,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.0000637587014444212,"coordinates":[0.004505,0,0],"height":null,"radialHeight":0.004505,"sectionsAlignment":"inner or top","sectionsOrientation":"overlapping","shape":"round","width":null}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":3,"numberTurns":55,"wire":{"coating":{"breakdownVoltage":1220,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":8.042477193189871e-8},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000323,"minimum":0.00031800000000000003,"nominal":0.00032},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Elektrisola","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 28.0 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000356,"minimum":0.00033800000000000003,"nominal":0.000347},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"28 AWG","strand":null,"type":"round"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread"],"_layersOrientation":["overlapping"]})";
 
-    std::vector<std::vector<double>> marginPairs;
+    CoilWindingConfig config;
+    config.coilJsonStr = coilString;
+    config.pattern = {0};
+    config.proportionPerWinding = {1.0};
+    config.repetitions = 1;
 
-    for (auto elem : marginPairsJson) {
-        std::vector<double> vectorElem;
-        for (auto value : elem) {
-            vectorElem.push_back(value);
-        }
-        marginPairs.push_back(vectorElem);
-    }
+    auto coil = prepare_and_wind_coil(config);
 
-    std::vector<double> proportionPerWinding = proportionPerWindingJson;
-    std::vector<size_t> pattern = patternJson;
-    std::vector<OpenMagnetics::Winding> coilFunctionalDescription;
-    for (auto elem : coilJson["functionalDescription"]) {
-        coilFunctionalDescription.push_back(OpenMagnetics::Winding(elem));
-    }
-    OpenMagnetics::Coil coil;
-    coil.set_bobbin(coilJson["bobbin"]);
-    coil.set_functional_description(coilFunctionalDescription);
-    coil.preload_margins(marginPairs);
-    if (coilJson.contains("_layersOrientation")) {
-
-        if (coilJson["_layersOrientation"].is_object()) {
-            std::map<std::string, WindingOrientation> layersOrientationPerSection;
-            for (auto [key, value] : coilJson["_layersOrientation"].items()) {
-                layersOrientationPerSection[key] = value;
-            }
-
-            for (auto [sectionName, layerOrientation] : layersOrientationPerSection) {
-                coil.set_layers_orientation(layerOrientation, sectionName);
-            }
-        }
-        else if (coilJson["_layersOrientation"].is_array()) {
-            coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
-            if (coil.get_sections_description()) {
-                auto sections = coil.get_sections_description_conduction();
-
-                std::vector<WindingOrientation> layersOrientationPerSection;
-                for (auto elem : coilJson["_layersOrientation"]) {
-                    layersOrientationPerSection.push_back(WindingOrientation(elem));
-                }
-
-                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
-                    if (sectionIndex < layersOrientationPerSection.size()) {
-                        coil.set_layers_orientation(layersOrientationPerSection[sectionIndex], sections[sectionIndex].get_name());
-                    }
-                }
-            }
-        }
-        else {
-            WindingOrientation layerOrientation(coilJson["_layersOrientation"]);
-            coil.set_layers_orientation(layerOrientation);
-
-        }
-    }
-
-    if (coilJson.contains("_turnsAlignment")) {
-        if (coilJson["_turnsAlignment"].is_object()) {
-            std::map<std::string, CoilAlignment> turnsAlignmentPerSection;
-            for (auto [key, value] : coilJson["_turnsAlignment"].items()) {
-                turnsAlignmentPerSection[key] = value;
-            }
-
-
-            for (auto [sectionName, turnsAlignment] : turnsAlignmentPerSection) {
-                coil.set_turns_alignment(turnsAlignment, sectionName);
-            }
-        }
-        else if (coilJson["_turnsAlignment"].is_array()) {
-            coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
-            if (coil.get_sections_description()) {
-                auto sections = coil.get_sections_description_conduction();
-
-                std::vector<CoilAlignment> turnsAlignmentPerSection;
-                for (auto elem : coilJson["_turnsAlignment"]) {
-                    turnsAlignmentPerSection.push_back(CoilAlignment(elem));
-                }
-
-                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
-                    if (sectionIndex < turnsAlignmentPerSection.size()) {
-                        coil.set_turns_alignment(turnsAlignmentPerSection[sectionIndex], sections[sectionIndex].get_name());
-                    }
-                }
-            }
-        }
-        else {
-            CoilAlignment turnsAlignment(coilJson["_turnsAlignment"]);
-            coil.set_turns_alignment(turnsAlignment);
-        }
-    }
-
-    if (proportionPerWinding.size() == coilFunctionalDescription.size()) {
-        if (pattern.size() > 0 && repetitions > 0) {
-            coil.wind(proportionPerWinding, pattern, repetitions);
-        }
-        else if (repetitions > 0) {
-            coil.wind(repetitions);
-        }
-        else {
-            coil.wind();
-        }
-    }
-    else {
-        if (pattern.size() > 0 && repetitions > 0) {
-            coil.wind(pattern, repetitions);
-        }
-        else if (repetitions > 0) {
-            coil.wind(repetitions);
-        }
-        else {
-            coil.wind();
-        }
-    }
-
-    if (!coil.get_turns_description()) {
-        throw std::runtime_error("Turns not created");
-    }
+    REQUIRE(coil.get_turns_description().has_value());
 
     json result;
     to_json(result, coil);
@@ -569,8 +286,8 @@ TEST_CASE("Test_Coil_Json_8", "[constructive-model][coil][bug][smoke-test]") {
     for (auto layer : layers) {
         if (layer.get_type() == ElectricalType::INSULATION) {
             auto material = OpenMagnetics::Coil::resolve_insulation_layer_insulation_material(coil, layer.get_name());
-            json jsonMaterial;
-            to_json(jsonMaterial, material);
+            json mierda;
+            to_json(mierda, material);
         }
 
     }

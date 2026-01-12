@@ -130,4 +130,85 @@ void check_winding_losses(OpenMagnetics::Mas mas);
 
 OpenMagnetics::Mas mas_loader(std::string path);
 
+// Helper to create Core and Coil from JSON strings, process them, and optionally create magnetic
+std::pair<OpenMagnetics::Core, OpenMagnetics::Coil> prepare_core_and_coil_from_json(
+    const std::string& coreJsonStr,
+    const std::string& coilJsonStr);
+
+OpenMagnetics::Magnetic prepare_magnetic_from_json(
+    const std::string& coreJsonStr,
+    const std::string& coilJsonStr);
+
+// Struct to hold common painter test configuration
+struct PainterTestConfig {
+    std::vector<int64_t> numberTurns = {23, 13};
+    std::vector<int64_t> numberParallels = {2, 2};
+    uint8_t interleavingLevel = 2;
+    int64_t numberStacks = 1;
+    double voltagePeakToPeak = 2000;
+    std::string coreShape = "PQ 26/25";
+    std::string coreMaterial = "3C97";
+    double gapLength = 0.001;
+    WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+    WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+    CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
+    CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+    double frequency = 125000;
+    double magnetizingInductance = 0.001;
+    double temperature = 25;
+    WaveformLabel waveformLabel = WaveformLabel::TRIANGULAR;
+    double dutyCycle = 0.5;
+    double offset = 0;
+    std::vector<std::string> wireNames = {};  // If empty, uses default wires
+    std::vector<OpenMagnetics::Wire> customWires = {};  // For wires that need modification after lookup
+    bool compactCoil = true;  // Whether to call delimit_and_compact
+};
+
+// Helper to prepare magnetic and inputs for painter tests
+std::pair<OpenMagnetics::Magnetic, OpenMagnetics::Inputs> prepare_painter_test(const PainterTestConfig& config);
+
+// Helper to create and configure a Coil from JSON string with all properties
+OpenMagnetics::Coil prepare_coil_from_json(const std::string& coilJsonStr);
+
+// Struct to hold coil winding configuration for complex test patterns
+struct CoilWindingConfig {
+    std::string coilJsonStr;
+    std::vector<size_t> pattern = {};
+    std::vector<double> proportionPerWinding = {};
+    std::vector<std::vector<double>> marginPairs = {};
+    size_t repetitions = 1;
+    bool windCoil = true;  // If true, call coil.wind() automatically
+};
+
+// Helper to create and wind a coil from JSON with complex settings
+// Handles object/array/value forms of _layersOrientation and _turnsAlignment
+OpenMagnetics::Coil prepare_and_wind_coil(const CoilWindingConfig& config);
+
+// Configuration for creating quick operating point inputs
+struct QuickInputsConfig {
+    double frequency = 100000;
+    double magnetizingInductance = 100e-6;
+    double temperature = 20;
+    WaveformLabel label = WaveformLabel::TRIANGULAR;
+    double peakToPeak = 2 * 1.73205;
+    double dutyCycle = 0.5;
+    double offset = 0;
+};
+
+// Helper to create quick inputs for testing using common defaults
+OpenMagnetics::Inputs create_quick_test_inputs(const QuickInputsConfig& config = QuickInputsConfig{});
+
+// Configuration for quick magnetic setup using create_quick_core and create_quick_coil
+struct QuickMagneticConfig {
+    std::vector<int64_t> numberTurns = {1, 1};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string coreShapeName = "E 35";
+    std::string coreMaterialName = "A07";
+    std::vector<std::string> wireNames = {};  // If empty, uses "Round 2.00 - Grade 1" for each winding
+    int64_t numberStacks = 1;
+};
+
+// Helper to create a quick Magnetic for testing
+OpenMagnetics::Magnetic create_quick_test_magnetic(const QuickMagneticConfig& config = QuickMagneticConfig{});
+
 } // namespace OpenMagneticsTesting
