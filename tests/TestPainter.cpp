@@ -187,7 +187,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Contour_One_Turn", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Contour_One_Turn", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -266,7 +266,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Quiver_One_Turn", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Quiver_One_Turn", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -437,7 +437,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Quiver_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Quiver_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -484,7 +484,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Contour_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Contour_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -532,7 +532,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Quiver_Many_Turns_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Quiver_Many_Turns_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {10};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -579,7 +579,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Contour_Many_Turns_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Contour_Many_Turns_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {10};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -626,7 +626,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Quiver_One_Turn_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Quiver_One_Turn_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -679,7 +679,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Contour_One_Turn_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Contour_One_Turn_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -732,7 +732,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Quiver_Many_Turns_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Quiver_Many_Turns_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {10};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -786,7 +786,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Contour_Many_Turns_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Contour_Many_Turns_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {10};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -840,7 +840,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Text_Color", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Text_Color", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {10};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -895,7 +895,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Coil_Magnetic_Field_Painter_Web_0", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Coil_Magnetic_Field_Painter_Web_0", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         clear_databases();
 
         OpenMagnetics::Magnetic magnetic(json::parse(R"({"coil": {"bobbin": {"distributorsInfo": null, "functionalDescription": null, "manufacturerInfo": null, "name": null, "processedDescription": {"columnDepth": 0.005974999999999999, "columnShape": "rectangular", "columnThickness": 0.0013999999999999993, "columnWidth": 0.005999999999999999, "coordinates": [0, 0, 0], "pins": null, "wallThickness": 0.0011204000000000006, "windingWindows": [{"angle": null, "area": 0.00011625151999999999, "coordinates": [0.008799999999999999, 0, 0], "height": 0.0207592, "radialHeight": null, "sectionsOrientation": "overlapping", "shape": "rectangular", "width": 0.0056}]}}, "functionalDescription": [{"connections": null, "isolationSide": "primary", "name": "primary", "numberParallels": 1, "numberTurns": 20, "wire": {"coating": {"breakdownVoltage": 18000, "grade": null, "material": "PFA", "numberLayers": 3, "temperatureRating": 180, "thickness": null, "thicknessLayers": 7.62e-05, "type": "insulated"}, "conductingArea": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 6.532502100168472e-07}, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.000912}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Rubadue", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round T19A01PXXX-3", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.001369}, "outerHeight": null, "outerWidth": null, "standard": "NEMA MW 1000 C", "standardName": "19 AWG", "strand": null, "type": "round"}}], "layersDescription": [{"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 8.673617379884035e-19], "dimensions": [0.0045850000000000005, 0.020700000000000003], "fillingFactor": 0.9971482523411308, "insulationMaterial": null, "name": "primary section 0 layer 0", "orientation": "overlapping", "partialWindings": [{"connections": null, "parallelsProportion": [1], "winding": "primary"}], "section": "primary section 0", "turnsAlignment": "centered", "type": "conduction", "windingStyle": "windByConsecutiveTurns"}], "sectionsDescription": [{"coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0], "dimensions": [0.0045850000000000005, 0.020700000000000003], "fillingFactor": 0.9624513055163947, "layersAlignment": null, "layersOrientation": "overlapping", "margin": [0, 0], "name": "primary section 0", "partialWindings": [{"connections": null, "parallelsProportion": [1], "winding": "primary"}], "type": "conduction", "windingStyle": "windByConsecutiveTurns"}], "turnsDescription": [{"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.009832500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 0", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.008797500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 1", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.007762500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 2", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.006727500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 3", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.005692500000000002], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 4", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.004657500000000002], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 5", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0036225000000000016], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 6", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0025875000000000013], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 7", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0015525000000000011], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 8", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.000517500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 9", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0005174999999999991], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 10", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0015524999999999992], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 11", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0025874999999999995], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 12", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0036225], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 13", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0046575], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 14", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0056925000000000005], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 15", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.006727500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 16", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.007762500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 17", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.008797500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 18", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.009832500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 19", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}]}, "core": {"distributorsInfo": [{"cost": 1.87, "country": "USA", "distributedArea": "International", "email": null, "link": "https://www.digikey.com/en/products/detail/epcos-tdk-electronics/B66229G0500X127/3914560", "name": "Digi-Key", "phone": null, "quantity": 660, "reference": "495-B66229G0500X127-ND", "updatedAt": "16/04/2024"}, {"cost": 1.86, "country": "USA", "distributedArea": "International", "email": null, "link": "https://www.mouser.es/ProductDetail/EPCOS-TDK/B66229G0500X127?qs=%2FsLciWRBLmC6djd1SV6djQ%3D%3D", "name": "Mouser", "phone": null, "quantity": 355, "reference": "871-B66229G0500X127", "updatedAt": "16/04/2024"}], "functionalDescription": {"coating": null, "gapping": [{"area": 8.5e-05, "coordinates": [0, 0.00025, 0], "distanceClosestNormalSurface": 0.011, "distanceClosestParallelSurface": 0.006999999999999999, "length": 0.0005, "sectionDimensions": [0.0092, 0.00915], "shape": "rectangular", "type": "subtractive"}, {"area": 4.1e-05, "coordinates": [0.013825, 0, 0], "distanceClosestNormalSurface": 0.011498, "distanceClosestParallelSurface": 0.006999999999999999, "length": 5e-06, "sectionDimensions": [0.004451, 0.00915], "shape": "rectangular", "type": "residual"}, {"area": 4.1e-05, "coordinates": [-0.013825, 0, 0], "distanceClosestNormalSurface": 0.011498, "distanceClosestParallelSurface": 0.006999999999999999, "length": 5e-06, "sectionDimensions": [0.004451, 0.00915], "shape": "rectangular", "type": "residual"}], "material": "N27", "numberStacks": 1, "shape": {"aliases": ["E 32/9", "EF 32"], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0329, "minimum": 0.0313, "nominal": null}, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0164, "minimum": 0.0158, "nominal": null}, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0095, "minimum": 0.0088, "nominal": null}, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0118, "minimum": 0.0112, "nominal": null}, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0237, "minimum": 0.0227, "nominal": null}, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0095, "minimum": 0.0089, "nominal": null}}, "family": "e", "familySubtype": null, "magneticCircuit": "open", "name": "E 32/16/9", "type": "standard"}, "type": "two-piece set"}, "geometricalDescription": null, "manufacturerInfo": {"cost": null, "datasheetUrl": "https://product.tdk.com/system/files/dam/doc/product/ferrite/ferrite/ferrite-acc/data_sheet/80/db/fer/e_32_16_9.pdf", "family": null, "name": "TDK", "orderCode": null, "reference": "B66229G0500X127 (N27", "status": "production"}, "name": "E 32/16/9 - N27 - Gapped 0.500 mm", "processedDescription": {"columns": [{"area": 8.5e-05, "coordinates": [0, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "central", "width": 0.0092}, {"area": 4.1e-05, "coordinates": [0.013825, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.004451}, {"area": 4.1e-05, "coordinates": [-0.013825, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.004451}], "depth": 0.00915, "effectiveParameters": {"effectiveArea": 8.316165619067432e-05, "effectiveLength": 0.07431657444154591, "effectiveVolume": 6.180289412976495e-06, "minimumArea": 8.143500000000005e-05}, "height": 0.032200000000000006, "width": 0.032100000000000004, "windingWindows": [{"angle": null, "area": 0.00016099999999999998, "coordinates": [0.0046, 0], "height": 0.023, "radialHeight": null, "sectionsOrientation": null, "shape": null, "width": 0.006999999999999999}]}}, "distributorsInfo": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "", "recommendations": null, "reference": "E 32/16/9 - N27 - 0.5 mm, Turns: 20, Order: 0, Non-Interleaved, Margin Taped 00", "status": null}, "rotation": null})"));
@@ -921,7 +921,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Coil_Magnetic_Field_Basic_Painter", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Coil_Magnetic_Field_Basic_Painter", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {14, 16};
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -969,7 +969,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Coil_Magnetic_Field_Basic_Painter_Planar", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Coil_Magnetic_Field_Basic_Painter_Planar", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
 
         std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
@@ -998,84 +998,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Coil_Proportion_Between_Turns_Half", "[support][painter][electric-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {1, 1};
-        std::vector<int64_t> numberParallels = {1, 1};
-        std::string coreShapeName = "E 35";
-        std::vector<OpenMagnetics::Wire> wires;
-        auto firstWire = find_wire_by_name("Round 2.00 - Grade 1");
-        wires.push_back(firstWire);
-        auto secondWire = find_wire_by_name("Round 2.00 - Grade 1");
-        wires.push_back(secondWire);
-        
-        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterialName = "A07";
-        std::vector<CoreGap> gapping = {};
-        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto firstTurn = coil.get_turns_description().value()[0];
-        auto secondTurn = coil.get_turns_description().value()[1];
-        double pixelHeight = firstTurn.get_coordinates()[1] + firstTurn.get_dimensions().value()[1] / 2;
-        double pixelDimension = firstTurn.get_dimensions().value()[1] / 2;
-        std::vector<double> pixelCoordinates = {(firstTurn.get_coordinates()[0] + secondTurn.get_coordinates()[0]) / 2, pixelHeight};
-        auto proportion = Painter::get_pixel_proportion_between_turns(firstTurn.get_coordinates(), firstTurn.get_dimensions().value(), firstTurn.get_cross_sectional_shape().value(), secondTurn.get_coordinates(), secondTurn.get_dimensions().value(), secondTurn.get_cross_sectional_shape().value(), pixelCoordinates, pixelDimension);
-        REQUIRE(fabs(proportion - 0.5) / 0.5 < 0.01);
-        auto outFile = outputFilePath;
-        outFile.append("Test_Energy_Between_Two_turns.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_rectangle(pixelCoordinates[0], pixelCoordinates[1], pixelDimension, pixelDimension);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
-    }
-
-    TEST_CASE("Test_Coil_Proportion_Between_Turns_Quarter", "[support][painter][electric-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {1, 1};
-        std::vector<int64_t> numberParallels = {1, 1};
-        std::string coreShapeName = "E 35";
-        std::vector<OpenMagnetics::Wire> wires;
-        auto firstWire = find_wire_by_name("Round 2.00 - Grade 1");
-        wires.push_back(firstWire);
-        auto secondWire = find_wire_by_name("Round 2.00 - Grade 1");
-        wires.push_back(secondWire);
-        
-        auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
-
-        int64_t numberStacks = 1;
-        std::string coreMaterialName = "A07";
-        std::vector<CoreGap> gapping = {};
-        auto core = OpenMagnetics::Core::create_quick_core(coreShapeName, coreMaterialName, gapping, numberStacks);
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        auto firstTurn = coil.get_turns_description().value()[0];
-        auto secondTurn = coil.get_turns_description().value()[1];
-        double pixelHeight = firstTurn.get_coordinates()[1] + 5 * firstTurn.get_dimensions().value()[1] / 8;
-        double pixelDimension = firstTurn.get_dimensions().value()[1] / 2;
-        std::vector<double> pixelCoordinates = {(firstTurn.get_coordinates()[0] + secondTurn.get_coordinates()[0]) / 2, pixelHeight};
-        auto proportion = Painter::get_pixel_proportion_between_turns(firstTurn.get_coordinates(), firstTurn.get_dimensions().value(), firstTurn.get_cross_sectional_shape().value(), secondTurn.get_coordinates(), secondTurn.get_dimensions().value(), secondTurn.get_cross_sectional_shape().value(), pixelCoordinates, pixelDimension);
-        std::cout << "proportion: " << proportion << std::endl;
-        REQUIRE(fabs(proportion - 0.25) / 0.25 < 0.01);
-        auto outFile = outputFilePath;
-        outFile.append("Test_Energy_Between_Two_turns.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_rectangle(pixelCoordinates[0], pixelCoordinates[1], pixelDimension, pixelDimension);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
-    }
-
-    TEST_CASE("Test_Coil_Electric_Field_Basic_Painter", "[support][painter][electric-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Coil_Electric_Field_Basic_Painter", "[support][painter][electric-field-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {14, 16};
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -1123,7 +1046,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Coil_Electric_Field_Basic_Painter_Planar", "[support][painter][electric-field-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Coil_Electric_Field_Basic_Painter_Planar", "[support][painter][electric-field-painter][rectangular-winding-window][smoke-test]") {
 
         std::string file_path = std::source_location::current().file_name();
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
@@ -1562,7 +1485,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Painter_T_Core", "[support][painter][magnetic-painter][round-winding-window]") { 
+    TEST_CASE("Test_Painter_T_Core", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") { 
         clear_databases();
         settings.set_coil_try_rewind(false);
         std::vector<int64_t> numberTurns = {12, 12};
@@ -1600,7 +1523,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_T_Core_Overlapping", "[support][painter][magnetic-painter][round-winding-window]") {
+    TEST_CASE("Test_Painter_T_Core_Overlapping", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") {
         clear_databases();
         std::vector<int64_t> numberTurns = {2, 2};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -1630,8 +1553,7 @@ namespace {
         settings.reset();
     }
 
-
-    TEST_CASE("Test_Painter_T_Core_Contiguous", "[support][painter][magnetic-painter][round-winding-window]") {
+    TEST_CASE("Test_Painter_T_Core_Contiguous", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") {
         clear_databases();
         std::vector<int64_t> numberTurns = {72, 72};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -1696,7 +1618,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Painter_T_Core_Contiguous_Sections_With_Margin", "[support][painter][magnetic-painter][round-winding-window]") {
+    TEST_CASE("Test_Painter_T_Core_Contiguous_Sections_With_Margin", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") {
         clear_databases();
         std::vector<int64_t> numberTurns = {2, 2};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -1733,7 +1655,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_T_Core_Contiguous_Sections_With_Spacer", "[support][painter][magnetic-painter][round-winding-window]") {
+    TEST_CASE("Test_Painter_T_Core_Contiguous_Sections_With_Spacer", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") {
         clear_databases();
         std::vector<int64_t> numberTurns = {2, 2};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -1770,8 +1692,7 @@ namespace {
         settings.reset();
     }
 
-
-    TEST_CASE("Test_Coil_Painter_Web_0", "[support][painter][magnetic-painter][round-winding-window]") {
+    TEST_CASE("Test_Coil_Painter_Web_0", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") {
         clear_databases();
 
         OpenMagnetics::Magnetic magnetic(json::parse(R"({"coil": {"bobbin": {"distributorsInfo": null, "functionalDescription": null, "manufacturerInfo": null, "name": null, "processedDescription": {"columnDepth": 0.005974999999999999, "columnShape": "rectangular", "columnThickness": 0.0013999999999999993, "columnWidth": 0.005999999999999999, "coordinates": [0, 0, 0], "pins": null, "wallThickness": 0.0011204000000000006, "windingWindows": [{"angle": null, "area": 0.00011625151999999999, "coordinates": [0.008799999999999999, 0, 0], "height": 0.0207592, "radialHeight": null, "sectionsOrientation": "overlapping", "shape": "rectangular", "width": 0.0056}]}}, "functionalDescription": [{"connections": null, "isolationSide": "primary", "name": "primary", "numberParallels": 1, "numberTurns": 20, "wire": {"coating": {"breakdownVoltage": 18000, "grade": null, "material": "PFA", "numberLayers": 3, "temperatureRating": 180, "thickness": null, "thicknessLayers": 7.62e-05, "type": "insulated"}, "conductingArea": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 6.532502100168472e-07}, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.000912}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Rubadue", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round T19A01PXXX-3", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.001369}, "outerHeight": null, "outerWidth": null, "standard": "NEMA MW 1000 C", "standardName": "19 AWG", "strand": null, "type": "round"}}], "layersDescription": [{"additionalCoordinates": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 8.673617379884035e-19], "dimensions": [0.0045850000000000005, 0.020700000000000003], "fillingFactor": 0.9971482523411308, "insulationMaterial": null, "name": "primary section 0 layer 0", "orientation": "overlapping", "partialWindings": [{"connections": null, "parallelsProportion": [1], "winding": "primary"}], "section": "primary section 0", "turnsAlignment": "centered", "type": "conduction", "windingStyle": "windByConsecutiveTurns"}], "sectionsDescription": [{"coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0], "dimensions": [0.0045850000000000005, 0.020700000000000003], "fillingFactor": 0.9624513055163947, "layersAlignment": null, "layersOrientation": "overlapping", "margin": [0, 0], "name": "primary section 0", "partialWindings": [{"connections": null, "parallelsProportion": [1], "winding": "primary"}], "type": "conduction", "windingStyle": "windByConsecutiveTurns"}], "turnsDescription": [{"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.009832500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 0", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.008797500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 1", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.007762500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 2", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.006727500000000003], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 3", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.005692500000000002], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 4", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.004657500000000002], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 5", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0036225000000000016], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 6", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0025875000000000013], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 7", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.0015525000000000011], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 8", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, 0.000517500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 9", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0005174999999999991], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 10", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0015524999999999992], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 11", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0025874999999999995], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 12", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0036225], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 13", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0046575], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 14", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.0056925000000000005], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 15", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.006727500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 16", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.007762500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 17", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.008797500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 18", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}, {"additionalCoordinates": null, "angle": null, "coordinateSystem": "cartesian", "coordinates": [0.008292499999999998, -0.009832500000000001], "dimensions": [0.0045850000000000005, 0.0010350000000000001], "layer": "primary section 0 layer 0", "length": 0.06230420231670919, "name": "primary parallel 0 turn 19", "orientation": "clockwise", "parallel": 0, "rotation": 0, "section": "primary section 0", "winding": "primary"}]}, "core": {"distributorsInfo": [{"cost": 1.87, "country": "USA", "distributedArea": "International", "email": null, "link": "https://www.digikey.com/en/products/detail/epcos-tdk-electronics/B66229G0500X127/3914560", "name": "Digi-Key", "phone": null, "quantity": 660, "reference": "495-B66229G0500X127-ND", "updatedAt": "16/04/2024"}, {"cost": 1.86, "country": "USA", "distributedArea": "International", "email": null, "link": "https://www.mouser.es/ProductDetail/EPCOS-TDK/B66229G0500X127?qs=%2FsLciWRBLmC6djd1SV6djQ%3D%3D", "name": "Mouser", "phone": null, "quantity": 355, "reference": "871-B66229G0500X127", "updatedAt": "16/04/2024"}], "functionalDescription": {"coating": null, "gapping": [{"area": 8.5e-05, "coordinates": [0, 0.00025, 0], "distanceClosestNormalSurface": 0.011, "distanceClosestParallelSurface": 0.006999999999999999, "length": 0.0005, "sectionDimensions": [0.0092, 0.00915], "shape": "rectangular", "type": "subtractive"}, {"area": 4.1e-05, "coordinates": [0.013825, 0, 0], "distanceClosestNormalSurface": 0.011498, "distanceClosestParallelSurface": 0.006999999999999999, "length": 5e-06, "sectionDimensions": [0.004451, 0.00915], "shape": "rectangular", "type": "residual"}, {"area": 4.1e-05, "coordinates": [-0.013825, 0, 0], "distanceClosestNormalSurface": 0.011498, "distanceClosestParallelSurface": 0.006999999999999999, "length": 5e-06, "sectionDimensions": [0.004451, 0.00915], "shape": "rectangular", "type": "residual"}], "material": "N27", "numberStacks": 1, "shape": {"aliases": ["E 32/9", "EF 32"], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0329, "minimum": 0.0313, "nominal": null}, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0164, "minimum": 0.0158, "nominal": null}, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0095, "minimum": 0.0088, "nominal": null}, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0118, "minimum": 0.0112, "nominal": null}, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0237, "minimum": 0.0227, "nominal": null}, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0095, "minimum": 0.0089, "nominal": null}}, "family": "e", "familySubtype": null, "magneticCircuit": "open", "name": "E 32/16/9", "type": "standard"}, "type": "two-piece set"}, "geometricalDescription": null, "manufacturerInfo": {"cost": null, "datasheetUrl": "https://product.tdk.com/system/files/dam/doc/product/ferrite/ferrite/ferrite-acc/data_sheet/80/db/fer/e_32_16_9.pdf", "family": null, "name": "TDK", "orderCode": null, "reference": "B66229G0500X127 (N27", "status": "production"}, "name": "E 32/16/9 - N27 - Gapped 0.500 mm", "processedDescription": {"columns": [{"area": 8.5e-05, "coordinates": [0, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "central", "width": 0.0092}, {"area": 4.1e-05, "coordinates": [0.013825, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.004451}, {"area": 4.1e-05, "coordinates": [-0.013825, 0, 0], "depth": 0.00915, "height": 0.023, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.004451}], "depth": 0.00915, "effectiveParameters": {"effectiveArea": 8.316165619067432e-05, "effectiveLength": 0.07431657444154591, "effectiveVolume": 6.180289412976495e-06, "minimumArea": 8.143500000000005e-05}, "height": 0.032200000000000006, "width": 0.032100000000000004, "windingWindows": [{"angle": null, "area": 0.00016099999999999998, "coordinates": [0.0046, 0], "height": 0.023, "radialHeight": null, "sectionsOrientation": null, "shape": null, "width": 0.006999999999999999}]}}, "distributorsInfo": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "", "recommendations": null, "reference": "E 32/16/9 - N27 - 0.5 mm, Turns: 20, Order: 0, Non-Interleaved, Margin Taped 00", "status": null}, "rotation": null})"));
@@ -1794,8 +1715,7 @@ namespace {
         settings.reset();
     }
 
-
-    TEST_CASE("Test_Coil_Painter_Web_1", "[support][painter][magnetic-painter][round-winding-window]") {
+    TEST_CASE("Test_Coil_Painter_Web_1", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") {
         clear_databases();
 
         auto outFile = outputFilePath;
@@ -1811,7 +1731,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Coil_Painter_Web_2", "[support][painter][magnetic-painter][round-winding-window]") {
+    TEST_CASE("Test_Coil_Painter_Web_2", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") {
         clear_databases();
         // settings.set_coil_delimit_and_compact(false);
 
@@ -1838,7 +1758,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Coil_Painter_Web_3", "[support][painter][magnetic-painter][round-winding-window]") {
+    TEST_CASE("Test_Coil_Painter_Web_3", "[support][painter][magnetic-painter][round-winding-window][smoke-test]") {
         clear_databases();
         // settings.set_coil_delimit_and_compact(false);
 
@@ -1955,7 +1875,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Distributed_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Distributed_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {3};
         uint8_t interleavingLevel = 2;
@@ -1982,7 +1902,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Distributed_Gap_Many", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Distributed_Gap_Many", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {3};
         uint8_t interleavingLevel = 2;
@@ -2010,7 +1930,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {3};
         uint8_t interleavingLevel = 2;
@@ -2038,7 +1958,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_U_Core_Distributed_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_U_Core_Distributed_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {3};
         uint8_t interleavingLevel = 2;
@@ -2066,7 +1986,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_U_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_U_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {3};
         uint8_t interleavingLevel = 2;
@@ -2094,7 +2014,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Bobbin", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Bobbin", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {3};
         uint8_t interleavingLevel = 2;
@@ -2123,7 +2043,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Section", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Section", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {3};
         uint8_t interleavingLevel = 2;
@@ -2152,7 +2072,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Bobbin_And_Section", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Bobbin_And_Section", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {54};
         std::vector<int64_t> numberParallels = {2};
         uint8_t interleavingLevel = 1;
@@ -2183,7 +2103,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Bobbin_And_Two_Sections", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Bobbin_And_Two_Sections", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 2;
@@ -2213,7 +2133,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Epx_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Epx_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 2;
@@ -2243,7 +2163,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Epx_Core_Spacer_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Epx_Core_Spacer_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 2;
@@ -2278,7 +2198,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_P_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_P_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 2;
@@ -2308,7 +2228,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_U80_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_U80_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 2;
@@ -2338,7 +2258,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Ep_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Ep_Core_Grinded_Gap", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 2;
@@ -2406,7 +2326,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Layers_No_Interleaving", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Layers_No_Interleaving", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 1;
@@ -2436,7 +2356,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_No_Interleaving", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_No_Interleaving", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 1;
@@ -2466,7 +2386,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
@@ -2496,7 +2416,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Top_Alignment", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Top_Alignment", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
@@ -2529,7 +2449,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Bottom_Alignment", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Bottom_Alignment", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
@@ -2562,7 +2482,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Spread_Alignment", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Spread_Alignment", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
@@ -2595,7 +2515,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Vertical_Sections", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Vertical_Sections", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 3;
@@ -2628,7 +2548,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Vertical_Sections_Vectical_Layers", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Vertical_Sections_Vectical_Layers", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 3;
@@ -2661,7 +2581,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 3;
@@ -2694,7 +2614,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers_Spread_Turns", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers_Spread_Turns", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
@@ -2727,7 +2647,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers_Inner_Turns", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers_Inner_Turns", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
@@ -2760,7 +2680,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers_Outer_Turns", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers_Outer_Turns", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
@@ -2793,7 +2713,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers_Centered_Turns", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Vertical_Sections_Horizontal_Layers_Centered_Turns", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {35, 35};
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
@@ -2826,7 +2746,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Foil_Centered", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Foil_Centered", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
@@ -2868,7 +2788,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Foil_Top", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Foil_Top", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
@@ -2884,8 +2804,11 @@ namespace {
         OpenMagnetics::Wire wire;
         wire.set_nominal_value_outer_height(0.014);
         wire.set_nominal_value_outer_width(0.0002);
+        wire.set_nominal_value_conducting_height(0.014);
+        wire.set_nominal_value_conducting_width(0.0002);
         wire.set_type(WireType::FOIL);
         auto wires = std::vector<OpenMagnetics::Wire>({wire});
+
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
@@ -2908,7 +2831,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Litz", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Litz", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
@@ -2945,7 +2868,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Foil_With_Insulation_Centered", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Foil_With_Insulation_Centered", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
@@ -2987,7 +2910,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Centered", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Centered", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3025,7 +2948,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Centered", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Centered", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3063,7 +2986,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Horizontal_Centered", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Horizontal_Centered", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3101,7 +3024,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Top", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Top", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3139,7 +3062,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Inner", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Inner", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3177,7 +3100,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Outer", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Outer", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3215,7 +3138,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Bottom", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Bottom", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3253,7 +3176,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Spread", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Spread", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3291,7 +3214,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Spread_Two_Sections", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Spread_Two_Sections", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 1;
@@ -3329,7 +3252,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Spread_One_Section", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Vertical_Spread_One_Section", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23};
         std::vector<int64_t> numberParallels = {2};
         uint8_t interleavingLevel = 1;
@@ -3367,7 +3290,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 2;
@@ -3405,7 +3328,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_Two_Sections", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_Two_Sections", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
         uint8_t interleavingLevel = 1;
@@ -3443,7 +3366,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_One_Section", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_One_Section", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {23};
         std::vector<int64_t> numberParallels = {2};
         uint8_t interleavingLevel = 1;
@@ -3481,7 +3404,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Bobbin_Vertical_Sections_And_Insulation", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Bobbin_Vertical_Sections_And_Insulation", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -3522,7 +3445,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Bobbin_Horizontal_Sections_And_Insulation", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Bobbin_Horizontal_Sections_And_Insulation", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -3563,7 +3486,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Bobbin_Layers_And_Insulation", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Bobbin_Layers_And_Insulation", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -3600,7 +3523,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Pq_Core_Bobbin_Turns_And_Insulation", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Pq_Core_Bobbin_Turns_And_Insulation", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
@@ -3637,7 +3560,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Turns_Not_Fitting", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Turns_Not_Fitting", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
 
         settings.set_coil_try_rewind(false);
 
@@ -3689,7 +3612,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Painter_Planar", "[support][painter][magnetic-painter][rectangular-winding-window]") {
+    TEST_CASE("Test_Painter_Planar", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
 
         settings.set_coil_wind_even_if_not_fit(false);
         settings.set_coil_try_rewind(false);
@@ -3849,7 +3772,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Round_Enamelled_Grade_1", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Round_Enamelled_Grade_1", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Round 0.335 - Grade 1");
@@ -3866,7 +3789,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Round_Enamelled_Grade_2", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Round_Enamelled_Grade_2", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Round 0.335 - Grade 2");
@@ -3883,7 +3806,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Round_Enamelled_Grade_9", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Round_Enamelled_Grade_9", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Round 0.071 - FIW 9");
@@ -3900,7 +3823,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Round_TIW_PFA", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Round_TIW_PFA", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Round T17A01PXXX-1.5");
@@ -3917,7 +3840,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Round_DIW_ETFE", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Round_DIW_ETFE", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Round D32A01TXX-3");
@@ -3934,7 +3857,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Round_SIW_PEF", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Round_SIW_PEF", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Round S24A01FX-2");
@@ -3951,7 +3874,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Round_SIW_TCA", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Round_SIW_TCA", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Round TCA1 31 AWG");
@@ -3968,7 +3891,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Rectangular_Enamelled_Grade_1", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Rectangular_Enamelled_Grade_1", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Rectangular 2x0.80 - Grade 1");
@@ -3985,7 +3908,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Rectangular_Enamelled_Grade_2", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Rectangular_Enamelled_Grade_2", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Rectangular 2x0.80 - Grade 2");
@@ -4002,7 +3925,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Foil_Bare", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Foil_Bare", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Foil 0.7");
@@ -4024,7 +3947,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Litz_Simple_TIW", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Litz_Simple_TIW", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Litz TXXL07/28FXXX-2(MWXX)");
@@ -4041,7 +3964,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Litz_Simple_Bare", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Litz_Simple_Bare", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Litz 75x0.3 - Grade 1 - Unserved");
@@ -4058,7 +3981,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Litz_Simple_Single_Served", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Litz_Simple_Single_Served", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
         auto wire = find_wire_by_name("Litz 75x0.3 - Grade 1 - Single Served");
@@ -4075,7 +3998,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Litz_Simple_Double_Served", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Litz_Simple_Double_Served", "[support][painter][wire-painter][smoke-test]") {
         clear_databases(); 
         settings.set_painter_simple_litz(false);
         settings.set_painter_advanced_litz(true);
@@ -4094,7 +4017,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Litz_Simple_Insulated", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Litz_Simple_Insulated", "[support][painter][wire-painter][smoke-test]") {
         clear_databases(); 
         settings.set_painter_simple_litz(false);
         settings.set_painter_advanced_litz(true);
@@ -4113,7 +4036,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Litz_Few_Strands", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Litz_Few_Strands", "[support][painter][wire-painter][smoke-test]") {
         clear_databases(); 
         settings.set_painter_simple_litz(false);
         settings.set_painter_advanced_litz(true);
@@ -4132,7 +4055,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Web_0", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Web_0", "[support][painter][wire-painter][smoke-test]") {
         clear_databases(); 
         settings.set_painter_simple_litz(false);
         settings.set_painter_advanced_litz(true);
@@ -4151,7 +4074,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Rectangular_Wire_Tiny", "[support][painter][wire-painter]") {
+    TEST_CASE("Test_Wire_Painter_Rectangular_Wire_Tiny", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
 
@@ -4195,7 +4118,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1", "[support][painter][wire-density-painter]") {
+    TEST_CASE("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         double currentPeakToPeak = 1000;
@@ -4208,14 +4131,14 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
             painter.export_svg();
         }
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Simple", "[support][painter][wire-density-painter]") {
+    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Simple", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         double currentPeakToPeak = 1000;
@@ -4231,14 +4154,14 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Simple_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
             painter.export_svg();
         }
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal", "[support][painter][wire-density-painter]") {
+    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         double currentPeakToPeak = 1000;
@@ -4254,7 +4177,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
             painter.export_svg();
         }
@@ -4277,14 +4200,14 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_Many_Strands_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
             painter.export_svg();
         }
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Advanced", "[support][painter][wire-density-painter]") {
+    TEST_CASE("Test_Wire_Painter_Current_Density_Litz_Single_Served_Advanced", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         double currentPeakToPeak = 1000;
@@ -4300,14 +4223,14 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Advanced_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
             painter.export_svg();
         }
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Rectangular_Enamelled_Grade_1", "[support][painter][wire-density-painter]") {
+    TEST_CASE("Test_Wire_Painter_Current_Density_Rectangular_Enamelled_Grade_1", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         double currentPeakToPeak = 1000;
@@ -4320,13 +4243,14 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Rectangular_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
             painter.export_svg();
         }
         settings.reset();
     }
-    TEST_CASE("Test_Wire_Painter_Current_Density_Foil", "[support][painter][wire-density-painter]") {
+
+    TEST_CASE("Test_Wire_Painter_Current_Density_Foil", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         double currentPeakToPeak = 1000;
@@ -4344,14 +4268,14 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Foil_" + std::to_string(frequency) + ".svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
             painter.export_svg();
         }
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Web_0", "[support][painter][wire-density-painter]") {
+    TEST_CASE("Test_Wire_Painter_Current_Density_Web_0", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         OpenMagnetics::Wire wire(json::parse(R"({"coating": {"breakdownVoltage": 6000, "grade": null, "material": "TCA", "numberLayers": 3, "temperatureRating": 155, "thickness": null, "thicknessLayers": 7.62e-05, "type": "insulated"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00026900000000000003, "minimum": 0.000261, "nominal": 0.000265}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 0.265 - Grade 1", "numberConductors": 92, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.000297, "minimum": 0.000283, "nominal": 0.0018383994787140629}, "outerHeight": null, "outerWidth": null, "standard": "IEC 60317", "standardName": "0.265 mm", "strand": {"coating": {"breakdownVoltage": 500, "grade": 1, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00010300000000000001, "minimum": 9.7e-05, "nominal": 0.0001}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 0.1 - Grade 1", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00011700000000000001, "minimum": 0.000108, "nominal": null}, "outerHeight": null, "outerWidth": null, "standard": "IEC 60317", "standardName": "0.1 mm", "strand": null, "type": "round"}, "type": "litz"})"));
@@ -4364,14 +4288,14 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Web_0.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire_with_current_density(wire, operatingPoint);
             painter.export_svg();
         }
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Web_1", "[support][painter][wire-density-painter]") {
+    TEST_CASE("Test_Wire_Painter_Current_Density_Web_1", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         OpenMagnetics::Wire wire(json::parse(R"({"coating": {"breakdownVoltage": 13500, "grade": null, "material": "FEP", "numberLayers": 3, "temperatureRating": 155, "thickness": null, "thicknessLayers": 7.62e-05, "type": "insulated"}, "conductingArea": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 1.0602875205865554e-06}, "conductingDiameter": null, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": null, "name": "Litz 15x0.3 - Grade 1 - Unserved", "numberConductors": 18, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0016300000000000002, "minimum": 0.0011557, "nominal": 0.012585990719707143}, "outerHeight": null, "outerWidth": null, "standard": "NEMA MW 1000 C", "standardName": null, "strand": {"coating": {"breakdownVoltage": 2500, "grade": 1, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.004115}, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Nearson", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 6.0 - Single Build", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.004186}, "outerHeight": null, "outerWidth": null, "standard": "NEMA MW 1000 C", "standardName": "6 AWG", "strand": null, "type": "round"}, "type": "litz"})"));
@@ -4383,14 +4307,14 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Web_1.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
             painter.paint_wire(wire);
             painter.export_svg();
         }
         settings.reset();
     }
 
-    TEST_CASE("Test_Wire_Painter_Current_Density_Web_2", "[support][painter][wire-density-painter]") {
+    TEST_CASE("Test_Wire_Painter_Current_Density_Web_2", "[support][painter][wire-density-painter][smoke-test]") {
         clear_databases();
 
         // OpenMagnetics::Wire wire(json::parse(R"({"coating": {"breakdownVoltage": null, "grade": null, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "bare"}, "conductingArea": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 1.0602875205865554e-06}, "conductingDiameter": null, "conductingHeight": null, "conductingWidth": null, "edgeRadius": null, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": null, "name": "Litz 15x0.3 - Grade 1 - Unserved", "numberConductors": 15, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0016300000000000002, "minimum": 0.0011557, "nominal": null}, "outerHeight": null, "outerWidth": null, "standard": "IEC 60317", "standardName": null, "strand": {"coating": {"breakdownVoltage": 2200, "grade": 1, "material": null, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled"}, "conductingArea": null, "conductingDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.000303999999999, "minimum": 0.000296, "nominal": 0.00030000000000000003}, "manufacturerInfo": {"cost": null, "datasheetUrl": null, "family": null, "name": "Elektrisola", "orderCode": null, "reference": null, "status": null}, "material": "copper", "name": "Round 0.3 - Grade 1", "numberConductors": 1, "outerDiameter": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.00033400000000000004, "minimum": 0.000319, "nominal": null}, "standard": "IEC 60317", "standardName": "0.3 mm", "type": "round"}, "type": "litz"})"));
@@ -4403,7 +4327,7 @@ namespace {
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Current_Density_Web_2.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, true);
 
             painter.paint_wire(wire);
             painter.export_svg();

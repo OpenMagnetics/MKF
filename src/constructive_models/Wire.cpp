@@ -2167,7 +2167,7 @@ void Wire::set_bare_coating() {
 Wire Wire::create_quick_litz_wire(double conductingDiameter, int64_t numberStrands) {
     OpenMagnetics::Wire wire;
 
-    auto strand = convert_from_wire_to_strand(find_wire_by_dimension(conductingDiameter, WireType::ROUND));
+    auto strand = convert_from_wire_to_strand(find_wire_by_dimension(conductingDiameter, WireType::ROUND, std::nullopt, false));
 
     InsulationWireCoating coating;
     coating.set_type(InsulationWireCoatingType::SERVED);

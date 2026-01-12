@@ -255,7 +255,6 @@ double Painter::get_pixel_proportion_between_turns(std::vector<double> firstTurn
                                              std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape,
                                              std::vector<double> pixelCoordinates, double dimension) {
     // auto factor = Defaults().overlappingFactorSurroundingTurns;
-    auto factor = 1;
     auto x1 = firstTurnCoordinates[0];
     auto y1 = firstTurnCoordinates[1];
     auto x2 = secondTurnCoordinates[0];

@@ -20,7 +20,7 @@ namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
 
-    TEST_CASE("Test_IsolatedBuck", "[converter-model][isolated-buck-topology]") {
+    TEST_CASE("Test_IsolatedBuck", "[converter-model][isolated-buck-topology][smoke-test]") {
         json isolatedbuckInputsJson;
         json inputVoltage;
 
@@ -109,7 +109,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_IsolatedBuck_CurrentRippleRatio", "[converter-model][isolated-buck-topology]") {
+    TEST_CASE("Test_IsolatedBuck_CurrentRippleRatio", "[converter-model][isolated-buck-topology][smoke-test]") {
         json isolatedbuckInputsJson;
         json inputVoltage;
 

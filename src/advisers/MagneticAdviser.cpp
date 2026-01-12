@@ -254,7 +254,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                     }
                 }
             }
-            catch (const std::runtime_error& runtimeError) {
+            catch (...) {
                 validMagnetic = false;
                 break;
             }
@@ -282,7 +282,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                 auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
             }
-            catch (const std::runtime_error& runtimeError) {
+            catch (...) {
                 valid = false;
                 break;
             }

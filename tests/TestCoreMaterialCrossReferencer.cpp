@@ -15,13 +15,8 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-namespace {  // Anonymous namespace to isolate test globals
-
-
-
-// Converted from SUITE(CoreMaterialCrossReferencer)
-
-    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials", "[adviser][core-material-cross-referencer]") {
+namespace { 
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials", "[adviser][core-material-cross-referencer][smoke-test]") {
         settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -35,7 +30,7 @@ namespace {  // Anonymous namespace to isolate test globals
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "P45");
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
         auto scoredValues = coreMaterialCrossReferencer.get_scored_values();
@@ -65,7 +60,7 @@ namespace {  // Anonymous namespace to isolate test globals
         }
     }
 
-    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_TDK", "[adviser][core-material-cross-referencer]") {
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_TDK", "[adviser][core-material-cross-referencer][smoke-test]") {
         settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -80,10 +75,10 @@ namespace {  // Anonymous namespace to isolate test globals
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "N95");
     }
 
-    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder", "[adviser][core-material-cross-referencer]") {
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {
         settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -100,7 +95,7 @@ namespace {  // Anonymous namespace to isolate test globals
         REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Kool Mµ Hƒ 26");
     }
 
-    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals", "[adviser][core-material-cross-referencer]") {
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals", "[adviser][core-material-cross-referencer][smoke-test]") {
         settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -118,8 +113,9 @@ namespace {  // Anonymous namespace to isolate test globals
         REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "SM 40");
     }
 
-    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals_Ferrite", "[adviser][core-material-cross-referencer]") {
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals_Ferrite", "[adviser][core-material-cross-referencer][smoke-test]") {
         settings.reset();
+        settings.set_core_cross_referencer_allow_different_core_material_type(true);
         clear_databases();
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
@@ -136,7 +132,7 @@ namespace {  // Anonymous namespace to isolate test globals
         REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "MS 160");
     }
 
-    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses", "[adviser][core-material-cross-referencer]") {
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses", "[adviser][core-material-cross-referencer][smoke-test]") {
         settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -161,7 +157,7 @@ namespace {  // Anonymous namespace to isolate test globals
         REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "JNP96A");
     }
 
-    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses_Powder", "[adviser][core-material-cross-referencer]") {
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {
         settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -183,10 +179,10 @@ namespace {  // Anonymous namespace to isolate test globals
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Mix 40");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Kool Mµ MAX 40");
     }
 
-    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Fair_Rite", "[adviser][core-material-cross-referencer]") {
+    TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Fair_Rite", "[adviser][core-material-cross-referencer][smoke-test]") {
         settings.reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -229,7 +225,5 @@ namespace {  // Anonymous namespace to isolate test globals
 
         REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "95");
     }
-
-// End of SUITE
 
 }  // namespace

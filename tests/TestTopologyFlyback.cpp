@@ -20,7 +20,7 @@ namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
 
-    TEST_CASE("Test_Flyback_CCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_CCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -82,7 +82,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_Flyback_Drain_Source_Voltage_CCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Drain_Source_Voltage_CCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -144,7 +144,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_Flyback_Drain_Source_Voltage_DCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Drain_Source_Voltage_DCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -241,7 +241,7 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6));
     }
 
-    TEST_CASE("Test_Flyback_Duty_Cycle_CCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Duty_Cycle_CCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -303,7 +303,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_Flyback_Duty_Cycle_DCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Duty_Cycle_DCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -359,7 +359,7 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6));
     }
 
-    TEST_CASE("Test_Flyback_Maximum_Duty_Cycle_DCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Maximum_Duty_Cycle_DCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -409,7 +409,7 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_negative_peak().value(), 1e-6));
     }
 
-    TEST_CASE("Test_Flyback_DCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_DCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -471,7 +471,7 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6));
     }
 
-    TEST_CASE("Test_Advanced_Flyback_CCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Advanced_Flyback_CCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -524,7 +524,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_Advanced_Flyback_DCM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Advanced_Flyback_DCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -579,7 +579,7 @@ namespace {
     }
 
 
-    TEST_CASE("Test_Advanced_Flyback_DCM_Maximum_Inductance", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Advanced_Flyback_DCM_Maximum_Inductance", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -636,7 +636,7 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6));
     }
 
-    TEST_CASE("Test_Flyback_Drain_Source_Voltage_BMO", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Drain_Source_Voltage_BMO", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -737,7 +737,7 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(operatingPoints[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6));
     }
 
-    TEST_CASE("Test_Flyback_Drain_Source_Voltage_QRM", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Drain_Source_Voltage_QRM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -838,7 +838,7 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(operatingPoints[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6));
     }
 
-    TEST_CASE("Test_Flyback_Bug_Web_0", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Bug_Web_0", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -887,7 +887,7 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
     }
 
-    TEST_CASE("Test_Flyback_Bug_Web_1", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Bug_Web_1", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;
 
@@ -949,7 +949,7 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_negative_peak().value(), 1e-6));
     }
 
-    TEST_CASE("Test_Flyback_Bug_Web_2", "[converter-model][flyback-topology]") {
+    TEST_CASE("Test_Flyback_Bug_Web_2", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson = json::parse(R"({"currentRippleRatio": 1, "diodeVoltageDrop": 0.7, "efficiency": 0.85, "inputVoltage": {"minimum": 120.0, "maximum": 375.0}, "operatingPoints": [{"ambientTemperature": 20, "outputCurrents": [2.0], "outputVoltages": [5.0], "mode": "Discontinuous Conduction Mode", "switchingFrequency": 100000.0}], "maximumDrainSourceVoltage": 600.0, "maximumDutyCycle": 0.97})");
 
         OpenMagnetics::Flyback flybackInputs(flybackInputsJson);

@@ -1,4 +1,4 @@
-/**
+    /**
  * @file Logger.h
  * @brief Logging infrastructure for OpenMagnetics library
  * 

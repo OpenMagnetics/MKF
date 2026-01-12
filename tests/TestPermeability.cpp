@@ -24,7 +24,7 @@ using namespace OpenMagnetics;
 namespace { 
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
-    TEST_CASE("Test_Initial_Permeability_3C97", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_3C97", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "3C97";
         auto materialData = materialName;
@@ -39,7 +39,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Initial_Permeability_51", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_51", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "51";
         auto materialData = materialName;
@@ -59,7 +59,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Initial_Permeability_Mix_3", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_Mix_3", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "Mix 3";
         auto materialData = materialName;
@@ -100,7 +100,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Initial_Permeability_XFlux_60", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_XFlux_60", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "XFlux 60";
         auto materialData = materialName;
@@ -131,7 +131,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Initial_Permeability_NPF_26", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_NPF_26", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "NPF 26";
         auto materialData = materialName;
@@ -146,7 +146,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Initial_Permeability_N88", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_N88", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "N88";
         auto materialData = find_core_material_by_name(materialName);
@@ -180,7 +180,7 @@ namespace {
         REQUIRE_THAT(initialPermeabilityValueWithTemperature, Catch::Matchers::WithinAbs(expected, manufacturerTolerance * expected));
     }
 
-    TEST_CASE("Test_Initial_Permeability_N30", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_N30", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "N30";
         auto materialData = find_core_material_by_name(materialName);
@@ -214,7 +214,7 @@ namespace {
         REQUIRE_THAT(initialPermeabilityValueWithTemperature, Catch::Matchers::WithinAbs(expected, manufacturerTolerance * expected));
     }
 
-    TEST_CASE("Test_Initial_Permeability_X_Indmix_A", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_X_Indmix_A", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "X-Indmix A";
         auto materialData = materialName;
@@ -223,7 +223,7 @@ namespace {
         REQUIRE_THAT(expected, Catch::Matchers::WithinAbs(initialPermeabilityValue, 0.01 * expected));
     }
 
-    TEST_CASE("Test_Initial_Permeability_Nanoperm_1000", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_Nanoperm_1000", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "Nanoperm 1000";
         auto materialData = find_core_material_by_name(materialName);
@@ -286,7 +286,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Initial_Permeability_Nanoperm_80000", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Initial_Permeability_Nanoperm_80000", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "Nanoperm 80000";
         auto materialData = find_core_material_by_name(materialName);
@@ -349,7 +349,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Frequency_For_Initial_Permeability_Drop_Nanoperm_80000", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Frequency_For_Initial_Permeability_Drop_Nanoperm_80000", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "Nanoperm 80000";
         auto materialData = find_core_material_by_name(materialName);
@@ -366,7 +366,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Frequency_For_Initial_Permeability_Drop_XFlux_60", "[physical-model][initial-permeability]") {
+    TEST_CASE("Test_Frequency_For_Initial_Permeability_Drop_XFlux_60", "[physical-model][initial-permeability][smoke-test]") {
         InitialPermeability initialPermeability;
         std::string materialName = "XFlux 60";
         auto materialData = find_core_material_by_name(materialName);
@@ -383,7 +383,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Complex_Permeability_N22", "[physical-model][complex-permeability]") {
+    TEST_CASE("Test_Complex_Permeability_N22", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "N22";
         auto materialData = materialName;
@@ -393,7 +393,7 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
 
-    TEST_CASE("Test_Complex_Permeability_3C97", "[physical-model][complex-permeability]") {
+    TEST_CASE("Test_Complex_Permeability_3C97", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "3C97";
         auto materialData = materialName;
@@ -403,7 +403,7 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
 
-    TEST_CASE("Test_Complex_Permeability_N49", "[physical-model][complex-permeability]") {
+    TEST_CASE("Test_Complex_Permeability_N49", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "N49";
         auto materialData = materialName;
@@ -413,7 +413,7 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
 
-    TEST_CASE("Test_Complex_Permeability_67", "[physical-model][complex-permeability]") {
+    TEST_CASE("Test_Complex_Permeability_67", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "67";
         auto materialData = materialName;
@@ -423,7 +423,7 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
 
-    TEST_CASE("Test_Complex_Permeability_Nanoperm_8000", "[physical-model][complex-permeability]") {
+    TEST_CASE("Test_Complex_Permeability_Nanoperm_8000", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "Nanoperm 8000";
         auto materialData = materialName;
@@ -433,7 +433,7 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
 
-    TEST_CASE("Test_Complex_Permeability_XFlux_60", "[physical-model][complex-permeability]") {
+    TEST_CASE("Test_Complex_Permeability_XFlux_60", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "XFlux 60";
         auto materialData = materialName;
@@ -478,7 +478,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_BH_Loop_3C97", "[physical-model][amplitude-permeability]") {
+    TEST_CASE("Test_BH_Loop_3C97", "[physical-model][amplitude-permeability][smoke-test]") {
         std::string materialName = "3C97";
         auto curves = OpenMagnetics::BHLoopRoshenModel().get_hysteresis_loop(materialName, 25, 0.2, std::nullopt);
 

@@ -280,9 +280,13 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
     coreLossesModel.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
 
     for (auto frequency : frequencies) {
+
         Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
+        
         // operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
         OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
+        auto voltageExcitation = Inputs::calculate_induced_voltage(excitation, magnetizingInductance);
+        excitation.set_voltage(voltageExcitation);
 
         if (numberWindings == 1 && excitation.get_current()) {
             Inputs::set_current_as_magnetizing_current(&operatingPoint);
@@ -293,7 +297,7 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
             operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
         }
         else if (excitation.get_voltage()) {
-            auto voltage = operatingPoint.get_mutable_excitations_per_winding()[0].get_voltage().value();
+            auto voltage = excitation.get_voltage().value();
             auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
 
             auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation,

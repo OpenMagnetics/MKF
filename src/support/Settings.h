@@ -101,6 +101,8 @@ class Settings
         std::string _preferredCoreMaterialFerriteManufacturer = "Fair-Rite";
         std::string _preferredCoreMaterialPowderManufacturer = "Micrometals";
 
+        bool _coreCrossReferencerAllowDifferentCoreMaterialType = false;
+
     public:
         bool _debug = false;
         Settings(Settings &other) = delete;
@@ -321,6 +323,9 @@ class Settings
 
         std::string get_preferred_core_material_powder_manufacturer() const;
         void set_preferred_core_material_powder_manufacturer(std::string value);
+
+        bool get_core_cross_referencer_allow_different_core_material_type() const;
+        void set_core_cross_referencer_allow_different_core_material_type(bool value);
 
 
     };

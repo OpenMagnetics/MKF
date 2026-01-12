@@ -209,13 +209,15 @@ bool is_instantaneously_conducting_power(OperatingPoint operatingPoint) {
 }
 
 bool Inputs::include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios) {
+    bool onlyOneWinding = turnsRatios.size() == 0;
+
     auto excitationPerWinding = operatingPoint.get_excitations_per_winding();
     auto voltageWaveform = excitationPerWinding[0].get_voltage()->get_waveform().value();
     auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitationPerWinding[0].get_frequency());
     bool includeAccordingToRosanoMethod = include_dc_offset_into_magnetizing_current_rosano(sampledWaveform);
     bool includeAccordingToCoupledPower = !is_instantaneously_conducting_power(operatingPoint);
 
-    return includeAccordingToRosanoMethod && includeAccordingToCoupledPower;
+    return onlyOneWinding || (includeAccordingToRosanoMethod && includeAccordingToCoupledPower);
 }
 
 
@@ -1965,6 +1967,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
     operatingPoint.set_excitations_per_winding(processedExcitationsPerWinding);
 
     if (allExcitationHaveVoltageOrAlreadyCalculated) {
+
         std::vector<double> turnsRatios;
         double primaryVoltageRms = operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_processed()->get_rms().value();
         for (size_t windingIndex = 1; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
@@ -1975,7 +1978,6 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
         }
 
         bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoint, turnsRatios);
-        // bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current_rosano(voltageSampledWaveforms[0]);
 
         for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
             auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
@@ -1989,6 +1991,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             }
             processedExcitationsPerWinding[windingIndex] = excitation;
         }
+
     }
     operatingPoint.set_excitations_per_winding(processedExcitationsPerWinding);
     return operatingPoint;

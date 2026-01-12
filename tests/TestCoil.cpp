@@ -569,8 +569,8 @@ TEST_CASE("Test_Coil_Json_8", "[constructive-model][coil][bug][smoke-test]") {
     for (auto layer : layers) {
         if (layer.get_type() == ElectricalType::INSULATION) {
             auto material = OpenMagnetics::Coil::resolve_insulation_layer_insulation_material(coil, layer.get_name());
-            json mierda;
-            to_json(mierda, material);
+            json jsonMaterial;
+            to_json(jsonMaterial, material);
         }
 
     }

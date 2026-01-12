@@ -10,7 +10,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace { 
-    TEST_CASE("Number_Turns_Inductor", "[constructive-model][number-turns]") {
+    TEST_CASE("Number_Turns_Inductor", "[constructive-model][number-turns][smoke-test]") {
         DesignRequirements designRequirements;
         designRequirements.set_turns_ratios(std::vector<DimensionWithTolerance>{});
         uint64_t initialPrimaryNumberTurns = 42;
@@ -22,7 +22,7 @@ namespace {
         REQUIRE(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
     }
 
-    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_1", "[constructive-model][number-turns]") {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_1", "[constructive-model][number-turns][smoke-test]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
         double turnsRatioValue = 1;
@@ -39,7 +39,7 @@ namespace {
         REQUIRE(numberTurnsCombination[1] == (initialPrimaryNumberTurns + 1) * 1);
     }
 
-    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_8", "[constructive-model][number-turns]") {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_8", "[constructive-model][number-turns][smoke-test]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
         double turnsRatioValue = 8;
@@ -59,7 +59,7 @@ namespace {
         REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
     }
 
-    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_0_001", "[constructive-model][number-turns]") {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_0_001", "[constructive-model][number-turns][smoke-test]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
         double turnsRatioValue = 0.001;
@@ -79,7 +79,7 @@ namespace {
         REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
     }
 
-    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random", "[constructive-model][number-turns]") {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random", "[constructive-model][number-turns][smoke-test]") {
         for (size_t i = 0; i < 1000; ++i)
         {
             DesignRequirements designRequirements;
@@ -104,7 +104,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Number_Turns_Many_Windings_Turns_Ratio_Random", "[constructive-model][number-turns]") {
+    TEST_CASE("Number_Turns_Many_Windings_Turns_Ratio_Random", "[constructive-model][number-turns][smoke-test]") {
         for (size_t i = 0; i < 1000; ++i)
         {
             DesignRequirements designRequirements;
@@ -142,7 +142,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random_0", "[constructive-model][number-turns]") {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random_0", "[constructive-model][number-turns][smoke-test]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
         double turnsRatioValue = 78;
@@ -161,7 +161,7 @@ namespace {
         REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
     }
 
-    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random_1", "[constructive-model][number-turns]") {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random_1", "[constructive-model][number-turns][smoke-test]") {
         DesignRequirements designRequirements;
         DimensionWithTolerance turnsRatio;
         double turnsRatioValue = 0.010101;

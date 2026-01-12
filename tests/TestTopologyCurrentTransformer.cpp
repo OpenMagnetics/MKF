@@ -18,7 +18,7 @@ using namespace OpenMagnetics;
 namespace {
     double maximumError = 0.1;
 
-    TEST_CASE("Test_Current_Transformer", "[converter-model][current-transformer-topology]") {
+    TEST_CASE("Test_Current_Transformer", "[converter-model][current-transformer-topology][smoke-test]") {
         json currentTransformerInputsJson;
 
         currentTransformerInputsJson["diodeVoltageDrop"] = 0.7;

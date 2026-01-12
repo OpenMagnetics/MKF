@@ -442,7 +442,7 @@ Bobbin Bobbin::create_quick_bobbin(double windingWindowHeight, double windingWin
 
 Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core has not been processed yet");
+        core.process_data();
     }
 
     if (core.get_processed_description()->get_winding_windows().size() > 1) {

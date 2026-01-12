@@ -1603,6 +1603,9 @@ std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitatio
         if (!signalDescriptor.get_waveform()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing harmonics");
         }
+        double frequency = excitation.get_frequency();
+        auto sampledWaveform = Inputs::calculate_sampled_waveform(signalDescriptor.get_waveform().value(), frequency);
+        signalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(sampledWaveform, frequency));
     }
     auto harmonics = signalDescriptor.get_harmonics().value();
     size_t maximumCommonIndex = harmonics.get_amplitudes().size();

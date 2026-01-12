@@ -20,7 +20,7 @@ namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
 
-    TEST_CASE("Test_Boost", "[converter-model][boost-topology]") {
+    TEST_CASE("Test_Boost", "[converter-model][boost-topology][smoke-test]") {
         json boostInputsJson;
         json inputVoltage;
 

@@ -12,7 +12,7 @@ using namespace OpenMagnetics;
 namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
-    TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Many_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Many_Turns", "[processor][sweeper][smoke-test]") {
         settings.set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {110, 110};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -60,7 +60,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Q_Factor_Over_Frequency_Many_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Q_Factor_Over_Frequency_Many_Turns", "[processor][sweeper][smoke-test]") {
         settings.set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {110, 110};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -108,7 +108,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Few_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Few_Turns", "[processor][sweeper][smoke-test]") {
         settings.set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {18, 18};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -156,7 +156,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Larger_Core_Few_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Larger_Core_Few_Turns", "[processor][sweeper][smoke-test]") {
         settings.set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {9, 9};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -204,7 +204,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Larger_Core_Many_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Larger_Core_Many_Turns", "[processor][sweeper][smoke-test]") {
         settings.set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {17, 17};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -312,7 +312,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_Frequency_Many_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_Frequency_Many_Turns", "[processor][sweeper][smoke-test]") {
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -372,7 +372,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_Temperature_Many_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_Temperature_Many_Turns", "[processor][sweeper][smoke-test]") {
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -432,7 +432,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Powder", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Powder", "[processor][sweeper][smoke-test]") {
         std::vector<int64_t> numberTurns = {12, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -492,7 +492,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Ferrite", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Ferrite", "[processor][sweeper][smoke-test]") {
         std::vector<int64_t> numberTurns = {12, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -612,7 +612,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Core_Resistance_Over_Frequency_Many_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Core_Resistance_Over_Frequency_Many_Turns", "[processor][sweeper][smoke-test]") {
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -672,7 +672,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Core_Losses_Over_Frequency_Many_Turns", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Core_Losses_Over_Frequency_Many_Turns", "[processor][sweeper][smoke-test]") {
         double temperature = 20;
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
@@ -751,7 +751,7 @@ namespace {
         settings.reset();
     }
 
-    TEST_CASE("Test_Sweeper_Core_Losses_Over_Frequency_Non_Steinmetz", "[processor][sweeper]") {
+    TEST_CASE("Test_Sweeper_Core_Losses_Over_Frequency_Non_Steinmetz", "[processor][sweeper][smoke-test]") {
         double temperature = 100;
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};

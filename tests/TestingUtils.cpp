@@ -12,7 +12,7 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-bool verboseTests = true;
+bool verboseTests = false;
 
 
 namespace OpenMagneticsTesting {
@@ -799,11 +799,13 @@ OpenMagnetics::Mas mas_loader(std::string path) {
     auto inputsJson = masJson["inputs"];
     auto magneticJson = masJson["magnetic"];
     auto outputsJson = masJson["outputs"];
-    for (auto layerJson : magneticJson["coil"]["layersDescription"]) {
-        auto layer = MAS::Layer(layerJson);
+
+    auto magnetic = OpenMagnetics::Magnetic(magneticJson);
+    if (magneticJson["coil"]["bobbin"] == "Basic") {
+        auto bobbinData = OpenMagnetics::Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
+        to_json(magneticJson["coil"]["bobbin"], bobbinData);
     }
     auto coil = OpenMagnetics::Coil(magneticJson["coil"]);
-    auto magnetic = OpenMagnetics::Magnetic(magneticJson);
     std::vector<OpenMagnetics::Outputs> outputs;
     if (outputsJson != nullptr) {
         outputs = std::vector<OpenMagnetics::Outputs>(outputsJson);

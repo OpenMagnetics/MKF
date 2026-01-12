@@ -18,9 +18,7 @@ using namespace OpenMagnetics;
 using json = nlohmann::json;
 
 namespace {
-    double max_error = 0.05;
-
-    TEST_CASE("Test_Magnetic_Saturation_Current", "[constructive-model][magnetic]") {
+    TEST_CASE("Test_Magnetic_Saturation_Current", "[constructive-model][magnetic][smoke-test]") {
 
         std::vector<int64_t> numberTurns = {18};
         std::vector<int64_t> numberParallels = {1};
@@ -41,9 +39,7 @@ namespace {
         magnetic.set_coil(coil);
 
         auto saturationCurrentAt20 = magnetic.calculate_saturation_current(20);
-        std::cout << "saturationCurrentAt20: " << saturationCurrentAt20 << std::endl;
         auto saturationCurrentAt100 = magnetic.calculate_saturation_current(100);
-        std::cout << "saturationCurrentAt100: " << saturationCurrentAt100 << std::endl;
         REQUIRE(saturationCurrentAt100 < saturationCurrentAt20);
     }
 
