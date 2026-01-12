@@ -5370,7 +5370,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
         }
     }
 
-    double currentCoilRadialHeight;
+    double currentCoilRadialHeight = 0;
     double currentCoilAngle;
     double paddingAmongSectionRadialHeight = 0;
     double paddingAmongSectionAngle = 0;
