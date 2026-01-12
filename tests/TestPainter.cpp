@@ -20,28 +20,8 @@ namespace {
     const auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
     TEST_CASE("Test_Painter_Contour_Many_Turns", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns.svg");
@@ -62,28 +42,8 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Contour_Many_Turns_Logarithmic_Scale", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Logarithmic_Scale.svg");
@@ -104,28 +64,8 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Contour_Many_Turns_No_Fringing", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
  
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_No_Fringing.svg");
@@ -146,28 +86,8 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Contour_Many_Turns_Limit_Scale", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Limit_Scale.svg");
@@ -188,28 +108,11 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Contour_One_Turn", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        std::vector<int64_t> numberTurns = {1};
-        std::vector<int64_t> numberParallels = {1};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        config.numberTurns = {1};
+        config.numberParallels = {1};
+        config.interleavingLevel = 1;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn.svg");
@@ -224,29 +127,8 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns.svg");
@@ -267,28 +149,11 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_One_Turn", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        std::vector<int64_t> numberTurns = {1};
-        std::vector<int64_t> numberParallels = {1};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        config.numberTurns = {1};
+        config.numberParallels = {1};
+        config.interleavingLevel = 1;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn.svg");
@@ -309,29 +174,8 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_No_Fringing", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_No_Fringing.svg");
@@ -352,29 +196,8 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_Logarithmic_Scale", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Logarithmic_Scale.svg");
@@ -395,29 +218,8 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_Limit_Scale", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
-        std::vector<int64_t> numberTurns = {23, 13};
-        std::vector<int64_t> numberParallels = {2, 2};
-        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Limit_Scale.svg");
@@ -438,33 +240,12 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        std::vector<int64_t> numberTurns = {1};
-        std::vector<int64_t> numberParallels = {1};
-        // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        OpenMagnetics::Wire wire = find_wire_by_name("Rectangular 2.36x1.12 - Grade 1");
-        auto wires = std::vector<OpenMagnetics::Wire>({wire});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        config.numberTurns = {1};
+        config.numberParallels = {1};
+        config.interleavingLevel = 1;
+        config.wireNames = {"Rectangular 2.36x1.12 - Grade 1"};
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn_Rectangular.svg");
@@ -485,33 +266,12 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Contour_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        std::vector<int64_t> numberTurns = {1};
-        std::vector<int64_t> numberParallels = {1};
-        // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
-        OpenMagnetics::Wire wire = find_wire_by_name("Rectangular 2.36x1.12 - Grade 1");
-        auto wires = std::vector<OpenMagnetics::Wire>({wire});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        config.numberTurns = {1};
+        config.numberParallels = {1};
+        config.interleavingLevel = 1;
+        config.wireNames = {"Rectangular 2.36x1.12 - Grade 1"};
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn_Rectangular.svg");
@@ -533,33 +293,14 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        std::vector<int64_t> numberTurns = {10};
-        std::vector<int64_t> numberParallels = {1};
-        // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
-
-        OpenMagnetics::Wire wire = find_wire_by_name("Rectangular 4.50x0.90 - Grade 1");
-        auto wires = std::vector<OpenMagnetics::Wire>({wire});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires, false);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        config.numberTurns = {10};
+        config.numberParallels = {1};
+        config.interleavingLevel = 1;
+        config.turnsAlignment = CoilAlignment::SPREAD;
+        config.wireNames = {"Rectangular 4.50x0.90 - Grade 1"};
+        config.compactCoil = false;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Rectangular.svg");
@@ -580,33 +321,14 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Contour_Many_Turns_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        std::vector<int64_t> numberTurns = {10};
-        std::vector<int64_t> numberParallels = {1};
-        // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
-
-        OpenMagnetics::Wire wire = find_wire_by_name("Rectangular 4.50x0.90 - Grade 1");
-        auto wires = std::vector<OpenMagnetics::Wire>({wire});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires, false);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
-
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        config.numberTurns = {10};
+        config.numberParallels = {1};
+        config.interleavingLevel = 1;
+        config.turnsAlignment = CoilAlignment::SPREAD;
+        config.wireNames = {"Rectangular 4.50x0.90 - Grade 1"};
+        config.compactCoil = false;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Rectangular.svg");
@@ -627,38 +349,20 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_One_Turn_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
-        std::vector<int64_t> numberTurns = {1};
-        std::vector<int64_t> numberParallels = {1};
-        // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        std::vector<double> turnsRatios = {};
-        uint8_t interleavingLevel = 1;
-        int64_t numberStacks = 1;
-        double voltagePeakToPeak = 2000;
-        std::string coreShape = "PQ 26/25";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-
+        // Custom wire setup - modify Foil wire dimensions
         OpenMagnetics::Wire wire = find_wire_by_name("Foil 0.15");
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_nominal(0.010);
         wire.set_conducting_height(dimensionWithTolerance);
         wire.set_outer_width(wire.get_conducting_width().value());
         wire.set_outer_height(dimensionWithTolerance);
-        auto wires = std::vector<OpenMagnetics::Wire>({wire});
-        
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.delimit_and_compact();
 
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
+        OpenMagneticsTesting::PainterTestConfig config;
+        config.numberTurns = {1};
+        config.numberParallels = {1};
+        config.interleavingLevel = 1;
+        config.customWires = {wire};
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn_Foil.svg");

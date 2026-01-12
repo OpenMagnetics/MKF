@@ -27,26 +27,10 @@ TEST_CASE("Test_All_Core_Materials", "[adviser][core-cross-referencer]") {
     std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
     Core core = find_core_by_name(coreName);
 
-    double temperature = 20;
-    auto label = WaveformLabel::TRIANGULAR;
-    double offset = 0;
-    double peakToPeak = 2 * 1.73205;
-    double dutyCycle = 0.5;
-    double frequency = 100000;
-    double magnetizingInductance = 100e-6;
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     int64_t numberTurns = 28;
 
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                          magnetizingInductance,
-                                                                                          temperature,
-                                                                                          label,
-                                                                                          peakToPeak,
-                                                                                          dutyCycle,
-                                                                                          offset);
-
-
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
-
 
     REQUIRE(crossReferencedCores.size() > 0);
     REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 35 - Kool Mµ 26 - Ungapped");
@@ -63,26 +47,10 @@ TEST_CASE("Test_All_Core_Materials_Same_Material", "[adviser][core-cross-referen
     std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
     Core core = find_core_by_name(coreName);
 
-    double temperature = 20;
-    auto label = WaveformLabel::TRIANGULAR;
-    double offset = 0;
-    double peakToPeak = 2 * 1.73205;
-    double dutyCycle = 0.5;
-    double frequency = 100000;
-    double magnetizingInductance = 100e-6;
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     int64_t numberTurns = 28;
 
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                          magnetizingInductance,
-                                                                                          temperature,
-                                                                                          label,
-                                                                                          peakToPeak,
-                                                                                          dutyCycle,
-                                                                                          offset);
-
-
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
-
 
     REQUIRE(crossReferencedCores.size() > 0);
     REQUIRE(crossReferencedCores[0].first.get_name().value() == "EC 41/19/12 - 3C91 - Gapped 1.000 mm");
@@ -99,22 +67,8 @@ TEST_CASE("Test_All_Core_Materials_Same_Material_Maximum_Height", "[adviser][cor
     std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
     Core core = find_core_by_name(coreName);
 
-    double temperature = 20;
-    auto label = WaveformLabel::TRIANGULAR;
-    double offset = 0;
-    double peakToPeak = 2 * 1.73205;
-    double dutyCycle = 0.5;
-    double frequency = 100000;
-    double magnetizingInductance = 100e-6;
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     int64_t numberTurns = 28;
-
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                          magnetizingInductance,
-                                                                                          temperature,
-                                                                                          label,
-                                                                                          peakToPeak,
-                                                                                          dutyCycle,
-                                                                                          offset);
 
     MaximumDimensions maximumDimensions;
     maximumDimensions.set_depth(0.04);
@@ -122,9 +76,7 @@ TEST_CASE("Test_All_Core_Materials_Same_Material_Maximum_Height", "[adviser][cor
     maximumDimensions.set_width(0.025);
     inputs.get_mutable_design_requirements().set_maximum_dimensions(maximumDimensions);
 
-
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
-
 
     REQUIRE(crossReferencedCores.size() > 0);
     REQUIRE(crossReferencedCores[0].first.get_name().value() == "EP 20 - 3C91 - Gapped 0.605 mm");
@@ -141,26 +93,10 @@ TEST_CASE("Test_All_Core_Materials_Only_TDK", "[adviser][core-cross-referencer]"
     std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
     Core core = find_core_by_name(coreName);
 
-    double temperature = 20;
-    auto label = WaveformLabel::TRIANGULAR;
-    double offset = 0;
-    double peakToPeak = 2 * 1.73205;
-    double dutyCycle = 0.5;
-    double frequency = 100000;
-    double magnetizingInductance = 100e-6   ;
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     int64_t numberTurns = 28;
 
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                     magnetizingInductance,
-                                                                                     temperature,
-                                                                                     label,
-                                                                                     peakToPeak,
-                                                                                     dutyCycle,
-                                                                                     offset);
-
-
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
-
 
     REQUIRE(crossReferencedCores.size() > 0);
     REQUIRE(crossReferencedCores[0].first.get_name().value() == "ETD 34/17/11 - N87 - Gapped 2.500 mm");
@@ -176,26 +112,10 @@ TEST_CASE("Test_All_Core_Materials_Powder", "[adviser][core-cross-referencer]") 
     std::string coreName = "E 25/9.5/6.3 - XFlux 60 - Ungapped";
     Core core = find_core_by_name(coreName);
 
-    double temperature = 20;
-    auto label = WaveformLabel::TRIANGULAR;
-    double offset = 0;
-    double peakToPeak = 2 * 1.73205;
-    double dutyCycle = 0.5;
-    double frequency = 100000;
-    double magnetizingInductance = 100e-6;  
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     int64_t numberTurns = 28;
 
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                     magnetizingInductance,
-                                                                                     temperature,
-                                                                                     label,
-                                                                                     peakToPeak,
-                                                                                     dutyCycle,
-                                                                                     offset);
-
-
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
-
 
     REQUIRE(crossReferencedCores.size() > 0);
     REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 25/9.5/6.3 - MS 75 - Ungapped");
@@ -212,26 +132,10 @@ TEST_CASE("Test_All_Core_Materials_Only_Micrometals", "[adviser][core-cross-refe
     std::string coreName = "E 25/9.5/6.3 - XFlux 60 - Ungapped";
     Core core = find_core_by_name(coreName);
 
-    double temperature = 20;
-    auto label = WaveformLabel::TRIANGULAR;
-    double offset = 0;
-    double peakToPeak = 2 * 1.73205;
-    double dutyCycle = 0.5;
-    double frequency = 100000;
-    double magnetizingInductance = 100e-6;
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     int64_t numberTurns = 28;
 
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                     magnetizingInductance,
-                                                                                     temperature,
-                                                                                     label,
-                                                                                     peakToPeak,
-                                                                                     dutyCycle,
-                                                                                     offset);
-
-
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
-
 
     REQUIRE(crossReferencedCores.size() > 0);
     REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 25/9.5/6.3 - MS 75 - Ungapped");
@@ -249,24 +153,8 @@ TEST_CASE("Test_Cross_Reference_Core_Web_0", "[adviser][core-cross-referencer][b
     auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
     auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, materialName);
 
-
-    double temperature = 20;
-    auto label = WaveformLabel::TRIANGULAR;
-    double offset = 0;
-    double peakToPeak = 2 * 1.73205;
-    double dutyCycle = 0.5;
-    double frequency = 100000;
-    double magnetizingInductance = 100e-6;
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     int64_t numberTurns = 16;
-
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                     magnetizingInductance,
-                                                                                     temperature,
-                                                                                     label,
-                                                                                     peakToPeak,
-                                                                                     dutyCycle,
-                                                                                     offset);
-
 
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 20);
 

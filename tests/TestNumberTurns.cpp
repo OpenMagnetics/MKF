@@ -79,7 +79,7 @@ namespace {
         REQUIRE(check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
     }
 
-    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random", "[constructive-model][number-turns][smoke-test]") {
+    TEST_CASE("Number_Turns_Two_Windings_Turns_Ratio_Random", "[constructive-model][number-turns]") {
         for (size_t i = 0; i < 1000; ++i)
         {
             DesignRequirements designRequirements;
@@ -104,7 +104,7 @@ namespace {
         }
     }
 
-    TEST_CASE("Number_Turns_Many_Windings_Turns_Ratio_Random", "[constructive-model][number-turns][smoke-test]") {
+    TEST_CASE("Number_Turns_Many_Windings_Turns_Ratio_Random", "[constructive-model][number-turns]") {
         for (size_t i = 0; i < 1000; ++i)
         {
             DesignRequirements designRequirements;
