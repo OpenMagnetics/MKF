@@ -28,7 +28,7 @@ struct Defaults {
     const double maximumCurrentDensity = 7000000;
     const double maximumCurrentDensityPlanar = 2000000;
     const double maximumEffectiveCurrentDensity = 12000000;
-    const double maximumNumberParallels = 5;
+    const int maximumNumberParallels = 5;
     const double magneticFluxDensitySaturation = 0.5;
     const double ferriteInitialPermeability = 2000;
     const double magnetizingInductanceThresholdValidity = 0.25;
@@ -36,7 +36,7 @@ struct Defaults {
     const double ambientTemperature = 25;
     const double measurementFrequency = 10000;
     const double maximumFrequency = 100e6;
-    const double magneticFieldMirroringDimension = 1;
+    const int magneticFieldMirroringDimension = 1;
     const double maximumCoilPattern = 6;
     const WindingOrientation defaultRoundWindowSectionsOrientation = WindingOrientation::CONTIGUOUS;
     const WindingOrientation defaultRectangularWindowSectionsOrientation = WindingOrientation::OVERLAPPING;
