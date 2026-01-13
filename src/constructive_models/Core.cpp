@@ -16,6 +16,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 using json = nlohmann::json;
 
@@ -85,21 +86,21 @@ Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
 
 double Core::get_depth() {
     if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_depth();
 }
 
 double Core::get_height() {
     if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_height();
 }
 
 double Core::get_width() {
     if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_width();
 }
@@ -111,34 +112,34 @@ double Core::get_mass() {
         return volume * get_density();
     }
     else{
-        throw std::runtime_error("get_mass only implemented for toroidal cores for now");
+        throw NotImplementedException("get_mass only implemented for toroidal cores for now");
     }
 }
 
 double Core::get_effective_length() {
     if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_effective_length();
 }
 
 double Core::get_effective_area() {
     if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_effective_area();
 }
 
 double Core::get_minimum_area() {
     if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_minimum_area();
 }
 
 double Core::get_effective_volume() {
     if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
     return get_processed_description()->get_effective_parameters().get_effective_volume();
 }
@@ -156,7 +157,7 @@ double interp(std::vector<std::pair<double, double>> data, double temperature) {
     double result;
 
     if (data.size() == 0) {
-        throw std::runtime_error("Data cannot be empty");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Data cannot be empty");
     }
     else if (data.size() == 1) {
         result = data[0].second;
@@ -457,7 +458,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
             // TODO add for toroPIECE_AND_PLATE
             break;
         default:
-            throw std::runtime_error(
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                 "Unknown type of core, options are {TOROIDAL, TWO_PIECE_SET, PIECE_AND_PLATE, CLOSED_SHAPE}");
     }
 
@@ -954,7 +955,7 @@ bool Core::process_gap() {
     auto columns = processedDescription.get_columns();
 
     if (family == CoreShapeFamily::T && gapping.size() > 0 ) {
-        throw std::runtime_error("Toroids cannot be gapped: " + std::to_string(gapping[0].get_length()));
+        throw GapException("Toroids cannot be gapped: " + std::to_string(gapping[0].get_length()));
     }
 
     if (family != CoreShapeFamily::T) {
@@ -1112,7 +1113,7 @@ void Core::process_data() {
             processedDescription.set_width(corePiece->get_width());
             break;
         default:
-            throw std::runtime_error("Unknown type of core, available options are {TOROIDAL, TWO_PIECE_SET}");
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown type of core, available options are {TOROIDAL, TWO_PIECE_SET}");
     }
     set_processed_description(processedDescription);
     scale_to_stacks(*(get_functional_description().get_number_stacks()));
@@ -1186,7 +1187,7 @@ double Core::get_remanence(CoreMaterial coreMaterial, double temperature, bool r
     std::vector<std::pair<double, double>> data;
 
     if (remanenceData.size() == 0) {
-        throw std::runtime_error("Missing remanence data in core material");
+        throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA, "Missing remanence data in core material");
     }
     for (auto& datum : remanenceData) {
         data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});
@@ -1227,7 +1228,7 @@ double Core::get_coercive_force(CoreMaterial coreMaterial, double temperature, b
     std::vector<std::pair<double, double>> data;
 
     if (coerciveForceData.size() == 0) {
-        throw std::runtime_error("Missing coercive force data in core material");
+        throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA, "Missing coercive force data in core material");
     }
     for (auto& datum : coerciveForceData) {
         data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
@@ -1559,7 +1560,7 @@ bool Core::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
         }
     }
     else {
-        throw std::runtime_error("Not sure how this happened");
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Not sure how this happened");
     }
 }
 

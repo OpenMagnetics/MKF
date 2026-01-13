@@ -1,7 +1,9 @@
 #include "support/Settings.h"
 #include "TestingUtils.h"
 #include "physical_models/MagnetizingInductance.h"
-#include <UnitTest++.h>
+#include "constructive_models/Bobbin.h"
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -11,7 +13,7 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-bool verboseTests = true;
+bool verboseTests = false;
 
 
 namespace OpenMagneticsTesting {
@@ -164,8 +166,7 @@ OpenMagnetics::Coil get_quick_coil_no_compact(std::vector<int64_t> numberTurns,
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
 
-    auto settings = Settings::GetInstance();
-    settings->set_coil_delimit_and_compact(false);
+    settings.set_coil_delimit_and_compact(false);
 
     OpenMagnetics::Coil coil(coilJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
     return coil;
@@ -217,8 +218,7 @@ OpenMagnetics::Coil get_quick_toroidal_coil_no_compact(std::vector<int64_t> numb
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
 
-    auto settings = Settings::GetInstance();
-    settings->set_coil_delimit_and_compact(false);
+    settings.set_coil_delimit_and_compact(false);
 
     OpenMagnetics::Coil coil(coilJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
     return coil;
@@ -490,7 +490,7 @@ void check_sections_description(OpenMagnetics::Coil coil,
 
                 for (auto& parallelProportion : partialWinding.get_parallels_proportion()) {
                     numberAssignedParallels[currentIndividualWindingIndex] += parallelProportion;
-                    numberAssignedPhysicalTurns[currentIndividualWindingIndex] += round(parallelProportion * currentIndividualWinding.get_number_turns());
+                    numberAssignedPhysicalTurns[currentIndividualWindingIndex] += static_cast<int64_t>(round(parallelProportion * currentIndividualWinding.get_number_turns()));
                 }
             }
             CHECK(section.get_filling_factor().value() > 0);
@@ -646,18 +646,14 @@ bool check_turns_description(OpenMagnetics::Coil coil) {
 bool check_wire_standards(OpenMagnetics::Coil coil) {
     auto wires = coil.get_wires();
     std::optional<WireStandard> firstWireStandard = std::nullopt;
-    std::cout << wires.size() << std::endl;
     for (auto wire : wires) {
         if (wire.get_standard()) {
             if (!firstWireStandard) {
                 firstWireStandard = wire.get_standard().value();
-                std::cout << magic_enum::enum_name(firstWireStandard.value()) << std::endl;
             }
             else {
                 CHECK(firstWireStandard.value() == wire.get_standard().value());
-                std::cout << magic_enum::enum_name(wire.get_standard().value()) << std::endl;
                 if (firstWireStandard.value() != wire.get_standard().value()) {
-                    throw std::runtime_error("DEBUG");
                     return false;
                 }
             }
@@ -698,9 +694,9 @@ void check_winding_losses(OpenMagnetics::Mas mas) {
             for (auto lossesElement : windingLossesPerWinding) {
                 ohmicLossesPerWinding += lossesElement.get_ohmic_losses()->get_losses();
             }
-            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerLayer, ohmicLossesPerTurn * 0.001);
-            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerSection, ohmicLossesPerTurn * 0.001);
-            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerWinding, ohmicLossesPerTurn * 0.001);
+            REQUIRE_THAT(ohmicLossesPerTurn, Catch::Matchers::WithinAbs(ohmicLossesPerLayer, ohmicLossesPerTurn * 0.001));
+            REQUIRE_THAT(ohmicLossesPerTurn, Catch::Matchers::WithinAbs(ohmicLossesPerSection, ohmicLossesPerTurn * 0.001));
+            REQUIRE_THAT(ohmicLossesPerTurn, Catch::Matchers::WithinAbs(ohmicLossesPerWinding, ohmicLossesPerTurn * 0.001));
             totalWindingLossesByTurn += ohmicLossesPerTurn;
             totalWindingLossesByLayer += ohmicLossesPerLayer;
             totalWindingLossesBySection += ohmicLossesPerSection;
@@ -737,9 +733,9 @@ void check_winding_losses(OpenMagnetics::Mas mas) {
                     skinLossesPerWinding += harmonicLoss;
                 }
             }
-            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerLayer, skinLossesPerTurn * 0.001);
-            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerSection, skinLossesPerTurn * 0.001);
-            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerWinding, skinLossesPerTurn * 0.001);
+            REQUIRE_THAT(skinLossesPerTurn, Catch::Matchers::WithinAbs(skinLossesPerLayer, skinLossesPerTurn * 0.001));
+            REQUIRE_THAT(skinLossesPerTurn, Catch::Matchers::WithinAbs(skinLossesPerSection, skinLossesPerTurn * 0.001));
+            REQUIRE_THAT(skinLossesPerTurn, Catch::Matchers::WithinAbs(skinLossesPerWinding, skinLossesPerTurn * 0.001));
             totalWindingLossesByTurn += skinLossesPerTurn;
             totalWindingLossesByLayer += skinLossesPerLayer;
             totalWindingLossesBySection += skinLossesPerSection;
@@ -776,19 +772,19 @@ void check_winding_losses(OpenMagnetics::Mas mas) {
                     proximityLossesPerWinding += harmonicLoss;
                 }
             }
-            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerLayer, proximityLossesPerTurn * 0.001);
-            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerSection, proximityLossesPerTurn * 0.001);
-            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerWinding, proximityLossesPerTurn * 0.001);
+            REQUIRE_THAT(proximityLossesPerTurn, Catch::Matchers::WithinAbs(proximityLossesPerLayer, proximityLossesPerTurn * 0.001));
+            REQUIRE_THAT(proximityLossesPerTurn, Catch::Matchers::WithinAbs(proximityLossesPerSection, proximityLossesPerTurn * 0.001));
+            REQUIRE_THAT(proximityLossesPerTurn, Catch::Matchers::WithinAbs(proximityLossesPerWinding, proximityLossesPerTurn * 0.001));
             totalWindingLossesByTurn += proximityLossesPerTurn;
             totalWindingLossesByLayer += proximityLossesPerLayer;
             totalWindingLossesBySection += proximityLossesPerSection;
             totalWindingLossesByWinding += proximityLossesPerWinding;
         }
 
-        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByTurn, totalWindingLosses * 0.001);
-        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByLayer, totalWindingLosses * 0.001);
-        CHECK_CLOSE(totalWindingLosses, totalWindingLossesBySection, totalWindingLosses * 0.001);
-        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByWinding, totalWindingLosses * 0.001);
+        REQUIRE_THAT(totalWindingLosses, Catch::Matchers::WithinAbs(totalWindingLossesByTurn, totalWindingLosses * 0.001));
+        REQUIRE_THAT(totalWindingLosses, Catch::Matchers::WithinAbs(totalWindingLossesByLayer, totalWindingLosses * 0.001));
+        REQUIRE_THAT(totalWindingLosses, Catch::Matchers::WithinAbs(totalWindingLossesBySection, totalWindingLosses * 0.001));
+        REQUIRE_THAT(totalWindingLosses, Catch::Matchers::WithinAbs(totalWindingLossesByWinding, totalWindingLosses * 0.001));
     }
 }
 
@@ -800,14 +796,16 @@ OpenMagnetics::Mas mas_loader(std::string path) {
     auto inputsJson = masJson["inputs"];
     auto magneticJson = masJson["magnetic"];
     auto outputsJson = masJson["outputs"];
-    for (auto layerJson : magneticJson["coil"]["layersDescription"]) {
-        auto layer = MAS::Layer(layerJson);
+
+    auto magnetic = OpenMagnetics::Magnetic(magneticJson);
+    if (magneticJson["coil"]["bobbin"] == "Basic") {
+        auto bobbinData = OpenMagnetics::Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
+        to_json(magneticJson["coil"]["bobbin"], bobbinData);
     }
     auto coil = OpenMagnetics::Coil(magneticJson["coil"]);
-    auto magnetic = OpenMagnetics::Magnetic(magneticJson);
     std::vector<OpenMagnetics::Outputs> outputs;
     if (outputsJson != nullptr) {
-        outputs = std::vector<OpenMagnetics::Outputs>(outputsJson);
+        outputs = outputsJson.get<std::vector<OpenMagnetics::Outputs>>();
     }
     OpenMagnetics::Inputs inputs;
     std::vector<double> magnetizingInductancePerPoint;
@@ -830,6 +828,7 @@ OpenMagnetics::Mas mas_loader(std::string path) {
         }
         catch (const std::exception &e)
         {
+            (void)e; // Suppress unused variable warning
             inputs = OpenMagnetics::Inputs(inputsJson, true);
         }
     }
@@ -841,6 +840,292 @@ OpenMagnetics::Mas mas_loader(std::string path) {
     return mas;
 }
 
+std::pair<OpenMagnetics::Core, OpenMagnetics::Coil> prepare_core_and_coil_from_json(
+    const std::string& coreJsonStr,
+    const std::string& coilJsonStr) {
+    
+    json coreJson = json::parse(coreJsonStr);
+    json coilJson = json::parse(coilJsonStr);
+    
+    auto core = OpenMagnetics::Core(coreJson);
+    auto coil = OpenMagnetics::Coil(coilJson);
+    
+    core.process_data();
+    core.process_gap();
+    coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
+    coil.wind();
+    
+    return {core, coil};
+}
+
+OpenMagnetics::Magnetic prepare_magnetic_from_json(
+    const std::string& coreJsonStr,
+    const std::string& coilJsonStr) {
+
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    return magnetic;
+}
+
+std::pair<OpenMagnetics::Magnetic, OpenMagnetics::Inputs> prepare_painter_test(const PainterTestConfig& config) {
+    std::vector<double> turnsRatios;
+    if (config.numberTurns.size() > 1) {
+        turnsRatios.push_back(double(config.numberTurns[0]) / config.numberTurns[1]);
+    }
+    
+    auto gapping = get_ground_gap(config.gapLength);
+    
+    // Determine which wires to use
+    std::vector<OpenMagnetics::Wire> wires;
+    if (!config.customWires.empty()) {
+        wires = config.customWires;
+    } else if (!config.wireNames.empty()) {
+        for (const auto& wireName : config.wireNames) {
+            wires.push_back(find_wire_by_name(wireName));
+        }
+    }
+    
+    OpenMagnetics::Coil coil;
+    if (wires.empty()) {
+        coil = get_quick_coil(config.numberTurns, 
+                              config.numberParallels, 
+                              config.coreShape, 
+                              config.interleavingLevel, 
+                              config.sectionOrientation, 
+                              config.layersOrientation, 
+                              config.turnsAlignment, 
+                              config.sectionsAlignment);
+    } else {
+        coil = get_quick_coil(config.numberTurns, 
+                              config.numberParallels, 
+                              config.coreShape, 
+                              config.interleavingLevel, 
+                              config.sectionOrientation, 
+                              config.layersOrientation, 
+                              config.turnsAlignment, 
+                              config.sectionsAlignment,
+                              wires);
+    }
+    
+    auto core = get_quick_core(config.coreShape, gapping, config.numberStacks, config.coreMaterial);
+    
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(
+        config.frequency, 
+        config.magnetizingInductance, 
+        config.temperature, 
+        config.waveformLabel, 
+        config.voltagePeakToPeak, 
+        config.dutyCycle, 
+        config.offset, 
+        turnsRatios);
+    
+    if (config.compactCoil) {
+        coil.delimit_and_compact();
+    }
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    return {magnetic, inputs};
+}
+
+OpenMagnetics::Coil prepare_coil_from_json(const std::string& coilJsonStr) {
+    json coilJson = json::parse(coilJsonStr);
+    std::vector<OpenMagnetics::Winding> coilFunctionalDescription;
+    for (const auto& elem : coilJson["functionalDescription"]) {
+        coilFunctionalDescription.push_back(OpenMagnetics::Winding(elem));
+    }
+
+    OpenMagnetics::Coil coil;
+    
+    if (coilJson.contains("_interleavingLevel")) {
+        coil.set_interleaving_level(coilJson["_interleavingLevel"]);
+    }
+    if (coilJson.contains("_windingOrientation")) {
+        coil.set_winding_orientation(coilJson["_windingOrientation"]);
+    }
+    if (coilJson.contains("_layersOrientation")) {
+        coil.set_layers_orientation(coilJson["_layersOrientation"]);
+    }
+    if (coilJson.contains("_turnsAlignment")) {
+        coil.set_turns_alignment(coilJson["_turnsAlignment"]);
+    }
+    if (coilJson.contains("_sectionAlignment")) {
+        coil.set_section_alignment(coilJson["_sectionAlignment"]);
+    }
+    
+    coil.set_bobbin(coilJson["bobbin"]);
+    coil.set_functional_description(coilFunctionalDescription);
+    
+    return coil;
+}
+
+OpenMagnetics::Coil prepare_and_wind_coil(const CoilWindingConfig& config) {
+    json coilJson = json::parse(config.coilJsonStr);
+    
+    std::vector<OpenMagnetics::Winding> coilFunctionalDescription;
+    for (const auto& elem : coilJson["functionalDescription"]) {
+        coilFunctionalDescription.push_back(OpenMagnetics::Winding(elem));
+    }
+    
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(coilJson["bobbin"]);
+    coil.set_functional_description(coilFunctionalDescription);
+    
+    if (!config.marginPairs.empty()) {
+        coil.preload_margins(config.marginPairs);
+    }
+    
+    // Handle _layersOrientation: can be object, array, or single value
+    if (coilJson.contains("_layersOrientation")) {
+        if (coilJson["_layersOrientation"].is_object()) {
+            std::map<std::string, WindingOrientation> layersOrientationPerSection;
+            for (const auto& [key, value] : coilJson["_layersOrientation"].items()) {
+                layersOrientationPerSection[key] = value;
+            }
+            for (const auto& [sectionName, layerOrientation] : layersOrientationPerSection) {
+                coil.set_layers_orientation(layerOrientation, sectionName);
+            }
+        }
+        else if (coilJson["_layersOrientation"].is_array()) {
+            if (!config.pattern.empty() && config.repetitions > 0) {
+                coil.wind_by_sections(config.proportionPerWinding, config.pattern, config.repetitions);
+            }
+            if (coil.get_sections_description()) {
+                auto sections = coil.get_sections_description_conduction();
+                std::vector<WindingOrientation> layersOrientationPerSection;
+                for (const auto& elem : coilJson["_layersOrientation"]) {
+                    layersOrientationPerSection.push_back(WindingOrientation(elem));
+                }
+                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                    if (sectionIndex < layersOrientationPerSection.size()) {
+                        coil.set_layers_orientation(layersOrientationPerSection[sectionIndex], sections[sectionIndex].get_name());
+                    }
+                }
+            }
+        }
+        else {
+            WindingOrientation layerOrientation(coilJson["_layersOrientation"]);
+            coil.set_layers_orientation(layerOrientation);
+        }
+    }
+    
+    // Handle _turnsAlignment: can be object, array, or single value
+    if (coilJson.contains("_turnsAlignment")) {
+        if (coilJson["_turnsAlignment"].is_object()) {
+            std::map<std::string, CoilAlignment> turnsAlignmentPerSection;
+            for (const auto& [key, value] : coilJson["_turnsAlignment"].items()) {
+                turnsAlignmentPerSection[key] = value;
+            }
+            for (const auto& [sectionName, turnsAlignment] : turnsAlignmentPerSection) {
+                coil.set_turns_alignment(turnsAlignment, sectionName);
+            }
+        }
+        else if (coilJson["_turnsAlignment"].is_array()) {
+            if (!config.pattern.empty() && config.repetitions > 0) {
+                coil.wind_by_sections(config.proportionPerWinding, config.pattern, config.repetitions);
+            }
+            if (coil.get_sections_description()) {
+                auto sections = coil.get_sections_description_conduction();
+                std::vector<CoilAlignment> turnsAlignmentPerSection;
+                for (const auto& elem : coilJson["_turnsAlignment"]) {
+                    turnsAlignmentPerSection.push_back(CoilAlignment(elem));
+                }
+                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                    if (sectionIndex < turnsAlignmentPerSection.size()) {
+                        coil.set_turns_alignment(turnsAlignmentPerSection[sectionIndex], sections[sectionIndex].get_name());
+                    }
+                }
+            }
+        }
+        else {
+            CoilAlignment turnsAlignment(coilJson["_turnsAlignment"]);
+            coil.set_turns_alignment(turnsAlignment);
+        }
+    }
+    
+    // Handle _sectionsAlignment
+    if (coilJson.contains("_sectionsAlignment")) {
+        if (!coilJson["_sectionsAlignment"].is_object() && !coilJson["_sectionsAlignment"].is_array()) {
+            CoilAlignment sectionsAlignment(coilJson["_sectionsAlignment"]);
+            coil.set_section_alignment(sectionsAlignment);
+        }
+    }
+    
+    // Re-set bobbin and functional description after wind_by_sections calls
+    coil.set_bobbin(coilJson["bobbin"]);
+    coil.set_functional_description(coilFunctionalDescription);
+    
+    // Wind the coil with appropriate parameters
+    if (config.windCoil) {
+        if (config.proportionPerWinding.size() == coilFunctionalDescription.size()) {
+            if (!config.pattern.empty() && config.repetitions > 0) {
+                coil.wind(config.proportionPerWinding, config.pattern, config.repetitions);
+            }
+            else if (config.repetitions > 0) {
+                coil.wind(config.repetitions);
+            }
+            else {
+                coil.wind();
+            }
+        }
+        else {
+            if (!config.pattern.empty() && config.repetitions > 0) {
+                coil.wind(config.pattern, config.repetitions);
+            }
+            else if (config.repetitions > 0) {
+                coil.wind(config.repetitions);
+            }
+            else {
+                coil.wind();
+            }
+        }
+    }
+    
+    return coil;
+}
+
+OpenMagnetics::Inputs create_quick_test_inputs(const QuickInputsConfig& config) {
+    return OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        config.frequency,
+        config.magnetizingInductance,
+        config.temperature,
+        config.label,
+        config.peakToPeak,
+        config.dutyCycle,
+        config.offset);
+}
+
+OpenMagnetics::Magnetic create_quick_test_magnetic(const QuickMagneticConfig& config) {
+    std::vector<OpenMagnetics::Wire> wires;
+    if (config.wireNames.empty()) {
+        // Default to "Round 2.00 - Grade 1" for each winding
+        auto wire = find_wire_by_name("Round 2.00 - Grade 1");
+        for (size_t i = 0; i < config.numberTurns.size(); ++i) {
+            wires.push_back(wire);
+        }
+    } else {
+        for (const auto& wireName : config.wireNames) {
+            wires.push_back(find_wire_by_name(wireName));
+        }
+    }
+    
+    auto coil = OpenMagnetics::Coil::create_quick_coil(config.coreShapeName, config.numberTurns, config.numberParallels, wires);
+    
+    std::vector<CoreGap> gapping = {};
+    auto core = OpenMagnetics::Core::create_quick_core(config.coreShapeName, config.coreMaterialName, gapping, config.numberStacks);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    return magnetic;
+}
 
 
 } // namespace OpenMagneticsTesting

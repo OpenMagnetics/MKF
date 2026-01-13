@@ -21,6 +21,8 @@
 #include <magic_enum_utility.hpp>
 #include <list>
 #include <cmrc/cmrc.hpp>
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 CMRC_DECLARE(data);
 
@@ -124,7 +126,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterAreaProd
     // (*unfilteredMagnetics).clear();
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
 
@@ -176,7 +178,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterEnergySt
     // (*unfilteredMagnetics).clear();
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredMagneticsWithScoring.size() > 0) {
@@ -227,7 +229,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterFringing
     // (*unfilteredMagnetics).clear();
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredMagneticsWithScoring.size() > 0) {
@@ -278,7 +280,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterCost::fi
     // (*unfilteredMagnetics).clear();
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredMagneticsWithScoring.size() > 0) {
@@ -296,7 +298,7 @@ CoreAdviser::MagneticCoreFilterLosses::MagneticCoreFilterLosses(Inputs inputs, s
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    auto coilDelimitAndCompactOld = settings->get_coil_delimit_and_compact();
+    auto coilDelimitAndCompactOld = settings.get_coil_delimit_and_compact();
     if (weight <= 0) {
         return *unfilteredMagnetics;
     }
@@ -319,7 +321,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
     }
 
     if ((*unfilteredMagnetics).size() == listOfIndexesToErase.size()) {
-        settings->set_coil_delimit_and_compact(coilDelimitAndCompactOld);
+        settings.set_coil_delimit_and_compact(coilDelimitAndCompactOld);
         return *unfilteredMagnetics;
     }
 
@@ -335,7 +337,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
     // (*unfilteredMagnetics).clear();
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredMagneticsWithScoring.size() > 0) {
@@ -346,7 +348,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
         sort_magnetics_by_scoring(&filteredMagneticsWithScoring);
     }
 
-    settings->set_coil_delimit_and_compact(coilDelimitAndCompactOld);
+    settings.set_coil_delimit_and_compact(coilDelimitAndCompactOld);
     return filteredMagneticsWithScoring;
 }
 
@@ -365,7 +367,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensio
     }
 
     if ((*unfilteredMagnetics).size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string((*unfilteredMagnetics).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string((*unfilteredMagnetics).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if ((*unfilteredMagnetics).size() > 0) {
@@ -379,7 +381,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensio
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMinimumImpedance::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    auto coilDelimitAndCompactOld = settings->get_coil_delimit_and_compact();
+    auto coilDelimitAndCompactOld = settings.get_coil_delimit_and_compact();
     if (weight <= 0) {
         return *unfilteredMagnetics;
     }
@@ -413,7 +415,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMinimumI
     }
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredMagneticsWithScoring.size() > 0) {
@@ -425,12 +427,12 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMinimumI
     }
 
 
-    settings->set_coil_delimit_and_compact(coilDelimitAndCompactOld);
+    settings.set_coil_delimit_and_compact(coilDelimitAndCompactOld);
     return filteredMagneticsWithScoring;
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMagneticInductance::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
-    auto coilDelimitAndCompactOld = settings->get_coil_delimit_and_compact();
+    auto coilDelimitAndCompactOld = settings.get_coil_delimit_and_compact();
     if (weight <= 0) {
         return *unfilteredMagnetics;
     }
@@ -464,7 +466,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMagnetic
     }
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredMagneticsWithScoring.size() > 0) {
@@ -476,7 +478,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMagnetic
     }
 
 
-    settings->set_coil_delimit_and_compact(coilDelimitAndCompactOld);
+    settings.set_coil_delimit_and_compact(coilDelimitAndCompactOld);
     return filteredMagneticsWithScoring;
 }
 
@@ -533,7 +535,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         return get_advised_core(inputs, &shapes, maximumNumberResults);
     }
     else {
-        throw std::runtime_error("Custom cores not yet implemented for CoreAdviser");
+        throw NotImplementedException("Custom cores not yet implemented for CoreAdviser");
     }
 }
 
@@ -599,7 +601,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
             return filteredMagnetics;
         }
 
-        auto globalIncludeStacks = settings->get_core_adviser_include_stacks();
+        auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
         if (globalIncludeStacks) {
             expand_magnetic_dataset_with_stacks(inputs, cores, &magnetics);
         }
@@ -630,10 +632,10 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(Inputs inputs, std::vector<Core>* cores, bool includeStacks) {
     std::vector<std::pair<Magnetic, double>> magnetics;
     Coil coil = get_dummy_coil(inputs);
-    auto includeToroidalCores = settings->get_use_toroidal_cores();
-    auto includeConcentricCores = settings->get_use_concentric_cores();
-    auto globalIncludeStacks = settings->get_core_adviser_include_stacks();
-    auto globalIncludeDistributedGaps = settings->get_core_adviser_include_distributed_gaps();
+    auto includeToroidalCores = settings.get_use_toroidal_cores();
+    auto includeConcentricCores = settings.get_use_concentric_cores();
+    auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
+    auto globalIncludeDistributedGaps = settings.get_core_adviser_include_distributed_gaps();
     double maximumHeight = DBL_MAX;
     if (inputs.get_design_requirements().get_maximum_dimensions()) {
         if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
@@ -726,10 +728,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(Inputs inputs, std::vector<CoreShape>* shapes, bool includeStacks) {
     std::vector<std::pair<Magnetic, double>> magnetics;
     Coil coil = get_dummy_coil(inputs);
-    auto includeToroidalCores = settings->get_use_toroidal_cores();
-    auto includeConcentricCores = settings->get_use_concentric_cores();
-    auto globalIncludeStacks = settings->get_core_adviser_include_stacks();
-    auto globalIncludeDistributedGaps = settings->get_core_adviser_include_distributed_gaps();
+    auto includeToroidalCores = settings.get_use_toroidal_cores();
+    auto includeConcentricCores = settings.get_use_concentric_cores();
+    auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
+    auto globalIncludeDistributedGaps = settings.get_core_adviser_include_distributed_gaps();
     double maximumHeight = DBL_MAX;
     if (inputs.get_design_requirements().get_maximum_dimensions()) {
         if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
@@ -821,7 +823,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 
 void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector<Core>* cores, std::vector<std::pair<Magnetic, double>>* magnetics) {
     Coil coil = get_dummy_coil(inputs);
-    auto includeToroidalCores = settings->get_use_toroidal_cores();
+    auto includeToroidalCores = settings.get_use_toroidal_cores();
     double maximumHeight = DBL_MAX;
     if (inputs.get_design_requirements().get_maximum_dimensions()) {
         if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
@@ -922,7 +924,7 @@ std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vec
                 continue;
             }
         }
-        catch (const std::exception &exc) {
+        catch (...) {
             continue;
         }
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
@@ -1018,7 +1020,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     double magneticFluxDensityReference = 0.18;
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
-    auto coreMaterials = get_core_material_names(settings->get_preferred_core_material_powder_manufacturer());
+    auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_powder_manufacturer());
     for (auto coreMaterial : coreMaterials) {
         auto application = Core::guess_material_application(coreMaterial);
         if (application == _application) {
@@ -1090,7 +1092,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
     double magneticFluxDensityReference = 0.18;
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
-    auto coreMaterials = get_core_material_names(settings->get_preferred_core_material_ferrite_manufacturer());
+    auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_ferrite_manufacturer());
     for (auto coreMaterial : coreMaterials) {
         auto application = Core::guess_material_application(coreMaterial);
         if (application == _application) {
@@ -1165,7 +1167,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
     size_t numberCoreMaterialsTouse = 2;
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
-    auto coreMaterials = get_core_material_names(settings->get_preferred_core_material_ferrite_manufacturer());
+    auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_ferrite_manufacturer());
     for (auto coreMaterial : coreMaterials) {
         auto application = Core::guess_material_application(coreMaterial);
         if (application == _application) {
@@ -1286,10 +1288,10 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
     manufacturerInfo.set_reference(magnetic.get_core().get_name().value());
     magnetic.set_manufacturer_info(manufacturerInfo);
 
-    auto previousCoilDelimitAndCompact = settings->get_coil_delimit_and_compact();
-    settings->set_coil_delimit_and_compact(false);
+    auto previousCoilDelimitAndCompact = settings.get_coil_delimit_and_compact();
+    settings.set_coil_delimit_and_compact(false);
     magnetic.get_mutable_coil().fast_wind();
-    settings->set_coil_delimit_and_compact(previousCoilDelimitAndCompact);
+    settings.set_coil_delimit_and_compact(previousCoilDelimitAndCompact);
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         Outputs outputs;

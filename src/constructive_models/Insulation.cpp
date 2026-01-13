@@ -3,6 +3,7 @@
 #include "support/Settings.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 
 namespace OpenMagnetics {
@@ -166,9 +167,9 @@ double insulation_distance_provided_by_wires(Wire leftWire, Wire rightWire, doub
 }
 
 std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_section_interface_layers(Inputs& inputs, Wire leftWire, Wire rightWire, InsulationMaterial insulationMaterial) {
-    auto settings = Settings::GetInstance();
-    bool allowMarginTape = settings->get_coil_allow_margin_tape();
-    bool allowInsulatedWire = settings->get_coil_allow_insulated_wire();
+    auto& settings = Settings::GetInstance();
+    bool allowMarginTape = settings.get_coil_allow_margin_tape();
+    bool allowInsulatedWire = settings.get_coil_allow_insulated_wire();
 
     CoilSectionInterface coilSectionInterface;
     size_t numberInsulationLayers = 0;
@@ -194,7 +195,7 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
     double minimumDistanceThroughInsulation = insulationCoordination.get_distance_through_insulation();
 
     if (!allowMarginTape && !allowInsulatedWire) {
-        throw std::runtime_error("One of the options {allowMarginTape, allowInsulatedWire} must be allowed");
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "One of the options {allowMarginTape, allowInsulatedWire} must be allowed");
     }
 
     switch (insulationType) {
@@ -1771,7 +1772,7 @@ std::vector<std::vector<WireSolidInsulationRequirements>> InsulationCoordinator:
         auto insulationType = inputs.get_insulation_type();
         bool canFullyInsulatedWireBeUsed = InsulationCoordinator::can_fully_insulated_wire_be_used(inputs);
         auto isolationSidePerWinding = inputs.get_design_requirements().get_isolation_sides().value();
-        bool allowMarginTape = settings->get_coil_allow_margin_tape();
+        bool allowMarginTape = settings.get_coil_allow_margin_tape();
 
         // If we don't want margin tape we have to increase to insulation type to DOUBLE:
         if ((insulationType == InsulationType::BASIC || insulationType == InsulationType::SUPPLEMENTARY)) {

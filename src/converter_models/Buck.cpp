@@ -3,13 +3,14 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
     double Buck::calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency) {
         auto dutyCycle = (outputVoltage + diodeVoltageDrop) / ((inputVoltage + diodeVoltageDrop) * efficiency);
         if (dutyCycle >= 1) {
-            throw std::runtime_error("Duty cycle must be smaller than 1");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Duty cycle must be smaller than 1");
         }
         return dutyCycle;
     }
@@ -81,13 +82,13 @@ namespace OpenMagnetics {
             if (!assert) {
                 return false;
             }
-            throw std::runtime_error("At least one operating point is needed");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "At least one operating point is needed");
         }
         if (!get_input_voltage().get_nominal() && !get_input_voltage().get_maximum() && !get_input_voltage().get_minimum()) {
             if (!assert) {
                 return false;
             }
-            throw std::runtime_error("No input voltage introduced");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "No input voltage introduced");
         }
 
         return true;

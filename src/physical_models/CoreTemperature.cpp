@@ -14,6 +14,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel::factory(CoreTemperatureModels modelName) {
@@ -34,7 +35,7 @@ std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel::factory(CoreTemperat
     }
 
     else
-        throw std::runtime_error(
+        throw ModelNotAvailableException(
             "Unknown Core losses mode, available options are: {KAZIMIERCZUK, MANIKTALA, TDK, DIXON, AMIDON}");
 }
 

@@ -5,15 +5,16 @@
 #include "support/Utils.h"
 #include "json.hpp"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
 std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_leakage(Coil coil) {
     if (!coil.get_layers_description()) {
-        throw std::runtime_error("Layers description is missing");
+        throw CoilNotProcessedException("Layers description is missing");
     }
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Turns description is missing");
+        throw CoilNotProcessedException("Turns description is missing");
     }
 
     double minimumDistanceHorizontallyOrRadially = DBL_MAX;
@@ -67,7 +68,7 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     Field inducedField = meshResult.first;
 
         if (inducedField.get_data().size() == 0) {
-            throw std::runtime_error("Mesh generation failed: induced field data is empty");
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Mesh generation failed: induced field data is empty");
         }
     double dA = meshResult.second;
 
@@ -120,15 +121,15 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
 }
 
 LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
-    auto originallyIncludeFringing = settings->get_magnetic_field_include_fringing();
-    settings->set_magnetic_field_include_fringing(false);
+    auto originallyIncludeFringing = settings.get_magnetic_field_include_fringing();
+    settings.set_magnetic_field_include_fringing(false);
 
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()){
-        throw std::runtime_error("Cannot calculate leakage inductance: bobbin description has not been processed");
+        throw CoilNotProcessedException("Cannot calculate leakage inductance: bobbin description has not been processed");
     }
     if (!bobbin.get_processed_description()->get_column_width()){
-        throw std::runtime_error("Cannot calculate leakage inductance: bobbin column width is not defined");
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Cannot calculate leakage inductance: bobbin column width is not defined");
     }
 
 
@@ -190,20 +191,20 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
     dimensionWithTolerance.set_nominal(leakageInductance);
     leakageInductanceOutput.set_leakage_inductance_per_winding({dimensionWithTolerance});
 
-    settings->set_magnetic_field_include_fringing(originallyIncludeFringing);
+    settings.set_magnetic_field_include_fringing(originallyIncludeFringing);
 
     return leakageInductanceOutput;
 }
 
 ComplexField LeakageInductance::calculate_leakage_magnetic_field(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
-    settings->set_magnetic_field_include_fringing(false);
+    settings.set_magnetic_field_include_fringing(false);
 
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()){
-        throw std::runtime_error("Cannot calculate leakage inductance: bobbin description has not been processed");
+        throw CoilNotProcessedException("Cannot calculate leakage inductance: bobbin description has not been processed");
     }
     if (!bobbin.get_processed_description()->get_column_width()){
-        throw std::runtime_error("Cannot calculate leakage inductance: bobbin column width is not defined");
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Cannot calculate leakage inductance: bobbin column width is not defined");
     }
 
 
@@ -321,28 +322,28 @@ std::pair<size_t, size_t> LeakageInductance::calculate_grid_points(Magnetic& mag
     auto isPlanar = magnetic.get_wires()[0].get_type() == WireType::PLANAR;
 
     
-    if (settings->get_leakage_inductance_grid_auto_scaling()) {
+    if (settings.get_leakage_inductance_grid_auto_scaling()) {
         auto gridPoints = calculate_number_points_needed_for_leakage(magnetic.get_coil());
         numberPointsX = gridPoints.first;
         numberPointsY = gridPoints.second;
         double precisionLevel = 1;
         if (isPlanar)  {
-            precisionLevel = settings->get_leakage_inductance_grid_precision_level_planar();
+            precisionLevel = settings.get_leakage_inductance_grid_precision_level_planar();
         }
         else {
-            precisionLevel = settings->get_leakage_inductance_grid_precision_level_wound();
+            precisionLevel = settings.get_leakage_inductance_grid_precision_level_wound();
         }
         precisionLevel = std::max(MINIMUM_PRECISION_LEVEL, precisionLevel);
         numberPointsX *= precisionLevel;
         numberPointsY *= precisionLevel;
     }
     else {
-        numberPointsX = settings->get_magnetic_field_number_points_x();
-        numberPointsY = settings->get_magnetic_field_number_points_y();
+        numberPointsX = settings.get_magnetic_field_number_points_x();
+        numberPointsY = settings.get_magnetic_field_number_points_y();
         if (isPlanar) {
             // If planar, we swap the number of points, as Y is larger by default
-            numberPointsX = settings->get_magnetic_field_number_points_y();
-            numberPointsY = settings->get_magnetic_field_number_points_x();
+            numberPointsX = settings.get_magnetic_field_number_points_y();
+            numberPointsY = settings.get_magnetic_field_number_points_x();
         }
     }
 

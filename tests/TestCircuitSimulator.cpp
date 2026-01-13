@@ -1,6 +1,7 @@
 #include "support/CircuitSimulator.cpp"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <cfloat>
 #include <limits>
@@ -10,9 +11,12 @@
 #include <vector>
 #include <typeinfo>
 
-SUITE(CircuitSimulator) {
+namespace {  // Anonymous namespace to isolate test globals
 
-    // TEST(Test_Circuit_Simulator) {
+
+// Converted from SUITE(CircuitSimulator)
+
+    // TEST_CASE("Test_Circuit_Simulator", "[Circuit]") {
     //     /*
 
     //         BJT test circuit
@@ -65,7 +69,7 @@ SUITE(CircuitSimulator) {
     //     net->dumpMatrix();
     // }
 
-    // TEST(Test_Circuit_Simulator_R) {
+    // TEST_CASE("Test_Circuit_Simulator_R", "[Circuit]") {
     //     NetList * net = new NetList(4);
 
     //     // node 1 is +12V
@@ -90,7 +94,7 @@ SUITE(CircuitSimulator) {
     //     net->dumpMatrix();
     // }
 
-    TEST(Test_Circuit_Simulator_R) {
+    TEST_CASE("Test_Circuit_Simulator_R_2", "[Circuit]") {
         NetList * net = new NetList(3);
 
         // node 1 is +12V
@@ -114,7 +118,7 @@ SUITE(CircuitSimulator) {
         return sin(angle);
     }
 
-    TEST(Test_Circuit_Simulator_C) {
+    TEST_CASE("Test_Circuit_Simulator_C", "[Circuit]") {
         NetList * net = new NetList(3);
         // node 1 is +12V
         net->addComponent(new Function(sinVoltage, 2, 0));
@@ -138,4 +142,6 @@ SUITE(CircuitSimulator) {
 
         net->dumpMatrix();
     }
-}
+// End of SUITE
+
+}  // namespace

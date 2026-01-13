@@ -7,6 +7,8 @@
 #include "support/Settings.h"
 #include <list>
 #include <magic_enum.hpp>
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 
 namespace OpenMagnetics {
@@ -54,7 +56,7 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_no_parallel
     // (*unfilteredCoils).clear();
 
     if (filteredCoilsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
@@ -103,7 +105,7 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_with_parall
     // (*unfilteredCoils).clear();
 
     if (filteredCoilsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
@@ -119,7 +121,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_effective_resista
     std::vector<double> newScoring;
 
     if (!current.get_processed()->get_effective_frequency()) {
-        throw std::runtime_error("Current processed is missing field effective frequency");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current processed is missing field effective frequency");
     }
     auto currentEffectiveFrequency = current.get_processed()->get_effective_frequency().value();
 
@@ -148,7 +150,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_effective_resista
     // (*unfilteredCoils).clear();
 
     if (filteredCoilsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
@@ -188,7 +190,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_skin_losses_densi
     // (*unfilteredCoils).clear();
 
     if (filteredCoilsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
@@ -204,7 +206,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_proximity_factor(
     std::vector<double> newScoring;
 
     if (!current.get_processed()->get_effective_frequency()) {
-        throw std::runtime_error("Current processed is missing field effective frequency");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current processed is missing field effective frequency");
     }
     auto currentEffectiveFrequency = current.get_processed()->get_effective_frequency().value();
 
@@ -233,7 +235,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_proximity_factor(
     // (*unfilteredCoils).clear();
 
     if (filteredCoilsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
@@ -271,7 +273,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_solid_insulation_
     // (*unfilteredCoils).clear();
 
     if (filteredCoilsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
@@ -287,18 +289,18 @@ std::vector<std::pair<OpenMagnetics::Winding, double>> WireAdviser::get_advised_
                                                                                         uint8_t numberSections,
                                                                                         size_t maximumNumberResults){
     std::vector<Wire> wires;
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto& settings = OpenMagnetics::Settings::GetInstance();
 
     if (wireDatabase.empty()) {
         load_wires();
     }
 
     for (auto [name, wire] : wireDatabase) {
-        if ((settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
-            (settings->get_wire_adviser_include_planar() ||  wire.get_type() != WireType::PLANAR) &&
-            ((settings->get_wire_adviser_include_rectangular() && (settings->get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) || wire.get_type() != WireType::RECTANGULAR) &&
-            (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
-            (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
+        if ((settings.get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
+            (settings.get_wire_adviser_include_planar() ||  wire.get_type() != WireType::PLANAR) &&
+            ((settings.get_wire_adviser_include_rectangular() && (settings.get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) || wire.get_type() != WireType::RECTANGULAR) &&
+            (settings.get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
+            (settings.get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
 
             if (!_commonWireStandard || !wire.get_standard()) {
                 wires.push_back(wire);
@@ -373,7 +375,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding wind
                                                                                       Section section,
                                                                                       SignalDescriptor current,
                                                                                       double temperature){
-    auto settings = Settings::GetInstance();
+    auto& settings = Settings::GetInstance();
     std::vector<std::pair<Winding, double>> windings;
 
     for (auto& wire : *wires){
@@ -383,11 +385,11 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding wind
     }
 
     for (auto& wire : *wires){
-        if ((!settings->get_wire_adviser_include_foil() && wire.get_type() == WireType::FOIL) ||
-            (!settings->get_wire_adviser_include_planar() &&  wire.get_type() == WireType::PLANAR) ||
-            (!(settings->get_wire_adviser_include_rectangular() && (settings->get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) && wire.get_type() == WireType::RECTANGULAR) ||
-            (!settings->get_wire_adviser_include_litz() && wire.get_type() == WireType::LITZ) ||
-            (!settings->get_wire_adviser_include_round() && wire.get_type() == WireType::ROUND)) {
+        if ((!settings.get_wire_adviser_include_foil() && wire.get_type() == WireType::FOIL) ||
+            (!settings.get_wire_adviser_include_planar() &&  wire.get_type() == WireType::PLANAR) ||
+            (!(settings.get_wire_adviser_include_rectangular() && (settings.get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) && wire.get_type() == WireType::RECTANGULAR) ||
+            (!settings.get_wire_adviser_include_litz() && wire.get_type() == WireType::LITZ) ||
+            (!settings.get_wire_adviser_include_round() && wire.get_type() == WireType::ROUND)) {
             continue;
         }
         int numberParallelsNeeded;
@@ -437,7 +439,7 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<Winding, dou
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){
         auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
         if (!Coil::resolve_wire((*unfilteredCoils)[coilIndex].first).get_conducting_area()) {
-            throw std::runtime_error("Conducting area is missing");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Conducting area is missing");
         }
         auto neededOuterAreaNoCompact = wire.get_maximum_outer_width() * wire.get_maximum_outer_height();
 

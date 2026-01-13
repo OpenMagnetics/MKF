@@ -14,6 +14,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 using namespace MAS;
 
@@ -128,8 +129,8 @@ class CoreLossesModel {
         std::vector<std::string> methodsString;
         auto methods = get_methods(material);
         for (auto method : methods) {
-            auto methodString = to_string(method);
-            std::transform(methodString.begin(), methodString.end(), methodString.begin(), ::tolower);
+            json methodString;
+            to_json(methodString, method);
             methodsString.push_back(methodString);
         }
         return methodsString;
@@ -512,16 +513,16 @@ class CoreLosses {
     public:
 
     CoreLosses() {
-        for (auto modelName : settings->get_core_losses_model_names()) {
+        for (auto modelName : settings.get_core_losses_model_names()) {
             _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
         }
     }
     virtual ~CoreLosses() = default;
 
     void set_core_losses_model_name(CoreLossesModels model) {
-        settings->set_core_losses_preferred_model_name(model);
+        settings.set_core_losses_preferred_model_name(model);
         _coreLossesModels.clear();
-        for (auto modelName : settings->get_core_losses_model_names()) {
+        for (auto modelName : settings.get_core_losses_model_names()) {
             _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
         }
     }

@@ -3,7 +3,8 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -14,10 +15,10 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(TopologyCurrentTransformer) {
+namespace {
     double maximumError = 0.1;
 
-    TEST(Test_Current_Transformer) {
+    TEST_CASE("Test_Current_Transformer", "[converter-model][current-transformer-topology][smoke-test]") {
         json currentTransformerInputsJson;
 
         currentTransformerInputsJson["diodeVoltageDrop"] = 0.7;
@@ -32,18 +33,19 @@ SUITE(TopologyCurrentTransformer) {
         OpenMagnetics::CurrentTransformer currentTransformerInputs(currentTransformerInputsJson);
 
         auto inputs = currentTransformerInputs.process(turnsRatio);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding().size() == 2);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding().size() == 2);
 
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
-        CHECK_EQUAL(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset(), 0);
-        CHECK_CLOSE(0, inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset(), double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]) * maximumError * 0.01);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
+        REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset(), double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]) * maximumError * 0.01));
 
-        CHECK_CLOSE(double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_peak().value(), double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]) * maximumError);
+        REQUIRE_THAT(double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_peak().value(), double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]) * maximumError));
 
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
-        CHECK_CLOSE(0, inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset(), double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]) * turnsRatio * maximumError * 0.01);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_peak().value() > 0);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
+        REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset(), double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]) * turnsRatio * maximumError * 0.01));
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_peak().value() > 0);
     }
-}
+
+}  // namespace

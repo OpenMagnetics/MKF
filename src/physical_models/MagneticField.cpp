@@ -15,6 +15,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -122,7 +123,7 @@ std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory(MagneticField
         return std::make_shared<MagneticFieldStrengthWangModel>();
     }
     else
-        throw std::runtime_error("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER}");
+        throw ModelNotAvailableException("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER}");
 }
 
 std::shared_ptr<MagneticFieldStrengthFringingEffectModel> MagneticField::factory(MagneticFieldStrengthFringingEffectModels modelName) {
@@ -133,7 +134,7 @@ std::shared_ptr<MagneticFieldStrengthFringingEffectModel> MagneticField::factory
         return std::make_shared<MagneticFieldStrengthRoshenModel>();
     }
     else
-        throw std::runtime_error("Unknown Magnetic Field Strength Fringing Effect model, available options are: {ALBACH, ROSHEN}");
+        throw ModelNotAvailableException("Unknown Magnetic Field Strength Fringing Effect model, available options are: {ALBACH, ROSHEN}");
 }
 
 std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory() {
@@ -201,12 +202,12 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, Magnetic m
     double initialPermeability = initial_permeability.get_initial_permeability(magnetic.get_mutable_core().resolve_material(), std::nullopt, std::nullopt, frequency);
     double reluctance = reluctanceModel->get_core_reluctance(magnetic.get_core(), initialPermeability).get_core_reluctance();
     if (!operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
-        throw std::runtime_error("Magnetizing current is missing");
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Magnetizing current is missing");
     }
 
     auto magnetizingCurrent = operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value();
     if (!magnetizingCurrent.get_waveform()) {
-        throw std::runtime_error("Magnetizing current is missing waveform");
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Magnetizing current is missing waveform");
     }
     if (!magnetizingCurrent.get_waveform()->get_time()) {
         magnetizingCurrent = Inputs::standardize_waveform(magnetizingCurrent, frequency);
@@ -219,8 +220,8 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, Magnetic m
 }
 
 WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto includeFringing = settings->get_magnetic_field_include_fringing();
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    auto includeFringing = settings.get_magnetic_field_include_fringing();
     CoilMesher coilMesher; 
     std::vector<Field> inducingFields;
     auto core = magnetic.get_core();
@@ -246,7 +247,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     }
 
     if (externalInducedField){
-        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings->get_harmonic_amplitude_threshold(), currentDirectionPerWinding, coilMesherModel);
+        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, coilMesherModel);
         // We only process the harmonic that comes from the external field
         for (auto field : aux) {
             if (field.get_frequency() == externalInducedField.value().get_frequency()) {
@@ -256,11 +257,11 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         }
     }
     else {
-        inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings->get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
+        inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
     }
 
     if (!magnetic.get_coil().get_turns_description()) {
-        throw std::runtime_error("Missing turns description in coil");
+        throw CoilNotProcessedException("Missing turns description in coil");
     }
     _wirePerWinding = magnetic.get_mutable_coil().get_wires();
     _model->_wirePerWinding = _wirePerWinding;
@@ -278,7 +279,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         inducedFields.push_back(externalInducedField.value());
     }
     else {
-        inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, settings->get_harmonic_amplitude_threshold());
+        inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold());
     }
 
     if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
@@ -328,7 +329,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         std::vector<ComplexFieldPoint> fieldPoints;
 
         if (inducedFields[harmonicIndex].get_data().size() == 0) {
-            throw std::runtime_error("Empty complexField");
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Empty complexField");
         }
 
         for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
@@ -369,10 +370,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                         totalInducedFieldX += complexFieldPoint.get_real();
                         totalInducedFieldY += complexFieldPoint.get_imaginary();
                         if (std::isnan(complexFieldPoint.get_real())) {
-                            throw std::runtime_error("NaN found in Roshen's fringing field");
+                            throw NaNResultException("NaN found in Roshen's fringing field");
                         }
                         if (std::isnan(complexFieldPoint.get_imaginary())) {
-                            throw std::runtime_error("NaN found in Roshen's fringing field");
+                            throw NaNResultException("NaN found in Roshen's fringing field");
                         }
                     }
                 }
@@ -402,10 +403,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 totalInducedFieldX += complexFieldPoint.get_real();
                 totalInducedFieldY += complexFieldPoint.get_imaginary();
                 if (std::isnan(complexFieldPoint.get_real())) {
-                    throw std::runtime_error("NaN found in magnetic field calculation");
+                    throw NaNResultException("NaN found in magnetic field calculation");
                 }
                 if (std::isnan(complexFieldPoint.get_imaginary())) {
-                    throw std::runtime_error("NaN found in magnetic field calculation");
+                    throw NaNResultException("NaN found in magnetic field calculation");
                 }
             }
             ComplexFieldPoint complexFieldPoint;
@@ -483,7 +484,7 @@ ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_be
                     }
                 }
                 else {
-                    throw std::runtime_error("Wrong inducedLabel: " + inducedLabel);
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wrong inducedLabel: " + inducedLabel);
                 }
             }
             else if (inducingLabel == "right") {
@@ -538,7 +539,7 @@ ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_be
                     }
                 }
                 else {
-                    throw std::runtime_error("Wrong inducedLabel: " + inducedLabel);
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wrong inducedLabel: " + inducedLabel);
                 }
             }
             else if (inducingLabel == "top") {
@@ -568,11 +569,11 @@ ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_be
                 }
             }
             else {
-                throw std::runtime_error("Wrong inducingLabel: " + inducingLabel);
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wrong inducingLabel: " + inducingLabel);
             }
         }
         else {
-            throw std::runtime_error("Wang Magnetic Field model must be used woth his CoilMesher model");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wang Magnetic Field model must be used woth his CoilMesher model");
         }
     }
 
@@ -613,7 +614,7 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
                 Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
             }
             if (std::isnan(Hx) || std::isnan(Hy)) {
-                throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
+                throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
             }
         }
     }
@@ -622,7 +623,7 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
         Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
         if (std::isnan(Hx) || std::isnan(Hy)) {
-            throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
+            throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
         }
     }
 
@@ -718,7 +719,7 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
 
         Hy = -common_part * ((x + a) * (tetha2 - tetha3) - (x - a) * (tetha1 - tetha4) + (y + b) * log(r2 / r1) - (y - b) * log(r3 / r4));
         if (std::isnan(Hx) || std::isnan(Hy)) {
-            throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
+            throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
         }
     }
 
@@ -734,7 +735,7 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         Hx = modulo * cos(totalAngle);
         Hy = modulo * sin(totalAngle);
         if (std::isnan(Hx) || std::isnan(Hy)) {
-            throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
+            throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
         }
     }
 
@@ -787,7 +788,7 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
     }
 
     if (std::isnan(Hx) || std::isnan(Hy)) {
-        throw std::runtime_error("NaN found in Lammeraner's model for magnetic field");
+        throw NaNResultException("NaN found in Lammeraner's model for magnetic field");
     }
 
     ComplexFieldPoint complexFieldPoint;
@@ -805,22 +806,22 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
 
 FieldPoint MagneticFieldStrengthAlbachModel::get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap) {
     if (!gap.get_section_dimensions()) {
-        throw std::runtime_error("Gap is missing section dimensions");
+        throw GapException("Gap is missing section dimensions");
     }
     if (!gap.get_coordinates()) {
-        throw std::runtime_error("Gap is missing coordinates");
+        throw GapException("Gap is missing coordinates");
     }
     double rc = gap.get_section_dimensions().value()[0] / 2;
     double xi = gap.get_length() / (2 * rc);
     double x = 1 - 1.05 * xi - 2.88 * pow(xi, 2) - 8.8 * pow(xi, 3);
     if (x < 0) {
-        throw std::runtime_error("Something went wrong with Albach method with x");
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something went wrong with Albach method with x");
     }
     double current = (magneticFieldStrengthGap * gap.get_length()) / (0.25 - 1.569 * xi + 4.34 * pow(xi, 2) - 7.042 * pow(xi, 3));
     double eta = x * rc;
 
     if (eta > gap.get_section_dimensions().value()[0] / 2) {
-        throw std::runtime_error("Something went wrong with Albach method with eta");
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something went wrong with Albach method with eta");
     }
     FieldPoint fieldPoint;
     if (gap.get_coordinates().value()[0] > 0) {

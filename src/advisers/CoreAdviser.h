@@ -14,6 +14,7 @@
 #include "constructive_models/Mas.h"
 #include <cmath>
 #include <MAS.hpp>
+#include "support/Exceptions.h"
 
 using namespace MAS;
 

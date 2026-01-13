@@ -9,6 +9,7 @@
 #include <streambuf>
 #include <vector>
 #include "spline.h"
+#include "support/Exceptions.h"
 
 // tk::spline bobbinFillingFactorInterpWidth;
 // tk::spline bobbinFillingFactorInterpHeight;
@@ -215,7 +216,7 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
         return std::make_shared<BobbinEfdDataProcessor>();
     }
     else
-        throw std::runtime_error("Unknown bobbin family, available options are: {E, EC, EFD, EP, ETD, PM, PQ, RM}");
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Unknown bobbin family, available options are: {E, EC, EFD, EP, ETD, PM, PQ, RM}");
 }
 
 void load_interpolators() {
@@ -275,6 +276,7 @@ void load_interpolators() {
             }
             catch (const std::exception &e)
             {
+                (void)e; // Suppress unused variable warning
                 continue;
             }
         }
@@ -395,13 +397,13 @@ std::vector<double> Bobbin::get_winding_window_dimensions(double coreWindingWind
     if (bobbinWindingWindowHeight > coreWindingWindowHeight) {
         // Not proud, but the library is missbehaving...
         // bobbinWindingWindowHeight = coreWindingWindowHeight - 0.001;
-        throw std::runtime_error("bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
     }
 
     if (bobbinWindingWindowWidth > coreWindingWindowWidth) {
         // Not proud, but the library is missbehaving...
         // bobbinWindingWindowWidth = coreWindingWindowWidth - 0.001;
-        throw std::runtime_error("bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
     }
 
     auto minimumThickness = std::min(coreWindingWindowWidth - bobbinWindingWindowWidth, (coreWindingWindowHeight - bobbinWindingWindowHeight) / 2);
@@ -441,11 +443,11 @@ Bobbin Bobbin::create_quick_bobbin(double windingWindowHeight, double windingWin
 
 Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
     if (!core.get_processed_description()) {
-        throw std::runtime_error("Core has not been processed yet");
+        core.process_data();
     }
 
     if (core.get_processed_description()->get_winding_windows().size() > 1) {
-        throw std::runtime_error("More than one winding window not supported yet");
+        throw NotImplementedException("More than one winding window not supported yet");
     }
 
     auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
@@ -470,7 +472,7 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
         bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindowDimensions[0];
         bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindowDimensions[1]) / 2;
         if (bobbinWallThickness <= 0) {
-            throw std::runtime_error("bobbinWallThickness cannot be negative or 0: " + std::to_string(bobbinWallThickness));
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWallThickness cannot be negative or 0: " + std::to_string(bobbinWallThickness));
         }
     }
     return create_quick_bobbin(core, bobbinWallThickness, bobbinColumnThickness);
@@ -482,11 +484,11 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double thickness) {
 
 Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double columnThickness) {
     if (!core.get_processed_description()) {
-        throw std::runtime_error("Core has not been processed yet");
+        throw CoreNotProcessedException("Core has not been processed yet");
     }
 
     if (core.get_processed_description()->get_winding_windows().size() > 1) {
-        throw std::runtime_error("More than one winding window not supported yet");
+        throw NotImplementedException("More than one winding window not supported yet");
     }
 
     auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
@@ -546,18 +548,18 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
 
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
         if ((windingWindowElement.get_width().value() < 0) || (windingWindowElement.get_width().value() > 1)) {
-            throw std::runtime_error("Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindowDimensions[0]));
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindowDimensions[0]));
         }
         if ((windingWindowElement.get_height().value() < 0) || (windingWindowElement.get_height().value() > 1)) {
-            throw std::runtime_error("Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
         }
     }
     else {
         if ((windingWindowElement.get_radial_height().value() < 0) || (windingWindowElement.get_radial_height().value() > 1)) {
-            throw std::runtime_error("Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindowDimensions[0]));
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindowDimensions[0]));
         }
         if ((windingWindowElement.get_angle().value() < 0) || (windingWindowElement.get_angle().value() > 360)) {
-            throw std::runtime_error("Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
         }
     }
     Bobbin bobbin;
@@ -582,7 +584,7 @@ std::vector<double> Bobbin::get_winding_window_dimensions(size_t windingWindowIn
 
 double Bobbin::get_winding_window_area(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
-        throw std::runtime_error("Winding window does not exist");
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Winding window does not exist");
     }
     auto windingWindow = get_processed_description()->get_winding_windows()[windingWindowIndex];
     if (get_processed_description()->get_winding_windows()[windingWindowIndex].get_area()) {
@@ -608,7 +610,7 @@ std::vector<double> Bobbin::get_winding_window_coordinates(size_t windingWindowI
 
 std::pair<double, double> Bobbin::get_column_and_wall_thickness(size_t windingWindowIndex) {
     if (!get_processed_description()) {
-        throw std::runtime_error("Bobbin not processed");
+        throw CoilNotProcessedException("Bobbin not processed");
     }
     auto bobbinProcessedDescription = get_processed_description().value();
 
@@ -619,7 +621,7 @@ std::pair<double, double> Bobbin::get_column_and_wall_thickness(size_t windingWi
 
 WindingOrientation Bobbin::get_winding_window_sections_orientation(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
-        throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
     if (!get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_orientation()) {
         if (get_winding_window_shape() == WindingWindowShape::ROUND) {
@@ -634,7 +636,7 @@ WindingOrientation Bobbin::get_winding_window_sections_orientation(size_t windin
 
 CoilAlignment Bobbin::get_winding_window_sections_alignment(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
-        throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
     if (!get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_alignment()) {
         if (get_winding_window_shape() == WindingWindowShape::ROUND) {
@@ -649,7 +651,7 @@ CoilAlignment Bobbin::get_winding_window_sections_alignment(size_t windingWindow
 
 WindingWindowShape Bobbin::get_winding_window_shape(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
-        throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
     if (!get_processed_description()) {
         auto coreShapeName = get_functional_description()->get_shape();
@@ -693,7 +695,7 @@ bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t w
         }
     }
     else {
-        throw std::runtime_error("Unsupported winding window shape: " + to_string(get_winding_window_shape()));
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unsupported winding window shape: " + to_string(get_winding_window_shape()));
     }
 }
 
@@ -701,13 +703,13 @@ bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t w
 
 void Bobbin::set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex) {
     if (!get_processed_description()) {
-        throw std::runtime_error("Boobbin has not been processed yet");
+        throw CoilNotProcessedException("Boobbin has not been processed yet");
     }
 
     auto bobbinProcessedDescription = get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
     if (windingWindows.size() > 1) {
-        throw std::runtime_error("Bobbins with more than winding window not implemented yet");
+        throw NotImplementedException("Bobbins with more than winding window not implemented yet");
     }
     windingWindows[windingWindowIndex].set_sections_orientation(windingOrientation);
     bobbinProcessedDescription.set_winding_windows(windingWindows);
@@ -723,7 +725,7 @@ std::optional<WindingOrientation> Bobbin::get_winding_orientation(size_t winding
     auto bobbinProcessedDescription = get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
     if (windingWindows.size() > 1) {
-        throw std::runtime_error("Bobbins with more than winding window not implemented yet");
+        throw NotImplementedException("Bobbins with more than winding window not implemented yet");
     }
     if (windingWindows[windingWindowIndex].get_sections_orientation()) {
         return windingWindows[windingWindowIndex].get_sections_orientation().value();

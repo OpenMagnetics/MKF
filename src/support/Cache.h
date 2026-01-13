@@ -1,5 +1,6 @@
 #pragma once
 #include "constructive_models/Magnetic.h"
+#include "support/Exceptions.h"
 
 using namespace MAS;
 

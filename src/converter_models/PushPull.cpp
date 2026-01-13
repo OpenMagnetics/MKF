@@ -3,6 +3,7 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -71,7 +72,7 @@ namespace OpenMagnetics {
         auto period = 1.0 / switchingFrequency;
         auto t1 = period / 2 * (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
         if (t1 > period / 2) {
-            throw std::runtime_error("T1 cannot be larger than period/2, wrong topology configuration");
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "T1 cannot be larger than period/2, wrong topology configuration");
         }
 
         auto magnetizationCurrent = inputVoltage * t1 / inductance;
@@ -436,7 +437,7 @@ namespace OpenMagnetics {
             auto t1 = sqrt(2 * mainOutputCurrent * outputInductance * (mainOutputVoltage + diodeVoltageDrop) / (2 * switchingFrequency * (inputVoltage / mainSecondaryTurnsRatio - diodeVoltageDrop - mainOutputVoltage) * (inputVoltage / mainSecondaryTurnsRatio)));
             auto t2 = t1 * (inputVoltage / mainSecondaryTurnsRatio) / (mainOutputVoltage + diodeVoltageDrop) - t1;
             if (t1 + t2 > period / 2) {
-                throw std::runtime_error("T1 + T2 cannot be larger than period/2, wrong topology configuration");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "T1 + T2 cannot be larger than period/2, wrong topology configuration");
             }
 
             auto minimumSecondaryCurrent = 0;
@@ -863,27 +864,27 @@ namespace OpenMagnetics {
             if (!assert) {
                 return false;
             }
-            throw std::runtime_error("At least one operating point is needed");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "At least one operating point is needed");
         }
         for (size_t pushPullOperatingPointIndex = 1; pushPullOperatingPointIndex < get_operating_points().size(); ++pushPullOperatingPointIndex) {
             if (get_operating_points()[pushPullOperatingPointIndex].get_output_voltages().size() != get_operating_points()[0].get_output_voltages().size()) {
                 if (!assert) {
                     return false;
                 }
-                throw std::runtime_error("Different operating points cannot have different number of output voltages");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output voltages");
             }
             if (get_operating_points()[pushPullOperatingPointIndex].get_output_currents().size() != get_operating_points()[0].get_output_currents().size()) {
                 if (!assert) {
                     return false;
                 }
-                throw std::runtime_error("Different operating points cannot have different number of output currents");
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output currents");
             }
         }
         if (!get_input_voltage().get_nominal() && !get_input_voltage().get_maximum() && !get_input_voltage().get_minimum()) {
             if (!assert) {
                 return false;
             }
-            throw std::runtime_error("No input voltage introduced");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "No input voltage introduced");
         }
 
         return true;

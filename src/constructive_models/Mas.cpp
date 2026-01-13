@@ -46,6 +46,7 @@ void from_file(std::filesystem::path filepath, Mas & x) {
         }
         catch (const std::exception &e)
         {
+            (void)e; // Suppress unused variable warning
             inputs = OpenMagnetics::Inputs(inputsJson, true);
         }
     }

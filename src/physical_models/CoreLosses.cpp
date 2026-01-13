@@ -5,6 +5,8 @@
 #include "processors/Inputs.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagneticField.h"
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 #include <cmath>
 #include <cfloat>
@@ -100,7 +102,7 @@ std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string m
         }
     }
     if (coreLossesModelForMaterial == nullptr) {
-        throw std::runtime_error("No model found for material: " + materialName);
+        throw ModelNotAvailableException("No model found for material: " + materialName);
     }
 
     return coreLossesModelForMaterial;
@@ -171,7 +173,7 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels model
     }
 
     else
-        throw std::runtime_error("Unknown Core losses mode, available options are: {STEINMETZ, IGSE, BARG, ALBACH, "
+        throw ModelNotAvailableException("Unknown Core losses mode, available options are: {STEINMETZ, IGSE, BARG, ALBACH, "
                                  "ROSHEN, OUYANG, NSE, MSE, PROPRIETARY, LOSS_FACTOR}");
 }
 
@@ -214,7 +216,7 @@ CoreLossesMethodData CoreLossesModel::get_method_data(CoreMaterial materialData,
             }
         }
     }
-    throw std::runtime_error("Material " + materialData.get_name() + " does not have method: " + method);
+    throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Material " + materialData.get_name() + " does not have method: " + method);
 }
 
 SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(CoreMaterialDataOrNameUnion material, double frequency) {
@@ -238,10 +240,10 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
     double maximumMaterialFrequencyIndex = -1;
     for (size_t i = 0; i < ranges.size(); ++i) {
         if (!ranges[i].get_minimum_frequency()) {
-            throw std::runtime_error("Missing minimum frequency in material");
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing minimum frequency in material");
         }
         if (!ranges[i].get_maximum_frequency()) {
-            throw std::runtime_error("Missing maximum frequency in material");
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing maximum frequency in material");
         }
 
         if (frequency >= ranges[i].get_minimum_frequency().value() &&
@@ -266,7 +268,7 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
         return ranges[maximumMaterialFrequencyIndex];
     }
 
-    throw std::runtime_error("Error getting Steinmetz coefficients");
+    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Error getting Steinmetz coefficients");
 }
 
 
@@ -432,7 +434,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                         break;
                     }
                     else {
-                        throw std::runtime_error("Too few points");
+                        throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Too few points");
                     }
                 }
                 else if (chunkIndex == 0) {
@@ -620,7 +622,7 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
                                                             OperatingPointExcitation excitation,
                                                             double temperature) {
     if (!excitation.get_magnetic_flux_density()) {
-        throw std::runtime_error("Missing magnetizing flux density in excitation");
+        throw InvalidInputException("Missing magnetizing flux density in excitation");
     }
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
@@ -685,15 +687,15 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double k = steinmetzDatum.get_k();
-    std::vector<double> theta_vect(settings->get_inputs_number_points_sampled_waveforms());
+    std::vector<double> theta_vect(settings.get_inputs_number_points_sampled_waveforms());
     std::generate(theta_vect.begin(), theta_vect.end(), [n = 0]() mutable {
-        return n++ * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
+        return n++ * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
     });
     double theta_int = 0;
 
     for (auto& theta : theta_vect) {
         theta_int += pow(fabs(cos(theta)), alpha) * pow(2, beta - alpha) * 2 * std::numbers::pi /
-                     settings->get_inputs_number_points_sampled_waveforms();
+                     settings.get_inputs_number_points_sampled_waveforms();
     }
 
     double ki = k / (pow(2 * std::numbers::pi, alpha - 1) * theta_int);
@@ -740,7 +742,7 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / settings->get_inputs_number_points_sampled_waveforms();
+            timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
         }
         volumetricLossesSum +=
             pow(fabs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
@@ -788,7 +790,7 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / settings->get_inputs_number_points_sampled_waveforms();
+            timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
         }
         equivalentSinusoidalFrequency +=
             pow((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / magneticFluxDensityPeakToPeak,
@@ -848,7 +850,7 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / settings->get_inputs_number_points_sampled_waveforms();
+            timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
         }
         equivalentSinusoidalFrequency +=
             pow((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference, 2) *
@@ -872,14 +874,14 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
 double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
     double alpha = steinmetzDatum.get_alpha();
     double k = steinmetzDatum.get_k();
-    std::vector<double> theta_vect(settings->get_inputs_number_points_sampled_waveforms());
+    std::vector<double> theta_vect(settings.get_inputs_number_points_sampled_waveforms());
     std::generate(theta_vect.begin(), theta_vect.end(), [n = 0]() mutable {
-        return n++ * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
+        return n++ * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
     });
     double theta_int = 0;
 
     for (auto& theta : theta_vect) {
-        theta_int += pow(fabs(cos(theta)), alpha) * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
+        theta_int += pow(fabs(cos(theta)), alpha) * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
     }
 
     double ki = k / (pow(2 * std::numbers::pi, alpha - 1) * theta_int);
@@ -920,7 +922,7 @@ double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / settings->get_inputs_number_points_sampled_waveforms();
+            timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
         }
         volumetricLossesSum +=
             pow(abs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
@@ -1252,7 +1254,7 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
     double hysteresisLossesDensity = bhArea * frequency;
 
     if (bhArea < 0) {
-        throw std::runtime_error("Negative hysteresis losses");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Negative hysteresis losses");
     }
 
     return hysteresisLossesDensity;
@@ -1270,7 +1272,7 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
     if (!core.get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
+        throw CoreNotProcessedException("Core is not processed");
     }
 
     double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
@@ -1283,7 +1285,7 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / settings->get_inputs_number_points_sampled_waveforms();
+            timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
         }
         volumetricLossesIntegration +=
             pow((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference, 2) *
@@ -1316,7 +1318,7 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / settings->get_inputs_number_points_sampled_waveforms();
+            timeDifference = 1 / frequency / settings.get_inputs_number_points_sampled_waveforms();
         }
         volumetricLossesIntegration +=
             pow(fabs(magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference, 3 / 2) *
@@ -1521,10 +1523,10 @@ CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(Core core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
     if (!excitation.get_magnetizing_current()) {
-        throw std::runtime_error("Missing magnetizing current in excitation");
+        throw InvalidInputException("Missing magnetizing current in excitation");
     }
     if (!excitation.get_magnetizing_current()->get_processed()) {
-        throw std::runtime_error("Magnetizing current not processed");
+        throw InvalidInputException("Magnetizing current not processed");
     }
     if (!excitation.get_magnetizing_current()->get_processed()->get_rms()) {
         auto magnetizingCurrent = excitation.get_magnetizing_current().value();
@@ -1557,10 +1559,10 @@ double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMa
                                                              double magnetizingInductance) {
     
     if (!excitation.get_magnetizing_current()) {
-        throw std::runtime_error("Missing magnetizing current in excitation");
+        throw InvalidInputException("Missing magnetizing current in excitation");
     }
     if (!excitation.get_magnetizing_current()->get_processed()) {
-        throw std::runtime_error("Magnetizing current not processed");
+        throw InvalidInputException("Magnetizing current not processed");
     }
     if (!excitation.get_magnetizing_current()->get_processed()->get_rms()) {
         auto magnetizingCurrent = excitation.get_magnetizing_current().value();
@@ -1655,7 +1657,7 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
     }
 
     if (materialData.get_manufacturer_info().get_name() == "TDG") {
-        throw std::runtime_error("Not implemented fot TDG");
+        throw NotImplementedException("Not implemented for TDG");
     }
 
     if (materialData.get_manufacturer_info().get_name() == "Magnetec") {
