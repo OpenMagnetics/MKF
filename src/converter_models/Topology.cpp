@@ -3,6 +3,7 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -30,7 +31,7 @@ namespace OpenMagnetics {
     }
 
     bool Topology::run_checks(bool assert) {
-        throw std::runtime_error("Not implemented");
+        throw NotImplementedException("Not implemented");
     }
 
     Inputs Topology::process() {

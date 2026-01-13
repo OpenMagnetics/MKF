@@ -17,6 +17,17 @@ struct Constants {
 
     const double quasiStaticFrequencyLimit = 100;
 
+    // Numerical tolerances
+    const double defaultConvergenceTolerance = 0.001;
+    const double strictConvergenceTolerance = 1e-6;
+    const double looseConvergenceTolerance = 0.01;
+    const double coordinateTolerance = 0.05;
+    
+    // Levenberg-Marquardt algorithm parameters
+    const double lmInitMu = 1e-03;
+    const double lmStopThreshold = 1e-25;
+    const double lmDiffDelta = 1e-19;
+
     const double spacerProtudingPercentage = 0.2;
     const double coilPainterScale = 30000;
     const std::vector<std::string> coilPainterColorsScaleSections = {"#539796",

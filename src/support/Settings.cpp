@@ -2,14 +2,11 @@
 #include "support/Settings.h"
 
 namespace OpenMagnetics {
-    Settings* Settings::settings_= nullptr;
 
-    Settings *Settings::GetInstance()
+    Settings& Settings::GetInstance()
     {
-        if(settings_==nullptr){
-            settings_ = new Settings();
-        }
-        return settings_;
+        static Settings instance;
+        return instance;
     }
 
     Settings::Settings() {
@@ -108,6 +105,7 @@ namespace OpenMagnetics {
         _preferredCoreMaterialFerriteManufacturer = "Fair-Rite";
         _preferredCoreMaterialPowderManufacturer = "Micrometals";
 
+        _coreCrossReferencerAllowDifferentCoreMaterialType = false;
     }
 
     bool Settings::get_verbose() const {
@@ -607,6 +605,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_preferred_core_material_powder_manufacturer(std::string value) {
         _preferredCoreMaterialPowderManufacturer = value;
+    }
+
+    bool Settings::get_core_cross_referencer_allow_different_core_material_type() const {
+        return _coreCrossReferencerAllowDifferentCoreMaterialType;
+    }
+    void Settings::set_core_cross_referencer_allow_different_core_material_type(bool value) {
+        _coreCrossReferencerAllowDifferentCoreMaterialType = value;
     }
 
 } // namespace OpenMagnetics

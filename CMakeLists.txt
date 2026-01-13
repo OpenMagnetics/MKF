@@ -5,21 +5,34 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-project ("MKF_Project")
+project ("MKF_Project" VERSION 1.0.0 LANGUAGES CXX)
 
-
+# ============================================================================
+# C++ Standard and Compiler Settings
+# ============================================================================
 set(CMAKE_CXX_STANDARD 23) 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Let user configure build type; default to Release if not set
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    message(STATUS "Setting build type to 'Release' as none was specified.")
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Ox")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W0")
+    # Use /W3 instead of /W0 to catch potential issues; suppress only specific warnings if needed
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996") # Suppress deprecation warnings
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4267") # Suppress size_t to int conversion warnings
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /FS")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /FS")
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-    set(CMAKE_BUILD_TYPE Release)
 else ()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-switch")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-switch -Wno-format-truncation")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pg")
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -30,50 +43,54 @@ else ()
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -fsanitize=address")
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
     set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address")
-
-    # set(CMAKE_BUILD_TYPE RelWithDebInfo)
-    # set(CMAKE_BUILD_TYPE MinSizeRel)
-    set(CMAKE_BUILD_TYPE Release)
-    # set(CMAKE_BUILD_TYPE Debug)
 endif()
 
 
+# ============================================================================
+# Build Options
+# ============================================================================
 option(EMBED_MAS_DATA "Embed data in executable" ON)
 option(EMBED_MAS_CORES "Embed cores in executable" ON)
-option(EMBED_MAS_CORE_SHAPES "Embed cores in executable" ON)
-option(EMBED_MAS_CORE_MATERIALS "Embed cores in executable" ON)
-option(EMBED_MAS_WIRES "Embed cores in executable" ON)
-option(EMBED_MAS_WIRE_MATERIALS "Embed cores in executable" ON)
-option(EMBED_MAS_BOBBINS "Embed cores in executable" ON)
-option(EMBED_MAS_INSULATION_MATERIALS "Embed cores in executable" ON)
-option(INCLUDE_MKF_TESTS "Compiles also the tests" ON)
-option(BUILD_TESTS      "Build tests"    OFF)
-option(BUILD_EXAMPLES   "Build examples" OFF)
-option(BUILD_DEMO   "Build examples" FALSE)
-option(HAVE_LAPACK   "HAVE_LAPACK" 0)
-option(UTPP_INCLUDE_TESTS_IN_BUILD   "Build tests" OFF)
-option(INCLUDE_MKF_TESTS "Compiles also the tests" ON)
-option(INCLUDE_PYMKF "Compiles also the Python interface" OFF)
-option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile the high resolution maps for geoplots" OFF)
+option(EMBED_MAS_CORE_SHAPES "Embed core shapes in executable" ON)
+option(EMBED_MAS_CORE_MATERIALS "Embed core materials in executable" ON)
+option(EMBED_MAS_WIRES "Embed wires in executable" ON)
+option(EMBED_MAS_WIRE_MATERIALS "Embed wire materials in executable" ON)
+option(EMBED_MAS_BOBBINS "Embed bobbins in executable" ON)
+option(EMBED_MAS_INSULATION_MATERIALS "Embed insulation materials in executable" ON)
+option(INCLUDE_MKF_TESTS "Compile the test suite" ON)
+option(BUILD_TESTS "Build tests (for dependencies)" OFF)
+option(BUILD_EXAMPLES "Build examples (for dependencies)" OFF)
+option(BUILD_DEMO "Build demo (for dependencies)" OFF)
+option(HAVE_LAPACK "Use LAPACK" OFF)
+option(INCLUDE_PYMKF "Compile the Python interface" OFF)
+option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile high resolution maps for geoplots" OFF)
 
-message("Embeding MAS Data: ${EMBED_MAS_DATA}")
-message("Embeding MAS Cores: ${EMBED_MAS_CORES}")
-message("Embeding MAS CoreShapes: ${EMBED_MAS_CORE_SHAPES}")
-message("Embeding MAS CoreMaterials: ${EMBED_MAS_CORE_MATERIALS}")
-message("Embeding MAS Wires: ${EMBED_MAS_WIRES}")
-message("Embeding MAS WireMaterials: ${EMBED_MAS_WIRE_MATERIALS}")
-message("Embeding MAS Bobbins: ${EMBED_MAS_BOBBINS}")
-message("Embeding MAS InsulationMaterials: ${EMBED_MAS_INSULATION_MATERIALS}")
-
-
-file(DOWNLOAD "https://raw.githubusercontent.com/vector-of-bool/cmrc/master/CMakeRC.cmake"
-                 "${CMAKE_BINARY_DIR}/CMakeRC.cmake")
-include("${CMAKE_BINARY_DIR}/CMakeRC.cmake")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Embedding MAS Data: ${EMBED_MAS_DATA}")
+message(STATUS "Embedding MAS Cores: ${EMBED_MAS_CORES}")
+message(STATUS "Embedding MAS CoreShapes: ${EMBED_MAS_CORE_SHAPES}")
+message(STATUS "Embedding MAS CoreMaterials: ${EMBED_MAS_CORE_MATERIALS}")
+message(STATUS "Embedding MAS Wires: ${EMBED_MAS_WIRES}")
+message(STATUS "Embedding MAS WireMaterials: ${EMBED_MAS_WIRE_MATERIALS}")
+message(STATUS "Embedding MAS Bobbins: ${EMBED_MAS_BOBBINS}")
+message(STATUS "Embedding MAS InsulationMaterials: ${EMBED_MAS_INSULATION_MATERIALS}")
+message(STATUS "Including MKF Tests: ${INCLUDE_MKF_TESTS}")
 
 
+# ============================================================================
+# Dependencies via FetchContent
+# ============================================================================
 include(FetchContent)
-SET(FETCHCONTENT_QUIET FALSE)
+set(FETCHCONTENT_QUIET FALSE)
 
+# CMakeRC - Resource compiler (use FetchContent instead of file download)
+FetchContent_Declare(cmrc
+    GIT_REPOSITORY https://github.com/vector-of-bool/cmrc.git
+    GIT_TAG master)
+FetchContent_MakeAvailable(cmrc)
+include("${cmrc_SOURCE_DIR}/CMakeRC.cmake")
+
+# JSON library
 FetchContent_Declare(json
     GIT_REPOSITORY https://github.com/nlohmann/json/
     GIT_TAG  tags/v3.11.3)
@@ -118,13 +135,16 @@ FetchContent_Declare(rapidfuzz
   GIT_TAG main)
 FetchContent_MakeAvailable(rapidfuzz)
 
+# Testing framework - Catch2
 if(INCLUDE_MKF_TESTS)
-FetchContent_Declare(UnitTest++
-    GIT_REPOSITORY https://github.com/unittest-cpp/unittest-cpp.git
-    GIT_TAG  tags/v2.0.0)
-    FetchContent_MakeAvailable(UnitTest++)
-    include_directories("${CMAKE_BINARY_DIR}/_deps/unittest++-src/UnitTest++/")
-endif(INCLUDE_MKF_TESTS)
+    FetchContent_Declare(Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.8.1)
+    FetchContent_MakeAvailable(Catch2)
+    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+    include(CTest)
+    include(Catch)
+endif()
 
 # MAS
 find_program(NAMES quicktype REQUIRED)
@@ -284,40 +304,18 @@ target_include_directories(MKF PUBLIC
 # target_link_libraries(magnetic_adviser MKF)
 
 if(INCLUDE_MKF_TESTS)
-    FetchContent_Declare(
-      Catch2
-      GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-      GIT_TAG        v3.8.1 # or a later release
-    )
-
-    FetchContent_MakeAvailable(Catch2)
-
-    file(GLOB NEW_TESTS_SOURCES 
-        "tests/TestStrayCapacitance.cpp" 
-        "tests/TestLeakageInductance.cpp" 
-        )
-    add_executable(tests ${NEW_TESTS_SOURCES})
-    target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
-    target_link_libraries(tests PUBLIC MKF)
-    target_include_directories(tests PUBLIC "${PROJECT_SOURCE_DIR}/src/" )
-
-    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
-    include(CTest)
-    include(Catch)
-
-
-    file(GLOB TESTS_SOURCES "tests/*.cpp" )
-    get_filename_component(full_path_test_stray_capacitance ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestStrayCapacitance.cpp ABSOLUTE)
-    # message("${full_path_test_stray_capacitance}")
-    # list(REMOVE_ITEM TESTS_SOURCES NEW_TESTS_SOURCES)
-
-    foreach(new_test_source ${NEW_TESTS_SOURCES})
-        list(REMOVE_ITEM TESTS_SOURCES ${new_test_source})
-    endforeach()
-
-    add_executable(MKF_tests ${TESTS_SOURCES})
-    target_link_libraries(MKF_tests MKF)
-    target_link_libraries(MKF_tests UnitTest++)
+    file(GLOB ALL_TEST_SOURCES "tests/*.cpp")
+    
+    # Exclude TestingUtils.cpp as it's not a test file
+    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestingUtils\\.cpp$")
+    
+    add_executable(MKF_tests ${ALL_TEST_SOURCES} "tests/TestingUtils.cpp")
+    target_link_libraries(MKF_tests PRIVATE Catch2::Catch2WithMain)
+    target_link_libraries(MKF_tests PUBLIC MKF)
+    target_include_directories(MKF_tests PUBLIC "${PROJECT_SOURCE_DIR}/src/")
+    
+    # Discover and register tests with CTest
+    catch_discover_tests(MKF_tests)
 
 
 endif(INCLUDE_MKF_TESTS)

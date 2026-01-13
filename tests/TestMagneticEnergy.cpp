@@ -3,7 +3,8 @@
 #include "support/Utils.h"
 #include "json.hpp"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -16,7 +17,7 @@ using namespace OpenMagnetics;
 
 using json = nlohmann::json;
 
-SUITE(MagneticEnergy) {
+namespace {
     double max_error = 0.05;
     void prepare_test_parameters(double dcCurrent, double ambientTemperature, double frequency,
                                  double desiredMagnetizingInductance, std::vector<CoreGap> gapping,
@@ -31,8 +32,8 @@ SUITE(MagneticEnergy) {
         core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
     }
 
-    TEST(Test_Magnetic_Energy_Iron_Powder_Core) {
-        settings->reset();
+    TEST_CASE("Test_Magnetic_Energy_Iron_Powder_Core", "[physical-model][magnetic-energy][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double ambientTemperature = 25;
@@ -53,11 +54,11 @@ SUITE(MagneticEnergy) {
         double expectedValue = 1.34;
 
         double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, operatingPoint);
-        CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(totalMagneticEnergy, max_error * expectedValue));
     }
 
-    TEST(Test_Magnetic_Energy_Ferrite_Core) {
-        settings->reset();
+    TEST_CASE("Test_Magnetic_Energy_Ferrite_Core", "[physical-model][magnetic-energy][smoke-test]") {
+        settings.reset();
         clear_databases();
         double ambientTemperature = 25;
         double frequency = 100000;
@@ -77,11 +78,11 @@ SUITE(MagneticEnergy) {
         double expectedValue = 0.124;
 
         double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, operatingPoint);
-        CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(totalMagneticEnergy, max_error * expectedValue));
     }
 
-    TEST(Test_Magnetic_Energy_Gap) {
-        settings->reset();
+    TEST_CASE("Test_Magnetic_Energy_Gap", "[physical-model][magnetic-energy][smoke-test]") {
+        settings.reset();
         clear_databases();
         int numberStacks = 1;
         double magneticFluxDensitySaturation = 0.42;
@@ -99,12 +100,12 @@ SUITE(MagneticEnergy) {
         for (size_t i = 0; i < core.get_functional_description().get_gapping().size(); ++i)
         {
             double gapMagneticEnergy = magneticEnergy.get_gap_maximum_magnetic_energy(core.get_functional_description().get_gapping()[i], magneticFluxDensitySaturation);
-            CHECK_CLOSE(expectedValues[i], gapMagneticEnergy, max_error * expectedValues[i]);
+            REQUIRE_THAT(expectedValues[i], Catch::Matchers::WithinAbs(gapMagneticEnergy, max_error * expectedValues[i]));
         }
     }
 
-    TEST(Test_Magnetic_Energy_Input) {
-        settings->reset();
+    TEST_CASE("Test_Magnetic_Energy_Input", "[physical-model][magnetic-energy][smoke-test]") {
+        settings.reset();
         clear_databases();
         double voltagePeakToPeak = 1000;
         double desiredMagnetizingInductance = 0.0002;
@@ -125,11 +126,11 @@ SUITE(MagneticEnergy) {
         double expectedValue = 0.0016;
 
         double requiredMagneticEnergy = magneticEnergy.calculate_required_magnetic_energy(inputs).get_nominal().value();
-        CHECK_CLOSE(expectedValue, requiredMagneticEnergy, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(requiredMagneticEnergy, max_error * expectedValue));
     }
 
-    TEST(Test_Relative_permeability_By_Magnetic_Energy) {
-        settings->reset();
+    TEST_CASE("Test_Relative_permeability_By_Magnetic_Energy", "[physical-model][magnetic-energy][smoke-test]") {
+        settings.reset();
         clear_databases();
         double ambientTemperature = 25;
         std::string coreShape = "ETD 49";
@@ -143,7 +144,7 @@ SUITE(MagneticEnergy) {
         double MagneticEnergy = 0.032;
 
         double calculatedValue = magneticEnergy.get_relative_permeability_by_magnetic_energy(core, ambientTemperature, MagneticEnergy);
-        CHECK_CLOSE(expectedValue, calculatedValue, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, max_error * expectedValue));
     }
 
-}
+}  // namespace

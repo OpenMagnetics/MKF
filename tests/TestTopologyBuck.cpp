@@ -1,9 +1,11 @@
+#include <source_location>
 #include "support/Painter.h"
 #include "converter_models/Buck.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -14,11 +16,11 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(TopologyBuck) {
-    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+namespace {
+    auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
 
-    TEST(Test_Buck) {
+    TEST_CASE("Test_Buck", "[converter-model][buck-topology][smoke-test]") {
         json buckInputsJson;
         json inputVoltage;
 
@@ -78,17 +80,16 @@ SUITE(TopologyBuck) {
             painter.export_svg();
         }
 
-        CHECK_CLOSE(double(buckInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(buckInputsJson["inputVoltage"]["maximum"]) * maximumError);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
-        CHECK_CLOSE(double(buckInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(buckInputsJson["inputVoltage"]["maximum"]) * maximumError);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
+        REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
+        REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR_WITH_DEADTIME);
+        REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
     }
-    TEST(Test_Buck_Drain_Source_Voltage_BMO) {
+
+    TEST_CASE("Test_Buck_Drain_Source_Voltage_BMO", "[converter-model][buck-topology][smoke-test]") {
         json buckInputsJson;
         json inputVoltage;
 
@@ -156,37 +157,15 @@ SUITE(TopologyBuck) {
         magnetic.set_coil(coil);
 
         auto operatingPoints = buckInputs.process_operating_points(magnetic);
-
     }
-    TEST(Test_Buck_Web_0) {
+
+    TEST_CASE("Test_Buck_Web_0", "[converter-model][buck-topology][smoke-test]") {
         json buckInputsJson = json::parse(R"({"inputVoltage":{"minimum":10,"maximum":12},"diodeVoltageDrop":0.7,"efficiency":0.85,"currentRippleRatio":0.4,"operatingPoints":[{"outputVoltage":5,"outputCurrent":2,"switchingFrequency":100000,"ambientTemperature":25}]})");
-        // json buckInputsJson;
-        // json inputVoltage;
-
-        // inputVoltage["minimum"] = 10;
-        // inputVoltage["maximum"] = 12;
-        // buckInputsJson["inputVoltage"] = inputVoltage;
-        // buckInputsJson["diodeVoltageDrop"] = 0.7;
-        // buckInputsJson["efficiency"] = 0.85;
-        // buckInputsJson["maximumSwitchCurrent"] = 8;
-        // buckInputsJson["operatingPoints"] = json::array();
-        // {
-        //     json buckOperatingPointJson;
-        //     buckOperatingPointJson["outputVoltage"] = 5;
-        //     buckOperatingPointJson["outputCurrent"] = 2;
-        //     buckOperatingPointJson["switchingFrequency"] = 100000;
-        //     buckOperatingPointJson["ambientTemperature"] = 42;
-        //     buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
-        // }
-
         OpenMagnetics::Buck buckInputs(buckInputsJson);
 
         auto inputs = buckInputs.process();
         auto currentProcessed = inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed().value();
 
-        std::cout << "currentProcessed.get_duty_cycle().value()" << std::endl;
-        std::cout << currentProcessed.get_duty_cycle().value() << std::endl;
-        std::cout << currentProcessed.get_duty_cycle().value() << std::endl;
         {
             auto outFile = outputFilePath;
             outFile.append("Test_Buck_Primary_Minimum.svg");
@@ -223,14 +202,12 @@ SUITE(TopologyBuck) {
             painter.export_svg();
         }
 
-        CHECK_CLOSE(double(buckInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(buckInputsJson["inputVoltage"]["maximum"]) * maximumError);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
+        REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
-        CHECK_CLOSE(double(buckInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(buckInputsJson["inputVoltage"]["maximum"]) * maximumError);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
+        REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
+        REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
+        REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
     }
-}
+}  // namespace

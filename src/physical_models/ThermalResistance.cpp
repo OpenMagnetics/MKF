@@ -1,5 +1,6 @@
 #include "support/Utils.h"
 #include "physical_models/ThermalResistance.h"
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -8,7 +9,7 @@ std::shared_ptr<CoreThermalResistanceModel> CoreThermalResistanceModel::factory(
         return std::make_shared<CoreThermalResistanceManiktalaModel>();
     }
     else
-        throw std::runtime_error("Unknown Thermal Resistance mode, available options are: {MANIKTALA}");
+        throw ModelNotAvailableException("Unknown Thermal Resistance mode, available options are: {MANIKTALA}");
 }
 
 std::shared_ptr<CoreThermalResistanceModel> CoreThermalResistanceModel::factory() {

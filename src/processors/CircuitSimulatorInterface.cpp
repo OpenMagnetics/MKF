@@ -11,6 +11,7 @@
 #include <ctime>
 #include "levmar.h"
 #include <float.h>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -359,7 +360,7 @@ std::shared_ptr<CircuitSimulatorExporterModel> CircuitSimulatorExporterModel::fa
         return std::make_shared<CircuitSimulatorExporterLtspiceModel>();
     }
     else
-        throw std::runtime_error("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE}");
+        throw ModelNotAvailableException("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE}");
 }
 
 std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
@@ -604,17 +605,17 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     if (filePathOrFile) {
         try {
             if(!std::filesystem::exists(filePathOrFile.value())) {
-                throw std::runtime_error("File not found");
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "File not found");
             }
             std::ifstream json_file(filePathOrFile.value());
             if(json_file.is_open()) {
                 simulation = ordered_json::parse(json_file);
             }
             else {
-                throw std::runtime_error("File not found");
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "File not found");
             }
         }
-        catch(const std::runtime_error& re) {
+        catch(const InvalidInputException& re) {
             std::stringstream json_file(filePathOrFile.value());
             simulation = ordered_json::parse(json_file);
         }
@@ -889,7 +890,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
             coordinates[1] += 6;
             auto gap = gapsInThisColumn[gapIndex];
             if (!gap.get_coordinates()) {
-                throw std::runtime_error("Gap is not processed");
+                throw GapException("Gap is not processed");
             }
             std::vector<int> gapCoordinates = {coordinates[0], coordinates[1]};
 
@@ -1170,7 +1171,7 @@ CircuitSimulationReader::CircuitSimulationReader(std::string filePathOrFile, boo
 
     if (path.has_parent_path() && !forceFile) {
         if (!std::filesystem::exists(filePathOrFile)) {
-            throw std::runtime_error("File not found");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "File not found");
         }
         std::ifstream is(filePathOrFile);
         if (is.is_open()) {
@@ -1184,7 +1185,7 @@ CircuitSimulationReader::CircuitSimulationReader(std::string filePathOrFile, boo
             is.close();
         }
         else {
-            throw std::runtime_error("File not found");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "File not found");
         }
     }
     else {
@@ -1301,13 +1302,13 @@ char CircuitSimulationReader::guess_separator(std::string line){
         }
     }
 
-    throw std::runtime_error("No column separator found");
+    throw InvalidInputException(ErrorCode::INVALID_INPUT, "No column separator found");
 }
 
 Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample) {
     double period = 1.0 / frequency;
     if (!waveform.get_time()) {
-        throw std::runtime_error("Missing time data");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing time data");
     }
 
     auto time = waveform.get_time().value();
@@ -1388,11 +1389,11 @@ CircuitSimulationReader::CircuitSimulationSignal CircuitSimulationReader::find_t
             return column;
         }
     }
-    throw std::runtime_error("no time column found");
+    throw InvalidInputException(ErrorCode::MISSING_DATA, "no time column found");
 }
 
 Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::CircuitSimulationSignal signal, double frequency, bool sample) {
-    auto settings = Settings::GetInstance();
+    auto& settings = Settings::GetInstance();
     Waveform waveform;
     waveform.set_data(signal.data);
     waveform.set_time(_time.data);
@@ -1401,15 +1402,15 @@ Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::Circ
     Waveform reconstructedWaveform = waveformOnePeriod;
 
     if (false) {
-        double originalThreshold = settings->get_harmonic_amplitude_threshold();
+        double originalThreshold = settings.get_harmonic_amplitude_threshold();
         while (reconstructedWaveform.get_data().size() > 8192) {
-            settings->set_harmonic_amplitude_threshold(settings->get_harmonic_amplitude_threshold() * 2);
+            settings.set_harmonic_amplitude_threshold(settings.get_harmonic_amplitude_threshold() * 2);
             auto harmonics = Inputs::calculate_harmonics_data(waveformOnePeriod, frequency);
-            settings->set_inputs_number_points_sampled_waveforms(2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
+            settings.set_inputs_number_points_sampled_waveforms(2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
             reconstructedWaveform = Inputs::reconstruct_signal(harmonics, frequency);
         }
 
-        settings->set_harmonic_amplitude_threshold(originalThreshold);
+        settings.set_harmonic_amplitude_threshold(originalThreshold);
         return reconstructedWaveform;
     }
     else {

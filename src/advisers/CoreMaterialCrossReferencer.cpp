@@ -15,6 +15,8 @@
 #include <magic_enum_utility.hpp>
 #include <list>
 #include <cmrc/cmrc.hpp>
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 CMRC_DECLARE(data);
 
@@ -170,7 +172,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if ((*unfilteredCoreMaterials).size() > 0) {
@@ -201,7 +203,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if ((*unfilteredCoreMaterials).size() > 0) {
@@ -232,7 +234,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if ((*unfilteredCoreMaterials).size() > 0) {
@@ -263,7 +265,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if ((*unfilteredCoreMaterials).size() > 0) {
@@ -294,7 +296,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if ((*unfilteredCoreMaterials).size() > 0) {
@@ -326,7 +328,7 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
         }
 
         if (coreLossesModelForMaterial == nullptr) {
-            throw std::runtime_error("No model found for material: " + coreMaterial.get_name());
+            throw ModelNotAvailableException("No model found for material: " + coreMaterial.get_name());
         }
 
         double averageVolumetricLosses = 0;
@@ -345,7 +347,11 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
         averageVolumetricLosses /= _magneticFluxDensities.size() * _frequencies.size();
         return averageVolumetricLosses;
     }
-    catch(const std::runtime_error& re)
+    catch(const ModelNotAvailableException& re)
+    {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    catch(const InvalidInputException& re)
     {
         return std::numeric_limits<double>::quiet_NaN();
     }
@@ -391,7 +397,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         }
 
         if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-            throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
         }
 
         if ((*unfilteredCoreMaterials).size() > 0) {
@@ -427,7 +433,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
     if ((*unfilteredCoreMaterials).size() > 0) {
@@ -504,8 +510,9 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
     for (auto [coreMaterial, scoring] : (*coreMaterials)) {
         auto coreMaterialType = coreMaterial.get_material();
         auto coreMaterialApplication = Core::guess_material_application(coreMaterial);
-        if (coreMaterialApplication == referenceCoreMaterialApplication && coreMaterialType == referenceCoreMaterialType) {
-            rankedCoreMaterials.push_back({coreMaterial, scoring});
+
+        if (coreMaterialApplication == referenceCoreMaterialApplication && (settings.get_core_cross_referencer_allow_different_core_material_type() || coreMaterialType == referenceCoreMaterialType)) {
+            rankedCoreMaterials.push_back({coreMaterial, scoring}); 
         }
     }
 

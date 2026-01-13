@@ -1,10 +1,12 @@
+#include <source_location>
 #include "support/Painter.h"
 #include "physical_models/MagneticField.h"
 #include "json.hpp"
 #include "TestingUtils.h"
 #include "Models.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <fstream>
 #include <string>
@@ -12,10 +14,9 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-
-SUITE(MagneticField) {
+namespace { 
     double maximumError = 0.05;
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     bool plot = false;
 
     std::vector<int64_t> numberTurns = {1};
@@ -46,12 +47,12 @@ SUITE(MagneticField) {
     }
 
 
-    TEST(Test_Magnetic_Field_Frequencies) {
+    TEST_CASE("Test_Magnetic_Field_Frequencies", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {2};
         numberParallels = {1};
         turnsRatios = {};
         interleavingLevel = 2;
-        settings->set_harmonic_amplitude_threshold(0.01);
+        settings.set_harmonic_amplitude_threshold(0.01);
 
         sectionsAlignment = CoilAlignment::SPREAD;
         turnsAlignment = CoilAlignment::CENTERED;
@@ -61,23 +62,23 @@ SUITE(MagneticField) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
         MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
-        settings->set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_include_fringing(false);
 
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic);
         auto field_0 = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
         auto field_1 = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1];
         auto field_2 = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2];
 
-        CHECK_CLOSE(frequency, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_frequency(), maximumError);
-        CHECK_CLOSE(3* frequency, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1].get_frequency(), maximumError);
-        CHECK_CLOSE(5 * frequency, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2].get_frequency(), maximumError);
+        REQUIRE_THAT(frequency, Catch::Matchers::WithinAbs(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_frequency(), maximumError));
+        REQUIRE_THAT(3* frequency, Catch::Matchers::WithinAbs(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1].get_frequency(), maximumError));
+        REQUIRE_THAT(5 * frequency, Catch::Matchers::WithinAbs(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2].get_frequency(), maximumError));
 
-        CHECK(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1].get_data()[0].get_imaginary() <  windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_data()[0].get_imaginary());
-        CHECK(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2].get_data()[0].get_imaginary() <  windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_data()[0].get_imaginary());
-        settings->reset();
+        REQUIRE(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1].get_data()[0].get_imaginary() <  windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_data()[0].get_imaginary());
+        REQUIRE(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2].get_data()[0].get_imaginary() <  windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_data()[0].get_imaginary());
+        settings.reset();
     }
 
-    TEST(Test_Magnetic_Field_One_Turn_Round) {
+    TEST_CASE("Test_Magnetic_Field_One_Turn_Round", "[physical-model][magnetic-field][smoke-test]") {
 
         numberTurns = {1};
         numberParallels = {1};
@@ -110,29 +111,29 @@ SUITE(MagneticField) {
         magnetic.set_coil(coil);
 
         MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
-        settings->set_magnetic_field_mirroring_dimension(0);
-        settings->set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_mirroring_dimension(0);
+        settings.set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
         double expectedValue = harmonicAmplitude / (2 * std::numbers::pi * maximumWidth / 2);
 
-        CHECK_CLOSE(expectedValue, field.get_data()[0].get_imaginary(), expectedValue * maximumError);
-        CHECK_CLOSE(field.get_data()[0].get_real(), -field.get_data()[1].get_real(), expectedValue * maximumError);
-        CHECK_CLOSE(field.get_data()[0].get_imaginary(), -field.get_data()[1].get_imaginary(), expectedValue * maximumError);
-        CHECK_CLOSE(field.get_data()[0].get_real(), -field.get_data()[2].get_imaginary(), expectedValue * maximumError);
-        CHECK_CLOSE(field.get_data()[0].get_imaginary(), -field.get_data()[2].get_real(), expectedValue * maximumError);
-        CHECK_CLOSE(field.get_data()[0].get_real(), field.get_data()[3].get_imaginary(), expectedValue * maximumError);
-        CHECK_CLOSE(field.get_data()[0].get_imaginary(), field.get_data()[3].get_real(), expectedValue * maximumError);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(field.get_data()[0].get_imaginary(), expectedValue * maximumError));
+        REQUIRE_THAT(field.get_data()[0].get_real(), Catch::Matchers::WithinAbs(-field.get_data()[1].get_real(), expectedValue * maximumError));
+        REQUIRE_THAT(field.get_data()[0].get_imaginary(), Catch::Matchers::WithinAbs(-field.get_data()[1].get_imaginary(), expectedValue * maximumError));
+        REQUIRE_THAT(field.get_data()[0].get_real(), Catch::Matchers::WithinAbs(-field.get_data()[2].get_imaginary(), expectedValue * maximumError));
+        REQUIRE_THAT(field.get_data()[0].get_imaginary(), Catch::Matchers::WithinAbs(-field.get_data()[2].get_real(), expectedValue * maximumError));
+        REQUIRE_THAT(field.get_data()[0].get_real(), Catch::Matchers::WithinAbs(field.get_data()[3].get_imaginary(), expectedValue * maximumError));
+        REQUIRE_THAT(field.get_data()[0].get_imaginary(), Catch::Matchers::WithinAbs(field.get_data()[3].get_real(), expectedValue * maximumError));
         if (plot) {
 
-            settings->set_painter_mode(PainterModes::QUIVER);
+            settings.set_painter_mode(PainterModes::QUIVER);
 
-            settings->set_magnetic_field_number_points_x(50);
-            settings->set_magnetic_field_number_points_y(50);
+            settings.set_magnetic_field_number_points_x(50);
+            settings.set_magnetic_field_number_points_y(50);
 
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Round.svg");
             std::filesystem::remove(outFile);
@@ -146,10 +147,10 @@ SUITE(MagneticField) {
         }
 
  
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Magnetic_Field_Two_Turns_Round_Same_Current) {
+    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Same_Current", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {2};
         numberParallels = {1};
         turnsRatios = {};
@@ -176,18 +177,18 @@ SUITE(MagneticField) {
 
         MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
         // MagneticField magneticField(MagneticFieldStrengthModels::LAMMERANER);
-        settings->set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double expectedValue = 0;
 
-        CHECK_CLOSE(expectedValue, field.get_data()[0].get_real(), maximumError);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(field.get_data()[0].get_real(), maximumError));
 
-        settings->reset();
+        settings.reset();
     }
 
-    TEST(Test_Magnetic_Field_Two_Turns_Round_Opposite_Current) {
+    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Opposite_Current", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {1, 1};
         numberParallels = {1, 1};
         turnsRatios = {1};
@@ -213,19 +214,19 @@ SUITE(MagneticField) {
         magnetic.set_coil(coil);
 
         MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
-        settings->set_magnetic_field_mirroring_dimension(0);
-        settings->set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_mirroring_dimension(0);
+        settings.set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
         double distanceCenterPoint = fieldPoint.get_point()[0] - turn_0.get_coordinates()[0];
         double expectedValue = -2 * harmonicAmplitude / (2 * std::numbers::pi * distanceCenterPoint);
-        CHECK((expectedValue - field.get_data()[0].get_imaginary()) / expectedValue < maximumError);
-        settings->reset();
+        REQUIRE((expectedValue - field.get_data()[0].get_imaginary()) / expectedValue < maximumError);
+        settings.reset();
     }
 
-    TEST(Test_Magnetic_Field_Two_Turns_Round_Opposite_Current_Lammeraner) {
+    TEST_CASE("Test_Magnetic_Field_Two_Turns_Round_Opposite_Current_Lammeraner", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {1, 1};
         numberParallels = {1, 1};
         turnsRatios = {1};
@@ -252,7 +253,7 @@ SUITE(MagneticField) {
         magnetic.set_coil(coil);
 
         MagneticField magneticField(MagneticFieldStrengthModels::LAMMERANER);
-        settings->set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
@@ -260,11 +261,11 @@ SUITE(MagneticField) {
         double distanceCenterPoint = fieldPoint.get_point()[0] - turn_0.get_coordinates()[0];
         double expectedValue = -2 * harmonicAmplitude / (2 * std::numbers::pi * distanceCenterPoint);
 
-        CHECK((expectedValue - field.get_data()[0].get_real()) / expectedValue < maximumError);
-        settings->reset();
+        REQUIRE((expectedValue - field.get_data()[0].get_real()) / expectedValue < maximumError);
+        settings.reset();
     }
 
-    TEST(Test_Magnetic_Image_Method) {
+    TEST_CASE("Test_Magnetic_Image_Method", "[physical-model][magnetic-field][smoke-test]") {
         gapping = OpenMagneticsTesting::get_residual_gap();
         coreShape = "P 9/5";
         std::vector<int64_t> numberTurns = {1};
@@ -297,8 +298,8 @@ SUITE(MagneticField) {
         magnetic.set_coil(coil);
 
         MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
-        settings->set_magnetic_field_mirroring_dimension(1);
-        settings->set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_mirroring_dimension(1);
+        settings.set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
  
@@ -306,23 +307,23 @@ SUITE(MagneticField) {
         outFile.append("Test_Magnetic_Image_Method.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings->set_painter_mode(PainterModes::QUIVER);
-        settings->set_painter_logarithmic_scale(false);
-        settings->set_painter_mirroring_dimension(1);
-        settings->set_painter_include_fringing(false);
-        settings->set_painter_maximum_value_colorbar(std::nullopt);
-        settings->set_painter_minimum_value_colorbar(std::nullopt);
+        settings.set_painter_mode(PainterModes::QUIVER);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_mirroring_dimension(1);
+        settings.set_painter_include_fringing(false);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-        CHECK(field.get_data().size() == 1);
-        settings->reset();
+        REQUIRE(field.get_data().size() == 1);
+        settings.reset();
     }
 
 
-    TEST(Test_Magnetic_Field_One_Turn_Rectangular) {
+    TEST_CASE("Test_Magnetic_Field_One_Turn_Rectangular", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {1};
         numberParallels = {1};
         turnsRatios = {};
@@ -381,37 +382,37 @@ SUITE(MagneticField) {
         magnetic.set_coil(coil);
 
         MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
-        settings->set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
         double expectedValue = harmonicAmplitude / (2 * std::numbers::pi * maximumWidth / 2);
 
-        CHECK_CLOSE(field.get_data()[4].get_real(), -field.get_data()[5].get_real(), expectedValue * maximumError);
-        CHECK_CLOSE(field.get_data()[4].get_imaginary(), field.get_data()[5].get_imaginary(), expectedValue * maximumError);
+        REQUIRE_THAT(field.get_data()[4].get_real(), Catch::Matchers::WithinAbs(-field.get_data()[5].get_real(), expectedValue * maximumError));
+        REQUIRE_THAT(field.get_data()[4].get_imaginary(), Catch::Matchers::WithinAbs(field.get_data()[5].get_imaginary(), expectedValue * maximumError));
         if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Rectangular.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile, true);
-            settings->set_painter_mode(PainterModes::QUIVER);
-            settings->set_painter_logarithmic_scale(false);
-            settings->set_painter_mirroring_dimension(0);
-            settings->set_painter_include_fringing(false);
-            settings->set_painter_maximum_value_colorbar(std::nullopt);
-            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            settings.set_painter_mode(PainterModes::QUIVER);
+            settings.set_painter_logarithmic_scale(false);
+            settings.set_painter_mirroring_dimension(0);
+            settings.set_painter_include_fringing(false);
+            settings.set_painter_maximum_value_colorbar(std::nullopt);
+            settings.set_painter_minimum_value_colorbar(std::nullopt);
             painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
-            settings->reset();
+            settings.reset();
         }
     }
 
 
-    TEST(Test_Magnetic_Field_One_Turn_Foil) {
+    TEST_CASE("Test_Magnetic_Field_One_Turn_Foil", "[physical-model][magnetic-field][smoke-test]") {
         numberTurns = {1};
         numberParallels = {1};
         turnsRatios = {};
@@ -470,33 +471,34 @@ SUITE(MagneticField) {
         magnetic.set_coil(coil);
 
         MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
-        settings->set_magnetic_field_include_fringing(false);
+        settings.set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
         double expectedValue = harmonicAmplitude / (2 * std::numbers::pi * maximumWidth / 2);
 
-        CHECK_CLOSE(field.get_data()[4].get_real(), -field.get_data()[5].get_real(), expectedValue * maximumError);
-        CHECK_CLOSE(field.get_data()[4].get_imaginary(), field.get_data()[5].get_imaginary(), expectedValue * maximumError);
-        settings->reset();
+        REQUIRE_THAT(field.get_data()[4].get_real(), Catch::Matchers::WithinAbs(-field.get_data()[5].get_real(), expectedValue * maximumError));
+        REQUIRE_THAT(field.get_data()[4].get_imaginary(), Catch::Matchers::WithinAbs(field.get_data()[5].get_imaginary(), expectedValue * maximumError));
+        settings.reset();
         if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Foil.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile, true);
-            settings->set_painter_mode(PainterModes::QUIVER);
-            settings->set_painter_logarithmic_scale(false);
-            settings->set_painter_mirroring_dimension(0);
-            settings->set_painter_include_fringing(false);
-            settings->set_painter_maximum_value_colorbar(std::nullopt);
-            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            settings.set_painter_mode(PainterModes::QUIVER);
+            settings.set_painter_logarithmic_scale(false);
+            settings.set_painter_mirroring_dimension(0);
+            settings.set_painter_include_fringing(false);
+            settings.set_painter_maximum_value_colorbar(std::nullopt);
+            settings.set_painter_minimum_value_colorbar(std::nullopt);
             painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
-            settings->reset();
+            settings.reset();
         }
     }
-}
+
+}  // namespace

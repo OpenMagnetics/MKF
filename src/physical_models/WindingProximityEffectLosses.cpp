@@ -12,6 +12,8 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 namespace OpenMagnetics {
 
@@ -32,7 +34,7 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
         return std::make_shared<WindingProximityEffectLossesLammeranerModel>();
     }
     else
-        throw std::runtime_error("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER}");
+        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER}");
 }
 
 std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType) {
@@ -53,7 +55,7 @@ std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses:
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::WANG);
         }
         default:
-            throw std::runtime_error("Unknown type of wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 }
 
@@ -112,7 +114,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
         auto turnLosses = model->calculate_turn_losses(wire, frequency, dataForThisTurn, temperature);
 
         if (std::isnan(turnLosses)) {
-            throw std::runtime_error("NaN found in proximity effect losses per meter");
+            throw NaNResultException("NaN found in proximity effect losses per meter");
         }
         lossesPerHarmonic.push_back(std::pair<double, double>{turnLosses, frequency});
         totalProximityEffectLossesPerMeter += turnLosses;
@@ -123,7 +125,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
 
 WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput) {
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Winding does not have turns description");
+        throw CoilNotProcessedException("Winding does not have turns description");
     }
     auto turns = coil.get_turns_description().value();
 
@@ -143,7 +145,7 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             std::vector<ComplexFieldPoint> data;
             for (auto& fieldPoint : fieldPerHarmonic.get_data()) {
                 if (!fieldPoint.get_turn_index()) {
-                    throw std::runtime_error("Missing turn index in field point");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Missing turn index in field point");
                 }
                 if (fieldPoint.get_turn_index().value() == int(turnIndex)) {
                     data.push_back(fieldPoint);
@@ -168,7 +170,7 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
 
         for (auto& lossesThisHarmonic : lossesPerHarmonicThisTurn) {
             if (std::isnan(lossesThisHarmonic.first)) {
-                throw std::runtime_error("NaN found in proximity effect losses");
+                throw NaNResultException("NaN found in proximity effect losses");
             }
             proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(lossesThisHarmonic.second);
             proximityEffectLossesThisTurn.get_mutable_losses_per_harmonic().push_back(lossesThisHarmonic.first * wireLength);
@@ -211,7 +213,7 @@ double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(W
         factor = 2 * std::numbers::pi * (alpha * modified_bessel_first_kind(1, alpha) / modified_bessel_first_kind(0, alpha)).real();
     }
     else {
-        throw std::runtime_error("Unknown type of wire");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
     return factor;
@@ -254,23 +256,23 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
 
         if (!wire.get_conducting_width()) {
-            throw std::runtime_error("Missing conducting width in wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in wire");
         }
         if (!wire.get_conducting_height()) {
-            throw std::runtime_error("Missing conducting height in wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in wire");
         }
         c = resolve_dimensional_values(wire.get_conducting_width().value());
         h = resolve_dimensional_values(wire.get_conducting_height().value());
     }
     else {
-        throw std::runtime_error("Model not implemented for ROUND and LITZ");
+        throw NotImplementedException("Model not implemented for ROUND and LITZ");
     }
 
     double Hx1 = 0, Hx2 = 0, Hy1 = 0, Hy2 = 0;
     double nonPlanarHe = 0;
     for (auto& datum : data) {
         if (!datum.get_label()) {
-            throw std::runtime_error("Missing label in induced point");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing label in induced point");
         }
         else if (datum.get_label().value() == "top") {
             nonPlanarHe += datum.get_imaginary(); 
@@ -325,10 +327,10 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
 
     if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         if (!wire.get_conducting_width()) {
-            throw std::runtime_error("Missing conducting width in wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in wire");
         }
         if (!wire.get_conducting_height()) {
-            throw std::runtime_error("Missing conducting height in wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in wire");
         }
         double w = resolve_dimensional_values(wire.get_conducting_width().value());
         double h = resolve_dimensional_values(wire.get_conducting_height().value());
@@ -337,7 +339,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
 
         factor = w * xi * resistivity * (sinh(xi) - sin(xi)) / (cosh(xi) + cos(xi));
         if (std::isnan(factor)) {
-            throw std::runtime_error("NaN found in Ferreira's proximity factor");
+            throw NaNResultException("NaN found in Ferreira's proximity factor");
         }
     }
     else if (wire.get_type() == WireType::ROUND ||wire.get_type() == WireType::LITZ) {
@@ -355,7 +357,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
 
     }
     else {
-        throw std::runtime_error("Unknown type of wire");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
     return factor;
@@ -376,10 +378,10 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
 
     for (auto& datum : data) {
         if (std::isnan(datum.get_real())) {
-            throw std::runtime_error("NaN found in Ferreira proximity losses calculation");
+            throw NaNResultException("NaN found in Ferreira proximity losses calculation");
         }
         if (std::isnan(datum.get_imaginary())) {
-            throw std::runtime_error("NaN found in Ferreira proximity losses calculation");
+            throw NaNResultException("NaN found in Ferreira proximity losses calculation");
         }
         He = std::max(He, hypot(datum.get_real(), datum.get_imaginary()));
     }
@@ -390,10 +392,9 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
     }
     turnLosses *= wire.get_number_conductors().value();
         if (std::isnan(turnLosses)) {
-            std::cout << "frequency:" << frequency << std::endl;
-            std::cout << "proximityFactor:" << proximityFactor << std::endl;
-            std::cout << "He:" << He << std::endl;
-            throw std::runtime_error("NaN found in Ferreira proximity losses calculation");
+            throw NaNResultException("NaN found in Ferreira proximity losses calculation: frequency=" + 
+                std::to_string(frequency) + ", proximityFactor=" + std::to_string(proximityFactor) + 
+                ", He=" + std::to_string(He));
         }
 
     return turnLosses;
@@ -408,10 +409,10 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
 
     if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         if (!wire.get_conducting_width()) {
-            throw std::runtime_error("Missing conducting width in wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in wire");
         }
         if (!wire.get_conducting_height()) {
-            throw std::runtime_error("Missing conducting height in wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in wire");
         }
         d = resolve_dimensional_values(wire.get_conducting_width().value());
         c = resolve_dimensional_values(wire.get_conducting_height().value());
@@ -434,7 +435,7 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
     turnLosses *= wire.get_number_conductors().value();
 
     if (std::isnan(turnLosses)) {
-        throw std::runtime_error("NaN found in Albach's model for proximity effect losses");
+        throw NaNResultException("NaN found in Albach's model for proximity effect losses");
     }
 
     return turnLosses;
@@ -456,7 +457,7 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
         wireConductingDimension = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
     }
     else {
-        throw std::runtime_error("Unknown type of wire");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
@@ -492,7 +493,7 @@ double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(Wire w
     turnLosses *= wire.get_number_conductors().value();
 
     if (std::isnan(turnLosses)) {
-        throw std::runtime_error("NaN found in Lammeraner's model for proximity effect losses");
+        throw NaNResultException("NaN found in Lammeraner's model for proximity effect losses");
     }
 
     return turnLosses;

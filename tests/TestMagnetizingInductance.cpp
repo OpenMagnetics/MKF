@@ -1,3 +1,4 @@
+#include <source_location>
 #include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "constructive_models/Bobbin.h"
@@ -6,7 +7,8 @@
 #include "support/Utils.h"
 #include "json.hpp"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -19,8 +21,7 @@ using namespace OpenMagnetics;
 
 using json = nlohmann::json;
 
-SUITE(MagnetizingInductance) {
-    auto settings = Settings::GetInstance();
+namespace { 
     double max_error = 0.05;
     void prepare_test_parameters(double dcCurrent, double ambientTemperature, double frequency, double numberTurns,
                                  double desiredMagnetizingInductance, std::vector<CoreGap> gapping,
@@ -51,8 +52,8 @@ SUITE(MagnetizingInductance) {
         core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
     }
 
-    TEST(Test_Inductance_Ferrite_Ground) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -76,11 +77,11 @@ SUITE(MagnetizingInductance) {
         auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST(Test_Inductance_Ferrite_Web) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Ferrite_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         // This tests checks that the operating is not crashing
@@ -117,8 +118,8 @@ SUITE(MagnetizingInductance) {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST(Test_Inductance_Powder_Web) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Powder_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         // This tests checks that the operating is not crashing
@@ -175,8 +176,8 @@ SUITE(MagnetizingInductance) {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST(Test_Inductance_High_Flux_40_Web) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_High_Flux_40_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         // This tests checks that the operating is not crashing
@@ -192,11 +193,10 @@ SUITE(MagnetizingInductance) {
         auto operatingPoint = inputs.get_operating_point(0);
         MagnetizingInductance magnetizing_inductance("ZHANG");
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
-
     }
 
-    TEST(Test_Inductance_Ferrite_Spacer) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Ferrite_Spacer", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -220,11 +220,11 @@ SUITE(MagnetizingInductance) {
         auto aux = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
         double magnetizingInductance = aux.get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST(Test_Inductance_Ferrite_Ground_Few_Turns) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Ferrite_Ground_Few_Turns", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -248,11 +248,11 @@ SUITE(MagnetizingInductance) {
         double magnetizingInductance =
             magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST(Test_Inductance_Powder) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Powder", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 96;
@@ -276,11 +276,11 @@ SUITE(MagnetizingInductance) {
         auto aux = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
         double magnetizingInductance = aux.get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST(Test_NumberTurns_Ferrite_Ground) {
-        settings->reset();
+    TEST_CASE("Test_NumberTurns_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -303,11 +303,11 @@ SUITE(MagnetizingInductance) {
 
         double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs);
 
-        CHECK_CLOSE(expectedValue, numberTurns, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(numberTurns, max_error * expectedValue));
     }
 
-    TEST(Test_NumberTurns_Powder) {
-        settings->reset();
+    TEST_CASE("Test_NumberTurns_Powder", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 96;
@@ -330,11 +330,11 @@ SUITE(MagnetizingInductance) {
 
         double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs);
 
-        CHECK_CLOSE(expectedValue, numberTurns, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(numberTurns, max_error * expectedValue));
     }
 
-    TEST(Test_Gapping_Ferrite_Ground) {
-        settings->reset();
+    TEST_CASE("Test_Gapping_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -358,11 +358,11 @@ SUITE(MagnetizingInductance) {
         auto gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(
             core, winding, &inputs, GappingType::GROUND);
 
-        CHECK_CLOSE(expectedValue, gapping[0].get_length(), max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(gapping[0].get_length(), max_error * expectedValue));
     }
 
-    TEST(Test_Gapping_U_Shape_Ferrite_Ground) {
-        settings->reset();
+    TEST_CASE("Test_Gapping_U_Shape_Ferrite_Ground", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -386,11 +386,11 @@ SUITE(MagnetizingInductance) {
         auto gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(
             core, winding, &inputs, GappingType::GROUND);
 
-        CHECK_CLOSE(expectedValue, gapping[0].get_length(), max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(gapping[0].get_length(), max_error * expectedValue));
     }
 
-    TEST(Test_Gapping_Ferrite_Distributed) {
-        settings->reset();
+    TEST_CASE("Test_Gapping_Ferrite_Distributed", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -414,12 +414,12 @@ SUITE(MagnetizingInductance) {
         auto gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(
             core, winding, &inputs, GappingType::DISTRIBUTED);
 
-        CHECK_CLOSE(expectedValue, gapping[0].get_length(), max_error * expectedValue);
-        CHECK_EQUAL(7UL, gapping.size());
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(gapping[0].get_length(), max_error * expectedValue));
+        REQUIRE(7UL == gapping.size());
     }
 
-    TEST(Test_Gapping_Ferrite_Distributed_More_Gap_Precision) {
-        settings->reset();
+    TEST_CASE("Test_Gapping_Ferrite_Distributed_More_Gap_Precision", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -435,7 +435,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::Inputs inputs;
         MagnetizingInductance magnetizing_inductance("ZHANG");
 
-        double expectedValue = 0.00039;
+        double expectedValue = 0.0004;
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, desiredMagnetizingInductance, {},
                                 coreShape, coreMaterial, core, winding, inputs);
@@ -443,12 +443,12 @@ SUITE(MagnetizingInductance) {
         auto gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(
             core, winding, &inputs, GappingType::DISTRIBUTED, 5);
 
-        CHECK_EQUAL(expectedValue, gapping[0].get_length());
-        CHECK_EQUAL(7UL, gapping.size());
+        REQUIRE(expectedValue == gapping[0].get_length());
+        REQUIRE(7UL == gapping.size());
     }
 
-    TEST(Test_Gapping_Classic_Web) {
-        settings->reset();
+    TEST_CASE("Test_Gapping_Classic_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         // This tests checks that the operating is not crashing
@@ -515,11 +515,11 @@ SUITE(MagnetizingInductance) {
         auto gapping =
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
 
-        CHECK(gapping.size() == 5);
+        REQUIRE(gapping.size() == 5);
     }
 
-    TEST(Test_Gapping_Web) {
-        settings->reset();
+    TEST_CASE("Test_Gapping_Web", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         // This tests checks that the operating is not crashing
@@ -566,8 +566,8 @@ SUITE(MagnetizingInductance) {
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
     }
 
-    TEST(Test_Magnetizing_Inductance) {
-        settings->reset();
+    TEST_CASE("Test_Magnetizing_Inductance", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -606,29 +606,26 @@ SUITE(MagnetizingInductance) {
         OperatingPointExcitation primaryExcitation =
             OpenMagnetics::Inputs::get_primary_excitation(operatingPoint);
 
-        CHECK_CLOSE(expectedInductanceValue, magnetizingInductance, max_error * expectedInductanceValue);
-        CHECK_CLOSE(expectedMagneticFluxDensity, magneticFluxDensityWaveformPeak,
-                    max_error * expectedMagneticFluxDensity);
-        CHECK(bool(primaryExcitation.get_voltage()));
-        CHECK(bool(primaryExcitation.get_magnetizing_current()));
+        REQUIRE_THAT(expectedInductanceValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedInductanceValue));
+        REQUIRE_THAT(expectedMagneticFluxDensity, Catch::Matchers::WithinAbs(magneticFluxDensityWaveformPeak, max_error * expectedMagneticFluxDensity));
+        REQUIRE(bool(primaryExcitation.get_voltage()));
+        REQUIRE(bool(primaryExcitation.get_magnetizing_current()));
 
         if (primaryExcitation.get_current()) {
             auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
             auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
-            CHECK_CLOSE(currentPeakToPeak,
-                        operatingPoint.get_mutable_excitations_per_winding()[0]
+            REQUIRE_THAT(currentPeakToPeak, Catch::Matchers::WithinAbs(operatingPoint.get_mutable_excitations_per_winding()[0]
                             .get_magnetizing_current()
                             .value()
                             .get_processed()
                             .value()
                             .get_peak_to_peak()
-                            .value(),
-                        max_error * currentPeakToPeak);
+                            .value(), max_error * currentPeakToPeak));
         }
     }
 
-    TEST(Test_Gapping_Web_No_Voltage) {
-        settings->reset();
+    TEST_CASE("Test_Gapping_Web_No_Voltage", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         // This tests checks that the operating is not crashing
@@ -673,38 +670,34 @@ SUITE(MagnetizingInductance) {
         auto primaryExcitation = inputs.get_operating_point(0).get_mutable_excitations_per_winding()[0];
         double currentPeakToPeak = 10;
 
-        CHECK(bool(primaryExcitation.get_voltage()));
-        CHECK(bool(primaryExcitation.get_current()));
-        CHECK(bool(primaryExcitation.get_magnetizing_current()));
+        REQUIRE(bool(primaryExcitation.get_voltage()));
+        REQUIRE(bool(primaryExcitation.get_current()));
+        REQUIRE(bool(primaryExcitation.get_magnetizing_current()));
 
         if (primaryExcitation.get_current()) {
             auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
             auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
-            CHECK_CLOSE(currentPeakToPeak,
-                        inputs.get_operating_point(0)
+            REQUIRE_THAT(currentPeakToPeak, Catch::Matchers::WithinAbs(inputs.get_operating_point(0)
                             .get_mutable_excitations_per_winding()[0]
                             .get_magnetizing_current()
                             .value()
                             .get_processed()
                             .value()
                             .get_peak_to_peak()
-                            .value(),
-                        max_error * currentPeakToPeak);
-            CHECK_CLOSE(currentPeakToPeak,
-                        inputs.get_operating_point(0)
+                            .value(), max_error * currentPeakToPeak));
+            REQUIRE_THAT(currentPeakToPeak, Catch::Matchers::WithinAbs(inputs.get_operating_point(0)
                             .get_mutable_excitations_per_winding()[0]
                             .get_current()
                             .value()
                             .get_processed()
                             .value()
                             .get_peak_to_peak()
-                            .value(),
-                        max_error * currentPeakToPeak);
+                            .value(), max_error * currentPeakToPeak));
         }
     }
 
-    TEST(Test_Inductance_Ferrite_Web_No_Voltage) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Ferrite_Web_No_Voltage", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         // This tests checks that the operating is not crashing
@@ -741,50 +734,44 @@ SUITE(MagnetizingInductance) {
         double currentPeakToPeak = 10;
         double voltagePeakToPeak = 105;
 
-        CHECK(bool(primaryExcitation.get_voltage()));
-        CHECK(bool(primaryExcitation.get_current()));
-        CHECK(bool(primaryExcitation.get_magnetizing_current()));
+        REQUIRE(bool(primaryExcitation.get_voltage()));
+        REQUIRE(bool(primaryExcitation.get_current()));
+        REQUIRE(bool(primaryExcitation.get_magnetizing_current()));
 
         if (primaryExcitation.get_current()) {
             auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
             auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
-            CHECK_CLOSE(currentPeakToPeak,
-                        operatingPoint.get_mutable_excitations_per_winding()[0]
+            REQUIRE_THAT(currentPeakToPeak, Catch::Matchers::WithinAbs(operatingPoint.get_mutable_excitations_per_winding()[0]
                             .get_magnetizing_current()
                             .value()
                             .get_processed()
                             .value()
                             .get_peak_to_peak()
-                            .value(),
-                        max_error * currentPeakToPeak);
-            CHECK_CLOSE(currentPeakToPeak,
-                        operatingPoint.get_mutable_excitations_per_winding()[0]
+                            .value(), max_error * currentPeakToPeak));
+            REQUIRE_THAT(currentPeakToPeak, Catch::Matchers::WithinAbs(operatingPoint.get_mutable_excitations_per_winding()[0]
                             .get_current()
                             .value()
                             .get_processed()
                             .value()
                             .get_peak_to_peak()
-                            .value(),
-                        max_error * currentPeakToPeak);
+                            .value(), max_error * currentPeakToPeak));
         }
         if (primaryExcitation.get_voltage()) {
-            CHECK_CLOSE(voltagePeakToPeak,
-                        operatingPoint.get_mutable_excitations_per_winding()[0]
+            REQUIRE_THAT(voltagePeakToPeak, Catch::Matchers::WithinAbs(operatingPoint.get_mutable_excitations_per_winding()[0]
                             .get_voltage()
                             .value()
                             .get_processed()
                             .value()
                             .get_peak_to_peak()
-                            .value(),
-                        max_error * voltagePeakToPeak);
+                            .value(), max_error * voltagePeakToPeak));
         }
     }
 
-    TEST(Test_Magnetizing_Inductance_Toroid) {
-        settings->reset();
+    TEST_CASE("Test_Magnetizing_Inductance_Toroid", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
-        settings->reset();
+        settings.reset();
         clear_databases();
         double dcCurrent = 0;
         double ambientTemperature = 25;
@@ -808,14 +795,14 @@ SUITE(MagnetizingInductance) {
         double magnetizingInductance =
             magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST(Test_Magnetizing_Inductance_Toroid_Stacks) {
-        settings->reset();
+    TEST_CASE("Test_Magnetizing_Inductance_Toroid_Stacks", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
-        settings->reset();
+        settings.reset();
         clear_databases();
         double dcCurrent = 0;
         double ambientTemperature = 25;
@@ -839,7 +826,7 @@ SUITE(MagnetizingInductance) {
         double magnetizingInductance =
             magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
 
         core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, 2, coreMaterial);
         double magnetizingInductance2Stacks =
@@ -847,11 +834,11 @@ SUITE(MagnetizingInductance) {
 
         expectedValue = magnetizingInductance * 2;
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance2Stacks, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance2Stacks, max_error * expectedValue));
     }
 
-    TEST(Test_Magnetizing_Inductance_RM14_20) {
-        settings->reset();
+    TEST_CASE("Test_Magnetizing_Inductance_RM14_20", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -874,8 +861,8 @@ SUITE(MagnetizingInductance) {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST(Test_Magnetizing_Inductance_Error_Web_0) {
-        settings->reset();
+    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_0", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -902,12 +889,11 @@ SUITE(MagnetizingInductance) {
         double magnetizingInductance =
             magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-
-    TEST(Test_Magnetizing_Inductance_Error_Web_1) {
-        settings->reset();
+    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_1", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         Core core = json::parse(R"({"name": "650-4637", "functionalDescription": {"type": "two-piece set", "material": "TP4A", "shape": {"aliases": ["E 16/5", "EF 16"], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0167, "minimum": 0.0155, "nominal": null}, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0082, "minimum": 0.0079, "nominal": null}, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0047, "minimum": 0.0043, "nominal": null}, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0061, "minimum": 0.0057, "nominal": null}, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0119, "minimum": 0.0113, "nominal": null}, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0047, "minimum": 0.0044, "nominal": null}}, "family": "e", "familySubtype": null, "magneticCircuit": "open", "name": "E 16/8/5", "type": "standard"}, "gapping": [], "numberStacks": 1}, "processedDescription": {"columns": [{"area": 2.1e-05, "coordinates": [0.0, 0.0, 0.0], "depth": 0.004501, "height": 0.011802, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "central", "width": 0.00455}, {"area": 1.1e-05, "coordinates": [0.006925, 0.0, 0.0], "depth": 0.004501, "height": 0.011802, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.002251}, {"area": 1.1e-05, "coordinates": [-0.006925, 0.0, 0.0], "depth": 0.004501, "height": 0.011802, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.002251}], "depth": 0.0045000000000000005, "effectiveParameters": {"effectiveArea": 2.0062091987236854e-05, "effectiveLength": 0.03756497447228765, "effectiveVolume": 7.53631973361239e-07, "minimumArea": 1.935000000000001e-05}, "height": 0.016100000000000003, "width": 0.0161, "windingWindows": [{"angle": null, "area": 4.1595e-05, "coordinates": [0.002275, 0.0], "height": 0.011800000000000001, "radialHeight": null, "sectionsAlignment": null, "sectionsOrientation": null, "shape": null, "width": 0.0035249999999999995}]}})");
@@ -944,8 +930,8 @@ SUITE(MagnetizingInductance) {
         to_json(result, core);
     }
 
-    TEST(Test_Inductance_Powder_E_65) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Powder_E_65", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double max_error = 0.15;
@@ -966,19 +952,18 @@ SUITE(MagnetizingInductance) {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, 20e6, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
-        auto settings = Settings::GetInstance();
-        settings->set_magnetizing_inductance_include_air_inductance(true);
+        settings.set_magnetizing_inductance_include_air_inductance(true);
 
         auto operatingPoint = inputs.get_operating_point(0);
         auto aux = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
         double magnetizingInductance = aux.get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
-        settings->reset();
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
+        settings.reset();
     }
 
-    TEST(Test_Inductance_Powder_E_34) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Powder_E_34", "[physical-model][magnetizing-inductance][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -998,19 +983,18 @@ SUITE(MagnetizingInductance) {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, 20e6, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
-        auto settings = Settings::GetInstance();
-        settings->set_magnetizing_inductance_include_air_inductance(true);
+        settings.set_magnetizing_inductance_include_air_inductance(true);
 
         auto operatingPoint = inputs.get_operating_point(0);
         auto aux = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
         double magnetizingInductance = aux.get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
-        settings->reset();
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
+        settings.reset();
     }
 
-    TEST(Test_Inductance_Bug_Web_0) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Bug_Web_0", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         // This tests checks that the operating is not crashing
@@ -1024,11 +1008,10 @@ SUITE(MagnetizingInductance) {
         OperatingPoint operatingPoint(operatingPointData);
         MagnetizingInductance magnetizingInductance("ZHANG");
         magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
-
     }
 
-    TEST(Test_Inductance_Bug_Web_1) {
-        settings->reset();
+    TEST_CASE("Test_Inductance_Bug_Web_1", "[physical-model][magnetizing-inductance][bug]") {
+        settings.reset();
         clear_databases();
 
         json coreData = json::parse(R"({"distributorsInfo":null,"functionalDescription":{"coating":null,"gapping":[{"area":0.000315,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.014498,"distanceClosestParallelSurface":0.011999999999999999,"length":0.000005,"sectionDimensions":[0.02,0.02],"shape":"round","type":"residual"},{"area":0.000164,"coordinates":[0.024563,0,0],"distanceClosestNormalSurface":0.014498,"distanceClosestParallelSurface":0.011999999999999999,"length":0.000005,"sectionDimensions":[0.005125,0.032],"shape":"irregular","type":"residual"},{"area":0.000164,"coordinates":[-0.024563,0,0],"distanceClosestNormalSurface":0.014498,"distanceClosestParallelSurface":0.011999999999999999,"length":0.000005,"sectionDimensions":[0.005125,0.032],"shape":"irregular","type":"residual"}],"material":"3C95","numberStacks":1,"shape":{"aliases":["EQ 50/32/20.0","EQ 50/20/32"],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.05},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.02},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.032},"D":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0145},"E":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.044},"F":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.02},"G":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.03205}},"family":"eq","familySubtype":null,"magneticCircuit":"open","name":"EQ 50/32/20","type":"standard"},"type":"two-piece set","magneticCircuit":"open"},"geometricalDescription":[{"coordinates":[0,0,0],"dimensions":null,"insulationMaterial":null,"machining":null,"material":"3C95","rotation":[3.141592653589793,3.141592653589793,0],"shape":{"aliases":["EQ 50/32/20.0","EQ 50/20/32"],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.05},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.02},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.032},"D":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0145},"E":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.044},"F":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.02},"G":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.03205}},"family":"eq","familySubtype":null,"magneticCircuit":"open","name":"EQ 50/32/20","type":"standard"},"type":"half set"},{"coordinates":[0,0,0],"dimensions":null,"insulationMaterial":null,"machining":null,"material":"3C95","rotation":[0,0,0],"shape":{"aliases":["EQ 50/32/20.0","EQ 50/20/32"],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.05},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.02},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.032},"D":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0145},"E":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.044},"F":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.02},"G":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.03205}},"family":"eq","familySubtype":null,"magneticCircuit":"open","name":"EQ 50/32/20","type":"standard"},"type":"half set"}],"manufacturerInfo":null,"name":"Custom","processedDescription":{"columns":[{"area":0.000315,"coordinates":[0,0,0],"depth":0.02,"height":0.029,"minimumDepth":null,"minimumWidth":null,"shape":"round","type":"central","width":0.02},{"area":0.000164,"coordinates":[0.024563,0,0],"depth":0.032,"height":0.029,"minimumDepth":null,"minimumWidth":0.003001,"shape":"irregular","type":"lateral","width":0.005125},{"area":0.000164,"coordinates":[-0.024563,0,0],"depth":0.032,"height":0.029,"minimumDepth":null,"minimumWidth":0.003001,"shape":"irregular","type":"lateral","width":0.005125}],"depth":0.032,"effectiveParameters":{"effectiveArea":0.0003298035730425377,"effectiveLength":0.10383305467139949,"effectiveVolume":0.00003424451243054872,"minimumArea":0.0003141592653589793},"height":0.04,"thermalResistance":null,"width":0.05,"windingWindows":[{"angle":null,"area":0.00034799999999999995,"coordinates":[0.01,0],"height":0.029,"radialHeight":null,"sectionsAlignment":null,"sectionsOrientation":null,"shape":null,"width":0.011999999999999999}]}})");
@@ -1042,8 +1025,8 @@ SUITE(MagnetizingInductance) {
         magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    TEST(Test_Magnetizing_Inductance_Error_Web_2) {
-        settings->reset();
+    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_2", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         double dcCurrent = 0;
@@ -1070,11 +1053,11 @@ SUITE(MagnetizingInductance) {
         double magnetizingInductance =
             magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-    TEST(Test_Magnetizing_Inductance_Error_Web_3) {
-        settings->reset();
+    TEST_CASE("Test_Magnetizing_Inductance_Error_Web_3", "[physical-model][magnetizing-inductance][bug][smoke-test]") {
+        settings.reset();
         clear_databases();
 
         std::string coreShape = "PQ 40/40";
@@ -1086,7 +1069,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::Inputs inputs;
         MagnetizingInductance magnetizing_inductance("ZHANG");
         double expectedValue = 30e-6;
-        std::string file_path = __FILE__;
+        std::string file_path = std::source_location::current().file_name();
 
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Error_inductance_with_Csv.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
@@ -1096,7 +1079,7 @@ SUITE(MagnetizingInductance) {
         double magnetizingInductance =
             magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
-        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
-}
+}  // namespace

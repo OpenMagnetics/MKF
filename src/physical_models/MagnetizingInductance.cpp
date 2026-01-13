@@ -13,6 +13,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -222,8 +223,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         }
     }
 
-    auto settings = Settings::GetInstance();
-    if (settings->get_magnetizing_inductance_include_air_inductance()) {
+    auto& settings = Settings::GetInstance();
+    if (settings.get_magnetizing_inductance_include_air_inductance()) {
         modifiedMagnetizingInductance += calculate_air_inductance(numberTurnsPrimary, core);
     }
 
@@ -468,7 +469,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                 gappedCore = get_core_with_spacer_gapping(core, gapLength);
                 break;
             case GappingType::RESIDUAL:
-                throw std::runtime_error("Residual type cannot be chosen to calculate the needed gapping");
+                throw GapException("Residual type cannot be chosen to calculate the needed gapping");
                 break;
             case GappingType::DISTRIBUTED:
                 while (numberDistributedGaps > 3) {
@@ -498,7 +499,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                 }
                 break;
             default:
-                throw std::runtime_error("Unknown type of gap, options are {GROUND, SPACER, RESIDUAL, DISTRIBUTED}");
+                throw GapException("Unknown type of gap, options are {GROUND, SPACER, RESIDUAL, DISTRIBUTED}");
         }
 
         auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(gappedCore, currentInitialPermeability);
@@ -535,13 +536,13 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         case GappingType::SPACER:
             return get_core_with_spacer_gapping(core, gapLength).get_gapping();
         case GappingType::RESIDUAL:
-            throw std::runtime_error("Residual type cannot be chosen to calculate the needed gapping");
+            throw GapException("Residual type cannot be chosen to calculate the needed gapping");
             break;
         case GappingType::DISTRIBUTED:
             return get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps).get_gapping();
             break;
         default:
-            throw std::runtime_error("Unknown type of gap, options are {GROUND, SPACER, RESIDUAL, DISTRIBUTED}");
+            throw GapException("Unknown type of gap, options are {GROUND, SPACER, RESIDUAL, DISTRIBUTED}");
     }
 }
 

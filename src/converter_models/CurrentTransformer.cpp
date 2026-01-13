@@ -3,6 +3,7 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
     CurrentTransformer::CurrentTransformer(const json& j) {
@@ -11,7 +12,7 @@ namespace OpenMagnetics {
 
     DesignRequirements CurrentTransformer::process_design_requirements(Magnetic magnetic) {
         if (magnetic.get_coil().get_functional_description().size() != 2) {
-            throw std::runtime_error("A current transformer must have exactly two windings");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "A current transformer must have exactly two windings");
         }
         double turnsRatio = double(magnetic.get_coil().get_functional_description()[0].get_number_turns()) / magnetic.get_coil().get_functional_description()[1].get_number_turns();
         return process_design_requirements(turnsRatio);
@@ -51,7 +52,7 @@ namespace OpenMagnetics {
                 peakToPeak = get_maximum_primary_current_peak();
                 break;
             default:
-                throw std::runtime_error("Only SINUSOIDAL, UNIPOLAR_RECTANGULAR, UNIPOLAR_TRIANGULAR are allowed for current transformers");
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Only SINUSOIDAL, UNIPOLAR_RECTANGULAR, UNIPOLAR_TRIANGULAR are allowed for current transformers");
         }
 
 
@@ -92,7 +93,7 @@ namespace OpenMagnetics {
 
     std::vector<OperatingPoint> CurrentTransformer::process_operating_points(Magnetic magnetic) {
         if (magnetic.get_coil().get_functional_description().size() != 2) {
-            throw std::runtime_error("A current transformer must have exactly two windings");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "A current transformer must have exactly two windings");
         }
         double turnsRatio = double(magnetic.get_coil().get_functional_description()[0].get_number_turns()) / magnetic.get_coil().get_functional_description()[1].get_number_turns();
         double secondaryDcResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(magnetic.get_coil(), get_ambient_temperature())[1];
@@ -113,7 +114,7 @@ namespace OpenMagnetics {
 
     Inputs CurrentTransformer::process(Magnetic magnetic) {
         if (magnetic.get_coil().get_functional_description().size() != 2) {
-            throw std::runtime_error("A current transformer must have exactly two windings");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "A current transformer must have exactly two windings");
         }
         double turnsRatio = double(magnetic.get_coil().get_functional_description()[0].get_number_turns()) / magnetic.get_coil().get_functional_description()[1].get_number_turns();
         double secondaryDcResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(magnetic.get_coil(), get_ambient_temperature())[1];

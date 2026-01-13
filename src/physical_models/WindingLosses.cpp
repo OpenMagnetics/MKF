@@ -2,6 +2,7 @@
 #include "physical_models/WindingLosses.h"
 #include "MAS.hpp"
 #include "physical_models/MagnetizingInductance.h"
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -132,10 +133,10 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
 
 
 WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto& settings = OpenMagnetics::Settings::GetInstance();
 
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
-    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings->get_harmonic_amplitude_threshold());
+    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold());
 
     auto isPlanar = true;
     auto isRectangular = true;
@@ -177,16 +178,16 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
         totalNumberPhysicalTurns += winding.get_number_turns() * winding.get_number_parallels();
     }
 
-    auto previoustHarmonicAmplitudeThreshold = settings->get_harmonic_amplitude_threshold();
-    if (settings->get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
-        settings->set_harmonic_amplitude_threshold(settings->get_harmonic_amplitude_threshold() * 2);
+    auto previoustHarmonicAmplitudeThreshold = settings.get_harmonic_amplitude_threshold();
+    if (settings.get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
+        settings.set_harmonic_amplitude_threshold(settings.get_harmonic_amplitude_threshold() * 2);
     }
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
 
     windingLossesOutput = WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput);
 
-    if (settings->get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
-        settings->set_harmonic_amplitude_threshold(previoustHarmonicAmplitudeThreshold);
+    if (settings.get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
+        settings.set_harmonic_amplitude_threshold(previoustHarmonicAmplitudeThreshold);
     }
     windingLossesOutput = combine_turn_losses(windingLossesOutput, magnetic.get_coil());
 
@@ -206,9 +207,9 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
     //     }
     // }
 
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto previousSetting = settings->get_magnetic_field_include_fringing();
-    settings->set_magnetic_field_include_fringing(false);
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    auto previousSetting = settings.get_magnetic_field_include_fringing();
+    settings.set_magnetic_field_include_fringing(false);
 
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
@@ -257,7 +258,7 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
     }
 
 
-    settings->set_magnetic_field_include_fringing(previousSetting);
+    settings.set_magnetic_field_include_fringing(previousSetting);
     return scalarMatrixAtFrequency;
 }
 
@@ -275,7 +276,7 @@ double WindingLosses::calculate_effective_resistance_per_meter(const Wire& wire,
 double WindingLosses::calculate_skin_effect_resistance_per_meter(Wire wire, SignalDescriptor current, double temperature)
 {
     if (!current.get_processed()->get_rms()) {
-        throw std::runtime_error("Current processed is missing field RMS");
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current processed is missing field RMS");
     }
     auto currentRms = current.get_processed()->get_rms().value();
     return WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature).first / pow(currentRms, 2);

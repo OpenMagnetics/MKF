@@ -15,6 +15,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 using namespace MAS;
 

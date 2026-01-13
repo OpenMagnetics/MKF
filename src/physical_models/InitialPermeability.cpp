@@ -12,6 +12,7 @@
 #include <streambuf>
 #include <vector>
 #include <cfloat>
+#include "support/Exceptions.h"
 
 
 
@@ -29,7 +30,7 @@ double InitialPermeability::get_initial_permeability(std::string coreMaterialNam
 
 double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint) {
     if (operatingPoint.get_excitations_per_winding().size() == 0) {
-        throw std::runtime_error("Operating point is missing excitations");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Operating point is missing excitations");
     }
     double temperature = operatingPoint.get_conditions().get_ambient_temperature();
     auto frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
@@ -613,7 +614,7 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(CoreM
     double initialPermeabilityValue = 1;
     auto permeabilityPoints = get_only_temperature_dependent_points(coreMaterial);
     if (permeabilityPoints.size() == 0) {
-        throw std::runtime_error("No temperature dependent points for material: " + coreMaterial.get_name());
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "No temperature dependent points for material: " + coreMaterial.get_name());
     }
 
     if (!initialPermeabilityTemperatureInterps.contains(coreMaterial.get_name())) {
@@ -652,7 +653,7 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(CoreM
     }
 
     if (std::isnan(initialPermeabilityValue)) {
-        throw std::runtime_error("Initial Permeability must be a number, not NaN");
+        throw NaNResultException("Initial Permeability must be a number, not NaN");
     }
 
     return initialPermeabilityValue;
@@ -662,7 +663,7 @@ double InitialPermeability::get_initial_permeability_frequency_dependent(CoreMat
     double initialPermeabilityValue = 1;
     auto permeabilityPoints = get_only_frequency_dependent_points(coreMaterial);
     if (permeabilityPoints.size() == 0) {
-        throw std::runtime_error("No frequency dependent points for material: " + coreMaterial.get_name());
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "No frequency dependent points for material: " + coreMaterial.get_name());
     }
 
     if (!initialPermeabilityFrequencyInterps.contains(coreMaterial.get_name())) {
@@ -695,7 +696,7 @@ double InitialPermeability::get_initial_permeability_frequency_dependent(CoreMat
 
 
     if (std::isnan(initialPermeabilityValue)) {
-        throw std::runtime_error("Initial Permeability must be a number, not NaN");
+        throw NaNResultException("Initial Permeability must be a number, not NaN");
     }
 
     return initialPermeabilityValue;
@@ -705,7 +706,7 @@ double InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_depe
     double initialPermeabilityValue = 1;
     auto permeabilityPoints = get_only_magnetic_field_dc_bias_dependent_points(coreMaterial);
     if (permeabilityPoints.size() == 0) {
-        throw std::runtime_error("No magnetic field dc bias dependent points for material: " + coreMaterial.get_name());
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "No magnetic field dc bias dependent points for material: " + coreMaterial.get_name());
     }
 
     if (!initialPermeabilityMagneticFieldDcBiasInterps.contains(coreMaterial.get_name())) {
@@ -737,7 +738,7 @@ double InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_depe
     }
 
     if (std::isnan(initialPermeabilityValue)) {
-        throw std::runtime_error("Initial Permeability must be a number, not NaN");
+        throw NaNResultException("Initial Permeability must be a number, not NaN");
     }
 
     return initialPermeabilityValue;
@@ -891,7 +892,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
     }
 
     if (std::isnan(initialPermeabilityValue)) {
-        throw std::runtime_error("get_initial_permeability, Initial Permeability must be a number, not NaN");
+        throw NaNResultException("get_initial_permeability, Initial Permeability must be a number, not NaN");
     }
 
     return initialPermeabilityValue;

@@ -1,5 +1,6 @@
 #include "support/Painter.h"
 #include <cfloat>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -44,7 +45,7 @@ std::vector<double> BasicPainter::get_image_size(Magnetic magnetic) {
 
 void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
     if (!wire.get_outer_diameter()) {
-        throw std::runtime_error("Wire is missing outerDiameter");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing outerDiameter");
     }
 
     double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
@@ -55,7 +56,7 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
     double strokeWidth = 0;
     double lineRadiusIncrease = 0;
     double currentLineDiameter = conductingDiameter;
-    auto coatingColor = settings->get_painter_color_insulation();
+    auto coatingColor = settings.get_painter_color_insulation();
     if (coating) {
         CoatingInfo coatingInfo = process_coating(insulationThickness, coating.value());
         strokeWidth = coatingInfo.strokeWidth;
@@ -82,7 +83,7 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
     // Paint copper
     {
         if (!wire.get_conducting_diameter()) {
-            throw std::runtime_error("Wire is missing conducting diameter");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing conducting diameter");
         }
         std::string colorClass;
         // if (_fieldPainted) {
@@ -97,7 +98,7 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
     // Paint layer separation lines
     {
         std::string cssClassName = generate_random_string();
-        _root.style("." + cssClassName).set_attr("opacity", opacity).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
+        _root.style("." + cssClassName).set_attr("opacity", opacity).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_lines()), std::regex("0x"), "#"));
         
         for (size_t i = 0; i < numberLines; ++i) {
             paint_circle(xCoordinate, yCoordinate, currentLineDiameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
@@ -108,9 +109,9 @@ void BasicPainter::paint_round_wire(double xCoordinate, double yCoordinate, Wire
 
 void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
     if (!wire.get_outer_diameter()) {
-        throw std::runtime_error("Wire is missing outerDiameter");
+        wire.set_nominal_value_outer_diameter(wire.calculate_outer_diameter());
     }
-    bool simpleMode = settings->get_painter_simple_litz();
+    bool simpleMode = settings.get_painter_simple_litz();
     auto coating = wire.resolve_coating();
     size_t numberConductors = wire.get_number_conductors().value();
 
@@ -135,7 +136,7 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
     }
     else if (coating->get_type() == InsulationWireCoatingType::SERVED) {
         if (!coating->get_number_layers()) {
-            throw std::runtime_error("Number layers missing in litz served");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Number layers missing in litz served");
         }
         auto strandCoating = Wire::resolve_coating(strand);
         double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
@@ -159,19 +160,19 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
         }
     }
     else {
-        throw std::runtime_error("Coating type not implemented for Litz yet");
+        throw NotImplementedException("Coating type not implemented for Litz yet");
     }
 
     double insulationThickness = (outerDiameter - conductingDiameter) / 2;
     if (insulationThickness < 0) {
-        throw std::runtime_error("Insulation thickness cannot be negative");
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Insulation thickness cannot be negative");
     }
 
     size_t numberLines = 0;
     double strokeWidth = 0;
     double lineRadiusIncrease = 0;
     double currentLineDiameter = conductingDiameter;
-    auto coatingColor = settings->get_painter_color_insulation();
+    auto coatingColor = settings.get_painter_color_insulation();
     if (coating) {
         CoatingInfo coatingInfo = process_coating(insulationThickness, coating.value());
         strokeWidth = coatingInfo.strokeWidth;
@@ -194,7 +195,7 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
     // Paint layer separation lines
     {
         std::string cssClassName = generate_random_string();
-        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
+        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_lines()), std::regex("0x"), "#"));
         
         for (size_t i = 0; i < numberLines; ++i) {
             paint_circle(xCoordinate, yCoordinate, currentLineDiameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
@@ -211,12 +212,12 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
             paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, "white", shapes, 360, 0, {0, 0}, label);
         }
 
-        auto coordinateFilePath = settings->get_painter_cci_coordinates_path();
+        auto coordinateFilePath = settings.get_painter_cci_coordinates_path();
         coordinateFilePath = coordinateFilePath.append("cci" + std::to_string(numberConductors) + ".txt");
 
         std::ifstream in(coordinateFilePath);
         std::vector<std::pair<double, double>> coordinates;
-        bool advancedMode = settings->get_painter_advanced_litz();
+        bool advancedMode = settings.get_painter_advanced_litz();
 
         if (in) {
             std::string line;
@@ -352,7 +353,7 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
     }
     else {
         if (!wire.get_conducting_width()) {
-            throw std::runtime_error("Wire is missing both outerWidth and conductingWidth");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing both outerWidth and conductingWidth");
         }
         outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
     }
@@ -361,7 +362,7 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
     }
     else {
         if (!wire.get_conducting_height()) {
-            throw std::runtime_error("Wire is missing both outerHeight and conductingHeight");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing both outerHeight and conductingHeight");
         }
         outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
     }
@@ -377,7 +378,7 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
     double currentLineWidth = conductingWidth;
     double currentLineHeight = conductingHeight;
 
-    std::string coatingColor = settings->get_painter_color_insulation();
+    std::string coatingColor = settings.get_painter_color_insulation();
     if (coating) {
         InsulationWireCoatingType insulationWireCoatingType = coating->get_type().value();
 
@@ -386,15 +387,15 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
                 break;
             case InsulationWireCoatingType::ENAMELLED:
                 if (!coating->get_grade()) {
-                    throw std::runtime_error("Enamelled wire missing grade");
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Enamelled wire missing grade");
                 }
                 numberLines = coating->get_grade().value() + 1;
                 lineWidthIncrease = insulationThicknessInWidth / coating->get_grade().value() * 2;
                 lineHeightIncrease = insulationThicknessInHeight / coating->get_grade().value() * 2;
-                coatingColor = settings->get_painter_color_enamel();
+                coatingColor = settings.get_painter_color_enamel();
                 break;
             default:
-                throw std::runtime_error("Coating type plot not implemented yet");
+                throw NotImplementedException("Coating type plot not implemented yet");
         }
         strokeWidth = std::min(lineWidthIncrease / 10 / numberLines, lineHeightIncrease / 10 / numberLines);
     }
@@ -418,7 +419,7 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
 
     {
         std::string cssClassName = generate_random_string();
-        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_lines()), std::regex("0x"), "#"));
+        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_lines()), std::regex("0x"), "#"));
         for (size_t i = 0; i < numberLines; ++i) {
             paint_rectangle(xCoordinate, yCoordinate, currentLineWidth, currentLineHeight, cssClassName, shapes, angle, center);
             currentLineWidth += lineWidthIncrease;
@@ -431,7 +432,7 @@ void BasicPainter::paint_two_piece_set_coil_sections(Magnetic magnetic) {
     auto constants = Constants();
 
     if (!magnetic.get_coil().get_sections_description()) {
-        throw std::runtime_error("Winding sections not created");
+        throw CoilNotProcessedException("Winding sections not created");
     }
 
     auto sections = magnetic.get_coil().get_sections_description().value();
@@ -456,7 +457,7 @@ void BasicPainter::paint_toroidal_coil_sections(Magnetic magnetic) {
     auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
 
     if (!magnetic.get_coil().get_sections_description()) {
-        throw std::runtime_error("Winding sections not created");
+        throw CoilNotProcessedException("Winding sections not created");
     }
 
     double initialRadius = processedDescription.get_width() / 2 - mainColumn.get_width();
@@ -472,10 +473,10 @@ void BasicPainter::paint_toroidal_coil_sections(Magnetic magnetic) {
 
             std::string cssClassName = generate_random_string();
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#"));
             }
             else {
-                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
             }
 
             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, sections[i].get_dimensions()[1], -(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2), {0, 0});
@@ -489,7 +490,7 @@ void BasicPainter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
     auto constants = Constants();
     Coil coil = magnetic.get_coil();
     if (!coil.get_layers_description()) {
-        throw std::runtime_error("Winding layers not created");
+        throw CoilNotProcessedException("Winding layers not created");
     }
 
     auto layers = coil.get_layers_description().value();
@@ -511,11 +512,11 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
     Coil winding = magnetic.get_coil();
     Core core = magnetic.get_core();
     if (!core.get_processed_description()) {
-        throw std::runtime_error("Core has not being processed");
+        throw CoreNotProcessedException("Core has not been processed");
     }
 
     if (!winding.get_layers_description()) {
-        throw std::runtime_error("Winding layers not created");
+        throw CoilNotProcessedException("Winding layers not created");
     }
 
     auto processedDescription = magnetic.get_core().get_processed_description().value();
@@ -534,10 +535,10 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
 
             std::string cssClassName = generate_random_string();
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#"));
             }
             else {
-                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
             }
             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
         }
@@ -552,7 +553,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
     auto wirePerWinding = coil.get_wires();
 
     if (!coil.get_turns_description()) {
-        throw std::runtime_error("Winding turns not created");
+        throw CoilNotProcessedException("Winding turns not created");
     }
 
     auto turns = coil.get_turns_description().value();
@@ -606,7 +607,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
                 }
                 else {
                     if (!wire.get_conducting_width()) {
-                        throw std::runtime_error("Wire is missing both outerWidth and conductingWidth");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing both outerWidth and conductingWidth");
                     }
                     outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
                 }
@@ -615,7 +616,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
                 }
                 else {
                     if (!wire.get_conducting_height()) {
-                        throw std::runtime_error("Wire is missing both outerHeight and conductingHeight");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing both outerHeight and conductingHeight");
                     }
                     outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
                 }
@@ -644,7 +645,7 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
     double initialRadius = processedDescription.get_width() / 2 - mainColumn.get_width();
 
     if (!winding.get_turns_description()) {
-        throw std::runtime_error("Winding turns not created");
+        throw CoilNotProcessedException("Winding turns not created");
     }
 
     auto turns = winding.get_turns_description().value();
@@ -652,13 +653,13 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
     for (size_t i = 0; i < turns.size(); ++i){
 
         if (!turns[i].get_coordinate_system()) {
-            throw std::runtime_error("Turn is missing coordinate system");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Turn is missing coordinate system");
         }
         if (!turns[i].get_rotation()) {
-            throw std::runtime_error("Turn is missing rotation");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Turn is missing rotation");
         }
         if (turns[i].get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
-            throw std::runtime_error("Painter: Turn coordinates are not in cartesian");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Painter: Turn coordinates are not in cartesian");
         }
 
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
@@ -709,7 +710,7 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
             std::string termination = angleProportion < 1? "butt" : "round";
 
             std::string cssClassName = generate_random_string();
-            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
+            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
 
             if (layers[i].get_additional_coordinates()) {
@@ -726,7 +727,7 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
 void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()) {
-        throw std::runtime_error("Bobbin has not being processed");
+        throw CoilNotProcessedException("Bobbin has not been processed");
     }
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
 
@@ -904,7 +905,7 @@ void BasicPainter::paint_toroidal_core(Core core) {
     double circleDiameter = processedDescription.get_width() - strokeWidth;
 
     std::string cssClassName = generate_random_string();
-    _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_ferrite()), std::regex("0x"), "#"));
+    _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_ferrite()), std::regex("0x"), "#"));
     paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr);
 
     // _root.autoscale();
@@ -980,7 +981,7 @@ void BasicPainter::paint_two_piece_set_margin(Magnetic magnetic) {
 }
 
 void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
-    bool drawSpacer = settings->get_painter_draw_spacer();
+    bool drawSpacer = settings.get_painter_draw_spacer();
     auto sections = magnetic.get_coil().get_sections_description().value();
 
     if (sections.size() == 1) {
@@ -992,7 +993,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
     auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
 
     if (!magnetic.get_coil().get_sections_description()) {
-        throw std::runtime_error("Winding sections not created");
+        throw CoilNotProcessedException("Winding sections not created");
     }
 
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
@@ -1045,7 +1046,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                         double angle = wound_distance_to_angle(margins[0], circleDiameter / 2 - strokeWidth / 2);
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                             std::string cssClassName = generate_random_string();
-                            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+                            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#"));
                             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2), {0, 0});
                         }
                     }
@@ -1057,7 +1058,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                         double angle = wound_distance_to_angle(margins[1], circleDiameter / 2 - strokeWidth / 2);
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                             std::string cssClassName = generate_random_string();
-                            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+                            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#"));
                             paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2 + angle), {0, 0});
                         }
                     }
@@ -1071,7 +1072,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                         std::string cssClassName = generate_random_string();
-                        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+                        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#"));
                         paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2), {0, 0});
                     }
                 }
@@ -1083,7 +1084,7 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                         std::string cssClassName = generate_random_string();
-                        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings->get_painter_color_margin()), std::regex("0x"), "#"));
+                        _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#"));
                         paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2 + angle), {0, 0});
                     }
                 }
@@ -1137,7 +1138,7 @@ void BasicPainter::paint_wire(Wire wire) {
             paint_rectangular_wire(_imageWidth / 2, 0, wire, 0, {0, 0});
             break;
         default:
-            throw std::runtime_error("Unknown error");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown error");
     }
     _root.autoscale();
     _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);  // TODO remove
@@ -1188,7 +1189,7 @@ void BasicPainter::paint_coil_sections(Magnetic magnetic) {
 void BasicPainter::paint_coil_layers(Magnetic magnetic) {
     Core core = magnetic.get_core();
     if (!core.get_processed_description()) {
-        throw std::runtime_error("Core has not being processed");
+        throw CoreNotProcessedException("Core has not been processed");
     }
     _imageHeight = core.get_processed_description()->get_height();
 
@@ -1220,9 +1221,6 @@ void BasicPainter::paint_coil_turns(Magnetic magnetic) {
 }
 
 std::string BasicPainter::get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value) {
-    auto minColor = hex_to_uint(minimumColor);
-    auto maxColor = hex_to_uint(maximumColor);
-    
     // Clamp the value
     value = clamp(value, minimumValue, maximumValue);
     
@@ -1255,10 +1253,9 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
     double maximumModule = 0;
     _fieldPainted = true;
     std::vector<double> modules;
-    // settings->set_painter_number_points_x(4);
-    // settings->set_painter_number_points_y(4);
-    auto mode = settings->get_painter_mode();
-    bool logarithmicScale = settings->get_painter_logarithmic_scale();
+    // settings.set_painter_number_points_x(4);
+    // settings.set_painter_number_points_y(4);
+    bool logarithmicScale = settings.get_painter_logarithmic_scale();
 
 
     ComplexField field;
@@ -1289,25 +1286,25 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
     double percentile05Value = modules[index05];
     double percentile95Value = modules[index95];
 
-    if (!settings->get_painter_maximum_value_colorbar()) {
+    if (!settings.get_painter_maximum_value_colorbar().has_value()) {
         maximumModule = percentile95Value;
     }
-    if (!settings->get_painter_minimum_value_colorbar()) {
+    if (!settings.get_painter_minimum_value_colorbar().has_value()) {
         minimumModule = percentile05Value;
     }
 
-    if (settings->get_painter_maximum_value_colorbar()) {
-        maximumModule = settings->get_painter_maximum_value_colorbar().value();
+    if (settings.get_painter_maximum_value_colorbar().has_value()) {
+        maximumModule = settings.get_painter_maximum_value_colorbar().value();
     }
-    if (settings->get_painter_minimum_value_colorbar()) {
-        minimumModule = settings->get_painter_minimum_value_colorbar().value();
+    if (settings.get_painter_minimum_value_colorbar().has_value()) {
+        minimumModule = settings.get_painter_minimum_value_colorbar().value();
     }
     if (minimumModule == maximumModule) {
         minimumModule = maximumModule - 1;
     }
 
-    auto magneticFieldMinimumColor = settings->get_painter_color_magnetic_field_minimum();
-    auto magneticFieldMaximumColor = settings->get_painter_color_magnetic_field_maximum();
+    auto magneticFieldMinimumColor = settings.get_painter_color_magnetic_field_minimum();
+    auto magneticFieldMaximumColor = settings.get_painter_color_magnetic_field_maximum();
     
     for (auto datum : field.get_data()) {
         double value;
@@ -1332,11 +1329,9 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     double maximumModule = 0;
     _fieldPainted = true;
     std::vector<double> modules;
-    // settings->set_painter_number_points_x(4);
-    // settings->set_painter_number_points_y(4);
-    auto mode = settings->get_painter_mode();
-    bool logarithmicScale = settings->get_painter_logarithmic_scale();
-
+    // settings.set_painter_number_points_x(4);
+    // settings.set_painter_number_points_y(4);
+    bool logarithmicScale = settings.get_painter_logarithmic_scale();
 
     Field field;
     if (inputField) {
@@ -1366,29 +1361,27 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     double percentile05Value = modules[index05];
     double percentile95Value = modules[index95];
 
-    if (!settings->get_painter_maximum_value_colorbar()) {
+    if (!settings.get_painter_maximum_value_colorbar().has_value()) {
         maximumModule = percentile95Value;
     }
-    if (!settings->get_painter_minimum_value_colorbar()) {
+    if (!settings.get_painter_minimum_value_colorbar().has_value()) {
         minimumModule = percentile05Value;
     }
 
-    if (settings->get_painter_maximum_value_colorbar()) {
-        maximumModule = settings->get_painter_maximum_value_colorbar().value();
+    if (settings.get_painter_maximum_value_colorbar().has_value()) {
+        maximumModule = settings.get_painter_maximum_value_colorbar().value();
     }
-    if (settings->get_painter_minimum_value_colorbar()) {
-        minimumModule = settings->get_painter_minimum_value_colorbar().value();
+    if (settings.get_painter_minimum_value_colorbar().has_value()) {
+        minimumModule = settings.get_painter_minimum_value_colorbar().value();
     }
     if (minimumModule == maximumModule) {
         minimumModule = maximumModule - 1;
     }
 
-    auto magneticFieldMinimumColor = settings->get_painter_color_magnetic_field_minimum();
-    auto magneticFieldMaximumColor = settings->get_painter_color_magnetic_field_maximum();
+    auto magneticFieldMinimumColor = settings.get_painter_color_magnetic_field_minimum();
+    auto magneticFieldMaximumColor = settings.get_painter_color_magnetic_field_maximum();
 
     auto windingWindow = magnetic.get_mutable_core().get_winding_window();
-    json mierda;
-    to_json(mierda, windingWindow);
 
     if (windingWindow.get_width()) {
 
@@ -1401,7 +1394,7 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
         paint_rectangle(windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2, windingWindow.get_coordinates().value()[1], windingWindow.get_width().value(), windingWindow.get_height().value(), cssClassName);
     }
     else {
-        throw std::runtime_error("Not implemented yet");
+        throw NotImplementedException("Not implemented yet");
     }
 
     for (auto datum : field.get_data()) {

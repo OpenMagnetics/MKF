@@ -13,6 +13,8 @@
 #include "json.hpp"
 #include "constructive_models/InsulationMaterial.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 using json = nlohmann::json;
 
@@ -25,7 +27,7 @@ std::vector<double> Coil::cartesian_to_polar(std::vector<double> value) {
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
 
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        throw std::runtime_error("Not supposed to convert for these cores");
+        throw InvalidInputException("Not supposed to convert for these cores");
     }
     else {
         std::vector<double> convertedValue;
@@ -56,7 +58,7 @@ std::vector<double> Coil::polar_to_cartesian(std::vector<double> value) {
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
 
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        throw std::runtime_error("Not supposed to convert for these cores");
+        throw InvalidInputException("Not supposed to convert for these cores");
     }
     else {
         std::vector<double> convertedValue;
@@ -85,7 +87,7 @@ void Coil::convert_turns_to_cartesian_coordinates() {
     double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
 
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns");
+        throw CoilNotProcessedException("Missing turns");
     }
 
     auto turns = get_turns_description().value();
@@ -117,7 +119,7 @@ void Coil::convert_turns_to_polar_coordinates() {
     double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
 
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns");
+        throw CoilNotProcessedException("Missing turns");
     }
 
     auto turns = get_turns_description().value();
@@ -207,7 +209,7 @@ Coil::Coil(const MAS::Coil coil) {
         hasTurnsData = true;
         set_turns_description(coil.get_turns_description());
     }
-    auto delimitAndCompact = settings->get_coil_delimit_and_compact();
+    auto delimitAndCompact = settings.get_coil_delimit_and_compact();
 
     if (!hasSectionsData || !hasLayersData || (!hasTurnsData && are_sections_and_layers_fitting())) {
         if (wind() && delimitAndCompact) {
@@ -320,7 +322,7 @@ CoilAlignment Coil::get_section_alignment() {
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
     if (windingWindows.size() > 1) {
-        throw std::runtime_error("Bobbins with more than winding window not implemented yet");
+        throw NotImplementedException("Bobbins with more than winding window not implemented yet");
     }
     if (windingWindows[0].get_sections_alignment()) {
         return windingWindows[0].get_sections_alignment().value();
@@ -339,10 +341,10 @@ bool Coil::fast_wind() {
     if (!get_layers_description()) {
         return false;
     }
-    auto previousIncludeAdditionalCoordinates = settings->get_coil_include_additional_coordinates();
-    settings->set_coil_include_additional_coordinates(false);
+    auto previousIncludeAdditionalCoordinates = settings.get_coil_include_additional_coordinates();
+    settings.set_coil_include_additional_coordinates(false);
     wind_by_turns();
-    settings->set_coil_include_additional_coordinates(previousIncludeAdditionalCoordinates);
+    settings.set_coil_include_additional_coordinates(previousIncludeAdditionalCoordinates);
 
     if (!get_turns_description()) {
         return false;
@@ -394,9 +396,9 @@ std::vector<size_t> Coil::extract_stack_up(std::vector<Section> sections) {
 }
 
 bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
-    bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
-    bool delimitAndCompact = settings->get_coil_delimit_and_compact();
-    bool tryRewind = settings->get_coil_try_rewind();
+    bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
+    bool delimitAndCompact = settings.get_coil_delimit_and_compact();
+    bool tryRewind = settings.get_coil_try_rewind();
 
     std::string bobbinName = "";
     if (std::holds_alternative<std::string>(get_bobbin())) {
@@ -465,6 +467,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
                     delimit_and_compact();
                 }
             }
+
             if (tryRewind && (!are_sections_and_layers_fitting() || !get_turns_description())) {
                 logEntry("Trying to rewind", "Coil", 2);
                 try_rewind();
@@ -475,8 +478,8 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
 }
 
 bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance, std::map<size_t, double> wireToWireDistance, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
-    bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
-    bool delimitAndCompact = settings->get_coil_delimit_and_compact();
+    bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
+    bool delimitAndCompact = settings.get_coil_delimit_and_compact();
     std::string bobbinName = "";
     if (std::holds_alternative<std::string>(get_bobbin())) {
         bobbinName = std::get<std::string>(get_bobbin());
@@ -557,7 +560,7 @@ std::vector<WindingStyle> Coil::wind_by_consecutive_turns(std::vector<uint64_t> 
     std::vector<WindingStyle> windByConsecutiveTurns;
     for (size_t i = 0; i < numberTurns.size(); ++i) {
         if (numberSlots[i] <= 0) {
-            throw std::runtime_error("Number of slots cannot be less than 1, please verify your isolation sides requirement");
+            throw InvalidInputException("Number of slots cannot be less than 1, please verify your isolation sides requirement");
         }
         if (numberTurns[i] == numberSlots[i]) {
             windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
@@ -863,12 +866,12 @@ const Section Coil::get_section_by_name(std::string name) const {
             return section;
         }
     }
-    throw std::runtime_error("Not found section with name:" + name);
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Not found section with name:" + name);
 }
 
 const Layer Coil::get_layer_by_name(std::string name) const {
     if (!get_layers_description()) {
-        throw std::runtime_error("Coil is missing layers description");
+        throw CoilNotProcessedException("Coil is missing layers description");
     }
 
     auto layers = get_layers_description().value();
@@ -877,7 +880,7 @@ const Layer Coil::get_layer_by_name(std::string name) const {
             return layer;
         }
     }
-    throw std::runtime_error("Not found layer with name:" + name);
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Not found layer with name:" + name);
 }
 
 
@@ -885,7 +888,7 @@ Turn Coil::get_turn_by_name(std::string name){
     if (_turnByName.count(name) == 0) {
 
         if (!get_turns_description()) {
-            throw std::runtime_error("Turns description not set, did you forget to wind?");
+            throw CoilNotProcessedException("Turns description not set, did you forget to wind?");
         }
         auto turns = get_turns_description().value();
         bool found = false;
@@ -897,7 +900,7 @@ Turn Coil::get_turn_by_name(std::string name){
             }
         }
         if (!found) {
-            throw std::runtime_error("No such a turn name: " + name);
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a turn name: " + name);
         }
     }
     return _turnByName[name];
@@ -949,7 +952,7 @@ Winding Coil::get_winding_by_name(std::string name) {
             return Winding;
         }
     }
-    throw std::runtime_error("No such a winding name: " + name);
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a winding name: " + name);
 }
 
 size_t Coil::get_winding_index_by_name(std::string name) {
@@ -965,13 +968,13 @@ size_t Coil::get_winding_index_by_name(std::vector<Winding> functionalDescriptio
             return i;
         }
     }
-    throw std::runtime_error("No such a winding name in functionalDescription: " + name);
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a winding name in functionalDescription: " + name);
 }
 
 size_t Coil::get_turn_index_by_name(std::string name) {
     if (_turnIndexByName.count(name) == 0) {
         if (!get_turns_description()) {
-            throw std::runtime_error("Turns description not set, did you forget to wind?");
+            throw CoilNotProcessedException("Turns description not set, did you forget to wind?");
         }
         auto turns = get_turns_description().value();
         bool found = false;
@@ -983,7 +986,7 @@ size_t Coil::get_turn_index_by_name(std::string name) {
             }
         }
         if (!found) {
-            throw std::runtime_error("No such a turn name: " + name);
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a turn name: " + name);
         }
     }
     return _turnIndexByName[name];
@@ -991,7 +994,7 @@ size_t Coil::get_turn_index_by_name(std::string name) {
 
 size_t Coil::get_layer_index_by_name(std::string name) {
     if (!get_layers_description()) {
-        throw std::runtime_error("Layers description not set, did you forget to wind?");
+        throw CoilNotProcessedException("Layers description not set, did you forget to wind?");
     }
     auto layers = get_layers_description().value();
     for (size_t i=0; i<layers.size(); ++i) {
@@ -999,12 +1002,12 @@ size_t Coil::get_layer_index_by_name(std::string name) {
             return i;
         }
     }
-    throw std::runtime_error("No such a layer name: " + name);
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a layer name: " + name);
 }
 
 size_t Coil::get_section_index_by_name(std::string name) {
     if (!get_sections_description()) {
-        throw std::runtime_error("Sections description not set, did you forget to wind?");
+        throw CoilNotProcessedException("Sections description not set, did you forget to wind?");
     }
     auto sections = get_sections_description().value();
     for (size_t i=0; i<sections.size(); ++i) {
@@ -1012,7 +1015,7 @@ size_t Coil::get_section_index_by_name(std::string name) {
             return i;
         }
     }
-    throw std::runtime_error("No such a section name: " + name);
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a section name: " + name);
 }
 
 bool Coil::are_sections_and_layers_fitting() {
@@ -1027,7 +1030,6 @@ bool Coil::are_sections_and_layers_fitting() {
     auto layers = get_layers_description().value();
 
     for (auto& section: sections) {
-
         if (roundFloat(section.get_filling_factor().value(), 6) > 1 || roundFloat(overlapping_filling_factor(section), 6) > 1 || roundFloat(contiguous_filling_factor(section), 6) > 1) {
             windTurns = false;
         }
@@ -1037,6 +1039,7 @@ bool Coil::are_sections_and_layers_fitting() {
             windTurns = false;
         }
     }
+
     return windTurns;
 }
 
@@ -1115,10 +1118,10 @@ std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size
     auto windingOrientation = get_winding_orientation();
 
     if (!get_layers_description()) {
-        throw std::runtime_error("Missing layers to calculate the filling factor.");
+        throw CoilNotProcessedException("Missing layers to calculate the filling factor.");
     }
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns to calculate the filling factor.");
+        throw CoilNotProcessedException("Missing turns to calculate the filling factor.");
     }
 
     auto layers = get_layers_description().value();
@@ -1537,7 +1540,7 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 InsulationMaterial defaultInsulationMaterial = find_insulation_material_by_name(defaults.defaultInsulationMaterial);
                 chosenInsulationMaterial = defaultInsulationMaterial;
                 coilSectionInterface.set_solid_insulation_thickness(defaultInsulationMaterial.get_thinner_tape_thickness());
-                if (settings->get_coil_allow_margin_tape()) {
+                if (settings.get_coil_allow_margin_tape()) {
                     coilSectionInterface.set_number_layers_insulation(1);
                     coilSectionInterface.set_total_margin_tape_distance(_standardCoordinator.calculate_creepage_distance(inputs, true));
                 }
@@ -1565,7 +1568,7 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 }
 
                 if (coilSectionInterface.get_number_layers_insulation() == ULONG_MAX) {
-                    throw std::runtime_error("No insulation found with current requirements");
+                    throw InvalidInputException("No insulation found with current requirements");
                 }
             }
 
@@ -1867,10 +1870,10 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
     double currentRadialHeight = radialHeight;
     double currentRadius;
     if (wire.get_type() == WireType::FOIL){
-        throw std::runtime_error("Foil is not supported in toroids");
+        throw NotImplementedException("Foil is not supported in toroids");
     }
     if (wire.get_type() == WireType::PLANAR){
-        throw std::runtime_error("Planar is not supported in toroids");
+        throw NotImplementedException("Planar is not supported in toroids");
     }
     if (wire.get_type() == WireType::RECTANGULAR){
         currentRadius = windingWindowRadius - wireWidth - currentRadialHeight;
@@ -1921,7 +1924,7 @@ void Coil::apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<siz
             if (sectionIndex > 0 && !_coilSectionInterfaces.empty()) {
 
                 if (orderedSectionsWithInsulation[sectionIndex - 1].first != ElectricalType::INSULATION) {
-                    throw std::runtime_error("There cannot be two sections without insulation in between");
+                    throw InvalidInputException("There cannot be two sections without insulation in between");
                 }
                 auto windingIndex = orderedSectionsWithInsulation[sectionIndex].second.first;
                 auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 2].second.first;
@@ -2047,18 +2050,18 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
     _currentRepetitions = repetitions;
 
     if (repetitions <= 0) {
-        throw std::runtime_error("Interleaving levels must be greater than 0");
+        throw InvalidInputException("Interleaving levels must be greater than 0");
     }
 
     auto bobbin = resolve_bobbin();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     if (!bobbin.get_processed_description()) {
-        throw std::runtime_error("Bobbin not processed");
+        throw CoilNotProcessedException("Bobbin not processed");
     }
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
     if (windingWindows.size() > 1) {
-        throw std::runtime_error("Bobbins with more than winding window not implemented yet");
+        throw NotImplementedException("Bobbins with more than winding window not implemented yet");
     }
     if (!windingWindows[0].get_sections_orientation()) {
         windingWindows[0].set_sections_orientation(_windingOrientation);
@@ -2142,7 +2145,7 @@ std::vector<Winding> Coil::virtualize_functional_description() {
             }
             else {
                 if (numberParallels != winding.get_number_parallels()) {
-                    throw std::runtime_error("Windings wound together must have the same number of parallels");
+                    throw InvalidInputException("Windings wound together must have the same number of parallels");
                 }
             }
 
@@ -2151,7 +2154,7 @@ std::vector<Winding> Coil::virtualize_functional_description() {
             }
             else {
                 if (isolationSide.value() != winding.get_isolation_side()) {
-                    throw std::runtime_error("Windings wound together must have the same isolation side");
+                    throw InvalidInputException("Windings wound together must have the same isolation side");
                 }
             }
 
@@ -2160,7 +2163,7 @@ std::vector<Winding> Coil::virtualize_functional_description() {
             }
             else {
                 if (wire.value() != winding.resolve_wire()) {
-                    throw std::runtime_error("Windings wound together must have the same wire");
+                    throw InvalidInputException("Windings wound together must have the same wire");
                 }
             }
 
@@ -2203,7 +2206,7 @@ Section Coil::devirtualize_section(Section section) {
         }
 
         if (virtualWindingIndex == SIZE_MAX) {
-            throw std::runtime_error("Something wrong happened looking for virtual indexes");
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened looking for virtual indexes");
         }
 
         for (auto windingIndex : _virtualizationMap[virtualWindingIndex]) {
@@ -2231,7 +2234,7 @@ Layer Coil::devirtualize_layer(Layer layer) {
         }
 
         if (virtualWindingIndex == SIZE_MAX) {
-            throw std::runtime_error("Something wrong happened looking for virtual indexes");
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened looking for virtual indexes");
         }
 
         for (auto windingIndex : _virtualizationMap[virtualWindingIndex]) {
@@ -2272,7 +2275,7 @@ Section Coil::virtualize_section(Section section) {
         }
     }
     if (!found) {
-        throw std::runtime_error("Something wrong happened virtualizing section");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened virtualizing section");
     }
     found = false;
     for (auto partialWinding : partialWindings) {
@@ -2283,7 +2286,7 @@ Section Coil::virtualize_section(Section section) {
         }
     }
     if (!found) {
-        throw std::runtime_error("Something wrong happened virtualizing section 2");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened virtualizing section 2");
     }
 
     return section;
@@ -2308,7 +2311,7 @@ Layer Coil::virtualize_layer(Layer layer) {
         }
     }
     if (!found) {
-        throw std::runtime_error("Something wrong happened virtualizing layer");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened virtualizing layer");
     }
     found = false;
     for (auto partialWinding : partialWindings) {
@@ -2319,7 +2322,7 @@ Layer Coil::virtualize_layer(Layer layer) {
         }
     }
     if (!found) {
-        throw std::runtime_error("Something wrong happened virtualizing layer 2");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened virtualizing layer 2");
     }
     return layer;
 }
@@ -2370,7 +2373,7 @@ void Coil::devirtualize_turns_description() {
         }
 
         if (size_t(totalNumberTurns) != turnsInVirtualWinding.size()) {
-            throw std::runtime_error("Something wrong happened devirtualizing turns 1");
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened devirtualizing turns 1");
         }
 
         std::vector<size_t> devirtualizingPattern = {};
@@ -2378,7 +2381,7 @@ void Coil::devirtualize_turns_description() {
             double numberTurns = get_functional_description()[windingIndex].get_number_turns() * get_functional_description()[windingIndex].get_number_parallels();
             size_t numberTurnsPerPattern = round(numberTurns / minimumNumberTurns);
             if (numberTurnsPerPattern == 0) {
-                throw std::runtime_error("Something wrong happened devirtualizing turns 2");
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened devirtualizing turns 2");
             }
             for (size_t index = 0; index < numberTurnsPerPattern; ++index) {
                 devirtualizingPattern.push_back(windingIndex);
@@ -2404,7 +2407,7 @@ void Coil::devirtualize_turns_description() {
                 timeout--;
             }
             if (timeout == 0) {
-                throw std::runtime_error("Something wrong happened devirtualizing turns 3");
+                throw CalculationException(ErrorCode::CALCULATION_DIVERGED, "Something wrong happened devirtualizing turns 3");
             }
         }
     }
@@ -2453,7 +2456,7 @@ std::map<std::pair<size_t, size_t>, std::vector<Layer>> Coil::virtualize_insulat
         }
 
         if (!newFirstIndexFound || !newSecondIndexFound) {
-            throw std::runtime_error("Something wrong happened looking for virtual indexes for insulation intersections layers");
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened looking for virtual indexes for insulation intersections layers");
         }
         std::pair<size_t, size_t> virtualKey = {newFirstIndex, newSecondIndex};
         newInsulationInterSectionsLayers[virtualKey] = layers;
@@ -2502,7 +2505,7 @@ size_t Coil::get_winding_group_minimum_index(size_t currentWindingIndex) {
 std::vector<size_t> Coil::virtualize_pattern(std::vector<size_t> pattern) {
     std::vector<size_t> newPattern;
     if (_virtualizationMap.size() == 0) {
-        throw std::runtime_error("No virtualization loaded. Did you forget to call create_virtualization_map()?");
+        throw CoilNotProcessedException("No virtualization loaded. Did you forget to call create_virtualization_map()?");
     }
     for (auto windingIndex : pattern) {
         auto winding = get_functional_description()[windingIndex];
@@ -2523,7 +2526,7 @@ std::vector<size_t> Coil::virtualize_pattern(std::vector<size_t> pattern) {
         }
 
         if (virtualWindingIndex == SIZE_MAX) {
-            throw std::runtime_error("Something wrong happened looking for virtual indexes");
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened looking for virtual indexes");
         }
 
         newPattern.push_back(virtualWindingIndex);
@@ -2548,7 +2551,7 @@ std::vector<size_t> Coil::compress_pattern(std::vector<size_t> pattern) {
 std::vector<double> Coil::virtualize_proportion_per_winding(std::vector<double> proportionPerWinding) {
     std::vector<double> newProportionPerWinding;
     if (_virtualizationMap.size() == 0) {
-        throw std::runtime_error("No virtualization loaded. Did you forget to call create_virtualization_map()?");
+        throw CoilNotProcessedException("No virtualization loaded. Did you forget to call create_virtualization_map()?");
     }
 
     for (auto [virtualWindingIndex, windingIndexes] : _virtualizationMap) {
@@ -2566,7 +2569,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
     std::vector<Section> sectionsDescription;
 
     if (!get_groups_description()) {
-        throw std::runtime_error("At least default group must be defined at this point.");
+        throw CoilNotProcessedException("At least default group must be defined at this point.");
     }
 
     auto groups = get_groups_description().value();
@@ -2713,7 +2716,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 }
 
                 if (section.get_dimensions()[0] < 0) {
-                    throw std::runtime_error("Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
                                              " availableWidth: " + std::to_string(availableWidth) +
                                              " currentSectionWidth: " + std::to_string(currentSectionWidth) +
                                              " currentSectionHeight: " + std::to_string(currentSectionHeight) + 
@@ -2728,7 +2731,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 }
 
                 if (section.get_coordinates()[0] < -1) {
-                    throw std::runtime_error("Something wrong happened in section coordiantes 0: " + std::to_string(section.get_coordinates()[0]) +
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in section coordiantes 0: " + std::to_string(section.get_coordinates()[0]) +
                                              " currentSectionCenterWidth: " + std::to_string(currentSectionCenterWidth) +
                                              " group.get_coordinates()[0]: " + std::to_string(group.get_coordinates()[0]) +
                                              " group.get_dimensions()[0]: " + std::to_string(group.get_dimensions()[0]) +
@@ -2762,7 +2765,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
             }
             else {
                 if (sectionIndex == 0) {
-                    throw std::runtime_error("Insulation layers cannot be the first one (for now)");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Insulation layers cannot be the first one (for now)");
                 }
 
                 auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
@@ -2812,7 +2815,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
             if (roundFloat(remainingParallelsProportion[windingIndex][parallelIndex], 9) != 0) {
-                throw std::runtime_error("There are unassigned parallel proportion in a rectangular section, something went wrong");
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "There are unassigned parallel proportion in a rectangular section, something went wrong");
             }
         }
     }
@@ -2896,7 +2899,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     std::vector<Section> sectionsDescription;
 
     if (!get_groups_description()) {
-        throw std::runtime_error("At least default group must be defined at this point.");
+        throw CoilNotProcessedException("At least default group must be defined at this point.");
     }
 
     auto groups = get_groups_description().value();
@@ -2946,7 +2949,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
         double currentSectionCenterRadialHeight = DBL_MAX;
 
         apply_margin_tape(orderedSectionsWithInsulation);
-        if (settings->get_coil_equalize_margins()) {
+        if (settings.get_coil_equalize_margins()) {
             equalize_margins(orderedSectionsWithInsulation);
         }
 
@@ -3080,7 +3083,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 }
 
                 if (section.get_dimensions()[0] < 0) {
-                    throw std::runtime_error("Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
                                              " currentSectionRadialHeight: " + std::to_string(currentSectionRadialHeight) +
                                              " currentSectionAngle: " + std::to_string(currentSectionAngle)
                                              );
@@ -3088,7 +3091,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
 
 
                 if (section.get_dimensions()[1] < 0) {
-                    throw std::runtime_error("Something wrong happened in section dimensions 1: " + std::to_string(section.get_dimensions()[1]) +
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in section dimensions 1: " + std::to_string(section.get_dimensions()[1]) +
                                              " currentSectionRadialHeight: " + std::to_string(currentSectionRadialHeight) +
                                              " currentSectionAngle: " + std::to_string(currentSectionAngle)
                                              );
@@ -3122,7 +3125,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
             }
             else {
                 if (sectionIndex == 0) {
-                    throw std::runtime_error("Insulation layers cannot be the first one (for now)");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Insulation layers cannot be the first one (for now)");
                 }
      
                 auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
@@ -3172,7 +3175,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
             if (roundFloat(remainingParallelsProportion[windingIndex][parallelIndex], 9) != 0) {
-                throw std::runtime_error("There are unassigned parallel proportion in a round section, something went wrong");
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "There are unassigned parallel proportion in a round section, something went wrong");
             }
         }
     }
@@ -3192,7 +3195,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     }
 
     if (!get_groups_description()) {
-        throw std::runtime_error("At least default group must be defined at this point.");
+        throw CoilNotProcessedException("At least default group must be defined at this point.");
     }
 
     set_winding_orientation(WindingOrientation::CONTIGUOUS);
@@ -3201,13 +3204,13 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
     auto groups = get_groups_description().value();
     if (groups.size() > 1) {
-        throw std::runtime_error("Only one group supported for now.");
+        throw NotImplementedException("Only one group supported for now.");
     }
     auto group = groups[0];
 
     auto wirePerWinding = get_wires();
     if (wirePerWinding.size() == 0) {
-        throw std::runtime_error("Wires missing");
+        throw WireNotFoundException("Wires missing");
     }
 
     std::vector<size_t> numberSectionsPerWinding = std::vector<size_t>(wirePerWinding.size(), 0);
@@ -3297,7 +3300,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         }
 
         if (numberParallelsProportionsToZero == sectionParallelsProportion.size()) {
-            throw std::runtime_error("Parallel proportion in section cannot be all be 0");
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Parallel proportion in section cannot be all be 0");
         }
 
         uint64_t physicalTurnsThisSection = parallelsProportions.first;
@@ -3423,7 +3426,7 @@ bool Coil::wind_by_rectangular_layers() {
             auto remainingParallelsProportionInSection = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
             auto totalParallelsProportionInSection = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
             if (sections[sectionIndex].get_partial_windings().size() > 1) {
-                throw std::runtime_error("More than one winding per layer not supported yet");
+                throw NotImplementedException("More than one winding per layer not supported yet");
             }
             auto partialWinding = sections[sectionIndex].get_partial_windings()[0];  // TODO: Support multiwinding in layers
             auto winding = get_winding_by_name(partialWinding.get_winding());
@@ -3435,7 +3438,7 @@ bool Coil::wind_by_rectangular_layers() {
 
             if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
                 if (!wirePerWinding[windingIndex].get_outer_diameter()) {
-                    throw std::runtime_error("Missing wire outer diameter");
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire outer diameter");
                 }
                 double wireDiameter = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
@@ -3452,10 +3455,10 @@ bool Coil::wind_by_rectangular_layers() {
             }
             else {
                 if (!wirePerWinding[windingIndex].get_outer_width()) {
-                    throw std::runtime_error("Missing wire outer width");
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire outer width");
                 }
                 if (!wirePerWinding[windingIndex].get_outer_height()) {
-                    throw std::runtime_error("Missing wire outer height");
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire outer height");
                 }
                 double wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_width().value());
                 double wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_height().value());
@@ -3471,7 +3474,7 @@ bool Coil::wind_by_rectangular_layers() {
                     layerHeight = sections[sectionIndex].get_dimensions()[1];
                 } else {
                     maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[1] / wireHeight;
-                    if (wirePerWinding[windingIndex].get_type() == WireType::RECTANGULAR && settings->get_coil_only_one_turn_per_layer_in_contiguous_rectangular()) {
+                    if (wirePerWinding[windingIndex].get_type() == WireType::RECTANGULAR && settings.get_coil_only_one_turn_per_layer_in_contiguous_rectangular()) {
                         maximumNumberPhysicalTurnsPerLayer = 1; 
                     }
                     else {
@@ -3558,7 +3561,7 @@ bool Coil::wind_by_rectangular_layers() {
                 }
 
                 if (numberParallelsProportionsToZero == layerParallelsProportion.size()) {
-                    throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Parallel proportion in layer cannot be all be 0");
                 }
 
                 uint64_t physicalTurnsThisLayer = parallelsProportions.first;
@@ -3635,7 +3638,7 @@ bool Coil::wind_by_rectangular_layers() {
         }
         else {
             if (sectionIndex == 0) {
-                throw std::runtime_error("inner insulation layers not implemented");
+                throw NotImplementedException("inner insulation layers not implemented");
             }
 
             auto partialWinding = sections[sectionIndex - 1].get_partial_windings()[0];
@@ -3643,7 +3646,7 @@ bool Coil::wind_by_rectangular_layers() {
             Section nextSection;
             if (sectionIndex != (sections.size() - 1)) {
                 if (sections[sectionIndex - 1].get_type() != ElectricalType::CONDUCTION || sections[sectionIndex + 1].get_type() != ElectricalType::CONDUCTION) {
-                    throw std::runtime_error("Previous and next sections must be conductive");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Previous and next sections must be conductive");
                 }
                 nextSection = sections[sectionIndex + 1];
             }
@@ -3729,7 +3732,7 @@ bool Coil::wind_by_round_layers() {
             auto remainingParallelsProportionInSection = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
             auto totalParallelsProportionInSection = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
             if (sections[sectionIndex].get_partial_windings().size() > 1) {
-                throw std::runtime_error("More than one winding per layer not supported yet");
+                throw NotImplementedException("More than one winding per layer not supported yet");
             }
             auto partialWinding = sections[sectionIndex].get_partial_windings()[0];  // TODO: Support multiwinding in layers
             auto winding = get_winding_by_name(partialWinding.get_winding());
@@ -3849,7 +3852,7 @@ bool Coil::wind_by_round_layers() {
                 }
 
                 if (numberParallelsProportionsToZero == layerParallelsProportion.size()) {
-                    throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Parallel proportion in layer cannot be all be 0");
                 }
 
                 uint64_t physicalTurnsThisLayer = parallelsProportions.first;
@@ -3866,7 +3869,7 @@ bool Coil::wind_by_round_layers() {
                 layer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
                 layer.set_coordinate_system(CoordinateSystem::POLAR);
 
-                double layerPerimeter = 2 * std::numbers::pi * (layerAngle / 360) * (windingWindowRadialHeight - layerRadialHeight);
+                double layerPerimeter = 2 * std::numbers::pi * (layerAngle / 360) * (windingWindowRadialHeight - layerRadialHeight / 2);
                 layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerPerimeter * layerRadialHeight));
                 layer.set_winding_style(windByConsecutiveTurns);
                 layers.push_back(layer);
@@ -3925,7 +3928,7 @@ bool Coil::wind_by_round_layers() {
         }
         else {
             if (sectionIndex == 0) {
-                throw std::runtime_error("Inner insulation layers not implemented");
+                throw NotImplementedException("Inner insulation layers not implemented");
             }
 
             auto partialWinding = sections[sectionIndex - 1].get_partial_windings()[0];
@@ -3934,7 +3937,7 @@ bool Coil::wind_by_round_layers() {
             Section nextSection;
             if (sectionIndex != (sections.size() - 1)) {
                 if (sections[sectionIndex - 1].get_type() != ElectricalType::CONDUCTION || sections[sectionIndex + 1].get_type() != ElectricalType::CONDUCTION) {
-                    throw std::runtime_error("Previous and next sections must be conductive");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Previous and next sections must be conductive");
                 }
                 nextSection = sections[sectionIndex + 1];
             }
@@ -3958,7 +3961,7 @@ bool Coil::wind_by_round_layers() {
 
             auto insulationLayers = _insulationInterSectionsLayers[windingsMapKey];
             if (insulationLayers.size() == 0) {
-                throw std::runtime_error("There must be at least one insulation layer between layers");
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "There must be at least one insulation layer between layers");
             }
 
             double layerRadialHeight = insulationLayers[0].get_dimensions()[0];
@@ -4103,7 +4106,7 @@ bool Coil::wind_by_rectangular_turns() {
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         if (wirePerWinding[windingIndex].get_type() == WireType::PLANAR) {
             auto conductionLayers = get_layers_by_type(ElectricalType::CONDUCTION);
-            if (conductionLayers.size() > settings->get_coil_maximum_layers_planar()) {
+            if (conductionLayers.size() > settings.get_coil_maximum_layers_planar()) {
                 return false;
             }
         }
@@ -4120,7 +4123,7 @@ bool Coil::wind_by_rectangular_turns() {
             double totalLayerHeight;
             double totalLayerWidth;
             if (layer.get_partial_windings().size() > 1) {
-                throw std::runtime_error("More than one winding per layer not supported yet");
+                throw NotImplementedException("More than one winding per layer not supported yet");
             }
             auto partialWinding = layer.get_partial_windings()[0];  // TODO: Support multiwinding in layers
             auto winding = get_winding_by_name(partialWinding.get_winding());
@@ -4227,7 +4230,7 @@ bool Coil::wind_by_rectangular_turns() {
                             }
                         }
                         else {
-                            throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                         }
                         turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
                         turn.set_orientation(TurnOrientation::CLOCKWISE);
@@ -4288,7 +4291,7 @@ bool Coil::wind_by_rectangular_turns() {
                                 }
                             }
                             else {
-                                throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                             }
                             turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
                             turn.set_orientation(TurnOrientation::CLOCKWISE);
@@ -4337,7 +4340,7 @@ bool Coil::wind_by_round_turns() {
         bobbinColumnWidth = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_width().value();
     }
     else {
-        throw std::runtime_error("Toroids must have their bobbin column set");
+        throw CoilNotProcessedException("Toroids must have their bobbin column set");
     }
 
     auto layers = get_layers_description().value();
@@ -4360,7 +4363,7 @@ bool Coil::wind_by_round_turns() {
             double currentTurnAngleIncrement = 0;
             double totalLayerAngle;
             if (layer.get_partial_windings().size() > 1) {
-                throw std::runtime_error("More than one winding per layer not supported yet");
+                throw NotImplementedException("More than one winding per layer not supported yet");
             }
             auto partialWinding = layer.get_partial_windings()[0];  // TODO: Support multiwinding in layers
             auto winding = get_winding_by_name(partialWinding.get_winding());
@@ -4450,7 +4453,7 @@ bool Coil::wind_by_round_turns() {
                             }
                         }
                         else {
-                            throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                         }
                         turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
                         turn.set_orientation(TurnOrientation::CLOCKWISE);
@@ -4506,7 +4509,7 @@ bool Coil::wind_by_round_turns() {
                                 }
                             }
                             else {
-                                throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                             }
                             turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
                             turn.set_orientation(TurnOrientation::CLOCKWISE);
@@ -4571,7 +4574,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         if (wirePerWinding[windingIndex].get_type() == WireType::PLANAR) {
             auto conductionLayers = get_layers_by_type(ElectricalType::CONDUCTION);
-            if (conductionLayers.size() > settings->get_coil_maximum_layers_planar()) {
+            if (conductionLayers.size() > settings.get_coil_maximum_layers_planar()) {
                 return false;
             }
         }
@@ -4581,7 +4584,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
             if (layer.get_partial_windings().size() > 1) {
-                throw std::runtime_error("More than one winding per layer not supported yet");
+                throw NotImplementedException("More than one winding per layer not supported yet");
             }
             auto partialWinding = layer.get_partial_windings()[0];  // TODO: Support multiwinding in layers
             auto winding = get_winding_by_name(partialWinding.get_winding());
@@ -4638,7 +4641,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
                             }
                         }
                         else {
-                            throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                         }
                         turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
                         turn.set_orientation(TurnOrientation::CLOCKWISE);
@@ -4689,7 +4692,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
                                 }
                             }
                             else {
-                                throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                             }
                             turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
                             turn.set_orientation(TurnOrientation::CLOCKWISE);
@@ -4755,7 +4758,7 @@ bool Coil::wind_toroidal_additional_turns() {
         bobbinColumnWidth = bobbin.get_processed_description().value().get_column_width().value();
     }
     else {
-        throw std::runtime_error("Toroids must have their bobbin column set");
+        throw CoilNotProcessedException("Toroids must have their bobbin column set");
     }
     double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
     auto bobbinColumnShape = bobbin.get_processed_description().value().get_column_shape();
@@ -4832,7 +4835,7 @@ bool Coil::wind_toroidal_additional_turns() {
                                     while (newCoordinates[0] > additionalCoordinates[0]) {
                                         timeout--;
                                         if (timeout == 0) {
-                                            throw std::runtime_error("timeout in wind_toroidal_additional_turns");
+                                            throw CalculationException(ErrorCode::CALCULATION_TIMEOUT, "timeout in wind_toroidal_additional_turns");
                                         }
                                         if (tryAvoidingCollisionDistance && collisionDistance < 1e-6) {
                                             tryAvoidingCollisionDistance = false;
@@ -4977,7 +4980,7 @@ bool Coil::wind_toroidal_additional_turns() {
                             double perimeter = std::numbers::pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b)));
                             turns[turnIndex].set_length(perimeter);
                             if (turns[turnIndex].get_length() < 0) {
-                                throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
                             }
                         }
                         else if (bobbinColumnShape == ColumnShape::OBLONG) {
@@ -4987,7 +4990,7 @@ bool Coil::wind_toroidal_additional_turns() {
                             double perimeter = std::numbers::pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b))) + 4 * (bobbinColumnDepth - bobbinColumnWidth);
                             turns[turnIndex].set_length(perimeter);
                             if (turns[turnIndex].get_length() < 0) {
-                                throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
                             }
                         }
                         else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
@@ -4998,11 +5001,11 @@ bool Coil::wind_toroidal_additional_turns() {
                             turns[turnIndex].set_length(2 * bobbinColumnDepth + 4 * bobbinColumnWidth + externalVerticalStraightDistance + std::numbers::pi * currentInternalTurnCornerRadius + std::numbers::pi * currentExternalTurnCornerRadius);
 
                             if (turns[turnIndex].get_length() < 0) {
-                                throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentExternalTurnCornerRadius: " + std::to_string(currentExternalTurnCornerRadius));
+                                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentExternalTurnCornerRadius: " + std::to_string(currentExternalTurnCornerRadius));
                             }
                         }
                         else {
-                            throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                         }
 
                         turns[turnIndex] = turn;
@@ -5060,7 +5063,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
     auto windingOrientation = get_winding_orientation();
 
     if (sections.size() == 0) {
-        throw std::runtime_error("No sections in coil");
+        throw CoilNotProcessedException("No sections in coil");
     }
     double totalSectionsWidth = 0;
     double totalSectionsHeight = 0;
@@ -5112,7 +5115,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         currentCoilHeight = -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
                         break;
                     default:
-                        throw std::runtime_error("No such section alignment");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                 }
             }
             else {
@@ -5137,7 +5140,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     default:
-                        throw std::runtime_error("No such section alignment");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                 }
             }
             break;
@@ -5165,7 +5168,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         currentCoilHeight = -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
                         break;
                     default:
-                        throw std::runtime_error("No such section alignment");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                 }
             }
             else {
@@ -5191,7 +5194,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     default:
-                        throw std::runtime_error("No such section alignment");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                 }
             }
             break;
@@ -5219,7 +5222,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         currentCoilHeight = -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
                         break;
                     default:
-                        throw std::runtime_error("No such section alignment");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                 }
                 paddingAmongSectionWidth = windingWindows[0].get_width().value() - totalSectionsWidth;
                 if (sections.size() > 1) {
@@ -5257,7 +5260,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     default:
-                        throw std::runtime_error("No such section alignment");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                 }
             }
             break;
@@ -5285,7 +5288,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         currentCoilHeight = -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
                         break;
                     default:
-                        throw std::runtime_error("No such section alignment");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                 }
             }
             else {
@@ -5319,12 +5322,12 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                         currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
                         break;
                     default:
-                        throw std::runtime_error("No such section alignment");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                 }
             }
             break;
         default:
-            throw std::runtime_error("No such section alignment");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
 
     }
 
@@ -5343,7 +5346,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
     auto windingOrientation = get_winding_orientation();
 
     if (sections.size() == 0) {
-        throw std::runtime_error("No sections in coil");
+        throw CoilNotProcessedException("No sections in coil");
     }
     double totalSectionsRadialHeight = 0;
     double totalSectionsAngle = 0;
@@ -5367,7 +5370,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
         }
     }
 
-    double currentCoilRadialHeight;
+    double currentCoilRadialHeight = 0;
     double currentCoilAngle;
     double paddingAmongSectionRadialHeight = 0;
     double paddingAmongSectionAngle = 0;
@@ -5398,7 +5401,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
                 currentCoilAngle = sections[sectionIndex].get_dimensions()[1] / 2;
                 break;
             default:
-                throw std::runtime_error("No such section alignment");
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
         }
     }
     else {
@@ -5424,7 +5427,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
                 currentCoilAngle = windingWindowAngle / 2 - totalSectionsAngle / 2;
                 break;
             default:
-                throw std::runtime_error("No such section alignment");
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
         }
     }
 
@@ -5450,7 +5453,7 @@ WiringTechnology Coil::get_coil_type(size_t groupIndex) {
     }
     auto groups = get_groups_description().value();
     if (groupIndex >= groups.size()) {
-        throw std::runtime_error("Non existing group index");
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Non existing group index");
     }
     auto group = get_groups_description().value()[groupIndex];
     return group.get_type();
@@ -5461,7 +5464,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
     auto groupType = get_coil_type();
 
     if (!get_sections_description()) {
-        throw std::runtime_error("No sections to delimit");
+        throw CoilNotProcessedException("No sections to delimit");
     }
 
     if (get_layers_description()) {
@@ -5511,7 +5514,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                 auto layersInSection = get_layers_by_section(sections[i].get_name());
                 if (layersInSection.size() == 0) {
-                    throw std::runtime_error("No layers in section: " + sections[i].get_name());
+                    throw CoilNotProcessedException("No layers in section: " + sections[i].get_name());
                 }
                 auto sectionCoordinates = sections[i].get_coordinates();
                 double currentSectionMaximumWidth = (layersInSection[0].get_coordinates()[0] - sectionCoordinates[0]) + layersInSection[0].get_dimensions()[0] / 2;
@@ -5649,7 +5652,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
         
                                 if (bobbinColumnShape == ColumnShape::ROUND || bobbinColumnShape == ColumnShape::OBLONG || bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
                                     if (turns[turnIndex].get_coordinates()[0] < compactingShiftWidth) {
-                                        throw std::runtime_error("Something wrong happened with compactingShiftWidth: " + std::to_string(compactingShiftWidth) +
+                                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened with compactingShiftWidth: " + std::to_string(compactingShiftWidth) +
                                                                  "\nsections[sectionIndex].get_coordinates()[0]: " + std::to_string(sections[sectionIndex].get_coordinates()[0]) +
                                                                  "\ncurrentCoilWidth: " + std::to_string(currentCoilWidth) +
                                                                  "\nturns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0])
@@ -5657,7 +5660,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                     }
                                 }
                                 else {
-                                    throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                                    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                                 }
 
                                 if (groupType == WiringTechnology::PRINTED) {
@@ -5676,13 +5679,13 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                 if (bobbinColumnShape == ColumnShape::ROUND) {
                                     turns[turnIndex].set_length(2 * std::numbers::pi * turns[turnIndex].get_coordinates()[0]);
                                     if (turns[turnIndex].get_length() < 0) {
-                                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
                                     }
                                 }
                                 else if (bobbinColumnShape == ColumnShape::OBLONG) {
                                     turns[turnIndex].set_length(2 * std::numbers::pi * turns[turnIndex].get_coordinates()[0] + 4 * (bobbinColumnDepth - bobbinColumnWidth));
                                     if (turns[turnIndex].get_length() < 0) {
-                                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
                                     }
                                 }
                                 else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
@@ -5690,11 +5693,11 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                     turns[turnIndex].set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
 
                                     if (turns[turnIndex].get_length() < 0) {
-                                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentTurnCornerRadius: " + std::to_string(currentTurnCornerRadius));
+                                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentTurnCornerRadius: " + std::to_string(currentTurnCornerRadius));
                                     }
                                 }
                                 else {
-                                    throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                                    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                                 }
                             }
                         }
@@ -5718,7 +5721,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
     }
 
     // Add extra margin for support if required
-    bool fillCoilSectionsWithMarginTape = settings->get_coil_fill_sections_with_margin_tape();
+    bool fillCoilSectionsWithMarginTape = settings.get_coil_fill_sections_with_margin_tape();
 
     // Compact groups in planar case
 
@@ -5729,7 +5732,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
             for (size_t i = 0; i < groups.size(); ++i) {
                 auto sectionsInGroup = get_sections_by_group(groups[i].get_name());
                 if (sectionsInGroup.size() == 0) {
-                    throw std::runtime_error("No sections in group: " + groups[i].get_name());
+                    throw CoilNotProcessedException("No sections in group: " + groups[i].get_name());
                 }
                 auto groupCoordinates = groups[i].get_coordinates();
                 double currentGroupMaximumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) + sectionsInGroup[0].get_dimensions()[1] / 2;
@@ -5814,7 +5817,7 @@ bool Coil::delimit_and_compact_round_window() {
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                 auto layersInSection = get_layers_by_section(sections[i].get_name());
                 if (layersInSection.size() == 0) {
-                    throw std::runtime_error("No layers in section: " + sections[i].get_name());
+                    throw CoilNotProcessedException("No layers in section: " + sections[i].get_name());
                 }
                 auto sectionCoordinates = sections[i].get_coordinates();
                 double currentSectionMaximumRadialHeight = (layersInSection[0].get_coordinates()[0] - sectionCoordinates[0]) + layersInSection[0].get_dimensions()[0] / 2;
@@ -5886,7 +5889,7 @@ bool Coil::delimit_and_compact_round_window() {
                             layerAngle = section.get_dimensions()[1];
                             break;
                         default:
-                            throw std::runtime_error("No such section alignment");
+                            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                     }
                     layers[i].set_coordinates(std::vector<double>({layers[i].get_coordinates()[0], layerCenterAngle}));
                     layers[i].set_dimensions(std::vector<double>({layers[i].get_dimensions()[0], layerAngle}));
@@ -5900,7 +5903,7 @@ bool Coil::delimit_and_compact_round_window() {
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                 auto layersInSection = get_layers_by_section(sections[i].get_name());
                 if (layersInSection.size() == 0) {
-                    throw std::runtime_error("No layers in section: " + sections[i].get_name());
+                    throw CoilNotProcessedException("No layers in section: " + sections[i].get_name());
                 }
                 auto sectionCoordinates = sections[i].get_coordinates();
                 double currentSectionMaximumAngle = (layersInSection[0].get_coordinates()[1] - sectionCoordinates[1]) + layersInSection[0].get_dimensions()[1] / 2;
@@ -6023,7 +6026,7 @@ bool Coil::delimit_and_compact_round_window() {
                                 }
                             }
                             else {
-                                throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "only round or rectangular columns supported for bobbins");
                             }
 
                             turnInThisLayerIndex++;
@@ -6045,7 +6048,7 @@ bool Coil::delimit_and_compact_round_window() {
         }
         set_sections_description(sections);
         
-        if (settings->get_coil_include_additional_coordinates()) {
+        if (settings.get_coil_include_additional_coordinates()) {
             wind_toroidal_additional_turns();
         }
     }
@@ -6088,7 +6091,7 @@ Wire Winding::resolve_wire() {
                 wire = find_wire_by_name("Round 0.01 - Grade 1");
             }
             else {
-                throw std::runtime_error("wire not found: " + std::get<std::string>(wireOrString));
+                throw WireNotFoundException("wire not found: " + std::get<std::string>(wireOrString));
             }
         }
     }
@@ -6105,7 +6108,7 @@ Wire Coil::resolve_wire(Winding winding) {
 std::vector<double> Coil::get_wires_length() {
     std::vector<double> wiresLength;
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns");
+        throw CoilNotProcessedException("Missing turns");
     }
     for (auto winding : get_functional_description()) {
         auto turns = get_turns_by_winding(winding.get_name());
@@ -6152,7 +6155,7 @@ Bobbin Coil::resolve_bobbin() {
     auto bobbinDataOrNameUnion = get_bobbin();
     if (std::holds_alternative<std::string>(bobbinDataOrNameUnion)) {
         if (std::get<std::string>(bobbinDataOrNameUnion) == "Dummy")
-            throw std::runtime_error("Bobbin is dummy");
+            throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Bobbin is dummy");
 
         auto bobbin = find_bobbin_by_name(std::get<std::string>(bobbinDataOrNameUnion));
         _bobbin = bobbin;
@@ -6167,7 +6170,7 @@ Bobbin Coil::resolve_bobbin() {
 size_t Coil::convert_conduction_section_index_to_global(size_t conductionSectionIndex) {
     size_t currentConductionSectionIndex = 0;
     if (!get_sections_description()) {
-        throw std::runtime_error("In Convert Conduction Sections: Section description empty, wind coil first");
+        throw CoilNotProcessedException("In Convert Conduction Sections: Section description empty, wind coil first");
     }
     auto sections = get_sections_description().value();
     for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
@@ -6178,7 +6181,7 @@ size_t Coil::convert_conduction_section_index_to_global(size_t conductionSection
             currentConductionSectionIndex++;
         }
     }
-    throw std::runtime_error("Index not found");
+    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Index not found");
 }
 
 void Coil::clear() {
@@ -6206,8 +6209,8 @@ void Coil::try_rewind() {
         return;
     }
 
-    bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
-    bool delimitAndCompact = settings->get_coil_delimit_and_compact();
+    bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
+    bool delimitAndCompact = settings.get_coil_delimit_and_compact();
 
     auto sections = get_sections_description().value();
     std::vector<double> extraSpaceNeededPerSection;
@@ -6309,7 +6312,7 @@ void Coil::try_rewind() {
 
         extraSpaceNeededThisSection = std::max(extraSpaceNeededThisSection, (sectionFillingFactor - 1) * sectionRestrictiveDimension);
         if (extraSpaceNeededThisSection < 0 || std::isnan(extraSpaceNeededThisSection)) {
-            throw std::runtime_error("extraSpaceNeededThisSection cannot be negative or nan: " + std::to_string(extraSpaceNeededThisSection));
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "extraSpaceNeededThisSection cannot be negative or nan: " + std::to_string(extraSpaceNeededThisSection));
         }
         if (section.get_type() == ElectricalType::CONDUCTION) {
         }
@@ -6325,7 +6328,7 @@ void Coil::try_rewind() {
     double numberWindings = get_functional_description().size();
 
     if (totalExtraSpaceNeeded < 0 || std::isnan(totalExtraSpaceNeeded)) {
-        throw std::runtime_error("totalExtraSpaceNeeded cannot be negative or nan: " + std::to_string(totalExtraSpaceNeeded));
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "totalExtraSpaceNeeded cannot be negative or nan: " + std::to_string(totalExtraSpaceNeeded));
     }
 
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -6378,7 +6381,7 @@ void Coil::try_rewind() {
             }
         }
         if (extraSpaceNeededThisWinding < 0 || std::isnan(extraSpaceNeededThisWinding)) {
-            throw std::runtime_error("extraSpaceNeededThisWinding cannot be negative or nan: " + std::to_string(extraSpaceNeededThisWinding));
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "extraSpaceNeededThisWinding cannot be negative or nan: " + std::to_string(extraSpaceNeededThisWinding));
         }
         // double proportionOfNeededForThisWinding = extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double extraSpaceGottenByThisWinding = windingWindowRemainingRestrictiveDimensionAccordingToSections * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
@@ -6386,10 +6389,10 @@ void Coil::try_rewind() {
         double newProportionGottenByThisWinding = newSpaceGottenByThisWinding / windingWindowRestrictiveDimension;
 
         if (extraSpaceGottenByThisWinding < 0 || std::isnan(extraSpaceGottenByThisWinding)) {
-            throw std::runtime_error("extraSpaceGottenByThisWinding cannot be negative or nan: " + std::to_string(extraSpaceGottenByThisWinding));
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "extraSpaceGottenByThisWinding cannot be negative or nan: " + std::to_string(extraSpaceGottenByThisWinding));
         }
         if (newProportionGottenByThisWinding < 0 || std::isnan(newProportionGottenByThisWinding)) {
-            throw std::runtime_error("newProportionGottenByThisWinding cannot be negative or nan: " + std::to_string(newProportionGottenByThisWinding));
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "newProportionGottenByThisWinding cannot be negative or nan: " + std::to_string(newProportionGottenByThisWinding));
         }
         if (roundFloat(newProportionGottenByThisWinding, 6) > 1 || std::isnan(newProportionGottenByThisWinding)) {
             return;
@@ -6427,10 +6430,10 @@ void Coil::preload_margins(std::vector<std::vector<double>> marginPairs) {
 
 void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins) {
     if (!get_sections_description()) {
-        throw std::runtime_error("In Add Margin to Section: Section description empty, wind coil first");
+        throw CoilNotProcessedException("In Add Margin to Section: Section description empty, wind coil first");
     }
     if (margins.size() != 2) {
-        throw std::runtime_error("Margin vector must have two elements");
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Margin vector must have two elements");
     }
     auto sections = get_sections_description().value();
     _marginsPerSection[convert_conduction_section_index_to_global(sectionIndex)] = margins;
@@ -6439,9 +6442,9 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
     set_sections_description(sections);
 
 
-    bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
-    bool delimitAndCompact = settings->get_coil_delimit_and_compact();
-    bool tryRewind = settings->get_coil_try_rewind();
+    bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
+    bool delimitAndCompact = settings.get_coil_delimit_and_compact();
+    bool tryRewind = settings.get_coil_try_rewind();
 
     wind_by_sections();
     wind_by_layers();
@@ -6459,7 +6462,7 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
 std::vector<Section> Coil::get_sections_description_conduction() {
     std::vector<Section> sectionsConduction;
     if (!get_sections_description()) {
-        throw std::runtime_error("Not wound by sections");
+        throw CoilNotProcessedException("Not wound by sections");
     }
     std::vector<Section> sections = get_sections_description().value();
     for (auto section : sections) {
@@ -6474,7 +6477,7 @@ std::vector<Section> Coil::get_sections_description_conduction() {
 std::vector<Layer> Coil::get_layers_description_conduction() {
     std::vector<Layer> layersConduction;
     if (!get_layers_description()) {
-        throw std::runtime_error("Not wound by layers");
+        throw CoilNotProcessedException("Not wound by layers");
     }
     std::vector<Layer> layers = get_layers_description().value();
     for (auto layer : layers) {
@@ -6489,7 +6492,7 @@ std::vector<Layer> Coil::get_layers_description_conduction() {
 std::vector<Section> Coil::get_sections_description_insulation() {
     std::vector<Section> sectionsInsulation;
     if (!get_sections_description()) {
-        throw std::runtime_error("Not wound by sections");
+        throw CoilNotProcessedException("Not wound by sections");
     }
     std::vector<Section> sections = get_sections_description().value();
     for (auto section : sections) {
@@ -6504,7 +6507,7 @@ std::vector<Section> Coil::get_sections_description_insulation() {
 std::vector<Layer> Coil::get_layers_description_insulation() {
     std::vector<Layer> layersInsulation;
     if (!get_layers_description()) {
-        throw std::runtime_error("Not wound by layers");
+        throw CoilNotProcessedException("Not wound by layers");
     }
     std::vector<Layer> layers = get_layers_description().value();
     for (auto layer : layers) {
@@ -6562,10 +6565,10 @@ double Coil::get_insulation_section_thickness(std::string sectionName) {
 
 double Coil::get_insulation_section_thickness(Coil coil, std::string sectionName) {
     if (!coil.get_sections_description()) {
-        throw std::runtime_error("Coil is missing sections description");
+        throw CoilNotProcessedException("Coil is missing sections description");
     }
     if (!coil.get_layers_description()) {
-        throw std::runtime_error("Coil is missing layers description");
+        throw CoilNotProcessedException("Coil is missing layers description");
     }
 
     auto layers = coil.get_layers_by_section(sectionName);
@@ -6585,7 +6588,7 @@ double Coil::get_insulation_layer_thickness(Coil coil, std::string layerName) {
 
 double Coil::get_insulation_layer_thickness(std::string layerName) {
     if (!get_layers_description()) {
-        throw std::runtime_error("Coil is missing layers description");
+        throw CoilNotProcessedException("Coil is missing layers description");
     }
     auto layer = get_layer_by_name(layerName);
     return get_insulation_layer_thickness(layer);
@@ -6665,7 +6668,7 @@ double Coil::get_insulation_layer_relative_permittivity(Coil coil, std::string l
 double Coil::get_insulation_layer_relative_permittivity(Layer layer) {
     auto coatingInsulationMaterial = resolve_insulation_layer_insulation_material(layer);
     if (!coatingInsulationMaterial.get_relative_permittivity())
-        throw std::runtime_error("Coating insulation material is missing dielectric constant");
+        throw InvalidInputException(ErrorCode::INVALID_INSULATION_DATA, "Coating insulation material is missing dielectric constant");
     return coatingInsulationMaterial.get_relative_permittivity().value();
 }
 
@@ -6675,7 +6678,7 @@ double Coil::get_insulation_section_relative_permittivity(std::string sectionNam
 double Coil::get_insulation_section_relative_permittivity(Coil coil, std::string sectionName) {
     auto layers = coil.get_layers_by_section(sectionName);
     if (layers.size() == 0)
-        throw std::runtime_error("No layers in this section");
+        throw CoilNotProcessedException("No layers in this section");
 
     double averagerelativePermittivity = 0;
     for (auto layer : layers) {
@@ -6697,7 +6700,7 @@ std::vector<double> Coil::get_maximum_dimensions() {
     std::vector<double> bobbinMaximumDimensions = resolve_bobbin().get_maximum_dimensions();
 
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns");
+        throw CoilNotProcessedException("Missing turns");
     }
     auto turns = get_turns_description().value();
 
@@ -6737,7 +6740,7 @@ std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType cor
     auto isolationSidesRequired = inputs.get_isolation_sides_used();
 
     if (!inputs.get_design_requirements().get_isolation_sides()) {
-        throw std::runtime_error("Missing isolation sides requirement");
+        throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Missing isolation sides requirement");
     }
 
     auto isolationSidesRequirement = inputs.get_design_requirements().get_isolation_sides().value();
@@ -6777,7 +6780,7 @@ std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
     if (inputs.get_design_requirements().get_wiring_technology()) {
         if (inputs.get_design_requirements().get_wiring_technology().value() == WiringTechnology::PRINTED) {
             std::vector<size_t> repetitions;
-            for (size_t repetition = 1; repetition <= (settings->get_coil_maximum_layers_planar() / (inputs.get_design_requirements().get_turns_ratios().size() + 1)); ++repetition) {
+            for (size_t repetition = 1; repetition <= (settings.get_coil_maximum_layers_planar() / (inputs.get_design_requirements().get_turns_ratios().size() + 1)); ++repetition) {
                 repetitions.push_back(repetition);
             }
             return repetitions;
@@ -7003,8 +7006,8 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
 }
 
 std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> dcResistances, double maxError) {
-    auto oldSetting = settings->get_coil_wind_even_if_not_fit();
-    settings->set_coil_wind_even_if_not_fit(true);
+    auto oldSetting = settings.get_coil_wind_even_if_not_fit();
+    settings.set_coil_wind_even_if_not_fit(true);
 
     double maximumError = DBL_MAX;
     size_t timeout = 100;
@@ -7037,13 +7040,13 @@ std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> 
         }
     }
 
-    settings->set_coil_wind_even_if_not_fit(oldSetting);
+    settings.set_coil_wind_even_if_not_fit(oldSetting);
     return get_wires();
 }
 
 std::vector<double> Coil::resolve_margin(size_t sectionIndex) {
     if (!get_sections_description()) {
-        throw std::runtime_error("Sections not found");
+        throw CoilNotProcessedException("Sections not found");
     }
     auto sections = get_sections_description().value();
     return resolve_margin(sections[sectionIndex]);
@@ -7072,7 +7075,7 @@ std::vector<double> Coil::resolve_margin(Margin marginVariant) {
 
 MarginInfo Coil::resolve_margin_info(size_t sectionIndex) {
     if (!get_sections_description()) {
-        throw std::runtime_error("Sections not found");
+        throw CoilNotProcessedException("Sections not found");
     }
     auto sections = get_sections_description().value();
     return resolve_margin_info(sections[sectionIndex]);
@@ -7113,7 +7116,6 @@ Coil Coil::create_quick_coil(std::string coreShapeName, std::vector<int64_t> num
     Coil coil;
 
     auto core = Core::create_quick_core(coreShapeName, "Dummy");
-    bool auxUseBobbin = useBobbin;
     OpenMagnetics::Bobbin bobbin;
     if (core.get_shape_family() == CoreShapeFamily::T) {
         bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
@@ -7149,7 +7151,7 @@ Coil Coil::create_quick_coil(std::string coreShapeName, std::vector<int64_t> num
 
 std::vector<Turn> Coil::get_turns_touching_bobbin_column() {
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns description");
+        throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = get_turns_description().value();
     return get_turns_touching_bobbin_column(turns);
@@ -7157,7 +7159,7 @@ std::vector<Turn> Coil::get_turns_touching_bobbin_column() {
 
 std::vector<Turn> Coil::get_turns_touching_bobbin_column(std::vector<size_t> turnIndexes) {
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns description");
+        throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = get_turns_description().value();
     std::vector<Turn> filteredTurns;
@@ -7183,7 +7185,7 @@ std::vector<Turn> Coil::get_turns_touching_bobbin_column(std::vector<Turn> turns
         }
     }
     else {
-        throw std::runtime_error("Not implemented yet");
+        throw NotImplementedException("Not implemented yet");
 
     }
     return touchingTurns;
@@ -7191,7 +7193,7 @@ std::vector<Turn> Coil::get_turns_touching_bobbin_column(std::vector<Turn> turns
 
 std::vector<Turn> Coil::get_turns_touching_bobbin_walls() {
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns description");
+        throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = get_turns_description().value();
     return get_turns_touching_bobbin_walls(turns);
@@ -7199,7 +7201,7 @@ std::vector<Turn> Coil::get_turns_touching_bobbin_walls() {
 
 std::vector<Turn> Coil::get_turns_touching_bobbin_walls(std::vector<size_t> turnIndexes) {
     if (!get_turns_description()) {
-        throw std::runtime_error("Missing turns description");
+        throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = get_turns_description().value();
     std::vector<Turn> filteredTurns;
@@ -7224,15 +7226,9 @@ std::vector<Turn> Coil::get_turns_touching_bobbin_walls(std::vector<Turn> turns)
         auto topSideCoordinate = turn.get_coordinates()[1] + turn.get_dimensions().value()[1] / 2;
         auto bottomSideCoordinate = turn.get_coordinates()[1] - turn.get_dimensions().value()[1] / 2;
         if (fabs((bottomSideCoordinate - bobbinBottomCoordinate) / bobbinBottomCoordinate) < 0.05) {
-            std::cout << "bottomSideCoordinate: " << bottomSideCoordinate << std::endl;
-            std::cout << "bobbinBottomCoordinate: " << bobbinBottomCoordinate << std::endl;
-            std::cout << "(fabs(bottomSideCoordinate - bobbinBottomCoordinate) / bobbinBottomCoordinate): " << (fabs(bottomSideCoordinate - bobbinBottomCoordinate) / bobbinBottomCoordinate) << std::endl;
             touchingTurns.push_back(turn);
         }
         if (fabs((topSideCoordinate - bobbinTopCoordinate) / bobbinTopCoordinate) < 0.05) {
-            std::cout << "topSideCoordinate: " << topSideCoordinate << std::endl;
-            std::cout << "bobbinTopCoordinate: " << bobbinTopCoordinate << std::endl;
-            std::cout << "(fabs(topSideCoordinate - bobbinTopCoordinate) / bobbinTopCoordinate): " << (fabs(topSideCoordinate - bobbinTopCoordinate) / bobbinTopCoordinate) << std::endl;
             touchingTurns.push_back(turn);
         }
     }

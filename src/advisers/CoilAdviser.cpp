@@ -3,6 +3,8 @@
 #include "Models.h"
 #include "constructive_models/Insulation.h"
 #include <algorithm>
+#include "support/Exceptions.h"
+#include "support/Logger.h"
 
 
 namespace OpenMagnetics {
@@ -75,11 +77,11 @@ namespace OpenMagnetics {
         std::string jsonLine;
         std::vector<Wire> wires;
         for (const auto& [key, wire] : wireDatabase) {
-            if ((settings->get_wire_adviser_include_planar() || wire.get_type() != WireType::PLANAR) &&
-                (settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
-                (settings->get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&
-                (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
-                (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
+            if ((settings.get_wire_adviser_include_planar() || wire.get_type() != WireType::PLANAR) &&
+                (settings.get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
+                (settings.get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&
+                (settings.get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
+                (settings.get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
 
                 if (!_commonWireStandard || !wire.get_standard()) {
                     wires.push_back(wire);
@@ -220,7 +222,7 @@ namespace OpenMagnetics {
 
         auto numberTurnsPerWinding = mas.get_mutable_magnetic().get_mutable_coil().get_number_turns();
 
-        size_t totalNumberLayers = settings->get_coil_maximum_layers_planar();
+        size_t totalNumberLayers = settings.get_coil_maximum_layers_planar();
         for (size_t repetitionIndex = 0; repetitionIndex < repetitions; ++repetitionIndex) {
             for (auto windingIndex : pattern) {
                 for (size_t layerIndex = 0; layerIndex < floor(totalNumberLayers / repetitions / pattern.size()); ++layerIndex) {
@@ -247,7 +249,7 @@ namespace OpenMagnetics {
     }
 
     std::vector<size_t> get_planar_stackup(Coil coil, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
-        size_t totalNumberLayers = settings->get_coil_maximum_layers_planar();
+        size_t totalNumberLayers = settings.get_coil_maximum_layers_planar();
         size_t totalAssignedLayers = 0;
         std::vector<size_t> layersPerWinding;
         std::vector<size_t> stackUp;
@@ -294,7 +296,7 @@ namespace OpenMagnetics {
 
     std::vector<Mas> CoilAdviser::get_advised_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference){
         bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
-        size_t maximumNumberWires = settings->get_coil_adviser_maximum_number_wires();
+        size_t maximumNumberWires = settings.get_coil_adviser_maximum_number_wires();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
@@ -327,10 +329,10 @@ namespace OpenMagnetics {
 
         for (auto section : sections) {
             if (section.get_dimensions()[0] < 0) {
-                throw std::runtime_error("section.get_dimensions()[0] cannot be negative");
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "section.get_dimensions()[0] cannot be negative");
             }
             if (section.get_dimensions()[1] < 0) {
-                throw std::runtime_error("section.get_dimensions()[1] cannot be negative: " + std::to_string(section.get_dimensions()[1]));
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "section.get_dimensions()[1] cannot be negative: " + std::to_string(section.get_dimensions()[1]));
             }
         }
 
@@ -348,13 +350,13 @@ namespace OpenMagnetics {
 
 
         if (!mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()) {
-            throw std::runtime_error("Missing current in excitaton");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current in excitaton");
         }
 
         if (!mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current().value().get_harmonics() &&
             !mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current().value().get_processed() &&
             !mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current().value().get_waveform()) {
-            throw std::runtime_error("Missing current harmonics, waveform and processed in excitaton");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current harmonics, waveform and processed in excitaton");
         }
 
 
@@ -368,10 +370,10 @@ namespace OpenMagnetics {
             double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
             for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_inputs().get_operating_points().size(); ++operatingPointIndex) {
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()) {
-                    throw std::runtime_error("Current is missing");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is missing");
                 }
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()) {
-                    throw std::runtime_error("Current is not processed");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
                 }
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
                     auto current = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
@@ -381,7 +383,7 @@ namespace OpenMagnetics {
                         mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
                     }
                     else {
-                        throw std::runtime_error("Current is not processed");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
                     }
                 }
                 double effectiveFrequency = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency().value();
@@ -509,7 +511,7 @@ namespace OpenMagnetics {
 
     std::vector<Mas> CoilAdviser::get_advised_planar_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, size_t maximumNumberResults, std::string reference){
         // bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
-        size_t maximumNumberWires = settings->get_coil_adviser_maximum_number_wires();
+        size_t maximumNumberWires = settings.get_coil_adviser_maximum_number_wires();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
@@ -536,13 +538,13 @@ namespace OpenMagnetics {
         coil.set_sections_description(sections);
 
         if (!mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()) {
-            throw std::runtime_error("Missing current in excitaton");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current in excitaton");
         }
 
         if (!mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current().value().get_harmonics() &&
             !mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current().value().get_processed() &&
             !mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current().value().get_waveform()) {
-            throw std::runtime_error("Missing current harmonics, waveform and processed in excitaton");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current harmonics, waveform and processed in excitaton");
         }
 
 
@@ -553,10 +555,10 @@ namespace OpenMagnetics {
             double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
             for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_inputs().get_operating_points().size(); ++operatingPointIndex) {
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()) {
-                    throw std::runtime_error("Current is missing");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is missing");
                 }
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()) {
-                    throw std::runtime_error("Current is not processed");
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
                 }
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
                     auto current = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
@@ -566,7 +568,7 @@ namespace OpenMagnetics {
                         mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
                     }
                     else {
-                        throw std::runtime_error("Current is not processed");
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
                     }
                 }
                 double effectiveFrequency = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency().value();

@@ -8,6 +8,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -46,7 +47,7 @@ void NumberTurns::increment_number_turns(size_t multiple) {
         }
         timeout--;
         if (timeout == 0) {
-            throw std::runtime_error("NumberTurns did not converge");
+            throw CalculationException(ErrorCode::CALCULATION_DIVERGENCE, "NumberTurns did not converge");
         }
     }
 }

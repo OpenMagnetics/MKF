@@ -1,11 +1,12 @@
 #include "physical_models/ThermalResistance.h"
 #include "physical_models/Temperature.h"
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
     double Temperature::calculate_temperature_from_core_thermal_resistance(Core core, double totalLosses){
     	if (!core.get_processed_description()) {
-    		throw std::runtime_error("Core is missing processed description");
+    		throw CoreNotProcessedException("Core is missing processed description");
     	}
 
         double thermalResistance;

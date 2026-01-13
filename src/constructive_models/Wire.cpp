@@ -7,6 +7,7 @@
 #include <algorithm>
 #include "support/Utils.h"
 #include "spline.h"
+#include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
@@ -42,7 +43,7 @@ namespace OpenMagnetics {
             return std::nullopt;
         }
         if (std::holds_alternative<std::string>(wire.get_coating().value())) {
-            throw std::runtime_error("Coating database not implemented yet");
+            throw NotImplementedException("Coating database not implemented yet");
         }
         else {
             return std::get<InsulationWireCoating>(wire.get_coating().value());
@@ -55,7 +56,7 @@ namespace OpenMagnetics {
             return std::nullopt;
         }
         if (std::holds_alternative<std::string>(get_coating().value())) {
-            throw std::runtime_error("Coating database not implemented yet");
+            throw NotImplementedException("Coating database not implemented yet");
         }
         else {
             return std::get<InsulationWireCoating>(get_coating().value());
@@ -91,7 +92,7 @@ namespace OpenMagnetics {
 
     WireRound Wire::resolve_strand(const Wire& wire) {
         if (!wire.get_strand())
-            throw std::runtime_error("Litz wire is missing strand information");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Litz wire is missing strand information");
 
         // If the strand is a string, we have to load its data from the database
         if (std::holds_alternative<std::string>(wire.get_strand().value())) {
@@ -107,7 +108,7 @@ namespace OpenMagnetics {
 
     WireRound Wire::resolve_strand() {
         if (!get_strand())
-            throw std::runtime_error("Litz wire is missing strand information");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Litz wire is missing strand information");
 
         // If the strand is a string, we have to load its data from the database
         if (std::holds_alternative<std::string>(get_strand().value())) {
@@ -266,7 +267,7 @@ namespace OpenMagnetics {
                         wireOuterDimension = resolve_dimensional_values(datum.second.get_outer_height().value()); 
                     }
                     else {
-                        throw std::runtime_error("Missing wire dimension");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire dimension");
                     }
                     double wireConductingDimension;
                     double wirePackingFactor;
@@ -295,7 +296,7 @@ namespace OpenMagnetics {
                             wireConductingDimension = resolve_dimensional_values(datum.second.get_conducting_height().value()); 
                         }
                         else {
-                            throw std::runtime_error("Missing wire dimension");
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire dimension");
                         }
                     }
                     double wireNumberConductors = datum.second.get_number_conductors().value(); 
@@ -551,7 +552,7 @@ namespace OpenMagnetics {
             wireConductingDimension = conductingHeight.value();
         }
         else {
-            throw std::runtime_error("Missing wire dimension");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire dimension");
         }
         if (wireConductingDimension < minWireConductingDimensions[key])
         wireConductingDimension = std::max(wireConductingDimension, minWireConductingDimensions[key]);
@@ -605,7 +606,7 @@ namespace OpenMagnetics {
             wireConductingDimension = conductingHeight.value();
         }
         else {
-            throw std::runtime_error("Missing wire dimension");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire dimension");
         }
         double wireConductingDimensionForInterpolator = wireConductingDimension;
         wireConductingDimensionForInterpolator = std::max(wireConductingDimensionForInterpolator, minWireConductingDimensions[key]);
@@ -717,7 +718,7 @@ namespace OpenMagnetics {
             //     return 0.00008 * numberLayers;
         }
         else {
-            throw std::runtime_error("Unsupported number of layers in litz serving");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported number of layers in litz serving");
         }
 
     }
@@ -769,11 +770,11 @@ namespace OpenMagnetics {
     double Wire::get_filling_factor_round(double conductingDiameter, int numberLayers, double thicknessLayers, WireStandard standard, bool includeAirInCell) {
         auto wireType = WireType::ROUND;
         if (numberLayers == 0 || numberLayers > 3) {
-            throw std::runtime_error("Unsupported number of layers");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported number of layers");
         }
 
         if (thicknessLayers != 5.08e-05 && thicknessLayers != 7.62e-05 && thicknessLayers != 3.81e-05 && thicknessLayers != 2.54e-05 && thicknessLayers != 1.27e-04) {
-            throw std::runtime_error("Unsupported layer thickness: " + std::to_string(thicknessLayers));
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported layer thickness: " + std::to_string(thicknessLayers));
         }
 
         std::string standardString = " " + to_string(standard);
@@ -797,11 +798,11 @@ namespace OpenMagnetics {
     double Wire::get_outer_diameter_round(double conductingDiameter, int numberLayers, double thicknessLayers, WireStandard standard) {
         auto wireType = WireType::ROUND;
         if (numberLayers == 0 || numberLayers > 3) {
-            throw std::runtime_error("Unsupported number of layers");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported number of layers");
         }
 
         if (thicknessLayers != 5.08e-05 && thicknessLayers != 7.62e-05 && thicknessLayers != 3.81e-05 && thicknessLayers != 2.54e-05 && thicknessLayers != 1.27e-04) {
-            throw std::runtime_error("Unsupported layer thickness: " + std::to_string(thicknessLayers));
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported layer thickness: " + std::to_string(thicknessLayers));
         }
 
         std::string standardString = " " + to_string(standard);
@@ -1004,7 +1005,7 @@ namespace OpenMagnetics {
                         return get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue), coating->get_grade().value(), standard);
                     }
                     else {
-                        throw std::runtime_error("Unsupported coating in RECTANGULAR");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported coating in RECTANGULAR");
                     }
                 }
                 else {
@@ -1015,7 +1016,7 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                 return resolve_dimensional_values(wire.get_conducting_height().value(), preferredValue);
             default:
-                throw std::runtime_error("Cannot calculate outer width for ROUND or LITZ");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Cannot calculate outer height for ROUND or LITZ");
         }
     }
 
@@ -1039,7 +1040,7 @@ namespace OpenMagnetics {
                         return get_outer_width_rectangular(resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue), coating->get_grade().value(), standard);
                     }
                     else {
-                        throw std::runtime_error("Unsupported coating in RECTANGULAR");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported coating in RECTANGULAR");
                     }
                 }
                 else {
@@ -1050,7 +1051,7 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                 return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
             default:
-                throw std::runtime_error("Cannot calculate outer width for ROUND or LITZ");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Cannot calculate outer width for ROUND or LITZ");
         }
     }
 
@@ -1080,7 +1081,7 @@ namespace OpenMagnetics {
                         return get_outer_diameter_insulated_litz(resolve_dimensional_values(strand.get_conducting_diameter(), preferredValue), numberConductors, coating->get_number_layers().value(), coating->get_thickness_layers().value(), strandCoating->get_grade().value(), standard);
                     }
                     else {
-                        throw std::runtime_error("Unsupported coating in LITZ");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported coating in LITZ");
                     }
                 }
                 else {
@@ -1104,7 +1105,7 @@ namespace OpenMagnetics {
                         return get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value(), preferredValue), coating->get_number_layers().value(), coating->get_thickness_layers().value(), standard);
                     }
                     else {
-                        throw std::runtime_error("Unsupported coating in ROUND");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unsupported coating in ROUND");
                     }
                 }
                 else  {
@@ -1112,7 +1113,7 @@ namespace OpenMagnetics {
                 }
             }
             default:
-                throw std::runtime_error("Cannot calculate outer diameter for RECTANGULAR, FOIL, PLANAR");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Cannot calculate outer diameter for RECTANGULAR, FOIL, PLANAR");
         }
     }
 
@@ -1123,7 +1124,7 @@ namespace OpenMagnetics {
     double Wire::calculate_conducting_area() {
         if (!get_number_conductors()) {
             if (get_type() == WireType::LITZ) {
-                throw std::runtime_error("Missing number of conductors for wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of conductors for wire");
             }
             else {
                 set_number_conductors(1);
@@ -1139,7 +1140,7 @@ namespace OpenMagnetics {
             case WireType::ROUND:
                 {
                     if (!get_conducting_diameter()) {
-                        throw std::runtime_error("Missing conducting diameter in round wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting diameter in round wire");
                     }
                     auto conductingDiameter = resolve_dimensional_values(get_conducting_diameter().value());
                     return std::numbers::pi * pow(conductingDiameter / 2, 2) * get_number_conductors().value();
@@ -1147,10 +1148,10 @@ namespace OpenMagnetics {
             case WireType::RECTANGULAR:
                 {
                     if (!get_conducting_width()) {
-                        throw std::runtime_error("Missing conducting width in rectangular wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in rectangular wire");
                     }
                     if (!get_conducting_height()) {
-                        throw std::runtime_error("Missing conducting height in rectangular wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in rectangular wire");
                     }
                     auto conductingWidth = resolve_dimensional_values(get_conducting_width().value());
                     auto conductingHeight = resolve_dimensional_values(get_conducting_height().value());
@@ -1159,10 +1160,10 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                 {
                     if (!get_conducting_width()) {
-                        throw std::runtime_error("Missing conducting width in foil wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in foil wire");
                     }
                     if (!get_conducting_height()) {
-                        throw std::runtime_error("Missing conducting height in foil wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in foil wire");
                     }
                     auto conductingWidth = resolve_dimensional_values(get_conducting_width().value());
                     auto conductingHeight = resolve_dimensional_values(get_conducting_height().value()) * get_number_conductors().value();
@@ -1171,24 +1172,24 @@ namespace OpenMagnetics {
             case WireType::PLANAR:
                 {
                     if (!get_conducting_width()) {
-                        throw std::runtime_error("Missing conducting width in planar wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in planar wire");
                     }
                     if (!get_conducting_height()) {
-                        throw std::runtime_error("Missing conducting height in planar wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in planar wire");
                     }
                     auto conductingWidth = resolve_dimensional_values(get_conducting_width().value());
                     auto conductingHeight = resolve_dimensional_values(get_conducting_height().value()) * get_number_conductors().value();
                     return conductingWidth * conductingHeight;
                 }
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
     }
 
     double Wire::calculate_outer_area() {
         if (!get_number_conductors()) {
             if (get_type() == WireType::LITZ) {
-                throw std::runtime_error("Missing number of conductors for wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of conductors for wire");
             }
             else {
                 set_number_conductors(1);
@@ -1204,7 +1205,7 @@ namespace OpenMagnetics {
             case WireType::ROUND:
                 {
                     if (!get_outer_diameter()) {
-                        throw std::runtime_error("Missing outer diameter in round wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing outer diameter in round wire");
                     }
                     auto outerDiameter = resolve_dimensional_values(get_outer_diameter().value());
                     return std::numbers::pi * pow(outerDiameter / 2, 2) * get_number_conductors().value();
@@ -1212,10 +1213,10 @@ namespace OpenMagnetics {
             case WireType::RECTANGULAR:
                 {
                     if (!get_outer_width()) {
-                        throw std::runtime_error("Missing outer width in rectangular wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing outer width in rectangular wire");
                     }
                     if (!get_outer_height()) {
-                        throw std::runtime_error("Missing outer height in rectangular wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing outer height in rectangular wire");
                     }
                     auto outerWidth = resolve_dimensional_values(get_outer_width().value());
                     auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
@@ -1224,10 +1225,10 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                 {
                     if (!get_outer_width()) {
-                        throw std::runtime_error("Missing outer width in foil wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing outer width in foil wire");
                     }
                     if (!get_outer_height()) {
-                        throw std::runtime_error("Missing outer height in foil wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing outer height in foil wire");
                     }
                     auto outerWidth = resolve_dimensional_values(get_outer_width().value());
                     auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
@@ -1236,35 +1237,35 @@ namespace OpenMagnetics {
             case WireType::PLANAR:
                 {
                     if (!get_outer_width()) {
-                        throw std::runtime_error("Missing outer width in planar wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing outer width in planar wire");
                     }
                     if (!get_outer_height()) {
-                        throw std::runtime_error("Missing outer height in planar wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing outer height in planar wire");
                     }
                     auto outerWidth = resolve_dimensional_values(get_outer_width().value());
                     auto outerHeight = resolve_dimensional_values(get_outer_height().value()) * get_number_conductors().value();
                     return outerWidth * outerHeight;
                 }
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
     }
 
     std::vector<std::vector<double>> Wire::calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints) {
         auto material = resolve_material();
         if (!current.get_processed()) {
-            throw std::runtime_error("Current is not processed");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is not processed");
         }
 
         if (!current.get_processed()->get_rms()) {
-            throw std::runtime_error("Current is missing RMS");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is missing RMS");
         }
         auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth(material, frequency, temperature);
         std::complex<double> waveNumber(1, -1);
         waveNumber /= skinDepth;
 
         if (get_type() == WireType::LITZ) {
-            throw std::runtime_error("For LITZ use ROUND in the strands");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "For LITZ use ROUND in the strands");
         }
         if (get_type() == WireType::ROUND) {
             std::vector<double> distributionRadial;
@@ -1298,26 +1299,26 @@ namespace OpenMagnetics {
             return {distributionHorizontal, distributionVertical};
         }
         else {
-            throw std::runtime_error("Unknonw wire type");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown wire type");
         }
     }
 
     double Wire::calculate_effective_current_density(OperatingPointExcitation excitation, double temperature) {
         if (!excitation.get_current()) {
-            throw std::runtime_error("Current is missing");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is missing");
         }
         return calculate_effective_current_density(excitation.get_current().value(), temperature);
     }
 
     double Wire::calculate_effective_current_density(SignalDescriptor current, double temperature) {
         if (!current.get_processed()) {
-            throw std::runtime_error("Current is not processed");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is not processed");
         }
         if (!current.get_processed()->get_effective_frequency()) {
-            throw std::runtime_error("Current is missing effective frequency");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is missing effective frequency");
         }
         if (!current.get_processed()->get_rms()) {
-            throw std::runtime_error("Current is missing RMS");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is missing RMS");
         }
         double effectiveFrequency = current.get_processed()->get_effective_frequency().value();
         double rms = current.get_processed()->get_rms().value();
@@ -1326,17 +1327,17 @@ namespace OpenMagnetics {
 
     double Wire::calculate_dc_current_density(OperatingPointExcitation excitation) {
         if (!excitation.get_current()) {
-            throw std::runtime_error("Current is missing");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is missing");
         }
         return calculate_dc_current_density(excitation.get_current().value());
     }
 
     double Wire::calculate_dc_current_density(SignalDescriptor current) {
         if (!current.get_processed()) {
-            throw std::runtime_error("Current is not processed");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is not processed");
         }
         if (!current.get_processed()->get_rms()) {
-            throw std::runtime_error("Current is missing RMS");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Current is missing RMS");
         }
         double rms = current.get_processed()->get_rms().value();
         return calculate_effective_current_density(rms, 0, defaults.ambientTemperature);
@@ -1356,7 +1357,7 @@ namespace OpenMagnetics {
             case WireType::ROUND: 
                 {
                     if (!get_conducting_diameter()) {
-                        throw std::runtime_error("Missing conducting diameter in round wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting diameter in round wire");
                     }
                     conductingSmallestDimension = resolve_dimensional_values(get_conducting_diameter().value());
                     break;
@@ -1366,16 +1367,16 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                 {
                     if (!get_conducting_width()) {
-                        throw std::runtime_error("Missing conducting width in foil wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in foil wire");
                     }
                     if (!get_conducting_height()) {
-                        throw std::runtime_error("Missing conducting height in foil wire");
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in foil wire");
                     }
                     conductingSmallestDimension = std::min(resolve_dimensional_values(get_conducting_width().value()), resolve_dimensional_values(get_conducting_height().value()));
                     break;
                 }
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
 
         auto conductingArea = calculate_conducting_area();
@@ -1414,7 +1415,7 @@ namespace OpenMagnetics {
                         break;
                     }
                 default:
-                    throw std::runtime_error("Unknow type of wire");
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
             }
 
             effectiveConductingArea = conductingArea - nonConductingArea;
@@ -1424,7 +1425,7 @@ namespace OpenMagnetics {
         }
 
         if (effectiveConductingArea < 0) {
-            throw std::runtime_error("effectiveConductingArea cannot be negative: " + std::to_string(conductingArea) + ", " + std::to_string(nonConductingArea));
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "effectiveConductingArea cannot be negative: " + std::to_string(conductingArea) + ", " + std::to_string(nonConductingArea));
         }
 
         return effectiveConductingArea;
@@ -1480,7 +1481,7 @@ namespace OpenMagnetics {
                 else 
                     return resolve_dimensional_values(get_conducting_width().value());
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
     }
 
@@ -1502,7 +1503,7 @@ namespace OpenMagnetics {
                 else
                     return 0;
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
     }
 
@@ -1525,7 +1526,7 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                 return resolve_dimensional_values(get_conducting_width().value());
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
     }
 
@@ -1543,7 +1544,7 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                 return resolve_dimensional_values(get_conducting_height().value());
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
     }
 
@@ -1562,13 +1563,13 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                     return resolve_dimensional_values(get_conducting_width().value());
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
     }
 
     void Wire::cut_foil_wire_to_section(Section section) {
         if (get_type() != WireType::FOIL) {
-            throw std::runtime_error("Method only valid for Foil wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Method only valid for Foil wire");
         }
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_maximum(section.get_dimensions()[1] * (1 - constants.foilToSectionMargin));
@@ -1579,7 +1580,7 @@ namespace OpenMagnetics {
 
     void Wire::cut_planar_wire_to_section(Section section) {
         if (get_type() != WireType::PLANAR) {
-            throw std::runtime_error("Method only valid for Planar wire");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Method only valid for Planar wire");
         }
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_maximum(section.get_dimensions()[0] * (1 - constants.planarToSectionMargin));
@@ -1675,7 +1676,7 @@ namespace OpenMagnetics {
     double Wire::get_coating_relative_permittivity(Wire wire) {
         auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
         if (!coatingInsulationMaterial.get_relative_permittivity())
-            throw std::runtime_error("Coating insulation material is missing dielectric constant");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Coating insulation material is missing dielectric constant");
         return coatingInsulationMaterial.get_relative_permittivity().value();
     }
 
@@ -1687,7 +1688,7 @@ namespace OpenMagnetics {
         auto coating = resolve_coating(wire);
 
         if (!coating) {
-            throw std::runtime_error("Wire has no coating");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire has no coating");
         }
 
         return resolve_coating_insulation_material(coating.value());
@@ -1696,7 +1697,7 @@ namespace OpenMagnetics {
     InsulationMaterial Wire::resolve_coating_insulation_material(WireRound wire) {
         auto coating = resolve_coating(wire);
         if (!coating) {
-            throw std::runtime_error("Wire has no coating");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire has no coating");
         }
 
         return resolve_coating_insulation_material(coating.value());
@@ -1709,7 +1710,7 @@ namespace OpenMagnetics {
                 coating.set_material(defaults.defaultEnamelledInsulationMaterial);
             }
             else {
-                throw std::runtime_error("Coating is missing material information");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Coating is missing material information");
             }
         }
 
@@ -2005,10 +2006,10 @@ namespace OpenMagnetics {
                     }
                     else if (newCoating.get_type() == InsulationWireCoatingType::INSULATED) {
                         if (!newCoating.get_number_layers()) {
-                            throw std::runtime_error("Missing number of layer in insulated wire coating");
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of layer in insulated wire coating");
                         }
                         if (!newCoating.get_thickness_layers()) {
-                            throw std::runtime_error("Missing layer thickness in insulated wire coating");
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing layer thickness in insulated wire coating");
                         }
                         double outerDiameter = get_outer_diameter_insulated_litz(strandConductingDiameter, numberConductors, newCoating.get_number_layers().value(), newCoating.get_thickness_layers().value(), 1, standard);
                         newWire.set_nominal_value_outer_diameter(outerDiameter);
@@ -2035,7 +2036,7 @@ namespace OpenMagnetics {
                             conductingDiameter = oldWire.get_minimum_conducting_dimension();
                             break;
                         default:
-                            throw std::runtime_error("Unknown wire type");
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown wire type");
                     }
                     auto newWire = find_wire_by_dimension(conductingDiameter, WireType::ROUND, standard);
                     auto oldCoating = oldWire.resolve_coating();
@@ -2062,7 +2063,7 @@ namespace OpenMagnetics {
                             conductingHeight = oldWire.get_minimum_conducting_dimension();
                             break;
                         default:
-                            throw std::runtime_error("Unknown wire type");
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown wire type");
                     }
                     auto newWire = find_wire_by_dimension(conductingHeight, WireType::PLANAR);
 
@@ -2091,7 +2092,7 @@ namespace OpenMagnetics {
                             conductingHeight = oldWire.get_minimum_conducting_dimension();
                             break;
                         default:
-                            throw std::runtime_error("Unknown wire type");
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown wire type");
                     }
                     auto newWire = find_wire_by_dimension(conductingHeight, WireType::RECTANGULAR);
 
@@ -2136,7 +2137,7 @@ namespace OpenMagnetics {
                             conductingWidth = oldWire.get_minimum_conducting_dimension();
                             break;
                         default:
-                            throw std::runtime_error("Unknown wire type");
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown wire type");
                     }
                     auto newWire = find_wire_by_dimension(conductingWidth, WireType::FOIL);
 
@@ -2147,7 +2148,7 @@ namespace OpenMagnetics {
                     return newWire;
                 }
             default:
-                throw std::runtime_error("Unknow type of wire");
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
     }
 
@@ -2166,7 +2167,7 @@ void Wire::set_bare_coating() {
 Wire Wire::create_quick_litz_wire(double conductingDiameter, int64_t numberStrands) {
     OpenMagnetics::Wire wire;
 
-    auto strand = convert_from_wire_to_strand(find_wire_by_dimension(conductingDiameter, WireType::ROUND));
+    auto strand = convert_from_wire_to_strand(find_wire_by_dimension(conductingDiameter, WireType::ROUND, std::nullopt, false));
 
     InsulationWireCoating coating;
     coating.set_type(InsulationWireCoatingType::SERVED);

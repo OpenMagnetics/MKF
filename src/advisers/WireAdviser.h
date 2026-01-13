@@ -41,7 +41,7 @@ class WireAdviser {
         std::string _log;
     public:
 
-        WireAdviser(double maximumEffectiveCurrentDensity, double maximumNumberParallels) {
+        WireAdviser(double maximumEffectiveCurrentDensity, int maximumNumberParallels) {
             _maximumEffectiveCurrentDensity = maximumEffectiveCurrentDensity;
             _maximumNumberParallels = maximumNumberParallels;
         }

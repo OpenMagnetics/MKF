@@ -2,7 +2,8 @@
 #include "support/Utils.h"
 #include "constructive_models/Core.h"
 
-#include <UnitTest++.h>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -13,10 +14,10 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(Resistivity) {
+namespace {
     double maximumError = 0.05;
 
-    TEST(Test_Core_Material_Resistivity_1_Point) {
+    TEST_CASE("Test_Core_Material_Resistivity_1_Point", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_core_material_by_name("3C97");
         double temperature = 42;
 
@@ -24,11 +25,10 @@ SUITE(Resistivity) {
 
         double expectedResistivity = 5;
         auto resistivity = (*resistivityModel).get_resistivity(materialData, temperature);
-        CHECK_CLOSE(resistivity, expectedResistivity, expectedResistivity * maximumError);
-
+        REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST(Test_Core_Material_Resistivity_Several_Points) {
+    TEST_CASE("Test_Core_Material_Resistivity_Several_Points", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_core_material_by_name("3C94");
         double temperature = 42;
 
@@ -36,10 +36,10 @@ SUITE(Resistivity) {
 
         double expectedResistivity = 2.3;
         auto resistivity = (*resistivityModel).get_resistivity(materialData, temperature);
-        CHECK_CLOSE(resistivity, expectedResistivity, expectedResistivity * maximumError);
+        REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST(Test_Wire_Material_Resistivity_Copper_20) {
+    TEST_CASE("Test_Wire_Material_Resistivity_Copper_20", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_wire_material_by_name("copper");
         double temperature = 20;
 
@@ -47,10 +47,10 @@ SUITE(Resistivity) {
 
         double expectedResistivity = 0.00000001678;
         auto resistivity = (*resistivityModel).get_resistivity(materialData, temperature);
-        CHECK_CLOSE(resistivity, expectedResistivity, expectedResistivity * maximumError);
+        REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST(Test_Wire_Material_Resistivity_Copper_200) {
+    TEST_CASE("Test_Wire_Material_Resistivity_Copper_200", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_wire_material_by_name("copper");
         double temperature = 200;
 
@@ -58,10 +58,10 @@ SUITE(Resistivity) {
 
         double expectedResistivity = 2.9e-08;
         auto resistivity = (*resistivityModel).get_resistivity(materialData, temperature);
-        CHECK_CLOSE(resistivity, expectedResistivity, expectedResistivity * maximumError);
+        REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST(Test_Wire_Material_Resistivity_Aluminium_20) {
+    TEST_CASE("Test_Wire_Material_Resistivity_Aluminium_20", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_wire_material_by_name("aluminium");
         double temperature = 20;
 
@@ -69,10 +69,10 @@ SUITE(Resistivity) {
 
         double expectedResistivity = 0.0000000265;
         auto resistivity = (*resistivityModel).get_resistivity(materialData, temperature);
-        CHECK_CLOSE(resistivity, expectedResistivity, expectedResistivity * maximumError);
+        REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
 
-    TEST(Test_Wire_Material_Resistivity_Aluminium_200) {
+    TEST_CASE("Test_Wire_Material_Resistivity_Aluminium_200", "[physical-model][resistivity][smoke-test]") {
         auto materialData = find_wire_material_by_name("aluminium");
         double temperature = 200;
 
@@ -80,6 +80,7 @@ SUITE(Resistivity) {
 
         double expectedResistivity = 4.69e-08;
         auto resistivity = (*resistivityModel).get_resistivity(materialData, temperature);
-        CHECK_CLOSE(resistivity, expectedResistivity, expectedResistivity * maximumError);
+        REQUIRE_THAT(resistivity, Catch::Matchers::WithinAbs(expectedResistivity, expectedResistivity * maximumError));
     }
-}
+
+}  // namespace

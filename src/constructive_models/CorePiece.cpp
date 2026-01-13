@@ -11,6 +11,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "support/Exceptions.h"
 
 using json = nlohmann::json;
 
@@ -25,7 +26,7 @@ void CorePiece::process() {
     auto [c1, c2, minimumArea] = get_shape_constants();
 
     if (c1 <= 0 || c2 <= 0 || minimumArea <= 0) {
-        throw std::runtime_error("Shape constants cannot be negative or 0");
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Shape constants cannot be negative or 0");
     }
 
     EffectiveParameters pieceEffectiveParameters;
@@ -1853,7 +1854,7 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
         return piece;
     }
     else
-        throw std::runtime_error("Unknown shape family: " + to_string(family) + ", available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown shape family: " + to_string(family) + ", available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
                                  "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T, C}");
 }
 

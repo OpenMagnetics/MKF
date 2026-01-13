@@ -11,19 +11,20 @@
 #include <thread>
 #include <filesystem>
 #include <set>
+#include "support/Exceptions.h"
 
 
 namespace OpenMagnetics {
 
 ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
-        throw std::runtime_error("Current is missing in excitation");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing in excitation");
     }
     for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
         if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
             auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
             if (!current.get_waveform()) {
-                throw std::runtime_error("Waveform is missing from current");
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from current");
             }
             auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
             auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
@@ -45,16 +46,16 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
-    bool includeFringing = settings->get_painter_include_fringing();
-    bool mirroringDimension = settings->get_painter_mirroring_dimension();
+    bool includeFringing = settings.get_painter_include_fringing();
+    bool mirroringDimension = settings.get_painter_mirroring_dimension();
 
-    size_t numberPointsX = settings->get_painter_number_points_x();
-    size_t numberPointsY = settings->get_painter_number_points_y();
+    size_t numberPointsX = settings.get_painter_number_points_x();
+    size_t numberPointsY = settings.get_painter_number_points_y();
     Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
 
     MagneticField magneticField;
-    settings->set_magnetic_field_include_fringing(includeFringing);
-    settings->set_magnetic_field_mirroring_dimension(mirroringDimension);
+    settings.set_magnetic_field_include_fringing(includeFringing);
+    settings.set_magnetic_field_mirroring_dimension(mirroringDimension);
     ComplexField field;
     {
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
@@ -84,13 +85,13 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
 
 Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
     if (!operatingPoint.get_excitations_per_winding()[0].get_voltage()) {
-        throw std::runtime_error("voltage is missing in excitation");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "voltage is missing in excitation");
     }
     for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
         if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_voltage()->get_harmonics()) {
             auto voltage = operatingPoint.get_excitations_per_winding()[windingIndex].get_voltage().value();
             if (!voltage.get_waveform()) {
-                throw std::runtime_error("Waveform is missing from voltage");
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from voltage");
             }
             auto sampledWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
             auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
@@ -112,19 +113,19 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
-    bool includeFringing = settings->get_painter_include_fringing();
-    bool mirroringDimension = settings->get_painter_mirroring_dimension();
+    bool includeFringing = settings.get_painter_include_fringing();
+    bool mirroringDimension = settings.get_painter_mirroring_dimension();
 
-    size_t numberPointsX = settings->get_painter_number_points_x();
-    size_t numberPointsY = settings->get_painter_number_points_y();
-    auto oldCoilMesherInsideTurnsFactor = settings->get_coil_mesher_inside_turns_factor();
-    settings->set_coil_mesher_inside_turns_factor(1.2);
+    size_t numberPointsX = settings.get_painter_number_points_x();
+    size_t numberPointsY = settings.get_painter_number_points_y();
+    auto oldCoilMesherInsideTurnsFactor = settings.get_coil_mesher_inside_turns_factor();
+    settings.set_coil_mesher_inside_turns_factor(1.2);
     Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false).first;
-    settings->set_coil_mesher_inside_turns_factor(oldCoilMesherInsideTurnsFactor);
+    settings.set_coil_mesher_inside_turns_factor(oldCoilMesherInsideTurnsFactor);
 
     StrayCapacitance strayCapacitance;
-    settings->set_magnetic_field_include_fringing(includeFringing);
-    settings->set_magnetic_field_mirroring_dimension(mirroringDimension);
+    settings.set_magnetic_field_include_fringing(includeFringing);
+    settings.set_magnetic_field_mirroring_dimension(mirroringDimension);
 
     auto [pixelXDimension, pixelYDimension] = Painter::get_pixel_dimensions(magnetic);
 
@@ -254,7 +255,6 @@ double Painter::get_pixel_proportion_between_turns(std::vector<double> firstTurn
                                              std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape,
                                              std::vector<double> pixelCoordinates, double dimension) {
     // auto factor = Defaults().overlappingFactorSurroundingTurns;
-    auto factor = 1;
     auto x1 = firstTurnCoordinates[0];
     auto y1 = firstTurnCoordinates[1];
     auto x2 = secondTurnCoordinates[0];
@@ -313,8 +313,8 @@ double Painter::get_pixel_proportion_between_turns(std::vector<double> firstTurn
 
 std::pair<double, double> Painter::get_pixel_dimensions(Magnetic magnetic) {
 
-    size_t numberPointsX = settings->get_painter_number_points_x();
-    size_t numberPointsY = settings->get_painter_number_points_y();
+    size_t numberPointsX = settings.get_painter_number_points_x();
+    size_t numberPointsY = settings.get_painter_number_points_y();
     double coreColumnHeight = magnetic.get_mutable_core().get_columns()[0].get_height();
     double coreWindingWindowWidth = magnetic.get_mutable_core().get_winding_window().get_width().value();
 

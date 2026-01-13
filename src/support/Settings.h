@@ -1,4 +1,5 @@
 #pragma once
+#include <source_location>
 #include "MAS.hpp"
 #include "Definitions.h"
 #include "Models.h"
@@ -9,11 +10,9 @@ namespace OpenMagnetics {
 
 class Settings
 {
-    protected:
+    private:
         Settings();
-
-        static Settings* settings_;
-        std::string selfFilePath = __FILE__;
+        std::string selfFilePath = std::source_location::current().file_name();
 
         bool _useToroidalCores = true;
         bool _useConcentricCores = true;
@@ -102,12 +101,16 @@ class Settings
         std::string _preferredCoreMaterialFerriteManufacturer = "Fair-Rite";
         std::string _preferredCoreMaterialPowderManufacturer = "Micrometals";
 
+        bool _coreCrossReferencerAllowDifferentCoreMaterialType = false;
+
     public:
         bool _debug = false;
         Settings(Settings &other) = delete;
         void operator=(const Settings &) = delete;
+        Settings(Settings &&other) = delete;
+        void operator=(Settings &&) = delete;
 
-        static Settings *GetInstance();
+        static Settings& GetInstance();
 
         void reset();
 
@@ -320,6 +323,9 @@ class Settings
 
         std::string get_preferred_core_material_powder_manufacturer() const;
         void set_preferred_core_material_powder_manufacturer(std::string value);
+
+        bool get_core_cross_referencer_allow_different_core_material_type() const;
+        void set_core_cross_referencer_allow_different_core_material_type(bool value);
 
 
     };

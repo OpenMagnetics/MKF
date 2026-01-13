@@ -13,6 +13,7 @@
 #include <streambuf>
 #include <vector>
 #include "spline.h"
+#include "support/Exceptions.h"
 
 using json = nlohmann::json;
 
