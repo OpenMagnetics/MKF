@@ -828,6 +828,7 @@ OpenMagnetics::Mas mas_loader(std::string path) {
         }
         catch (const std::exception &e)
         {
+            (void)e; // Suppress unused variable warning
             inputs = OpenMagnetics::Inputs(inputsJson, true);
         }
     }
@@ -935,8 +936,11 @@ std::pair<OpenMagnetics::Magnetic, OpenMagnetics::Inputs> prepare_painter_test(c
 
 OpenMagnetics::Coil prepare_coil_from_json(const std::string& coilJsonStr) {
     json coilJson = json::parse(coilJsonStr);
-    auto coilFunctionalDescription = std::vector<OpenMagnetics::Winding>(coilJson["functionalDescription"]);
-    
+    std::vector<OpenMagnetics::Winding> coilFunctionalDescription;
+    for (const auto& elem : coilJson["functionalDescription"]) {
+        coilFunctionalDescription.push_back(OpenMagnetics::Winding(elem));
+    }
+
     OpenMagnetics::Coil coil;
     
     if (coilJson.contains("_interleavingLevel")) {
