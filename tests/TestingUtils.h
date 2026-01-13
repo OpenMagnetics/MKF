@@ -144,7 +144,7 @@ struct PainterTestConfig {
     std::vector<int64_t> numberTurns = {23, 13};
     std::vector<int64_t> numberParallels = {2, 2};
     uint8_t interleavingLevel = 2;
-    int64_t numberStacks = 1;
+    int numberStacks = 1;
     double voltagePeakToPeak = 2000;
     std::string coreShape = "PQ 26/25";
     std::string coreMaterial = "3C97";
@@ -205,7 +205,7 @@ struct QuickMagneticConfig {
     std::string coreShapeName = "E 35";
     std::string coreMaterialName = "A07";
     std::vector<std::string> wireNames = {};  // If empty, uses "Round 2.00 - Grade 1" for each winding
-    int64_t numberStacks = 1;
+    int numberStacks = 1;
 };
 
 // Helper to create a quick Magnetic for testing

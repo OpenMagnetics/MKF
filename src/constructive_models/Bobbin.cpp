@@ -276,6 +276,7 @@ void load_interpolators() {
             }
             catch (const std::exception &e)
             {
+                (void)e; // Suppress unused variable warning
                 continue;
             }
         }
