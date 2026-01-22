@@ -183,7 +183,7 @@ namespace OpenMagnetics {
         for (auto forwardOperatingPoint : get_operating_points()) {
             for (size_t secondaryIndex = 0; secondaryIndex < forwardOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
                 double turnsRatio = maximumInputVoltage * dutyCycle / (forwardOperatingPoint.get_output_voltages()[secondaryIndex] + diodeVoltageDrop);
-                turnsRatios[secondaryIndex + 1] = std::max(turnsRatios[secondaryIndex], turnsRatio);
+                turnsRatios[secondaryIndex + 1] = std::max(turnsRatios[secondaryIndex + 1], turnsRatio);
             }
         }
 
