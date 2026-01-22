@@ -30,6 +30,17 @@ class Inputs : public MAS::Inputs {
             process(magnetizingInductance);
         }
     }
+    Inputs(std::vector<OperatingPoint> operatingPoints, DesignRequirements designRequirements, bool processWaveform = true, std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt) {
+        set_operating_points(operatingPoints);
+        set_design_requirements(designRequirements);
+        auto check_passed = check_integrity();
+        if (!check_passed.first) {
+            throw std::runtime_error("Missing inputs: " + check_passed.second);
+        }
+        if (processWaveform) {
+            process(magnetizingInductance);
+        }
+    }
     Inputs() = default;
     virtual ~Inputs() = default;
 
