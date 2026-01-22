@@ -10,6 +10,11 @@
 #include <magic_enum.hpp>
 #include <vector>
 #include <typeinfo>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace {  // Anonymous namespace to isolate test globals
 
@@ -114,7 +119,7 @@ namespace {  // Anonymous namespace to isolate test globals
     }
 
     double sinVoltage(double time) {
-        double angle = 2 * std::numbers::pi * time;
+        double angle = 2 * M_PI * time;
         return sin(angle);
     }
 

@@ -15,6 +15,11 @@
 #include <magic_enum.hpp>
 #include <typeinfo>
 #include <vector>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -585,7 +590,7 @@ namespace {
 
         double expectedInductanceValue = 215e-6;
         double currentPeakToPeak = 20;
-        double voltagePeakToPeak = 2 * std::numbers::pi * frequency * expectedInductanceValue * currentPeakToPeak;
+        double voltagePeakToPeak = 2 * M_PI * frequency * expectedInductanceValue * currentPeakToPeak;
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs, voltagePeakToPeak);

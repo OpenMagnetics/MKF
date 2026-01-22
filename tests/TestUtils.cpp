@@ -16,6 +16,11 @@
 #include <vector>
 using json = nlohmann::json;
 #include <typeinfo>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -77,8 +82,8 @@ namespace {
     }
 
     TEST_CASE("Test_Complete_Ellipitical_1_2", "[support][utils][smoke-test]") {
-        double calculatedValue = comp_ellint_1(std::sin(std::numbers::pi / 18 / 2));
-        double expectedValue = std::comp_ellint_1(std::sin(std::numbers::pi / 18 / 2));
+        double calculatedValue = comp_ellint_1(std::sin(M_PI / 18 / 2));
+        double expectedValue = std::comp_ellint_1(std::sin(M_PI / 18 / 2));
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
@@ -95,8 +100,8 @@ namespace {
     }
 
     TEST_CASE("Test_Complete_Ellipitical_2_2", "[support][utils][smoke-test]") {
-        double calculatedValue = comp_ellint_2(std::sin(std::numbers::pi / 18 / 2));
-        double expectedValue = std::comp_ellint_2(std::sin(std::numbers::pi / 18 / 2));
+        double calculatedValue = comp_ellint_2(std::sin(M_PI / 18 / 2));
+        double expectedValue = std::comp_ellint_2(std::sin(M_PI / 18 / 2));
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
