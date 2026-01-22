@@ -682,6 +682,24 @@ namespace {
         REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.00006, max_error * 0.00006));
     }
 
+    TEST_CASE("Test_Bug_Rectangular_To_Litz_Equivalent", "[constructive-model][wire][smoke-test][bug]") {
+        double effectiveFrequency = 1234981;
+        auto oldWire = OpenMagnetics::Wire(json::parse(R"({"coating": {"breakdownVoltage": 2700, "grade": 1, "type": "enamelled" }, "conductingArea": {"nominal": 0.0000059093742659124085 }, "conductingDiameter": {"nominal": 0.002743 }, "manufacturerInfo": {"name": "Nearson" }, "material": "copper", "name": "Round 9.5 - Single Build", "numberConductors": 1, "outerDiameter": {"nominal": 0.002789 }, "standard": "IEC 60317", "standardName": "9.5 AWG", "type": "rectangular", "conductingHeight": {"nominal": 0.001 }, "conductingWidth": {"nominal": 0.002 }, "outerHeight": {"nominal": 0.001085 }, "outerWidth": {"nominal": 0.002085 } })"));
+        auto newWire = OpenMagnetics::Wire::get_equivalent_wire(oldWire, WireType::LITZ, effectiveFrequency);
+
+        auto conductingDimension = resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto strand = newWire.resolve_strand();
+        json wireJson;
+        to_json(wireJson, newWire);
+        auto standardName = strand.get_standard_name().value();
+        auto numberConductors = newWire.get_number_conductors().value();
+        std::cout << "standardName: " << standardName << std::endl;
+        std::cout << "wireJson: " << wireJson << std::endl;
+        REQUIRE(newWire.get_type() == WireType::LITZ);
+        REQUIRE(numberConductors == 12);
+        REQUIRE_THAT(conductingDimension, Catch::Matchers::WithinAbs(0.00006, max_error * 0.00006));
+    }
+
     TEST_CASE("Test_Foil_To_Litz_Equivalent", "[constructive-model][wire][smoke-test]") {
         double effectiveFrequency = 1234981;
         auto oldWire = OpenMagnetics::Wire(find_wire_by_name("Foil 0.2"));
