@@ -17,6 +17,11 @@ using json = nlohmann::json;
 #include "TestingUtils.h"
 
 #include <typeinfo>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -1213,7 +1218,7 @@ TEST_CASE("Test_Magnetizing_Current_Sinusoidal_Processed", "[processor][inputs][
     OpenMagnetics::Inputs inputs(inputsJson);
     double max_error = 0.1;
 
-    double expectedValue = 100 / 2 / (2 * std::numbers::pi * 100000 * 100e-6);
+    double expectedValue = 100 / 2 / (2 * M_PI * 100000 * 100e-6);
 
     auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_peak().value(), Catch::Matchers::WithinAbs(expectedValue, max_error * expectedValue));
@@ -1247,7 +1252,7 @@ TEST_CASE("Test_Magnetizing_Current_Sinusoidal_Dc_Bias_Processed", "[processor][
     OpenMagnetics::Inputs inputs(inputsJson);
     double max_error = 0.1;
 
-    double expectedValue = 100 / 2 / (2 * std::numbers::pi * 100000 * 100e-6) + 42;
+    double expectedValue = 100 / 2 / (2 * M_PI * 100000 * 100e-6) + 42;
 
     auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_peak().value(), Catch::Matchers::WithinAbs(expectedValue, max_error * expectedValue));
@@ -1667,7 +1672,7 @@ TEST_CASE("Test_Sample_And_Compress_Sinusoidal", "[processor][inputs][smoke-test
     double offset = 0;
     size_t numberPointsSampledWaveforms = 69;
     for (size_t i = 0; i < numberPointsSampledWaveforms; ++i) {
-        double angle = i * 2 * std::numbers::pi / numberPointsSampledWaveforms;
+        double angle = i * 2 * M_PI / numberPointsSampledWaveforms;
         time.push_back(angle);
         data.push_back((sin(angle) * peakToPeak / 2) + offset);
     }
@@ -1816,7 +1821,7 @@ TEST_CASE("Test_Induced_Voltage_And_Magnetizing_Current_Sinusoidal", "[processor
     double max_error = 0.02;
     size_t numberPointsSampledWaveforms = 69;
     for (size_t i = 0; i < numberPointsSampledWaveforms; ++i) {
-        double angle = i * 2 * std::numbers::pi / numberPointsSampledWaveforms;
+        double angle = i * 2 * M_PI / numberPointsSampledWaveforms;
         time.push_back(i / frequency / (numberPointsSampledWaveforms - 1));
         data.push_back((sin(angle) * peakToPeak / 2) + offset);
     }
@@ -1873,7 +1878,7 @@ TEST_CASE("Test_Derivative_And_Integral_Sinusoidal", "[processor][inputs][smoke-
     double max_error = 0.01;
     size_t numberPointsSampledWaveforms = 69;
     for (size_t i = 0; i < numberPointsSampledWaveforms; ++i) {
-        double angle = i * 2 * std::numbers::pi / numberPointsSampledWaveforms;
+        double angle = i * 2 * M_PI / numberPointsSampledWaveforms;
         time.push_back(i * 1.0 / (numberPointsSampledWaveforms - 1));
         data.push_back((sin(angle) * peakToPeak / 2) + offset);
     }

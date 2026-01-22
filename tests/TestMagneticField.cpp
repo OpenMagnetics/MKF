@@ -10,6 +10,11 @@
 
 #include <fstream>
 #include <string>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -117,7 +122,7 @@ namespace {
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
-        double expectedValue = harmonicAmplitude / (2 * std::numbers::pi * maximumWidth / 2);
+        double expectedValue = harmonicAmplitude / (2 * M_PI * maximumWidth / 2);
 
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(field.get_data()[0].get_imaginary(), expectedValue * maximumError));
         REQUIRE_THAT(field.get_data()[0].get_real(), Catch::Matchers::WithinAbs(-field.get_data()[1].get_real(), expectedValue * maximumError));
@@ -221,7 +226,7 @@ namespace {
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
         double distanceCenterPoint = fieldPoint.get_point()[0] - turn_0.get_coordinates()[0];
-        double expectedValue = -2 * harmonicAmplitude / (2 * std::numbers::pi * distanceCenterPoint);
+        double expectedValue = -2 * harmonicAmplitude / (2 * M_PI * distanceCenterPoint);
         REQUIRE((expectedValue - field.get_data()[0].get_imaginary()) / expectedValue < maximumError);
         settings.reset();
     }
@@ -259,7 +264,7 @@ namespace {
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
         double distanceCenterPoint = fieldPoint.get_point()[0] - turn_0.get_coordinates()[0];
-        double expectedValue = -2 * harmonicAmplitude / (2 * std::numbers::pi * distanceCenterPoint);
+        double expectedValue = -2 * harmonicAmplitude / (2 * M_PI * distanceCenterPoint);
 
         REQUIRE((expectedValue - field.get_data()[0].get_real()) / expectedValue < maximumError);
         settings.reset();
@@ -387,7 +392,7 @@ namespace {
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
-        double expectedValue = harmonicAmplitude / (2 * std::numbers::pi * maximumWidth / 2);
+        double expectedValue = harmonicAmplitude / (2 * M_PI * maximumWidth / 2);
 
         REQUIRE_THAT(field.get_data()[4].get_real(), Catch::Matchers::WithinAbs(-field.get_data()[5].get_real(), expectedValue * maximumError));
         REQUIRE_THAT(field.get_data()[4].get_imaginary(), Catch::Matchers::WithinAbs(field.get_data()[5].get_imaginary(), expectedValue * maximumError));
@@ -476,7 +481,7 @@ namespace {
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
-        double expectedValue = harmonicAmplitude / (2 * std::numbers::pi * maximumWidth / 2);
+        double expectedValue = harmonicAmplitude / (2 * M_PI * maximumWidth / 2);
 
         REQUIRE_THAT(field.get_data()[4].get_real(), Catch::Matchers::WithinAbs(-field.get_data()[5].get_real(), expectedValue * maximumError));
         REQUIRE_THAT(field.get_data()[4].get_imaginary(), Catch::Matchers::WithinAbs(field.get_data()[5].get_imaginary(), expectedValue * maximumError));

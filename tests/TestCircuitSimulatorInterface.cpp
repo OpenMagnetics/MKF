@@ -66,7 +66,7 @@ TEST_CASE("Test_CircuitSimulatorExporter", "[processor][circuit-simulator-export
     jsimbaFile.append("./Test_CircuitSimulatorExporter.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -79,7 +79,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Ur", "[processor][circuit-si
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ur.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -92,7 +92,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json", "[processor][circuit-simul
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -105,7 +105,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core", "[processor]
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -118,7 +118,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Ep_Core", "[processor][circu
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ep_Core.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -146,7 +146,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Powder_Core", "[processor][circui
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Only_Magnetic.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string());
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -162,7 +162,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Bug_0_Gap_Length", "[processor][c
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_0_Length_Gap.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string());
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -285,12 +285,12 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Analytical",
 
     double errorAverage = 0;
     for (size_t index = 0; index < acResistanceVector.size(); ++index) {
-        double c[coefficientsPerWinding[0].size()];
+        std::vector<double> c(coefficientsPerWinding[0].size());
         for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
             c[coefficientIndex] = coefficientsPerWinding[0][coefficientIndex];
         }
         auto frequency = frequenciesVector[index];
-        double modeledAcResistance = CircuitSimulatorExporter::analytical_model(c, frequency);
+        double modeledAcResistance = CircuitSimulatorExporter::analytical_model(c.data(), frequency);
         double error = fabs(acResistanceVector[index] - modeledAcResistance) / acResistanceVector[index];
         errorAverage += error;
     }
@@ -337,12 +337,12 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder", "[p
 
     double errorAverage = 0;
     for (size_t index = 0; index < acResistanceVector.size(); ++index) {
-        double c[coefficientsPerWinding[0].size()];
+        std::vector<double> c(coefficientsPerWinding[0].size());
         for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
             c[coefficientIndex] = coefficientsPerWinding[0][coefficientIndex];
         }
         auto frequency = frequenciesVector[index];
-        double modeledAcResistance = CircuitSimulatorExporter::ladder_model(c, frequency, acResistanceVector[0]);
+        double modeledAcResistance = CircuitSimulatorExporter::ladder_model(c.data(), frequency, acResistanceVector[0]);
         double error = fabs(acResistanceVector[index] - modeledAcResistance) / acResistanceVector[index];
         errorAverage += error;
     }
@@ -377,12 +377,12 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder_Plana
 
     double errorAverage = 0;
     for (size_t index = 0; index < acResistanceVector.size(); ++index) {
-        double c[coefficientsPerWinding[0].size()];
+        std::vector<double> c(coefficientsPerWinding[0].size());
         for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
             c[coefficientIndex] = coefficientsPerWinding[0][coefficientIndex];
         }
         auto frequency = frequenciesVector[index];
-        double modeledAcResistance = CircuitSimulatorExporter::ladder_model(c, frequency, acResistanceVector[0]);
+        double modeledAcResistance = CircuitSimulatorExporter::ladder_model(c.data(), frequency, acResistanceVector[0]);
         double error = fabs(acResistanceVector[index] - modeledAcResistance) / acResistanceVector[index];
         errorAverage += error;
     }
@@ -441,12 +441,12 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
     std::vector<double> modeledCoreResistances;
     double errorAverage = 0;
     for (size_t index = 0; index < coreResistanceVector.size(); ++index) {
-        double c[coefficients.size()];
+        std::vector<double> c(coefficients.size());
         for (size_t coefficientIndex = 0; coefficientIndex < coefficients.size(); ++coefficientIndex) {
             c[coefficientIndex] = coefficients[coefficientIndex];
         }
         auto frequency = frequenciesVector[index];
-        double modeledCoreResistance = CircuitSimulatorExporter::core_ladder_model(c, frequency, coreResistanceVector[0]);
+        double modeledCoreResistance = CircuitSimulatorExporter::core_ladder_model(c.data(), frequency, coreResistanceVector[0]);
         modeledCoreResistances.push_back(modeledCoreResistance);
         double error = fabs(coreResistanceVector[index] - modeledCoreResistance) / coreResistanceVector[index];
         errorAverage += error;
