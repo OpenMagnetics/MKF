@@ -39,7 +39,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Only_Magnetic", "[processor][circ
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Only_Magnetic.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string());
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
