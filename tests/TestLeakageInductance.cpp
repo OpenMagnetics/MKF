@@ -530,10 +530,9 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
 }
 
 TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physical-model][leakage-inductance][planar][smoke-test]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "leakage_inductance_planar.json");
     OpenMagnetics::Mas mas;
-    OpenMagnetics::from_file(path, mas);
+    OpenMagnetics::from_file(path.string(), mas);
     auto magnetic = mas.get_magnetic();
 
     double frequency = 100000;
@@ -567,10 +566,9 @@ TEST_CASE("Calculate leakage inductance for a complex planar magnetic", "[physic
 TEST_CASE("Checks that increasing insulation between layers keeps leakage inductance consistent", "[physical-model][leakage-inductance][planar][bug][smoke-test]") {
     settings.set_leakage_inductance_grid_auto_scaling(true);
     settings.set_coil_maximum_layers_planar(60);
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_unstable_leakage.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_unstable_leakage.json");
     OpenMagnetics::Mas mas;
-    OpenMagnetics::from_file(path, mas);
+    OpenMagnetics::from_file(path.string(), mas);
     auto magnetic = mas.get_magnetic();
 
     double frequency = 100000;
@@ -616,10 +614,9 @@ TEST_CASE("Checks that increasing insulation between layers keeps leakage induct
 TEST_CASE("Benchmarks leakage inductance calculation in planar", "[physical-model][leakage-inductance][!benchmark]") {
     BENCHMARK_ADVANCED("measures computation time")(Catch::Benchmark::Chronometer meter) {
 
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/leakage_inductance_planar.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "leakage_inductance_planar.json");
         OpenMagnetics::Mas mas;
-        OpenMagnetics::from_file(path, mas);
+        OpenMagnetics::from_file(path.string(), mas);
         auto magnetic = mas.get_magnetic();
         double frequency = 100000;
 
@@ -628,8 +625,7 @@ TEST_CASE("Benchmarks leakage inductance calculation in planar", "[physical-mode
 }
 
 TEST_CASE("Calculate leakage inductance for a planar magnetic from the web", "[physical-model][leakage-inductance][planar][bug][smoke-test]") {
-    std::string file_path_631 = std::source_location::current().file_name();
-    auto json_path_631 = file_path_631.substr(0, file_path_631.rfind("/")).append("/testData/calculate_leakage_inductance_for_a_planar_magnetic_from_the_web_631.json");
+    auto json_path_631 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "calculate_leakage_inductance_for_a_planar_magnetic_from_the_web_631.json");
     std::ifstream json_file_631(json_path_631);
     OpenMagnetics::Magnetic magnetic(json::parse(json_file_631));
 
@@ -643,12 +639,10 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web", "[p
 }
 
 TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "[physical-model][leakage-inductance][planar][bug][smoke-test]") {
-    std::string file_path_643 = std::source_location::current().file_name();
-    auto json_path_643 = file_path_643.substr(0, file_path_643.rfind("/")).append("/testData/calculate_leakage_inductance_for_a_planar_magnetic_from_the_web_2_643.json");
+    auto json_path_643 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "calculate_leakage_inductance_for_a_planar_magnetic_from_the_web_2_643.json");
     std::ifstream json_file_643(json_path_643);
     OpenMagnetics::Magnetic magnetic(json::parse(json_file_643));
-    std::string file_path_644 = std::source_location::current().file_name();
-    auto json_path_644 = file_path_644.substr(0, file_path_644.rfind("/")).append("/testData/calculate_leakage_inductance_for_a_planar_magnetic_from_the_web_2_644.json");
+    auto json_path_644 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "calculate_leakage_inductance_for_a_planar_magnetic_from_the_web_2_644.json");
     std::ifstream json_file_644(json_path_644);
     OpenMagnetics::Inputs inputs(json::parse(json_file_644));
 
@@ -671,10 +665,9 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "
 
 
 TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physical-model][leakage-inductance][planar][smoke-test]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simplest_leakage_inductance_planar.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simplest_leakage_inductance_planar.json");
     OpenMagnetics::Mas mas;
-    OpenMagnetics::from_file(path, mas);
+    OpenMagnetics::from_file(path.string(), mas);
     auto magnetic = mas.get_magnetic();
 
     double frequency = 100000;
@@ -690,10 +683,9 @@ TEST_CASE("Calculate leakage inductance for a simple planar magnetic", "[physica
 
 
 TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 3", "[physical-model][leakage-inductance][planar][smoke-test]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/OM Oyang paper example.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "OM Oyang paper example.json");
     OpenMagnetics::Mas mas;
-    OpenMagnetics::from_file(path, mas);
+    OpenMagnetics::from_file(path.string(), mas);
     auto magnetic = mas.get_magnetic();
 
     double frequency = 100000;

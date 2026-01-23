@@ -1605,9 +1605,8 @@ void test_core_losses_magnet_verification_3C90(CoreLossesModels modelName,
 }
 
 std::vector<std::map<std::string, double>> load_sample_data_from_material(std::string material) {
-    std::string file_path = std::source_location::current().file_name();
-    auto sample_path = file_path.substr(0, file_path.rfind("/")).append("/testData/" + material + "_sample.csv");
-    // auto sample_path = file_path.substr(0, file_path.rfind("/")).append("/testData/" + material + "_database.csv");
+    auto sample_path = OpenMagneticsTesting::get_test_data_dir(std::source_location::current()) / (material + "_sample.csv");
+    // auto sample_path = OpenMagneticsTesting::get_test_data_dir(std::source_location::current()) / (material + "_database.csv");
 
     std::ifstream in(sample_path);
     std::vector<std::vector<double>> fields;
@@ -1670,10 +1669,9 @@ std::vector<std::map<std::string, double>> load_sample_data_from_material(std::s
 void export_test_result_for_material(std::vector<std::map<std::string, double>> tests,
                                      std::string material,
                                      CoreLossesModels modelName) {
-    std::string file_path = std::source_location::current().file_name();
     auto results_path =
-        file_path.substr(0, file_path.rfind("/"))
-            .append("/testData/" + std::string(magic_enum::enum_name(modelName)) + "_" + material + "_result.csv");
+        OpenMagneticsTesting::get_test_data_dir(std::source_location::current()) /
+            (std::string(magic_enum::enum_name(modelName)) + "_" + material + "_result.csv");
 
     std::vector<std::vector<double>> fields;
 
@@ -2560,8 +2558,7 @@ TEST_CASE("Test_A07", "[physical-model][core-losses]") {
 TEST_CASE("Test_Kool_Mu_Ultra_60", "[physical-model][core-losses]") {
     auto models = json::parse("{\"coreLosses\": \"PROPRIETARY\", \"gapReluctance\": \"BALAKRISHNAN\"}");
     auto core = Core(json::parse(R"({"distributorsInfo": null, "functionalDescription": {"coating": null, "gapping": [], "material": "Kool Mµ Ultra 60", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.07409 }, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.04529 }, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.035 } }, "family": "t", "familySubtype": null, "magneticCircuit": "closed", "name": "T 74/45/35", "type": "standard" }, "type": "toroidal" }, "geometricalDescription": [{"coordinates": [0, 0, 0 ], "dimensions": null, "insulationMaterial": null, "machining": null, "material": "Kool Mµ Ultra 60", "rotation": [1.5707963267948966, 1.5707963267948966, 0 ], "shape": {"aliases": [], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.07409 }, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.04529 }, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.035 } }, "family": "t", "familySubtype": null, "magneticCircuit": "closed", "name": "T 74/45/35", "type": "standard" }, "type": "toroidal" } ], "manufacturerInfo": null, "name": "Custom", "processedDescription": {"columns": [{"area": 0.000505, "coordinates": [0, 0, 0 ], "depth": 0.035, "height": 0.18752166549277474, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "central", "width": 0.014400000000000003 } ], "depth": 0.035, "effectiveParameters": {"effectiveArea": 0.0005040000000000001, "effectiveLength": 0.18752166549277471, "effectiveVolume": 0.00009451091940835846, "minimumArea": 0.0005040000000000001 }, "height": 0.07409, "width": 0.07409, "windingWindows": [{"angle": 360, "area": 0.0016109962249300476, "coordinates": [0.014400000000000003, 0 ], "height": null, "radialHeight": 0.022645, "sectionsAlignment": null, "sectionsOrientation": null, "shape": null, "width": null } ] } })"));
-    std::string file_path_2563 = std::source_location::current().file_name();
-    auto json_path_2563 = file_path_2563.substr(0, file_path_2563.rfind("/")).append("/testData/test_kool_mu_ultra_60_2563.json");
+    auto json_path_2563 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_kool_mu_ultra_60_2563.json");
     std::ifstream json_file_2563(json_path_2563);
     auto winding = OpenMagnetics::Coil(json::parse(json_file_2563));
     auto operatingPoint = OperatingPoint(json::parse(R"({"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42 }, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 160000, "current": {"waveform": {"ancillaryLabel": null, "data": [17, 23, 17 ], "numberPeriods": null, "time": [0, 0.000003125, 0.00000625 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 6, "offset": 20, "label": "Triangular", "acEffectiveFrequency": 177194.24466847413, "effectiveFrequency": 21546.00003771328, "peak": 22.999999999999996, "rms": 20.074896384383905, "thd": 0.1215148744070506 }, "harmonics": {"amplitudes": [20, 2.4321967474991535, 5.024121874684011e-15, 0.2706786341990403, 2.5974016302617224e-15, 0.09775809175532962, 1.0877860477097108e-15, 0.050117879547604785, 1.2646590730292293e-15, 0.030514174880169928, 1.2335641993359796e-15, 0.02059224626965136, 1.2258227940648128e-15, 0.01488719320430654, 1.0764607310101287e-15, 0.01130940060640756, 0, 0.008919979835758483, 8.037893783541347e-16, 0.007246308335735057, 6.662375164413096e-16, 0.006029438250552881, 3.604673414361124e-16, 0.005117850585055619, 7.839803760535096e-16, 0.004418100846423644, 5.774995880218828e-16, 0.0038700274711771683, 2.9615889645109984e-16, 0.003433484276999084, 6.420789804208699e-16, 0.003080858038900569, 0, 0.0027926582542716085, 2.6513173039668365e-16, 0.002554817862838714, 1.8973175313253087e-16, 0.002356986496943279, 2.9367933833466926e-16, 0.0021914202524357307, 1.0419804364661729e-16, 0.0020522412854556225, 2.851132450398795e-16, 0.00193493308907579, 1.2181177477487184e-16, 0.0018359897079305966, 3.267519833402137e-16, 0.001752667766520524, 0, 0.0016828085851076898, 1.3008589992456218e-16, 0.0016247089970805578, 2.5388602966284854e-16, 0.001577026635768735, 3.0923087296718467e-16, 0.001538710070787071, 3.76480653329104e-16, 0.0015089472098712697, 3.3868062731196647e-16, 0.0014871274225975659, 4.193885737201472e-16, 0.0014728142451529425, 3.9756613902672346e-16, 0.001465726515887944 ], "frequencies": [0, 160000, 320000, 480000, 640000, 800000, 960000, 1120000, 1280000, 1440000, 1600000, 1760000, 1920000, 2080000, 2240000, 2400000, 2560000, 2720000, 2880000, 3040000, 3200000, 3360000, 3520000, 3680000, 3840000, 4000000, 4160000, 4320000, 4480000, 4640000, 4800000, 4960000, 5120000, 5280000, 5440000, 5600000, 5760000, 5920000, 6080000, 6240000, 6400000, 6560000, 6720000, 6880000, 7040000, 7200000, 7360000, 7520000, 7680000, 7840000, 8000000, 8160000, 8320000, 8480000, 8640000, 8800000, 8960000, 9120000, 9280000, 9440000, 9600000, 9760000, 9920000, 10080000 ] } }, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-50, 50, 50, -50, -50 ], "numberPeriods": null, "time": [0, 0, 0.000003125, 0.000003125, 0.00000625 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "Rectangular", "acEffectiveFrequency": 946376.8576189425, "effectiveFrequency": 946319.072434482, "peak": 50, "rms": 50, "thd": 0.48331514845248497 }, "harmonics": {"amplitudes": [0.78125, 63.64919355013018, 1.5625, 21.18229569117569, 1.5625, 12.668415318245188, 1.5625, 9.004909382998164, 1.5625, 6.958128475647527, 1.5625, 5.646149502042871, 1.5625, 4.729755006746538, 1.5625, 4.050628933965765, 1.5625, 3.524943518639316, 1.5625, 3.104154363036517, 1.5625, 2.7581982345221827, 1.5625, 2.467457137437843, 1.5625, 2.2185795367095267, 1.5625, 2.0021587188071255, 1.5625, 1.8113717302085082, 1.5625, 1.6411450722498175, 1.5625, 1.487623666720196, 1.5625, 1.3478217691511587, 1.5625, 1.2193869682092893, 1.5625, 1.100436657601639, 1.5625, 0.9894422127774558, 1.5625, 0.8851453167661671, 1.5625, 0.7864964059364037, 1.5625, 0.6926086154544899, 1.5625, 0.60272275979863, 1.5625, 0.5161802771005264, 1.5625, 0.43240198459440116, 1.5625, 0.3508711083080249, 1.5625, 0.27111946896540395, 1.5625, 0.192715993963664, 1.5625, 0.11525692425384548, 1.5625, 0.03835722204524927 ], "frequencies": [0, 160000, 320000, 480000, 640000, 800000, 960000, 1120000, 1280000, 1440000, 1600000, 1760000, 1920000, 2080000, 2240000, 2400000, 2560000, 2720000, 2880000, 3040000, 3200000, 3360000, 3520000, 3680000, 3840000, 4000000, 4160000, 4320000, 4480000, 4640000, 4800000, 4960000, 5120000, 5280000, 5440000, 5600000, 5760000, 5920000, 6080000, 6240000, 6400000, 6560000, 6720000, 6880000, 7040000, 7200000, 7360000, 7520000, 7680000, 7840000, 8000000, 8160000, 8320000, 8480000, 8640000, 8800000, 8960000, 9120000, 9280000, 9440000, 9600000, 9760000, 9920000, 10080000 ] } } }, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5 ], "time": [0, 0.000005, 0.00001 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "Triangular" } }, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5 ], "time": [0, 0, 0.000005, 0.000005, 0.00001 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "Rectangular" } } } ] })"));
@@ -2589,8 +2586,7 @@ TEST_CASE("Test_Kool_Mu_Ultra_60", "[physical-model][core-losses]") {
 TEST_CASE("Test_NPF_26", "[physical-model][core-losses][smoke-test]") {
     auto models = json::parse("{\"coreLosses\": \"PROPRIETARY\", \"gapReluctance\": \"BALAKRISHNAN\"}");
     auto core = Core(json::parse(R"({"distributorsInfo": null, "functionalDescription": {"coating": null, "gapping": [], "material": "NPF 26", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.07409 }, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.04529 }, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.035 } }, "family": "t", "familySubtype": null, "magneticCircuit": "closed", "name": "T 74/45/35", "type": "standard" }, "type": "toroidal" }, "geometricalDescription": [{"coordinates": [0, 0, 0 ], "dimensions": null, "insulationMaterial": null, "machining": null, "material": "NPF 26", "rotation": [1.5707963267948966, 1.5707963267948966, 0 ], "shape": {"aliases": [], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.07409 }, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.04529 }, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.035 } }, "family": "t", "familySubtype": null, "magneticCircuit": "closed", "name": "T 74/45/35", "type": "standard" }, "type": "toroidal" } ], "manufacturerInfo": null, "name": "Custom", "processedDescription": {"columns": [{"area": 0.000505, "coordinates": [0, 0, 0 ], "depth": 0.035, "height": 0.18752166549277474, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "central", "width": 0.014400000000000003 } ], "depth": 0.035, "effectiveParameters": {"effectiveArea": 0.0005040000000000001, "effectiveLength": 0.18752166549277471, "effectiveVolume": 0.00009451091940835846, "minimumArea": 0.0005040000000000001 }, "height": 0.07409, "width": 0.07409, "windingWindows": [{"angle": 360, "area": 0.0016109962249300476, "coordinates": [0.014400000000000003, 0 ], "height": null, "radialHeight": 0.022645, "sectionsAlignment": null, "sectionsOrientation": null, "shape": null, "width": null } ] } })"));
-    std::string file_path_2589 = std::source_location::current().file_name();
-    auto json_path_2589 = file_path_2589.substr(0, file_path_2589.rfind("/")).append("/testData/test_npf_26_2589.json");
+    auto json_path_2589 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_npf_26_2589.json");
     std::ifstream json_file_2589(json_path_2589);
     auto winding = OpenMagnetics::Coil(json::parse(json_file_2589));
     auto operatingPoint = OperatingPoint(json::parse(R"({"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42 }, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 160000, "current": {"waveform": {"ancillaryLabel": null, "data": [17, 23, 17 ], "numberPeriods": null, "time": [0, 0.000003125, 0.00000625 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 6, "offset": 20, "label": "Triangular", "acEffectiveFrequency": 177194.24466847413, "effectiveFrequency": 21546.00003771328, "peak": 22.999999999999996, "rms": 20.074896384383905, "thd": 0.1215148744070506 }, "harmonics": {"amplitudes": [20, 2.4321967474991535, 5.024121874684011e-15, 0.2706786341990403, 2.5974016302617224e-15, 0.09775809175532962, 1.0877860477097108e-15, 0.050117879547604785, 1.2646590730292293e-15, 0.030514174880169928, 1.2335641993359796e-15, 0.02059224626965136, 1.2258227940648128e-15, 0.01488719320430654, 1.0764607310101287e-15, 0.01130940060640756, 0, 0.008919979835758483, 8.037893783541347e-16, 0.007246308335735057, 6.662375164413096e-16, 0.006029438250552881, 3.604673414361124e-16, 0.005117850585055619, 7.839803760535096e-16, 0.004418100846423644, 5.774995880218828e-16, 0.0038700274711771683, 2.9615889645109984e-16, 0.003433484276999084, 6.420789804208699e-16, 0.003080858038900569, 0, 0.0027926582542716085, 2.6513173039668365e-16, 0.002554817862838714, 1.8973175313253087e-16, 0.002356986496943279, 2.9367933833466926e-16, 0.0021914202524357307, 1.0419804364661729e-16, 0.0020522412854556225, 2.851132450398795e-16, 0.00193493308907579, 1.2181177477487184e-16, 0.0018359897079305966, 3.267519833402137e-16, 0.001752667766520524, 0, 0.0016828085851076898, 1.3008589992456218e-16, 0.0016247089970805578, 2.5388602966284854e-16, 0.001577026635768735, 3.0923087296718467e-16, 0.001538710070787071, 3.76480653329104e-16, 0.0015089472098712697, 3.3868062731196647e-16, 0.0014871274225975659, 4.193885737201472e-16, 0.0014728142451529425, 3.9756613902672346e-16, 0.001465726515887944 ], "frequencies": [0, 160000, 320000, 480000, 640000, 800000, 960000, 1120000, 1280000, 1440000, 1600000, 1760000, 1920000, 2080000, 2240000, 2400000, 2560000, 2720000, 2880000, 3040000, 3200000, 3360000, 3520000, 3680000, 3840000, 4000000, 4160000, 4320000, 4480000, 4640000, 4800000, 4960000, 5120000, 5280000, 5440000, 5600000, 5760000, 5920000, 6080000, 6240000, 6400000, 6560000, 6720000, 6880000, 7040000, 7200000, 7360000, 7520000, 7680000, 7840000, 8000000, 8160000, 8320000, 8480000, 8640000, 8800000, 8960000, 9120000, 9280000, 9440000, 9600000, 9760000, 9920000, 10080000 ] } }, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-50, 50, 50, -50, -50 ], "numberPeriods": null, "time": [0, 0, 0.000003125, 0.000003125, 0.00000625 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "Rectangular", "acEffectiveFrequency": 946376.8576189425, "effectiveFrequency": 946319.072434482, "peak": 50, "rms": 50, "thd": 0.48331514845248497 }, "harmonics": {"amplitudes": [0.78125, 63.64919355013018, 1.5625, 21.18229569117569, 1.5625, 12.668415318245188, 1.5625, 9.004909382998164, 1.5625, 6.958128475647527, 1.5625, 5.646149502042871, 1.5625, 4.729755006746538, 1.5625, 4.050628933965765, 1.5625, 3.524943518639316, 1.5625, 3.104154363036517, 1.5625, 2.7581982345221827, 1.5625, 2.467457137437843, 1.5625, 2.2185795367095267, 1.5625, 2.0021587188071255, 1.5625, 1.8113717302085082, 1.5625, 1.6411450722498175, 1.5625, 1.487623666720196, 1.5625, 1.3478217691511587, 1.5625, 1.2193869682092893, 1.5625, 1.100436657601639, 1.5625, 0.9894422127774558, 1.5625, 0.8851453167661671, 1.5625, 0.7864964059364037, 1.5625, 0.6926086154544899, 1.5625, 0.60272275979863, 1.5625, 0.5161802771005264, 1.5625, 0.43240198459440116, 1.5625, 0.3508711083080249, 1.5625, 0.27111946896540395, 1.5625, 0.192715993963664, 1.5625, 0.11525692425384548, 1.5625, 0.03835722204524927 ], "frequencies": [0, 160000, 320000, 480000, 640000, 800000, 960000, 1120000, 1280000, 1440000, 1600000, 1760000, 1920000, 2080000, 2240000, 2400000, 2560000, 2720000, 2880000, 3040000, 3200000, 3360000, 3520000, 3680000, 3840000, 4000000, 4160000, 4320000, 4480000, 4640000, 4800000, 4960000, 5120000, 5280000, 5440000, 5600000, 5760000, 5920000, 6080000, 6240000, 6400000, 6560000, 6720000, 6880000, 7040000, 7200000, 7360000, 7520000, 7680000, 7840000, 8000000, 8160000, 8320000, 8480000, 8640000, 8800000, 8960000, 9120000, 9280000, 9440000, 9600000, 9760000, 9920000, 10080000 ] } } }, {"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"data": [-5, 5, -5 ], "time": [0, 0.000005, 0.00001 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "Triangular" } }, "voltage": {"waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5 ], "time": [0, 0, 0.000005, 0.000005, 0.00001 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "Rectangular" } } } ] })"));
@@ -2615,9 +2611,8 @@ TEST_CASE("Test_NPF_26", "[physical-model][core-losses][smoke-test]") {
 }
 
 TEST_CASE("Test_Core_Losses_Rosano_Forward", "[physical-model][core-losses][smoke-test]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/forward.mas.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "forward.mas.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"STEINMETZ\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -2645,9 +2640,8 @@ TEST_CASE("Test_Core_Losses_Rosano_Forward", "[physical-model][core-losses][smok
 
 TEST_CASE("Test_Core_Losses_Simple_Forward", "[physical-model][core-losses]") {
     SKIP("Test needs investigation");
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simple_forward.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simple_forward.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"STEINMETZ\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -2675,9 +2669,8 @@ TEST_CASE("Test_Core_Losses_Simple_Forward", "[physical-model][core-losses]") {
 
 TEST_CASE("Test_Core_Losses_Simple_Flyback", "[physical-model][core-losses]") {
     SKIP("Test needs investigation");
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simple_flyback.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simple_flyback.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"STEINMETZ\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -2704,9 +2697,8 @@ TEST_CASE("Test_Core_Losses_Simple_Flyback", "[physical-model][core-losses]") {
 }
 
 TEST_CASE("Test_Core_Losses_Simple_Inductor", "[physical-model][core-losses][smoke-test]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simple_inductor.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simple_inductor.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"STEINMETZ\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -2727,10 +2719,9 @@ TEST_CASE("Test_Core_Losses_Simple_Inductor", "[physical-model][core-losses][smo
 }
 
 TEST_CASE("Test_Core_Losses_Hoganas", "[physical-model][core-losses]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/hoganas.json");
-    // auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/hoganas_no_50_Hz.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "hoganas.json");
+    // auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "hoganas_no_50_Hz.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"IGSE\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -2757,10 +2748,9 @@ TEST_CASE("Test_Core_Losses_Hoganas", "[physical-model][core-losses]") {
 
 TEST_CASE("Test_Core_Losses_Web_0", "[physical-model][core-losses][bug]") {
     SKIP("Test needs investigation");
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/no_losses_acme.json");
-    // auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/hoganas_no_50_Hz.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "no_losses_acme.json");
+    // auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "hoganas_no_50_Hz.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"lossFactor\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -2785,10 +2775,9 @@ TEST_CASE("Test_Core_Losses_Web_0", "[physical-model][core-losses][bug]") {
 }
 
 TEST_CASE("Test_MagnetizingInductanceModel_From_Excitation", "[physical-model][core-losses][smoke-test]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/no_losses_acme.json");
-    // auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/hoganas_no_50_Hz.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "no_losses_acme.json");
+    // auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "hoganas_no_50_Hz.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"lossFactor\", \"gapReluctance\": \"ZHANG\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -2847,9 +2836,8 @@ TEST_CASE("Test_Core_Losses_Nanoperm_8000", "[physical-model][core-losses][smoke
 }
 
 TEST_CASE("Test_Core_Losses_Web_1", "[physical-model][core-losses][bug][smoke-test]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/EQ41_solo3khz.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "EQ41_solo3khz.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"PROPRIETARY\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -2875,9 +2863,8 @@ TEST_CASE("Test_Core_Losses_Web_1", "[physical-model][core-losses][bug][smoke-te
 
 TEST_CASE("Test_Core_Losses_Web_2", "[physical-model][core-losses][bug]") {
     SKIP("Test needs investigation");
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/T61-41t-3s.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "T61-41t-3s.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto models = json::parse("{\"coreLosses\": \"PROPRIETARY\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
     auto core = mas.get_magnetic().get_core();
@@ -3372,8 +3359,7 @@ TEST_CASE("Calculate_Steinmetz_Coefficients", "[physical-model][core-losses]") {
     SKIP("Test needs investigation");
     load_core_materials();
 
-    std::string file_path = std::source_location::current().file_name();
-    auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/../MAS/data/advanced_core_materials.ndjson");
+    auto external_core_materials_path = std::filesystem::path(std::source_location::current().file_name()).parent_path() / ".." / "MAS" / "data" / "advanced_core_materials.ndjson";
 
     std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
     if(!file.is_open())

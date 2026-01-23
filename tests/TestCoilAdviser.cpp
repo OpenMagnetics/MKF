@@ -1961,8 +1961,7 @@ TEST_CASE("Test_CoilAdviser_Random_16", "[adviser][coil-adviser][bug][smoke-test
 }
 
 TEST_CASE("Test_CoilAdviser_Random_17", "[adviser][coil-adviser][bug][smoke-test]") {
-    std::string file_path_1964 = std::source_location::current().file_name();
-    auto json_path_1964 = file_path_1964.substr(0, file_path_1964.rfind("/")).append("/testData/test_coiladviser_random_17_1964.json");
+    auto json_path_1964 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_random_17_1964.json");
     std::ifstream json_file_1964(json_path_1964);
     OpenMagnetics::Mas mas(json::parse(json_file_1964));
 
@@ -2049,8 +2048,7 @@ TEST_CASE("Test_SectionsAdviser_Web_2", "[adviser][coil-adviser][bug][smoke-test
 }
 
 TEST_CASE("Test_CoilAdviser_Web_3", "[adviser][coil-adviser][bug][smoke-test]") {
-    std::string file_path_2049 = std::source_location::current().file_name();
-    auto json_path_2049 = file_path_2049.substr(0, file_path_2049.rfind("/")).append("/testData/test_coiladviser_web_3_2049.json");
+    auto json_path_2049 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_3_2049.json");
     std::ifstream json_file_2049(json_path_2049);
     OpenMagnetics::Mas mas(json::parse(json_file_2049));
 
@@ -2067,8 +2065,7 @@ TEST_CASE("Test_CoilAdviser_Web_3", "[adviser][coil-adviser][bug][smoke-test]") 
 }
 
 TEST_CASE("Test_CoilAdviser_Web_4", "[adviser][coil-adviser][bug][smoke-test]") {
-    std::string file_path_2064 = std::source_location::current().file_name();
-    auto json_path_2064 = file_path_2064.substr(0, file_path_2064.rfind("/")).append("/testData/test_coiladviser_web_4_2064.json");
+    auto json_path_2064 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_4_2064.json");
     std::ifstream json_file_2064(json_path_2064);
     OpenMagnetics::Mas mas(json::parse(json_file_2064));
 
@@ -2099,8 +2096,7 @@ TEST_CASE("Test_CoilAdviser_Web_4", "[adviser][coil-adviser][bug][smoke-test]") 
 }
 
 TEST_CASE("Test_CoilAdviser_Web_5", "[adviser][coil-adviser][bug][smoke-test]") {
-    std::string file_path_2093 = std::source_location::current().file_name();
-    auto json_path_2093 = file_path_2093.substr(0, file_path_2093.rfind("/")).append("/testData/test_coiladviser_web_5_2093.json");
+    auto json_path_2093 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_5_2093.json");
     std::ifstream json_file_2093(json_path_2093);
     OpenMagnetics::Mas mas(json::parse(json_file_2093));
 
@@ -2131,8 +2127,7 @@ TEST_CASE("Test_CoilAdviser_Web_5", "[adviser][coil-adviser][bug][smoke-test]") 
 }
 
 TEST_CASE("Test_CoilAdviser_Web_6", "[adviser][coil-adviser][bug][smoke-test]") {
-    std::string file_path_2122 = std::source_location::current().file_name();
-    auto json_path_2122 = file_path_2122.substr(0, file_path_2122.rfind("/")).append("/testData/test_coiladviser_web_6_2122.json");
+    auto json_path_2122 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_6_2122.json");
     std::ifstream json_file_2122(json_path_2122);
     OpenMagnetics::Mas mas(json::parse(json_file_2122));
 

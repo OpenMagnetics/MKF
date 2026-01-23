@@ -298,8 +298,7 @@ TEST_CASE("Benchmakrs stray capacitance calculation", "[physical-model][stray-ca
 TEST_CASE("Calculate capacitance of an automatic buck produced in OM with three layers", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
 
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/buck_inductor three layers.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "buck_inductor three layers.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
     auto magnetic = mas.get_magnetic();
@@ -335,8 +334,7 @@ TEST_CASE("Calculate capacitance of an automatic buck produced in OM with three 
 TEST_CASE("Calculate capacitance of an automatic buck produced in OM with two layers", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
 
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/buck_inductor two layers.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "buck_inductor two layers.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
     auto magnetic = mas.get_magnetic();
@@ -490,8 +488,7 @@ TEST_CASE("Calculate energy density between two turns", "[physical-model][stray-
 TEST_CASE("Calculate capacitance of a tranformers with low filling factor", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
 
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/low_filling_transformer.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "low_filling_transformer.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
     auto magnetic = mas.get_magnetic();
@@ -531,8 +528,7 @@ TEST_CASE("Calculate capacitance of a tranformers with low filling factor", "[ph
 TEST_CASE("Calculate capacitance of a one layer inductor", "[physical-model][stray-capacitance][smoke-test]") {
     settings.reset();
 
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/low_filling_inductor.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "low_filling_inductor.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
     auto magnetic = mas.get_magnetic();
@@ -569,8 +565,7 @@ TEST_CASE("Calculate capacitance of a one layer inductor", "[physical-model][str
 TEST_CASE("Calculate capacitance of a simple planar tranformer", "[physical-model][stray-capacitance][planar][smoke-test]") {
     settings.reset();
 
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simple_planar.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simple_planar.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
     auto magnetic = mas.get_magnetic();
@@ -609,8 +604,7 @@ TEST_CASE("Calculate capacitance of a simple planar tranformer", "[physical-mode
 TEST_CASE("Calculate capacitance of a simple planar tranformer with a turns ratio of 5", "[physical-model][stray-capacitance][planar][smoke-test]") {
     settings.reset();
 
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simple_planar_5_to_1.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simple_planar_5_to_1.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
     auto magnetic = mas.get_magnetic();
@@ -649,8 +643,7 @@ TEST_CASE("Calculate capacitance of a simple planar tranformer with a turns rati
 TEST_CASE("Calculate capacitance of a simple planar tranformer with imperfect overlapping", "[physical-model][stray-capacitance][planar][smoke-test]") {
     settings.reset();
 
-    std::string file_path = std::source_location::current().file_name();
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simple_planar_imperfect_overlapping.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simple_planar_imperfect_overlapping.json");
     OpenMagnetics::Mas mas;
     OpenMagnetics::from_file(path, mas);
     auto magnetic = mas.get_magnetic();
