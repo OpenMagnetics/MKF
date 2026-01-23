@@ -43,6 +43,12 @@ Key schema files in `MAS/schemas/`:
 │                         Application Layer                         │
 │  (Advisers: CoreAdviser, CoilAdviser, WireAdviser, etc.)         │
 ├─────────────────────────────────────────────────────────────────┤
+│                       Circuit Simulation                          │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────┐ │
+│  │NgspiceIntf.  │ │ CircuitSim   │ │  Converter Models        │ │
+│  │ (optional)   │ │   Exporter   │ │  (Flyback, Buck, etc.)   │ │
+│  └──────────────┘ └──────────────┘ └──────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────┤
 │                         Physical Models                           │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────┐ │
 │  │ CoreLosses   │ │ WindingLosses│ │ MagnetizingInductance    │ │
@@ -72,6 +78,22 @@ Key schema files in `MAS/schemas/`:
 ```
 
 ## Key Components
+
+### Circuit Simulation (`src/processors/`)
+
+The library includes optional ngspice integration for full circuit simulation:
+
+| Class | Purpose |
+|-------|---------|
+| `NgspiceInterface` | Direct in-memory ngspice simulation (optional, enable with `-DENABLE_NGSPICE=ON`) |
+| `CircuitSimulatorExporter` | Export magnetic models to SPICE format (ngspice, LTspice, SIMBA) |
+| `CircuitSimulationReader` | Import waveforms from circuit simulation results |
+
+The ngspice integration enables:
+- Simulating complete power converters with magnetic components
+- Extracting real waveforms for accurate loss calculations
+- Direct memory access to simulation results (no file I/O)
+- WASM compatibility for web-based applications
 
 ### Constructive Models (`src/constructive_models/`)
 

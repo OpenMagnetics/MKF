@@ -788,7 +788,7 @@ void check_winding_losses(OpenMagnetics::Mas mas) {
     }
 }
 
-OpenMagnetics::Mas mas_loader(std::string path) {
+OpenMagnetics::Mas mas_loader(const std::filesystem::path& path) {
     std::ifstream f(path);
     std::string data((std::istreambuf_iterator<char>(f)),
                      std::istreambuf_iterator<char>());

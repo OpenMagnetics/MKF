@@ -22,9 +22,8 @@ using json = nlohmann::json;
 namespace {
     TEST_CASE("Test_Expand_Magnetic", "[constructive-model][mas][smoke-test]") {
 
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/example_basic.json");
-        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "example_basic.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path.string());
 
         REQUIRE(!mas.get_magnetic().get_core().get_processed_description());
 

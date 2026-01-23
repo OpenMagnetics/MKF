@@ -64,8 +64,10 @@ option(BUILD_DEMO "Build demo (for dependencies)" OFF)
 option(HAVE_LAPACK "Use LAPACK" OFF)
 option(INCLUDE_PYMKF "Compile the Python interface" OFF)
 option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile high resolution maps for geoplots" OFF)
+option(ENABLE_NGSPICE "Enable ngspice integration for circuit simulation" OFF)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "ngspice integration: ${ENABLE_NGSPICE}")
 message(STATUS "Embedding MAS Data: ${EMBED_MAS_DATA}")
 message(STATUS "Embedding MAS Cores: ${EMBED_MAS_CORES}")
 message(STATUS "Embedding MAS CoreShapes: ${EMBED_MAS_CORE_SHAPES}")
@@ -134,6 +136,97 @@ FetchContent_Declare(rapidfuzz
   GIT_REPOSITORY https://github.com/rapidfuzz/rapidfuzz-cpp.git
   GIT_TAG main)
 FetchContent_MakeAvailable(rapidfuzz)
+
+# ============================================================================
+# ngspice - Circuit Simulator (optional)
+# ============================================================================
+if(ENABLE_NGSPICE)
+    message(STATUS "Configuring ngspice...")
+    
+    # ngspice can be built as a shared library with the sharedspice API
+    # We use ExternalProject for more control over the build process
+    include(ExternalProject)
+    
+    set(NGSPICE_VERSION "45.2")
+    set(NGSPICE_URL "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/${NGSPICE_VERSION}/ngspice-${NGSPICE_VERSION}.tar.gz/download")
+    set(NGSPICE_PREFIX "${CMAKE_BINARY_DIR}/_deps/ngspice")
+    set(NGSPICE_INSTALL_DIR "${NGSPICE_PREFIX}/install")
+    
+    # Configure options for ngspice shared library build
+    # Basic configuration - NO CIDER, NO XSPICE for minimal build
+    # Key options:
+    # --with-ngshared: Build as shared library with C API
+    # --disable-debug: Disable debug for performance
+    # --without-x: No X11 dependencies
+    
+    if(EMSCRIPTEN)
+        # Special configuration for WASM/Emscripten build
+        # Minimal build for web - no readline, no X11
+        set(NGSPICE_CONFIGURE_FLAGS
+            "--host=wasm32-unknown-emscripten"
+            "--with-ngshared"
+            "--disable-debug"
+            "--without-x"
+            "--disable-xspice"
+            "--disable-cider"
+            "--disable-openmp"
+            "--with-readline=no"
+            "CC=emcc"
+            "CFLAGS=-O2 -fPIC -DEMSCRIPTEN"
+        )
+        ExternalProject_Add(ngspice_external
+            URL ${NGSPICE_URL}
+            PREFIX ${NGSPICE_PREFIX}
+            CONFIGURE_COMMAND <SOURCE_DIR>/configure ${NGSPICE_CONFIGURE_FLAGS} --prefix=${NGSPICE_INSTALL_DIR}
+            BUILD_COMMAND emmake make -j${CMAKE_BUILD_PARALLEL_LEVEL}
+            INSTALL_COMMAND make install
+            BUILD_IN_SOURCE 0
+            BUILD_BYPRODUCTS ${NGSPICE_INSTALL_DIR}/lib/libngspice.a
+        )
+    else()
+        # Native build configuration - basic ngspice only
+        set(NGSPICE_CONFIGURE_FLAGS
+            "--with-ngshared"
+            "--disable-debug"
+            "--without-x"
+            "--disable-xspice"
+            "--disable-cider"
+            "--disable-openmp"
+            "CFLAGS=-O2 -fPIC"
+        )
+        ExternalProject_Add(ngspice_external
+            URL ${NGSPICE_URL}
+            PREFIX ${NGSPICE_PREFIX}
+            CONFIGURE_COMMAND <SOURCE_DIR>/configure ${NGSPICE_CONFIGURE_FLAGS} --prefix=${NGSPICE_INSTALL_DIR}
+            BUILD_COMMAND make -j${CMAKE_BUILD_PARALLEL_LEVEL}
+            INSTALL_COMMAND make install
+            BUILD_IN_SOURCE 0
+            BUILD_BYPRODUCTS ${NGSPICE_INSTALL_DIR}/lib/libngspice.so
+        )
+    endif()
+    
+    # Create imported target for ngspice
+    add_library(ngspice INTERFACE)
+    add_dependencies(ngspice ngspice_external)
+    
+    # Set include and library paths
+    target_include_directories(ngspice INTERFACE 
+        ${NGSPICE_INSTALL_DIR}/include
+        ${NGSPICE_INSTALL_DIR}/include/ngspice
+    )
+    
+    if(WIN32)
+        target_link_libraries(ngspice INTERFACE ${NGSPICE_INSTALL_DIR}/lib/ngspice.lib)
+    elseif(EMSCRIPTEN)
+        target_link_libraries(ngspice INTERFACE ${NGSPICE_INSTALL_DIR}/lib/libngspice.a)
+    else()
+        target_link_libraries(ngspice INTERFACE ${NGSPICE_INSTALL_DIR}/lib/libngspice.so)
+    endif()
+    
+    # Add compile definition
+    add_compile_definitions(ENABLE_NGSPICE)
+endif()
+
 
 # Testing framework - Catch2
 if(INCLUDE_MKF_TESTS)
@@ -289,6 +382,12 @@ target_link_libraries(MKF PUBLIC data::data)
 
 target_link_libraries(MKF PUBLIC matplot rapidfuzz::rapidfuzz)
 target_link_libraries(MKF PRIVATE nlohmann_json::nlohmann_json)
+
+# Link ngspice if enabled
+if(ENABLE_NGSPICE)
+    target_link_libraries(MKF PUBLIC ngspice)
+    add_dependencies(MKF ngspice_external)
+endif()
 
 target_include_directories(MKF PUBLIC
      "${PROJECT_SOURCE_DIR}/src/"

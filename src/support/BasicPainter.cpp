@@ -395,7 +395,9 @@ void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate
                 coatingColor = settings.get_painter_color_enamel();
                 break;
             default:
-                throw NotImplementedException("Coating type plot not implemented yet");
+                json insulationWireCoatingTypeJson;
+                to_json(insulationWireCoatingTypeJson, insulationWireCoatingType);
+                throw NotImplementedException("Coating type plot not implemented yet: " + to_string(insulationWireCoatingTypeJson));
         }
         strokeWidth = std::min(lineWidthIncrease / 10 / numberLines, lineHeightIncrease / 10 / numberLines);
     }
