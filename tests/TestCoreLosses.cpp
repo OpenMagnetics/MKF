@@ -3363,7 +3363,7 @@ TEST_CASE("Calculate_Steinmetz_Coefficients", "[physical-model][core-losses]") {
 
     std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
     if(!file.is_open())
-        throw std::runtime_error("Failed to open " + external_core_materials_path);
+        throw std::runtime_error("Failed to open " + external_core_materials_path.string());
     using Iterator = std::istreambuf_iterator<char>;
     std::string advanced_core_materials(Iterator{file}, Iterator{});
 
