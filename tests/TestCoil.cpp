@@ -177,8 +177,7 @@ TEST_CASE("Test_Coil_Json_4", "[constructive-model][coil][bug][smoke-test]") {
 }
 
 TEST_CASE("Test_Coil_Json_5", "[constructive-model][coil][bug][smoke-test]") {
-    std::string file_path_180 = std::source_location::current().file_name();
-    auto json_path_180 = file_path_180.substr(0, file_path_180.rfind("/")).append("/testData/test_coil_json_5_180.json");
+    auto json_path_180 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_json_5_180.json");
     std::ifstream json_file_180(json_path_180);
     std::string coilString((std::istreambuf_iterator<char>(json_file_180)), std::istreambuf_iterator<char>());
 
@@ -282,8 +281,7 @@ TEST_CASE("Test_Coil_Json_7", "[constructive-model][coil][bug][smoke-test]") {
 }
 
 TEST_CASE("Test_Coil_Json_8", "[constructive-model][coil][bug][smoke-test]") {
-    std::string file_path_282 = std::source_location::current().file_name();
-    auto json_path_282 = file_path_282.substr(0, file_path_282.rfind("/")).append("/testData/test_coil_json_8_282.json");
+    auto json_path_282 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_json_8_282.json");
     std::ifstream json_file_282(json_path_282);
     json coilJson = json::parse(json_file_282);
     OpenMagnetics::Coil coil(coilJson, false);
@@ -362,8 +360,7 @@ TEST_CASE("Test_Coil_Json_9", "[constructive-model][coil][bug][smoke-test]") {
 }
 
 TEST_CASE("Test_Coil_Json_10", "[constructive-model][coil][bug][smoke-test]") {
-    std::string file_path_359 = std::source_location::current().file_name();
-    auto json_path_359 = file_path_359.substr(0, file_path_359.rfind("/")).append("/testData/test_coil_json_10_359.json");
+    auto json_path_359 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_json_10_359.json");
     std::ifstream json_file_359(json_path_359);
     std::string coilString((std::istreambuf_iterator<char>(json_file_359)), std::istreambuf_iterator<char>());
     auto coilJson = json::parse(coilString);

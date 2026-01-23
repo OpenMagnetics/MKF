@@ -841,8 +841,7 @@ namespace {
     TEST_CASE("Test_MagneticAdviser_Web_0", "[adviser][magnetic-adviser][bug]") {
         settings.set_use_only_cores_in_stock(true);
 
-        std::string file_path_844 = std::source_location::current().file_name();
-        auto json_path_844 = file_path_844.substr(0, file_path_844.rfind("/")).append("/testData/test_magneticadviser_web_0_844.json");
+        auto json_path_844 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_magneticadviser_web_0_844.json");
         std::ifstream json_file_844(json_path_844);
         OpenMagnetics::Inputs inputs = json::parse(json_file_844);
 
@@ -906,8 +905,7 @@ namespace {
     TEST_CASE("Test_MagneticAdviser_Web_4", "[adviser][magnetic-adviser][bug]") {
         settings.set_use_only_cores_in_stock(true);
 
-        std::string file_path_906 = std::source_location::current().file_name();
-        auto json_path_906 = file_path_906.substr(0, file_path_906.rfind("/")).append("/testData/test_magneticadviser_web_4_906.json");
+        auto json_path_906 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_magneticadviser_web_4_906.json");
         std::ifstream json_file_906(json_path_906);
         OpenMagnetics::Inputs inputs = json::parse(json_file_906);
         MagneticAdviser MagneticAdviser;
@@ -925,8 +923,7 @@ namespace {
     TEST_CASE("Test_MagneticAdviser_Web_5", "[adviser][magnetic-adviser][bug]") {
         settings.set_use_only_cores_in_stock(true);
 
-        std::string file_path_922 = std::source_location::current().file_name();
-        auto json_path_922 = file_path_922.substr(0, file_path_922.rfind("/")).append("/testData/test_magneticadviser_web_5_922.json");
+        auto json_path_922 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_magneticadviser_web_5_922.json");
         std::ifstream json_file_922(json_path_922);
         OpenMagnetics::Inputs inputs = json::parse(json_file_922);
         MagneticAdviser MagneticAdviser;
@@ -952,8 +949,7 @@ namespace {
     TEST_CASE("Test_MagneticAdviser_Web_6", "[adviser][magnetic-adviser][bug]") {
         settings.set_use_only_cores_in_stock(true);
 
-        std::string file_path_946 = std::source_location::current().file_name();
-        auto json_path_946 = file_path_946.substr(0, file_path_946.rfind("/")).append("/testData/test_magneticadviser_web_6_946.json");
+        auto json_path_946 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_magneticadviser_web_6_946.json");
         std::ifstream json_file_946(json_path_946);
         OpenMagnetics::Inputs inputs = json::parse(json_file_946);
         MagneticAdviser MagneticAdviser;
@@ -1212,8 +1208,7 @@ namespace {
         json inputsJson;
 
 
-        std::string filePath = std::source_location::current().file_name();
-        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/psim_simulation.csv");
+        auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "psim_simulation.csv").string();
 
         double frequency = 120000;
         auto reader = CircuitSimulationReader(simulation_path);
@@ -1292,8 +1287,7 @@ namespace {
         json inputsJson;
 
 
-        std::string filePath = std::source_location::current().file_name();
-        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/plecs_simulation.csv");
+        auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "plecs_simulation.csv").string();
 
         double frequency = 50;
         auto reader = CircuitSimulationReader(simulation_path);
@@ -1367,8 +1361,7 @@ namespace {
         json inputsJson;
 
 
-        std::string filePath = std::source_location::current().file_name();
-        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/ltspice_simulation.txt");
+        auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "ltspice_simulation.txt").string();
 
         double frequency = 372618;
         auto reader = CircuitSimulationReader(simulation_path);
@@ -1445,8 +1438,7 @@ namespace {
         json inputsJson;
 
 
-        std::string filePath = std::source_location::current().file_name();
-        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/simba_simulation.csv");
+        auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv").string();
 
         double frequency = 100000;
         auto reader = CircuitSimulationReader(simulation_path);
@@ -1526,8 +1518,7 @@ namespace {
         json inputsJson;
 
 
-        std::string filePath = std::source_location::current().file_name();
-        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/forward_case.csv");
+        auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "forward_case.csv").string();
 
         double frequency = 200000;
         auto reader = CircuitSimulationReader(simulation_path);
@@ -1618,8 +1609,7 @@ namespace {
         json inputsJson;
 
 
-        std::string filePath = std::source_location::current().file_name();
-        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback_case.csv");
+        auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback_case.csv").string();
 
         double frequency = 200000;
         auto reader = CircuitSimulationReader(simulation_path);
@@ -1710,8 +1700,7 @@ namespace {
         json inputsJson;
 
 
-        std::string filePath = std::source_location::current().file_name();
-        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/only_pfc_current_waveform.csv");
+        auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "only_pfc_current_waveform.csv").string();
 
         double frequency = 50;
         auto reader = CircuitSimulationReader(simulation_path);
@@ -1875,7 +1864,7 @@ namespace {
     TEST_CASE("Test_CatalogueAdviser_Found", "[adviser][magnetic-adviser][catalogue]") { 
 
         {
-            auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/core_materials.ndjson");
+            auto external_core_materials_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "core_materials.ndjson").string();
 
             std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
             if(!file.is_open())
@@ -1961,7 +1950,7 @@ namespace {
 
 
         std::vector<OpenMagnetics::Magnetic> catalogue;
-        auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/cmcs.ndjson");
+        auto inventory_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmcs.ndjson").string();
 
         std::ifstream ndjsonFile(inventory_path);
         std::string jsonLine;
@@ -2012,7 +2001,7 @@ namespace {
 
     TEST_CASE("Test_CatalogueAdviser_Not_Found", "[adviser][magnetic-adviser][catalogue]") {
         {
-            auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/core_materials.ndjson");
+            auto external_core_materials_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "core_materials.ndjson").string();
 
             std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
             if(!file.is_open())
@@ -2098,7 +2087,7 @@ namespace {
 
 
         std::vector<OpenMagnetics::Magnetic> catalogue;
-        auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/cmcs.ndjson");
+        auto inventory_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmcs.ndjson").string();
 
         std::ifstream ndjsonFile(inventory_path);
         std::string jsonLine;
@@ -2145,7 +2134,7 @@ namespace {
         SKIP("Test needs investigation");
 
         {
-            auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/core_materials.ndjson");
+            auto external_core_materials_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "core_materials.ndjson").string();
 
             std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
             if(!file.is_open())
@@ -2163,14 +2152,14 @@ namespace {
 
         OpenMagnetics::Inputs inputs;
         {
-            auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_catalogue.json");
+            auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_catalogue.json").string();
             auto mas = OpenMagneticsTesting::mas_loader(path);
             inputs = mas.get_inputs();
         }
 
         std::vector<OpenMagnetics::Magnetic> catalogue;
         {
-            auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/cmcs.ndjson");
+            auto inventory_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmcs.ndjson").string();
 
             std::ifstream ndjsonFile(inventory_path);
             std::string jsonLine;
@@ -2227,8 +2216,7 @@ namespace {
 
     TEST_CASE("Test_CatalogueAdviser_Web_1", "[adviser][magnetic-adviser][catalogue][bug][smoke-test]") {
 
-        std::string file_path_2218 = std::source_location::current().file_name();
-        auto json_path_2218 = file_path_2218.substr(0, file_path_2218.rfind("/")).append("/testData/test_catalogueadviser_web_1_2218.json");
+        auto json_path_2218 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_catalogueadviser_web_1_2218.json");
         std::ifstream json_file_2218(json_path_2218);
         json catalogueJson = json::parse(json_file_2218);
 
@@ -2253,8 +2241,7 @@ namespace {
 
     TEST_CASE("Test_CatalogueAdviser_Web_2", "[adviser][magnetic-adviser][catalogue][bug][smoke-test]") {
 
-        std::string file_path_2241 = std::source_location::current().file_name();
-        auto json_path_2241 = file_path_2241.substr(0, file_path_2241.rfind("/")).append("/testData/test_catalogueadviser_web_2_2241.json");
+        auto json_path_2241 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_catalogueadviser_web_2_2241.json");
         std::ifstream json_file_2241(json_path_2241);
         json catalogueJson = json::parse(json_file_2241);
 
@@ -2271,8 +2258,7 @@ namespace {
 
     TEST_CASE("Test_CatalogueAdviser_Web_3", "[adviser][magnetic-adviser][catalogue][bug]") {
 
-        std::string file_path_2256 = std::source_location::current().file_name();
-        auto json_path_2256 = file_path_2256.substr(0, file_path_2256.rfind("/")).append("/testData/test_catalogueadviser_web_3_2256.json");
+        auto json_path_2256 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_catalogueadviser_web_3_2256.json");
         std::ifstream json_file_2256(json_path_2256);
         json catalogueJson = json::parse(json_file_2256);
 
@@ -2290,10 +2276,10 @@ namespace {
     TEST_CASE("Test_CatalogueAdviser_Web_4", "[adviser][magnetic-adviser][catalogue][bug]") {
         SKIP("Test needs investigation");
 
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/catalogue_missing_turns.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "catalogue_missing_turns.json").string();
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
-        auto catalogue_path = file_path.substr(0, file_path.rfind("/")).append("/testData/magnetics.ndjson");
+        auto catalogue_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "magnetics.ndjson").string();
 
         std::ifstream ndjsonFile(catalogue_path);
         std::string jsonLine;
@@ -2316,7 +2302,7 @@ namespace {
     TEST_CASE("Test_CatalogueAdviser_Web_5", "[adviser][magnetic-adviser][catalogue][bug]") {
 
         SKIP("Test needs investigation");
-        auto catalogue_path = file_path.substr(0, file_path.rfind("/")).append("/testData/magnetics.ndjson");
+        auto catalogue_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "magnetics.ndjson").string();
 
         std::ifstream ndjsonFile(catalogue_path);
         std::string jsonLine;
@@ -2328,8 +2314,7 @@ namespace {
         }
         magneticsCache.autocomplete_magnetics();
 
-        std::string file_path_2310 = std::source_location::current().file_name();
-        auto json_path_2310 = file_path_2310.substr(0, file_path_2310.rfind("/")).append("/testData/test_catalogueadviser_web_5_2310.json");
+        auto json_path_2310 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_catalogueadviser_web_5_2310.json");
         std::ifstream json_file_2310(json_path_2310);
         json inputsJson = json::parse(json_file_2310);
         json filterFlowJson = json::parse(R"([{"filter":"Solid Insulation Requirements","invert":true,"log":false,"strictlyRequired":true,"weight":1},{"filter":"Turns Ratios","invert":true,"log":false,"strictlyRequired":true,"weight":0.1},{"filter":"Magnetizing Inductance","invert":true,"log":false,"strictlyRequired":false,"weight":1},{"filter":"Dc Current Density","invert":true,"log":false,"strictlyRequired":false,"weight":0.1},{"filter":"Effective Current Density","invert":true,"log":false,"strictlyRequired":false,"weight":0.1},{"filter":"Volume","invert":true,"log":false,"strictlyRequired":false,"weight":0.1},{"filter":"Area","invert":true,"log":false,"strictlyRequired":false,"weight":0.1},{"filter":"Height","invert":true,"log":false,"strictlyRequired":false,"weight":0.1},{"filter":"Losses No Proximity","invert":true,"log":false,"strictlyRequired":false,"weight":0.1}])");
@@ -2342,7 +2327,7 @@ namespace {
 
     TEST_CASE("Test_CatalogueAdviser_Web_6", "[adviser][magnetic-adviser][catalogue][bug]") {
 
-        auto catalogue_path = file_path.substr(0, file_path.rfind("/")).append("/testData/magnetics.ndjson");
+        auto catalogue_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "magnetics.ndjson").string();
 
         std::ifstream ndjsonFile(catalogue_path);
         std::string jsonLine;
@@ -2365,7 +2350,7 @@ namespace {
 
     TEST_CASE("Test_CatalogueAdviser_Web_7", "[adviser][magnetic-adviser][catalogue][bug]") {
 
-        auto catalogue_path = file_path.substr(0, file_path.rfind("/")).append("/testData/magnetics.ndjson");
+        auto catalogue_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "magnetics.ndjson").string();
 
         std::ifstream ndjsonFile(catalogue_path);
         std::string jsonLine;
@@ -2388,7 +2373,7 @@ namespace {
 
     TEST_CASE("Test_CatalogueAdviser_Web_8", "[adviser][magnetic-adviser][catalogue][bug]") {
 
-        auto catalogue_path = file_path.substr(0, file_path.rfind("/")).append("/testData/magnetics.ndjson");
+        auto catalogue_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "magnetics.ndjson").string();
 
         std::ifstream ndjsonFile(catalogue_path);
         std::string jsonLine;
@@ -2435,7 +2420,7 @@ namespace {
 
         auto inputs = isolatedbuckInputs.process();
 
-        auto catalogue_path = file_path.substr(0, file_path.rfind("/")).append("/testData/magnetics.ndjson");
+        auto catalogue_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "magnetics.ndjson").string();
 
         std::ifstream ndjsonFile(catalogue_path);
         std::string jsonLine;

@@ -169,8 +169,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
         // Test to evaluate skin effect losses, as no fringing or proximity are present
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_One_Turn_Round_Sinusoidal.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -228,8 +227,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -287,8 +285,7 @@ namespace TestWindingLossesRound {
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -347,8 +344,7 @@ namespace TestWindingLossesRound {
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
         // Worst error in this one
         double maximumError = 0.4;
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -406,8 +402,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -544,8 +539,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -603,8 +597,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -662,8 +655,7 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -1430,8 +1422,7 @@ namespace TestWindingLossesRectangular {
     double maximumError = 0.2;
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing", "[physical-model][winding-losses][rectangular][rectangle-winding-window][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -2589,8 +2580,7 @@ namespace TestWindingLossesPlanar {
     double maximumError = 0.3;
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -2639,8 +2629,7 @@ namespace TestWindingLossesPlanar {
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing", "[physical-model][winding-losses][planar][smoke-test]") {
         // Not sure about that many losses due to fringing losses in a small piece
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -2690,8 +2679,7 @@ namespace TestWindingLossesPlanar {
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar]") {
         SKIP("Test currently failing - needs investigation");
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -2740,8 +2728,7 @@ namespace TestWindingLossesPlanar {
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar]") {
         SKIP("Test currently failing - needs investigation");
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -2790,8 +2777,7 @@ namespace TestWindingLossesPlanar {
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][planar]") {
         SKIP("Test currently failing - needs investigation");
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -2840,8 +2826,7 @@ namespace TestWindingLossesPlanar {
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving", "[physical-model][winding-losses][planar]") {
         SKIP("Test currently failing - needs investigation");
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         settings.reset();
@@ -2955,8 +2940,7 @@ namespace TestWindingLossesResistanceMatrix {
 namespace TestWindingLossesWeb {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     TEST_CASE("Test_Winding_Losses_Web_0", "[physical-model][winding-losses][bug][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/negative_losses.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "negative_losses.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         auto magnetic = mas.get_magnetic();
@@ -2972,8 +2956,7 @@ namespace TestWindingLossesWeb {
     }
 
     TEST_CASE("Test_Winding_Losses_Web_1", "[physical-model][winding-losses][bug][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/slow_simulation.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "slow_simulation.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         auto magnetic = mas.get_magnetic();
@@ -2991,8 +2974,7 @@ namespace TestWindingLossesWeb {
     TEST_CASE("Test_Winding_Losses_Web_2", "[physical-model][winding-losses][bug][smoke-test]") {
         settings.set_magnetic_field_include_fringing(false);
 
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/huge_losses.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "huge_losses.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         auto magnetic = mas.get_magnetic();
@@ -3008,20 +2990,19 @@ namespace TestWindingLossesWeb {
         settings.set_magnetic_field_include_fringing(false);
         settings.set_magnetic_field_mirroring_dimension(3);
 
-        std::string file_path = std::source_location::current().file_name();
         OpenMagnetics::Mas mas1;
         OpenMagnetics::Mas mas2;
         OpenMagnetics::Mas mas3;
         {
-            auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_proximity_losses_1.json");
+            auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "planar_proximity_losses_1.json");
             mas1 = OpenMagneticsTesting::mas_loader(path);
         }
         {
-            auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_proximity_losses_2.json");
+            auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "planar_proximity_losses_2.json");
             mas2 = OpenMagneticsTesting::mas_loader(path);
         }
         {
-            auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_proximity_losses_3.json");
+            auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "planar_proximity_losses_3.json");
             mas3 = OpenMagneticsTesting::mas_loader(path);
         } 
 
@@ -3093,8 +3074,7 @@ namespace TestWindingLossesWeb {
     TEST_CASE("Test_Winding_Losses_Web_4", "[physical-model][winding-losses][bug][smoke-test]") {
         settings.set_magnetic_field_include_fringing(false);
 
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/planar_with_csv.json");
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "planar_with_csv.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
         auto magnetic = mas.get_magnetic();

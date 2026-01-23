@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <source_location>
 #include <vector>
 
 extern bool verboseTests;
@@ -20,6 +21,17 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace OpenMagneticsTesting {
+
+// Cross-platform helper to get test data path from source file location
+// Usage: get_test_data_path(std::source_location::current(), "myfile.json")
+inline std::filesystem::path get_test_data_path(const std::source_location& loc, const std::string& filename) {
+    return std::filesystem::path(loc.file_name()).parent_path() / "testData" / filename;
+}
+
+// Overload that returns just the testData directory
+inline std::filesystem::path get_test_data_dir(const std::source_location& loc) {
+    return std::filesystem::path(loc.file_name()).parent_path() / "testData";
+}
 OpenMagnetics::Coil get_quick_coil(std::vector<int64_t> numberTurns,
                                           std::vector<int64_t> numberParallels,
                                           std::string shapeName,

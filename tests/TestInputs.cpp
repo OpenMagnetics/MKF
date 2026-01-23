@@ -2095,8 +2095,7 @@ TEST_CASE("Test_Flyback_Json", "[processor][inputs][smoke-test]") {
 }
 
 TEST_CASE("Test_PFC_Json", "[processor][inputs][smoke-test]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/pfc_current_waveform.ndjson");
+    auto inventory_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "pfc_current_waveform.ndjson");
     std::ifstream ndjsonFile(inventory_path);
     std::string jsonLine;
 
@@ -2141,8 +2140,7 @@ TEST_CASE("Test_PFC_Json", "[processor][inputs][smoke-test]") {
 }
 
 TEST_CASE("Test_Simplify_PFC_Json", "[processor][inputs]") {
-    std::string file_path = std::source_location::current().file_name();
-    auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/pfc_current_waveform.ndjson");
+    auto inventory_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "pfc_current_waveform.ndjson");
     std::ifstream ndjsonFile(inventory_path);
     std::string jsonLine;
 

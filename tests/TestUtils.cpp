@@ -251,12 +251,11 @@ namespace {
     }
 
     TEST_CASE("Test_Core_Materials_External", "[support][utils][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_materials.ndjson");
+        auto external_core_materials_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "external_core_materials.ndjson");
 
         std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
         if(!file.is_open())
-            throw std::runtime_error("Failed to open " + external_core_materials_path);
+            throw std::runtime_error("Failed to open " + external_core_materials_path.string());
         using Iterator = std::istreambuf_iterator<char>;
         std::string external_core_materials(Iterator{file}, Iterator{});
 
@@ -268,12 +267,11 @@ namespace {
     }
 
     TEST_CASE("Test_Core_Materials_External_And_Internal", "[support][utils][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_materials.ndjson");
+        auto external_core_materials_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "external_core_materials.ndjson");
 
         std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
         if(!file.is_open())
-            throw std::runtime_error("Failed to open " + external_core_materials_path);
+            throw std::runtime_error("Failed to open " + external_core_materials_path.string());
         using Iterator = std::istreambuf_iterator<char>;
         std::string external_core_materials(Iterator{file}, Iterator{});
 
@@ -365,12 +363,11 @@ namespace {
     }
 
     TEST_CASE("Test_Core_Shapes_External", "[support][utils][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto external_core_shapes_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_shapes.ndjson");
+        auto external_core_shapes_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "external_core_shapes.ndjson");
 
         std::ifstream file(external_core_shapes_path, std::ios_base::binary | std::ios_base::in);
         if(!file.is_open())
-            throw std::runtime_error("Failed to open " + external_core_shapes_path);
+            throw std::runtime_error("Failed to open " + external_core_shapes_path.string());
         using Iterator = std::istreambuf_iterator<char>;
         std::string external_core_shapes(Iterator{file}, Iterator{});
         settings.reset();
@@ -385,12 +382,11 @@ namespace {
     }
 
     TEST_CASE("Test_Core_Shapes_External_And_Internal", "[support][utils][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto external_core_shapes_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_shapes.ndjson");
+        auto external_core_shapes_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "external_core_shapes.ndjson");
 
         std::ifstream file(external_core_shapes_path, std::ios_base::binary | std::ios_base::in);
         if(!file.is_open())
-            throw std::runtime_error("Failed to open " + external_core_shapes_path);
+            throw std::runtime_error("Failed to open " + external_core_shapes_path.string());
         using Iterator = std::istreambuf_iterator<char>;
         std::string external_core_shapes(Iterator{file}, Iterator{});
         settings.reset();
@@ -410,12 +406,11 @@ namespace {
     }
 
     TEST_CASE("Test_Wires_External", "[support][utils][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto external_wires_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_wires.ndjson");
+        auto external_wires_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "external_wires.ndjson");
 
         std::ifstream file(external_wires_path, std::ios_base::binary | std::ios_base::in);
         if(!file.is_open())
-            throw std::runtime_error("Failed to open " + external_wires_path);
+            throw std::runtime_error("Failed to open " + external_wires_path.string());
         using Iterator = std::istreambuf_iterator<char>;
         std::string external_wires(Iterator{file}, Iterator{});
 
@@ -427,12 +422,11 @@ namespace {
     }
 
     TEST_CASE("Test_Wires_External_And_Internal", "[support][utils][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto external_wires_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_wires.ndjson");
+        auto external_wires_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "external_wires.ndjson");
 
         std::ifstream file(external_wires_path, std::ios_base::binary | std::ios_base::in);
         if(!file.is_open())
-            throw std::runtime_error("Failed to open " + external_wires_path);
+            throw std::runtime_error("Failed to open " + external_wires_path.string());
         using Iterator = std::istreambuf_iterator<char>;
         std::string external_wires(Iterator{file}, Iterator{});
 
@@ -545,8 +539,7 @@ namespace {
     }
 
     TEST_CASE("Test_Mas_Autocomplete_Json_2", "[support][utils][bug][smoke-test]") {
-        std::string file_path_548 = std::source_location::current().file_name();
-        auto json_path_548 = file_path_548.substr(0, file_path_548.rfind("/")).append("/testData/test_mas_autocomplete_json_2_548.json");
+        auto json_path_548 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_mas_autocomplete_json_2_548.json");
         std::ifstream json_file_548(json_path_548);
         std::string masString((std::istreambuf_iterator<char>(json_file_548)), std::istreambuf_iterator<char>());
         json masJson = json::parse(masString);
@@ -747,9 +740,8 @@ namespace {
     }
 
     TEST_CASE("Test_Mas_Autocomplete_Web_0", "[support][utils][bug][smoke-test]") {
-        std::string file_path = std::source_location::current().file_name();
-        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/geometricalDescriptionDebug.mas");
-        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "geometricalDescriptionDebug.mas");
+        auto mas = OpenMagneticsTesting::mas_loader(path.string());
         auto magnetic = mas.get_magnetic();
 
         auto autocompletedMagnetic = magnetic_autocomplete(magnetic);

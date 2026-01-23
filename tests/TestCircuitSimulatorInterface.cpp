@@ -33,8 +33,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Only_Magnetic", "[processor][circ
     magnetic.set_core(core);
     magnetic.set_coil(coil);
 
-    std::string filePath = __FILE__;
-    auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+    auto flyback_jsimba_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback.jsimba");
     auto jsimbaFile = outputFilePath;
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Only_Magnetic.jsimba");
 
@@ -60,8 +59,7 @@ TEST_CASE("Test_CircuitSimulatorExporter", "[processor][circuit-simulator-export
     magnetic.set_core(core);
     magnetic.set_coil(coil);
 
-    std::string filePath = __FILE__;
-    auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+    auto flyback_jsimba_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback.jsimba");
     auto jsimbaFile = outputFilePath;
     jsimbaFile.append("./Test_CircuitSimulatorExporter.jsimba");
 
@@ -71,13 +69,11 @@ TEST_CASE("Test_CircuitSimulatorExporter", "[processor][circuit-simulator-export
 }
 
 TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Ur", "[processor][circuit-simulator-exporter][simba]") {
-    std::string file_path_74 = std::source_location::current().file_name();
-    auto json_path_74 = file_path_74.substr(0, file_path_74.rfind("/")).append("/testData/test_circuitsimulatorexporter_simba_json_ur_74.json");
+    auto json_path_74 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_circuitsimulatorexporter_simba_json_ur_74.json");
     std::ifstream json_file_74(json_path_74);
     OpenMagnetics::Magnetic magnetic(json::parse(json_file_74));
 
-    std::string filePath = __FILE__;
-    auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+    auto flyback_jsimba_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback.jsimba");
     auto jsimbaFile = outputFilePath;
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ur.jsimba");
 
@@ -87,13 +83,11 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Ur", "[processor][circuit-si
 }
 
 TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json", "[processor][circuit-simulator-exporter][simba]") {
-    std::string file_path_87 = std::source_location::current().file_name();
-    auto json_path_87 = file_path_87.substr(0, file_path_87.rfind("/")).append("/testData/test_circuitsimulatorexporter_simba_json_87.json");
+    auto json_path_87 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_circuitsimulatorexporter_simba_json_87.json");
     std::ifstream json_file_87(json_path_87);
     OpenMagnetics::Magnetic magnetic(json::parse(json_file_87));
 
-    std::string filePath = __FILE__;
-    auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+    auto flyback_jsimba_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback.jsimba");
     auto jsimbaFile = outputFilePath;
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json.jsimba");
 
@@ -103,13 +97,11 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json", "[processor][circuit-simul
 }
 
 TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core", "[processor][circuit-simulator-exporter][simba]") {
-    std::string file_path_100 = std::source_location::current().file_name();
-    auto json_path_100 = file_path_100.substr(0, file_path_100.rfind("/")).append("/testData/test_circuitsimulatorexporter_simba_json_toroidal_core_100.json");
+    auto json_path_100 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_circuitsimulatorexporter_simba_json_toroidal_core_100.json");
     std::ifstream json_file_100(json_path_100);
     OpenMagnetics::Magnetic magnetic(json::parse(json_file_100));
 
-    std::string filePath = __FILE__;
-    auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+    auto flyback_jsimba_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback.jsimba");
     auto jsimbaFile = outputFilePath;
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core.jsimba");
 
@@ -119,13 +111,11 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core", "[processor]
 }
 
 TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Ep_Core", "[processor][circuit-simulator-exporter][simba]") {
-    std::string file_path_113 = std::source_location::current().file_name();
-    auto json_path_113 = file_path_113.substr(0, file_path_113.rfind("/")).append("/testData/test_circuitsimulatorexporter_simba_json_ep_core_113.json");
+    auto json_path_113 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_circuitsimulatorexporter_simba_json_ep_core_113.json");
     std::ifstream json_file_113(json_path_113);
     OpenMagnetics::Magnetic magnetic(json::parse(json_file_113));
 
-    std::string filePath = __FILE__;
-    auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+    auto flyback_jsimba_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback.jsimba");
     auto jsimbaFile = outputFilePath;
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ep_Core.jsimba");
 
@@ -152,8 +142,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Powder_Core", "[processor][circui
     magnetic.set_core(core);
     magnetic.set_coil(coil);
 
-    std::string filePath = __FILE__;
-    auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+    auto flyback_jsimba_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback.jsimba");
     auto jsimbaFile = outputFilePath;
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Only_Magnetic.jsimba");
 
@@ -163,13 +152,11 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Powder_Core", "[processor][circui
 }
 
 TEST_CASE("Test_CircuitSimulatorExporter_Simba_Bug_0_Gap_Length", "[processor][circuit-simulator-exporter][simba]") {
-    std::string file_path = __FILE__;
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_0_length_gap.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_0_length_gap.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto magnetic = mas.get_magnetic();
 
-    std::string filePath = __FILE__;
-    auto flyback_jsimba_path = filePath.substr(0, filePath.rfind("/")).append("/testData/flyback.jsimba");
+    auto flyback_jsimba_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback.jsimba");
     auto jsimbaFile = outputFilePath;
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_0_Length_Gap.jsimba");
 
@@ -366,9 +353,8 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder", "[p
 }
 
 TEST_CASE("Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder_Planar", "[processor][circuit-simulator-exporter][ltspice]") {
-    std::string file_path = __FILE__;
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/ladder_planar.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "ladder_planar.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto magnetic = mas.get_magnetic();
 
     auto coefficientsPerWinding = CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic, 42, CircuitSimulatorExporterCurveFittingModes::LADDER);
@@ -481,9 +467,8 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
 
 TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_Web_0", "[processor][circuit-simulator-exporter][ltspice]") {
 
-    std::string file_path = __FILE__;
-    auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_dc_resistance_ltspice.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_dc_resistance_ltspice.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
 
     auto magnetic = mas.get_magnetic();
 
@@ -498,8 +483,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_Web_0", "[processor][circuit-si
 }
 
 TEST_CASE("Test_Guess_Periodicity_Simba", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv");
 
     std::ifstream is(simulation_path);
     std::vector<std::vector<double>> columns;
@@ -554,8 +538,7 @@ TEST_CASE("Test_Guess_Separator_Tabs", "[processor][circuit-simulation-reader]")
 }
 
 TEST_CASE("Test_Guess_Separator_Simba", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv");
 
     std::ifstream is(simulation_path);
     std::vector<std::vector<double>> columns;
@@ -570,8 +553,7 @@ TEST_CASE("Test_Guess_Separator_Simba", "[processor][circuit-simulation-reader]"
 }
 
 TEST_CASE("Test_Guess_Separator_Ltspice", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "ltspice_simulation.txt");
 
     std::ifstream is(simulation_path);
     std::vector<std::vector<double>> columns;
@@ -586,8 +568,7 @@ TEST_CASE("Test_Guess_Separator_Ltspice", "[processor][circuit-simulation-reader
 }
 
 TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/forward_case.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "forward_case.csv");
 
     double frequency = 200000;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -649,8 +630,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-read
 }
 
 TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/flyback_case.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback_case.csv");
 
     double frequency = 200000;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -721,8 +701,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-read
 }
 
 TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv");
 
     double turnsRatio = 1.0 / 0.3;
     double frequency = 100000;
@@ -782,8 +761,7 @@ TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_PFC_Only_Current", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/only_pfc_current_waveform.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "only_pfc_current_waveform.csv");
 
     double frequency = 50;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -804,8 +782,7 @@ TEST_CASE("Test_PFC_Only_Current", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv");
 
     std::string file = "";
     std::string line;
@@ -879,8 +856,7 @@ TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "ltspice_simulation.txt");
 
     double frequency = 372618;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -939,8 +915,7 @@ TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
 }
 
 TEST_CASE("Test_Plecs", "[processor][circuit-simulation-reader][plecs]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "plecs_simulation.csv");
 
     double frequency = 50;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -977,8 +952,7 @@ TEST_CASE("Test_Plecs", "[processor][circuit-simulation-reader][plecs]") {
 }
 
 TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader][plecs]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/wrong_plecs_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "wrong_plecs_simulation.csv");
 
     double frequency = 50;
     {
@@ -1035,8 +1009,7 @@ TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader]
 }
 
 TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "psim_simulation.csv");
 
     double frequency = 120000;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1092,8 +1065,7 @@ TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
 }
 
 TEST_CASE("Test_Psim_Harmonics_Size_Error", "[processor][circuit-simulation-reader][psim]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "psim_simulation.csv");
 
     double frequency = 100000;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1106,8 +1078,7 @@ TEST_CASE("Test_Psim_Harmonics_Size_Error", "[processor][circuit-simulation-read
 }
 
 TEST_CASE("Test_Simba_Column_Names", "[processor][circuit-simulation-reader][simba]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv");
 
     double frequency = 100000;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1123,8 +1094,7 @@ TEST_CASE("Test_Simba_Column_Names", "[processor][circuit-simulation-reader][sim
 }
 
 TEST_CASE("Test_Ltspice_Column_Names", "[processor][circuit-simulation-reader][ltspice]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "ltspice_simulation.txt");
 
     double frequency = 372618;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1140,8 +1110,7 @@ TEST_CASE("Test_Ltspice_Column_Names", "[processor][circuit-simulation-reader][l
 }
 
 TEST_CASE("Test_Plecs_Column_Names", "[processor][circuit-simulation-reader][plecs]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "plecs_simulation.csv");
 
     double frequency = 50;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1154,8 +1123,7 @@ TEST_CASE("Test_Plecs_Column_Names", "[processor][circuit-simulation-reader][ple
 }
 
 TEST_CASE("Test_Plecs_Web", "[processor][circuit-simulation-reader][plecs]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "plecs_simulation.csv");
 
     double frequency = 50;
     auto reader = CircuitSimulationReader(simulation_path); 
@@ -1174,8 +1142,7 @@ TEST_CASE("Test_Plecs_Web", "[processor][circuit-simulation-reader][plecs]") {
 }
 
 TEST_CASE("Test_Plecs_Column_Names_Missing_Windings", "[processor][circuit-simulation-reader][plecs]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/wrong_plecs_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "wrong_plecs_simulation.csv");
 
     double frequency = 50;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1189,8 +1156,7 @@ TEST_CASE("Test_Plecs_Column_Names_Missing_Windings", "[processor][circuit-simul
 }
 
 TEST_CASE("Test_Psim_Column_Names", "[processor][circuit-simulation-reader][psim]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "psim_simulation.csv");
 
     double frequency = 120000;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1206,8 +1172,7 @@ TEST_CASE("Test_Psim_Column_Names", "[processor][circuit-simulation-reader][psim
 }
 
 TEST_CASE("Test_Extract_Column_Names_Web_0", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_0.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_0.csv");
 
     std::string file = "";
     std::string line;
@@ -1237,8 +1202,7 @@ TEST_CASE("Test_Extract_Column_Names_Web_0", "[processor][circuit-simulation-rea
 }
 
 TEST_CASE("Test_Import_Csv_Web_0", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_0.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_0.csv");
 
     double frequency = 250000;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1250,8 +1214,7 @@ TEST_CASE("Test_Import_Csv_Web_0", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Import_Csv_Web_1", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_1.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_1.csv");
 
     double frequency = 919963.201472;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1263,8 +1226,7 @@ TEST_CASE("Test_Import_Csv_Web_1", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Import_Csv_Web_2", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_2.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_2.csv");
 
     double frequency = 1e6;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1276,8 +1238,7 @@ TEST_CASE("Test_Import_Csv_Web_2", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Import_Csv_Web_3", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_3.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_3.csv");
 
     double frequency = 50e3;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1289,8 +1250,7 @@ TEST_CASE("Test_Import_Csv_Web_3", "[processor][circuit-simulation-reader]") {
 }
 
 TEST_CASE("Test_Import_Csv_Web_4", "[processor][circuit-simulation-reader]") {
-    std::string file_path = __FILE__;
-    auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_4.csv");
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_4.csv");
 
     double frequency = 239600;
     auto reader = CircuitSimulationReader(simulation_path);
@@ -1306,9 +1266,8 @@ TEST_CASE("Test_Import_Csv_Web_4", "[processor][circuit-simulation-reader]") {
 
 TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First", "[processor][circuit-simulator-exporter][ltspice][llc]") {
     // Load the LLC_trafo_first MAS file that was reported to have LTspice errors
-    std::string file_path = __FILE__;
-    auto mas_path = file_path.substr(0, file_path.rfind("/")).append("/testData/LLC_trafo_first.json");
-    auto mas = OpenMagneticsTesting::mas_loader(mas_path);
+    auto mas_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "LLC_trafo_first.json");
+    auto mas = OpenMagneticsTesting::mas_loader(mas_path.string());
     auto magnetic = mas.get_magnetic();
 
     // Verify the magnetic has 3 windings (Primary, Secondary, Tertiary)
@@ -1395,9 +1354,8 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First", "[processor][
 
 TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First_Analytical", "[processor][circuit-simulator-exporter][ltspice][llc]") {
     // Same test but with ANALYTICAL curve fitting mode
-    std::string file_path = __FILE__;
-    auto mas_path = file_path.substr(0, file_path.rfind("/")).append("/testData/LLC_trafo_first.json");
-    auto mas = OpenMagneticsTesting::mas_loader(mas_path);
+    auto mas_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "LLC_trafo_first.json");
+    auto mas = OpenMagneticsTesting::mas_loader(mas_path.string());
     auto magnetic = mas.get_magnetic();
 
     auto cirFile = outputFilePath;
@@ -1422,9 +1380,8 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_Runnable_Netlist", "[
     // This test creates a complete runnable LTspice netlist that includes both the 
     // exported subcircuit and a test circuit to validate it runs in LTspice
     
-    std::string file_path = __FILE__;
-    auto mas_path = file_path.substr(0, file_path.rfind("/")).append("/testData/LLC_trafo_first.json");
-    auto mas = OpenMagneticsTesting::mas_loader(mas_path);
+    auto mas_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "LLC_trafo_first.json");
+    auto mas = OpenMagneticsTesting::mas_loader(mas_path.string());
     auto magnetic = mas.get_magnetic();
 
     // Export the subcircuit
