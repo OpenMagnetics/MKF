@@ -470,7 +470,7 @@ TEST_CASE("Calculate energy density between two turns", "[physical-model][stray-
         StrayCapacitance strayCapacitance;
         auto firstTurn = coil.get_turns_description().value()[0];
         auto secondTurn = coil.get_turns_description().value()[1];
-        auto energy = strayCapacitance.calculate_energy_density_between_two_turns(firstTurn, wire, secondTurn, wire, 10);
+        [[maybe_unused]] auto energy = strayCapacitance.calculate_energy_density_between_two_turns(firstTurn, wire, secondTurn, wire, 10);
 
         if (plot) {
             auto outFile = outputFilePath;
