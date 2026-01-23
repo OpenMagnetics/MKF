@@ -966,16 +966,28 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
 
     parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
-    for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
+    
+    // Store coupling coefficients for each pair (indexed from winding 1)
+    // couplingCoeffs[i] = coupling between winding 1 and winding (i+2), i.e., k12, k13, k14, ...
+    std::vector<double> couplingCoeffs;
+    size_t numWindings = coil.get_functional_description().size();
+    
+    for (size_t index = 0; index < numWindings; index++) {
         auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, 0.1, temperature);
         std::string is = std::to_string(index + 1);
         parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(effectiveResistanceThisWinding) + "\n";
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
         if (index > 0) {
             double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
+            // Clamp leakage inductance to avoid negative or very low coupling
+            if (leakageInductance >= magnetizingInductance) {
+                leakageInductance = magnetizingInductance * 0.1;  // Limit to 90% coupling minimum
+            }
             double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
+            // Store for later use in K statement generation
+            couplingCoeffs.push_back(couplingCoefficient);
             parametersString += ".param Llk_" + is + "_Value=" + std::to_string(leakageInductance) + "\n";
-            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient);
+            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient) + "\n";
         }
 
         std::vector<std::string> c = to_string(acResistanceCoefficientsPerWinding[index]);
@@ -984,26 +996,90 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             throw std::invalid_argument("Analytica mode not supported in NgSpice");
         }
         else {
+            // Check if ladder coefficients are valid (inductance values should be small, < 0.1H)
+            // If fitting failed, coefficients can be very large (1.0H or more) which breaks the circuit
+            bool validLadderCoeffs = true;
             for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
-                std::string ladderIndexs = std::to_string(ladderIndex);
-                circuitString += "Lladder" + is + "_" + ladderIndexs + " P" + is + "+ Node_Lladder_" + is + "_" + ladderIndexs + " " + c[ladderIndex + 1] + "\n";
-                if (ladderIndex == 0) {
-                    circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_R_Lmag_" + is + " " + c[ladderIndex] + "\n";
-                }
-                else {
-                    circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + std::to_string(ladderIndex - 2) + " " + c[ladderIndex] + "\n";
+                double inductanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex + 1];
+                double resistanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex];
+                // Sanity check: inductance should be < 0.1H (100mH), resistance should be < 100 Ohm per ladder element
+                if (inductanceVal > 0.1 || resistanceVal > 100.0 || inductanceVal < 0 || resistanceVal < 0) {
+                    validLadderCoeffs = false;
+                    break;
                 }
             }
-            circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
-            circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+            
+            if (validLadderCoeffs && acResistanceCoefficientsPerWinding[index].size() >= 2) {
+                // Use full ladder network for AC resistance modeling
+                for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
+                    std::string ladderIndexs = std::to_string(ladderIndex);
+                    circuitString += "Lladder" + is + "_" + ladderIndexs + " P" + is + "+ Node_Lladder_" + is + "_" + ladderIndexs + " " + c[ladderIndex + 1] + "\n";
+                    if (ladderIndex == 0) {
+                        circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_R_Lmag_" + is + " " + c[ladderIndex] + "\n";
+                    }
+                    else {
+                        circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + std::to_string(ladderIndex - 2) + " " + c[ladderIndex] + "\n";
+                    }
+                }
+                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            } else {
+                // Ladder fitting failed - use simplified model with just DC resistance
+                // Short circuit P+ directly to Node_R_Lmag with DC resistance only
+                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            }
+            // Lmag: dot (first terminal) at Node_R_Lmag, undot at P-
+            // This ensures consistent polarity with standard transformer convention
+            circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
 
-        }
-        if (index > 0) {
-            circuitString += "K Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
         }
 
         headerString += " P" + is + "+ P" + is + "-";
-
+    }
+    
+    // Generate pairwise K statements for magnetic coupling
+    // ngspice has a bug with 3+ inductor K statements inside subcircuits - the third inductor
+    // doesn't get the proper hierarchical path prefix. Use pairwise K statements as workaround.
+    // Each K statement gets a unique name (K12, K13, K23, etc.)
+    // Use per-pair leakage inductance calculation for accurate coupling coefficients
+    if (numWindings == 2) {
+        // Simple 2-winding case - use already calculated coupling, capped at 0.98 for stability
+        double k12 = couplingCoeffs.size() > 0 ? std::min(0.98, couplingCoeffs[0]) : 0.98;
+        circuitString += "K Lmag_1 Lmag_2 " + std::to_string(k12) + "\n";
+    } else if (numWindings >= 3) {
+        // For 3+ windings, calculate coupling for each pair
+        for (size_t i = 0; i < numWindings; i++) {
+            for (size_t j = i + 1; j < numWindings; j++) {
+                // Calculate leakage inductance between winding i and j
+                double leakageIJ = 0.0;
+                try {
+                    auto leakageResult = LeakageInductance().calculate_leakage_inductance(
+                        magnetic, Defaults().measurementFrequency, i, j);
+                    auto leakagePerWinding = leakageResult.get_leakage_inductance_per_winding();
+                    if (leakagePerWinding.size() > 0) {
+                        leakageIJ = resolve_dimensional_values(leakagePerWinding[0]);
+                    }
+                } catch (...) {
+                    // Fallback: use high coupling if calculation fails
+                    leakageIJ = magnetizingInductance * 0.02;  // ~99% coupling
+                }
+                
+                // Clamp leakage inductance to avoid negative or very low coupling
+                if (leakageIJ >= magnetizingInductance) {
+                    leakageIJ = magnetizingInductance * 0.1;  // Limit to ~95% coupling minimum
+                }
+                if (leakageIJ < 0) {
+                    leakageIJ = magnetizingInductance * 0.02;  // ~99% coupling
+                }
+                
+                double kij = sqrt((magnetizingInductance - leakageIJ) / magnetizingInductance);
+                // Ensure coupling is in valid range
+                // Cap at 0.98 for numerical stability (matches IDEAL mode default)
+                kij = std::max(0.5, std::min(0.98, kij));
+                
+                std::string kName = "K" + std::to_string(i + 1) + std::to_string(j + 1);
+                circuitString += kName + " Lmag_" + std::to_string(i + 1) + " Lmag_" + std::to_string(j + 1) + " " + std::to_string(kij) + "\n";
+            }
+        }
     }
 
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
@@ -1034,7 +1110,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
             double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
             parametersString += ".param Llk_" + is + "_Value=" + std::to_string(leakageInductance) + "\n";
-            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient);
+            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient) + "\n";
         }
 
         std::vector<std::string> c = to_string(acResistanceCoefficientsPerWinding[index]);
@@ -1044,22 +1120,42 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
         }
         else {
+            // Check if ladder coefficients are valid (inductance values should be small, < 0.1H)
+            // If fitting failed, coefficients can be very large (1.0H or more) which breaks the circuit
+            bool validLadderCoeffs = true;
             for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
-                std::string ladderIndexs = std::to_string(ladderIndex);
-                circuitString += "Lladder" + is + "_" + ladderIndexs + " P" + is + "+ Node_Lladder_" + is + "_" + ladderIndexs + " " + c[ladderIndex + 1] + "\n";
-                if (ladderIndex == 0) {
-                    circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_R_Lmag_" + is + " " + c[ladderIndex] + "\n";
-                }
-                else {
-                    circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + std::to_string(ladderIndex - 2) + " " + c[ladderIndex] + "\n";
+                double inductanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex + 1];
+                double resistanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex];
+                // Sanity check: inductance should be < 0.1H (100mH), resistance should be < 100 Ohm per ladder element
+                if (inductanceVal > 0.1 || resistanceVal > 100.0 || inductanceVal < 0 || resistanceVal < 0) {
+                    validLadderCoeffs = false;
+                    break;
                 }
             }
-            circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            
+            if (validLadderCoeffs && acResistanceCoefficientsPerWinding[index].size() >= 2) {
+                // Use full ladder network for AC resistance modeling
+                for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
+                    std::string ladderIndexs = std::to_string(ladderIndex);
+                    circuitString += "Lladder" + is + "_" + ladderIndexs + " P" + is + "+ Node_Lladder_" + is + "_" + ladderIndexs + " " + c[ladderIndex + 1] + "\n";
+                    if (ladderIndex == 0) {
+                        circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_R_Lmag_" + is + " " + c[ladderIndex] + "\n";
+                    }
+                    else {
+                        circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + std::to_string(ladderIndex - 2) + " " + c[ladderIndex] + "\n";
+                    }
+                }
+                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            } else {
+                // Ladder fitting failed - use simplified model with just DC resistance
+                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            }
             circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
 
         }
         if (index > 0) {
-            circuitString += "K Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
+            // Each K statement needs a unique name in LTspice (K1, K2, etc.)
+            circuitString += "K" + is + " Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
         }
 
         headerString += " P" + is + "+ P" + is + "-";

@@ -1975,7 +1975,7 @@ namespace OpenMagnetics {
                             break;
                         default:
                             double oldConductingArea = oldWire.calculate_conducting_area();
-                            strand = find_wire_by_dimension(strandConductingDiameter, WireType::ROUND, standard);
+                            strand = find_wire_by_dimension(strandConductingDiameter, WireType::ROUND, standard); 
                             numberConductors = round(oldConductingArea / strandConductingArea);
                             break;
                     }

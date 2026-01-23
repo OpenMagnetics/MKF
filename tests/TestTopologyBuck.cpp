@@ -18,7 +18,7 @@ using namespace OpenMagnetics;
 
 namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
-    double maximumError = 0.1;
+    [[maybe_unused]] double maximumError = 0.1;
 
     TEST_CASE("Test_Buck", "[converter-model][buck-topology][smoke-test]") {
         json buckInputsJson;
