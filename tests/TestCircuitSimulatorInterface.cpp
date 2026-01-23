@@ -64,7 +64,7 @@ TEST_CASE("Test_CircuitSimulatorExporter", "[processor][circuit-simulator-export
     jsimbaFile.append("./Test_CircuitSimulatorExporter.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path.string());
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -78,7 +78,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Ur", "[processor][circuit-si
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ur.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path.string());
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -92,7 +92,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json", "[processor][circuit-simul
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path.string());
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -106,7 +106,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core", "[processor]
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path.string());
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -120,7 +120,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Simba_Json_Ep_Core", "[processor][circu
     jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ep_Core.jsimba");
 
     std::filesystem::remove(jsimbaFile);
-    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path);
+    CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile.string(), flyback_jsimba_path.string());
     REQUIRE(std::filesystem::exists(jsimbaFile));
 }
 
@@ -571,7 +571,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-read
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "forward_case.csv");
 
     double frequency = 200000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     std::vector<std::map<std::string, std::string>> mapColumnNames;
     std::map<std::string, std::string> primaryColumnNames;
     std::map<std::string, std::string> secondaryColumnNames;
@@ -633,7 +633,7 @@ TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-read
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "flyback_case.csv");
 
     double frequency = 200000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     std::vector<std::map<std::string, std::string>> mapColumnNames;
     std::map<std::string, std::string> primaryColumnNames;
     std::map<std::string, std::string> secondaryColumnNames;
@@ -705,7 +705,7 @@ TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
 
     double turnsRatio = 1.0 / 0.3;
     double frequency = 100000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 220e-6);
 
@@ -764,7 +764,7 @@ TEST_CASE("Test_PFC_Only_Current", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "only_pfc_current_waveform.csv");
 
     double frequency = 50;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 110e-6);
 
@@ -859,7 +859,7 @@ TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "ltspice_simulation.txt");
 
     double frequency = 372618;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 100e-6);
 
@@ -918,7 +918,7 @@ TEST_CASE("Test_Plecs", "[processor][circuit-simulation-reader][plecs]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "plecs_simulation.csv");
 
     double frequency = 50;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(1, frequency);
 
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 100e-6);
@@ -956,7 +956,7 @@ TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader]
 
     double frequency = 50;
     {
-        auto reader = CircuitSimulationReader(simulation_path);
+        auto reader = CircuitSimulationReader(simulation_path.string());
         auto operatingPoint = reader.extract_operating_point(1, frequency);
 
         operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 100e-6);
@@ -966,7 +966,7 @@ TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader]
         REQUIRE(!operatingPoint.get_excitations_per_winding()[0].get_voltage());
     }
     {
-        auto reader = CircuitSimulationReader(simulation_path);
+        auto reader = CircuitSimulationReader(simulation_path.string());
         std::vector<std::map<std::string, std::string>> mapColumnNames;
         std::map<std::string, std::string> primaryColumnNames;
         primaryColumnNames["time"] = "IHave";
@@ -1012,7 +1012,7 @@ TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "psim_simulation.csv");
 
     double frequency = 120000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
 
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 52e-6);
@@ -1068,7 +1068,7 @@ TEST_CASE("Test_Psim_Harmonics_Size_Error", "[processor][circuit-simulation-read
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "psim_simulation.csv");
 
     double frequency = 100000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
 
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 0.0001);
@@ -1081,7 +1081,7 @@ TEST_CASE("Test_Simba_Column_Names", "[processor][circuit-simulation-reader][sim
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv");
 
     double frequency = 100000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto mapColumnNames = reader.extract_map_column_names(2, frequency);
 
     REQUIRE(mapColumnNames.size() == 2);
@@ -1097,7 +1097,7 @@ TEST_CASE("Test_Ltspice_Column_Names", "[processor][circuit-simulation-reader][l
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "ltspice_simulation.txt");
 
     double frequency = 372618;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto mapColumnNames = reader.extract_map_column_names(2, frequency);
 
     REQUIRE(mapColumnNames.size() == 2);
@@ -1113,7 +1113,7 @@ TEST_CASE("Test_Plecs_Column_Names", "[processor][circuit-simulation-reader][ple
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "plecs_simulation.csv");
 
     double frequency = 50;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto mapColumnNames = reader.extract_map_column_names(1, frequency);
 
     REQUIRE(mapColumnNames.size() == 1);
@@ -1126,7 +1126,7 @@ TEST_CASE("Test_Plecs_Web", "[processor][circuit-simulation-reader][plecs]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "plecs_simulation.csv");
 
     double frequency = 50;
-    auto reader = CircuitSimulationReader(simulation_path); 
+    auto reader = CircuitSimulationReader(simulation_path.string()); 
     std::string mapColumnNamesString = R"([{"current":"L2:Inductor current","time":"Time / s","voltage":"L2:Inductor voltage"}])";
 
     std::vector<std::map<std::string, std::string>> mapColumnNames = json::parse(mapColumnNamesString).get<std::vector<std::map<std::string, std::string>>>();
@@ -1145,7 +1145,7 @@ TEST_CASE("Test_Plecs_Column_Names_Missing_Windings", "[processor][circuit-simul
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "wrong_plecs_simulation.csv");
 
     double frequency = 50;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto mapColumnNames = reader.extract_map_column_names(2, frequency);
 
     REQUIRE(mapColumnNames.size() == 2);
@@ -1159,7 +1159,7 @@ TEST_CASE("Test_Psim_Column_Names", "[processor][circuit-simulation-reader][psim
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "psim_simulation.csv");
 
     double frequency = 120000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto mapColumnNames = reader.extract_map_column_names(2, frequency);
 
     REQUIRE(mapColumnNames.size() == 2);
@@ -1189,7 +1189,7 @@ TEST_CASE("Test_Extract_Column_Names_Web_0", "[processor][circuit-simulation-rea
     }
 
     double frequency = 250000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto mapColumnNames = reader.extract_map_column_names(2, frequency);
 
     REQUIRE(mapColumnNames.size() == 2);
@@ -1205,7 +1205,7 @@ TEST_CASE("Test_Import_Csv_Web_0", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_0.csv");
 
     double frequency = 250000;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
 
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 10e-6);
@@ -1217,7 +1217,7 @@ TEST_CASE("Test_Import_Csv_Web_1", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_1.csv");
 
     double frequency = 919963.201472;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
 
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 10e-6);
@@ -1229,7 +1229,7 @@ TEST_CASE("Test_Import_Csv_Web_2", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_2.csv");
 
     double frequency = 1e6;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
 
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 10e-6);
@@ -1241,7 +1241,7 @@ TEST_CASE("Test_Import_Csv_Web_3", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_3.csv");
 
     double frequency = 50e3;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto operatingPoint = reader.extract_operating_point(2, frequency);
 
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 10e-6);
@@ -1253,7 +1253,7 @@ TEST_CASE("Test_Import_Csv_Web_4", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_web_4.csv");
 
     double frequency = 239600;
-    auto reader = CircuitSimulationReader(simulation_path);
+    auto reader = CircuitSimulationReader(simulation_path.string());
     auto mapColumnNamesJson = json::parse(R"([{"current":"I(L1","time":"time","voltage":"V(Vin_q1_drain"},{"current":"I(L2","time":"time","voltage":"V(q5_drain_q2_drain"}])");
     std::vector<std::map<std::string, std::string>> mapColumnNames = mapColumnNamesJson.get<std::vector<std::map<std::string, std::string>>>();
 

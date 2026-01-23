@@ -1632,7 +1632,6 @@ TEST_CASE("Test_Try_Guess_Flyback_Primary", "[processor][inputs][smoke-test]") {
 
     auto calculatedProcessed = OpenMagnetics::Inputs::calculate_basic_processed_data(waveform);
 
-    double expectedOffset = offset;
     REQUIRE(magic_enum::enum_name(label) == magic_enum::enum_name(guessedLabel));
     REQUIRE_THAT(processed.get_peak_to_peak().value(), Catch::Matchers::WithinAbs(calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value()));
     REQUIRE_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value()));

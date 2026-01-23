@@ -140,7 +140,7 @@ bool check_turns_description(OpenMagnetics::Coil coil);
 bool check_wire_standards(OpenMagnetics::Coil coil);
 void check_winding_losses(OpenMagnetics::Mas mas);
 
-OpenMagnetics::Mas mas_loader(std::string path);
+OpenMagnetics::Mas mas_loader(const std::filesystem::path& path);
 
 // Helper to create Core and Coil from JSON strings, process them, and optionally create magnetic
 std::pair<OpenMagnetics::Core, OpenMagnetics::Coil> prepare_core_and_coil_from_json(

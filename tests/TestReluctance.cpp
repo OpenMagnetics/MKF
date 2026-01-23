@@ -216,24 +216,25 @@ namespace {
         }
     }
 
-    void test_energy_pq_40_40_grinded(ReluctanceModels modelName) {
-        double meanError = 0;
-        std::vector<std::map<std::string, double>> tests = {
-            {{"gapLength", 0.002}, {"expectedEnergy", 0.02528}},
-
-        };
-
-        for (auto& test : tests) {
-            meanError +=
-                run_test_energy(modelName, "PQ 40/40", OpenMagneticsTesting::get_ground_gap(test["gapLength"]),
-                                test["expectedEnergy"]);
-        }
-        meanError /= tests.size();
-        if (verboseTests) {
-            std::cout << "Mean Error in Energy for Test_reluctance_PQ_40_40_Grinded with Model "
-                      << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-        }
-    }
+    // Commented out: unused function causing -Wunused-function warning
+    // void test_energy_pq_40_40_grinded(ReluctanceModels modelName) {
+    //     double meanError = 0;
+    //     std::vector<std::map<std::string, double>> tests = {
+    //         {{"gapLength", 0.002}, {"expectedEnergy", 0.02528}},
+    //
+    //     };
+    //
+    //     for (auto& test : tests) {
+    //         meanError +=
+    //             run_test_energy(modelName, "PQ 40/40", OpenMagneticsTesting::get_ground_gap(test["gapLength"]),
+    //                             test["expectedEnergy"]);
+    //     }
+    //     meanError /= tests.size();
+    //     if (verboseTests) {
+    //         std::cout << "Mean Error in Energy for Test_reluctance_PQ_40_40_Grinded with Model "
+    //                   << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+    //     }
+    // }
 
     TEST_CASE("Test_Zhang_PQ_28_20_Grinded", "[physical-model][reluctance][zhang-reluctance-model][smoke-test]") {
         test_reluctance_pq_28_20_grinded(ReluctanceModels::ZHANG);

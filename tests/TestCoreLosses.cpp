@@ -2712,10 +2712,10 @@ TEST_CASE("Test_Core_Losses_Simple_Inductor", "[physical-model][core-losses][smo
     auto magneticFluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
     excitation.set_magnetic_flux_density(magneticFluxDensity);
 
-    double magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    [[maybe_unused]] double magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
 
     double frequency = OpenMagnetics::Inputs::get_switching_frequency(excitation);
-    double magneticFluxDensityAcPeakToPeak = OpenMagnetics::Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
+    [[maybe_unused]] double magneticFluxDensityAcPeakToPeak = OpenMagnetics::Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
 }
 
 TEST_CASE("Test_Core_Losses_Hoganas", "[physical-model][core-losses]") {
