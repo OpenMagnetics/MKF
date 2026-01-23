@@ -84,18 +84,22 @@ jobs:
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
     
+    - name: Install Ninja
+      run: choco install ninja -y
+    
     - name: Install quicktype
       run: npm install -g quicktype
     
     - name: Configure CMake
       run: |
         cmake -B ${{github.workspace}}/build `
+          -G Ninja `
           -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} `
           -DINCLUDE_MKF_TESTS=ON `
           -DEMBED_MAS_DATA=ON
     
     - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} -j $env:NUMBER_OF_PROCESSORS
     
     - name: Run tests
       working-directory: ${{github.workspace}}/build
@@ -106,7 +110,7 @@ jobs:
           ctest -C ${{env.BUILD_TYPE}} --output-on-failure
         } else {
           Write-Host "Running smoke tests only"
-          .\Release\MKF_tests.exe "[smoke-test]" --reporter console
+          .\MKF_tests.exe "[smoke-test]" --reporter console
         }
     
     - name: Upload test results
