@@ -69,6 +69,7 @@ jobs:
       with:
         name: test-results-linux
         path: ${{github.workspace}}/build/Testing/
+        if-no-files-found: ignore
 
   build-windows:
     name: Build on Windows
@@ -114,6 +115,7 @@ jobs:
       with:
         name: test-results-windows
         path: ${{github.workspace}}/build/Testing/
+        if-no-files-found: ignore
 
   documentation:
     name: Generate Documentation
