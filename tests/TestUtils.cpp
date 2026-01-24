@@ -500,7 +500,7 @@ namespace {
         REQUIRE(autocompletedMas.get_inputs().get_operating_points().size() == autocompletedMas.get_outputs().size());
         REQUIRE(autocompletedMas.get_outputs()[0].get_core_losses());
         REQUIRE(autocompletedMas.get_outputs()[0].get_winding_losses());
-        REQUIRE(autocompletedMas.get_outputs()[0].get_magnetizing_inductance());
+        REQUIRE(autocompletedMas.get_outputs()[0].get_inductance());
     }
 
     TEST_CASE("Test_Mas_Autocomplete_Json", "[support][utils][bug][smoke-test]") {
@@ -537,7 +537,7 @@ namespace {
         REQUIRE(autocompletedMas.get_inputs().get_operating_points().size() == autocompletedMas.get_outputs().size());
         REQUIRE(autocompletedMas.get_outputs()[0].get_core_losses());
         REQUIRE(autocompletedMas.get_outputs()[0].get_winding_losses());
-        REQUIRE(autocompletedMas.get_outputs()[0].get_magnetizing_inductance());
+        REQUIRE(autocompletedMas.get_outputs()[0].get_inductance());
     }
 
     TEST_CASE("Test_Mas_Autocomplete_Json_2", "[support][utils][bug][smoke-test]") {
@@ -576,7 +576,7 @@ namespace {
         REQUIRE(autocompletedMas.get_inputs().get_operating_points().size() == autocompletedMas.get_outputs().size());
         REQUIRE(autocompletedMas.get_outputs()[0].get_core_losses());
         REQUIRE(autocompletedMas.get_outputs()[0].get_winding_losses());
-        REQUIRE(autocompletedMas.get_outputs()[0].get_magnetizing_inductance());
+        REQUIRE(autocompletedMas.get_outputs()[0].get_inductance());
     }
 
     TEST_CASE("Test_Mas_Autocomplete_Only_Magnetic", "[support][utils][smoke-test]") {

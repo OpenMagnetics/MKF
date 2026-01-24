@@ -898,7 +898,7 @@ namespace {
 
         REQUIRE(masMagnetics.size() > 1);
         for (auto [mas, scoring] : masMagnetics) {
-            REQUIRE_THAT(mas.get_outputs()[0].get_magnetizing_inductance()->get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value(), mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value() * 0.25));
+            REQUIRE_THAT(mas.get_outputs()[0].get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value(), mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value() * 0.25));
         }
     }
 
@@ -913,7 +913,7 @@ namespace {
 
         REQUIRE(masMagnetics.size() > 1);
         for (auto [mas, scoring] : masMagnetics) {
-            REQUIRE_THAT(mas.get_outputs()[0].get_magnetizing_inductance()->get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value(), mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value() * 0.25));
+            REQUIRE_THAT(mas.get_outputs()[0].get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value(), mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value() * 0.25));
             std::string name = mas.get_magnetic().get_core().get_name().value();
             auto masMagnetic = mas;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
@@ -937,7 +937,7 @@ namespace {
 
         REQUIRE(masMagnetics.size() > 1);
         for (auto [mas, scoring] : masMagnetics) {
-            REQUIRE_THAT(mas.get_outputs()[0].get_magnetizing_inductance()->get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value(), mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value() * 0.25));
+            REQUIRE_THAT(mas.get_outputs()[0].get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value(), mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value() * 0.25));
             std::string name = mas.get_magnetic().get_core().get_name().value();
             auto masMagnetic = mas;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
@@ -963,7 +963,7 @@ namespace {
 
         REQUIRE(masMagnetics.size() > 1);
         for (auto [mas, scoring] : masMagnetics) {
-            REQUIRE_THAT(mas.get_outputs()[0].get_magnetizing_inductance()->get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value(), mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value() * 0.25));
+            REQUIRE_THAT(mas.get_outputs()[0].get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value(), mas.get_inputs().get_design_requirements().get_magnetizing_inductance().get_nominal().value() * 0.25));
             std::string name = mas.get_magnetic().get_core().get_name().value();
             auto masMagnetic = mas;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());

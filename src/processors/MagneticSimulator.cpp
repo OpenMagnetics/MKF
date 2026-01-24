@@ -18,14 +18,16 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
 
     for (auto& operatingPoint : mas.get_mutable_inputs().get_mutable_operating_points()){
         Outputs output;
-        output.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
-        output.set_core_losses(calculate_core_losses(operatingPoint, magnetic));
-        output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, operatingPoint.get_conditions().get_ambient_temperature()));
+        InductanceOutput inductanceOutput;
+        inductanceOutput.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
         if (!fastMode) {
             if (magnetic.get_coil().get_functional_description().size() > 1) {
-                output.set_leakage_inductance(calculate_leakage_inductance(operatingPoint, magnetic));
+                inductanceOutput.set_leakage_inductance(calculate_leakage_inductance(operatingPoint, magnetic));
             }
         }
+        output.set_inductance(inductanceOutput);
+        output.set_core_losses(calculate_core_losses(operatingPoint, magnetic));
+        output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, operatingPoint.get_conditions().get_ambient_temperature()));
 
         outputs.push_back(output);
         simulatedOperatingPoints.push_back(operatingPoint);

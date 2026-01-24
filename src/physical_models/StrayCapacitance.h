@@ -87,12 +87,6 @@ class StrayCapacitance{
         double calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil = std::nullopt);
         double calculate_energy_density_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil = std::nullopt);
         static double calculate_area_between_two_turns(Turn firstTurn, Turn secondTurn);
-        // calculamos el area entre dos vueltas
-        // calcualmos la densidad de energia entre dosvuetlas
-        // calculas la proporcion de solapamiento entre un pixel y la proyeccion externa de dos vueltas
-        // SI es mayor que cero, se le asigna la energi prpocional al area que solape, 
-        // cada piel se hace para cada par de dosvuetlas y se suma la energia
-        // se pinta la energia
 
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 

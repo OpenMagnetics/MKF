@@ -1310,7 +1310,9 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
 
         CoreLossesOutput coreLossesOutput = _magneticSimulator.calculate_core_losses(operatingPoint, magnetic);
 
-        outputs.set_magnetizing_inductance(magnetizingInductanceOutput);
+        InductanceOutput inductanceOutput;
+        inductanceOutput.set_magnetizing_inductance(magnetizingInductanceOutput);
+        outputs.set_inductance(inductanceOutput);
         outputs.set_winding_losses(windingLossesOutput);
         outputs.set_core_losses(coreLossesOutput);
 
