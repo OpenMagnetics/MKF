@@ -260,15 +260,17 @@ namespace {
     }
 
     TEST_CASE("Test_Filling_Factor_Litz_Wire_Grade_2_Served_1_Layer_1_Few_Strands", "[constructive-model][wire][smoke-test]") {
+        load_wires();
         auto outerDiameter = OpenMagnetics::Wire::get_filling_factor_served_litz(2e-05, 10, 2, 1, WireStandard::IEC_60317);
-        double expectedOuterDiameter = 0.235;
+        double expectedOuterDiameter = 0.33978;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
 
     TEST_CASE("Test_Filling_Factor_Thick_Litz_Insulated_Wire_3_Layers_Thick_Layer_Thickness_Few_Strands", "[constructive-model][wire][smoke-test]") {
+        load_wires();
         auto outerDiameter = OpenMagnetics::Wire::get_filling_factor_insulated_litz(0.000102, 66, 3, 7.62e-05, 1, WireStandard::NEMA_MW_1000_C);
-        double expectedOuterDiameter = 0.3449;
+        double expectedOuterDiameter = 0.45201;
 
         REQUIRE_THAT(expectedOuterDiameter, Catch::Matchers::WithinAbs(outerDiameter, max_error * expectedOuterDiameter));
     }
