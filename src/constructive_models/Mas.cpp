@@ -28,8 +28,8 @@ void from_file(std::filesystem::path filepath, Mas & x) {
     OpenMagnetics::Inputs inputs;
     std::vector<double> magnetizingInductancePerPoint;
     for (auto output : outputs) {
-        if (output.get_magnetizing_inductance()) {
-            auto magnetizingInductance = resolve_dimensional_values(output.get_magnetizing_inductance()->get_magnetizing_inductance());
+        if (output.get_inductance()) {
+            auto magnetizingInductance = resolve_dimensional_values(output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance());
             magnetizingInductancePerPoint.push_back(magnetizingInductance);
         }
     }

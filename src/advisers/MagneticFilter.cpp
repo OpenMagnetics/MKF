@@ -321,7 +321,12 @@ std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* 
                 magnetizingInductanceOutput.set_maximum_magnetic_energy_core(storableEnergy);
                 magnetizingInductanceOutput.set_method_used(_models["gapReluctance"]);
                 magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);
-                (*outputs)[operatingPointIndex].set_magnetizing_inductance(magnetizingInductanceOutput);
+                InductanceOutput inductanceOutput;
+                if ((*outputs)[operatingPointIndex].get_inductance()) {
+                    inductanceOutput = *(*outputs)[operatingPointIndex].get_inductance();
+                }
+                inductanceOutput.set_magnetizing_inductance(magnetizingInductanceOutput);
+                (*outputs)[operatingPointIndex].set_inductance(inductanceOutput);
             }
         }
         else {
@@ -1538,7 +1543,12 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
                 while (outputs->size() < operatingPointIndex + 1) {
                     outputs->push_back(Outputs());
                 }
-                (*outputs)[operatingPointIndex].set_magnetizing_inductance(aux);
+                InductanceOutput inductanceOutput;
+                if ((*outputs)[operatingPointIndex].get_inductance()) {
+                    inductanceOutput = *(*outputs)[operatingPointIndex].get_inductance();
+                }
+                inductanceOutput.set_magnetizing_inductance(aux);
+                (*outputs)[operatingPointIndex].set_inductance(inductanceOutput);
             }
         }
     }

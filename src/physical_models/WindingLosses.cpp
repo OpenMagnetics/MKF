@@ -1,5 +1,6 @@
 #include "support/Settings.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/Inductance.h"
 #include "MAS.hpp"
 #include "physical_models/MagnetizingInductance.h"
 #include "support/Exceptions.h"
@@ -227,15 +228,10 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
 ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magnetic, double temperature, double frequency) {
     ScalarMatrixAtFrequency scalarMatrixAtFrequency;
     scalarMatrixAtFrequency.set_frequency(frequency);
+    
+    auto& functionalDescription = magnetic.get_coil().get_functional_description();
+    size_t numWindings = functionalDescription.size();
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
-
-    // for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-    //     resistanceMatrix.push_back(std::vector<DimensionWithTolerance>{});
-    //     for (size_t secondWindingIndex = 0; secondWindingIndex < magnetic.get_coil().get_functional_description().size(); ++secondWindingIndex) {
-    //         DimensionWithTolerance dimension;
-    //         resistanceMatrix[windingIndex].push_back(dimension);
-    //     }
-    // }
 
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto previousSetting = settings.get_magnetic_field_include_fringing();
@@ -243,51 +239,83 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
 
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+    
+    // Calculate inductance matrix to get sqrt(L_i/L_j) ratios for mutual resistance scaling
+    // Per Spreen (1990), mutual resistance R_ij should be scaled using inductance ratio, not turns ratio
+    Inductance inductanceModel;
+    auto inductanceMatrix = inductanceModel.calculate_inductance_matrix(magnetic, frequency);
+    auto& inductanceMagnitude = inductanceMatrix.get_magnitude();
+    
+    // Store self-inductances for later use in scaling
+    std::vector<double> selfInductances(numWindings);
+    for (size_t i = 0; i < numWindings; ++i) {
+        std::string windingName = functionalDescription[i].get_name();
+        selfInductances[i] = inductanceMagnitude.at(windingName).at(windingName).get_nominal().value();
+    }
+    
     double virtualCurrent = 1;
+    std::map<std::string, std::map<std::string, DimensionWithTolerance>> resistanceMagnitude;
 
-    // diagonal calculation. mask => {1, 0, 0, ...}, {0, 1, 0, ...}, ...
-    for (size_t enabledWindingIndex = 0; enabledWindingIndex < magnetic.get_coil().get_functional_description().size(); ++enabledWindingIndex) {
-        std::vector<double> currentMask;
-        for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-            if (enabledWindingIndex == windingIndex) {
-                currentMask.push_back(virtualCurrent * sqrt(2));
-            }
-            else {
-                currentMask.push_back(0);
-            }
-        }
+    // Diagonal calculation: R_ii from losses with only winding i excited
+    // Current mask => {I, 0, 0, ...}, {0, I, 0, ...}, ...
+    for (size_t i = 0; i < numWindings; ++i) {
+        std::string windingName_i = functionalDescription[i].get_name();
+        
+        std::vector<double> currentMask(numWindings, 0.0);
+        currentMask[i] = virtualCurrent * sqrt(2);
+        
         auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
-        double totalLossses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
+        double totalLosses = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
-        double effectiveResistance = totalLossses / pow(virtualCurrent, 2);
+        // R_ii = P / I^2
+        double effectiveResistance = totalLosses / pow(virtualCurrent, 2);
 
-        scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(enabledWindingIndex + 1)][std::to_string(enabledWindingIndex + 1)].set_nominal(effectiveResistance);
+        DimensionWithTolerance resistanceValue;
+        resistanceValue.set_nominal(effectiveResistance);
+        resistanceMagnitude[windingName_i][windingName_i] = resistanceValue;
     }
 
-    // rest of elements calculation. mask => {1, 1, 0, ...}, {1, 0, 1, ...}, ...
-    for (size_t enabledWindingIndex = 0; enabledWindingIndex < magnetic.get_coil().get_functional_description().size(); ++enabledWindingIndex) {
-        for (size_t secondEnabledWindingIndex = enabledWindingIndex + 1; secondEnabledWindingIndex < magnetic.get_coil().get_functional_description().size(); ++secondEnabledWindingIndex) {
-            std::vector<double> currentMask;
-            double virtualCurrent = 1;
-            for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-                if (enabledWindingIndex == windingIndex || secondEnabledWindingIndex == windingIndex) {
-                    currentMask.push_back(virtualCurrent * sqrt(2));
-                }
-                else {
-                    currentMask.push_back(0);
-                }
-            }
+    // Off-diagonal calculation: R_ij from losses with windings i and j excited
+    // Per Spreen (1990): P_total = R_11*I_1^2 + R_22*I_2^2 + 2*R_12*I_1*I_2
+    // Using I_2 = sqrt(L_1/L_2) * I_1 for proper scaling based on inductance ratio
+    for (size_t i = 0; i < numWindings; ++i) {
+        std::string windingName_i = functionalDescription[i].get_name();
+        
+        for (size_t j = i + 1; j < numWindings; ++j) {
+            std::string windingName_j = functionalDescription[j].get_name();
+            
+            // Use sqrt(L_i/L_j) as the current ratio, per Spreen (1990)
+            // This properly accounts for the inductance-based coupling
+            double inductanceRatio = std::sqrt(selfInductances[i] / selfInductances[j]);
+            
+            double I_i = virtualCurrent;
+            double I_j = virtualCurrent * inductanceRatio;
+            
+            std::vector<double> currentMask(numWindings, 0.0);
+            currentMask[i] = I_i * sqrt(2);
+            currentMask[j] = I_j * sqrt(2);
+            
             auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
-            double totalLossses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
+            double totalLosses = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
-            double mutualResistance = (totalLossses - (resolve_dimensional_values(scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(enabledWindingIndex + 1)][std::to_string(enabledWindingIndex + 1)]) * pow(virtualCurrent, 2) + 
-                                                       resolve_dimensional_values(scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(secondEnabledWindingIndex + 1)][std::to_string(secondEnabledWindingIndex + 1)]) * pow(virtualCurrent, 2))) / (2 * virtualCurrent * virtualCurrent);
-            scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(enabledWindingIndex + 1)][std::to_string(secondEnabledWindingIndex + 1)].set_nominal(mutualResistance);
-            scalarMatrixAtFrequency.get_mutable_magnitude()[std::to_string(secondEnabledWindingIndex + 1)][std::to_string(enabledWindingIndex + 1)].set_nominal(mutualResistance);
+            // P_total = R_ii * I_i^2 + R_jj * I_j^2 + 2 * R_ij * I_i * I_j
+            // Solving for R_ij:
+            // R_ij = (P_total - R_ii * I_i^2 - R_jj * I_j^2) / (2 * I_i * I_j)
+            double R_ii = resistanceMagnitude[windingName_i][windingName_i].get_nominal().value();
+            double R_jj = resistanceMagnitude[windingName_j][windingName_j].get_nominal().value();
+            
+            double mutualResistance = (totalLosses - R_ii * pow(I_i, 2) - R_jj * pow(I_j, 2)) / (2 * I_i * I_j);
+            
+            DimensionWithTolerance resistanceValue;
+            resistanceValue.set_nominal(mutualResistance);
+            
+            // Symmetric matrix: R_ij = R_ji
+            resistanceMagnitude[windingName_i][windingName_j] = resistanceValue;
+            resistanceMagnitude[windingName_j][windingName_i] = resistanceValue;
         }
     }
 
-
+    scalarMatrixAtFrequency.set_magnitude(resistanceMagnitude);
     settings.set_magnetic_field_include_fringing(previousSetting);
     return scalarMatrixAtFrequency;
 }

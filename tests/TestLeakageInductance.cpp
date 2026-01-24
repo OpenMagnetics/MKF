@@ -651,7 +651,7 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 2", "
 
     OpenMagnetics::MagneticSimulator magneticSimulator;
     auto mas = magneticSimulator.simulate(inputs, magnetic);
-    auto leakageInductance = resolve_dimensional_values(mas.get_outputs()[0].get_leakage_inductance()->get_leakage_inductance_per_winding()[0]);
+    auto leakageInductance = resolve_dimensional_values(mas.get_outputs()[0].get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding()[0]);
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
 
     {

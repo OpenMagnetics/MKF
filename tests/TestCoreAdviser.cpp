@@ -801,8 +801,8 @@ TEST_CASE("Test_CoreAdviser_Web_1", "[adviser][core-adviser][available-cores][bu
         to_json(aux, masMagnetic.first.get_magnetic());
         to_json(aux, masMagnetic.first.get_outputs()[0].get_core_losses().value());
         to_json(aux, masMagnetic.first.get_outputs()[0].get_winding_losses().value());
-    if (masMagnetic.first.get_outputs()[0].get_magnetizing_inductance()) {
-        to_json(aux, masMagnetic.first.get_outputs()[0].get_magnetizing_inductance().value());
+    if (masMagnetic.first.get_outputs()[0].get_inductance()) {
+        to_json(aux, masMagnetic.first.get_outputs()[0].get_inductance()->get_magnetizing_inductance());
     }
         resultCores.push_back(aux);
     }
@@ -856,8 +856,8 @@ TEST_CASE("Test_CoreAdviser_Web_2", "[adviser][core-adviser][available-cores][bu
                 to_json(aux, masMagnetic.first.get_outputs()[0].get_core_losses().value());
                 to_json(aux, masMagnetic.first.get_outputs()[0].get_winding_losses().value());
         }
-        if(masMagnetic.first.get_outputs()[0].get_magnetizing_inductance()) {
-            to_json(aux, masMagnetic.first.get_outputs()[0].get_magnetizing_inductance().value());
+        if(masMagnetic.first.get_outputs()[0].get_inductance()) {
+            to_json(aux, masMagnetic.first.get_outputs()[0].get_inductance()->get_magnetizing_inductance());
         }
         resultCores.push_back(aux);
     }
@@ -1039,9 +1039,9 @@ TEST_CASE("Test_CoreAdviser_Web_7", "[adviser][core-adviser][available-cores][bu
             for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
                 auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
                 auto magnetizingInductanceOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &operatingPoint);
-                auto magnetizingInductanceOutputEnergy = mas.get_mutable_outputs()[operatingPointIndex].get_magnetizing_inductance();
-                magnetizingInductanceOutput.set_maximum_magnetic_energy_core(magnetizingInductanceOutputEnergy->get_maximum_magnetic_energy_core());
-                mas.get_mutable_outputs()[operatingPointIndex].set_magnetizing_inductance(magnetizingInductanceOutput);
+                auto magnetizingInductanceOutputEnergy = mas.get_mutable_outputs()[operatingPointIndex].get_inductance()->get_magnetizing_inductance();
+                magnetizingInductanceOutput.set_maximum_magnetic_energy_core(magnetizingInductanceOutputEnergy.get_maximum_magnetic_energy_core());
+                InductanceOutput inductanceOutput_temp; inductanceOutput_temp.set_magnetizing_inductance(magnetizingInductanceOutput); mas.get_mutable_outputs()[operatingPointIndex].set_inductance(inductanceOutput_temp);
                 masMagnetic.first = mas;
             }
         }
@@ -1105,9 +1105,9 @@ TEST_CASE("Test_CoreAdviser_Web_8", "[adviser][core-adviser][available-cores][bu
             for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
                 auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
                 auto magnetizingInductanceOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &operatingPoint);
-                auto magnetizingInductanceOutputEnergy = mas.get_mutable_outputs()[operatingPointIndex].get_magnetizing_inductance();
-                magnetizingInductanceOutput.set_maximum_magnetic_energy_core(magnetizingInductanceOutputEnergy->get_maximum_magnetic_energy_core());
-                mas.get_mutable_outputs()[operatingPointIndex].set_magnetizing_inductance(magnetizingInductanceOutput);
+                auto magnetizingInductanceOutputEnergy = mas.get_mutable_outputs()[operatingPointIndex].get_inductance()->get_magnetizing_inductance();
+                magnetizingInductanceOutput.set_maximum_magnetic_energy_core(magnetizingInductanceOutputEnergy.get_maximum_magnetic_energy_core());
+                InductanceOutput inductanceOutput_temp; inductanceOutput_temp.set_magnetizing_inductance(magnetizingInductanceOutput); mas.get_mutable_outputs()[operatingPointIndex].set_inductance(inductanceOutput_temp);
                 masMagnetic.first = mas;
             }
         }
@@ -1200,9 +1200,9 @@ TEST_CASE("Test_CoreAdviser_Web_9", "[adviser][core-adviser][available-cores][bu
             for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
                 auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
                 auto magnetizingInductanceOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &operatingPoint);
-                auto magnetizingInductanceOutputEnergy = mas.get_mutable_outputs()[operatingPointIndex].get_magnetizing_inductance();
-                magnetizingInductanceOutput.set_maximum_magnetic_energy_core(magnetizingInductanceOutputEnergy->get_maximum_magnetic_energy_core());
-                mas.get_mutable_outputs()[operatingPointIndex].set_magnetizing_inductance(magnetizingInductanceOutput);
+                auto magnetizingInductanceOutputEnergy = mas.get_mutable_outputs()[operatingPointIndex].get_inductance()->get_magnetizing_inductance();
+                magnetizingInductanceOutput.set_maximum_magnetic_energy_core(magnetizingInductanceOutputEnergy.get_maximum_magnetic_energy_core());
+                InductanceOutput inductanceOutput_temp; inductanceOutput_temp.set_magnetizing_inductance(magnetizingInductanceOutput); mas.get_mutable_outputs()[operatingPointIndex].set_inductance(inductanceOutput_temp);
                 masMagnetic.first = mas;
             }
         }

@@ -392,7 +392,7 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
     for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_outputs().size(); ++operatingPointIndex) {
         auto output = mas.get_outputs()[operatingPointIndex];
         text += "Operating Point: " + std::to_string(operatingPointIndex + 1) + "\n";
-        text += "\tMagnetizing Inductance: " + std::to_string(resolve_dimensional_values(output.get_magnetizing_inductance().value().get_magnetizing_inductance())) + "\n";
+        text += "\tMagnetizing Inductance: " + std::to_string(resolve_dimensional_values(output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance())) + "\n";
         text += "\tCore losses: " + std::to_string(output.get_core_losses().value().get_core_losses()) + "\n";
         text += "\tMagnetic flux density: " + std::to_string(output.get_core_losses().value().get_magnetic_flux_density()->get_processed()->get_peak().value()) + "\n";
         text += "\tCore temperature: " + std::to_string(output.get_core_losses().value().get_temperature().value()) + "\n";
@@ -418,9 +418,9 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
             text += "\t\t\tProximity effect losses: " + std::to_string(proximityEffectLosses) + "\n";
 
             if (windingIndex > 0) {
-                std::cout <<  output.get_leakage_inductance().value().get_leakage_inductance_per_winding().size() << std::endl;
-                // output.get_leakage_inductance().value().get_leakage_inductance_per_winding();
-                double value = output.get_leakage_inductance().value().get_leakage_inductance_per_winding()[windingIndex - 1].get_nominal().value();
+                std::cout <<  output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding().size() << std::endl;
+                // output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding();
+                double value = output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding()[windingIndex - 1].get_nominal().value();
                 text += "\t\t\tLeakage inductance referred to primary: " + std::to_string(value) + "\n";
             }
         }
