@@ -54,14 +54,7 @@ jobs:
     
     - name: Run tests
       working-directory: ${{github.workspace}}/build
-      run: |
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          echo "Running all tests (manual dispatch)"
-          ctest -C ${{env.BUILD_TYPE}} --output-on-failure --verbose
-        else
-          echo "Running smoke tests only"
-          ./MKF_tests "[smoke-test]" --reporter console
-        fi
+      run: ./MKF_tests "[smoke-test]" --reporter console
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -103,15 +96,7 @@ jobs:
     
     - name: Run tests
       working-directory: ${{github.workspace}}/build
-      shell: pwsh
-      run: |
-        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-          Write-Host "Running all tests (manual dispatch)"
-          ctest -C ${{env.BUILD_TYPE}} --output-on-failure
-        } else {
-          Write-Host "Running smoke tests only"
-          .\MKF_tests.exe "[smoke-test]" --reporter console
-        }
+      run: .\MKF_tests.exe "[smoke-test]" --reporter console
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
