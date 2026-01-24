@@ -356,7 +356,7 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Two_Chosen_Ones", "[adviser]
     REQUIRE(found);
     found = false;
     for (auto [mas, scoring] : masMagnetics) {
-        if (mas.get_magnetic().get_core().get_name().value() == "T 18/9.0/7.1 - Kool Mµ Hƒ 60 - Ungapped") {
+        if (mas.get_magnetic().get_core().get_name().value() == "T 18/9.0/7.1 - Kool M\xC2\xB5 H\xC6\x92 60 - Ungapped") {
             found = true;
         }
     }
@@ -692,7 +692,7 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Points_High_Power_Low_P
 
     bool found = false;
     for (auto [mas, scoring] : masMagnetics) {
-        if (mas.get_magnetic().get_core().get_name().value() == "U 66/33/27 - Kool Mµ 60 - Ungapped") {
+        if (mas.get_magnetic().get_core().get_name().value() == "U 66/33/27 - Kool M\xC2\xB5 60 - Ungapped") {
             if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
                 found = true;
             }

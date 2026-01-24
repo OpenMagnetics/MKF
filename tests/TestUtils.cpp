@@ -77,8 +77,10 @@ namespace {
     TEST_CASE("Test_Complete_Ellipitical_1_1", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_1(1);
         double expectedValue = std::comp_ellint_1(1);
+        // Our implementation returns NaN, standard library may return NaN or infinity
         REQUIRE(std::isnan(calculatedValue));
-        REQUIRE(std::isnan(expectedValue));
+        // MSVC returns infinity, GCC/Clang return NaN - both are valid for the singularity at k=1
+        REQUIRE((std::isnan(expectedValue) || std::isinf(expectedValue)));
     }
 
     TEST_CASE("Test_Complete_Ellipitical_1_2", "[support][utils][smoke-test]") {

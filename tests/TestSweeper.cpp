@@ -351,7 +351,7 @@ namespace {
         coil.wind({0, 1, 2}, 1);
 
         int64_t numberStacks = 1;
-        std::string coreMaterial = "Kool Mµ 75";
+        std::string coreMaterial = "Kool M\xC2\xB5 75";
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.0000008);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
@@ -411,7 +411,7 @@ namespace {
         coil.wind({0, 1, 2}, 1);
 
         int64_t numberStacks = 1;
-        std::string coreMaterial = "Kool Mµ 75";
+        std::string coreMaterial = "Kool M\xC2\xB5 75";
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.0000008);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
@@ -471,7 +471,7 @@ namespace {
         coil.wind({0, 1, 2}, 1);
 
         int64_t numberStacks = 1;
-        std::string coreMaterial = "Kool Mµ 75";
+        std::string coreMaterial = "Kool M\xC2\xB5 75";
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.0000008);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;

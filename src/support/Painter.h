@@ -189,6 +189,7 @@ class PainterInterface {
     public:
         virtual void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt) = 0;
         virtual void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt) = 0;
+        virtual void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature) = 0;
         virtual std::string export_svg() = 0;
         virtual void export_png() = 0;
         virtual void paint_core(Magnetic magnetic) = 0;
@@ -245,6 +246,7 @@ class BasicPainter : public PainterInterface {
         void paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label);
         void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField);
         void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField);
+        void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature);
 
     public:
         SVG::SVG _root;
@@ -377,6 +379,9 @@ class AdvancedPainter : public PainterInterface {
     void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt) {
         throw std::runtime_error("Not implemented");
     }
+    void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature) {
+        throw std::runtime_error("Not implemented");
+    }
 
     std::string export_svg();
     void export_png();
@@ -418,6 +423,7 @@ class Painter{
 
     void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
     void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt);
+    void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature);
     static double get_pixel_proportion_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
     static double get_pixel_area_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
     static std::pair<double, double> get_pixel_dimensions(Magnetic magnetic);

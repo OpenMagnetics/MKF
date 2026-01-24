@@ -343,7 +343,13 @@ IF(HAVE_LAPACK)
     ENDIF(NEED_F2C)
 ENDIF(HAVE_LAPACK)
 
-add_library(MKF SHARED ${SOURCES})
+# On Windows, build as STATIC to avoid DLL boundary issues with inline globals
+# On other platforms, build as SHARED for better compatibility
+if(WIN32)
+    add_library(MKF STATIC ${SOURCES})
+else()
+    add_library(MKF SHARED ${SOURCES})
+endif()
 set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
 add_dependencies(MKF MAS)
 

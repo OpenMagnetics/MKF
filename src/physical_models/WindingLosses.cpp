@@ -6,6 +6,36 @@
 
 namespace OpenMagnetics {
 
+double WindingLosses::get_total_winding_losses(WindingLossesPerElement windingLossesThisElement) {
+    double totalLossses = 0;
+    if (windingLossesThisElement.get_ohmic_losses()) {
+        totalLossses += windingLossesThisElement.get_ohmic_losses()->get_losses();
+    }
+
+    if (windingLossesThisElement.get_skin_effect_losses()) {
+        auto skinEffectLossesPerHarmonic = windingLossesThisElement.get_skin_effect_losses()->get_losses_per_harmonic();
+        for (size_t harmonicIndex = 0; harmonicIndex < skinEffectLossesPerHarmonic.size(); ++harmonicIndex) {
+            totalLossses += skinEffectLossesPerHarmonic[harmonicIndex];
+        }
+    }
+
+    if (windingLossesThisElement.get_proximity_effect_losses()) {
+        auto proximityEffectLossesPerHarmonic = windingLossesThisElement.get_proximity_effect_losses()->get_losses_per_harmonic();
+        for (size_t harmonicIndex = 0; harmonicIndex < proximityEffectLossesPerHarmonic.size(); ++harmonicIndex) {
+            totalLossses += proximityEffectLossesPerHarmonic[harmonicIndex];
+        }
+    }
+    return totalLossses;
+}
+
+double WindingLosses::get_total_winding_losses(std::vector<WindingLossesPerElement> windingLossesPerElement) {
+    double totalLossses = 0;
+    for (auto windingLossesThisElement : windingLossesPerElement) {
+        totalLossses += WindingLosses::get_total_winding_losses(windingLossesThisElement);
+    }
+    return totalLossses;
+}
+
 WindingLossesPerElement combine_turn_losses_per_element(std::vector<WindingLossesPerElement> windingLossesPerTurn, std::vector<size_t> turnIndexesToCombine) {
     WindingLossesPerElement windingLossesThisElement;
     OhmicLosses ohmicLossesThisElement;

@@ -84,7 +84,7 @@ namespace {
         OperatingPoint operatingPoint;
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
 
-        std::string coreMaterialName = "Kool Mµ MAX 26";
+        std::string coreMaterialName = "Kool M\xC2\xB5 MAX 26";
         CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
@@ -92,7 +92,7 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Kool Mµ Hƒ 26");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Kool M\xC2\xB5 H\xC6\x92 26");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals", "[adviser][core-material-cross-referencer][smoke-test]") {
@@ -102,7 +102,7 @@ namespace {
         CoreMaterialCrossReferencer coreMaterialCrossReferencer;
         coreMaterialCrossReferencer.use_only_manufacturer("Micrometals");
 
-        std::string coreMaterialName = "Kool Mµ MAX 26";
+        std::string coreMaterialName = "Kool M\xC2\xB5 MAX 26";
         CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
@@ -172,14 +172,14 @@ namespace {
         weights[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
         weights[CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
 
-        std::string coreMaterialName = "Kool Mµ MAX 26";
+        std::string coreMaterialName = "Kool M\xC2\xB5 MAX 26";
         CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, weights, 5);
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Kool Mµ MAX 40");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "Kool M\xC2\xB5 MAX 40");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Fair_Rite", "[adviser][core-material-cross-referencer][smoke-test]") {

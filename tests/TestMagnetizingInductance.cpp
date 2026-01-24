@@ -945,7 +945,7 @@ namespace {
         double numberTurns = 10;
         double frequency = 100000;
         std::string coreShape = "E 65/32/27";
-        std::string coreMaterial = "Kool Mµ 40";
+        std::string coreMaterial = "Kool M\xC2\xB5 40";
         auto gapping = OpenMagneticsTesting::get_residual_gap();
         double expectedValue = 23e-6;
 
