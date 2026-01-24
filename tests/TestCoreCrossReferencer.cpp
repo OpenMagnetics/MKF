@@ -33,7 +33,7 @@ TEST_CASE("Test_All_Core_Materials", "[adviser][core-cross-referencer]") {
     auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
 
     REQUIRE(crossReferencedCores.size() > 0);
-    REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 35 - Kool Mµ 26 - Ungapped");
+    REQUIRE(crossReferencedCores[0].first.get_name().value() == "E 35 - Kool M\xC2\xB5 26 - Ungapped");
 }
 
 TEST_CASE("Test_All_Core_Materials_Same_Material", "[adviser][core-cross-referencer][smoke-test]") {

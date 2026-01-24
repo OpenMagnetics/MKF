@@ -333,7 +333,7 @@ namespace OpenMagnetics {
 
         size_t n = interpolatorData.size();
         std::vector<double> x, xPackingFactor, yFillingFactor, yCoatingThicknessProportion, yPackingFactor;
-        std::sort(interpolatorData.begin(), interpolatorData.end(), [](const InterpolatorDatum& b1, const InterpolatorDatum& b2) {
+        std::stable_sort(interpolatorData.begin(), interpolatorData.end(), [](const InterpolatorDatum& b1, const InterpolatorDatum& b2) {
             return b1.wireConductingDimension < b2.wireConductingDimension;
         });
 
@@ -436,7 +436,7 @@ namespace OpenMagnetics {
 
         size_t n = interpolatorData.size();
         std::vector<double> x, y;
-        std::sort(interpolatorData.begin(), interpolatorData.end(), [](const InterpolatorDatum& b1, const InterpolatorDatum& b2) {
+        std::stable_sort(interpolatorData.begin(), interpolatorData.end(), [](const InterpolatorDatum& b1, const InterpolatorDatum& b2) {
             return b1.wireNumberConductors < b2.wireNumberConductors;
         });
 
@@ -493,7 +493,7 @@ namespace OpenMagnetics {
 
         size_t n = interpolatorData.size();
         std::vector<double> x, y;
-        std::sort(interpolatorData.begin(), interpolatorData.end(), [](const InterpolatorDatum& b1, const InterpolatorDatum& b2) {
+        std::stable_sort(interpolatorData.begin(), interpolatorData.end(), [](const InterpolatorDatum& b1, const InterpolatorDatum& b2) {
             return b1.wireTheoreticalConductingArea < b2.wireTheoreticalConductingArea;
         });
 
@@ -779,7 +779,7 @@ namespace OpenMagnetics {
 
         std::string standardString = " " + to_string(standard);
         std::string wireTypeString = to_string(wireType);
-        std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " µm " + standardString;
+        std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " \xC2\xB5m " + standardString;
         return get_filling_factor(conductingDiameter,
                                   std::nullopt,
                                   std::nullopt,
@@ -807,7 +807,7 @@ namespace OpenMagnetics {
 
         std::string standardString = " " + to_string(standard);
         std::string wireTypeString = to_string(wireType);
-        std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " µm " + standardString;
+        std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " \xC2\xB5m " + standardString;
         return get_outer_dimension(conductingDiameter,
                                    std::nullopt,
                                    std::nullopt,
@@ -868,7 +868,7 @@ namespace OpenMagnetics {
 
         std::string standardString = " " + to_string(standard);
         std::string wireTypeString = to_string(wireType);
-        std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " µm " + standardString;
+        std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " \xC2\xB5m " + standardString;
 
         return get_filling_factor(conductingDiameter,
                                   std::nullopt,
@@ -890,7 +890,7 @@ namespace OpenMagnetics {
 
         std::string standardString = " " + to_string(standard);
         std::string wireTypeString = to_string(wireType);
-        std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " µm " + standardString;
+        std::string key = wireTypeString + " insulated " + std::to_string(numberLayers) + " layers " + std::to_string(thicknessLayers * 1e6) + " \xC2\xB5m " + standardString;
 
         auto packingFactor = get_packing_factor(numberConductors,
                                                 grade,

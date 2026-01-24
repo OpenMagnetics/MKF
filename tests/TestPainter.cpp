@@ -664,7 +664,7 @@ namespace {
 
             settings.set_painter_number_points_x(50);
             settings.set_painter_number_points_y(100);
-            settings.set_painter_include_fringing(false);
+            settings.set_painter_include_fringing(true);
             painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
@@ -773,6 +773,77 @@ namespace {
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            REQUIRE(std::filesystem::exists(outFile));
+        }
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Coil_Wire_Losses_Basic_Painter", "[support][painter][wire-losses-painter][rectangular-winding-window][smoke-test]") {
+        std::vector<int64_t> numberTurns = {14, 16};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::Wire> wires;
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 3")});
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 3")});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Wire_Losses_Basic_Painter.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.paint_wire_losses(magnetic, std::nullopt, inputs.get_operating_point(0));
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            REQUIRE(std::filesystem::exists(outFile));
+        }
+        settings.reset();
+    }
+
+
+    TEST_CASE("Test_Coil_Wire_Losses_Basic_Painter_Planar", "[support][painter][wire-losses-painter][rectangular-winding-window][smoke-test]") {
+
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "leakage_inductance_planar.json");
+        OpenMagnetics::Mas mas;
+        OpenMagnetics::from_file(path, mas);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Wire_Losses_Basic_Painter_Planar.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.paint_wire_losses(magnetic, std::nullopt, inputs.get_operating_point(0));
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));

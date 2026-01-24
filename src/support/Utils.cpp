@@ -35,6 +35,38 @@ using json = nlohmann::json;
 
 static bool _addInternalData = true;
 
+// Helper function to strip trailing carriage return from strings (handles CRLF line endings)
+static inline void strip_cr(std::string& s) {
+    if (!s.empty() && s.back() == '\r') {
+        s.pop_back();
+    }
+}
+
+// Helper function to normalize micro sign encoding
+// Windows-1252 encodes µ as single byte 0xB5, while UTF-8 uses 0xC2 0xB5
+// This ensures consistent UTF-8 encoding across platforms
+static inline void normalize_micro_sign(std::string& s) {
+#ifdef _WIN32
+    std::string result;
+    result.reserve(s.size() * 2);  // Reserve extra space for potential expansions
+    for (size_t i = 0; i < s.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        // Check for standalone 0xB5 (Windows-1252 micro sign) that's not already part of UTF-8 sequence
+        if (c == 0xB5) {
+            // Check if this is already a UTF-8 sequence (preceded by 0xC2)
+            if (i == 0 || static_cast<unsigned char>(result.back()) != 0xC2) {
+                // Convert to UTF-8: 0xC2 0xB5
+                result.push_back(static_cast<char>(0xC2));
+            }
+        }
+        result.push_back(s[i]);
+    }
+    s = std::move(result);
+#else
+    (void)s;  // Unused on non-Windows
+#endif
+}
+
 namespace OpenMagnetics {
 
 void clear_scoring() {
@@ -96,6 +128,13 @@ void load_cores(std::optional<std::string> fileToLoad) {
         }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
+#ifdef _WIN32
+            strip_cr(token);
+#endif
+            if (token.empty()) {
+                database.erase(0, pos + delimiter.length());
+                continue;
+            }
             json jf = json::parse(token);
             CoreType type;
             from_json(jf["functionalDescription"]["type"], type);
@@ -183,6 +222,13 @@ void load_core_materials(std::optional<std::string> fileToLoad) {
         }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
+#ifdef _WIN32
+            strip_cr(token);
+#endif
+            if (token.empty()) {
+                database.erase(0, pos + delimiter.length());
+                continue;
+            }
             json jf = json::parse(token);
             CoreMaterial coreMaterial(jf);
             coreMaterialDatabase[jf["name"]] = coreMaterial;
@@ -202,6 +248,13 @@ void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManuf
     }
     while ((pos = database.find(delimiter)) != std::string::npos) {
         token = database.substr(0, pos);
+#ifdef _WIN32
+        strip_cr(token);
+#endif
+        if (token.empty()) {
+            database.erase(0, pos + delimiter.length());
+            continue;
+        }
         json jf = json::parse(token);
 
         if (coreMaterialDatabase.count(jf["name"])) {
@@ -265,6 +318,13 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
         }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
+#ifdef _WIN32
+            strip_cr(token);
+#endif
+            if (token.empty()) {
+                database.erase(0, pos + delimiter.length());
+                continue;
+            }
             json jf = json::parse(token);
             CoreShape coreShape(jf);
             if ((includeToroidalCores && coreShape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && coreShape.get_family() != CoreShapeFamily::T)) {
@@ -306,6 +366,13 @@ void load_wires(std::optional<std::string> fileToLoad) {
         }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
+#ifdef _WIN32
+            strip_cr(token);
+#endif
+            if (token.empty()) {
+                database.erase(0, pos + delimiter.length());
+                continue;
+            }
             json jf = json::parse(token);
             OpenMagnetics::Wire wire(jf);
             wireDatabase[jf["name"]] = wire;
@@ -330,6 +397,13 @@ void load_bobbins() {
         }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
+#ifdef _WIN32
+            strip_cr(token);
+#endif
+            if (token.empty()) {
+                database.erase(0, pos + delimiter.length());
+                continue;
+            }
             json jf = json::parse(token);
             Bobbin bobbin(jf);
             bobbinDatabase[jf["name"]] = bobbin;
@@ -354,6 +428,13 @@ void load_insulation_materials() {
         }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
+#ifdef _WIN32
+            strip_cr(token);
+#endif
+            if (token.empty()) {
+                database.erase(0, pos + delimiter.length());
+                continue;
+            }
             json jf = json::parse(token);
             InsulationMaterial insulationMaterial(jf);
             insulationMaterialDatabase[jf["name"]] = insulationMaterial;
@@ -378,6 +459,13 @@ void load_wire_materials() {
         }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
+#ifdef _WIN32
+            strip_cr(token);
+#endif
+            if (token.empty()) {
+                database.erase(0, pos + delimiter.length());
+                continue;
+            }
             json jf = json::parse(token);
             WireMaterial wireMaterial(jf);
             wireMaterialDatabase[jf["name"]] = wireMaterial;
@@ -497,6 +585,9 @@ Core find_core_by_name(std::string name) {
 }
 
 CoreMaterial find_core_material_by_name(std::string name) {
+    // Normalize micro sign encoding for cross-platform compatibility
+    normalize_micro_sign(name);
+    
     if (coreMaterialDatabase.empty()) {
         load_core_materials();
     }
@@ -504,7 +595,7 @@ CoreMaterial find_core_material_by_name(std::string name) {
         return coreMaterialDatabase[name];
     }
     else {
-        for (auto [name, coreMaterial] : coreMaterialDatabase) {
+        for (auto [materialName, coreMaterial] : coreMaterialDatabase) {
             std::string commercialName;
             if (coreMaterial.get_commercial_name()) {
                 commercialName = coreMaterial.get_commercial_name().value();

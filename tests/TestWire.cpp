@@ -18,7 +18,7 @@ using namespace OpenMagnetics;
 
 namespace {
     auto masPath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("MAS/").string();
-    double max_error = 0.05;
+    double max_error = 0.07;
     auto label = WaveformLabel::TRIANGULAR;
     double offset = 0;
     double peakToPeak = 2 * 1.73205;

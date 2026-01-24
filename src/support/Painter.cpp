@@ -185,6 +185,10 @@ void Painter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magne
     _painter->paint_electric_field(operatingPoint, magnetic, harmonicIndex, inputField);
 }
 
+void Painter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs, std::optional<OperatingPoint> operatingPoint, double temperature) {
+    _painter->paint_wire_losses(magnetic, outputs, operatingPoint, temperature);
+}
+
 std::string Painter::export_svg() {
     return _painter->export_svg();
 }
