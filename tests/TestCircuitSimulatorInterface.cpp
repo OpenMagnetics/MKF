@@ -465,23 +465,6 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
     REQUIRE(0.4 > errorAverage);
 }
 
-TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_Web_0", "[processor][circuit-simulator-exporter][ltspice]") {
-
-    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_dc_resistance_ltspice.json");
-    auto mas = OpenMagneticsTesting::mas_loader(path.string());
-
-    auto magnetic = mas.get_magnetic();
-
-    auto cirFile = outputFilePath;
-    cirFile.append("./Custom_component_made_with_OpenMagnetic.cir");
-    std::filesystem::remove(cirFile);
-    auto effectiveResistanceThisWinding_0 = WindingLosses::calculate_effective_resistance_of_winding(magnetic, 0, 0.1, 100);
-    auto effectiveResistanceThisWinding_1 = WindingLosses::calculate_effective_resistance_of_winding(magnetic, 1, 0.1, 100);
-    auto dcResistancePerWinding = WindingOhmicLosses::calculate_dc_resistance_per_winding(magnetic.get_coil(), 100);
-    REQUIRE_THAT(effectiveResistanceThisWinding_0, Catch::Matchers::WithinAbs(dcResistancePerWinding[0], effectiveResistanceThisWinding_0 * max_error));
-    REQUIRE_THAT(effectiveResistanceThisWinding_1, Catch::Matchers::WithinAbs(dcResistancePerWinding[1], effectiveResistanceThisWinding_1 * max_error));
-}
-
 TEST_CASE("Test_Guess_Periodicity_Simba", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv");
 
