@@ -188,6 +188,34 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
     return windingLossesOutput;
 }
 
+/**
+ * @brief Calculates proximity factor using Rossmanith's model with Bessel functions.
+ * 
+ * Based on: H. Rossmanith et al., "Measurement and Characterization of High
+ * Frequency Losses in Nonideal Litz Wires", IEEE Transactions on Power Electronics,
+ * Vol. 26, No. 11, Nov. 2011
+ * 
+ * This model uses modified Bessel functions of the first kind to calculate the
+ * proximity effect factor for round and litz wires. For rectangular conductors,
+ * it uses the standard solution from: J. A. Ferreira, "Improved Analytical
+ * Modeling of Conductive Losses in Magnetic Components", IEEE TPEL, Vol. 9, No. 1, 1994
+ * 
+ * For round wires, the proximity factor is:
+ * 
+ *   G_prox = 2π * α * I₁(α) / I₀(α)
+ * 
+ * where:
+ * - α = (1+j) * r/δ, with r = wire radius, δ = skin depth
+ * - I₀, I₁ = modified Bessel functions of the first kind
+ * 
+ * For rectangular/planar wires:
+ *   G_prox = (w·h/δ) * [sinh(w/δ) - sin(w/δ)] / [cosh(w/δ) + cos(w/δ)]
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Proximity factor for loss calculation
+ */
 double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double factor;
@@ -246,6 +274,37 @@ double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(Wire w
     return turnLosses;
 }
 
+/**
+ * @brief Calculates proximity effect losses using Wang's 2D field decomposition model.
+ * 
+ * Based on: Wang et al., "Improved Analytical Model for High-Frequency Winding Losses"
+ * and the field decomposition approach for rectangular conductors.
+ * 
+ * This model decomposes the external magnetic field into components parallel and
+ * perpendicular to the conductor faces, computing losses separately for each.
+ * 
+ * For a rectangular conductor with width c and height h:
+ * 
+ *   P_prox_x = c*h*ρ/δ * Hx_avg² * [sinh(h/δ) - sin(h/δ)] / [cosh(h/δ) + cos(h/δ)]
+ *   P_prox_y = h*c*ρ/δ * Hy_avg² * [sinh(c/δ) - sin(c/δ)] / [cosh(c/δ) + cos(c/δ)]
+ * 
+ * where:
+ * - Hx1, Hx2 = field at bottom and top surfaces (labeled 'bottom', 'top')
+ * - Hy1, Hy2 = field at left and right surfaces (labeled 'left', 'right')
+ * - Hx_avg = (Hx1 + Hx2) / 2, Hy_avg = (Hy1 + Hy2) / 2
+ * 
+ * This 2D approach captures the different penetration depths for fields parallel
+ * to the short vs long dimension of the conductor.
+ * 
+ * For field components not aligned with the conductor faces, Ferreira's model
+ * is used as a fallback.
+ * 
+ * @param wire Wire object (rectangular/foil conductor)
+ * @param frequency Operating frequency [Hz]
+ * @param data Field points at conductor surfaces (labeled top/bottom/left/right)
+ * @param temperature Operating temperature [K]
+ * @return Proximity effect losses for this turn [W]
+ */
 double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
@@ -318,7 +377,34 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     return turnLosses;
 }
 
-
+/**
+ * @brief Calculates proximity effect factor using Ferreira's analytical method.
+ * 
+ * Based on: "Improved Analytical Modeling of Conductive Losses in Magnetic Components"
+ * by J.A. Ferreira, IEEE Transactions on Power Electronics, Vol. 9, No. 1, January 1994
+ * 
+ * This implementation uses the orthogonality principle between skin and proximity effects
+ * (Appendix A of the paper). The proximity losses per unit length are:
+ * 
+ *   P_prox = G · H_e²                                           (Eq. A7)
+ * 
+ * For round conductors, the factor G uses Kelvin functions (ber, bei):
+ * 
+ *   G = -2πγ · [ber₂(γ)·ber'(γ) + bei₂(γ)·bei'(γ)] / [ber²(γ) + bei²(γ)]   (Eq. A8)
+ * 
+ * where γ = d/(δ√2), d = wire diameter, δ = skin depth.
+ * 
+ * For rectangular conductors, the factor uses hyperbolic/trigonometric functions:
+ * 
+ *   G = (√π/2σ) · ξ · [sinh(ξ) - sin(ξ)] / [cosh(ξ) + cos(ξ)]   (Eq. A9)
+ * 
+ * where ξ = min(h,w)/δ is the normalized smaller dimension.
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Proximity factor G for loss calculation [Ω/m per (A/m)²]
+ */
 double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
     double factor;
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
@@ -400,6 +486,46 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
     return turnLosses;
 }
 
+/**
+ * @brief Calculates proximity effect losses per turn using the Albach model.
+ * 
+ * Based on: "Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre 
+ * parasitären Eigenschaften" by Manfred Albach
+ * Springer Vieweg, 2017, ISBN 978-3-658-15081-5
+ * Chapter 4: "Die Verluste in Luftspulen", Section 4.2 "Proximityverluste", pages 79-96
+ * 
+ * The Albach model calculates proximity losses based on the external magnetic field
+ * causing eddy currents in nearby conductors. The model accounts for:
+ * - Inhomogeneous external field distribution (Section 4.2.2)
+ * - Proximity factor Ds,k for different field harmonics k (Eq. 4.48)
+ * - Rückwirkung (reaction) of proximity currents on external field (Section 4.2.3)
+ * 
+ * Key equations from Chapter 4:
+ * 
+ * - Eq. (4.32): Proximity losses for homogeneous external field
+ *   Pprox = (l/4) * |He|² * Ds
+ *   where Ds is the proximity factor based on Bessel functions
+ * 
+ * - Eq. (4.48): Generalized proximity losses for inhomogeneous field
+ *   Pprox = (l/4) * Σ[(|bk+ck|² + |ak-dk|²) * Ds,k]
+ *   where ak, bk, ck, dk are Fourier coefficients of surface field
+ * 
+ * - Skin depth δ from Eq. (1.39):
+ *   δ = √(2ρ/(ωμ))  where ρ = resistivity, ω = 2πf
+ * 
+ * - Complex propagation parameter α from Eq. (4.16):
+ *   α = (1+j)/δ
+ * 
+ * For foil/rectangular conductors, the formula uses tanh for 1D approximation:
+ *   Pprox = c * ρ * He² * Re(α*d * tanh(α*d/2))
+ *   where c = conductor height, d = conductor width
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param data Vector of complex magnetic field points around the conductor
+ * @param temperature Operating temperature [K]
+ * @return Proximity effect losses for this turn [W]
+ */
 double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
@@ -441,6 +567,37 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
     return turnLosses;
 }
 
+/**
+ * @brief Calculates proximity factor using Lammeraner's low-frequency approximation.
+ * 
+ * Based on: "Eddy Currents" by J. Lammeraner and M. Stafl
+ * Iliffe Books, London, 1966
+ * 
+ * Also referenced in: Kutkut 1998, "A Simple Technique to Evaluate Winding Losses
+ * Including Two-Dimensional Edge Effects"
+ * 
+ * Lammeraner's model provides a simplified proximity factor valid for low frequencies
+ * where the skin depth is larger than the conductor dimension (d/δ < 1).
+ * 
+ * The proximity factor scales with the fourth power of the ratio:
+ * 
+ *   F_prox = 2πρ * (r/2δ)⁴ / 4
+ * 
+ * where:
+ * - r = conducting dimension (radius for round, min dimension for rectangular)
+ * - δ = skin depth
+ * - ρ = resistivity
+ * 
+ * The losses are: P_prox = (Hx² + Hy²) * F_prox
+ * 
+ * This model is computationally efficient but underestimates losses at high frequencies
+ * where the skin effect becomes significant.
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Proximity factor for loss calculation
+ */
 double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double factor;

@@ -202,6 +202,38 @@ void WindingSkinEffectLossesModel::set_skin_factor(Wire wire,  double frequency,
 
 }
 
+/**
+ * @brief Calculates the penetration ratio for winding resistance calculation.
+ * 
+ * Based on: "Analytical Optimization of Litz-Wire Windings Independent of Porosity Factor"
+ * by Rafal P. Wojda and Marian K. Kazimierczuk
+ * IEEE Transactions on Industry Applications, Vol. 54, No. 5, 2018
+ * https://doi.org/10.1109/TIA.2018.2821647
+ * 
+ * The penetration ratio A (or Astr for litz wire) relates the conductor diameter
+ * to the skin depth, accounting for the porosity factor.
+ * 
+ * From Eq. (4) in the paper:
+ * 
+ *   A = (π/4)^(3/4) * (d/δw) * √(d/p)
+ * 
+ * where:
+ * - d = conducting diameter of wire (or strand for litz)
+ * - δw = skin depth at operating frequency
+ * - p = outer diameter (accounting for insulation)
+ * 
+ * The skin depth δw is given by Eq. (5):
+ * 
+ *   δw = √(ρw / (πμ₀f))
+ * 
+ * For litz wire, the effective number of layers is Nll = Nl * √k (Eq. 6),
+ * where k = number of strands per bundle.
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Penetration ratio A (dimensionless)
+ */
 double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire& wire, double frequency, double temperature) {
     Wire realWire;
     if (wire.get_type() == WireType::LITZ) {
@@ -244,6 +276,34 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
     return penetrationRatio;
 }
 
+/**
+ * @brief Calculates the skin effect factor using Wojda's formulation of Dowell's equation.
+ * 
+ * Based on: "Analytical Optimization of Litz-Wire Windings Independent of Porosity Factor"
+ * by Rafal P. Wojda and Marian K. Kazimierczuk
+ * IEEE Transactions on Industry Applications, Vol. 54, No. 5, 2018
+ * https://doi.org/10.1109/TIA.2018.2821647
+ * 
+ * The skin effect factor Fs is derived from Dowell's equation, expressing the
+ * AC-to-DC resistance ratio increase due to non-uniform current distribution.
+ * 
+ * From Eq. (7) - the adapted Dowell's equation for a single conductor:
+ * 
+ *   Fs = A * [sinh(2A) + sin(2A)] / [cosh(2A) - cos(2A)]
+ * 
+ * where A is the penetration ratio from calculate_penetration_ratio().
+ * 
+ * For low frequencies (A << 1): Fs → 1 (uniform current distribution)
+ * For high frequencies (A >> 1): Fs → A (current concentrated near surface)
+ * 
+ * Note: This is the skin effect portion only. The proximity effect is handled
+ * separately by the proximity losses model.
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Skin factor Fs (ratio ≥ 1, returns 1 when Fs = 1 meaning no skin effect)
+ */
 double WindingSkinEffectLossesWojdaModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
     auto penetrationRatio = calculate_penetration_ratio(wire, frequency, temperature);
     auto factor = penetrationRatio / 2 * (sinh(penetrationRatio) + sin(penetrationRatio)) / (cosh(penetrationRatio) - cos(penetrationRatio));
@@ -267,6 +327,43 @@ double WindingSkinEffectLossesWojdaModel::calculate_turn_losses(Wire wire, doubl
 }
 
 
+/**
+ * @brief Calculates the skin effect factor for AC resistance increase.
+ * 
+ * Based on: "Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre 
+ * parasitären Eigenschaften" by Manfred Albach
+ * Springer Vieweg, 2017, ISBN 978-3-658-15081-5
+ * Chapter 4: "Die Verluste in Luftspulen", Section 4.1 "Rms- und Skinverluste", pages 72-79
+ * 
+ * The skin effect causes current to flow predominantly near the conductor surface
+ * at high frequencies, effectively reducing the conducting cross-section and
+ * increasing AC resistance.
+ * 
+ * Key equations from Chapter 4:
+ * 
+ * - Eq. (4.10): Skin losses for sinusoidal current
+ *   Ps = Pdc * Ks  where Ks is the skin factor
+ * 
+ * - Eq. (4.7): Skin factor using Bessel functions (for round wire)
+ *   Ks = (ξ/2) * Re[I0(αrD) / I1(αrD)]
+ *   where:
+ *   - ξ = rD/δ (ratio of wire radius to skin depth)
+ *   - α = (1+j)/δ (complex propagation constant)
+ *   - I0, I1 = modified Bessel functions of first kind
+ * 
+ * - Skin depth δ from Eq. (1.39):
+ *   δ = √(2ρ/(ωμ)) = √(ρ/(πfμ))
+ *   At 100 kHz: δ_Cu ≈ 0.21 mm, δ_Al ≈ 0.27 mm
+ * 
+ * - For bundled conductors (litz wire), includes proximity between strands term:
+ *   Factor += n(n-1) * (rD/rO)² * I1(αrD) / I0(αrD)
+ *   where n = number of conductors, rO = outer radius
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Skin factor Ks (ratio of AC to DC resistance due to skin effect)
+ */
 double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double wireRadius;
@@ -313,6 +410,37 @@ double WindingSkinEffectLossesAlbachModel::calculate_turn_losses(Wire wire, doub
     return turnLosses;
 }
 
+/**
+ * @brief Calculates AC skin effect losses for rectangular conductors using Payne's empirical model.
+ * 
+ * Based on: "The AC Resistance of Rectangular Conductors" by Alan Payne
+ * Application Note AP101, Issue 4, 2021
+ * Available at: https://www.paynelectronics.co.uk/
+ * 
+ * Payne's model provides an empirical approximation for the AC resistance factor of
+ * rectangular cross-section conductors, valid across a wide frequency range.
+ * 
+ * The model calculates:
+ * 1. The parameter p = √A / (1.26·δ·1000), where A is cross-section area in mm²
+ * 2. A frequency factor: Ff = 1 - exp(-0.026·p)
+ * 3. The corner correction: Kc = 1 + Ff·(1.2/exp(2.1·a/b) + 1.2/exp(2.1·b/a))
+ * 4. The AC/DC resistance ratio through an empirical exponential formula
+ * 
+ * where:
+ * - A = conductor cross-sectional area (mm²)
+ * - δ = skin depth (mm)
+ * - a = thin dimension (height or width, whichever is smaller)
+ * - b = thick dimension
+ * 
+ * Note: This model uses dimensions in mm (not SI) as per Payne's original formulation.
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param dcLossTurn DC power loss for the turn [W]
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @param currentRms RMS current (unused in this model)
+ * @return Turn losses including skin effect [W]
+ */
 double WindingSkinEffectLossesPayneModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double thinDimension;
@@ -346,6 +474,34 @@ double WindingSkinEffectLossesPayneModel::calculate_turn_losses(Wire wire, doubl
 
 
 
+/**
+ * @brief Calculates skin factor using Ferreira's 1D approximation.
+ * 
+ * Based on: "Improved Analytical Modeling of Conductive Losses in Magnetic Components"
+ * by J.A. Ferreira
+ * IEEE Transactions on Power Electronics, Vol. 9, No. 1, January 1994
+ * https://doi.org/10.1109/63.285503
+ * 
+ * Ferreira's model provides a closed-form skin factor using hyperbolic/trigonometric
+ * functions, which is computationally simpler than Bessel function approaches.
+ * 
+ * For a conductor of thickness h (or diameter for round wire):
+ * 
+ *   Fs = (ξ/4) * [sinh(ξ) + sin(ξ)] / [cosh(ξ) - cos(ξ)]
+ * 
+ * where:
+ * - ξ = h / δ (ratio of conductor dimension to skin depth)
+ * - δ = √(ρ/(πfμ)) = skin depth
+ * 
+ * This formula assumes a 1D current distribution and is accurate when the
+ * conductor width >> thickness. For conductors with aspect ratio close to 1,
+ * 2D effects become significant.
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Skin factor Fs (dimensionless)
+ */
 double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double wireHeight;
@@ -383,6 +539,39 @@ double WindingSkinEffectLossesFerreiraModel::calculate_turn_losses(Wire wire, do
     return turnLosses;
 }
 
+/**
+ * @brief Calculates AC skin effect losses using Lotfi's elliptic integral method.
+ * 
+ * Based on: "Winding Loss Measurement and Calculation for Magnetic Components"
+ * by A.W. Lotfi, S.J. Davis, I. Farhadi
+ * Colorado Power Electronics Center, University of Colorado, Boulder
+ * 
+ * This model uses complete elliptic integrals of the first kind to calculate
+ * the AC resistance of conductors. For rectangular conductors, the physical
+ * dimensions are mapped to an equivalent ellipse using conformal transformation.
+ * 
+ * The transformation for rectangular cross-sections:
+ *   b' = max(height, width) / 2
+ *   a' = min(height, width) / 2
+ *   b = 2·b' / √π  (effective semi-major axis)
+ *   a = a'·b/b'    (effective semi-minor axis)
+ * 
+ * The AC resistance is:
+ *   Rac = ρ / (π²·δ·b) · K(c/b) · (1 - exp(-2a/δ))
+ * 
+ * where:
+ * - K(k) = complete elliptic integral of the first kind
+ * - c = √(b² - a²)
+ * - δ = skin depth
+ * - ρ = resistivity
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param dcLossTurn DC power loss for the turn (unused, recalculated)
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @param currentRms RMS current for resistance calculation
+ * @return Turn losses including skin effect [W]
+ */
 double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[maybe_unused]] double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double b, a;
@@ -412,6 +601,43 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[may
 }
 
 
+/**
+ * @brief Calculates skin effect losses using Kutkut's 2D edge effects correction.
+ * 
+ * Based on: "A Simple Technique to Evaluate Winding Losses Including Two-Dimensional
+ * Edge Effects" by Nasser H. Kutkut
+ * IEEE Transactions on Power Electronics, Vol. 13, No. 5, September 1998
+ * https://doi.org/10.1109/63.712308
+ * 
+ * This model accounts for 2D edge effects in foil/rectangular windings that are not
+ * captured by 1D analysis. The current density increases near conductor edges due to
+ * perpendicular field components.
+ * 
+ * The AC resistance is modeled as a combination of low and high frequency asymptotes:
+ * 
+ * From Eq. (30) - combined asymptotic solution:
+ * 
+ *   Fr = [1 + (f/fl)^α + (f/fh)^β]^(1/γ)
+ * 
+ * where:
+ * - fl = 3.22*ρ / (8*μ₀*b'*a') - low frequency corner (Eq. 31)
+ * - fh = π²*ρ / (4*μ₀*a'²) * K(c/b)^(-2) - high frequency corner (Eq. 32)
+ * - K = complete elliptic integral of first kind
+ * - a', b' = semi-axes of equivalent ellipse (half of conductor dimensions)
+ * - α = 2, β = 5.5, γ = 11 (empirical exponents)
+ * 
+ * At low frequency: Fr → 1 (DC behavior)
+ * At high frequency: Fr → (f/fh)^(β/γ) ≈ f^0.5 (skin effect dominated)
+ * 
+ * The 2D correction factor (Eq. 35) can increase losses by 85% compared to 1D analysis.
+ * 
+ * @param wire Wire object (foil or rectangular conductor)
+ * @param dcLossTurn DC losses for this turn [W]
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @param currentRms RMS current through the turn [A]
+ * @return Additional skin effect losses [W]
+ */
 double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double bPrima, aPrima;
 
