@@ -623,51 +623,195 @@ std::vector<double> StrayCapacitanceParallelPlateModel::preprocess_data_for_plan
     return {averageTurnLength, overlappingDimension, distanceThroughLayers, effectiveRelativePermittivityLayers};
 }
 
+/**
+ * @brief Calculates static capacitance between two turns using the Massarini model.
+ * 
+ * Based on: "Self-Capacitance of Inductors" by Antonio Massarini and Marian K. Kazimierczuk
+ * IEEE Transactions on Power Electronics, Vol. 12, No. 4, July 1997
+ * https://ieeexplore.ieee.org/document/602562
+ * 
+ * The model derives turn-to-turn capacitance for round conductors with insulation coating.
+ * 
+ * Key equations implemented:
+ * - Equation (9): Effective permittivity calculation for multi-layer dielectrics
+ *   ε_eff = (d1 + d2) / (d1/ε1 + d2/ε2)
+ * 
+ * - Equation (14): Capacitance per unit length between adjacent conductors
+ *   The formula accounts for the geometry of round wires using the conductor diameter (Dc)
+ *   and outer diameter (D0) including insulation.
+ * 
+ * - Equation (15): Simplified form using arctangent function
+ *   C0 = ε0 * lt * 2εr * arctan(((-1+√3)(2εr + ln(D0/Dc))) / ((1+√3)√(ln(D0/Dc)(2εr + ln(D0/Dc))))) 
+ *        / √(2εr*ln(D0/Dc) + ln²(D0/Dc))
+ *   where:
+ *   - lt = average turn length
+ *   - Dc = conductor diameter (conducting radius × 2)
+ *   - D0 = outer diameter including insulation
+ *   - εr = effective relative permittivity
+ * 
+ * - Equation (20): Self-capacitance of single-layer coil from sum of turn-to-turn capacitances
+ *   Cs = (1/n) * Σ Ctt
+ * 
+ * @param wireCoatingThickness Thickness of wire insulation coating [m]
+ * @param averageTurnLength Average length of a single turn [m]
+ * @param conductingRadius Radius of the conducting wire core [m]
+ * @param distanceThroughLayers Distance through insulation layers between turns [m]
+ * @param distanceThroughAir Distance through air gap between turns [m]
+ * @param relativePermittivityWireCoating Relative permittivity of wire insulation
+ * @param relativePermittivityInsulationLayers Relative permittivity of layer insulation
+ * @return Static capacitance between turns [F]
+ */
 double StrayCapacitanceMassariniModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
+    // Dc: Conductor diameter (bare wire)
     double Dc = conductingRadius * 2;
+    // D0: Outer diameter including insulation
     double D0;
+    // εr: Effective relative permittivity
     double epsilonR;
     if (wireCoatingThickness > 0) {
+        // Wire has insulation coating - use coating as outer boundary
         D0 = (conductingRadius + wireCoatingThickness) * 2;
+        // Calculate effective permittivity using Eq. (9) for series dielectric layers
         epsilonR = get_effective_relative_permittivity(wireCoatingThickness, relativePermittivityWireCoating, distanceThroughAir + distanceThroughLayers, relativePermittivityInsulationLayers);
     }
     else {
+        // Bare wire - use half the air gap as effective outer boundary
         D0 = (conductingRadius + distanceThroughAir / 2) * 2;
         epsilonR = get_effective_relative_permittivity(distanceThroughAir / 2, vacuumPermittivity, distanceThroughAir + distanceThroughLayers, relativePermittivityInsulationLayers);
     }
+    
+    // Implementation of Eq. (15) from Massarini paper
+    // Intermediate terms for the arctangent-based capacitance formula
     double aux0 = 2 * epsilonR + log(D0 / Dc);
     double aux1 = sqrt(log(D0 / Dc) * (2 * epsilonR + log(D0 / Dc)));
     double aux2 = sqrt(2 * epsilonR * log(D0 / Dc) + pow(log(D0 / Dc), 2));
+    
+    // C0 = ε0 * lt * 2εr * arctan(...) / √(...)
     double C0 = vacuumPermittivity * averageTurnLength * 2 * epsilonR * atan(((-1 + sqrt(3)) * aux0) / ((1 + sqrt(3)) * aux1)) / aux2;
 
     return C0;
 }
 
+/**
+ * @brief Calculates static capacitance between two turns using the Duerdoth model.
+ * 
+ * Based on: "Equivalent Capacitances of Transformer Windings" by W. T. Duerdoth
+ * Electronic Engineering, Vol. 18, 1946
+ * 
+ * The Duerdoth model is a simplified parallel-plate approximation for round wires
+ * with empirical correction factors for the effective plate separation distance.
+ * 
+ * This model was one of the earliest analytical approaches and uses geometric
+ * simplifications to approximate the capacitance between adjacent round conductors.
+ * 
+ * Key parameters:
+ * - h: Total gap distance (air + insulation layers)
+ * - δ: Wire insulation coating thickness
+ * - r0: Conductor radius
+ * - dtt: Total wire outer diameter = 2(r0 + δ)
+ * - d': Center-to-center distance = 2(r0 + δ) + h
+ * 
+ * - deff: Effective parallel-plate distance (empirically corrected)
+ *   deff = d' - 0.15 * 2(r0 + δ) + 0.26 * dtt
+ *   The coefficients 0.15 and 0.26 are empirical corrections for round wire geometry
+ * 
+ * - εeff: Effective permittivity for series dielectric layers
+ * 
+ * - C0: Parallel-plate capacitance with effective distance
+ *   C0 = ε0 * εeff * lt * 2r0 / deff
+ * 
+ * @note This model is less accurate than Koch/Massarini but useful for quick estimates
+ * 
+ * @param wireCoatingThickness Thickness of wire insulation coating [m]
+ * @param averageTurnLength Average length of a single turn [m]
+ * @param conductingRadius Radius of the conducting wire core [m]
+ * @param distanceThroughLayers Distance through insulation layers between turns [m]
+ * @param distanceThroughAir Distance through air gap between turns [m]
+ * @param relativePermittivityWireCoating Relative permittivity of wire insulation
+ * @param relativePermittivityInsulationLayers Relative permittivity of layer insulation
+ * @return Static capacitance between turns [F]
+ */
 double StrayCapacitanceDuerdothModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
+    // h: Total gap distance between wire surfaces
     double h = distanceThroughAir + distanceThroughLayers;
+    // δ: Insulation coating thickness
     double delta = wireCoatingThickness;
+    // r0: Bare conductor radius
     double r0 = conductingRadius;
+    // dtt: Total outer diameter of insulated wire
     double dtt = 2 * r0 + 2 * wireCoatingThickness;
+    // d': Center-to-center distance between conductors
     double dPrima = 2 * (r0 + delta) + h;
-    // double dEff = dPrima - 2.3 * (r0 + delta) + 0.26 * dtt;
+    
+    // deff: Effective parallel-plate distance with empirical corrections
+    // Coefficients 0.15 and 0.26 correct for round wire geometry
+    // double dEff = dPrima - 2.3 * (r0 + delta) + 0.26 * dtt;  // Alternative formulation
     double dEff = dPrima - 0.15 * 2 * (r0 + delta) + 0.26 * (dtt);
+    
+    // εeff: Effective relative permittivity for series dielectric layers
     double epsilonEff = get_effective_relative_permittivity(delta, relativePermittivityWireCoating, h, relativePermittivityInsulationLayers);
     if (std::isnan(epsilonEff)) {
         throw std::invalid_argument("epsilonEff is NAN");
     }
 
+    // C0: Parallel-plate capacitance with effective distance
+    // C = ε0 * εeff * A / d, where A = lt * 2r0 (projected area)
     double C0 = vacuumPermittivity * epsilonEff * averageTurnLength * 2 * r0 / dEff;
 
     return C0;
 }
 
+/**
+ * @brief Calculates static capacitance between two turns using the Albach model.
+ * 
+ * Based on: "Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre 
+ * parasitären Eigenschaften" by Manfred Albach
+ * Springer Vieweg, 2017, ISBN 978-3-658-15081-5
+ * Chapter 3: "Die Kapazität von Luftspulen", pages 45-68
+ * 
+ * This model calculates turn-to-turn capacitance for round conductors with insulation
+ * by computing the electric field energy stored between wires.
+ * 
+ * Key equations from Chapter 3:
+ * 
+ * - Eq. (3.9): Parameter definitions
+ *   θ = 1/(δ/(εD*r0))  where δ = coating thickness, εD = coating permittivity
+ *   β = (1/θ) * (1 + h/(2*εF*(r0+δ)))  where h = gap distance, εF = layer permittivity
+ * 
+ * - Eq. (3.16): Y1 geometric factor for energy calculation
+ *   Y1 = V/4 + (1/(2*εD)) * (δ/r0)² * Z
+ *   where:
+ *   V = (β/√(β²-1)) * arctan(√((β+1)/(β-1)))
+ *   Z = ((β²-2)*V - β/2) / (β²-1) - π/4
+ * 
+ * - Final capacitance from Eq. (3.14), (3.19):
+ *   Wges = ε0 * lw * U² * Y1  (energy in rectangular region between turns)
+ *   C0 = (2/3) * ε0 * lt * Y1  (capacitance with 2/3 factor for voltage distribution)
+ * 
+ * The 2/3 factor comes from the quadratic voltage distribution integration
+ * in Eq. (3.21): ∫(l/lmax * U0)² dl = lmax/3 * U0²
+ * 
+ * @note The Albach model uses the OUTER conductor radius (r0 + δ) in the ζ and β
+ *       parameters, unlike the Koch model which uses bare conductor radius r0.
+ *       This provides improved accuracy for thick insulation coatings.
+ * 
+ * @param wireCoatingThickness Thickness of wire insulation coating δ [m]
+ * @param averageTurnLength Average length of a single turn lt [m]
+ * @param conductingRadius Radius of the conducting wire core r0 [m]
+ * @param distanceThroughLayers Distance through insulation layers between turns [m]
+ * @param distanceThroughAir Distance through air gap between turns [m]
+ * @param relativePermittivityWireCoating Relative permittivity of wire insulation εD
+ * @param relativePermittivityInsulationLayers Relative permittivity of layer insulation εF
+ * @return Static capacitance between turns [F]
+ */
 double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
+    // Calculate effective relative permittivity for combined air and insulation layers
     double effectiveRelativePermittivity = relativePermittivityInsulationLayers;
     double distanceThroughLayersAndAir = distanceThroughAir + distanceThroughLayers;
     if (distanceThroughAir > 0 && distanceThroughLayers > 0) {
@@ -677,11 +821,23 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
         effectiveRelativePermittivity = 1;
     }
 
+    // ζ: Modified insulation parameter using OUTER radius (r0 + δ)
+    // This differs from Koch model which uses bare conductor radius
     double zeta = 1 - wireCoatingThickness / (relativePermittivityWireCoating * (conductingRadius + wireCoatingThickness));
+    
+    // β: Gap geometry parameter
     double beta = 1.0 / zeta * (1 + distanceThroughLayersAndAir / (2 * effectiveRelativePermittivity * (conductingRadius + wireCoatingThickness)));
+    
+    // V: Arctangent auxiliary function
     double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1)));
+    
+    // Z: Second-order correction term
     double Z = 1.0 / (pow(beta, 2) - 1)*((pow(beta, 2) - 2) * V - beta / 2) - std::numbers::pi / 4;
+    
+    // Y1: Combined auxiliary function with insulation thickness correction
     double Y1 = 1.0 / zeta * (V - std::numbers::pi / 4 + 1.0 / (2 * relativePermittivityWireCoating) * pow(distanceThroughLayers / (conductingRadius + wireCoatingThickness), 2) * Z / zeta);
+    
+    // C0: Final capacitance with 2/3 geometric factor from Albach
     double C0 = 2.0 / 3 * vacuumPermittivity * averageTurnLength * Y1;
 
     if (std::isnan(beta)) {
@@ -691,19 +847,78 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
     return C0;
 }
 
+/**
+ * @brief Calculates static capacitance between two turns using the Koch model.
+ * 
+ * Based on: "Berechnung der Kapazität von Spulen, insbesondere in Schalenkernen" by K. Koch
+ * Reproduced in: "Using Transformer Parasitics for Resonant Converters—A Review of the 
+ * Calculation of the Stray Capacitance of Transformers" by Juergen Biela and Johann W. Kolar
+ * IEEE Transactions on Industry Applications, Vol. 44, No. 1, January/February 2008
+ * https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/biela_IEEETrans_ReviewStrayCap.pdf
+ * 
+ * The Koch model provides capacitance calculation for round conductors with insulation,
+ * using an elliptic integral approach approximated with arctangent functions.
+ * 
+ * Key equations from Biela/Kolar review (Section III-A):
+ * 
+ * - Equation (3): Parameter α accounting for insulation coating
+ *   α = 1 - δ/(εr_ins * r0)
+ *   where δ = insulation thickness, r0 = conductor radius
+ * 
+ * - Equation (4): Parameter β for air/insulation gap geometry
+ *   β = (1/α) * (1 + h/(2 * εr_layer * r0))
+ *   where h = gap distance between wires
+ * 
+ * - Equation (5): Auxiliary function V (arctangent form of elliptic integral)
+ *   V = (β/√(β²-1)) * arctan(√((β+1)/(β-1))) - π/4
+ * 
+ * - Equation (6): Auxiliary function Z (second-order correction)
+ *   Z = β(β²-2)/((β²-1)^(3/2)) * arctan(√((β+1)/(β-1))) - β/(2(β²-1)) - π/4
+ * 
+ * - Equation (7): Final capacitance per unit length
+ *   C = ε0 * lt / α * (V + (1/(8*εr_ins)) * (2δ/r0)² * Z/α)
+ * 
+ * @note This model is particularly accurate for tightly wound coils with thin insulation
+ *       and is commonly used in shell-type core calculations.
+ * 
+ * @param wireCoatingThickness Thickness of wire insulation coating [m]
+ * @param averageTurnLength Average length of a single turn [m]
+ * @param conductingRadius Radius of the conducting wire core [m]
+ * @param distanceThroughLayers Distance through insulation layers between turns [m]
+ * @param distanceThroughAir Distance through air gap between turns [m]
+ * @param relativePermittivityWireCoating Relative permittivity of wire insulation
+ * @param relativePermittivityInsulationLayers Relative permittivity of layer insulation
+ * @return Static capacitance between turns [F]
+ */
 double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
+    // α: Parameter accounting for insulation coating effect - Eq. (3)
+    // α = 1 - δ/(εr * r0), where δ = coating thickness
     double alpha = 1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius);
+    
+    // β: Parameter for gap geometry - Eq. (4)
+    // β = (1/α) * (1 + h/(2 * εr * r0))
     double beta;
     if (distanceThroughLayers > 0) {
+        // Gap contains insulation layers
         beta = 1.0 / alpha * (1 + distanceThroughLayers / (2 * relativePermittivityInsulationLayers * conductingRadius));
     }
     else {
+        // Gap is pure air
         beta = 1.0 / alpha * (1 + distanceThroughAir / (2 * vacuumPermittivity * conductingRadius));
     }
+    
+    // V: Auxiliary function (arctangent approximation of elliptic integral) - Eq. (5)
+    // V = (β/√(β²-1)) * arctan(√((β+1)/(β-1))) - π/4
     double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1))) - std::numbers::pi / 4;
+    
+    // Z: Second-order correction term - Eq. (6)
+    // Z = β(β²-2)/((β²-1)^(3/2)) * arctan(...) - β/(2(β²-1)) - π/4
     double Z = beta * (pow(beta, 2) - 2) / pow(pow(beta, 2) - 1, 1.5) * atan(sqrt((beta + 1) / (beta - 1))) - beta / (2 * (pow(beta, 2) - 1))  - std::numbers::pi / 4;
+    
+    // Final capacitance - Eq. (7)
+    // C = ε0 * lt / α * (V + (1/(8*εr)) * (2δ/r0)² * Z/α)
     double C0 = vacuumPermittivity * averageTurnLength / (1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius)) * (V + 1.0 / (8 * relativePermittivityWireCoating) * pow(2 * wireCoatingThickness / conductingRadius, 2) * Z / (1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius)));
 
     if (std::isnan(beta)) {
@@ -793,18 +1008,63 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
 }
 
 
+/**
+ * @brief Calculates the 3x3 capacitance matrix between two windings.
+ * 
+ * Based on: "Using Transformer Parasitics for Resonant Converters—A Review of the 
+ * Calculation of the Stray Capacitance of Transformers" by Juergen Biela and Johann W. Kolar
+ * IEEE Transactions on Industry Applications, Vol. 44, No. 1, January/February 2008
+ * Section V: "Calculation of the Equivalent Capacitance Network"
+ * 
+ * This method converts stored electric field energy between windings into a six-capacitor
+ * network model, then transforms it to a 3x3 Maxwell capacitance matrix representation.
+ * 
+ * The six-capacitor network (γ1-γ6) represents capacitances between:
+ * - Primary start/end terminals
+ * - Secondary start/end terminals  
+ * - Cross-winding capacitances
+ * 
+ * The transformation to 3-terminal representation uses the **turns ratio** (n = N1/N2)
+ * to properly scale cross-winding terms, as capacitance depends on voltage ratios which
+ * scale with turns ratio (unlike resistance matrix which uses inductance ratio √(L1/L2)).
+ * 
+ * Key equations from Biela/Kolar (Section V-A):
+ * - C0 = 2 * E / V² (total equivalent capacitance from stored energy)
+ * - γ1 = γ2 = -C0/6 (self-capacitance negative terms)
+ * - γ3 = γ4 = C0/3 (mutual capacitance terms)
+ * - γ5 = γ6 = C0/6 (cross-coupling terms)
+ * 
+ * Matrix elements with turns ratio (n) scaling:
+ * - C[1][1] = γ1 + n*(γ4 + γ5)
+ * - C[1][2] = -2*γ4
+ * - C[1][3] = 2*n*γ5
+ * - C[2][2] = γ2 + γ4 + γ6
+ * - C[2][3] = 2*γ6
+ * - C[3][3] = γ3 + γ5 + γ6
+ * 
+ * @param energy Total electric field energy stored between windings [J]
+ * @param voltageDrop Voltage difference between the windings [V]
+ * @param relativeTurnsRatio Turns ratio N_primary/N_secondary
+ * @return 3x3 capacitance matrix representation at DC (frequency = 0)
+ */
 ScalarMatrixAtFrequency StrayCapacitance::calculate_capacitance_matrix_between_windings(double energy, double voltageDrop, double relativeTurnsRatio) {
     ScalarMatrixAtFrequency scalarMatrixAtFrequency;
+    // C0: Total equivalent capacitance from energy method
+    // C = 2E/V² (from E = ½CV²)
     double C0 = energy * 2 / pow(voltageDrop, 2);
     scalarMatrixAtFrequency.set_frequency(0);  // Static result
 
-    auto gamma1 = -C0 / 6;
-    auto gamma2 = -C0 / 6;
-    auto gamma3 = C0 / 3;
-    auto gamma4 = C0 / 3;
-    auto gamma5 = C0 / 6;
-    auto gamma6 = C0 / 6;
+    // Six-capacitor network values (per Biela/Kolar Section V-A)
+    // Symmetric distribution of C0 among the six capacitors
+    auto gamma1 = -C0 / 6;  // Primary self-capacitance (negative)
+    auto gamma2 = -C0 / 6;  // Secondary self-capacitance (negative)
+    auto gamma3 = C0 / 3;   // Primary-to-secondary mutual (positive)
+    auto gamma4 = C0 / 3;   // Primary-to-secondary mutual (positive)
+    auto gamma5 = C0 / 6;   // Cross-coupling term
+    auto gamma6 = C0 / 6;   // Cross-coupling term
 
+    // Transform to 3x3 matrix with turns ratio scaling
+    // Note: Uses turns ratio (not inductance ratio) for voltage-dependent scaling
     scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["1"].set_nominal(gamma1 + relativeTurnsRatio * (gamma4 + gamma5));
     scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["2"].set_nominal(-2 * gamma4);
     scalarMatrixAtFrequency.get_mutable_magnitude()["1"]["3"].set_nominal(2 * relativeTurnsRatio * gamma5);

@@ -618,6 +618,35 @@ CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(Core core,
     return result;
 };
 
+/**
+ * @brief Calculates core volumetric losses using the original Steinmetz equation.
+ * 
+ * The Steinmetz equation is an empirical formula that relates power loss in magnetic
+ * materials to the frequency and peak magnetic flux density of a sinusoidal excitation:
+ * 
+ *   Pv = k * f^α * B_peak^β
+ * 
+ * where:
+ * - Pv = volumetric power loss [W/m³]
+ * - k = material constant (Steinmetz coefficient)
+ * - f = frequency [Hz]
+ * - B_peak = peak magnetic flux density [T]
+ * - α = frequency exponent (typically 1.0-2.0)
+ * - β = flux density exponent (typically 2.0-3.0)
+ * 
+ * Note: This model is only accurate for pure sinusoidal excitation. For non-sinusoidal
+ * waveforms, use IGSE, MSE, or other extended models.
+ * 
+ * Reference:
+ * C. P. Steinmetz, "On the Law of Hysteresis," AIEE Trans., vol. IX, pp. 3-64, 1892.
+ * Reprinted in Proceedings of the IEEE, vol. 72, no. 2, pp. 197-221, Feb. 1984.
+ * https://doi.org/10.1109/PROC.1984.12842
+ * 
+ * @param coreMaterial Core material with Steinmetz coefficients k, α, β
+ * @param excitation Operating point with sinusoidal flux density waveform
+ * @param temperature Core temperature [°C]
+ * @return Volumetric core losses [W/m³]
+ */
 double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                             OperatingPointExcitation excitation,
                                                             double temperature) {
@@ -683,6 +712,26 @@ double CoreLossesModel::get_core_losses_series_resistance(Core core,
     return seriesResistance;
 }
 
+/**
+ * @brief Calculates the ki coefficient for the improved Generalized Steinmetz Equation (iGSE).
+ * 
+ * Based on: "Improved Calculation of Core Loss with Nonsinusoidal Waveforms"
+ * by Jieli Li, Tarek Abdallah, and Charles R. Sullivan
+ * IEEE Industry Applications Society Annual Meeting, 2001
+ * https://doi.org/10.1109/IAS.2001.955931
+ * 
+ * From Eq. (12) in the paper:
+ * 
+ *   ki = k / [(2π)^(α-1) * ∫₀^(2π) |cos(θ)|^α * 2^(β-α) dθ]
+ * 
+ * where k, α, β are the original Steinmetz parameters.
+ * 
+ * This coefficient allows the GSE to be expressed in a form that gives correct
+ * results for sinusoidal excitation while also handling arbitrary waveforms.
+ * 
+ * @param steinmetzDatum Steinmetz coefficients (k, α, β)
+ * @return The ki coefficient for iGSE calculations
+ */
 double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
@@ -702,6 +751,41 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
     return ki;
 }
 
+/**
+ * @brief Calculates core volumetric losses using the improved Generalized Steinmetz Equation (iGSE).
+ * 
+ * Based on: "Improved Calculation of Core Loss with Nonsinusoidal Waveforms"
+ * by Jieli Li, Tarek Abdallah, and Charles R. Sullivan
+ * IEEE Industry Applications Society Annual Meeting, 2001
+ * https://doi.org/10.1109/IAS.2001.955931
+ * 
+ * The iGSE extends the Steinmetz equation to handle arbitrary waveforms by integrating
+ * the instantaneous loss over a complete switching period.
+ * 
+ * From Eq. (6) - the Generalized Steinmetz Equation:
+ * 
+ *   Pv = (1/T) * ∫₀^T ki |dB/dt|^α * (ΔB)^(β-α) dt
+ * 
+ * where:
+ * - Pv = average volumetric power loss [W/m³]
+ * - T = switching period [s]
+ * - ki = modified Steinmetz coefficient (from Eq. 12)
+ * - dB/dt = instantaneous rate of change of flux density [T/s]
+ * - ΔB = peak-to-peak flux density swing [T]
+ * - α, β = Steinmetz exponents
+ * 
+ * From Eq. (14) - simplified form for piecewise-linear waveforms:
+ * 
+ *   Pv = ki * (ΔB)^(β-α) * Σ[(|ΔBn|/Δtn)^α * Δtn / T]
+ * 
+ * The key insight is that loss depends on |dB/dt|^α rather than f^α, which allows
+ * proper handling of waveforms with different rise/fall rates.
+ * 
+ * @param coreMaterial Core material with Steinmetz coefficients
+ * @param excitation Operating point with arbitrary flux density waveform
+ * @param temperature Core temperature [°C]
+ * @return Volumetric core losses [W/m³]
+ */
 double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                        OperatingPointExcitation excitation,
                                                        double temperature) {
@@ -754,6 +838,49 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 }
 
+/**
+ * @brief Calculates core volumetric losses using the Albach (MSE) method.
+ * 
+ * Based on: "Calculating Core Losses in Transformers for Arbitrary Magnetizing Currents:
+ * A Comparison of Different Approaches" by Manfred Albach, Thomas Durbaum, Arno Brockmeyer
+ * IEEE PESC 1996, https://ieeexplore.ieee.org/document/548774
+ * 
+ * Also documented in: "Induktivitäten in der Leistungselektronik" by Manfred Albach
+ * Springer Vieweg, 2017, ISBN 978-3-658-15081-5
+ * Chapter 8: "Die Kernverluste", Section 8.3 "Das Prinzip der äquivalenten Frequenz", pages 210-219
+ * 
+ * The Modified Steinmetz Equation (MSE) extends the classical Steinmetz equation to
+ * handle non-sinusoidal waveforms by computing an "equivalent frequency" that produces
+ * the same average rate of flux density change as the actual waveform.
+ * 
+ * Key equations from the book:
+ * 
+ * - Eq. (8.15): Equivalent frequency for piecewise-linear flux density
+ *   feq = (2/π²) * Σ[(ΔBk/ΔB)² / Δtk]
+ *   where ΔBk = flux density change in segment k, Δtk = time duration
+ * 
+ * - Eq. (8.16): Equivalent frequency (integral form)
+ *   feq = (2/π²) * (1/ΔB²) * ∫(dB/dt)² dt
+ *   where ΔB = Bmax - Bmin
+ * 
+ * - Eq. (8.18): Modified Steinmetz volumetric loss equation
+ *   Pv = (1/T) * K(feq) * feq^(α-1) * (ΔB/2)^β * C(θ)
+ *   where:
+ *   - T = period of actual waveform
+ *   - K, α, β = Steinmetz coefficients at feq
+ *   - C(θ) = temperature correction factor
+ * 
+ * - Eq. (8.21): Extension for sub-loops (minor hysteresis loops)
+ *   Total losses = sum of losses from each separated hysteresis loop
+ * 
+ * The physical basis is that core losses correlate with the rate of flux density
+ * change |dB/dt| averaged over a complete hysteresis loop traverse.
+ * 
+ * @param coreMaterial Core material with Steinmetz coefficients
+ * @param excitation Operating point with flux density waveform
+ * @param temperature Core temperature [K]
+ * @return Volumetric core losses [W/m³]
+ */
 double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                          OperatingPointExcitation excitation,
                                                          double temperature) {
@@ -812,6 +939,44 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 }
 
+/**
+ * @brief Calculates core volumetric losses using the Modified Steinmetz Equation (MSE).
+ * 
+ * Based on: "Calculation of Losses in Ferro- and Ferrimagnetic Materials Based on
+ * the Modified Steinmetz Equation" by Jürgen Reinert, Ansgar Brockmeyer, Rik W.A.A. De Doncker
+ * IEEE Transactions on Industry Applications, Vol. 37, No. 4, July/August 2001
+ * https://doi.org/10.1109/28.936396
+ * 
+ * The MSE extends the Steinmetz equation to non-sinusoidal waveforms by introducing
+ * an "equivalent frequency" based on the average rate of remagnetization.
+ * 
+ * From Eq. (5) - equivalent frequency:
+ * 
+ *   feq = (2 / π² * ΔB²) * ∫₀^T (dB/dt)² dt
+ * 
+ * For piecewise-linear waveforms (Eq. 7):
+ * 
+ *   feq = (2 / π² * ΔB²) * Σ[(ΔBn)² / Δtn]
+ * 
+ * The modified Steinmetz equation then becomes:
+ * 
+ *   Pv = k * feq^(α-1) * f * (ΔB/2)^β
+ * 
+ * where:
+ * - k, α, β = original Steinmetz parameters
+ * - feq = equivalent sinusoidal frequency [Hz]
+ * - f = actual switching frequency [Hz]
+ * - ΔB = peak-to-peak flux density [T]
+ * 
+ * The physical interpretation is that feq represents the frequency of a sinusoidal
+ * waveform that produces the same average rate of flux density change as the
+ * actual waveform, weighted by the loss mechanism.
+ * 
+ * @param coreMaterial Core material with Steinmetz coefficients
+ * @param excitation Operating point with arbitrary flux density waveform
+ * @param temperature Core temperature [°C]
+ * @return Volumetric core losses [W/m³]
+ */
 double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
@@ -871,6 +1036,24 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 }
 
+/**
+ * @brief Calculates the kn coefficient for the Natural Steinmetz Extension (NSE).
+ * 
+ * Based on: "Improved Calculation of Core Loss with Nonsinusoidal Waveforms"
+ * by Jieli Li, Tarek Abdallah, and Charles R. Sullivan
+ * IEEE Industry Applications Society Annual Meeting, 2001
+ * https://doi.org/10.1109/IAS.2001.955931
+ * 
+ * The NSE uses a different normalization than iGSE, computing kn from Eq. (10):
+ * 
+ *   kn = k / [(2π)^(α-1) * ∫₀^(2π) |cos(θ)|^α dθ]
+ * 
+ * Note the difference from ki (Eq. 12): kn does not include the 2^(β-α) factor.
+ * This affects how ΔB is handled in the loss calculation.
+ * 
+ * @param steinmetzDatum Steinmetz coefficients (k, α, β)
+ * @return The kn coefficient for NSE calculations
+ */
 double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
     double alpha = steinmetzDatum.get_alpha();
     double k = steinmetzDatum.get_k();
@@ -888,6 +1071,31 @@ double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzD
     return ki;
 }
 
+/**
+ * @brief Calculates core volumetric losses using the Natural Steinmetz Extension (NSE).
+ * 
+ * Based on: "Improved Calculation of Core Loss with Nonsinusoidal Waveforms"
+ * by Jieli Li, Tarek Abdallah, and Charles R. Sullivan
+ * IEEE Industry Applications Society Annual Meeting, 2001
+ * https://doi.org/10.1109/IAS.2001.955931
+ * 
+ * The NSE is an earlier formulation related to iGSE. From Eq. (9):
+ * 
+ *   Pv = (1/T) * ∫₀^T kn |dB/dt|^α * |B(t)|^(β-α) dt
+ * 
+ * The key difference from iGSE is that NSE uses the instantaneous |B(t)|^(β-α)
+ * rather than the peak-to-peak (ΔB)^(β-α). This can lead to different results
+ * for asymmetric waveforms.
+ * 
+ * In this implementation, B_peak (main harmonic) is used instead of the
+ * instantaneous B(t) for computational efficiency, which gives reasonable
+ * accuracy for most waveforms.
+ * 
+ * @param coreMaterial Core material with Steinmetz coefficients
+ * @param excitation Operating point with arbitrary flux density waveform
+ * @param temperature Core temperature [°C]
+ * @return Volumetric core losses [W/m³]
+ */
 double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
@@ -945,6 +1153,39 @@ double get_plateau_duty_cycle(std::vector<double> data) {
     return onPoints;
 }
 
+/**
+ * @brief Calculates core volumetric losses using the Barg model for trapezoidal waveforms.
+ * 
+ * Based on: "Core Loss Calculation of Symmetric Trapezoidal Flux Density Waveform"
+ * by Sobhi Barg and Kent Bertilsson
+ * IEEE Open Journal of Power Electronics, Vol. 2, 2021
+ * https://doi.org/10.1109/OJPEL.2021.3068930
+ * 
+ * This model provides improved accuracy for trapezoidal/rectangular flux density
+ * waveforms common in power converters, by accounting for the duty cycle effect.
+ * 
+ * From Eq. (4) - Improved Steinmetz Equation with saturation effect handling:
+ * 
+ *   Pv = (π/4) * k * f^α * B_p^(β-2) * B_ac^2    (for β > 2)
+ *   Pv = (π/4) * k * f^α * B_ac^β                 (for β ≤ 2)
+ * 
+ * where B_p is the main harmonic peak and B_ac is the AC peak.
+ * 
+ * The model applies a duty cycle correction factor from empirical data (Fig. 5/Table),
+ * which accounts for increased losses at lower duty cycles (more time at saturation):
+ * 
+ *   Pv_corrected = duty_cycle_factor * Pv
+ * 
+ * Duty cycle factors interpolated from paper:
+ * - D = 0.5: factor = 1.0
+ * - D = 0.25: factor ≈ 1.275
+ * - D = 0.1: factor ≈ 1.45
+ * 
+ * @param coreMaterial Core material with Steinmetz coefficients
+ * @param excitation Operating point with trapezoidal flux density waveform
+ * @param temperature Core temperature [°C]
+ * @return Volumetric core losses [W/m³]
+ */
 double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
@@ -994,6 +1235,40 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     return dutyCycleFactor * lossesFrameT1;
 } 
  
+/**
+ * @brief Calculates core losses using the Roshen model with separate hysteresis and eddy current components.
+ * 
+ * Based on: "Ferrite Core Loss for Power Magnetic Components Design"
+ * by Waseem A. Roshen
+ * IEEE Transactions on Magnetics, Vol. 27, No. 6, November 1991
+ * https://doi.org/10.1109/20.278777
+ * 
+ * The Roshen model separates core losses into three physically-based components:
+ * 
+ * 1. Hysteresis losses (Ph): From Eq. (1)-(3)
+ *    Calculated by integrating the area of the B-H hysteresis loop.
+ *    The model constructs minor loops from material parameters (Hc, Br, Bs, Hs)
+ *    using an analytical B-H curve approximation.
+ * 
+ * 2. Classical eddy current losses (Pe): From Eq. (5)
+ *    Pe = (A / 8π * ρ) * f * ∫(dB/dt)² dt
+ *    where A = cross-sectional area, ρ = resistivity
+ *    Accounts for the actual waveform shape through the (dB/dt)² integration.
+ * 
+ * 3. Excess eddy current losses (Pex): From Eq. (8)
+ *    Pex = √(α*N₀/ρ) * f * ∫|dB/dt|^(3/2) dt
+ *    Additional losses from domain wall motion, significant at higher frequencies.
+ * 
+ * The total volumetric loss is: Pv = Ph + Pe + Pex
+ * 
+ * This model provides physical insight into loss mechanisms and handles
+ * arbitrary waveforms, but requires more material parameters than Steinmetz-based methods.
+ * 
+ * @param core Core with geometry and material data
+ * @param excitation Operating point with flux density waveform
+ * @param temperature Core temperature [°C]
+ * @return CoreLossesOutput with total, hysteresis, and eddy current losses
+ */
 CoreLossesOutput CoreLossesRoshenModel::get_core_losses(Core core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
@@ -1092,6 +1367,27 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(Core 
     return roshenParameters;
 }
 
+/**
+ * @brief Calculates the parameters a1, b1, b2 for the analytical B-H curve model.
+ * 
+ * Based on: "Ferrite Core Loss for Power Magnetic Components Design"
+ * by Waseem A. Roshen, IEEE Transactions on Magnetics, Vol. 27, No. 6, Nov. 1991
+ * https://doi.org/10.1109/20.278777
+ * 
+ * The model uses a hyperbolic tangent-like function to describe the B-H curve:
+ *   B = (H + Hc) / (a + b|H + Hc|)
+ * 
+ * Parameters a1, b1, b2 are derived from the material's characteristic points:
+ * - Saturation point (Hs, Bs)
+ * - Remanence point (0, Br)
+ * - Coercive force (Hc, 0)
+ * 
+ * @param saturationMagneticFieldStrength Hs [A/m]
+ * @param saturationMagneticFluxDensity Bs [T]
+ * @param coerciveForce Hc [A/m]
+ * @param remanence Br [T]
+ * @return Map with a1, b1, b2 coefficients for B-H curve construction
+ */
 std::map<std::string, double> get_major_loop_parameters(double saturationMagneticFieldStrength,
                                                         double saturationMagneticFluxDensity,
                                                         double coerciveForce,
@@ -1239,6 +1535,27 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
     return std::pair<std::vector<double>, std::vector<double>>(cutUpperMagneticFluxDensityWaveform, cutLowerMagneticFluxDensityWaveform);
 }
 
+/**
+ * @brief Calculates hysteresis losses density by integrating the B-H loop area.
+ * 
+ * Based on: "Ferrite Core Loss for Power Magnetic Components Design"
+ * by Waseem A. Roshen, IEEE Transactions on Magnetics, Vol. 27, No. 6, Nov. 1991
+ * https://doi.org/10.1109/20.278777
+ * 
+ * From Eq. (1)-(3): The hysteresis loss per cycle equals the area enclosed by
+ * the B-H loop. For a minor loop at operating flux density Bm:
+ * 
+ *   Ph = f * ∮ H dB = f * (Area of B-H loop)
+ * 
+ * The implementation:
+ * 1. Constructs the upper and lower branches of the minor hysteresis loop
+ * 2. Integrates the area between them: ΔH * (B_upper - B_lower)
+ * 3. Multiplies by frequency to get power loss density [W/m³]
+ * 
+ * @param parameters Material parameters (Hc, Br, Bs, Hs)
+ * @param excitation Operating point with flux density waveform
+ * @return Hysteresis volumetric losses [W/m³]
+ */
 double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string, double> parameters,
                                                             OperatingPointExcitation excitation) {
     double frequency = excitation.get_frequency();
@@ -1260,6 +1577,32 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
     return hysteresisLossesDensity;
 }
 
+/**
+ * @brief Calculates classical eddy current losses density.
+ * 
+ * Based on: "Ferrite Core Loss for Power Magnetic Components Design"
+ * by Waseem A. Roshen, IEEE Transactions on Magnetics, Vol. 27, No. 6, Nov. 1991
+ * https://doi.org/10.1109/20.278777
+ * 
+ * From Eq. (5) - classical eddy current losses:
+ * 
+ *   Pe = (A / 8πρ) * f * ∫₀^T (dB/dt)² dt
+ * 
+ * where:
+ * - A = cross-sectional area of the central column [m²]
+ * - ρ = effective resistivity of the core material [Ω·m]
+ * - f = frequency [Hz]
+ * - dB/dt = rate of change of magnetic flux density [T/s]
+ * 
+ * This accounts for losses due to circulating eddy currents induced by
+ * the changing magnetic flux. The (dB/dt)² integral captures the effect
+ * of arbitrary waveform shapes.
+ * 
+ * @param core Core with geometry data
+ * @param excitation Operating point with flux density waveform
+ * @param resistivity Effective core material resistivity [Ω·m]
+ * @return Classical eddy current volumetric losses [W/m³]
+ */
 double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
                                                               OperatingPointExcitation excitation,
                                                               double resistivity) {
@@ -1298,6 +1641,31 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
     return eddyCurrentLossesDensity;
 }
 
+/**
+ * @brief Calculates excess (anomalous) eddy current losses density.
+ * 
+ * Based on: "Ferrite Core Loss for Power Magnetic Components Design"
+ * by Waseem A. Roshen, IEEE Transactions on Magnetics, Vol. 27, No. 6, Nov. 1991
+ * https://doi.org/10.1109/20.278777
+ * 
+ * From Eq. (8) - excess eddy current losses:
+ * 
+ *   Pex = √(α*N₀/ρ) * f * ∫₀^T |dB/dt|^(3/2) dt
+ * 
+ * where:
+ * - α*N₀ = excess losses coefficient (material parameter)
+ * - ρ = effective resistivity [Ω·m]
+ * - dB/dt = rate of change of magnetic flux density [T/s]
+ * 
+ * Excess losses arise from the non-uniform motion of magnetic domain walls
+ * and become significant at higher frequencies. The 3/2 power law comes from
+ * the statistical theory of domain wall dynamics.
+ * 
+ * @param excitation Operating point with flux density waveform
+ * @param resistivity Effective core material resistivity [Ω·m]
+ * @param alphaTimesN0 Excess losses coefficient α*N₀
+ * @return Excess eddy current volumetric losses [W/m³]
+ */
 double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,
                                                                      double resistivity,
                                                                      double alphaTimesN0) {

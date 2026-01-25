@@ -158,6 +158,32 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
     return magnetizingInductanceOutput;
 }
 
+/**
+ * @brief Calculate air gap reluctance using Zhang's improved method for air-gap inductors
+ *
+ * Reference: X. Zhang, F. Xiao, R. Wang, X. Fan, H. Wang,
+ *            "Improved Calculation Method for Inductance Value of the Air-Gap Inductor",
+ *            IEEE 1st China International Youth Conference on Electrical Engineering (CIYCEE), 2020.
+ *            https://ieeexplore.ieee.org/document/9332553
+ *
+ * The total reluctance is modeled as a parallel combination of internal reluctance (direct flux path)
+ * and fringing reluctance (fringing flux path around the gap edges):
+ *
+ *   R_g = R_fr || R_in                                                    [Eq. 11]
+ *
+ * where:
+ *   - R_in = d_i / (μ₀ * A_c)  (internal reluctance, uniform field)       [Eq. 9]
+ *   - R_fr = π / (μ₀ * C * ln((2*h + d_i) / d_i))  (fringing reluctance)  [Eq. 10]
+ *
+ * with C being the perimeter of the cross-section and h the winding window height.
+ * The fringing field is modeled using an equivalent current source at the gap edge (Fig. 6).
+ *
+ * The fringing factor F is computed as the ratio of effective to geometric reluctance:
+ *   F = l_g / (μ₀ * A_g * R_total)
+ *
+ * @param gapInfo CoreGap object containing gap geometry parameters
+ * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
+ */
 AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo) {
     double perimeter = 0;
     auto constants = Constants();
@@ -219,17 +245,72 @@ AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo)
 };
 
 
+/**
+ * @brief Helper function to compute the basic reluctance for a single fringing path
+ *
+ * Reference: J. Mühlethaler, J.W. Kolar, A. Ecklebe,
+ *            "A Novel Approach for 3D Air Gap Reluctance Calculations",
+ *            8th International Conference on Power Electronics - ECCE Asia, Jeju, 2011.
+ *            https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/10_A_Novel_Approach_ECCEAsia2011_01.pdf
+ *            (Referenced by Zhang 2020 as [5])
+ *
+ * The basic reluctance element accounts for both direct flux path and fringing:
+ *
+ *   R_basic = 1 / (μ₀ * (w/(2*l) + (2/π) * (1 + ln(π*h / (4*l)))))
+ *
+ * @param l Half of gap length (l_g/2)
+ * @param w Width dimension of the gap cross-section
+ * @param h Distance to closest perpendicular surface (winding window height)
+ * @return Basic reluctance value in H⁻¹
+ */
 double ReluctanceMuehlethalerModel::get_basic_reluctance(double l, double w, double h) {
     auto constants = Constants();
     return 1 / constants.vacuumPermeability /
            (w / 2 / l + 2 / std::numbers::pi * (1 + log(std::numbers::pi * h / 4 / l)));
 }
 
+/**
+ * @brief Compute Type 1 reluctance (full gap surrounded by core on both sides)
+ *
+ * Reference: J. Mühlethaler, J.W. Kolar, A. Ecklebe,
+ *            "A Novel Approach for 3D Air Gap Reluctance Calculations",
+ *            8th International Conference on Power Electronics - ECCE Asia, Jeju, 2011.
+ *            (Referenced by Zhang 2020 as [5])
+ *
+ * Combines four basic reluctance elements for a symmetric gap configuration:
+ *   R_type1 = 1 / (1/(R_b + R_b) + 1/(R_b + R_b)) = R_b
+ *
+ * @param l Half of gap length (l_g/2)
+ * @param w Width dimension
+ * @param h Distance to closest perpendicular surface
+ * @return Type 1 reluctance in H⁻¹
+ */
 double ReluctanceMuehlethalerModel::get_reluctance_type_1(double l, double w, double h) {
     double basicReluctance = get_basic_reluctance(l, w, h);
     return 1 / (1 / (basicReluctance + basicReluctance) + 1 / (basicReluctance + basicReluctance));
 }
 
+/**
+ * @brief Calculate air gap reluctance using Mühlethaler's 3D approach
+ *
+ * Reference: J. Mühlethaler, J.W. Kolar, A. Ecklebe,
+ *            "A Novel Approach for 3D Air Gap Reluctance Calculations",
+ *            8th International Conference on Power Electronics - ECCE Asia, Jeju, 2011.
+ *            https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/10_A_Novel_Approach_ECCEAsia2011_01.pdf
+ *            (Referenced by Zhang 2020 as [5])
+ *
+ * This method extends 2D reluctance analysis to 3D by decomposing the air gap into
+ * multiple reluctance elements and using superposition. From Zhang Eq. 6-7:
+ *
+ *   R_x = R_0x / γ_x   where R_0x = d / (μ₀ * w_x)
+ *   R_y = R_0y / γ_y   where R_0y = d / (μ₀ * w_y)
+ *   R_3D = γ_x * γ_y * d / (μ₀ * w_x * w_y)                               [Zhang Eq. 7]
+ *
+ * The fringing factor is F = 1/γ where γ = γ_x * γ_y
+ *
+ * @param gapInfo CoreGap object containing gap geometry parameters
+ * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
+ */
 AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
@@ -277,6 +358,26 @@ AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap g
     return airGapReluctanceOutput;
 };
 
+/**
+ * @brief Calculate air gap reluctance using the effective area method
+ *
+ * This simplified approach accounts for fringing by increasing the effective cross-sectional
+ * area of the gap. The fringing factor expands the area by the gap length in each dimension.
+ *
+ * For circular cross-section:
+ *   A_eff = π * (r + l_g)² = π * r² * (1 + l_g/r)²
+ *   F = (1 + l_g/d)²   where d is the column diameter
+ *
+ * For rectangular cross-section:
+ *   A_eff = (w + l_g) * (d + l_g)
+ *   F = (1 + l_g/w) * (1 + l_g/d)
+ *
+ * The effective reluctance is:
+ *   R = l_g / (μ₀ * A * F)
+ *
+ * @param gapInfo CoreGap object containing gap geometry parameters
+ * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
+ */
 AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
@@ -319,6 +420,27 @@ AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap 
     return airGapReluctanceOutput;
 };
 
+/**
+ * @brief Calculate air gap reluctance using the effective length method
+ *
+ * Similar to the effective area method, this approach accounts for fringing flux by
+ * assuming the flux spreads out from the gap edges. The fringing factor is computed
+ * to account for the reduction in effective reluctance due to fringing.
+ *
+ * For circular cross-section:
+ *   F = (1 + l_g/d)²   where d is the column diameter
+ *
+ * For rectangular cross-section:
+ *   F = (1 + l_g/d) * (1 + l_g/w)   where d is depth, w is width
+ *
+ * The effective reluctance is:
+ *   R = l_g / (μ₀ * A * F)
+ *
+ * Note: This method produces identical results to EffectiveArea for most geometries.
+ *
+ * @param gapInfo CoreGap object containing gap geometry parameters
+ * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
+ */
 AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
@@ -360,6 +482,29 @@ AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGa
     return airGapReluctanceOutput;
 };
 
+/**
+ * @brief Calculate air gap reluctance using Partridge's formula
+ *
+ * Reference: Referenced by Zhang 2020 as [3] (McLyman), Eq. 1:
+ *   "Reference [3] provided a correction factor for C-type and E-type core to describe
+ *    the influence of the air gap fringing flux on the inductance value."
+ *
+ * This method uses a logarithmic fringing factor formula that accounts for flux spreading
+ * around the gap edges based on the ratio of winding window height to gap length:
+ *
+ *   F = 1 + (l_g / √A_c) * ln(2 * H_w / d)                               [Zhang Eq. 1]
+ *
+ * where:
+ *   - d = gap length (l_g)
+ *   - A_c = cross-sectional area of the core
+ *   - H_w = height of the winding window
+ *
+ * The reluctance is then computed as:
+ *   R = l_g / (μ₀ * A * F)
+ *
+ * @param gapInfo CoreGap object containing gap geometry parameters
+ * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
+ */
 AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
@@ -394,6 +539,36 @@ AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapI
     return airGapReluctanceOutput;
 };
 
+/**
+ * @brief Calculate air gap reluctance using Stenglein's method for large air gaps
+ *
+ * Reference: E. Stenglein, D. Kuebrich, M. Albach, T. Duerbaum,
+ *            "The Reluctance of Large Air Gaps in Ferrite Cores",
+ *            17th European Conference on Power Electronics and Applications (EPE'16 ECCE Europe), 2016.
+ *            https://ieeexplore.ieee.org/document/7695271
+ *
+ * This method is specifically designed for large air gaps where the gap length is
+ * comparable to the winding window dimensions. It accounts for both gap position
+ * and proximity to core boundaries.
+ *
+ * For lM = 0 (centered gap), the ratio Ag/Ac is given by Eq. 12:
+ *
+ *   γ(lg) = 1 + (2/√π) * (lg/(2*rc)) * ln(2.1*rx/lg) + (aux2 - aux1) * (lg/l1)^(2π)
+ *
+ * where aux2 = (1/6) * (c² + 2cb + 3b²) / rc²   (from Eq. 11 limit case)
+ *
+ * For position-dependent gaps, Eq. 13-14 add the α factor:
+ *   Ag/Ac = α(lg) * (lM/l1)² + γ(lg)                                      [Eq. 13]
+ *
+ * with polynomial coefficients from least-squares fitting (Eq. 15-17):
+ *   u = 42.7 * rx/l1 - 50.2
+ *   v = -55.4 * rx/l1 + 71.6
+ *   w = 0.88 * rx/l1 - 0.80
+ *   α(lg) = u*(lg/l1)² + v*(lg/l1) + w                                    [Eq. 14]
+ *
+ * @param gapInfo CoreGap object containing gap geometry parameters
+ * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
+ */
 AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
@@ -451,6 +626,29 @@ AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapI
     return airGapReluctanceOutput;
 };
 
+/**
+ * @brief Calculate air gap reluctance using the classic formula (no fringing)
+ *
+ * Reference: Standard magnetic circuit theory.
+ *            https://en.wikipedia.org/wiki/Magnetic_reluctance
+ *
+ * The classic reluctance formula assumes a uniform magnetic field with no fringing:
+ *
+ *   R = l_g / (μ₀ * A)
+ *
+ * where:
+ *   - l_g = gap length
+ *   - A = gap cross-sectional area
+ *   - μ₀ = vacuum permeability (4π × 10⁻⁷ H/m)
+ *
+ * The fringing factor is fixed at 1 (no fringing compensation).
+ *
+ * Note: This method typically overestimates reluctance (underestimates inductance)
+ * because it ignores the fringing flux that exists in all practical air gaps.
+ *
+ * @param gapInfo CoreGap object containing gap geometry parameters
+ * @return AirGapReluctanceOutput with calculated reluctance and fringing factor = 1
+ */
 AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
@@ -473,6 +671,33 @@ AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInf
     return airGapReluctanceOutput;
 };
 
+/**
+ * @brief Calculate air gap reluctance using Balakrishnan's Schwarz-Christoffel method
+ *
+ * Reference: A. Balakrishnan, W. T. Joines, T. G. Wilson,
+ *            "Air-gap reluctance and inductance calculations for magnetic circuits
+ *            using a Schwarz-Christoffel transformation",
+ *            IEEE Transactions on Power Electronics, vol. 12, no. 4, pp. 654-663, July 1997.
+ *            https://ieeexplore.ieee.org/document/602560
+ *            (Referenced by Zhang 2020 as [4])
+ *
+ * Uses conformal mapping (Schwarz-Christoffel transformation) for analytical solution
+ * of fringing flux. Per-unit-length reluctance expressions from Section V (Eq. 14-17):
+ *
+ * For post-plate configuration (Fig. 3a, Eq. 14):
+ *   R_a = 1 / (μ₀ * (w/(2*d) + (2/π) * (1 + ln(π*h / (4*d)))))
+ *
+ * For post-post configuration (Fig. 3b, Eq. 15, used here):
+ *   R_b = 1 / (μ₀ * (w/d + (4/π) * (1 + ln(π*h / (4*d)))))
+ *
+ * The implementation uses Eq. 15 form:
+ *   R = 1 / (μ₀ * (A/lg + (2*depth/π) * (1 + ln(π*h / (2*lg)))))
+ *
+ * The fringing factor F = lg / (μ₀ * A * R)
+ *
+ * @param gapInfo CoreGap object containing gap geometry parameters
+ * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
+ */
 AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
