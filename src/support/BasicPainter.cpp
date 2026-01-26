@@ -1,6 +1,7 @@
 #include "physical_models/WindingLosses.h"
 #include "support/Painter.h"
 #include <cfloat>
+#include <map>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
@@ -1435,11 +1436,17 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
         outputs->set_winding_losses(windingLossesOutput);
     }
 
-    if (outputs && outputs->get_winding_losses() && outputs->get_winding_losses()->get_winding_losses_per_turn() ) {
+    // Build a map from turn name to total losses for lookup
+    std::map<std::string, double> lossesPerTurnByName;
+    if (outputs && outputs->get_winding_losses() && outputs->get_winding_losses()->get_winding_losses_per_turn()) {
         auto windingLossesPerTurn = outputs->get_winding_losses()->get_winding_losses_per_turn().value();
         for (auto windingLossesthisTurn : windingLossesPerTurn) {
-            modules.push_back(WindingLosses::get_total_winding_losses(windingLossesthisTurn));
-            modulesToSort.push_back(WindingLosses::get_total_winding_losses(windingLossesthisTurn));
+            double totalLoss = WindingLosses::get_total_winding_losses(windingLossesthisTurn);
+            if (windingLossesthisTurn.get_name().has_value()) {
+                lossesPerTurnByName[windingLossesthisTurn.get_name().value()] = totalLoss;
+            }
+            modules.push_back(totalLoss);
+            modulesToSort.push_back(totalLoss);
         }
     }
 
@@ -1478,18 +1485,30 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     auto shapes = _root.add_child<SVG::Group>();
 
     for (size_t i = 0; i < turns.size(); ++i){
+        std::string turnName = turns[i].get_name();
+        
+        // Look up loss value by turn name, fallback to index-based if not found
+        double lossValue;
+        auto it = lossesPerTurnByName.find(turnName);
+        if (it != lossesPerTurnByName.end()) {
+            lossValue = it->second;
+        } else if (i < modules.size()) {
+            lossValue = modules[i];
+        } else {
+            continue;  // Skip if no loss data available for this turn
+        }
 
         double value;
         if (logarithmicScale) {
-            value = log10(modules[i]);
+            value = log10(lossValue);
         }
         else {
-            value = modules[i];
+            value = lossValue;
         }
         auto color = get_color(minimumModule, maximumModule, windingLossesMinimumColor, windingLossesMaximumColor, value);
 
         std::stringstream stream;
-        stream << std::scientific << std::setprecision(1) << value;
+        stream << std::scientific << std::setprecision(2) << lossValue;
         std::string label = stream.str() + " W";
 
         if (turns[i].get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
