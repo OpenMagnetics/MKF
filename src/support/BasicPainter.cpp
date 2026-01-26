@@ -1423,6 +1423,7 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
     std::vector<double> modules;
+    std::vector<double> modulesToSort;
     bool logarithmicScale = settings.get_painter_logarithmic_scale();
 
     if (!outputs && !operatingPoint) {
@@ -1438,16 +1439,15 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
         auto windingLossesPerTurn = outputs->get_winding_losses()->get_winding_losses_per_turn().value();
         for (auto windingLossesthisTurn : windingLossesPerTurn) {
             modules.push_back(WindingLosses::get_total_winding_losses(windingLossesthisTurn));
+            modulesToSort.push_back(WindingLosses::get_total_winding_losses(windingLossesthisTurn));
         }
     }
 
-    auto moduleaToSort = modules;
-
-    std::sort(moduleaToSort.begin(), moduleaToSort.end());
-    size_t index05 = static_cast<size_t>(0.02 * (moduleaToSort.size() - 1));
-    size_t index95 = static_cast<size_t>(0.98 * (moduleaToSort.size() - 1));
-    double percentile05Value = moduleaToSort[index05];
-    double percentile95Value = moduleaToSort[index95];
+    std::sort(modulesToSort.begin(), modulesToSort.end());
+    size_t index05 = static_cast<size_t>(0.02 * (modulesToSort.size() - 1));
+    size_t index95 = static_cast<size_t>(0.98 * (modulesToSort.size() - 1));
+    double percentile05Value = modulesToSort[index05];
+    double percentile95Value = modulesToSort[index95];
 
     if (!settings.get_painter_maximum_value_colorbar().has_value()) {
         maximumModule = percentile95Value;
@@ -1467,8 +1467,8 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     }
 
     // Swap min/max colors so low losses are blue (cold) and high losses are red (hot)
-    auto windingLossesMinimumColor = settings.get_painter_color_magnetic_field_maximum();
-    auto windingLossesMaximumColor = settings.get_painter_color_magnetic_field_minimum();
+    auto windingLossesMaximumColor = settings.get_painter_color_magnetic_field_maximum();
+    auto windingLossesMinimumColor = settings.get_painter_color_magnetic_field_minimum();
 
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding turns not created");
