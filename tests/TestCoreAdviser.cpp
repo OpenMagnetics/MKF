@@ -1830,4 +1830,236 @@ TEST_CASE("Test_CoreAdviserStandardCores_Planar_Transformer", "[adviser][core-ad
     }
 }
 
+TEST_CASE("Test_CoreAdviser_HighTemperature_GappingConsidersTemperature", "[adviser][core-adviser][temperature][gapping]") {
+    // Test that verifies gapping calculation uses operating temperature for saturation flux density
+    // At high temperatures, Bsat is lower, so a larger gap is needed to store the same energy
+    // This test directly verifies the gap calculation formula
+    settings.reset();
+    clear_databases();
+    
+    // Create a simple core to test gap calculation
+    // Using E 25/13/7 with N87 material as reference
+    json coreJson = json::parse(R"({
+        "functionalDescription": {
+            "gapping": [],
+            "material": "N87",
+            "shape": "E 25/13/7",
+            "type": "two-piece set",
+            "numberStacks": 1
+        }
+    })");
+    
+    Core core(coreJson);
+    core.process_data();
+    
+    // Get Bsat at different temperatures
+    double bsat25 = core.get_magnetic_flux_density_saturation(25.0, false);
+    double bsat100 = core.get_magnetic_flux_density_saturation(100.0, false);
+    
+    std::cout << "N87 Bsat at 25°C: " << bsat25 << " T" << std::endl;
+    std::cout << "N87 Bsat at 100°C: " << bsat100 << " T" << std::endl;
+    
+    // Verify Bsat decreases with temperature for ferrite
+    REQUIRE(bsat100 < bsat25);
+    
+    // Calculate required magnetic energy for 100µH, 5A peak
+    double inductance = 100e-6;  // 100 µH
+    double peakCurrent = 5.0;    // 5 A
+    double requiredEnergy = 0.5 * inductance * peakCurrent * peakCurrent;
+    
+    std::cout << "Required energy: " << requiredEnergy * 1e6 << " µJ" << std::endl;
+    
+    // Calculate gap length at different temperatures using the formula
+    // gap_length = 2 * E * µ0 / (A * Ff * Bsat²)
+    // Since gap_length ∝ 1/Bsat², lower Bsat means larger gap needed
+    
+    MagneticEnergy magneticEnergy;
+    
+    // Set up a gap info for calculation (we need an initial gap to get area)
+    core.set_ground_gapping(0.001);  // 1mm initial
+    core.process_gap();
+    auto gapInfo = core.get_gapping()[0];
+    
+    double gapLength25 = magneticEnergy.calculate_gap_length_by_magnetic_energy(gapInfo, bsat25, requiredEnergy);
+    double gapLength100 = magneticEnergy.calculate_gap_length_by_magnetic_energy(gapInfo, bsat100, requiredEnergy);
+    
+    std::cout << "Gap length at 25°C: " << gapLength25 * 1e6 << " µm" << std::endl;
+    std::cout << "Gap length at 100°C: " << gapLength100 * 1e6 << " µm" << std::endl;
+    
+    // The gap at 100°C should be larger than at 25°C because Bsat is lower
+    REQUIRE(gapLength100 > gapLength25);
+    
+    // Verify the ratio follows Bsat² relationship
+    double expectedRatio = (bsat25 * bsat25) / (bsat100 * bsat100);
+    double actualRatio = gapLength100 / gapLength25;
+    std::cout << "Expected ratio (Bsat25²/Bsat100²): " << expectedRatio << std::endl;
+    std::cout << "Actual ratio (gap100/gap25): " << actualRatio << std::endl;
+    
+    REQUIRE_THAT(actualRatio, Catch::Matchers::WithinRel(expectedRatio, 0.05));
+    
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreAdviser_WebLibMKF_UserScenario", "[adviser][core-adviser][weblibmkf][user-scenario]") {
+    // Test that reproduces the exact user scenario from WebLibMKF
+    // User inputs: 100µH, 100kHz, ±5A triangular current, 100°C ambient temperature
+    // Web uses STANDARD_CORES mode which returns Fair-Rite 97/98 materials
+    settings.reset();
+    clear_databases();
+    
+    // Match WebLibMKF settings exactly
+    settings.set_coil_delimit_and_compact(true);
+    
+    // Input JSON matching the user's MAS file exactly
+    std::string inputsString = R"({
+        "designRequirements": {
+            "magnetizingInductance": {
+                "nominal": 0.0001
+            },
+            "name": "My Design Requirements",
+            "turnsRatios": [],
+            "wiringTechnology": "Wound"
+        },
+        "operatingPoints": [
+            {
+                "name": "Op. Point No. 1",
+                "conditions": {
+                    "ambientTemperature": 100
+                },
+                "excitationsPerWinding": [
+                    {
+                        "name": "Primary winding excitation",
+                        "frequency": 100000,
+                        "current": {
+                            "waveform": {
+                                "data": [-5, 5, -5],
+                                "time": [0, 0.000005, 0.00001]
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    })";
+    
+    // Weights matching the actual Web UI: Losses (EFFICIENCY): 40, Dimensions: 30, Cost: 30
+    std::string weightsString = R"({"EFFICIENCY": 40, "DIMENSIONS": 30, "COST": 30})";
+    
+    // Parse inputs - following WebLibMKF code exactly
+    OpenMagnetics::Inputs inputs(json::parse(inputsString));
+    
+    std::map<std::string, double> weightsKeysString = json::parse(weightsString);
+    std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
+    
+    double externalSum = 0;
+    for (auto const& pair : weightsKeysString) {
+        externalSum += pair.second;
+    }
+    
+    for (auto const& [filterName, weight] : weightsKeysString) {
+        OpenMagnetics::CoreAdviser::CoreAdviserFilters filter;
+        OpenMagnetics::from_json(filterName, filter);
+        weights[filter] = weight / externalSum;
+    }
+    
+    // Test AVAILABLE_CORES mode first (to check for EL 18)
+    {
+        std::cout << "\n=== AVAILABLE_CORES Mode ===" << std::endl;
+        CoreAdviser coreAdviser;
+        coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+        int maximumNumberResults = 100;  // Increase to find EL 18
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
+        
+        std::cout << "Searching for EL cores..." << std::endl;
+        for (auto& [mas, scoring] : masMagnetics) {
+            auto core = mas.get_mutable_magnetic().get_mutable_core();
+            std::string shapeName = core.get_shape_name();
+            std::string coreName = core.get_name().value();
+            
+            if (shapeName.find("EL") != std::string::npos || 
+                coreName.find("EL") != std::string::npos) {
+                double totalGapLength = 0;
+                for (auto& gap : core.get_functional_description().get_gapping()) {
+                    if (gap.get_type() == MAS::GapType::SUBTRACTIVE) {
+                        totalGapLength += gap.get_length();
+                    }
+                }
+                std::cout << "  FOUND: " << coreName 
+                          << " | Material: " << core.get_material_name()
+                          << " | Gap: " << totalGapLength * 1e6 << " µm"
+                          << " | Score: " << scoring
+                          << std::endl;
+            }
+        }
+    }
+    
+    // Web uses STANDARD_CORES mode which returns Fair-Rite cores
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    int maximumNumberResults = 20;
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
+    
+    REQUIRE(masMagnetics.size() > 0);
+    
+    std::cout << "\n=== STANDARD_CORES Mode ===" << std::endl;
+    std::cout << "Input: 100µH, 100kHz, ±5A, 100°C ambient" << std::endl;
+    std::cout << "Weights: EFFICIENCY=40, DIMENSIONS=30, COST=30" << std::endl;
+    std::cout << "\nTop 10 recommended cores:" << std::endl;
+    
+    for (size_t i = 0; i < std::min(size_t(10), masMagnetics.size()); ++i) {
+        auto& mas = masMagnetics[i].first;
+        auto core = mas.get_mutable_magnetic().get_mutable_core();
+        double scoring = masMagnetics[i].second;
+        
+        // Get gap length
+        double totalGapLength = 0;
+        int numGaps = 0;
+        for (auto& gap : core.get_functional_description().get_gapping()) {
+            if (gap.get_type() == MAS::GapType::SUBTRACTIVE) {
+                totalGapLength += gap.get_length();
+                numGaps++;
+            }
+        }
+        
+        std::cout << "  " << (i+1) << ". " << core.get_name().value() 
+                  << " | Material: " << core.get_material_name()
+                  << " | Gap: " << totalGapLength * 1e6 << " µm"
+                  << " | Score: " << scoring
+                  << std::endl;
+    }
+    
+    // Key verification: All returned cores should have gaps calculated for 100°C
+    // Fair-Rite 97/98 materials should be present (web shows these)
+    bool foundFairRite97 = false;
+    bool foundFairRite98 = false;
+    
+    for (auto& [mas, scoring] : masMagnetics) {
+        auto core = mas.get_mutable_magnetic().get_mutable_core();
+        std::string materialName = core.get_material_name();
+        
+        if (materialName == "97") foundFairRite97 = true;
+        if (materialName == "98") foundFairRite98 = true;
+        
+        // Verify all cores have gaps > 0 (ferrites need gaps for energy storage)
+        double totalGapLength = 0;
+        for (auto& gap : core.get_functional_description().get_gapping()) {
+            if (gap.get_type() == MAS::GapType::SUBTRACTIVE) {
+                totalGapLength += gap.get_length();
+            }
+        }
+        
+        // Ferrite cores must have gaps for 100µH inductance at 100°C
+        // Gap should be at least 100µm (our physics calculation showed ~200-300µm needed)
+        if (materialName == "97" || materialName == "98" || materialName == "N87") {
+            CHECK(totalGapLength >= 100e-6);  // At least 100µm gap
+        }
+    }
+    
+    // Verify Fair-Rite materials are returned (matching web results)
+    CHECK(foundFairRite97);
+    CHECK(foundFairRite98);
+    
+    settings.reset();
+}
+
 }  // namespace

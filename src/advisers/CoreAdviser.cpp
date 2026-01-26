@@ -976,6 +976,10 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
 
         return;
     }
+    double temperature = 0;
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+        temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
+    }
     auto requiredMagneticEnergy = resolve_dimensional_values(magneticEnergy.calculate_required_magnetic_energy(inputs), DimensionalValues::MAXIMUM);
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i) {
         Core core = (*magneticsWithScoring)[i].first.get_core();
@@ -987,7 +991,7 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
             core.process_data();
         }
         if (core.get_shape_family() != CoreShapeFamily::T) {
-            double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], core.get_magnetic_flux_density_saturation(), requiredMagneticEnergy), 5);
+            double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], core.get_magnetic_flux_density_saturation(temperature), requiredMagneticEnergy), 5);
             core.set_ground_gapping(gapLength);
             core.process_gap();
             std::stringstream ss;
