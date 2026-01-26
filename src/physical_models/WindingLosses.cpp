@@ -104,6 +104,7 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
         auto layer = layers[layerIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_layer(layer.get_name());
         WindingLossesPerElement windingLossesThisLayer = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes);
+        windingLossesThisLayer.set_name(layer.get_name());
         windingLossesPerLayer.push_back(windingLossesThisLayer);
     }
     windingLossesOutput.set_winding_losses_per_layer(windingLossesPerLayer);
@@ -119,6 +120,7 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
         auto section = sections[sectionIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_section(section.get_name());
         WindingLossesPerElement windingLossesThisSection = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes);
+        windingLossesThisSection.set_name(section.get_name());
         windingLossesPerSection.push_back(windingLossesThisSection);
     }
     windingLossesOutput.set_winding_losses_per_section(windingLossesPerSection);
@@ -132,6 +134,7 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
         auto winding = coil.get_functional_description()[windingIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_winding(winding.get_name());
         WindingLossesPerElement windingLossesThisWinding = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes);
+        windingLossesThisWinding.set_name(winding.get_name());
         windingLossesPerWinding.push_back(windingLossesThisWinding);
     }
     windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);

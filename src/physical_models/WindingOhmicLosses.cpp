@@ -143,6 +143,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         ohmicLosses.set_method_used("Ohm");
         ohmicLosses.set_origin(ResultOrigin::SIMULATION);
         windingLossesThisTurn.set_ohmic_losses(ohmicLosses);
+        windingLossesThisTurn.set_name(turn.get_name());
         windingLossesPerTurn.push_back(windingLossesThisTurn);
 
         if (std::isnan(currentDividerThisTurn)) {
@@ -167,6 +168,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         ohmicLosses.set_method_used("Ohm");
         ohmicLosses.set_origin(ResultOrigin::SIMULATION);
         windingLossesThisWinding.set_ohmic_losses(ohmicLosses);
+        windingLossesThisWinding.set_name(coil.get_functional_description()[windingIndex].get_name());
         windingLossesPerWinding.push_back(windingLossesThisWinding);
         windingOhmicLossesTotal += windingOhmicLossesInWinding;
     }
