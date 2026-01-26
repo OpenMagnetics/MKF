@@ -1466,8 +1466,9 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
         minimumModule = maximumModule - 1;
     }
 
-    auto windingLossesMinimumColor = settings.get_painter_color_magnetic_field_minimum();
-    auto windingLossesMaximumColor = settings.get_painter_color_magnetic_field_maximum();
+    // Swap min/max colors so low losses are blue (cold) and high losses are red (hot)
+    auto windingLossesMinimumColor = settings.get_painter_color_magnetic_field_maximum();
+    auto windingLossesMaximumColor = settings.get_painter_color_magnetic_field_minimum();
 
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding turns not created");
