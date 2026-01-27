@@ -380,7 +380,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             }
 
             for (auto& inducingFieldPoint : inducingFields[harmonicIndex].get_data()) {
-                auto windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingFieldPoint.get_turn_index().value()].get_winding());
+                std::optional<size_t> windingIndex = std::nullopt;
+                if (inducingFieldPoint.get_turn_index()) {
+                    windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingFieldPoint.get_turn_index().value()].get_winding());
+                }
                 if (inducingFieldPoint.get_turn_index()) {
                     if (inducedFieldPoint.get_turn_index()) {
                         if (inducedFieldPoint.get_turn_index().value() == inducingFieldPoint.get_turn_index().value()) {
