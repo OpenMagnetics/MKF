@@ -127,10 +127,11 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
         double totalWidthInGrid = bobbinWidthStart + bobbinWidth - coreColumnWidth / 2;
         double pixelXDimension = totalWidthInGrid / numberPointsX;
         double pixelYDimension = coreColumnHeight / numberPointsY;
+        
         bobbinPointsX = matplot::linspace(coreColumnWidth / 2 + pixelXDimension / 2, bobbinWidthStart + bobbinWidth - pixelXDimension / 2, numberPointsX);
         bobbinPointsY = matplot::linspace(-coreColumnHeight / 2 + pixelYDimension / 2, coreColumnHeight / 2 - pixelYDimension / 2, numberPointsY);
 
-        double dx = (bobbinWidthStart + bobbinWidth - coreColumnWidth / 2) / numberPointsX;
+        double dx = totalWidthInGrid / numberPointsX;
         double dy = coreColumnHeight / numberPointsY;
         dA = dx * dy;
     }

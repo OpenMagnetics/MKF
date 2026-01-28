@@ -1,4 +1,6 @@
 #include "physical_models/MagneticField.h"
+#include "physical_models/MagneticFieldAlbach2D.h"
+#include "physical_models/WindingSkinEffectLosses.h"
 #include "constructive_models/Wire.h"
 #include "constructive_models/Magnetic.h"
 #include "support/CoilMesher.h"
@@ -122,8 +124,11 @@ std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory(MagneticField
     else if (modelName == MagneticFieldStrengthModels::WANG) {
         return std::make_shared<MagneticFieldStrengthWangModel>();
     }
+    else if (modelName == MagneticFieldStrengthModels::ALBACH_2D) {
+        return std::make_shared<MagneticFieldStrengthAlbach2DModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER}");
+        throw ModelNotAvailableException("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER, WANG, ALBACH_2D}");
 }
 
 std::shared_ptr<MagneticFieldStrengthFringingEffectModel> MagneticField::factory(MagneticFieldStrengthFringingEffectModels modelName) {
@@ -267,6 +272,14 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     _model->_wirePerWinding = _wirePerWinding;
     auto turns = magnetic.get_coil().get_turns_description().value();
 
+    // Set up ALBACH_2D model if being used
+    if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::ALBACH_2D) {
+        auto albach2DModel = std::dynamic_pointer_cast<MagneticFieldStrengthAlbach2DModel>(_model);
+        if (albach2DModel) {
+            albach2DModel->setupFromMagnetic(magnetic, _wirePerWinding, 10, 10);
+        }
+    }
+
     std::vector<ComplexField> complexFieldPerHarmonic;
     for (auto& fieldPerHarmonic : inducingFields) {
         ComplexField field;
@@ -282,7 +295,18 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold());
     }
 
-    if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
+    // Skip fringing effect models when using ALBACH_2D, as it already includes gap effects in its BVP solution
+    // The ALBACH_2D model computes C30 from the magnetic circuit (N*I / 2*l_gap) which gives the
+    // correct gap field H_gap = N*I / l_gap. Adding the fringing model would double-count the gap contribution.
+    //
+    // NOTE: ALBACH_2D currently only computes the gap field (A3) for r < a (inside center leg).
+    // The A1/A2 coefficients that capture the fringing effect in the winding region (r > a) are not
+    // yet fully implemented. So we DO need the ALBACH fringing model for the winding region.
+    // 
+    // TODO: Implement full A1/A2 BVP solution following Albach Eq. (11)-(15) and (21).
+    bool skipFringingModel = false;
+
+    if (!skipFringingModel && _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
         if (includeFringing) {
             if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
 
@@ -330,6 +354,55 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
         if (inducedFields[harmonicIndex].get_data().size() == 0) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Empty complexField");
+        }
+
+        // For ALBACH_2D model, use a more efficient approach that calculates
+        // the total field from all turns at once for each induced point.
+        if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::ALBACH_2D) {
+            auto albach2DModel = std::dynamic_pointer_cast<MagneticFieldStrengthAlbach2DModel>(_model);
+            if (albach2DModel) {
+                // Update turn currents based on harmonic data
+                auto& harmonicData = inducingFields[harmonicIndex].get_data();
+                std::vector<double> turnCurrents(turns.size(), 0.0);
+                for (auto& inducingPoint : harmonicData) {
+                    if (inducingPoint.get_turn_index()) {
+                        size_t turnIdx = inducingPoint.get_turn_index().value();
+                        if (turnIdx < turnCurrents.size()) {
+                            turnCurrents[turnIdx] = inducingPoint.get_value();
+                        }
+                    }
+                }
+                albach2DModel->updateTurnCurrents(turnCurrents);
+
+                // Update skin depths for frequency-dependent current distribution (Wang 2018)
+                // At high frequency, current concentrates at conductor edges
+                double frequency = inducingFields[harmonicIndex].get_frequency();
+                if (frequency > 0 && !_wirePerWinding.empty()) {
+                    // Use the first wire to calculate a representative skin depth
+                    // In practice, all wires in a winding should have similar material
+                    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(
+                        _wirePerWinding[0], frequency, operatingPoint.get_conditions().get_ambient_temperature());
+                    albach2DModel->updateSkinDepths(skinDepth);
+                }
+                
+                // Calculate field at each induced point directly from all turns
+                for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
+                    // Skip points inside the core
+                    if (is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
+                        continue;
+                    }
+                    
+                    auto complexFieldPoint = albach2DModel->calculateTotalFieldAtPoint(inducedFieldPoint);
+                    
+                    if (std::isnan(complexFieldPoint.get_real()) || std::isnan(complexFieldPoint.get_imaginary())) {
+                        throw NaNResultException("NaN found in ALBACH_2D magnetic field calculation");
+                    }
+                    
+                    fieldPoints.push_back(complexFieldPoint);
+                }
+                complexFieldPerHarmonic[harmonicIndex].set_data(fieldPoints);
+                continue; // Skip the standard per-turn-pair loop for this harmonic
+            }
         }
 
         for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {

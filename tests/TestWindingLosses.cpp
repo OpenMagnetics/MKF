@@ -3,6 +3,7 @@
 #include "support/Painter.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/MagneticField.h"
 #include "support/Utils.h"
 #include "constructive_models/Core.h"
 #include "processors/Inputs.h"
@@ -18,6 +19,7 @@
 #include <vector>
 #include <typeinfo>
 #include <cmath>
+#include <chrono>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -1327,7 +1329,6 @@ namespace TestWindingLossesLitz {
     }
 
     TEST_CASE("Test_Winding_Losses_Thirty_Turns_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -1471,7 +1472,6 @@ namespace TestWindingLossesRectangular {
     }
 
     TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -1558,7 +1558,6 @@ namespace TestWindingLossesRectangular {
     }
 
     TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -1645,7 +1644,6 @@ namespace TestWindingLossesRectangular {
     }
 
     TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -1732,7 +1730,6 @@ namespace TestWindingLossesRectangular {
     }
 
     TEST_CASE("Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -1862,7 +1859,6 @@ namespace TestWindingLossesFoil {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.3;
     TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -1943,7 +1939,6 @@ namespace TestWindingLossesFoil {
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -2024,7 +2019,6 @@ namespace TestWindingLossesFoil {
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -2207,7 +2201,6 @@ namespace TestWindingLossesToroidalCores {
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core", "[physical-model][winding-losses][round][round-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -2285,7 +2278,6 @@ namespace TestWindingLossesToroidalCores {
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Toroidal_Core", "[physical-model][winding-losses][round][round-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -2366,7 +2358,6 @@ namespace TestWindingLossesToroidalCores {
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -2469,7 +2460,6 @@ namespace TestWindingLossesToroidalCores {
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
         settings.reset();
         clear_databases();
 
@@ -2678,7 +2668,6 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar]") {
-        SKIP("Test currently failing - needs investigation");
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2727,7 +2716,6 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar]") {
-        SKIP("Test currently failing - needs investigation");
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2776,7 +2764,6 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][planar]") {
-        SKIP("Test currently failing - needs investigation");
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -2825,7 +2812,6 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving", "[physical-model][winding-losses][planar]") {
-        SKIP("Test currently failing - needs investigation");
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -3073,6 +3059,7 @@ namespace TestWindingLossesResistanceMatrix {
 
 namespace TestWindingLossesWeb {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
     TEST_CASE("Test_Winding_Losses_Web_0", "[physical-model][winding-losses][bug][smoke-test]") {
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "negative_losses.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);

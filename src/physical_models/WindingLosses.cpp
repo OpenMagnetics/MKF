@@ -170,7 +170,7 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     auto& settings = OpenMagnetics::Settings::GetInstance();
 
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
-    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold());
+    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), _models.skinEffectModel);
 
     auto isPlanar = true;
     auto isRectangular = true;
@@ -193,19 +193,28 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
             break;
         }
     }
-    if (isPlanar) {
-        _magneticFieldStrengthModel = OpenMagnetics::MagneticFieldStrengthModels::WANG;
+    // Only auto-select model if not explicitly specified
+    MagneticFieldStrengthModels modelToUse;
+    if (_models.magneticFieldStrengthModel.has_value()) {
+        modelToUse = _models.magneticFieldStrengthModel.value();
+    }
+    else if (isPlanar) {
+        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::WANG;
     }
     else if (isRectangular) {
-        _magneticFieldStrengthModel = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
+        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
     }
     else if (isFoil) {
-        _magneticFieldStrengthModel = OpenMagnetics::MagneticFieldStrengthModels::WANG;
+        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::WANG;
     }
     else {
-        _magneticFieldStrengthModel = OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER;
+        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER;
     }
-    MagneticField magneticField(_magneticFieldStrengthModel, OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN);
+    
+    // Use fringing model from struct if specified, otherwise use default ROSHEN
+    MagneticFieldStrengthFringingEffectModels fringingModelToUse = 
+        _models.magneticFieldStrengthFringingEffectModel.value_or(OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN);
+    MagneticField magneticField(modelToUse, fringingModelToUse);
 
     int64_t totalNumberPhysicalTurns = 0;
     for (auto winding : magnetic.get_coil().get_functional_description()) {
@@ -218,7 +227,7 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     }
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
 
-    windingLossesOutput = WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput);
+    windingLossesOutput = WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput, _models.proximityEffectModel);
 
     if (settings.get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
         settings.set_harmonic_amplitude_threshold(previoustHarmonicAmplitudeThreshold);
