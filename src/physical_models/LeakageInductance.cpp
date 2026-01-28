@@ -72,7 +72,8 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
         }
     double dA = meshResult.second;
 
-    MagneticField magneticField;
+    // Use dedicated leakage inductance H-field model (default: BINNS_LAWRENSON, which works best for air-only calculations)
+    MagneticField magneticField(settings.get_leakage_inductance_magnetic_field_strength_model(), settings.get_magnetic_field_strength_fringing_effect_model());
 
     std::vector<int8_t> currentDirectionPerWinding;
     for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {

@@ -4169,6 +4169,7 @@ namespace {
         settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);  // Enable fringing to show gap effects
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
         settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
@@ -4220,6 +4221,7 @@ namespace {
         settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
         settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
@@ -4291,6 +4293,7 @@ namespace {
         settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
         settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
@@ -4337,6 +4340,7 @@ namespace {
         settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
         settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
@@ -4383,7 +4387,7 @@ namespace {
         settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
-        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH_2D);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
         settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
@@ -4398,7 +4402,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_RM_Core_Single_Gap_Single_Turn", "[support][painter][magnetic-painter][pot-core][single-gap][albach-2d]") {
-        // Simplified test: RM core with 1 gap and 1 turn to debug ALBACH_2D
+        // Simplified test: RM core with 1 gap and 1 turn to debug ALBACH
         // Expected H_gap = N*I / l_gap = 1 * 50 / 0.001 = 50,000 A/m
         clear_databases();
         
@@ -4433,7 +4437,7 @@ namespace {
         settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
-        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH_2D);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
         settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
@@ -4487,6 +4491,7 @@ namespace {
         settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
         settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
@@ -4499,7 +4504,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Albach_2D_Rectangular_Wire", "[support][painter][magnetic-field-painter][albach-2d][rectangular]") {
-        // Test case to visualize the magnetic field using ALBACH_2D with rectangular wire
+        // Test case to visualize the magnetic field using ALBACH with rectangular wire
         // Uses filamentary subdivision for rectangular conductor representation
         clear_databases();
         
@@ -4550,6 +4555,7 @@ namespace {
         settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
         settings.set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);

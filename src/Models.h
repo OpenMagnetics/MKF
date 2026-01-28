@@ -10,7 +10,7 @@ enum class MagneticFieldStrengthModels : int {
     LAMMERANER,
     DOWELL,
     WANG,
-    ALBACH_2D
+    ALBACH
 };
 
 enum class MagneticFieldStrengthFringingEffectModels : int {

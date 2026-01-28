@@ -193,10 +193,15 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
             break;
         }
     }
-    // Only auto-select model if not explicitly specified
+    // Only auto-select model if not explicitly specified in _models
+    // First check _models, then Settings, then auto-select based on wire type
     MagneticFieldStrengthModels modelToUse;
     if (_models.magneticFieldStrengthModel.has_value()) {
         modelToUse = _models.magneticFieldStrengthModel.value();
+    }
+    else if (settings.get_magnetic_field_strength_model() != Defaults().magneticFieldStrengthModelDefault) {
+        // User set a model in Settings, use it
+        modelToUse = settings.get_magnetic_field_strength_model();
     }
     else if (isPlanar) {
         modelToUse = OpenMagnetics::MagneticFieldStrengthModels::WANG;
@@ -211,9 +216,14 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
         modelToUse = OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER;
     }
     
-    // Use fringing model from struct if specified, otherwise use default ROSHEN
-    MagneticFieldStrengthFringingEffectModels fringingModelToUse = 
-        _models.magneticFieldStrengthFringingEffectModel.value_or(OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN);
+    // Use fringing model: first _models, then Settings, then default ROSHEN
+    MagneticFieldStrengthFringingEffectModels fringingModelToUse;
+    if (_models.magneticFieldStrengthFringingEffectModel.has_value()) {
+        fringingModelToUse = _models.magneticFieldStrengthFringingEffectModel.value();
+    }
+    else {
+        fringingModelToUse = settings.get_magnetic_field_strength_fringing_effect_model();
+    }
     MagneticField magneticField(modelToUse, fringingModelToUse);
 
     int64_t totalNumberPhysicalTurns = 0;
