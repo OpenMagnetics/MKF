@@ -72,6 +72,7 @@ namespace OpenMagnetics {
         _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../../cci_coords/coordinates/");
         _painterColorMagneticFieldMinimum = "0x2b35f5";
         _painterColorMagneticFieldMaximum = "0xe84922";
+        _painterMagneticFieldStrengthModel = std::nullopt;
 
         _magneticFieldNumberPointsX = 25;
         _magneticFieldNumberPointsY = 50;
@@ -437,6 +438,13 @@ namespace OpenMagnetics {
 
     void Settings::set_painter_color_magnetic_field_maximum(std::string value) {
         _painterColorMagneticFieldMaximum = value;
+    }
+
+    std::optional<MagneticFieldStrengthModels> Settings::get_painter_magnetic_field_strength_model() const {
+        return _painterMagneticFieldStrengthModel;
+    }
+    void Settings::set_painter_magnetic_field_strength_model(std::optional<MagneticFieldStrengthModels> value) {
+        _painterMagneticFieldStrengthModel = value;
     }
 
     int Settings::get_painter_mirroring_dimension() const {

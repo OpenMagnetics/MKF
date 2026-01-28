@@ -37,7 +37,10 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
         throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER}");
 }
 
-std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType) {
+std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+    if (modelOverride.has_value()) {
+        return WindingProximityEffectLossesModel::factory(modelOverride.value());
+    }
     switch(wireType) {
         case WireType::ROUND: {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
@@ -98,8 +101,8 @@ void WindingProximityEffectLossesModel::set_proximity_factor(Wire wire,  double 
 
 }
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields) {
-    auto model = get_model(wire.get_type());
+std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+    auto model = get_model(wire.get_type(), modelOverride);
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
     }
@@ -123,7 +126,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
     return {totalProximityEffectLossesPerMeter, lossesPerHarmonic};
 }
 
-WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput) {
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride) {
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding does not have turns description");
     }
@@ -158,11 +161,11 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             fields.push_back(complexField);
         }
 
-        auto lossesPerHarmonicThisTurn = calculate_proximity_effect_losses_per_meter(wire, temperature, fields).second;
+        auto lossesPerHarmonicThisTurn = calculate_proximity_effect_losses_per_meter(wire, temperature, fields, modelOverride).second;
 
 
         WindingLossElement proximityEffectLossesThisTurn;
-        auto model = get_model(coil.get_wire_type(windingIndex));
+        auto model = get_model(coil.get_wire_type(windingIndex), modelOverride);
         proximityEffectLossesThisTurn.set_method_used(model->methodName);
         proximityEffectLossesThisTurn.set_origin(ResultOrigin::SIMULATION);
         proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(0);

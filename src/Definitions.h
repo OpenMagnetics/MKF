@@ -218,6 +218,7 @@ inline void to_json(json & j, const MagneticFieldStrengthModels & x) {
         case MagneticFieldStrengthModels::LAMMERANER: j = "Lammeraner"; break;
         case MagneticFieldStrengthModels::DOWELL: j = "Dowell"; break;
         case MagneticFieldStrengthModels::WANG: j = "Wang"; break;
+        case MagneticFieldStrengthModels::ALBACH_2D: j = "Albach2D"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFieldStrengthModels\": " + std::to_string(static_cast<int>(x)));
     }
 }
@@ -227,6 +228,7 @@ inline void from_json(const json & j, MagneticFieldStrengthModels & x) {
     else if (j == "Lammeraner" || j == "lammeraner" || j == "LAMMERANER") x = MagneticFieldStrengthModels::LAMMERANER;
     else if (j == "Dowell" || j == "dowell" || j == "DOWELL") x = MagneticFieldStrengthModels::DOWELL;
     else if (j == "Wang" || j == "wang" || j == "WANG") x = MagneticFieldStrengthModels::WANG;
+    else if (j == "Albach2D" || j == "albach2d" || j == "ALBACH_2D") x = MagneticFieldStrengthModels::ALBACH_2D;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFieldStrengthModels schema: " + to_string(j)); }
 }
 

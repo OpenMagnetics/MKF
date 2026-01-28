@@ -137,6 +137,14 @@ FetchContent_Declare(rapidfuzz
   GIT_TAG main)
 FetchContent_MakeAvailable(rapidfuzz)
 
+# Eigen - Header-only linear algebra library (for Albach 2D boundary value solver)
+FetchContent_Declare(eigen
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG 3.4.0
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(eigen)
+include_directories("${CMAKE_BINARY_DIR}/_deps/eigen-src")
+
 # ============================================================================
 # ngspice - Circuit Simulator (optional)
 # ============================================================================
@@ -413,6 +421,9 @@ if(INCLUDE_MKF_TESTS)
     
     # Exclude TestingUtils.cpp as it's not a test file
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestingUtils\\.cpp$")
+    # Exclude standalone test files with their own main() (not Catch2 tests)
+    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestAlbach2DFull\\.cpp$")
+    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestAlbach2DSimple\\.cpp$")
     
     add_executable(MKF_tests ${ALL_TEST_SOURCES} "tests/TestingUtils.cpp")
     target_link_libraries(MKF_tests PRIVATE Catch2::Catch2WithMain)

@@ -9,7 +9,8 @@ enum class MagneticFieldStrengthModels : int {
     BINNS_LAWRENSON,
     LAMMERANER,
     DOWELL,
-    WANG
+    WANG,
+    ALBACH_2D
 };
 
 enum class MagneticFieldStrengthFringingEffectModels : int {

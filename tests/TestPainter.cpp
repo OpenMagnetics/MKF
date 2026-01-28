@@ -4130,4 +4130,435 @@ namespace {
         settings.reset();
     }
 
+    TEST_CASE("Test_Painter_Albach_2D_Field_With_Gap", "[support][painter][magnetic-field-painter][albach-2d]") {
+        // Test case to visualize the magnetic field using the Albach 2D boundary value solver
+        // Uses a PQ core with a center leg gap
+        clear_databases();
+        
+        std::vector<int64_t> numberTurns = {8};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        
+        // Create a gap of 1mm in the center leg
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+        
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        
+        // Plot using BasicPainter (useAdvancedPainter = false)
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Albach_2D_Field_With_Gap.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);  // Use BasicPainter
+        settings.set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(true);  // Enable fringing to show gap effects
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_Albach_2D_Transformer_With_Gap", "[support][painter][magnetic-field-painter][albach-2d]") {
+        // Test case with a transformer (two windings) and center leg gap
+        clear_databases();
+        
+        std::vector<int64_t> numberTurns = {12, 6};
+        std::vector<int64_t> numberParallels = {1, 2};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 1500;
+        std::string coreShape = "E 42/21/15";
+        std::string coreMaterial = "3C95";
+        
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0005);
+        
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        std::vector<OpenMagnetics::Wire> wires;
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 2")});
+        wires.push_back({find_wire_by_name("Round 1.00 - Grade 2")});
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(150000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+        
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Albach_2D_Transformer_With_Gap.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(true);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_Albach_2D_Planar_Transformer", "[support][painter][magnetic-field-painter][albach-2d]") {
+        // Test case with planar transformer and gap
+        clear_databases();
+        settings.set_coil_wind_even_if_not_fit(false);
+        settings.set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {16, 4};
+        std::vector<int64_t> numberParallels = {2, 2};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        double voltagePeakToPeak = 1000;
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 1, 0, 1, 0, 1, 0, 1};
+        
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0003);
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 32/6/20", gapping, 1, "3C95");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.0006);
+        wire.set_nominal_value_conducting_height(0.000070);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+        wires.push_back(wire);
+        wire.set_nominal_value_conducting_width(0.0024);
+        wire.set_nominal_value_conducting_height(0.000070);
+        wires.push_back(wire);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::Winding coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(OpenMagnetics::to_string(isolationSides[windingIndex]));
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wires[windingIndex]);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+        coil.set_strict(false);
+
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.0001);
+        coil.wind_by_planar_layers();
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
+        coil.delimit_and_compact();
+
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(200000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Albach_2D_Planar_Transformer.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(true);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_Albach_2D_RM_Core_Inductor", "[support][painter][magnetic-field-painter][albach-2d]") {
+        // Test case with RM core (pot-like shape) and larger gap
+        clear_databases();
+        
+        std::vector<int64_t> numberTurns = {24};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 800;
+        std::string coreShape = "RM 10";
+        std::string coreMaterial = "3C90";
+        
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.002);
+        
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(75000, 0.002, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+        
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Albach_2D_RM_Core_Inductor.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(true);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_RM_Core_Distributed_Gap_3", "[support][painter][magnetic-painter][pot-core][distributed-gap][smoke-test]") {
+        // Test case with RM core (pot-like shape) with 3 distributed gaps
+        clear_databases();
+        
+        std::vector<int64_t> numberTurns = {24};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 400;
+        std::string coreShape = "RM 10";
+        std::string coreMaterial = "3C90";
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.002, 3);
+
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(75000, 0.002, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_RM_Core_Distributed_Gap_3.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(true);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH_2D);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+
+        painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_RM_Core_Single_Gap_Single_Turn", "[support][painter][magnetic-painter][pot-core][single-gap][albach-2d]") {
+        // Simplified test: RM core with 1 gap and 1 turn to debug ALBACH_2D
+        // Expected H_gap = N*I / l_gap = 1 * 50 / 0.001 = 50,000 A/m
+        clear_databases();
+        
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "RM 10";
+        std::string coreMaterial = "3C90";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);  // 1mm single gap
+
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        // High current: 50A peak, 0A DC
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(75000, 50.0, 25.0, WaveformLabel::SINUSOIDAL, 0.5, 0.0, 0.0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_RM_Core_Single_Gap_Single_Turn.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(true);
+        settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH_2D);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+
+        painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_Albach_2D_Litz_Wire_Transformer", "[support][painter][magnetic-field-painter][albach-2d]") {
+        // Test case with Litz wire transformer
+        clear_databases();;
+        
+        std::vector<int64_t> numberTurns = {10, 5};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 500;
+        std::string coreShape = "ETD 29/16/10";
+        std::string coreMaterial = "3C95";
+        
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0008);
+        
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        std::vector<OpenMagnetics::Wire> wires;
+        wires.push_back({find_wire_by_name("Litz 75x0.3 - Grade 1 - Single Served")});
+        wires.push_back({find_wire_by_name("Litz 270x0.02 - Grade 1 - Single Served")});
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(500000, 0.0005, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+        
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Albach_2D_Litz_Wire_Transformer.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(true);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_Albach_2D_Rectangular_Wire", "[support][painter][magnetic-field-painter][albach-2d][rectangular]") {
+        // Test case to visualize the magnetic field using ALBACH_2D with rectangular wire
+        // Uses filamentary subdivision for rectangular conductor representation
+        clear_databases();
+        
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 500;
+        std::string coreShape = "P 14/8";
+        std::string coreMaterial = "3C97";
+        
+        // Create a small gap
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0);
+        
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
+        
+        // Create rectangular wire
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.0003);
+        wire.set_nominal_value_outer_height(0.00031);
+        wire.set_nominal_value_outer_width(0.00104);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+        wires.push_back(wire);
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, 
+                                                          sectionOrientation, layersOrientation, turnsAlignment, 
+                                                          sectionsAlignment, wires, false);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 0.001, 25, WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+        
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Albach_2D_Rectangular_Wire.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);
+        settings.set_painter_mode(PainterModes::CONTOUR);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(true);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        settings.reset();
+    }
+
 }  // namespace
