@@ -142,8 +142,11 @@ FetchContent_Declare(eigen
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
     GIT_TAG 3.4.0
     GIT_SHALLOW TRUE)
+set(EIGEN_BUILD_BLAS OFF)
+set(EIGEN_BUILD_LAPACK OFF)
 FetchContent_MakeAvailable(eigen)
 include_directories("${CMAKE_BINARY_DIR}/_deps/eigen-src")
+
 
 # ============================================================================
 # ngspice - Circuit Simulator (optional)
