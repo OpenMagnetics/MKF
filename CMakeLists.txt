@@ -142,8 +142,12 @@ FetchContent_Declare(eigen
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
     GIT_TAG 3.4.0
     GIT_SHALLOW TRUE)
-set(EIGEN_BUILD_BLAS OFF)
-set(EIGEN_BUILD_LAPACK OFF)
+# Disable Eigen's BLAS/LAPACK and testing (avoids Fortran dependency for WASM builds)
+set(EIGEN_BUILD_BLAS OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_LAPACK OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(eigen)
 include_directories("${CMAKE_BINARY_DIR}/_deps/eigen-src")
 
