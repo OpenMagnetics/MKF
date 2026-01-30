@@ -1,8 +1,11 @@
 #include "converter_models/Flyback.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "processors/CircuitSimulatorInterface.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include <algorithm>
+#include <map>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
@@ -248,6 +251,545 @@ namespace OpenMagnetics {
         operatingPoint.set_conditions(conditions);
 
         return operatingPoint;
+    }
+
+    std::string Flyback::generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex,
+        size_t operatingPointIndex) {
+        
+        // Get input voltages
+        std::vector<double> inputVoltages;
+        if (get_input_voltage().get_nominal()) {
+            inputVoltages.push_back(get_input_voltage().get_nominal().value());
+        }
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+        }
+        
+        if (inputVoltageIndex >= inputVoltages.size()) {
+            throw std::invalid_argument("inputVoltageIndex out of range");
+        }
+        if (operatingPointIndex >= get_operating_points().size()) {
+            throw std::invalid_argument("operatingPointIndex out of range");
+        }
+        
+        double inputVoltage = inputVoltages[inputVoltageIndex];
+        auto opPoint = get_mutable_operating_points()[operatingPointIndex];  // Copy to allow modification
+        
+        // Calculate switching frequency and duty cycle
+        double switchingFrequency = opPoint.resolve_switching_frequency(inputVoltage, get_diode_voltage_drop(), magnetizingInductance, turnsRatios, get_efficiency());
+        
+        // Calculate duty cycle
+        double totalOutputPower = get_total_input_power(opPoint.get_output_currents(), opPoint.get_output_voltages(), 1, 0);
+        double maximumEffectiveLoadCurrent = totalOutputPower / opPoint.get_output_voltages()[0];
+        double maximumEffectiveLoadCurrentReflected = maximumEffectiveLoadCurrent / turnsRatios[0];
+        double totalInputPower = get_total_input_power(opPoint.get_output_currents(), opPoint.get_output_voltages(), get_efficiency(), 0);
+        double averageInputCurrent = totalInputPower / inputVoltage;
+        double dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+        
+        // Build netlist
+        std::ostringstream circuit;
+        double period = 1.0 / switchingFrequency;
+        double tOn = period * dutyCycle;
+        double secondaryInductance = magnetizingInductance / (turnsRatios[0] * turnsRatios[0]);
+        
+        // Simulation: 10 periods, skip first 5 for steady state
+        double simTime = 10 * period;
+        double startTime = 5 * period;
+        double stepTime = period / 200;
+        
+        circuit << "* Flyback Converter - Generated from MAS::Flyback\n";
+        circuit << "* Vin=" << inputVoltage << "V, f=" << (switchingFrequency/1e3) << "kHz, D=" << (dutyCycle*100) << "%\n";
+        circuit << "* Lp=" << (magnetizingInductance*1e6) << "uH, N=" << turnsRatios[0] << "\n\n";
+        
+        // DC Input
+        circuit << "* DC Input\n";
+        circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
+        
+        // PWM Switch (ideal: zero on-resistance, infinite off-resistance)
+        circuit << "* PWM Switch (ideal)\n";
+        circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 1p 1p " << tOn << " " << period << ")\n";
+        circuit << ".model SW1 SW(Vt=2.5 Vh=0.5 Ron=1u Roff=1G)\n";
+        circuit << "S1 vin_dc pri_p pwm_ctrl 0 SW1\n\n";
+        
+        // Primary current sense (for waveform extraction)
+        circuit << "* Primary current sense\n";
+        circuit << "Vpri_sense pri_p pri_in 0\n\n";
+        
+        // Flyback Transformer (ideal coupling = 1)
+        circuit << "* Flyback Transformer (ideal coupled inductors, k=1)\n";
+        circuit << "Lp pri_in 0 " << magnetizingInductance << " IC=0\n";
+        circuit << "Ls sec_in 0 " << secondaryInductance << " IC=0\n";
+        circuit << "Kfly Lp Ls -1\n\n";
+        
+        // Output Rectifier (ideal diode)
+        circuit << "* Output Rectifier (ideal diode)\n";
+        circuit << ".model DIDEAL D(Is=1e-14 Rs=1u N=0.001)\n";
+        circuit << "Dout sec_in sec_p DIDEAL\n\n";
+        
+        // Secondary current sense
+        circuit << "* Secondary current sense\n";
+        circuit << "Vsec_sense sec_p vout 0\n\n";
+        
+        // Output capacitor and load
+        double loadResistance = opPoint.get_output_voltages()[0] / opPoint.get_output_currents()[0];
+        circuit << "* Output Filter and Load\n";
+        circuit << "Cout vout 0 10u IC=" << opPoint.get_output_voltages()[0] << "\n";
+        circuit << "Rload vout 0 " << loadResistance << "\n\n";
+        
+        // Transient Analysis
+        circuit << "* Transient Analysis\n";
+        circuit << ".tran " << stepTime << " " << simTime << " " << startTime << "\n\n";
+        
+        // Save primary and secondary voltages and currents
+        // For secondary, save both sec_in (winding voltage) and vout (output voltage)
+        circuit << "* Output signals (voltage and current for each winding)\n";
+        circuit << ".save v(pri_in) v(sec_in) v(vout) i(Vpri_sense) i(Vsec_sense)\n\n";
+        
+        // Options for convergence
+        circuit << ".ic v(vout)=" << opPoint.get_output_voltages()[0] << "\n";
+        circuit << ".options RELTOL=0.001 ABSTOL=1n VNTOL=1u\n\n";
+        
+        circuit << ".end\n";
+        
+        return circuit.str();
+    }
+    
+    std::vector<OperatingPoint> Flyback::simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) {
+        
+        std::vector<OperatingPoint> operatingPoints;
+        
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            throw std::runtime_error("ngspice is not available for simulation");
+        }
+        
+        // Get input voltages
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+        if (get_input_voltage().get_nominal()) {
+            inputVoltages.push_back(get_input_voltage().get_nominal().value());
+            inputVoltagesNames.push_back("Nom.");
+        }
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+            inputVoltagesNames.push_back("Min.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
+        }
+        
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            double inputVoltage = inputVoltages[inputVoltageIndex];
+            
+            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                auto flybackOpPoint = get_mutable_operating_points()[opIndex];  // Copy to allow modification
+                
+                // Generate circuit
+                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
+                
+                // Calculate switching frequency for waveform extraction
+                double switchingFrequency = flybackOpPoint.resolve_switching_frequency(
+                    inputVoltage, get_diode_voltage_drop(), magnetizingInductance, turnsRatios, get_efficiency());
+                
+                // Run simulation
+                SimulationConfig config;
+                config.frequency = switchingFrequency;
+                config.extractOnePeriod = true;
+                config.keepTempFiles = false;
+                
+                auto simResult = runner.run_simulation(netlist, config);
+                
+                if (!simResult.success) {
+                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
+                }
+                
+                // Define waveform name mapping for flyback circuit
+                // Primary: v(pri_in) for voltage, i(vpri_sense) for current
+                // Secondary: v(sec_in) for WINDING voltage (not v(vout) which is DC output), i(vsec_sense) for current
+                NgspiceRunner::WaveformNameMapping waveformMapping = {
+                    {{"voltage", "v(pri_in)"}, {"current", "i(vpri_sense)"}},
+                    {{"voltage", "v(sec_in)"}, {"current", "i(vsec_sense)"}}
+                };
+                
+                std::vector<std::string> windingNames = {"Primary", "Secondary 0"};
+                std::vector<bool> flipCurrentSign = {false, false};  // Keep current signs as-is
+                
+                OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
+                    simResult,
+                    waveformMapping,
+                    switchingFrequency,
+                    windingNames,
+                    flybackOpPoint.get_ambient_temperature(),
+                    flipCurrentSign);
+                
+                // Set name
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt. (simulated)";
+                if (get_operating_points().size() > 1) {
+                    name += " op. point " + std::to_string(opIndex);
+                }
+                operatingPoint.set_name(name);
+                
+                operatingPoints.push_back(operatingPoint);
+            }
+        }
+        
+        return operatingPoints;
+    }
+
+    std::string Flyback::generate_ngspice_circuit_with_magnetic(
+        const Magnetic& magneticConst,
+        size_t inputVoltageIndex,
+        size_t operatingPointIndex) {
+        
+        // Make a copy since some methods are non-const
+        Magnetic magnetic = magneticConst;
+        
+        // Get input voltages
+        std::vector<double> inputVoltages;
+        if (get_input_voltage().get_nominal()) {
+            inputVoltages.push_back(get_input_voltage().get_nominal().value());
+        }
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+        }
+        
+        if (inputVoltageIndex >= inputVoltages.size()) {
+            throw std::invalid_argument("inputVoltageIndex out of range");
+        }
+        if (operatingPointIndex >= get_operating_points().size()) {
+            throw std::invalid_argument("operatingPointIndex out of range");
+        }
+        
+        double inputVoltage = inputVoltages[inputVoltageIndex];
+        auto opPoint = get_mutable_operating_points()[operatingPointIndex];
+        
+        // Extract turns ratios and magnetizing inductance from the Magnetic
+        auto coil = magnetic.get_coil();
+        size_t numWindings = coil.get_functional_description().size();
+        if (numWindings < 2) {
+            throw std::invalid_argument("Magnetic must have at least 2 windings for flyback");
+        }
+        
+        double primaryTurns = coil.get_functional_description()[0].get_number_turns();
+        std::vector<double> turnsRatios;
+        for (size_t i = 1; i < numWindings; ++i) {
+            double secondaryTurns = coil.get_functional_description()[i].get_number_turns();
+            turnsRatios.push_back(primaryTurns / secondaryTurns);
+        }
+        
+        double magnetizingInductance = resolve_dimensional_values(
+            MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
+        
+        // Calculate switching frequency and duty cycle
+        double switchingFrequency = opPoint.resolve_switching_frequency(
+            inputVoltage, get_diode_voltage_drop(), magnetizingInductance, turnsRatios, get_efficiency());
+        
+        double totalOutputPower = get_total_input_power(opPoint.get_output_currents(), opPoint.get_output_voltages(), 1, 0);
+        double maximumEffectiveLoadCurrent = totalOutputPower / opPoint.get_output_voltages()[0];
+        double maximumEffectiveLoadCurrentReflected = maximumEffectiveLoadCurrent / turnsRatios[0];
+        double totalInputPower = get_total_input_power(opPoint.get_output_currents(), opPoint.get_output_voltages(), get_efficiency(), 0);
+        double averageInputCurrent = totalInputPower / inputVoltage;
+        double dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+        
+        // Generate the magnetic subcircuit using CircuitSimulatorExporter
+        CircuitSimulatorExporterNgspiceModel ngspiceExporter;
+        std::string magneticSubcircuit = ngspiceExporter.export_magnetic_as_subcircuit(
+            magnetic, switchingFrequency, opPoint.get_ambient_temperature());
+        
+        // Build the main circuit netlist
+        std::ostringstream circuit;
+        double period = 1.0 / switchingFrequency;
+        double tOn = period * dutyCycle;
+        
+        // Simulation: 10 periods, skip first 5 for steady state
+        double simTime = 10 * period;
+        double startTime = 5 * period;
+        double stepTime = period / 200;
+        
+        circuit << "* Flyback Converter with Real Magnetic Component - Generated from MAS::Flyback\n";
+        circuit << "* Vin=" << inputVoltage << "V, f=" << (switchingFrequency/1e3) << "kHz, D=" << (dutyCycle*100) << "%\n";
+        circuit << "* Magnetic: " << magnetic.get_reference() << "\n";
+        circuit << "* Lmag=" << (magnetizingInductance*1e6) << "uH, N=" << turnsRatios[0] << "\n\n";
+        
+        // Include the magnetic subcircuit definition
+        circuit << "* Magnetic Component Subcircuit\n";
+        circuit << magneticSubcircuit << "\n\n";
+        
+        // DC Input
+        circuit << "* DC Input\n";
+        circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
+        
+        // PWM Switch (ideal: zero on-resistance, infinite off-resistance)
+        circuit << "* PWM Switch (ideal)\n";
+        circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 1p 1p " << tOn << " " << period << ")\n";
+        circuit << ".model SW1 SW(Vt=2.5 Vh=0.5 Ron=1u Roff=1G)\n";
+        circuit << "S1 vin_dc pri_p pwm_ctrl 0 SW1\n\n";
+        
+        // Primary current sense (for waveform extraction)
+        circuit << "* Primary current sense\n";
+        circuit << "Vpri_sense pri_p pri_in 0\n\n";
+        
+        // Instantiate the magnetic component subcircuit
+        // Subcircuit pins are: P1+ P1- P2+ P2- ... for each winding
+        // We connect: pri_in to P1+, 0 to P1-, sec_in to P2+, 0 to P2-
+        std::string subcktName = fix_filename(magnetic.get_reference());
+        circuit << "* Magnetic component instance\n";
+        circuit << "X1 pri_in 0 sec_in 0 " << subcktName << "\n\n";
+        
+        // Output Rectifier (ideal diode)
+        circuit << "* Output Rectifier (ideal diode)\n";
+        circuit << ".model DIDEAL D(Is=1e-14 Rs=1u N=0.001)\n";
+        circuit << "Dout sec_in sec_p DIDEAL\n\n";
+        
+        // Secondary current sense
+        circuit << "* Secondary current sense\n";
+        circuit << "Vsec_sense sec_p vout 0\n\n";
+        
+        // Output capacitor and load
+        double loadResistance = opPoint.get_output_voltages()[0] / opPoint.get_output_currents()[0];
+        circuit << "* Output Filter and Load\n";
+        circuit << "Cout vout 0 10u IC=" << opPoint.get_output_voltages()[0] << "\n";
+        circuit << "Rload vout 0 " << loadResistance << "\n\n";
+        
+        // Transient Analysis
+        circuit << "* Transient Analysis\n";
+        circuit << ".tran " << stepTime << " " << simTime << " " << startTime << "\n\n";
+        
+        // Save primary and secondary voltages and currents
+        circuit << "* Output signals (voltage and current for each winding)\n";
+        circuit << ".save v(pri_in) v(sec_in) v(vout) i(Vpri_sense) i(Vsec_sense)\n\n";
+        
+        // Options for convergence
+        circuit << ".ic v(vout)=" << opPoint.get_output_voltages()[0] << "\n";
+        circuit << ".options RELTOL=0.001 ABSTOL=1n VNTOL=1u\n\n";
+        
+        circuit << ".end\n";
+        
+        return circuit.str();
+    }
+
+    std::vector<OperatingPoint> Flyback::simulate_with_magnetic_and_extract_operating_points(
+        const Magnetic& magneticConst) {
+        
+        // Make a copy since some methods are non-const
+        Magnetic magnetic = magneticConst;
+        
+        std::vector<OperatingPoint> operatingPoints;
+        
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            throw std::runtime_error("ngspice is not available for simulation");
+        }
+        
+        // Extract turns ratios and magnetizing inductance from the Magnetic
+        auto coil = magnetic.get_coil();
+        size_t numWindings = coil.get_functional_description().size();
+        if (numWindings < 2) {
+            throw std::invalid_argument("Magnetic must have at least 2 windings for flyback");
+        }
+        
+        double primaryTurns = coil.get_functional_description()[0].get_number_turns();
+        std::vector<double> turnsRatios;
+        for (size_t i = 1; i < numWindings; ++i) {
+            double secondaryTurns = coil.get_functional_description()[i].get_number_turns();
+            turnsRatios.push_back(primaryTurns / secondaryTurns);
+        }
+        
+        double magnetizingInductance = resolve_dimensional_values(
+            MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
+        
+        // Get input voltages
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+        if (get_input_voltage().get_nominal()) {
+            inputVoltages.push_back(get_input_voltage().get_nominal().value());
+            inputVoltagesNames.push_back("Nom.");
+        }
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+            inputVoltagesNames.push_back("Min.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
+        }
+        
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            double inputVoltage = inputVoltages[inputVoltageIndex];
+            
+            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                auto flybackOpPoint = get_mutable_operating_points()[opIndex];
+                
+                // Generate circuit with real magnetic
+                std::string netlist = generate_ngspice_circuit_with_magnetic(magnetic, inputVoltageIndex, opIndex);
+                
+                // Calculate switching frequency for waveform extraction
+                double switchingFrequency = flybackOpPoint.resolve_switching_frequency(
+                    inputVoltage, get_diode_voltage_drop(), magnetizingInductance, turnsRatios, get_efficiency());
+                
+                // Run simulation
+                SimulationConfig config;
+                config.frequency = switchingFrequency;
+                config.extractOnePeriod = true;
+                config.keepTempFiles = false;
+                
+                auto simResult = runner.run_simulation(netlist, config);
+                
+                if (!simResult.success) {
+                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
+                }
+                
+                // Define waveform name mapping for flyback circuit
+                NgspiceRunner::WaveformNameMapping waveformMapping = {
+                    {{"voltage", "v(pri_in)"}, {"current", "i(vpri_sense)"}},
+                    {{"voltage", "v(sec_in)"}, {"current", "i(vsec_sense)"}}
+                };
+                
+                std::vector<std::string> windingNames = {"Primary", "Secondary 0"};
+                std::vector<bool> flipCurrentSign = {false, false};
+                
+                OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
+                    simResult,
+                    waveformMapping,
+                    switchingFrequency,
+                    windingNames,
+                    flybackOpPoint.get_ambient_temperature(),
+                    flipCurrentSign);
+                
+                // Set name
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt. (simulated with " + magnetic.get_reference() + ")";
+                if (get_operating_points().size() > 1) {
+                    name += " op. point " + std::to_string(opIndex);
+                }
+                operatingPoint.set_name(name);
+                
+                operatingPoints.push_back(operatingPoint);
+            }
+        }
+        
+        return operatingPoints;
+    }
+
+    std::vector<FlybackTopologyWaveforms> Flyback::simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) {
+        
+        std::vector<FlybackTopologyWaveforms> topologyWaveforms;
+        
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            throw std::runtime_error("ngspice is not available for simulation");
+        }
+        
+        // Collect input voltages to simulate
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+        inputVoltages.push_back(get_input_voltage().get_nominal().value());
+        inputVoltagesNames.push_back("Nom.");
+        
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+            inputVoltagesNames.push_back("Min.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
+        }
+        
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            double inputVoltage = inputVoltages[inputVoltageIndex];
+            
+            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                auto flybackOpPoint = get_mutable_operating_points()[opIndex];
+                
+                // Generate circuit
+                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
+                
+                // Calculate switching frequency
+                double switchingFrequency = flybackOpPoint.resolve_switching_frequency(
+                    inputVoltage, get_diode_voltage_drop(), magnetizingInductance, turnsRatios, get_efficiency());
+                
+                // Calculate duty cycle (same formula as in generate_ngspice_circuit)
+                double totalOutputPower = get_total_input_power(flybackOpPoint.get_output_currents(), flybackOpPoint.get_output_voltages(), 1, 0);
+                double maximumEffectiveLoadCurrent = totalOutputPower / flybackOpPoint.get_output_voltages()[0];
+                double maximumEffectiveLoadCurrentReflected = maximumEffectiveLoadCurrent / turnsRatios[0];
+                double totalInputPower = get_total_input_power(flybackOpPoint.get_output_currents(), flybackOpPoint.get_output_voltages(), get_efficiency(), 0);
+                double averageInputCurrent = totalInputPower / inputVoltage;
+                double dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+                
+                // Run simulation
+                SimulationConfig config;
+                config.frequency = switchingFrequency;
+                config.extractOnePeriod = true;
+                config.keepTempFiles = false;
+                
+                auto simResult = runner.run_simulation(netlist, config);
+                
+                if (!simResult.success) {
+                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
+                }
+                
+                // Build name-to-index map for waveform lookup (case-insensitive)
+                std::map<std::string, size_t> nameToIndex;
+                for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+                    std::string lower = simResult.waveformNames[i];
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                    nameToIndex[lower] = i;
+                }
+                
+                // Helper lambda to get waveform data by name
+                auto getWaveformData = [&](const std::string& name) -> std::vector<double> {
+                    std::string lower = name;
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                    auto it = nameToIndex.find(lower);
+                    if (it != nameToIndex.end()) {
+                        return simResult.waveforms[it->second].get_data();
+                    }
+                    return {};
+                };
+                
+                // Extract topology waveforms
+                FlybackTopologyWaveforms waveforms;
+                waveforms.frequency = switchingFrequency;
+                waveforms.inputVoltageValue = inputVoltage;
+                waveforms.outputVoltageValue = flybackOpPoint.get_output_voltages()[0];
+                waveforms.dutyCycle = dutyCycle;
+                
+                // Set name
+                waveforms.operatingPointName = inputVoltagesNames[inputVoltageIndex] + " input";
+                if (get_operating_points().size() > 1) {
+                    waveforms.operatingPointName += " op. point " + std::to_string(opIndex);
+                }
+                
+                // Extract time vector
+                waveforms.time = getWaveformData("time");
+                
+                // Extract voltage signals
+                waveforms.switchNodeVoltage = getWaveformData("v(pri_in)");
+                waveforms.secondaryWindingVoltage = getWaveformData("v(sec_in)");
+                waveforms.outputVoltage = getWaveformData("v(vout)");
+                
+                // Extract current signals
+                waveforms.primaryCurrent = getWaveformData("i(vpri_sense)");
+                waveforms.secondaryCurrent = getWaveformData("i(vsec_sense)");
+                
+                topologyWaveforms.push_back(waveforms);
+            }
+        }
+        
+        return topologyWaveforms;
     }
 
     double Flyback::get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop) {

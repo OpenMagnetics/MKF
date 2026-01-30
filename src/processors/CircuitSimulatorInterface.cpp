@@ -1401,7 +1401,7 @@ char CircuitSimulationReader::guess_separator(std::string line){
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "No column separator found");
 }
 
-Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample) {
+Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample, bool alignToZeroCrossing) {
     double period = 1.0 / frequency;
     if (!waveform.get_time()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing time data");
@@ -1428,15 +1428,18 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
             }
         }
 
-        double previousData = data[periodStartIndex];
-        for (int i = periodStartIndex - 1; i >= 0; --i)
-        {
-            if ((data[i] >= 0 && previousData <= 0) || (data[i] <= 0 && previousData >= 0)) {
-                periodStartIndex = i;
-                periodStart = time[i];
-                break;
+        // Only search for zero crossing if alignToZeroCrossing is true
+        if (alignToZeroCrossing) {
+            double previousData = data[periodStartIndex];
+            for (int i = periodStartIndex - 1; i >= 0; --i)
+            {
+                if ((data[i] >= 0 && previousData <= 0) || (data[i] <= 0 && previousData >= 0)) {
+                    periodStartIndex = i;
+                    periodStart = time[i];
+                    break;
+                }
+                previousData = data[i];
             }
-            previousData = data[i];
         }
 
 
