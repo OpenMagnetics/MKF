@@ -4,19 +4,56 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
 
 using namespace MAS;
 
 namespace OpenMagnetics {
 
+/**
+ * @brief Structure holding topology-level waveforms for Isolated Buck-Boost converter validation
+ * 
+ * These waveforms are used to validate that the simulation matches expected
+ * converter behavior, not for magnetic component analysis.
+ */
+struct IsolatedBuckBoostTopologyWaveforms {
+    // Time base
+    std::vector<double> time;
+    double frequency;
+    
+    // Input side signals
+    std::vector<double> inputVoltage;           // v(vin_dc) - DC input voltage
+    std::vector<double> primaryVoltage;         // v(pri_in) - primary winding voltage
+    
+    // Output side signals (one per secondary winding)
+    std::vector<std::vector<double>> secondaryWindingVoltages; // v(sec_N_in) - secondary winding voltages
+    std::vector<std::vector<double>> outputVoltages;          // v(vout_N) - DC output voltages
+    
+    // Currents
+    std::vector<double> primaryCurrent;                       // i(vpri_sense) - primary winding current
+    std::vector<std::vector<double>> secondaryCurrents;       // i(vsec_sense_N) - secondary winding currents
+    
+    // Metadata
+    std::string operatingPointName;
+    double inputVoltageValue;
+    std::vector<double> outputVoltageValues;  // One per secondary
+    double dutyCycle;
+};
+
 
 class IsolatedBuckBoost : public MAS::IsolatedBuckBoost, public Topology {
+private:
+    int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
+
 public:
     bool _assertErrors = false;
 
     IsolatedBuckBoost(const json& j);
     IsolatedBuckBoost() {
     };
+
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
 
     bool run_checks(bool assert = false) override;
 
@@ -26,6 +63,45 @@ public:
 
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckBoostOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
+    
+    /**
+     * @brief Generate an ngspice circuit for this Isolated Buck-Boost converter
+     * 
+     * Creates a SPICE netlist for simulating the isolated buck-boost converter.
+     * 
+     * @param turnsRatios Vector of turns ratios
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
+     * @param operatingPointIndex Which operating point to simulate
+     * @return SPICE netlist string
+     */
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the Isolated Buck-Boost converter and extract operating points from waveforms
+     * 
+     * @param turnsRatios Vector of turns ratios
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
+    
+    /**
+     * @brief Simulate and extract topology-level waveforms for converter validation
+     * 
+     * @param turnsRatios Vector of turns ratios
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @return Vector of IsolatedBuckBoostTopologyWaveforms for each operating condition
+     */
+    std::vector<IsolatedBuckBoostTopologyWaveforms> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
 
 };
 

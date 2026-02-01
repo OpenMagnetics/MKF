@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -284,6 +285,117 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_current()->get_processed()->get_label() == WaveformLabel::CUSTOM);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_current()->get_processed()->get_offset() > 0);
 
+    }
+
+    TEST_CASE("Test_PushPull_Ngspice_Simulation", "[converter-model][push-pull-topology][ngspice]") {
+        json pushPullInputsJson;
+        json inputVoltage;
+
+        inputVoltage["minimum"] = 20;
+        inputVoltage["maximum"] = 30;
+        pushPullInputsJson["inputVoltage"] = inputVoltage;
+        pushPullInputsJson["diodeVoltageDrop"] = 0.6;
+        pushPullInputsJson["efficiency"] = 0.9;
+        pushPullInputsJson["maximumSwitchCurrent"] = 3;
+        pushPullInputsJson["currentRippleRatio"] = 0.3;
+        pushPullInputsJson["dutyCycle"] = 0.45;
+        pushPullInputsJson["operatingPoints"] = json::array();
+
+        {
+            json PushPullOperatingPointJson;
+            PushPullOperatingPointJson["outputVoltages"] = {48};
+            PushPullOperatingPointJson["outputCurrents"] = {0.5};
+            PushPullOperatingPointJson["switchingFrequency"] = 100000;
+            PushPullOperatingPointJson["ambientTemperature"] = 25;
+            pushPullInputsJson["operatingPoints"].push_back(PushPullOperatingPointJson);
+        }
+
+        OpenMagnetics::PushPull pushPull(pushPullInputsJson);
+        pushPull._assertErrors = true;
+        
+        // First process to get design requirements with inductance
+        auto inputs = pushPull.process();
+        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+        
+        // Get turns ratios
+        std::vector<double> turnsRatios;
+        for (const auto& tr : inputs.get_design_requirements().get_turns_ratios()) {
+            turnsRatios.push_back(OpenMagnetics::resolve_dimensional_values(tr));
+        }
+        
+        // Now run the ngspice simulation
+        auto topologyWaveforms = pushPull.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(topologyWaveforms.size() >= 1);
+        
+        for (size_t opIndex = 0; opIndex < topologyWaveforms.size(); opIndex++) {
+            auto& wf = topologyWaveforms[opIndex];
+            
+            // Check that time vector has reasonable values
+            REQUIRE(wf.time.size() > 0);
+            REQUIRE(wf.time[0] >= 0);
+            
+            // Check primary currents
+            REQUIRE(wf.primary1Current.size() == wf.time.size());
+            REQUIRE(wf.primary2Current.size() == wf.time.size());
+            
+            // Check output voltage waveform
+            REQUIRE(wf.outputVoltage.size() == wf.time.size());
+            
+            // Verify output voltage is close to expected (use abs in case of sign convention)
+            double avgOutputVoltage = 0;
+            for (double v : wf.outputVoltage) {
+                avgOutputVoltage += v;
+            }
+            avgOutputVoltage /= wf.outputVoltage.size();
+            REQUIRE_THAT(std::abs(avgOutputVoltage), Catch::Matchers::WithinAbs(48.0, 10.0));  // Within 10V of expected 48V output
+            
+            // Paint waveforms for visual inspection
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_PushPull_Ngspice_Primary1Current_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform currentWaveform;
+                currentWaveform.set_time(wf.time);
+                currentWaveform.set_data(wf.primary1Current);
+                painter.paint_waveform(currentWaveform);
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_PushPull_Ngspice_Primary2Current_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform currentWaveform;
+                currentWaveform.set_time(wf.time);
+                currentWaveform.set_data(wf.primary2Current);
+                painter.paint_waveform(currentWaveform);
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_PushPull_Ngspice_OutputVoltage_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform outputWaveform;
+                outputWaveform.set_time(wf.time);
+                outputWaveform.set_data(wf.outputVoltage);
+                painter.paint_waveform(outputWaveform);
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_PushPull_Ngspice_OutputInductorCurrent_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform currentWaveform;
+                currentWaveform.set_time(wf.time);
+                currentWaveform.set_data(wf.outputInductorCurrent);
+                painter.paint_waveform(currentWaveform);
+                painter.export_svg();
+            }
+        }
     }
 
 // End of SUITE
