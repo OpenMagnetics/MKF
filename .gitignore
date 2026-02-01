@@ -125,3 +125,8 @@ website/package-lock.json
 
 *.csv
 *.Identifier
+
+
+docs/
+src/tools/
+tests/testData/

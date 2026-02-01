@@ -3,6 +3,7 @@
 #include "Defaults.h"
 #include "Models.h"
 #include "constructive_models/Magnetic.h"
+#include "constructive_models/Wire.h"
 
 #include "processors/Inputs.h"
 #include "support/CoilMesher.h"
@@ -131,5 +132,120 @@ class MagneticFieldStrengthAlbachModel : public MagneticFieldStrengthFringingEff
         FieldPoint get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap);
 };
 
+
+// ============================================================================
+// ALBACH H-Field Model (Air Coil / Biot-Savart approach)
+// ============================================================================
+
+/**
+ * @brief Structure representing a turn's position for the ALBACH H-field model
+ * 
+ * For round wires: width and height should be 0 (point filament approximation)
+ * For rectangular wires: width = radial extent, height = axial extent
+ *   The current is assumed uniformly distributed across the cross-section
+ *   and is modeled using filamentary subdivision (multiple circular filaments)
+ */
+struct AlbachTurnPosition {
+    double r;           ///< Radial position of conductor center (m)
+    double z;           ///< Axial position of conductor center (m)
+    double current;     ///< Current amplitude (A)
+    size_t turnIndex;   ///< Index in the coil's turn list
+    
+    // For rectangular wire support (set to 0 for round wires)
+    double width = 0;   ///< Radial extent of conductor cross-section (m)
+    double height = 0;  ///< Axial extent of conductor cross-section (m)
+    
+    // For frequency-dependent current distribution
+    double skinDepth = 1e9;  ///< Skin depth at current frequency (m), large default = uniform distribution
+
+    /// @brief Check if this turn represents a rectangular conductor
+    bool isRectangular() const { return width > 1e-10 && height > 1e-10; }
+};
+
+/**
+ * @brief Magnetic field strength model using air coil (Biot-Savart) approach
+ * 
+ * Based on M. Albach, "Two-dimensional calculation of winding losses in transformers",
+ * PESC 2000.
+ * 
+ * This model computes the H-field contribution from TURNS only using the
+ * analytical Biot-Savart formula with elliptic integrals for circular current
+ * filaments. Gap fringing effects are handled separately by the fringing
+ * effect models (ROSHEN or ALBACH fringing).
+ */
+class MagneticFieldStrengthAlbach2DModel : public MagneticFieldStrengthModel {
+public:
+    std::string methodName = "Albach";
+    
+    /**
+     * @brief Calculate H field between inducing and induced points
+     * 
+     * This model calculates field from all turns at once via calculateTotalFieldAtPoint().
+     * This per-turn-pair method should not be called and will throw an error.
+     */
+    ComplexFieldPoint get_magnetic_field_strength_between_two_points(
+        FieldPoint inducingFieldPoint, 
+        FieldPoint inducedFieldPoint, 
+        std::optional<size_t> inducingWireIndex = std::nullopt
+    ) override;
+    
+    /**
+     * @brief Set the turn positions for field calculation
+     */
+    void setTurns(const std::vector<AlbachTurnPosition>& turns) {
+        _turns = turns;
+    }
+    
+    /**
+     * @brief Update turn currents for a specific harmonic
+     * This allows reusing the setup with different current values
+     */
+    void updateTurnCurrents(const std::vector<double>& currents) {
+        for (size_t i = 0; i < _turns.size() && i < currents.size(); ++i) {
+            _turns[i].current = currents[i];
+        }
+    }
+
+    /**
+     * @brief Update skin depths for all turns based on frequency
+     * 
+     * At high frequency, current concentrates at conductor edges due to skin effect.
+     * 
+     * @param skinDepth Skin depth at current frequency (m)
+     */
+    void updateSkinDepths(double skinDepth) {
+        for (auto& turn : _turns) {
+            turn.skinDepth = skinDepth;
+        }
+    }
+    
+    /**
+     * @brief Calculate total field at an induced point from all turns
+     * This is more efficient than the per-turn-pair interface
+     */
+    ComplexFieldPoint calculateTotalFieldAtPoint(FieldPoint inducedFieldPoint);
+    
+    /**
+     * @brief Setup the model from a Magnetic component
+     * 
+     * Extracts turn positions from the coil and sets up for field calculation.
+     * 
+     * @param magnetic The magnetic component (core + coil)
+     * @param wirePerWinding Wire definitions for each winding
+     */
+    void setupFromMagnetic(Magnetic magnetic, const std::vector<Wire>& wirePerWinding);
+    
+private:
+    std::vector<AlbachTurnPosition> _turns;
+    
+    /**
+     * @brief Calculate H field at point (r, z) from all turns using Biot-Savart
+     * 
+     * @param r Radial coordinate of field point (m)
+     * @param z Axial coordinate of field point (m)
+     * @return pair<H_r, H_z> Magnetic field components in A/m
+     */
+    std::pair<double, double> calculateMagneticField(double r, double z) const;
+};
 
 } // namespace OpenMagnetics

@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -520,6 +521,119 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value() > double(forwardInputsJson["operatingPoints"][0]["outputVoltages"][0]));
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
+    }
+
+    TEST_CASE("Test_Forward_Ngspice_Simulation", "[converter-model][forward-topology][ngspice][!mayfail]") {
+        json forwardInputsJson;
+        json inputVoltage;
+
+        inputVoltage["minimum"] = 100;
+        inputVoltage["maximum"] = 190;
+        forwardInputsJson["inputVoltage"] = inputVoltage;
+        forwardInputsJson["diodeVoltageDrop"] = 0.5;
+        forwardInputsJson["efficiency"] = 0.9;
+        forwardInputsJson["maximumSwitchCurrent"] = 3;
+        forwardInputsJson["currentRippleRatio"] = 0.3;
+        forwardInputsJson["dutyCycle"] = 0.42;
+        forwardInputsJson["operatingPoints"] = json::array();
+
+        {
+            json ForwardOperatingPointJson;
+            ForwardOperatingPointJson["outputVoltages"] = {12};
+            ForwardOperatingPointJson["outputCurrents"] = {2};
+            ForwardOperatingPointJson["switchingFrequency"] = 100000;
+            ForwardOperatingPointJson["ambientTemperature"] = 25;
+            forwardInputsJson["operatingPoints"].push_back(ForwardOperatingPointJson);
+        }
+
+        OpenMagnetics::SingleSwitchForward forward(forwardInputsJson);
+        forward._assertErrors = true;
+        
+        // First process to get design requirements with inductance
+        auto inputs = forward.process();
+        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+        
+        // Get turns ratios
+        std::vector<double> turnsRatios;
+        for (const auto& tr : inputs.get_design_requirements().get_turns_ratios()) {
+            turnsRatios.push_back(OpenMagnetics::resolve_dimensional_values(tr));
+        }
+        
+        // Now run the ngspice simulation
+        auto topologyWaveforms = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(topologyWaveforms.size() >= 1);
+        
+        for (size_t opIndex = 0; opIndex < topologyWaveforms.size(); opIndex++) {
+            auto& wf = topologyWaveforms[opIndex];
+            
+            // Check that time vector has reasonable values
+            REQUIRE(wf.time.size() > 0);
+            REQUIRE(wf.time[0] >= 0);
+            
+            // Check primary current waveform
+            REQUIRE(wf.primaryCurrent.size() == wf.time.size());
+            
+            // Check demagnetization current waveform
+            REQUIRE(wf.demagCurrent.size() == wf.time.size());
+            
+            // Check output voltages if available
+            if (wf.outputVoltages.size() >= 1 && wf.outputVoltages[0].size() == wf.time.size()) {
+                // Verify output voltage is close to expected
+                double avgOutputVoltage = 0;
+                for (double v : wf.outputVoltages[0]) {
+                    avgOutputVoltage += v;
+                }
+                avgOutputVoltage /= wf.outputVoltages[0].size();
+                REQUIRE_THAT(std::abs(avgOutputVoltage), Catch::Matchers::WithinAbs(12.0, 5.0));  // Within 5V of expected 12V output
+            }
+            
+            // Paint waveforms for visual inspection
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Forward_Ngspice_PrimaryCurrent_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform currentWaveform;
+                currentWaveform.set_time(wf.time);
+                currentWaveform.set_data(wf.primaryCurrent);
+                painter.paint_waveform(currentWaveform);
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Forward_Ngspice_DemagCurrent_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform currentWaveform;
+                currentWaveform.set_time(wf.time);
+                currentWaveform.set_data(wf.demagCurrent);
+                painter.paint_waveform(currentWaveform);
+                painter.export_svg();
+            }
+            if (wf.outputVoltages.size() > 0 && wf.outputVoltages[0].size() > 0) {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Forward_Ngspice_OutputVoltage_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform outputWaveform;
+                outputWaveform.set_time(wf.time);
+                outputWaveform.set_data(wf.outputVoltages[0]);
+                painter.paint_waveform(outputWaveform);
+                painter.export_svg();
+            }
+            if (wf.outputInductorCurrents.size() > 0 && wf.outputInductorCurrents[0].size() > 0) {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Forward_Ngspice_OutputInductorCurrent_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform currentWaveform;
+                currentWaveform.set_time(wf.time);
+                currentWaveform.set_data(wf.outputInductorCurrents[0]);
+                painter.paint_waveform(currentWaveform);
+                painter.export_svg();
+            }
+        }
     }
 
 }  // namespace

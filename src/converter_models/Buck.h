@@ -4,19 +4,55 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
 
 using namespace MAS;
 
 namespace OpenMagnetics {
 
+/**
+ * @brief Structure holding topology-level waveforms for Buck converter validation
+ * 
+ * These waveforms are used to validate that the simulation matches expected
+ * converter behavior, not for magnetic component analysis.
+ */
+struct BuckTopologyWaveforms {
+    // Time base
+    std::vector<double> time;
+    double frequency;
+    
+    // Input side signals
+    std::vector<double> inputVoltage;           // v(vin_dc) - DC input voltage
+    std::vector<double> switchNodeVoltage;      // v(sw) - switch node voltage
+    
+    // Output side signals  
+    std::vector<double> inductorVoltage;        // v(l_in) - v(vout) - voltage across inductor
+    std::vector<double> outputVoltage;          // v(vout) - DC output voltage
+    
+    // Currents
+    std::vector<double> inductorCurrent;        // i(vl_sense) - inductor current
+    
+    // Metadata
+    std::string operatingPointName;
+    double inputVoltageValue;
+    double outputVoltageValue;
+    double dutyCycle;
+};
+
 
 class Buck : public MAS::Buck, public Topology {
+private:
+    int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
+
 public:
     bool _assertErrors = false;
 
     Buck(const json& j);
     Buck() {
     };
+
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
 
     bool run_checks(bool assert = false) override;
 
@@ -27,6 +63,37 @@ public:
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
+    /**
+     * @brief Generate an ngspice circuit for this Buck converter
+     * 
+     * Uses the calculated design parameters (inductance, duty cycle)
+     * to create a SPICE netlist that can be simulated.
+     * 
+     * @param inductance Inductance in H
+     * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
+     * @param operatingPointIndex Which operating point to simulate
+     * @return SPICE netlist string
+     */
+    std::string generate_ngspice_circuit(
+        double inductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the Buck converter and extract operating points from waveforms
+     * 
+     * @param inductance Inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(double inductance);
+    
+    /**
+     * @brief Simulate and extract topology-level waveforms for converter validation
+     * 
+     * @param inductance Inductance in H
+     * @return Vector of BuckTopologyWaveforms for each operating condition
+     */
+    std::vector<BuckTopologyWaveforms> simulate_and_extract_topology_waveforms(double inductance);
 };
 
 class AdvancedBuck : public Buck {

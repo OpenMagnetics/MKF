@@ -38,7 +38,13 @@ std::shared_ptr<WindingSkinEffectLossesModel>  WindingSkinEffectLossesModel::fac
         throw ModelNotAvailableException("Unknown wire skin effect losses mode, available options are: {DOWELL, WOJDA, ALBACH, PAYNE, NAN, VANDELAC_ZIOGAS, KAZIMIERCZUK, KUTKUT, FERREIRA, DIMITRAKAKIS, WANG, HOLGUIN, PERRY}");
 }
 
-std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model(WireType wireType) {
+std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model(WireType wireType, std::optional<WindingSkinEffectLossesModels> modelOverride) {
+    // If an explicit model override is provided, use it
+    if (modelOverride.has_value()) {
+        return WindingSkinEffectLossesModel::factory(modelOverride.value());
+    }
+    
+    // Otherwise, auto-select based on wire type
     switch(wireType) {
         case WireType::ROUND: {
             return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
@@ -81,10 +87,10 @@ double WindingSkinEffectLosses::calculate_skin_depth(Wire wire, double frequency
     return calculate_skin_depth(wire.resolve_material(), frequency, temperature);
 };
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider, std::optional<WindingSkinEffectLossesModels> modelOverride) {
     double dcResistancePerMeter = WindingOhmicLosses::calculate_dc_resistance_per_meter(wire, temperature);
 
-    auto model = get_model(wire.get_type());
+    auto model = get_model(wire.get_type(), modelOverride);
 
     if (!current.get_harmonics()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing harmonics");
@@ -111,7 +117,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 }
 
 
-WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold) {
+WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold, std::optional<WindingSkinEffectLossesModels> modelOverride) {
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding does not have turns description");
     }
@@ -138,10 +144,10 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
 
         SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
 
-        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex]).second;
+        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], modelOverride).second;
 
         WindingLossElement skinEffectLosses;
-        auto model = get_model(coil.get_wire_type(windingIndex));
+        auto model = get_model(coil.get_wire_type(windingIndex), modelOverride);
         skinEffectLosses.set_method_used(model->methodName);
         skinEffectLosses.set_origin(ResultOrigin::SIMULATION);
         skinEffectLosses.get_mutable_harmonic_frequencies().push_back(0);

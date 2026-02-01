@@ -175,7 +175,7 @@ class CircuitSimulationReader {
     std::vector<std::string> extract_column_names();
     Waveform extract_waveform(CircuitSimulationSignal signal, double frequency, bool sample=true);
     static CircuitSimulationSignal find_time(std::vector<CircuitSimulationSignal> columns);
-    Waveform get_one_period(Waveform waveform, double frequency, bool sample=true);
+    Waveform get_one_period(Waveform waveform, double frequency, bool sample=true, bool alignToZeroCrossing=true);
     static char guess_separator(std::string line);
     static bool can_be_voltage(std::vector<double> data, double limit=0.05);
     static bool can_be_time(std::vector<double> data);
