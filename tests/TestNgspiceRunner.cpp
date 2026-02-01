@@ -3,6 +3,8 @@
 #include "processors/NgspiceRunner.h"
 #include "processors/CircuitSimulatorInterface.h"
 #include "converter_models/Flyback.h"
+#include "converter_models/Buck.h"
+#include "converter_models/Boost.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "support/Painter.h"
 #include "TestingUtils.h"
@@ -564,23 +566,26 @@ TEST_CASE("Flyback topology waveform validation", "[NgspiceRunner][flyback][vali
     // Validate that all waveforms were extracted
     REQUIRE(!wf.time.empty());
     REQUIRE(!wf.switchNodeVoltage.empty());
-    REQUIRE(!wf.secondaryWindingVoltage.empty());
-    REQUIRE(!wf.outputVoltage.empty());
+    REQUIRE(!wf.secondaryWindingVoltages.empty());
+    REQUIRE(!wf.secondaryWindingVoltages[0].empty());
+    REQUIRE(!wf.outputVoltages.empty());
+    REQUIRE(!wf.outputVoltages[0].empty());
     REQUIRE(!wf.primaryCurrent.empty());
-    REQUIRE(!wf.secondaryCurrent.empty());
+    REQUIRE(!wf.secondaryCurrents.empty());
+    REQUIRE(!wf.secondaryCurrents[0].empty());
     
-    // Calculate waveform statistics
+    // Calculate waveform statistics for first secondary
     double priV_max = *std::max_element(wf.switchNodeVoltage.begin(), wf.switchNodeVoltage.end());
     double priV_min = *std::min_element(wf.switchNodeVoltage.begin(), wf.switchNodeVoltage.end());
-    double secV_max = *std::max_element(wf.secondaryWindingVoltage.begin(), wf.secondaryWindingVoltage.end());
-    double secV_min = *std::min_element(wf.secondaryWindingVoltage.begin(), wf.secondaryWindingVoltage.end());
-    double vout_avg = std::accumulate(wf.outputVoltage.begin(), wf.outputVoltage.end(), 0.0) / wf.outputVoltage.size();
+    double secV_max = *std::max_element(wf.secondaryWindingVoltages[0].begin(), wf.secondaryWindingVoltages[0].end());
+    double secV_min = *std::min_element(wf.secondaryWindingVoltages[0].begin(), wf.secondaryWindingVoltages[0].end());
+    double vout_avg = std::accumulate(wf.outputVoltages[0].begin(), wf.outputVoltages[0].end(), 0.0) / wf.outputVoltages[0].size();
     
     INFO("Primary voltage: min=" << priV_min << " max=" << priV_max);
     INFO("Secondary voltage: min=" << secV_min << " max=" << secV_max);
     INFO("Output voltage avg: " << vout_avg);
     INFO("Input voltage: " << wf.inputVoltageValue);
-    INFO("Expected output: " << wf.outputVoltageValue);
+    INFO("Expected output: " << wf.outputVoltageValues[0]);
     INFO("Duty cycle: " << (wf.dutyCycle * 100) << "%");
     
     // Validate primary voltage behavior:
@@ -590,7 +595,7 @@ TEST_CASE("Flyback topology waveform validation", "[NgspiceRunner][flyback][vali
     CHECK(priV_max < wf.inputVoltageValue * 1.1);
     
     // During OFF: V_pri should be negative (reflected voltage = -Vout * N)
-    double expectedReflectedVoltage = -wf.outputVoltageValue * turnsRatios[0];
+    double expectedReflectedVoltage = -wf.outputVoltageValues[0] * turnsRatios[0];
     CHECK(priV_min < 0.0);
     // Check it's in the right ballpark (within 50% due to simulation variations)
     CHECK(priV_min < expectedReflectedVoltage * 0.5);
@@ -605,11 +610,11 @@ TEST_CASE("Flyback topology waveform validation", "[NgspiceRunner][flyback][vali
     
     // During OFF: V_sec should be around Vout (diode conducting)
     CHECK(secV_max > 0.0);
-    CHECK(secV_max > wf.outputVoltageValue * 0.5);
+    CHECK(secV_max > wf.outputVoltageValues[0] * 0.5);
     
     // Output voltage should be close to expected
-    CHECK(vout_avg > wf.outputVoltageValue * 0.8);
-    CHECK(vout_avg < wf.outputVoltageValue * 1.2);
+    CHECK(vout_avg > wf.outputVoltageValues[0] * 0.8);
+    CHECK(vout_avg < wf.outputVoltageValues[0] * 1.2);
     
     INFO("Topology waveform validation passed");
 }
@@ -922,4 +927,362 @@ TEST_CASE("Flyback real magnetic with multiple input voltages", "[NgspiceRunner]
     CHECK(maxPeakI < 10.0);
     
     INFO("Multi-voltage test passed - all operating points simulated successfully");
+}
+
+TEST_CASE("Flyback multi-output converter simulation", "[NgspiceRunner][flyback][multi-output][integration]") {
+    // Test based on common multi-output flyback designs
+    // Reference: Wikipedia - "The operation of storing energy in the transformer before 
+    // transferring to the output allows the topology to easily generate multiple outputs"
+    // Cross regulation depends on turns ratios matching required output voltages
+    
+    NgspiceRunner runner;
+    
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create Flyback with dual outputs (common in ATX supplies, LCD monitors)
+    // Example: 12V main output + 5V auxiliary output
+    OpenMagnetics::Flyback flyback;
+    
+    DimensionWithTolerance inputVoltage;
+    inputVoltage.set_nominal(48.0);  // 48V DC input (typical for telecom)
+    flyback.set_input_voltage(inputVoltage);
+    flyback.set_diode_voltage_drop(0.5);
+    flyback.set_efficiency(0.9);
+    flyback.set_maximum_duty_cycle(0.5);  // Required for design calculations
+    
+    // Operating point with two outputs
+    OpenMagnetics::FlybackOperatingPoint opPoint;
+    opPoint.set_output_voltages({12.0, 5.0});   // Main 12V @ 1A, Aux 5V @ 0.5A
+    opPoint.set_output_currents({1.0, 0.5});
+    opPoint.set_ambient_temperature(25.0);
+    opPoint.set_switching_frequency(100e3);
+    flyback.set_operating_points({opPoint});
+    
+    // Set turns ratios and inductance manually for multi-output test
+    // N = Vpri / Vsec, for 48V input with D=0.5:
+    // Reflected voltage at D=0.5: Vreflected = Vout * N = Vin * D / (1-D) = 48V
+    // For 12V output: N1 = 48/12 = 4
+    // For 5V output: N2 = 48/5 = 9.6
+    std::vector<double> turnsRatios = {4.0, 9.6};
+    
+    // Magnetizing inductance for DCM/CCM boundary operation
+    // L = Vin * D / (2 * f * Ipk) approximately
+    double magnetizingInductance = 100e-6;  // 100uH
+    
+    INFO("Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+    INFO("Turns ratio 1 (Primary/Sec1 12V): " << turnsRatios[0]);
+    INFO("Turns ratio 2 (Primary/Sec2 5V): " << turnsRatios[1]);
+    
+    // Generate ngspice circuit with multiple secondaries
+    std::string netlist = flyback.generate_ngspice_circuit(turnsRatios, magnetizingInductance, 0, 0);
+    
+    INFO("Generated multi-output netlist:\n" << netlist);
+    
+    // Verify netlist contains components for both secondaries
+    CHECK(netlist.find("Lsec0") != std::string::npos);
+    CHECK(netlist.find("Lsec1") != std::string::npos);
+    CHECK(netlist.find("Dout0") != std::string::npos);
+    CHECK(netlist.find("Dout1") != std::string::npos);
+    CHECK(netlist.find("Vsec_sense0") != std::string::npos);
+    CHECK(netlist.find("Vsec_sense1") != std::string::npos);
+    CHECK(netlist.find("vout0") != std::string::npos);
+    CHECK(netlist.find("vout1") != std::string::npos);
+    // ngspice requires pair-wise K statements for mutual inductance coupling
+    CHECK(netlist.find("K0 Lpri Lsec0 1") != std::string::npos);  // Primary to secondary 0
+    CHECK(netlist.find("K1 Lpri Lsec1 1") != std::string::npos);  // Primary to secondary 1
+    CHECK(netlist.find("K2_0_1 Lsec0 Lsec1 1") != std::string::npos);  // Secondary cross-coupling
+    
+    // Save netlist for inspection
+    auto netlistPath = outputFilePath;
+    netlistPath.append("flyback_multi_output.cir");
+    std::ofstream netlistFile(netlistPath);
+    if (netlistFile.is_open()) {
+        netlistFile << netlist;
+        netlistFile.close();
+    }
+    
+    // Run simulation and extract operating points
+    auto operatingPoints = flyback.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+    
+    REQUIRE(operatingPoints.size() >= 1);
+    
+    auto& op = operatingPoints[0];
+    
+    // Verify we have excitations for primary + 2 secondaries = 3 windings
+    REQUIRE(op.get_excitations_per_winding().size() == 3);
+    
+    INFO("Primary excitation present: " << (op.get_excitations_per_winding()[0].get_voltage().has_value() ? "yes" : "no"));
+    INFO("Secondary 1 excitation present: " << (op.get_excitations_per_winding()[1].get_voltage().has_value() ? "yes" : "no"));
+    INFO("Secondary 2 excitation present: " << (op.get_excitations_per_winding()[2].get_voltage().has_value() ? "yes" : "no"));
+    
+    // Check all windings have voltage and current waveforms
+    for (size_t i = 0; i < 3; ++i) {
+        auto& exc = op.get_excitations_per_winding()[i];
+        CHECK(exc.get_voltage().has_value());
+        CHECK(exc.get_current().has_value());
+        CHECK(exc.get_voltage()->get_waveform()->get_data().size() > 10);
+        CHECK(exc.get_current()->get_waveform()->get_data().size() > 10);
+    }
+    
+    // Extract topology waveforms (includes per-secondary data)
+    auto topologyWaveforms = flyback.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+    
+    REQUIRE(!topologyWaveforms.empty());
+    const auto& wf = topologyWaveforms[0];
+    
+    // Verify we have waveforms for both secondaries
+    REQUIRE(wf.secondaryWindingVoltages.size() == 2);
+    REQUIRE(wf.secondaryCurrents.size() == 2);
+    REQUIRE(wf.outputVoltages.size() == 2);
+    REQUIRE(wf.outputVoltageValues.size() == 2);
+    
+    REQUIRE(!wf.secondaryWindingVoltages[0].empty());
+    REQUIRE(!wf.secondaryWindingVoltages[1].empty());
+    REQUIRE(!wf.secondaryCurrents[0].empty());
+    REQUIRE(!wf.secondaryCurrents[1].empty());
+    REQUIRE(!wf.outputVoltages[0].empty());
+    REQUIRE(!wf.outputVoltages[1].empty());
+    
+    // Calculate output voltage averages for both outputs
+    double vout1_avg = std::accumulate(wf.outputVoltages[0].begin(), wf.outputVoltages[0].end(), 0.0) / wf.outputVoltages[0].size();
+    double vout2_avg = std::accumulate(wf.outputVoltages[1].begin(), wf.outputVoltages[1].end(), 0.0) / wf.outputVoltages[1].size();
+    
+    INFO("Output 1 (12V target): " << vout1_avg << "V");
+    INFO("Output 2 (5V target): " << vout2_avg << "V");
+    INFO("Expected outputs: " << wf.outputVoltageValues[0] << "V, " << wf.outputVoltageValues[1] << "V");
+    
+    // Both outputs should be in reasonable range
+    // Note: This is an open-loop simulation without feedback control,
+    // so output voltage depends on load and duty cycle calculation assumptions.
+    // We use 50% tolerance which is appropriate for unregulated operation.
+    CHECK(vout1_avg > wf.outputVoltageValues[0] * 0.5);
+    CHECK(vout1_avg < wf.outputVoltageValues[0] * 1.5);
+    CHECK(vout2_avg > wf.outputVoltageValues[1] * 0.5);
+    CHECK(vout2_avg < wf.outputVoltageValues[1] * 1.5);
+    
+    // Check secondary winding voltage characteristics
+    // During switch-on: secondary voltages should be negative (flyback action)
+    double sec1_min = *std::min_element(wf.secondaryWindingVoltages[0].begin(), wf.secondaryWindingVoltages[0].end());
+    double sec2_min = *std::min_element(wf.secondaryWindingVoltages[1].begin(), wf.secondaryWindingVoltages[1].end());
+    
+    INFO("Secondary 1 voltage min: " << sec1_min);
+    INFO("Secondary 2 voltage min: " << sec2_min);
+    
+    CHECK(sec1_min < 0.0);  // Should go negative during primary ON
+    CHECK(sec2_min < 0.0);  // Should go negative during primary ON
+    
+    // During switch-off: secondary voltages should be positive (energy transfer)
+    double sec1_max = *std::max_element(wf.secondaryWindingVoltages[0].begin(), wf.secondaryWindingVoltages[0].end());
+    double sec2_max = *std::max_element(wf.secondaryWindingVoltages[1].begin(), wf.secondaryWindingVoltages[1].end());
+    
+    INFO("Secondary 1 voltage max: " << sec1_max);
+    INFO("Secondary 2 voltage max: " << sec2_max);
+    
+    CHECK(sec1_max > 0.0);  // Should go positive during primary OFF
+    CHECK(sec2_max > 0.0);  // Should go positive during primary OFF
+    
+    INFO("Multi-output flyback test passed");
+}
+
+TEST_CASE("Buck converter simulation", "[NgspiceRunner][buck][simulation]") {
+    NgspiceRunner runner;
+    
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a Buck converter
+    OpenMagnetics::Buck buck;
+    
+    // Input voltage: 24V nominal (18-32V range)
+    DimensionWithTolerance inputVoltage;
+    inputVoltage.set_nominal(24.0);
+    inputVoltage.set_minimum(18.0);
+    inputVoltage.set_maximum(32.0);
+    buck.set_input_voltage(inputVoltage);
+    
+    // Diode voltage drop
+    buck.set_diode_voltage_drop(0.5);
+    
+    // Efficiency
+    buck.set_efficiency(0.95);
+    
+    // Operating point: 5V @ 2A output, 100kHz
+    BuckOperatingPoint opPoint;
+    opPoint.set_output_voltage(5.0);
+    opPoint.set_output_current(2.0);
+    opPoint.set_switching_frequency(100e3);
+    opPoint.set_ambient_temperature(25.0);
+    
+    buck.set_operating_points({opPoint});
+    buck.set_current_ripple_ratio(0.4);
+    
+    // Process design requirements to get inductance
+    auto designReqs = buck.process_design_requirements();
+    
+    double inductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+    
+    INFO("Calculated inductance: " << (inductance * 1e6) << " uH");
+    
+    // Generate ngspice circuit
+    std::string netlist = buck.generate_ngspice_circuit(inductance, 0, 0);
+    
+    INFO("Generated netlist:\n" << netlist);
+    
+    // Save netlist
+    auto netlistPath = outputFilePath;
+    netlistPath.append("buck_converter.cir");
+    std::ofstream netlistFile(netlistPath);
+    if (netlistFile.is_open()) {
+        netlistFile << netlist;
+        netlistFile.close();
+    }
+    
+    // Extract topology waveforms
+    auto topologyWaveforms = buck.simulate_and_extract_topology_waveforms(inductance);
+    
+    REQUIRE(!topologyWaveforms.empty());
+    
+    const auto& wf = topologyWaveforms[0];
+    
+    // Validate that all waveforms were extracted
+    REQUIRE(!wf.time.empty());
+    REQUIRE(!wf.switchNodeVoltage.empty());
+    REQUIRE(!wf.outputVoltage.empty());
+    REQUIRE(!wf.inductorCurrent.empty());
+    
+    // Calculate waveform statistics
+    double sw_max = *std::max_element(wf.switchNodeVoltage.begin(), wf.switchNodeVoltage.end());
+    double sw_min = *std::min_element(wf.switchNodeVoltage.begin(), wf.switchNodeVoltage.end());
+    double vout_avg = std::accumulate(wf.outputVoltage.begin(), wf.outputVoltage.end(), 0.0) / wf.outputVoltage.size();
+    double iL_avg = std::accumulate(wf.inductorCurrent.begin(), wf.inductorCurrent.end(), 0.0) / wf.inductorCurrent.size();
+    
+    INFO("Switch node voltage: min=" << sw_min << " max=" << sw_max);
+    INFO("Output voltage avg: " << vout_avg);
+    INFO("Inductor current avg: " << iL_avg);
+    INFO("Input voltage: " << wf.inputVoltageValue);
+    INFO("Expected output: " << wf.outputVoltageValue);
+    INFO("Duty cycle: " << (wf.dutyCycle * 100) << "%");
+    
+    // Validate switch node behavior:
+    // During ON: Vsw should be close to Vin
+    CHECK(sw_max > wf.inputVoltageValue * 0.9);
+    CHECK(sw_max < wf.inputVoltageValue * 1.1);
+    
+    // During OFF: Vsw should be close to 0 (or slightly negative due to diode)
+    CHECK(sw_min < 1.0);
+    CHECK(sw_min > -2.0);
+    
+    // Output voltage should be close to target
+    CHECK(vout_avg > wf.outputVoltageValue * 0.9);
+    CHECK(vout_avg < wf.outputVoltageValue * 1.1);
+    
+    // Average inductor current should be close to output current
+    CHECK(iL_avg > 1.5);  // Should be around 2A
+    CHECK(iL_avg < 2.5);
+    
+    INFO("Buck converter simulation passed");
+}
+
+TEST_CASE("Boost converter simulation", "[NgspiceRunner][boost][simulation]") {
+    NgspiceRunner runner;
+    
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a Boost converter
+    OpenMagnetics::Boost boost;
+    
+    // Input voltage: 12V nominal (9-15V range)
+    DimensionWithTolerance inputVoltage;
+    inputVoltage.set_nominal(12.0);
+    inputVoltage.set_minimum(9.0);
+    inputVoltage.set_maximum(15.0);
+    boost.set_input_voltage(inputVoltage);
+    
+    // Diode voltage drop
+    boost.set_diode_voltage_drop(0.5);
+    
+    // Efficiency
+    boost.set_efficiency(0.92);
+    
+    // Operating point: 24V @ 1A output, 100kHz
+    BoostOperatingPoint opPoint;
+    opPoint.set_output_voltage(24.0);
+    opPoint.set_output_current(1.0);
+    opPoint.set_switching_frequency(100e3);
+    opPoint.set_ambient_temperature(25.0);
+    
+    boost.set_operating_points({opPoint});
+    boost.set_current_ripple_ratio(0.4);
+    
+    // Process design requirements to get inductance
+    auto designReqs = boost.process_design_requirements();
+    
+    double inductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+    
+    INFO("Calculated inductance: " << (inductance * 1e6) << " uH");
+    
+    // Generate ngspice circuit
+    std::string netlist = boost.generate_ngspice_circuit(inductance, 0, 0);
+    
+    INFO("Generated netlist:\n" << netlist);
+    
+    // Save netlist
+    auto netlistPath = outputFilePath;
+    netlistPath.append("boost_converter.cir");
+    std::ofstream netlistFile(netlistPath);
+    if (netlistFile.is_open()) {
+        netlistFile << netlist;
+        netlistFile.close();
+    }
+    
+    // Extract topology waveforms
+    auto topologyWaveforms = boost.simulate_and_extract_topology_waveforms(inductance);
+    
+    REQUIRE(!topologyWaveforms.empty());
+    
+    const auto& wf = topologyWaveforms[0];
+    
+    // Validate that all waveforms were extracted
+    REQUIRE(!wf.time.empty());
+    REQUIRE(!wf.switchNodeVoltage.empty());
+    REQUIRE(!wf.outputVoltage.empty());
+    REQUIRE(!wf.inductorCurrent.empty());
+    
+    // Calculate waveform statistics
+    double sw_max = *std::max_element(wf.switchNodeVoltage.begin(), wf.switchNodeVoltage.end());
+    double sw_min = *std::min_element(wf.switchNodeVoltage.begin(), wf.switchNodeVoltage.end());
+    double vout_avg = std::accumulate(wf.outputVoltage.begin(), wf.outputVoltage.end(), 0.0) / wf.outputVoltage.size();
+    double iL_avg = std::accumulate(wf.inductorCurrent.begin(), wf.inductorCurrent.end(), 0.0) / wf.inductorCurrent.size();
+    
+    INFO("Switch node voltage: min=" << sw_min << " max=" << sw_max);
+    INFO("Output voltage avg: " << vout_avg);
+    INFO("Inductor current avg: " << iL_avg);
+    INFO("Input voltage: " << wf.inputVoltageValue);
+    INFO("Expected output: " << wf.outputVoltageValue);
+    INFO("Duty cycle: " << (wf.dutyCycle * 100) << "%");
+    
+    // Validate switch node behavior:
+    // During ON: Vsw should be close to 0
+    CHECK(sw_min < 1.0);
+    CHECK(sw_min > -1.0);
+    
+    // During OFF: Vsw should be close to Vout
+    CHECK(sw_max > wf.outputVoltageValue * 0.9);
+    CHECK(sw_max < wf.outputVoltageValue * 1.1);
+    
+    // Output voltage should be close to target
+    CHECK(vout_avg > wf.outputVoltageValue * 0.9);
+    CHECK(vout_avg < wf.outputVoltageValue * 1.1);
+    
+    // Average inductor current should be related to input power
+    // Iin = Pout / (Vin * efficiency) = 24*1 / (12*0.92) ≈ 2.17A
+    CHECK(iL_avg > 1.5);
+    CHECK(iL_avg < 3.0);
+    
+    INFO("Boost converter simulation passed");
 }
