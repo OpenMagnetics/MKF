@@ -210,4 +210,97 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
     }
+
+    TEST_CASE("Test_Buck_Ngspice_Simulation", "[converter-model][buck-topology][ngspice]") {
+        json buckInputsJson;
+        json inputVoltage;
+
+        inputVoltage["minimum"] = 20;
+        inputVoltage["maximum"] = 48;
+        buckInputsJson["inputVoltage"] = inputVoltage;
+        buckInputsJson["diodeVoltageDrop"] = 0.7;
+        buckInputsJson["efficiency"] = 0.9;
+        buckInputsJson["currentRippleRatio"] = 0.3;
+        buckInputsJson["operatingPoints"] = json::array();
+        {
+            json buckOperatingPointJson;
+            buckOperatingPointJson["outputVoltage"] = 12;
+            buckOperatingPointJson["outputCurrent"] = 3;
+            buckOperatingPointJson["switchingFrequency"] = 100000;
+            buckOperatingPointJson["ambientTemperature"] = 25;
+            buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
+        }
+
+        OpenMagnetics::Buck buck(buckInputsJson);
+        buck._assertErrors = true;
+        
+        // First process to get design requirements with inductance
+        auto inputs = buck.process();
+        double inductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+        
+        // Now run the ngspice simulation
+        auto topologyWaveforms = buck.simulate_and_extract_topology_waveforms(inductance);
+        
+        REQUIRE(topologyWaveforms.size() >= 1);
+        
+        for (size_t opIndex = 0; opIndex < topologyWaveforms.size(); opIndex++) {
+            auto& wf = topologyWaveforms[opIndex];
+            
+            // Check that time vector has reasonable values
+            REQUIRE(wf.time.size() > 0);
+            REQUIRE(wf.time[0] >= 0);
+            
+            // Check inductor voltage waveform
+            REQUIRE(wf.inductorVoltage.size() == wf.time.size());
+            
+            // Check inductor current waveform
+            REQUIRE(wf.inductorCurrent.size() == wf.time.size());
+            
+            // Check output voltage waveform
+            REQUIRE(wf.outputVoltage.size() == wf.time.size());
+            
+            // Verify output voltage is close to expected
+            double avgOutputVoltage = 0;
+            for (double v : wf.outputVoltage) {
+                avgOutputVoltage += v;
+            }
+            avgOutputVoltage /= wf.outputVoltage.size();
+            REQUIRE_THAT(avgOutputVoltage, Catch::Matchers::WithinAbs(12.0, 2.0));  // Within 2V of expected 12V output
+            
+            // Paint waveforms for visual inspection
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Buck_Ngspice_InductorCurrent_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform currentWaveform;
+                currentWaveform.set_time(wf.time);
+                currentWaveform.set_data(wf.inductorCurrent);
+                painter.paint_waveform(currentWaveform);
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Buck_Ngspice_InductorVoltage_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform voltageWaveform;
+                voltageWaveform.set_time(wf.time);
+                voltageWaveform.set_data(wf.inductorVoltage);
+                painter.paint_waveform(voltageWaveform);
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Buck_Ngspice_OutputVoltage_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform outputWaveform;
+                outputWaveform.set_time(wf.time);
+                outputWaveform.set_data(wf.outputVoltage);
+                painter.paint_waveform(outputWaveform);
+                painter.export_svg();
+            }
+        }
+    }
 }  // namespace

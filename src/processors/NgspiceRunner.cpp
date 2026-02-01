@@ -842,6 +842,14 @@ SimulationResult NgspiceRunner::parse_raw_file(const std::string& rawFilePath, c
         for (size_t i = 1; i < result.waveforms.size(); ++i) {
             result.waveforms[i] = reader.get_one_period(result.waveforms[i], config.frequency, true);
         }
+        // Update the time waveform at index 0 to match the extracted period
+        if (result.waveforms[1].get_time()) {
+            auto processedTime = result.waveforms[1].get_time().value();
+            Waveform updatedTimeWaveform;
+            updatedTimeWaveform.set_time(processedTime);
+            updatedTimeWaveform.set_data(processedTime);
+            result.waveforms[0] = updatedTimeWaveform;
+        }
     }
     
     return result;

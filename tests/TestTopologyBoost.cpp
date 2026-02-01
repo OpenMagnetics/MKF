@@ -90,4 +90,97 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
     }
 
+    TEST_CASE("Test_Boost_Ngspice_Simulation", "[converter-model][boost-topology][ngspice]") {
+        json boostInputsJson;
+        json inputVoltage;
+
+        inputVoltage["minimum"] = 12;
+        inputVoltage["maximum"] = 24;
+        boostInputsJson["inputVoltage"] = inputVoltage;
+        boostInputsJson["diodeVoltageDrop"] = 0.7;
+        boostInputsJson["efficiency"] = 0.9;
+        boostInputsJson["maximumSwitchCurrent"] = 8;
+        boostInputsJson["operatingPoints"] = json::array();
+        {
+            json boostOperatingPointJson;
+            boostOperatingPointJson["outputVoltage"] = 48;
+            boostOperatingPointJson["outputCurrent"] = 1;
+            boostOperatingPointJson["switchingFrequency"] = 100000;
+            boostOperatingPointJson["ambientTemperature"] = 25;
+            boostInputsJson["operatingPoints"].push_back(boostOperatingPointJson);
+        }
+
+        OpenMagnetics::Boost boost(boostInputsJson);
+        boost._assertErrors = true;
+        
+        // First process to get design requirements with inductance
+        auto inputs = boost.process();
+        double inductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+        
+        // Now run the ngspice simulation
+        auto topologyWaveforms = boost.simulate_and_extract_topology_waveforms(inductance);
+        
+        REQUIRE(topologyWaveforms.size() >= 1);
+        
+        for (size_t opIndex = 0; opIndex < topologyWaveforms.size(); opIndex++) {
+            auto& wf = topologyWaveforms[opIndex];
+            
+            // Check that time vector has reasonable values
+            REQUIRE(wf.time.size() > 0);
+            REQUIRE(wf.time[0] >= 0);
+            
+            // Check inductor voltage waveform
+            REQUIRE(wf.inductorVoltage.size() == wf.time.size());
+            
+            // Check inductor current waveform
+            REQUIRE(wf.inductorCurrent.size() == wf.time.size());
+            
+            // Check output voltage waveform
+            REQUIRE(wf.outputVoltage.size() == wf.time.size());
+            
+            // Verify output voltage is close to expected
+            double avgOutputVoltage = 0;
+            for (double v : wf.outputVoltage) {
+                avgOutputVoltage += v;
+            }
+            avgOutputVoltage /= wf.outputVoltage.size();
+            REQUIRE_THAT(avgOutputVoltage, Catch::Matchers::WithinAbs(48.0, 10.0));  // Within 10V of expected 48V output (includes diode drop and ripple)
+            
+            // Paint waveforms for visual inspection
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Boost_Ngspice_InductorCurrent_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform currentWaveform;
+                currentWaveform.set_time(wf.time);
+                currentWaveform.set_data(wf.inductorCurrent);
+                painter.paint_waveform(currentWaveform);
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Boost_Ngspice_InductorVoltage_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform voltageWaveform;
+                voltageWaveform.set_time(wf.time);
+                voltageWaveform.set_data(wf.inductorVoltage);
+                painter.paint_waveform(voltageWaveform);
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Boost_Ngspice_OutputVoltage_OP" + std::to_string(opIndex) + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, false, true);
+                Waveform outputWaveform;
+                outputWaveform.set_time(wf.time);
+                outputWaveform.set_data(wf.outputVoltage);
+                painter.paint_waveform(outputWaveform);
+                painter.export_svg();
+            }
+        }
+    }
+
 }  // namespace
