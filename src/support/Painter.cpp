@@ -53,7 +53,8 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
     size_t numberPointsY = settings.get_painter_number_points_y();
     Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
 
-    MagneticField magneticField;
+    auto modelOverride = settings.get_painter_magnetic_field_strength_model();
+    MagneticField magneticField(modelOverride.value_or(Defaults().magneticFieldStrengthModelDefault));
     settings.set_magnetic_field_include_fringing(includeFringing);
     settings.set_magnetic_field_mirroring_dimension(mirroringDimension);
     ComplexField field;

@@ -36,9 +36,9 @@ class WindingProximityEffectLosses {
   private:
   protected:
   public:
-    static std::shared_ptr<WindingProximityEffectLossesModel> get_model(WireType wireType);
-    static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput);
-    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields);
+    static std::shared_ptr<WindingProximityEffectLossesModel> get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
+    static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
+    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt);
 
 };
 

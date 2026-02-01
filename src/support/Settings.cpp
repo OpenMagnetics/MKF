@@ -15,6 +15,16 @@ namespace OpenMagnetics {
         _magneticFieldMirroringDimension = defaults.magneticFieldMirroringDimension;
         _harmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold;
         _coreLossesModelNames = {defaults.coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+        
+        // Initialize centralized model configuration from defaults
+        _magneticFieldStrengthModel = defaults.magneticFieldStrengthModelDefault;
+        _magneticFieldStrengthFringingEffectModel = defaults.magneticFieldStrengthFringingEffectModelDefault;
+        _reluctanceModel = defaults.reluctanceModelDefault;
+        _coreTemperatureModel = defaults.coreTemperatureModelDefault;
+        _coreThermalResistanceModel = defaults.coreThermalResistanceModelDefault;
+        _windingSkinEffectLossesModel = WindingSkinEffectLossesModels::DOWELL;
+        _windingProximityEffectLossesModel = WindingProximityEffectLossesModels::FERREIRA;
+        _strayCapacitanceModel = StrayCapacitanceModels::ALBACH;
     }
 
 
@@ -72,6 +82,7 @@ namespace OpenMagnetics {
         _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../../cci_coords/coordinates/");
         _painterColorMagneticFieldMinimum = "0x2b35f5";
         _painterColorMagneticFieldMaximum = "0xe84922";
+        _painterMagneticFieldStrengthModel = std::nullopt;
 
         _magneticFieldNumberPointsX = 25;
         _magneticFieldNumberPointsY = 50;
@@ -106,6 +117,17 @@ namespace OpenMagnetics {
         _preferredCoreMaterialPowderManufacturer = "Micrometals";
 
         _coreCrossReferencerAllowDifferentCoreMaterialType = false;
+
+        // Reset centralized model configuration to defaults
+        _magneticFieldStrengthModel = Defaults().magneticFieldStrengthModelDefault;
+        _magneticFieldStrengthFringingEffectModel = Defaults().magneticFieldStrengthFringingEffectModelDefault;
+        _leakageInductanceMagneticFieldStrengthModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;  // BINNS works best for leakage (no fringing)
+        _reluctanceModel = Defaults().reluctanceModelDefault;
+        _coreTemperatureModel = Defaults().coreTemperatureModelDefault;
+        _coreThermalResistanceModel = Defaults().coreThermalResistanceModelDefault;
+        _windingSkinEffectLossesModel = WindingSkinEffectLossesModels::DOWELL;
+        _windingProximityEffectLossesModel = WindingProximityEffectLossesModels::FERREIRA;
+        _strayCapacitanceModel = StrayCapacitanceModels::ALBACH;
     }
 
     bool Settings::get_verbose() const {
@@ -439,6 +461,13 @@ namespace OpenMagnetics {
         _painterColorMagneticFieldMaximum = value;
     }
 
+    std::optional<MagneticFieldStrengthModels> Settings::get_painter_magnetic_field_strength_model() const {
+        return _painterMagneticFieldStrengthModel;
+    }
+    void Settings::set_painter_magnetic_field_strength_model(std::optional<MagneticFieldStrengthModels> value) {
+        _painterMagneticFieldStrengthModel = value;
+    }
+
     int Settings::get_painter_mirroring_dimension() const {
         return _painterMirroringDimension;
     }
@@ -612,6 +641,70 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_cross_referencer_allow_different_core_material_type(bool value) {
         _coreCrossReferencerAllowDifferentCoreMaterialType = value;
+    }
+
+    // Centralized model configuration getters/setters
+    MagneticFieldStrengthModels Settings::get_magnetic_field_strength_model() const {
+        return _magneticFieldStrengthModel;
+    }
+    void Settings::set_magnetic_field_strength_model(MagneticFieldStrengthModels value) {
+        _magneticFieldStrengthModel = value;
+    }
+
+    MagneticFieldStrengthFringingEffectModels Settings::get_magnetic_field_strength_fringing_effect_model() const {
+        return _magneticFieldStrengthFringingEffectModel;
+    }
+    void Settings::set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels value) {
+        _magneticFieldStrengthFringingEffectModel = value;
+    }
+
+    MagneticFieldStrengthModels Settings::get_leakage_inductance_magnetic_field_strength_model() const {
+        return _leakageInductanceMagneticFieldStrengthModel;
+    }
+    void Settings::set_leakage_inductance_magnetic_field_strength_model(MagneticFieldStrengthModels value) {
+        _leakageInductanceMagneticFieldStrengthModel = value;
+    }
+
+    ReluctanceModels Settings::get_reluctance_model() const {
+        return _reluctanceModel;
+    }
+    void Settings::set_reluctance_model(ReluctanceModels value) {
+        _reluctanceModel = value;
+    }
+
+    CoreTemperatureModels Settings::get_core_temperature_model() const {
+        return _coreTemperatureModel;
+    }
+    void Settings::set_core_temperature_model(CoreTemperatureModels value) {
+        _coreTemperatureModel = value;
+    }
+
+    CoreThermalResistanceModels Settings::get_core_thermal_resistance_model() const {
+        return _coreThermalResistanceModel;
+    }
+    void Settings::set_core_thermal_resistance_model(CoreThermalResistanceModels value) {
+        _coreThermalResistanceModel = value;
+    }
+
+    WindingSkinEffectLossesModels Settings::get_winding_skin_effect_losses_model() const {
+        return _windingSkinEffectLossesModel;
+    }
+    void Settings::set_winding_skin_effect_losses_model(WindingSkinEffectLossesModels value) {
+        _windingSkinEffectLossesModel = value;
+    }
+
+    WindingProximityEffectLossesModels Settings::get_winding_proximity_effect_losses_model() const {
+        return _windingProximityEffectLossesModel;
+    }
+    void Settings::set_winding_proximity_effect_losses_model(WindingProximityEffectLossesModels value) {
+        _windingProximityEffectLossesModel = value;
+    }
+
+    StrayCapacitanceModels Settings::get_stray_capacitance_model() const {
+        return _strayCapacitanceModel;
+    }
+    void Settings::set_stray_capacitance_model(StrayCapacitanceModels value) {
+        _strayCapacitanceModel = value;
     }
 
 } // namespace OpenMagnetics
