@@ -8,8 +8,17 @@
 #include "processors/MagneticSimulator.h"
 #include "physical_models/InitialPermeability.h"
 #include "support/Settings.h"
+#include "support/Utils.h"
 
 #include <cmath>
+
+// Emscripten libc++ doesn't have std::comp_ellint_1/2, use custom implementations
+#ifdef __EMSCRIPTEN__
+namespace std {
+    using OpenMagnetics::comp_ellint_1;
+    using OpenMagnetics::comp_ellint_2;
+}
+#endif
 #include <filesystem>
 #include <fstream>
 #include <iostream>

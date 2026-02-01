@@ -12,6 +12,8 @@
 #include <array>
 #include <memory>
 #include <iostream>
+#include <algorithm>
+#include <cctype>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -33,9 +35,8 @@ NgspiceRunner* NgspiceRunner::_instance = nullptr;
 
 // Callback implementations for ngspice shared library
 int NgspiceRunner::ng_getchar(char* outputreturn, int ident, void* userdata) {
-    if (_instance && _instance->_verbose) {
-        logDebug("ngspice output: {}", outputreturn);
-    }
+    // Always print ngspice output during debugging
+    std::cout << "[ngspice] " << outputreturn << std::endl;
     if (_instance) {
         _instance->_capturedOutput.push_back(std::string(outputreturn));
     }
@@ -43,8 +44,17 @@ int NgspiceRunner::ng_getchar(char* outputreturn, int ident, void* userdata) {
 }
 
 int NgspiceRunner::ng_getstat(char* outputreturn, int ident, void* userdata) {
-    if (_instance && _instance->_verbose) {
-        logDebug("ngspice status: {}", outputreturn);
+    // Always print ngspice status during debugging
+    std::cout << "[ngspice-stat] " << outputreturn << std::endl;
+    
+    // Detect simulation completion via status message
+    // In WASM, ng_thread_runs may not work properly, so we detect "--ready--"
+    if (_instance && outputreturn) {
+        std::string status(outputreturn);
+        if (status.find("--ready--") != std::string::npos) {
+            std::cout << "DEBUG: Detected simulation complete via --ready-- status" << std::endl;
+            _instance->_simulationComplete = true;
+        }
     }
     return 0;
 }
@@ -63,12 +73,27 @@ int NgspiceRunner::ng_exit(int exitstatus, bool immediate, bool quitexit, int id
 int NgspiceRunner::ng_data(vecvaluesall* vecvals, int numvecs, int ident, void* userdata) {
     if (!_instance) return 0;
     
+    // Debug: print vector names on first call (only once per simulation)
+    if (_instance->_timeData.empty() && _instance->_vectorData.empty()) {
+        std::cout << "DEBUG ng_data: First data point, numvecs=" << numvecs << std::endl;
+        for (int i = 0; i < numvecs; i++) {
+            std::cout << "DEBUG ng_data: Vec[" << i << "]='" << vecvals->vecsa[i]->name << "'" << std::endl;
+        }
+    }
+    
     // Store vector data as it comes in
     for (int i = 0; i < numvecs; i++) {
         std::string name = vecvals->vecsa[i]->name;
         double value = vecvals->vecsa[i]->creal;  // Real part
         
-        if (name == "time" || name == "TIME") {
+        // Check for time vector - ngspice may prefix with plot name like "tran1.time"
+        // Use case-insensitive check for "time" at the end of the name
+        std::string lowerName = name;
+        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+        bool isTime = (lowerName == "time") || 
+                      (lowerName.size() > 5 && lowerName.substr(lowerName.size() - 5) == ".time");
+        
+        if (isTime) {
             _instance->_timeData.push_back(value);
         } else {
             _instance->_vectorData[name].push_back(value);
@@ -79,7 +104,7 @@ int NgspiceRunner::ng_data(vecvaluesall* vecvals, int numvecs, int ident, void* 
 
 int NgspiceRunner::ng_initdata(vecinfoall* vecinfo, int ident, void* userdata) {
     if (_instance && _instance->_verbose) {
-        logDebug("ngspice init: {} vectors", vecinfo->veccount);
+        std::cout << "ngspice init: " << vecinfo->veccount << " vectors" << std::endl;
     }
     return 0;
 }
@@ -102,7 +127,7 @@ NgspiceRunner::NgspiceRunner() {
     // Initialize ngspice shared library
     int ret = ngSpice_Init(ng_getchar, ng_getstat, ng_exit, ng_data, ng_initdata, ng_thread_runs, nullptr);
     if (ret != 0) {
-        logWarning("Failed to initialize ngspice shared library, falling back to command-line mode");
+        std::cout << "Warning: Failed to initialize ngspice shared library, falling back to command-line mode" << std::endl;
         _mode = ExecutionMode::COMMAND_LINE;
     }
 #else
@@ -353,6 +378,17 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
     SimulationResult result;
     auto startTime = std::chrono::steady_clock::now();
     
+    std::cout << "DEBUG: Starting ngspice simulation" << std::endl;
+    std::cout << "DEBUG: Config - timeout: " << config.timeout << "s, frequency: " << config.frequency << "Hz" << std::endl;
+    std::cout << "DEBUG: Netlist length: " << netlist.length() << " characters" << std::endl;
+    std::cout << "DEBUG: Netlist preview (first 200 chars):" << std::endl;
+    std::cout << netlist.substr(0, 200) << "..." << std::endl;
+    
+    // Print full netlist for debugging
+    std::cout << "DEBUG: === FULL NETLIST ===" << std::endl;
+    std::cout << netlist << std::endl;
+    std::cout << "DEBUG: === END NETLIST ===" << std::endl;
+    
     // Clear previous data
     _capturedOutput.clear();
     _timeData.clear();
@@ -362,21 +398,46 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
     _errorMessage.clear();
     
     // Send netlist to ngspice
-    std::vector<char*> lines;
+    // IMPORTANT: Build lineStorage FIRST completely, THEN build pointers
+    // Otherwise vector reallocation invalidates c_str() pointers
+    std::vector<std::string> lineStorage;
     std::istringstream stream(netlist);
     std::string line;
-    std::vector<std::string> lineStorage;  // Keep strings alive
     
+    std::cout << "DEBUG: Parsing netlist into lines..." << std::endl;
+    int lineNum = 0;
     while (std::getline(stream, line)) {
         lineStorage.push_back(line);
-        lines.push_back(const_cast<char*>(lineStorage.back().c_str()));
+        std::cout << "DEBUG: Line " << lineNum++ << ": " << line << std::endl;
+    }
+    std::cout << "DEBUG: Total lines: " << lineStorage.size() << " (+ nullptr terminator)" << std::endl;
+    
+    // Now build pointer array - lineStorage won't reallocate anymore
+    std::vector<char*> lines;
+    lines.reserve(lineStorage.size() + 1);
+    for (auto& s : lineStorage) {
+        lines.push_back(const_cast<char*>(s.c_str()));
     }
     lines.push_back(nullptr);
     
+    std::cout << "DEBUG: Calling ngSpice_Circ..." << std::endl;
     int ret = ngSpice_Circ(lines.data());
+    std::cout << "DEBUG: ngSpice_Circ returned: " << ret << std::endl;
+    
+    // Print any captured output from ngspice (errors should appear here)
+    if (!_capturedOutput.empty()) {
+        std::cout << "DEBUG: Captured ngspice output during circuit load:" << std::endl;
+        for (const auto& output : _capturedOutput) {
+            std::cout << "  >> " << output << std::endl;
+        }
+    }
+    
     if (ret != 0) {
         result.success = false;
-        result.errorMessage = "Failed to load circuit into ngspice";
+        result.errorMessage = "Failed to load circuit into ngspice (ret=" + std::to_string(ret) + ")";
+        if (!_capturedOutput.empty()) {
+            result.errorMessage += ". Last ngspice output: " + _capturedOutput.back();
+        }
         return result;
     }
     
@@ -390,18 +451,35 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
     
     // Wait for completion with timeout
     auto timeoutEnd = startTime + std::chrono::duration<double>(config.timeout);
+    int timeoutCheckCount = 0;
     while (!_simulationComplete) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        timeoutCheckCount++;
         if (std::chrono::steady_clock::now() > timeoutEnd) {
+            auto elapsedTime = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
+            std::cout << "DEBUG: Simulation timeout after " << elapsedTime << " seconds (timeout=" << config.timeout << "s)" << std::endl;
+            std::cout << "DEBUG: Timeout check count: " << timeoutCheckCount << std::endl;
+            std::cout << "DEBUG: Captured output lines: " << _capturedOutput.size() << std::endl;
+            if (!_capturedOutput.empty()) {
+                std::cout << "DEBUG: Last 5 output lines:" << std::endl;
+                size_t start = _capturedOutput.size() > 5 ? _capturedOutput.size() - 5 : 0;
+                for (size_t i = start; i < _capturedOutput.size(); ++i) {
+                    std::cout << "  " << _capturedOutput[i] << std::endl;
+                }
+            }
             ngSpice_Command(const_cast<char*>("stop"));
             result.success = false;
-            result.errorMessage = "Simulation timeout";
+            result.errorMessage = "Simulation timeout after " + std::to_string(elapsedTime) + "s (limit: " + std::to_string(config.timeout) + "s)";
             return result;
         }
     }
     
     auto endTime = std::chrono::steady_clock::now();
     result.simulationTime = std::chrono::duration<double>(endTime - startTime).count();
+    
+    std::cout << "DEBUG: Simulation completed in " << result.simulationTime << " seconds" << std::endl;
+    std::cout << "DEBUG: Captured " << _timeData.size() << " time points" << std::endl;
+    std::cout << "DEBUG: Captured " << _vectorData.size() << " vectors" << std::endl;
     
     if (_simulationError) {
         result.success = false;
@@ -436,81 +514,170 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
         }
     }
     
-    // Extract one period if requested
-    // For converter waveforms, find the switch-ON edge (rising edge of voltage > 10V)
+    // Debug: print captured waveform names
+    std::cout << "DEBUG: Captured waveform names:" << std::endl;
+    for (size_t i = 0; i < result.waveformNames.size(); ++i) {
+        std::cout << "  [" << i << "] = '" << result.waveformNames[i] << "'" << std::endl;
+    }
+    
+    // Extract periods if requested
+    // For converter waveforms, find the switch-ON edge and extract N periods for better visualization
+    // We search backwards to use the last (settled) periods after initial transients have decayed
     if (config.extractOnePeriod && config.frequency > 0) {
+        std::cout << "DEBUG: extractOnePeriod enabled, frequency=" << config.frequency << std::endl;
         double period = 1.0 / config.frequency;
+        const size_t numPeriodsToExtract = config.numberOfPeriods;  // Use configured number of periods
+        std::cout << "DEBUG: Will extract " << numPeriodsToExtract << " periods" << std::endl;
         
         // Get time data from first waveform (index 1, since 0 is time itself)
         if (result.waveforms.size() > 1 && result.waveforms[1].get_time()) {
             auto time = result.waveforms[1].get_time().value();
             auto voltageData = result.waveforms[1].get_data();  // First signal is typically voltage
+            std::cout << "DEBUG: Time range: " << time.front() << " to " << time.back() << std::endl;
             
-            // Find the last switch-ON edge (voltage goes from negative to >10V)
-            double targetTime = time.back() - period;
+            // Find voltage range using percentiles to ignore spikes
+            // Sort a copy to find percentiles
+            std::vector<double> sortedVoltage = voltageData;
+            std::sort(sortedVoltage.begin(), sortedVoltage.end());
+            size_t p5_idx = sortedVoltage.size() * 5 / 100;
+            size_t p95_idx = sortedVoltage.size() * 95 / 100;
+            double vMin = sortedVoltage[p5_idx];
+            double vMax = sortedVoltage[p95_idx];
+            double vRange = vMax - vMin;
+            double threshold = vMin + vRange * 0.5;  // 50% of range as threshold
+            std::cout << "DEBUG: Voltage range (5th-95th percentile): " << vMin << " to " << vMax << ", threshold=" << threshold << std::endl;
+            
+            // Search BACKWARDS to find the LAST rising edge that allows full period extraction
+            // This uses settled waveforms after initial transients have decayed
+            double minEdgeTime = time.back() - numPeriodsToExtract * period;
             size_t edgeIndex = 0;
             
+            // Find the last rising edge before minEdgeTime
             for (size_t i = time.size() - 1; i > 0; --i) {
-                if (time[i] <= targetTime + period && time[i] >= targetTime - period) {
-                    // Look for rising edge where voltage goes from low/negative to >10V
-                    if (voltageData[i] > 10.0 && voltageData[i-1] < 10.0) {
+                if (time[i] <= minEdgeTime) {
+                    // Look for rising edge crossing the threshold
+                    if (voltageData[i] > threshold && voltageData[i-1] <= threshold) {
                         edgeIndex = i;
                         break;
                     }
                 }
             }
             
-            // If we found an edge, use it; otherwise fall back to time-based extraction
-            if (edgeIndex > 0) {
-                // Find period end (one period after edge, or end of data if simulation ends before)
-                size_t periodEndIndex = time.size();  // Default to end of data
-                double startTime = time[edgeIndex];
-                double tolerance = period * 0.001;  // 0.1% tolerance
-                for (size_t i = edgeIndex; i < time.size(); ++i) {
-                    if (time[i] >= startTime + period - tolerance) {
-                        periodEndIndex = i + 1;
+            // If no edge found searching backwards, try forwards as fallback
+            if (edgeIndex == 0) {
+                for (size_t i = 1; i < time.size(); ++i) {
+                    if (time[i] <= minEdgeTime) {
+                        if (voltageData[i] > threshold && voltageData[i-1] <= threshold) {
+                            edgeIndex = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // If still no edge found, start from where we have numPeriodsToExtract periods left
+            if (edgeIndex == 0) {
+                for (size_t i = 0; i < time.size(); ++i) {
+                    if (time[i] >= time.back() - numPeriodsToExtract * period) {
+                        edgeIndex = i;
                         break;
                     }
                 }
-                
-                // Ensure we have at least some data
-                if (periodEndIndex <= edgeIndex) {
-                    periodEndIndex = time.size();
+                std::cout << "DEBUG: No rising edge found, starting from time-based index " << edgeIndex << std::endl;
+            }
+            
+            std::cout << "DEBUG: edgeIndex=" << edgeIndex << ", minEdgeTime=" << minEdgeTime << std::endl;
+            
+            // Find period end (numPeriodsToExtract periods after edge, or end of data)
+            size_t periodEndIndex = time.size();  // Default to end of data
+            double extractStartTime = time[edgeIndex];
+            double targetEndTime = extractStartTime + numPeriodsToExtract * period;
+            double tolerance = period * 0.001;  // 0.1% tolerance
+            for (size_t i = edgeIndex; i < time.size(); ++i) {
+                if (time[i] >= targetEndTime - tolerance) {
+                    periodEndIndex = i + 1;
+                    break;
                 }
+            }
+            
+            std::cout << "DEBUG: Extracting " << numPeriodsToExtract << " periods: edgeIndex=" << edgeIndex 
+                      << ", periodEndIndex=" << periodEndIndex 
+                      << ", time[edge]=" << time[edgeIndex] 
+                      << ", expected end=" << targetEndTime << std::endl;
+            
+            // Ensure we have at least some data
+            if (periodEndIndex <= edgeIndex) {
+                periodEndIndex = time.size();
+            }
+            
+            // Extract periods for all waveforms using the found indices
+            for (size_t i = 1; i < result.waveforms.size(); ++i) {
+                auto wfTime = result.waveforms[i].get_time().value();
+                auto wfData = result.waveforms[i].get_data();
                 
-                // Extract period for all waveforms using the found indices
-                for (size_t i = 1; i < result.waveforms.size(); ++i) {
-                    auto wfTime = result.waveforms[i].get_time().value();
-                    auto wfData = result.waveforms[i].get_data();
+                // Clamp indices to valid range
+                size_t startIdx = std::min(edgeIndex, wfData.size() - 1);
+                size_t endIdx = std::min(periodEndIndex, wfData.size());
+                
+                if (endIdx > startIdx) {
+                    auto periodTime = std::vector<double>(wfTime.begin() + startIdx, wfTime.begin() + endIdx);
+                    auto periodData = std::vector<double>(wfData.begin() + startIdx, wfData.begin() + endIdx);
                     
-                    // Clamp indices to valid range
-                    size_t startIdx = std::min(edgeIndex, wfData.size() - 1);
-                    size_t endIdx = std::min(periodEndIndex, wfData.size());
+                    // Check if this is a voltage waveform (not a current measurement)
+                    // Current measurements in ngspice have "#branch" in their name (e.g., "vpri_sense#branch")
+                    std::string wfName = result.waveformNames[i];
+                    std::transform(wfName.begin(), wfName.end(), wfName.begin(), ::tolower);
+                    bool isCurrent = (wfName.find("#branch") != std::string::npos);
+                    bool isVoltage = !isCurrent && (wfName != "time");
                     
-                    if (endIdx > startIdx) {
-                        auto periodTime = std::vector<double>(wfTime.begin() + startIdx, wfTime.begin() + endIdx);
-                        auto periodData = std::vector<double>(wfData.begin() + startIdx, wfData.begin() + endIdx);
-                        
-                        // Offset time to start at 0
-                        double offset = periodTime[0];
-                        for (auto& t : periodTime) {
-                            t -= offset;
-                        }
-                        
-                        Waveform newWaveform;
-                        newWaveform.set_time(periodTime);
-                        newWaveform.set_data(periodData);
-                        
-                        // Sample the waveform for consistent point count
-                        result.waveforms[i] = Inputs::calculate_sampled_waveform(newWaveform, config.frequency);
+                    // Note: Voltage clipping disabled - flyback waveforms have legitimate wide voltage swings
+                    // The secondary winding voltage swings negative during ON and positive during OFF
+                    // Clipping would distort the actual waveform shape
+                    
+                    std::cout << "DEBUG: Waveform " << i << " (" << result.waveformNames[i] 
+                              << "): extracted " << periodTime.size() << " points, time " 
+                              << periodTime.front() << " to " << periodTime.back() 
+                              << ", isVoltage=" << isVoltage << ", isCurrent=" << isCurrent << std::endl;
+                    
+                    // Offset time to start at 0
+                    double offset = periodTime[0];
+                    for (auto& t : periodTime) {
+                        t -= offset;
                     }
+                    
+                    Waveform newWaveform;
+                    newWaveform.set_time(periodTime);
+                    newWaveform.set_data(periodData);
+                    
+                    // Store the waveform directly without resampling (preserve all data points)
+                    result.waveforms[i] = newWaveform;
+                    
+                    // Debug: show waveform info
+                    std::cout << "DEBUG: After extraction: " << periodTime.size() << " points, time 0 to " << periodTime.back() << std::endl;
                 }
-            } else {
-                // Fallback: use simple time-based extraction
-                CircuitSimulationReader reader;
-                for (size_t i = 1; i < result.waveforms.size(); ++i) {
-                    result.waveforms[i] = reader.get_one_period(result.waveforms[i], config.frequency, true, false);
+            }
+            
+            // Debug: Show final waveform time ranges
+            std::cout << "DEBUG: Final waveform time ranges:" << std::endl;
+            for (size_t i = 1; i < result.waveforms.size(); ++i) {
+                if (result.waveforms[i].get_time()) {
+                    auto t = result.waveforms[i].get_time().value();
+                    std::cout << "  [" << i << "] " << result.waveformNames[i] << ": " 
+                              << t.front() << " to " << t.back() 
+                              << " (" << t.size() << " points)" << std::endl;
                 }
+            }
+            
+            // Update the "time" waveform at index 0 to match the processed waveforms
+            // This is important because some code extracts "time" separately for the x-axis
+            if (result.waveforms.size() > 1 && result.waveforms[1].get_time()) {
+                auto processedTime = result.waveforms[1].get_time().value();
+                Waveform updatedTimeWaveform;
+                updatedTimeWaveform.set_time(processedTime);
+                updatedTimeWaveform.set_data(processedTime);
+                result.waveforms[0] = updatedTimeWaveform;
+                std::cout << "DEBUG: Updated time waveform[0] to: 0 to " << processedTime.back() 
+                          << " (" << processedTime.size() << " points)" << std::endl;
             }
         }
     }
@@ -654,7 +821,19 @@ SimulationResult NgspiceRunner::parse_raw_file(const std::string& rawFilePath, c
         waveform.set_time(timeData);
         waveform.set_data(data[i]);
         result.waveforms.push_back(waveform);
-        result.waveformNames.push_back(variableNames[i]);
+        
+        // Normalize signal names from ngspice raw file format:
+        // - v(node) -> node (voltage signals)
+        // - i(source) -> source#branch (current signals)
+        std::string signalName = variableNames[i];
+        if (signalName.size() > 3 && signalName[0] == 'v' && signalName[1] == '(' && signalName.back() == ')') {
+            // v(node) -> node
+            signalName = signalName.substr(2, signalName.size() - 3);
+        } else if (signalName.size() > 3 && signalName[0] == 'i' && signalName[1] == '(' && signalName.back() == ')') {
+            // i(source) -> source#branch
+            signalName = signalName.substr(2, signalName.size() - 3) + "#branch";
+        }
+        result.waveformNames.push_back(signalName);
     }
     
     // Extract one period if requested

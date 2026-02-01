@@ -25,18 +25,18 @@ struct FlybackTopologyWaveforms {
     std::vector<double> inputVoltage;           // v(vin_dc) - DC input voltage
     std::vector<double> switchNodeVoltage;      // v(pri_in) - switch node / primary winding voltage
     
-    // Output side signals  
-    std::vector<double> secondaryWindingVoltage; // v(sec_in) - secondary winding voltage
-    std::vector<double> outputVoltage;          // v(vout) - DC output voltage after rectifier
+    // Output side signals (one per secondary winding)
+    std::vector<std::vector<double>> secondaryWindingVoltages; // v(sec_N_in) - secondary winding voltages
+    std::vector<std::vector<double>> outputVoltages;          // v(vout_N) - DC output voltages after rectifiers
     
     // Currents
-    std::vector<double> primaryCurrent;         // i(vpri_sense) - primary winding current
-    std::vector<double> secondaryCurrent;       // i(vsec_sense) - secondary winding current
+    std::vector<double> primaryCurrent;                       // i(vpri_sense) - primary winding current
+    std::vector<std::vector<double>> secondaryCurrents;       // i(vsec_sense_N) - secondary winding currents
     
     // Metadata
     std::string operatingPointName;
     double inputVoltageValue;
-    double outputVoltageValue;
+    std::vector<double> outputVoltageValues;  // One per secondary
     double dutyCycle;
 };
 
@@ -53,11 +53,15 @@ private:
     std::vector<OpenMagnetics::FlybackOperatingPoint> operatingPoints;
     std::optional<double> maximumDutyCycle = 0.5;
     double efficiency = 1;
+    int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
 
 public:
     const std::vector<OpenMagnetics::FlybackOperatingPoint> & get_operating_points() const { return operatingPoints; }
     std::vector<OpenMagnetics::FlybackOperatingPoint> & get_mutable_operating_points() { return operatingPoints; }
     void set_operating_points(const std::vector<OpenMagnetics::FlybackOperatingPoint> & value) { this->operatingPoints = value; }
+
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
 
     bool _assertErrors = false;
 
@@ -154,11 +158,13 @@ public:
      * 
      * @param turnsRatios Turns ratios for each secondary
      * @param magnetizingInductance Magnetizing inductance in H
+     * @param numberOfPeriods Number of switching periods to simulate (default 2)
      * @return Vector of FlybackTopologyWaveforms for each operating condition
      */
     std::vector<FlybackTopologyWaveforms> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
-        double magnetizingInductance);
+        double magnetizingInductance,
+        size_t numberOfPeriods = 2);
     
     static double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop);
     static double get_total_input_power(double outputCurrent, double outputVoltage, double efficiency, double diodeVoltageDrop);

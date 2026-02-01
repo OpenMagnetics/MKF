@@ -39,6 +39,7 @@ struct SimulationConfig {
     size_t steadyStateCycles = 5;       // Number of cycles to skip for steady state
     double frequency = 0.0;             // Operating frequency (for waveform extraction)
     bool extractOnePeriod = true;       // Extract only one period of steady-state
+    size_t numberOfPeriods = 2;         // Number of periods to extract (when extractOnePeriod = false)
     std::string workingDirectory = "";  // Working directory for simulation files
     bool keepTempFiles = false;         // Keep temporary files after simulation
     double timeout = 60.0;              // Timeout in seconds
