@@ -1,4 +1,6 @@
 #include <source_location>
+#include <iomanip>
+#include <map>
 #include "physical_models/LeakageInductance.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
@@ -696,5 +698,101 @@ TEST_CASE("Calculate leakage inductance for a planar magnetic from the web 3", "
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
 
 
+    settings.reset();
+}
+
+// ============================================================================
+// MODEL COMPARISON STUDY - Compare all H-field models for leakage inductance
+// ============================================================================
+
+struct LeakageTestCase {
+    std::string name;
+    std::string shapeName;
+    std::vector<int64_t> numberTurns;
+    std::vector<int64_t> numberParallels;
+    int strandDiameter;  // in microns
+    std::vector<int> numberStrands;
+    double frequency;
+    double expectedLeakageInductance;
+};
+
+TEST_CASE("Leakage inductance H-field model comparison study", "[physical-model][leakage-inductance][model-comparison]") {
+    settings.reset();
+    
+    std::vector<LeakageTestCase> testCases = {
+        {"E42 16:6 Litz", "E 42/33/20", {16, 6}, {1, 1}, 50, {370, 666}, 100000, 4e-6},
+        {"E42 69:69 Litz", "E 42/33/20", {69, 69}, {1, 1}, 50, {25, 25}, 100000, 6.7e-6},
+        {"E42 64:20 Litz", "E 42/33/20", {64, 20}, {1, 1}, 50, {25, 225}, 100000, 13e-6},
+        {"E65 12:6 Litz", "E 65/32/27", {12, 6}, {1, 1}, 50, {450, 450}, 100000, 9e-6},
+        {"PQ40 10:10 Litz x2par", "PQ 40/40", {10, 10}, {2, 2}, 100, {150, 150}, 100000, 5e-6},
+    };
+
+    std::vector<std::pair<MagneticFieldStrengthModels, std::string>> models = {
+        {MagneticFieldStrengthModels::BINNS_LAWRENSON, "BINNS_LAWRENSON"},
+        {MagneticFieldStrengthModels::LAMMERANER, "LAMMERANER"},
+        {MagneticFieldStrengthModels::ALBACH, "ALBACH"},
+    };
+
+    std::cout << "\n====================================================================================" << std::endl;
+    std::cout << "                   LEAKAGE INDUCTANCE H-FIELD MODEL COMPARISON" << std::endl;
+    std::cout << "====================================================================================" << std::endl;
+    std::cout << std::setw(25) << "Test Case" << " | " << std::setw(10) << "Expected" << " | ";
+    for (auto& [model, modelName] : models) {
+        std::cout << std::setw(18) << modelName << " | ";
+    }
+    std::cout << std::endl;
+    std::cout << std::string(25 + 3 + 10 + 3 + models.size() * 21, '-') << std::endl;
+
+    // Track errors per model
+    std::map<std::string, std::vector<double>> errorsPerModel;
+
+    for (auto& tc : testCases) {
+        std::vector<OpenMagnetics::Wire> wires;
+        for (size_t i = 0; i < tc.numberTurns.size(); ++i) {
+            wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(tc.strandDiameter * 1e-6, tc.numberStrands[i]));
+        }
+        auto coil = OpenMagnetics::Coil::create_quick_coil(tc.shapeName, tc.numberTurns, tc.numberParallels, wires);
+
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagnetics::Core::create_ground_gapping(2e-5, 3);
+        auto core = OpenMagnetics::Core::create_quick_core(tc.shapeName, coreMaterial, gapping);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        std::cout << std::setw(25) << tc.name << " | " 
+                  << std::setw(8) << std::fixed << std::setprecision(1) << (tc.expectedLeakageInductance * 1e6) << " µH | ";
+
+        for (auto& [model, modelName] : models) {
+            settings.set_magnetic_field_strength_model(model);
+            
+            try {
+                auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, tc.frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
+                double error = (leakageInductance - tc.expectedLeakageInductance) / tc.expectedLeakageInductance * 100;
+                errorsPerModel[modelName].push_back(fabs(error));
+                
+                std::string errorStr = (error > 0 ? "+" : "") + std::to_string(static_cast<int>(error)) + "%";
+                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << (leakageInductance * 1e6) 
+                          << " µH (" << std::setw(5) << errorStr << ") | ";
+            } catch (const std::exception& e) {
+                std::cout << std::setw(18) << "ERROR" << " | ";
+            }
+        }
+        std::cout << std::endl;
+    }
+
+    std::cout << std::string(25 + 3 + 10 + 3 + models.size() * 21, '-') << std::endl;
+    std::cout << std::setw(25) << "Average |Error|" << " | " << std::setw(10) << "" << " | ";
+    for (auto& [model, modelName] : models) {
+        if (errorsPerModel[modelName].size() > 0) {
+            double avg = 0;
+            for (auto e : errorsPerModel[modelName]) avg += e;
+            avg /= errorsPerModel[modelName].size();
+            std::cout << std::setw(18) << std::fixed << std::setprecision(1) << avg << "% | ";
+        }
+    }
+    std::cout << std::endl;
+    std::cout << "====================================================================================\n" << std::endl;
+    
     settings.reset();
 }
