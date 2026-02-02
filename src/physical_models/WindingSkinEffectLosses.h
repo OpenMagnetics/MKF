@@ -40,11 +40,11 @@ class WindingSkinEffectLosses {
     private:
     protected:
     public:
-      static std::shared_ptr<WindingSkinEffectLossesModel> get_model(WireType wireType);
+      static std::shared_ptr<WindingSkinEffectLossesModel> get_model(WireType wireType, std::optional<WindingSkinEffectLossesModels> modelOverride = std::nullopt);
       static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
       static double calculate_skin_depth(Wire wire, double frequency, double temperature);
-      static WindingLossesOutput calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold);
-      static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider = 1);
+      static WindingLossesOutput calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold, std::optional<WindingSkinEffectLossesModels> modelOverride = std::nullopt);
+      static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider = 1, std::optional<WindingSkinEffectLossesModels> modelOverride = std::nullopt);
 
 };
 

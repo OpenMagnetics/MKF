@@ -126,7 +126,16 @@ std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension
 
 double try_get_duty_cycle(Waveform waveform, double frequency);
 std::complex<double> modified_bessel_first_kind(double order, std::complex<double> x);
+std::complex<double> modified_bessel_second_kind(double order, std::complex<double> x);
 std::complex<double> bessel_first_kind(double order, std::complex<double> z);
+std::complex<double> bessel_second_kind(double order, std::complex<double> z);
+
+// Fast real-valued Bessel functions with asymptotic approximations for large arguments
+double bessel_j0_fast(double x);
+double bessel_j1_fast(double x);
+double bessel_y0_fast(double x);
+double bessel_y1_fast(double x);
+
 double kelvin_function_real(double order, double x);
 double kelvin_function_imaginary(double order, double x);
 double derivative_kelvin_function_real(double order, double x);
