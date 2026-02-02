@@ -20,6 +20,80 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+/**
+ * @class CoreAdviser
+ * @brief Multi-criteria magnetic core recommendation system.
+ *
+ * ## Overview
+ * CoreAdviser selects optimal magnetic cores for power electronics applications based on
+ * user-defined priorities. It evaluates cores from a database using multiple criteria and
+ * returns ranked recommendations with normalized scores.
+ *
+ * ## Scoring System
+ * The adviser uses three main filter categories, each with configurable weights (0.0-1.0):
+ * - **COST**: Estimated manufacturing/purchasing cost (lower is better)
+ * - **EFFICIENCY**: Power losses (core + DC winding losses, lower is better)
+ * - **DIMENSIONS**: Physical size/volume (smaller is better)
+ *
+ * ### Score Calculation
+ * 1. Each filter computes a raw score for each core candidate
+ * 2. Scores are normalized using `normalize_scoring()`:
+ *    - `invert=true`: Lower raw values get higher scores (used for cost, losses, size)
+ *    - `log=true`: Logarithmic normalization (compresses large differences)
+ *    - `log=false`: Linear normalization (preserves proportional differences)
+ * 3. Final score = Σ(normalized_score × weight) for all filters
+ *
+ * ## Filter Pipeline
+ *
+ * ### Power Application (filter_available_cores_power_application)
+ * The filter chain for power inductors/transformers:
+ * 1. **filterAreaProduct**: Pre-filter using Area Product (AP = Aw × Ac)
+ *    - Fixed weight 1.0 (binary pass/fail, not scored)
+ *    - Eliminates cores too small for required energy storage
+ * 2. **filterEnergyStored**: Validates energy storage capacity (L×I²/2)
+ *    - Fixed weight 1.0 (binary pass/fail, not scored)
+ *    - Checks if core can store required energy without saturation
+ * 3. **filterCost**: Scores by estimated cost
+ *    - Weight: COST user weight
+ * 4. **filterDimensions**: Scores by physical volume
+ *    - Weight: DIMENSIONS user weight
+ *    - Uses linear normalization to preserve size differences
+ * 5. **filterLosses**: Scores by total losses (core + winding DC)
+ *    - Weight: EFFICIENCY user weight
+ *
+ * ### Suppression Application (filter_available_cores_suppression_application)
+ * The filter chain for EMI/RFI suppression:
+ * 1. **filterMinimumImpedance**: Pre-filter by impedance at operating frequency
+ * 2. **filterCost**: Scores by estimated cost
+ * 3. **filterDimensions**: Scores by physical volume
+ * 4. **filterMagneticInductance**: Scores by magnetizing inductance
+ * 5. **filterLosses**: Scores by total losses
+ *
+ * ## Operating Modes
+ * - **AVAILABLE_CORES**: Uses manufacturer stock database (fastest)
+ * - **STANDARD_CORES**: Uses standard core shapes with material optimization
+ * - **CUSTOM_CORES**: Uses user-provided core list
+ *
+ * ## Toroid Handling
+ * Toroidal cores use geometry-based bobbin filling factor calculation:
+ *   fillingFactor = 0.55 + 0.15 × (innerRadius / outerRadius)
+ * This accounts for the reduced winding area in toroid centers (range: 0.55-0.70).
+ *
+ * ## Usage Example
+ * ```cpp
+ * std::map<CoreAdviserFilters, double> weights = {
+ *     {CoreAdviserFilters::COST, 0.3},
+ *     {CoreAdviserFilters::EFFICIENCY, 0.5},
+ *     {CoreAdviserFilters::DIMENSIONS, 0.2}
+ * };
+ * CoreAdviser adviser;
+ * auto results = adviser.get_advised_core(inputs, weights, 5);  // Top 5 cores
+ * ```
+ *
+ * ## References
+ * - Industry practice: LI² (energy storage), Area Product method
+ * - Colonel Wm. T. McLyman, "Transformer and Inductor Design Handbook"
+ */
 class CoreAdviser {
     public: 
         enum class CoreAdviserFilters : int {
@@ -45,6 +119,21 @@ class CoreAdviser {
 
     public:
 
+        /**
+         * @brief Filter normalization configuration for each scoring category.
+         *
+         * Each filter category has two configuration options:
+         * - **invert**: If true, lower raw values result in higher normalized scores.
+         *   Used when "less is better" (cost, losses, size).
+         * - **log**: If true, uses logarithmic normalization; if false, linear.
+         *   Linear normalization preserves proportional differences between cores.
+         *
+         * Configuration rationale:
+         * - COST: inverted (cheaper=better), logarithmic (diminishing returns on savings)
+         * - EFFICIENCY: inverted (lower losses=better), logarithmic (diminishing returns)
+         * - DIMENSIONS: inverted (smaller=better), LINEAR (size differences should be
+         *   proportionally reflected; a core 2× larger should score proportionally worse)
+         */
         std::map<CoreAdviserFilters, std::map<std::string, bool>> _filterConfiguration{
                 { CoreAdviserFilters::COST,                  { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", true} } },
@@ -63,6 +152,11 @@ class CoreAdviser {
             _models["coreLosses"] = to_string(defaults.coreLossesModelDefault);
             _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
         }
+        /**
+         * @brief Get per-core scoring breakdown for debugging/analysis.
+         * @param weighted If true, returns weighted scores; otherwise raw normalized scores.
+         * @return Map of core names to their per-filter scores.
+         */
         std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted = false);
 
         void set_unique_core_shapes(bool value);
@@ -72,7 +166,21 @@ class CoreAdviser {
         void set_mode(CoreAdviserModes value);
         CoreAdviserModes get_mode();
 
+        /**
+         * @brief Main entry point for core recommendation.
+         * @param inputs Operating conditions (voltage, current, frequency, etc.)
+         * @param maximumNumberResults Maximum number of cores to return.
+         * @return Vector of (Mas, score) pairs, sorted by descending score.
+         */
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, size_t maximumNumberResults=1);
+        
+        /**
+         * @brief Core recommendation with custom weights.
+         * @param inputs Operating conditions.
+         * @param weights Map of filter weights (COST, EFFICIENCY, DIMENSIONS). Values 0.0-1.0.
+         * @param maximumNumberResults Maximum number of cores to return.
+         * @return Vector of (Mas, score) pairs, sorted by descending score.
+         */
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults=1);
@@ -81,10 +189,49 @@ class CoreAdviser {
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults=1);
 
         Mas post_process_core(Magnetic magnetic, Inputs inputs);
+        
+        /**
+         * @brief Filter pipeline for power inductor/transformer applications.
+         *
+         * Applies filters in order: AreaProduct → EnergyStored → Cost → Dimensions → Losses.
+         * - AreaProduct and EnergyStored use fixed weight 1.0 (pre-filtering, not scoring)
+         * - Cost, Dimensions, Losses use user-provided weights for scoring
+         *
+         * @param magnetics Input list of candidate magnetics with initial scores.
+         * @param inputs Operating conditions.
+         * @param weights User-defined weights for COST, EFFICIENCY, DIMENSIONS.
+         * @param maximumMagneticsAfterFiltering Max candidates to keep after filtering.
+         * @param maximumNumberResults Max results to return.
+         * @return Filtered and scored list of (Mas, score) pairs.
+         */
         std::vector<std::pair<Mas, double>> filter_available_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
+        
+        /**
+         * @brief Filter pipeline for EMI/RFI suppression applications.
+         *
+         * Applies filters: MinimumImpedance → Cost → Dimensions → MagneticInductance → Losses.
+         *
+         * @param magnetics Input list of candidate magnetics with initial scores.
+         * @param inputs Operating conditions (includes required impedance at frequency).
+         * @param weights User-defined weights for COST, EFFICIENCY, DIMENSIONS.
+         * @param maximumMagneticsAfterFiltering Max candidates to keep after filtering.
+         * @param maximumNumberResults Max results to return.
+         * @return Filtered and scored list of (Mas, score) pairs.
+         */
         std::vector<std::pair<Mas, double>> filter_available_cores_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
-        std::vector<std::pair<Mas, double>> filter_standard_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
-        std::vector<std::pair<Mas, double>> filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
+        
+        /**
+         * @brief Filter pipeline for standard core shapes (with material selection).
+         *
+         * Similar to filter_available_cores_power_application but works with
+         * parametric core shapes rather than specific stock cores.
+         */
+        std::vector<std::pair<Mas, double>> filter_standard_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
+        
+        /**
+         * @brief Filter pipeline for standard core shapes in suppression applications.
+         */
+        std::vector<std::pair<Mas, double>> filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
         std::vector<std::pair<Magnetic, double>> create_magnetic_dataset(Inputs inputs, std::vector<Core>* cores, bool includeStacks);
         std::vector<std::pair<Magnetic, double>> create_magnetic_dataset(Inputs inputs, std::vector<CoreShape>* shapes, bool includeStacks);
         void expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector<Core>* cores, std::vector<std::pair<Magnetic, double>>* magnetics);
