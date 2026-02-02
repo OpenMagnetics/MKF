@@ -4927,23 +4927,48 @@ bool Coil::wind_toroidal_additional_turns() {
                                             newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 3), currentRadius), 3);
                                         }
                                         else {
-                                            try0Degrees = true;
-                                            tryMinus0Degrees = true;
-                                            try30Degrees = true;
-                                            tryMinus30Degrees = true;
-                                            try45Degrees = true;
-                                            tryMinus45Degrees = true;
-                                            try60Degrees = true;
-                                            tryMinus60Degrees = true;
-                                            tryAngularMove = true;
-                                            tryAvoidingCollisionDistance = true;
-                                            previousCollisionDistance = 0;
-                                            if (restoredHeightAfter60Degrees != 0) {
-                                                newCoordinates[0] = restoredHeightAfter60Degrees;
-                                                restoredHeightAfter60Degrees = 0;
+                                            // Before falling back to a new radial layer, try to find an empty slot at the first layer
+                                            // by scanning through all angular positions
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
+                                            double sectionMinAngle = section.get_coordinates()[1] - section.get_dimensions()[1] / 2;
+                                            double sectionMaxAngle = section.get_coordinates()[1] + section.get_dimensions()[1] / 2;
+                                            
+                                            bool foundSlot = false;
+                                            // Only try slot scanning if we're still at the first additional layer
+                                            if (std::abs(newCoordinates[0] - currentBaseRadialHeight) < turn.get_dimensions().value()[0] / 4) {
+                                                // Scan from minimum angle to maximum angle looking for an empty slot
+                                                for (double testAngle = sectionMinAngle + currentWireAngle / 2; testAngle <= sectionMaxAngle - currentWireAngle / 2; testAngle += currentWireAngle) {
+                                                    std::vector<double> testCoords = {currentBaseRadialHeight, testAngle};
+                                                    auto testCollisions = get_collision_distances(testCoords, placedTurnsCoordinates, wireHeight);
+                                                    if (testCollisions.size() == 0) {
+                                                        newCoordinates = testCoords;
+                                                        foundSlot = true;
+                                                        break;
+                                                    }
+                                                }
                                             }
-                                            newCoordinates[0] -= turn.get_dimensions().value()[0] / 2;
-                                            newCoordinates[1] = additionalCoordinates[1];
+                                            
+                                            if (!foundSlot) {
+                                                // Fall back to a new radial layer
+                                                try0Degrees = true;
+                                                tryMinus0Degrees = true;
+                                                try30Degrees = true;
+                                                tryMinus30Degrees = true;
+                                                try45Degrees = true;
+                                                tryMinus45Degrees = true;
+                                                try60Degrees = true;
+                                                tryMinus60Degrees = true;
+                                                tryAngularMove = true;
+                                                tryAvoidingCollisionDistance = true;
+                                                previousCollisionDistance = 0;
+                                                if (restoredHeightAfter60Degrees != 0) {
+                                                    newCoordinates[0] = restoredHeightAfter60Degrees;
+                                                    restoredHeightAfter60Degrees = 0;
+                                                }
+                                                newCoordinates[0] -= turn.get_dimensions().value()[0] / 2;
+                                                newCoordinates[1] = additionalCoordinates[1];
+                                            }
                                         }
                                         double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
                                         double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);

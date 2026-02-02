@@ -28,7 +28,63 @@ inline void to_json(json & j, const WireSolidInsulationRequirements & x) {
     j["minimumBreakdownVoltage"] = x.get_minimum_breakdown_voltage();
 }
 
-
+/**
+ * @class WireAdviser
+ * @brief Recommends optimal wire types and configurations for magnetic windings.
+ *
+ * ## Overview
+ * WireAdviser selects the best wire (round, litz, foil, rectangular, planar) and
+ * parallel configuration for a given winding based on electrical requirements,
+ * geometric constraints, and AC loss considerations.
+ *
+ * ## Scoring System
+ * Each filter contributes a normalized score (0-1) that is summed to produce
+ * a final ranking. Lower raw values (resistance, losses) result in higher scores.
+ *
+ * ## Filter Pipeline
+ *
+ * ### Standard Wires (round, litz, foil, rectangular)
+ * Applied in order via `get_advised_wire()`:
+ * 1. **filter_by_area_no_parallels**: Pre-filter eliminating wires too large for section
+ * 2. **filter_by_solid_insulation_requirements**: Validates insulation grade/layers (if specified)
+ * 3. **filter_by_area_with_parallels**: Validates wire fits with parallel configuration
+ * 4. **filter_by_effective_resistance**: Scores by AC resistance (skin effect included)
+ * 5. **filter_by_skin_losses_density**: Scores by skin effect power density
+ * 6. **filter_by_proximity_factor**: Scores by proximity effect susceptibility
+ *
+ * ### Planar Wires
+ * Applied in order via `get_advised_planar_wire()`:
+ * 1. **filter_by_effective_resistance**: Scores by AC resistance
+ * 2. **filter_by_skin_losses_density**: Scores by skin effect losses
+ * 3. **filter_by_proximity_factor**: Scores by proximity effect
+ *
+ * ## Key Parameters
+ * - **maximumEffectiveCurrentDensity**: Maximum allowed J (A/m²) in conductor
+ * - **maximumNumberParallels**: Maximum parallel strands/wires allowed
+ * - **wireSolidInsulationRequirements**: Insulation grade/layer requirements for safety
+ *
+ * ## Wire Type Selection
+ * The adviser respects global settings to include/exclude wire types:
+ * - `settings.set_wire_adviser_include_round(bool)`
+ * - `settings.set_wire_adviser_include_litz(bool)`
+ * - `settings.set_wire_adviser_include_foil(bool)`
+ * - `settings.set_wire_adviser_include_rectangular(bool)`
+ * - `settings.set_wire_adviser_include_planar(bool)`
+ *
+ * ## Usage Example
+ * ```cpp
+ * WireAdviser wireAdviser;
+ * wireAdviser.set_maximum_effective_current_density(5e6);  // 5 A/mm²
+ * wireAdviser.set_maximum_number_parallels(4);
+ * auto results = wireAdviser.get_advised_wire(winding, section, current, temp, numSections, 5);
+ * ```
+ *
+ * ## Industry Background
+ * - Skin depth: δ = √(ρ/(π·f·μ)) determines AC current distribution
+ * - Proximity effect: Increases with layer count and conductor diameter
+ * - Litz wire: Reduces skin/proximity losses via transposed fine strands
+ * - Foil: Low DC resistance but requires careful interleaving for AC
+ */
 class WireAdviser {
     protected:
         double _maximumEffectiveCurrentDensity;

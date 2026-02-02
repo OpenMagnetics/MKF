@@ -519,6 +519,12 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(std::vecto
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by effective resistance.");
 
+    // Skin losses density filter requires harmonics data
+    if (current.get_harmonics()) {
+        coilsWithScoring = filter_by_skin_losses_density(&coilsWithScoring, current, temperature);
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by skin losses density.");
+    }
+
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.");
 
