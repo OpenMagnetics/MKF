@@ -2053,8 +2053,8 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     bg->set_attr("fill", "#ffffff");
     
     // Add title
-    auto* titleText = _root.add_child<SVG::Text>(width / 2, 25, "Thermal Equivalent Circuit");
-    titleText->set_attr("font-size", "18");
+    auto* titleText = _root.add_child<SVG::Text>(width / 2, 30, "Thermal Equivalent Circuit");
+    titleText->set_attr("font-size", "16");
     titleText->set_attr("font-weight", "bold");
     titleText->set_attr("text-anchor", "middle");
     titleText->set_attr("fill", "#333333");
@@ -2063,16 +2063,10 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         return export_svg();
     }
     
-    // Layout parameters
-    double margin = 60;
-    double nodeRadius = 25;
-    double powerSourceRadius = 12;
-    
-    // Categorize nodes by type for layout
-    std::vector<size_t> coreNodeIds;
-    std::vector<size_t> coilNodeIds;
-    std::vector<size_t> bobbinNodeIds;
-    size_t ambientNodeId = 0;
+    // Categorize nodes by type
+    std::vector<const ThermalNode*> coreNodes;
+    std::map<int, std::vector<const ThermalNode*>> coilNodesByWinding;
+    const ThermalNode* ambientNode = nullptr;
     
     for (const auto& node : nodes) {
         switch (node.type) {
@@ -2080,91 +2074,26 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
             case ThermalNodeType::CORE_LATERAL_COLUMN:
             case ThermalNodeType::CORE_TOP_YOKE:
             case ThermalNodeType::CORE_BOTTOM_YOKE:
-                coreNodeIds.push_back(node.id);
+                coreNodes.push_back(&node);
                 break;
-            case ThermalNodeType::COIL_SECTION:
-            case ThermalNodeType::COIL_LAYER:
-            case ThermalNodeType::COIL_TURN:
-                coilNodeIds.push_back(node.id);
+            case ThermalNodeType::COIL_TURN: {
+                int windingIdx = 0;
+                size_t pos = node.name.find("winding ");
+                if (pos != std::string::npos) {
+                    windingIdx = std::stoi(node.name.substr(pos + 8));
+                }
+                coilNodesByWinding[windingIdx].push_back(&node);
                 break;
-            case ThermalNodeType::BOBBIN_INNER:
-            case ThermalNodeType::BOBBIN_OUTER:
-                bobbinNodeIds.push_back(node.id);
-                break;
+            }
             case ThermalNodeType::AMBIENT:
-                ambientNodeId = node.id;
+                ambientNode = &node;
+                break;
+            default:
                 break;
         }
     }
     
-    // Calculate positions for each node
-    std::map<size_t, std::pair<double, double>> nodePositions;
-    
-    // Limit displayed coil nodes to avoid overcrowding
-    size_t maxCoilNodesToShow = 12;
-    std::vector<size_t> displayedCoilNodeIds;
-    if (coilNodeIds.size() <= maxCoilNodesToShow) {
-        displayedCoilNodeIds = coilNodeIds;
-    } else {
-        // Sample evenly
-        for (size_t i = 0; i < maxCoilNodesToShow; ++i) {
-            size_t idx = i * coilNodeIds.size() / maxCoilNodesToShow;
-            displayedCoilNodeIds.push_back(coilNodeIds[idx]);
-        }
-    }
-    
-    // Layout: 
-    // - Core nodes on the left (vertical stack)
-    // - Bobbin nodes in the middle-left
-    // - Coil nodes in the center-right (grid layout)
-    // - Ambient at the bottom center
-    
-    double coreX = margin + 80;
-    double bobbinX = width * 0.35;
-    double coilStartX = width * 0.45;
-    double coilEndX = width - margin - 80;
-    double topY = margin + 80;
-    double bottomY = height - margin - 60;
-    double ambientY = height - margin - 30;
-    
-    // Position core nodes vertically on the left
-    if (!coreNodeIds.empty()) {
-        double coreSpacing = (bottomY - topY - 100) / std::max(1.0, static_cast<double>(coreNodeIds.size() - 1));
-        for (size_t i = 0; i < coreNodeIds.size(); ++i) {
-            nodePositions[coreNodeIds[i]] = {coreX, topY + i * coreSpacing};
-        }
-    }
-    
-    // Position bobbin nodes
-    if (!bobbinNodeIds.empty()) {
-        double bobbinSpacing = (bottomY - topY - 100) / std::max(1.0, static_cast<double>(bobbinNodeIds.size() - 1));
-        for (size_t i = 0; i < bobbinNodeIds.size(); ++i) {
-            nodePositions[bobbinNodeIds[i]] = {bobbinX, topY + 50 + i * bobbinSpacing};
-        }
-    }
-    
-    // Position coil nodes in a grid layout
-    if (!displayedCoilNodeIds.empty()) {
-        size_t coilCols = std::min(static_cast<size_t>(4), displayedCoilNodeIds.size());
-        size_t coilRows = (displayedCoilNodeIds.size() + coilCols - 1) / coilCols;
-        
-        double colSpacing = (coilEndX - coilStartX) / std::max(1.0, static_cast<double>(coilCols));
-        double rowSpacing = (bottomY - topY - 100) / std::max(1.0, static_cast<double>(coilRows));
-        
-        for (size_t i = 0; i < displayedCoilNodeIds.size(); ++i) {
-            size_t col = i % coilCols;
-            size_t row = i / coilCols;
-            nodePositions[displayedCoilNodeIds[i]] = {
-                coilStartX + col * colSpacing + colSpacing / 2,
-                topY + row * rowSpacing
-            };
-        }
-    }
-    
-    // Position ambient node at bottom center
-    nodePositions[ambientNodeId] = {width / 2, ambientY};
-    
-    // Find temperature range for color mapping
+    // Find temperature range
     double minTemp = std::numeric_limits<double>::max();
     double maxTemp = std::numeric_limits<double>::lowest();
     for (const auto& node : nodes) {
@@ -2173,276 +2102,279 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
             maxTemp = std::max(maxTemp, node.temperature);
         }
     }
-    if (minTemp == maxTemp) {
-        minTemp = maxTemp - 10;
-    }
+    if (std::abs(maxTemp - minTemp) < 0.1) minTemp = maxTemp - 10;
     
-    // Helper to check if a node should be displayed
-    auto isNodeDisplayed = [&nodePositions](size_t id) -> bool {
-        return nodePositions.find(id) != nodePositions.end();
+    // Color helper
+    auto getTempColor = [&](double temp) -> std::string {
+        double ratio = (temp - minTemp) / (maxTemp - minTemp);
+        ratio = std::max(0.0, std::min(1.0, ratio));
+        int r = static_cast<int>(ratio * 255);
+        int b = static_cast<int>((1 - ratio) * 255);
+        int g = static_cast<int>((1 - std::abs(ratio - 0.5) * 2) * 80);
+        std::stringstream ss;
+        ss << "rgb(" << r << "," << g << "," << b << ")";
+        return ss.str();
     };
     
-    // Draw resistances (connections between nodes)
-    auto* resistanceGroup = _root.add_child<SVG::Group>();
-    resistanceGroup->set_attr("id", "resistances");
+    // Layout parameters
+    double margin = 60;
+    double nodeRadius = 18;
+    double groundY = height - 80;
     
-    for (const auto& res : resistances) {
-        if (!isNodeDisplayed(res.nodeFromId) || !isNodeDisplayed(res.nodeToId)) {
-            continue;  // Skip resistances to non-displayed nodes
-        }
-        
-        auto [x1, y1] = nodePositions[res.nodeFromId];
-        auto [x2, y2] = nodePositions[res.nodeToId];
-        
-        // Calculate direction and length
-        double dx = x2 - x1;
-        double dy = y2 - y1;
-        double len = std::sqrt(dx * dx + dy * dy);
-        
-        if (len < 1e-6) continue;
-        
-        // Normalize direction
-        double nx = dx / len;
-        double ny = dy / len;
-        
-        // Start and end points (offset from node center)
-        double startX = x1 + nx * nodeRadius;
-        double startY = y1 + ny * nodeRadius;
-        double endX = x2 - nx * nodeRadius;
-        double endY = y2 - ny * nodeRadius;
-        
-        // Recalculate actual resistor length
-        double actualLen = std::sqrt((endX - startX) * (endX - startX) + (endY - startY) * (endY - startY));
-        
-        // Draw resistor symbol using zigzag pattern
-        // First, draw the connecting lines
-        double resistorStart = actualLen * 0.25;
-        double resistorEnd = actualLen * 0.75;
-        
-        // Line from start to resistor start
-        auto* line1 = resistanceGroup->add_child<SVG::Line>(
-            startX, startY,
-            startX + nx * resistorStart, startY + ny * resistorStart);
-        line1->set_attr("stroke", "#333333");
-        line1->set_attr("stroke-width", "2");
-        
-        // Line from resistor end to node
-        auto* line2 = resistanceGroup->add_child<SVG::Line>(
-            startX + nx * resistorEnd, startY + ny * resistorEnd,
-            endX, endY);
-        line2->set_attr("stroke", "#333333");
-        line2->set_attr("stroke-width", "2");
-        
-        // Draw zigzag resistor
-        // Perpendicular direction for zigzag
-        double px = -ny;
-        double py = nx;
-        
-        double zigzagLen = resistorEnd - resistorStart;
-        int numZigs = 5;
-        double zigWidth = zigzagLen / (numZigs * 2);
-        double zigHeight = 8;
-        
-        std::string pathD = "M " + std::to_string(startX + nx * resistorStart) + " " + 
-                           std::to_string(startY + ny * resistorStart);
-        
-        for (int z = 0; z < numZigs; ++z) {
-            double baseOffset = resistorStart + (z * 2 + 0.5) * zigWidth;
-            double nextOffset = resistorStart + (z * 2 + 1.5) * zigWidth;
-            
-            // Zig up
-            pathD += " L " + std::to_string(startX + nx * baseOffset + px * zigHeight) + " " +
-                     std::to_string(startY + ny * baseOffset + py * zigHeight);
-            // Zag down
-            pathD += " L " + std::to_string(startX + nx * nextOffset - px * zigHeight) + " " +
-                     std::to_string(startY + ny * nextOffset - py * zigHeight);
-        }
-        
-        // Final point
-        pathD += " L " + std::to_string(startX + nx * resistorEnd) + " " +
-                 std::to_string(startY + ny * resistorEnd);
-        
-        auto* zigzag = resistanceGroup->add_child<SVG::Path>();
-        zigzag->set_attr("d", pathD);
-        zigzag->set_attr("stroke", "#333333");
-        zigzag->set_attr("stroke-width", "2");
-        zigzag->set_attr("fill", "none");
-        
-        // Add resistance value label
-        double labelX = startX + nx * (resistorStart + zigzagLen / 2) + px * 20;
-        double labelY = startY + ny * (resistorStart + zigzagLen / 2) + py * 20;
-        
-        std::stringstream resStr;
-        resStr << std::fixed << std::setprecision(1) << res.resistance << " K/W";
-        
-        auto* resLabel = resistanceGroup->add_child<SVG::Text>(labelX, labelY, resStr.str());
-        resLabel->set_attr("font-size", "9");
-        resLabel->set_attr("text-anchor", "middle");
-        resLabel->set_attr("fill", "#666666");
+    // === SIMPLIFIED SCHEMATIC LAYOUT ===
+    // Left side: Core section (aggregated)
+    // Right side: Windings (each winding as a row of turns)
+    // Bottom: Ground/Ambient bus
+    
+    // Draw ground bus
+    auto* busGroup = _root.add_child<SVG::Group>();
+    busGroup->set_attr("id", "buses");
+    
+    // SVG::Line takes (x1, x2, y1, y2) - NOT (x1, y1, x2, y2)
+    auto* groundBus = busGroup->add_child<SVG::Line>(margin, width - margin, groundY, groundY);
+    groundBus->set_attr("stroke", "#333333");
+    groundBus->set_attr("stroke-width", "3");
+    
+    // Ground symbol at center
+    double gndX = width / 2;
+    for (int i = 0; i < 3; ++i) {
+        double lineWidth = 30 - i * 8;
+        auto* hLine = busGroup->add_child<SVG::Line>(
+            gndX - lineWidth / 2, gndX + lineWidth / 2,
+            groundY + 10 + i * 6, groundY + 10 + i * 6);
+        hLine->set_attr("stroke", "#333333");
+        hLine->set_attr("stroke-width", "2");
     }
     
-    // Draw nodes
-    auto* nodeGroup = _root.add_child<SVG::Group>();
-    nodeGroup->set_attr("id", "nodes");
+    double ambientTemp = ambientNode ? ambientNode->temperature : 25.0;
+    std::stringstream ambStr;
+    ambStr << "Ambient: " << std::fixed << std::setprecision(0) << ambientTemp << "°C";
+    auto* ambLabel = busGroup->add_child<SVG::Text>(gndX, groundY + 45, ambStr.str());
+    ambLabel->set_attr("font-size", "11");
+    ambLabel->set_attr("text-anchor", "middle");
+    ambLabel->set_attr("fill", "#333333");
     
-    for (const auto& node : nodes) {
-        if (!isNodeDisplayed(node.id)) continue;
+    // === CORE SECTION (Left side) ===
+    double coreX = margin + 80;
+    double coreTopY = 80;
+    double coreHeight = (groundY - coreTopY - 100);
+    
+    auto* coreGroup = _root.add_child<SVG::Group>();
+    coreGroup->set_attr("id", "core");
+    
+    // Calculate aggregate core stats
+    double totalCorePower = 0;
+    double avgCoreTemp = 0;
+    for (const auto* node : coreNodes) {
+        totalCorePower += node->powerDissipation;
+        avgCoreTemp += node->temperature;
+    }
+    if (!coreNodes.empty()) avgCoreTemp /= coreNodes.size();
+    
+    // Draw core as a rounded rectangle block
+    double coreBlockWidth = 100;
+    double coreBlockHeight = std::min(200.0, coreHeight * 0.6);
+    double coreBlockY = coreTopY + (coreHeight - coreBlockHeight) / 2;
+    
+    auto* coreRect = coreGroup->add_child<SVG::Rect>(
+        coreX - coreBlockWidth/2, coreBlockY, coreBlockWidth, coreBlockHeight);
+    coreRect->set_attr("fill", getTempColor(avgCoreTemp));
+    coreRect->set_attr("stroke", "#333333");
+    coreRect->set_attr("stroke-width", "2");
+    coreRect->set_attr("rx", "10");
+    
+    auto* coreLabel = coreGroup->add_child<SVG::Text>(coreX, coreBlockY + coreBlockHeight/2 - 10, "CORE");
+    coreLabel->set_attr("font-size", "14");
+    coreLabel->set_attr("font-weight", "bold");
+    coreLabel->set_attr("text-anchor", "middle");
+    coreLabel->set_attr("fill", "#ffffff");
+    
+    std::stringstream coreTempStr;
+    coreTempStr << std::fixed << std::setprecision(0) << avgCoreTemp << "°C";
+    auto* coreTempLabel = coreGroup->add_child<SVG::Text>(coreX, coreBlockY + coreBlockHeight/2 + 10, coreTempStr.str());
+    coreTempLabel->set_attr("font-size", "12");
+    coreTempLabel->set_attr("text-anchor", "middle");
+    coreTempLabel->set_attr("fill", "#ffffff");
+    
+    std::stringstream corePowerStr;
+    if (totalCorePower >= 1.0) {
+        corePowerStr << std::fixed << std::setprecision(2) << totalCorePower << " W";
+    } else {
+        corePowerStr << std::fixed << std::setprecision(0) << totalCorePower * 1000 << " mW";
+    }
+    auto* corePowerLabel = coreGroup->add_child<SVG::Text>(coreX, coreBlockY + coreBlockHeight/2 + 25, corePowerStr.str());
+    corePowerLabel->set_attr("font-size", "10");
+    corePowerLabel->set_attr("text-anchor", "middle");
+    corePowerLabel->set_attr("fill", "#ffcc00");
+    
+    // Core to ground connection with resistor
+    auto* coreWire = coreGroup->add_child<SVG::Line>(coreX, coreX, coreBlockY + coreBlockHeight, groundY);
+    coreWire->set_attr("stroke", "#333333");
+    coreWire->set_attr("stroke-width", "2");
+    
+    // === WINDING SECTIONS ===
+    double windingStartX = coreX + coreBlockWidth/2 + 80;
+    double windingEndX = width - margin - 20;
+    size_t numWindings = coilNodesByWinding.size();
+    double windingRowHeight = std::min(100.0, (groundY - coreTopY - 60) / std::max(1.0, static_cast<double>(numWindings)));
+    
+    auto* windingsGroup = _root.add_child<SVG::Group>();
+    windingsGroup->set_attr("id", "windings");
+    
+    size_t windingIdx = 0;
+    for (auto& [wIdx, turnNodes] : coilNodesByWinding) {
+        double rowY = coreTopY + 40 + windingIdx * windingRowHeight;
         
-        auto [x, y] = nodePositions[node.id];
+        // Winding label
+        std::string windingName = "Winding " + std::to_string(wIdx);
+        auto* wLabel = windingsGroup->add_child<SVG::Text>(windingStartX - 10, rowY + 5, windingName);
+        wLabel->set_attr("font-size", "11");
+        wLabel->set_attr("font-weight", "bold");
+        wLabel->set_attr("text-anchor", "end");
+        wLabel->set_attr("fill", "#333333");
         
-        if (node.isAmbient()) {
-            // Draw ambient as ground symbol
-            auto* groundGroup = nodeGroup->add_child<SVG::Group>();
-            
-            // Vertical line
-            auto* gndLine = groundGroup->add_child<SVG::Line>(x, y - 15, x, y);
-            gndLine->set_attr("stroke", "#333333");
-            gndLine->set_attr("stroke-width", "2");
-            
-            // Three horizontal lines (decreasing width)
-            for (int i = 0; i < 3; ++i) {
-                double lineWidth = 20 - i * 5;
-                auto* hLine = groundGroup->add_child<SVG::Line>(
-                    x - lineWidth / 2, y + i * 5,
-                    x + lineWidth / 2, y + i * 5);
-                hLine->set_attr("stroke", "#333333");
-                hLine->set_attr("stroke-width", "2");
-            }
-            
-            // Label
-            std::stringstream tempStr;
-            tempStr << std::fixed << std::setprecision(1) << node.temperature << "°C";
-            auto* tempLabel = nodeGroup->add_child<SVG::Text>(x, y + 25, "Ambient: " + tempStr.str());
-            tempLabel->set_attr("font-size", "11");
-            tempLabel->set_attr("text-anchor", "middle");
-            tempLabel->set_attr("fill", "#333333");
+        // Calculate winding stats
+        double totalWindingPower = 0;
+        double minWindingTemp = std::numeric_limits<double>::max();
+        double maxWindingTemp = std::numeric_limits<double>::lowest();
+        for (const auto* node : turnNodes) {
+            totalWindingPower += node->powerDissipation;
+            minWindingTemp = std::min(minWindingTemp, node->temperature);
+            maxWindingTemp = std::max(maxWindingTemp, node->temperature);
+        }
+        
+        // Sample turns to display (max 8)
+        size_t maxTurns = 8;
+        std::vector<const ThermalNode*> displayTurns;
+        if (turnNodes.size() <= maxTurns) {
+            displayTurns = turnNodes;
         } else {
-            // Draw node as circle with temperature-based color
-            double tempRatio = (node.temperature - minTemp) / (maxTemp - minTemp);
-            tempRatio = std::max(0.0, std::min(1.0, tempRatio));
-            
-            // Blue to red gradient
-            int r = static_cast<int>(tempRatio * 255);
-            int b = static_cast<int>((1 - tempRatio) * 255);
-            int g = static_cast<int>((1 - std::abs(tempRatio - 0.5) * 2) * 128);
-            
-            std::stringstream colorStr;
-            colorStr << "rgb(" << r << "," << g << "," << b << ")";
-            
-            auto* circle = nodeGroup->add_child<SVG::Circle>(x, y, nodeRadius);
-            circle->set_attr("fill", colorStr.str());
-            circle->set_attr("stroke", "#333333");
-            circle->set_attr("stroke-width", "2");
-            
-            // Temperature label inside circle
-            std::stringstream tempStr;
-            tempStr << std::fixed << std::setprecision(0) << node.temperature << "°C";
-            auto* tempLabel = nodeGroup->add_child<SVG::Text>(x, y + 4, tempStr.str());
-            tempLabel->set_attr("font-size", "10");
-            tempLabel->set_attr("text-anchor", "middle");
-            tempLabel->set_attr("fill", "#ffffff");
-            tempLabel->set_attr("font-weight", "bold");
-            
-            // Node name label below
-            std::string shortName = node.name;
-            if (shortName.length() > 15) {
-                shortName = shortName.substr(0, 12) + "...";
-            }
-            auto* nameLabel = nodeGroup->add_child<SVG::Text>(x, y + nodeRadius + 12, shortName);
-            nameLabel->set_attr("font-size", "9");
-            nameLabel->set_attr("text-anchor", "middle");
-            nameLabel->set_attr("fill", "#333333");
-            
-            // Draw power source if node has power dissipation
-            if (node.powerDissipation > 0.001) {  // > 1 mW
-                double psX = x + nodeRadius + 5;
-                double psY = y - nodeRadius + 5;
-                
-                // Draw small circle with P symbol
-                auto* psCircle = nodeGroup->add_child<SVG::Circle>(psX, psY, powerSourceRadius);
-                psCircle->set_attr("fill", "#ffcc00");
-                psCircle->set_attr("stroke", "#cc9900");
-                psCircle->set_attr("stroke-width", "1.5");
-                
-                // P symbol
-                auto* pLabel = nodeGroup->add_child<SVG::Text>(psX, psY + 4, "P");
-                pLabel->set_attr("font-size", "10");
-                pLabel->set_attr("text-anchor", "middle");
-                pLabel->set_attr("fill", "#333333");
-                pLabel->set_attr("font-weight", "bold");
-                
-                // Power value
-                std::stringstream powerStr;
-                if (node.powerDissipation >= 1.0) {
-                    powerStr << std::fixed << std::setprecision(2) << node.powerDissipation << "W";
-                } else {
-                    powerStr << std::fixed << std::setprecision(0) << node.powerDissipation * 1000 << "mW";
-                }
-                auto* powerLabel = nodeGroup->add_child<SVG::Text>(psX, psY + powerSourceRadius + 10, powerStr.str());
-                powerLabel->set_attr("font-size", "8");
-                powerLabel->set_attr("text-anchor", "middle");
-                powerLabel->set_attr("fill", "#666666");
+            for (size_t i = 0; i < maxTurns; ++i) {
+                displayTurns.push_back(turnNodes[i * turnNodes.size() / maxTurns]);
             }
         }
+        
+        // Draw horizontal bus for this winding
+        double busY = rowY;
+        auto* windingBus = windingsGroup->add_child<SVG::Line>(windingStartX, windingEndX, busY, busY);
+        windingBus->set_attr("stroke", "#666666");
+        windingBus->set_attr("stroke-width", "2");
+        
+        // Draw turn nodes
+        double turnSpacing = (windingEndX - windingStartX) / (displayTurns.size() + 1);
+        for (size_t t = 0; t < displayTurns.size(); ++t) {
+            const auto* turn = displayTurns[t];
+            double turnX = windingStartX + (t + 1) * turnSpacing;
+            
+            // Vertical wire from bus to node
+            auto* turnWire = windingsGroup->add_child<SVG::Line>(turnX, turnX, busY, busY + 25);
+            turnWire->set_attr("stroke", "#666666");
+            turnWire->set_attr("stroke-width", "1.5");
+            
+            // Turn circle
+            double turnY = busY + 25 + nodeRadius;
+            auto* turnCircle = windingsGroup->add_child<SVG::Circle>(turnX, turnY, nodeRadius);
+            turnCircle->set_attr("fill", getTempColor(turn->temperature));
+            turnCircle->set_attr("stroke", "#333333");
+            turnCircle->set_attr("stroke-width", "1.5");
+            
+            // Temperature
+            std::stringstream tStr;
+            tStr << std::fixed << std::setprecision(0) << turn->temperature << "°";
+            auto* tLabel = windingsGroup->add_child<SVG::Text>(turnX, turnY + 4, tStr.str());
+            tLabel->set_attr("font-size", "8");
+            tLabel->set_attr("text-anchor", "middle");
+            tLabel->set_attr("fill", "#ffffff");
+            tLabel->set_attr("font-weight", "bold");
+            
+            // Turn number below
+            size_t turnNum = 0;
+            size_t pos = turn->name.find("turn ");
+            if (pos != std::string::npos) {
+                turnNum = std::stoi(turn->name.substr(pos + 5));
+            }
+            auto* numLabel = windingsGroup->add_child<SVG::Text>(turnX, turnY + nodeRadius + 10, "T" + std::to_string(turnNum));
+            numLabel->set_attr("font-size", "7");
+            numLabel->set_attr("text-anchor", "middle");
+            numLabel->set_attr("fill", "#666666");
+        }
+        
+        // Winding stats on right side
+        std::stringstream statsStr;
+        statsStr << std::fixed << std::setprecision(0) << minWindingTemp << "-" << maxWindingTemp << "°C";
+        auto* statsLabel = windingsGroup->add_child<SVG::Text>(windingEndX + 10, busY + 5, statsStr.str());
+        statsLabel->set_attr("font-size", "9");
+        statsLabel->set_attr("text-anchor", "start");
+        statsLabel->set_attr("fill", "#666666");
+        
+        // Power
+        std::stringstream powerStr;
+        if (totalWindingPower >= 1.0) {
+            powerStr << std::fixed << std::setprecision(1) << totalWindingPower << "W";
+        } else {
+            powerStr << std::fixed << std::setprecision(0) << totalWindingPower * 1000 << "mW";
+        }
+        auto* powerLabel = windingsGroup->add_child<SVG::Text>(windingEndX + 10, busY + 18, powerStr.str());
+        powerLabel->set_attr("font-size", "8");
+        powerLabel->set_attr("text-anchor", "start");
+        powerLabel->set_attr("fill", "#cc6600");
+        
+        // Vertical connection from winding bus down to ground
+        double dropX = windingStartX + 20 + windingIdx * 15;
+        auto* vDrop = windingsGroup->add_child<SVG::Line>(dropX, dropX, busY, groundY);
+        vDrop->set_attr("stroke", "#aaaaaa");
+        vDrop->set_attr("stroke-width", "1.5");
+        vDrop->set_attr("stroke-dasharray", "4,2");
+        
+        windingIdx++;
     }
     
-    // Add legend
+    // === LEGEND ===
     double legendX = margin;
-    double legendY = height - 50;
+    double legendY = height - 35;
     
     auto* legendGroup = _root.add_child<SVG::Group>();
     legendGroup->set_attr("id", "legend");
     
-    // Temperature scale bar
-    double scaleWidth = 150;
-    double scaleHeight = 15;
-    
-    // Draw gradient bar
+    // Temperature scale
+    double scaleWidth = 120;
     for (int i = 0; i < 20; ++i) {
         double ratio = static_cast<double>(i) / 19.0;
         int r = static_cast<int>(ratio * 255);
         int b = static_cast<int>((1 - ratio) * 255);
-        int g = static_cast<int>((1 - std::abs(ratio - 0.5) * 2) * 128);
+        int g = static_cast<int>((1 - std::abs(ratio - 0.5) * 2) * 80);
         
         std::stringstream colorStr;
         colorStr << "rgb(" << r << "," << g << "," << b << ")";
         
-        auto* rect = legendGroup->add_child<SVG::Rect>(
-            legendX + i * scaleWidth / 20, legendY,
-            scaleWidth / 20 + 1, scaleHeight);
+        auto* rect = legendGroup->add_child<SVG::Rect>(legendX + i * 6, legendY, 7, 12);
         rect->set_attr("fill", colorStr.str());
     }
     
-    // Scale labels
-    std::stringstream minTempStr, maxTempStr;
-    minTempStr << std::fixed << std::setprecision(0) << minTemp << "°C";
-    maxTempStr << std::fixed << std::setprecision(0) << maxTemp << "°C";
+    std::stringstream minStr, maxStr;
+    minStr << std::fixed << std::setprecision(0) << minTemp << "°C";
+    maxStr << std::fixed << std::setprecision(0) << maxTemp << "°C";
     
-    auto* minLabel = legendGroup->add_child<SVG::Text>(legendX, legendY + scaleHeight + 12, minTempStr.str());
-    minLabel->set_attr("font-size", "10");
-    minLabel->set_attr("text-anchor", "start");
+    auto* minLabel = legendGroup->add_child<SVG::Text>(legendX, legendY + 22, minStr.str());
+    minLabel->set_attr("font-size", "8");
     minLabel->set_attr("fill", "#333333");
     
-    auto* maxLabel = legendGroup->add_child<SVG::Text>(legendX + scaleWidth, legendY + scaleHeight + 12, maxTempStr.str());
-    maxLabel->set_attr("font-size", "10");
+    auto* maxLabel = legendGroup->add_child<SVG::Text>(legendX + scaleWidth, legendY + 22, maxStr.str());
+    maxLabel->set_attr("font-size", "8");
     maxLabel->set_attr("text-anchor", "end");
     maxLabel->set_attr("fill", "#333333");
     
-    // Legend title
-    auto* legendTitle = legendGroup->add_child<SVG::Text>(legendX + scaleWidth / 2, legendY - 5, "Temperature");
-    legendTitle->set_attr("font-size", "10");
-    legendTitle->set_attr("text-anchor", "middle");
-    legendTitle->set_attr("fill", "#333333");
-    
-    // Node count info (if truncated)
-    if (coilNodeIds.size() > maxCoilNodesToShow) {
-        std::stringstream infoStr;
-        infoStr << "Showing " << displayedCoilNodeIds.size() << " of " << coilNodeIds.size() << " coil nodes";
-        auto* infoLabel = legendGroup->add_child<SVG::Text>(width - margin, legendY + scaleHeight + 12, infoStr.str());
-        infoLabel->set_attr("font-size", "9");
-        infoLabel->set_attr("text-anchor", "end");
-        infoLabel->set_attr("fill", "#999999");
+    // Node count
+    size_t totalTurns = 0;
+    for (const auto& [wIdx, turns] : coilNodesByWinding) {
+        totalTurns += turns.size();
     }
+    std::stringstream countStr;
+    countStr << nodes.size() << " nodes (" << coreNodes.size() << " core, " << totalTurns << " turns)";
+    auto* countLabel = legendGroup->add_child<SVG::Text>(width - margin, legendY + 10, countStr.str());
+    countLabel->set_attr("font-size", "9");
+    countLabel->set_attr("text-anchor", "end");
+    countLabel->set_attr("fill", "#999999");
     
     return export_svg();
 }
