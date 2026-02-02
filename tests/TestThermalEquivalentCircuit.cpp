@@ -9,6 +9,7 @@
 #include <cmath>
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -37,6 +38,24 @@ void exportTemperatureFieldSvg(const std::string& testName,
     }
     painter.paint_temperature_field(magnetic, result.nodeTemperatures);
     painter.export_svg();
+}
+
+// Helper function to export thermal circuit schematic SVG
+void exportThermalCircuitSchematic(const std::string& testName,
+                                   const OpenMagnetics::ThermalEquivalentCircuit& circuit) {
+    std::filesystem::path outFile = "output";
+    std::filesystem::create_directories(outFile);
+    outFile.append("thermal_schematic_" + testName + ".svg");
+    
+    OpenMagnetics::BasicPainter painter(outFile);
+    auto nodes = circuit.getNodes();
+    auto resistances = circuit.getResistances();
+    std::string svg = painter.paint_thermal_circuit_schematic(nodes, resistances);
+    
+    // Write to file
+    std::ofstream file(outFile);
+    file << svg;
+    file.close();
 }
 
 namespace {
@@ -1527,6 +1546,51 @@ TEST_CASE("ThermalEquivalentCircuit: Per-Turn Model with WindingLosses", "[therm
         std::cout << "  Turn temperature spread: " << (maxTurnTemp - minTurnTemp) << "°C" << std::endl;
         std::cout << "  Thermal resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     }
+}
+
+TEST_CASE("ThermalEquivalentCircuit: Circuit Schematic Export", "[thermal][schematic]") {
+    // Create a magnetic component
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic(
+        "ETD 34",
+        json::array(),
+        {15, 8},  // Two windings
+        1,
+        "N87"
+    );
+    
+    double coreLosses = 1.5;
+    double windingLosses = 1.0;
+    
+    ThermalModelConfiguration config;
+    config.ambientTemperature = 25.0;
+    
+    ThermalEquivalentCircuit circuit(config);
+    
+    // Run calculation to build the circuit
+    auto result = circuit.calculateTemperatures(magnetic, coreLosses, windingLosses);
+    
+    REQUIRE(result.converged);
+    
+    // Export schematic
+    exportThermalCircuitSchematic("ETD34_two_windings", circuit);
+    
+    // Verify the schematic was created
+    std::filesystem::path outFile = "output/thermal_schematic_ETD34_two_windings.svg";
+    REQUIRE(std::filesystem::exists(outFile));
+    
+    // Read the file and check it contains expected elements
+    std::ifstream file(outFile);
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+    file.close();
+    
+    // Check for key SVG elements
+    REQUIRE(content.find("<svg") != std::string::npos);
+    REQUIRE(content.find("Thermal Equivalent Circuit") != std::string::npos);
+    REQUIRE(content.find("°C") != std::string::npos);
+    REQUIRE(content.find("K/W") != std::string::npos);
+    
+    std::cout << "Thermal circuit schematic exported to: " << outFile << std::endl;
 }
 
 } // anonymous namespace
