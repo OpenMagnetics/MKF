@@ -1043,7 +1043,14 @@ namespace OpenMagnetics {
         inductanceWithTolerance.set_minimum(roundFloat(globalNeededInductance, 10));
 
         if (maximumInductance > 0) {
-            inductanceWithTolerance.set_maximum(roundFloat(maximumInductance, 10));
+            // Ensure maximum is not smaller than minimum (can happen in edge cases)
+            if (maximumInductance >= globalNeededInductance) {
+                inductanceWithTolerance.set_maximum(roundFloat(maximumInductance, 10));
+            } else {
+                // If max < min, swap them or just use minimum as max with tolerance
+                inductanceWithTolerance.set_maximum(roundFloat(globalNeededInductance * 1.2, 10));
+                inductanceWithTolerance.set_minimum(roundFloat(maximumInductance, 10));
+            }
         }
 
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
