@@ -1536,6 +1536,304 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     }
 }
 
+void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar) {
+    set_image_size(magnetic);
+    
+    if (nodeTemperatures.empty()) {
+        return;
+    }
+    
+    // Find temperature range for color mapping
+    double minimumTemperature = DBL_MAX;
+    double maximumTemperature = -DBL_MAX;
+    for (const auto& [name, temp] : nodeTemperatures) {
+        if (temp < minimumTemperature) minimumTemperature = temp;
+        if (temp > maximumTemperature) maximumTemperature = temp;
+    }
+    
+    // Apply colorbar settings if provided
+    if (settings.get_painter_minimum_value_colorbar().has_value()) {
+        minimumTemperature = settings.get_painter_minimum_value_colorbar().value();
+    }
+    if (settings.get_painter_maximum_value_colorbar().has_value()) {
+        maximumTemperature = settings.get_painter_maximum_value_colorbar().value();
+    }
+    if (minimumTemperature == maximumTemperature) {
+        minimumTemperature = maximumTemperature - 1;
+    }
+    
+    // Use blue (cold) to red (hot) color scale
+    auto coldColor = settings.get_painter_color_magnetic_field_minimum();  // Typically blue
+    auto hotColor = settings.get_painter_color_magnetic_field_maximum();   // Typically red
+    
+    Coil coil = magnetic.get_coil();
+    Core core = magnetic.get_mutable_core();
+    
+    auto shapes = _root.add_child<SVG::Group>();
+    
+    // Helper function to find a node temperature by exact name match
+    auto findNodeTemperatureExact = [&nodeTemperatures](const std::string& name) -> std::optional<double> {
+        auto it = nodeTemperatures.find(name);
+        if (it != nodeTemperatures.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    };
+    
+    // Helper function to find a node temperature by partial name match
+    auto findNodeTemperature = [&nodeTemperatures](const std::string& prefix) -> std::optional<double> {
+        for (const auto& [name, temp] : nodeTemperatures) {
+            if (name.find(prefix) != std::string::npos) {
+                return temp;
+            }
+        }
+        return std::nullopt;
+    };
+    
+    // Paint core regions with their temperatures
+    // Look for core-related node names (e.g., "Core_Column_0", "Core_Top_Yoke", etc.)
+    auto processedElements = core.get_processed_description().value();
+    auto columns = processedElements.get_columns();
+    auto family = core.get_shape_family();
+    
+    // Get the main column and calculate 2D view geometry (same as paint_two_piece_set_core)
+    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
+    auto rightColumn = core.find_closest_column_by_coordinates(
+        std::vector<double>({processedElements.get_width() / 2, 0, -processedElements.get_depth() / 2}));
+    
+    double showingCoreWidth;
+    double showingMainColumnWidth;
+    switch (family) {
+        case MAS::CoreShapeFamily::C:
+        case MAS::CoreShapeFamily::U:
+        case MAS::CoreShapeFamily::UR:
+            showingMainColumnWidth = mainColumn.get_width() / 2;
+            showingCoreWidth = processedElements.get_width() - mainColumn.get_width() / 2;
+            break;
+        default:
+            showingCoreWidth = processedElements.get_width() / 2;
+            showingMainColumnWidth = mainColumn.get_width() / 2;
+    }
+    
+    double rightColumnWidth;
+    if (rightColumn.get_minimum_width()) {
+        rightColumnWidth = rightColumn.get_minimum_width().value();
+    }
+    else {
+        rightColumnWidth = rightColumn.get_width();
+    }
+    
+    double coreHeight = processedElements.get_height();
+    double mainColumnHeight = mainColumn.get_height();
+    
+    // Paint columns with matching 2D view geometry
+    for (size_t i = 0; i < columns.size(); ++i) {
+        auto column = columns[i];
+        std::string nodeName = "Core_Column_" + std::to_string(i);
+        
+        auto tempOpt = findNodeTemperature(nodeName);
+        if (!tempOpt) {
+            tempOpt = findNodeTemperature("Core");
+        }
+        
+        if (tempOpt) {
+            double temp = tempOpt.value();
+            auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+            
+            std::stringstream stream;
+            stream << std::fixed << std::setprecision(1) << temp;
+            std::string label = nodeName + ": " + stream.str() + " °C";
+            
+            // Determine column position in 2D view (matching paint_two_piece_set_core)
+            double xCoord, colWidth, colHeight;
+            if (column.get_type() == ColumnType::CENTRAL) {
+                // Central column: x from 0 to mainColumnWidth/2
+                xCoord = showingMainColumnWidth / 2;
+                colWidth = showingMainColumnWidth;
+                colHeight = column.get_height();
+            } else {
+                // Lateral column: x from showingCoreWidth-rightColumnWidth to showingCoreWidth
+                xCoord = showingCoreWidth - rightColumnWidth / 2;
+                colWidth = rightColumnWidth;
+                colHeight = column.get_height();
+            }
+            
+            std::string cssClassName = generate_random_string();
+            _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 0.8);
+            paint_rectangle(xCoord, 0, colWidth, colHeight, cssClassName, shapes, 0, {0, 0}, label);
+        }
+    }
+    
+    // Paint top yoke
+    auto topYokeTempOpt = findNodeTemperatureExact("Core_Top_Yoke");
+    if (!topYokeTempOpt) {
+        topYokeTempOpt = findNodeTemperature("Core");
+    }
+    if (topYokeTempOpt) {
+        double temp = topYokeTempOpt.value();
+        auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+        
+        std::stringstream stream;
+        stream << std::fixed << std::setprecision(1) << temp;
+        std::string label = "Core_Top_Yoke: " + stream.str() + " °C";
+        
+        // Top yoke: from y=mainColumnHeight/2 to y=coreHeight/2, full width
+        double yokeHeight = (coreHeight - mainColumnHeight) / 2;
+        double yokeY = mainColumnHeight / 2 + yokeHeight / 2;
+        
+        std::string cssClassName = generate_random_string();
+        _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 0.8);
+        paint_rectangle(showingCoreWidth / 2, yokeY, showingCoreWidth, yokeHeight, cssClassName, shapes, 0, {0, 0}, label);
+    }
+    
+    // Paint bottom yoke
+    auto bottomYokeTempOpt = findNodeTemperatureExact("Core_Bottom_Yoke");
+    if (!bottomYokeTempOpt) {
+        bottomYokeTempOpt = findNodeTemperature("Core");
+    }
+    if (bottomYokeTempOpt) {
+        double temp = bottomYokeTempOpt.value();
+        auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+        
+        std::stringstream stream;
+        stream << std::fixed << std::setprecision(1) << temp;
+        std::string label = "Core_Bottom_Yoke: " + stream.str() + " °C";
+        
+        // Bottom yoke: from y=-coreHeight/2 to y=-mainColumnHeight/2, full width
+        double yokeHeight = (coreHeight - mainColumnHeight) / 2;
+        double yokeY = -(mainColumnHeight / 2 + yokeHeight / 2);
+        
+        std::string cssClassName = generate_random_string();
+        _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 0.8);
+        paint_rectangle(showingCoreWidth / 2, yokeY, showingCoreWidth, yokeHeight, cssClassName, shapes, 0, {0, 0}, label);
+    }
+    
+    // Paint bobbin if present - bobbin is a variant<Bobbin, string>
+    auto bobbinVariant = magnetic.get_coil().get_bobbin();
+    if (std::holds_alternative<Bobbin>(bobbinVariant)) {
+        
+        // Try to find bobbin temperature - node names are "Bobbin_Inner" or "Bobbin_Outer"
+        auto bobbinTempOpt = findNodeTemperature("Bobbin");
+        if (bobbinTempOpt) {
+            double temp = bobbinTempOpt.value();
+            auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+            
+            std::stringstream stream;
+            stream << std::fixed << std::setprecision(1) << temp;
+            std::string label = "bobbin: " + stream.str() + " °C";
+            
+            auto windingWindow = core.get_winding_window();
+            if (windingWindow.get_width()) {
+                double xCoord = windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2;
+                double yCoord = windingWindow.get_coordinates().value()[1];
+                double width = windingWindow.get_width().value();
+                double height = windingWindow.get_height().value();
+                
+                // Draw bobbin outline as a rectangle
+                std::string cssClassName = generate_random_string();
+                _root.style("." + cssClassName).set_attr("fill", "none").set_attr("stroke", color).set_attr("stroke-width", "3");
+                paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
+            }
+        }
+    }
+    
+    // Paint coil turns with their temperatures
+    if (coil.get_turns_description()) {
+        auto turns = coil.get_turns_description().value();
+        
+        for (size_t i = 0; i < turns.size(); ++i) {
+            auto& turn = turns[i];
+            std::string turnName = turn.get_name();
+            
+            // Try to find temperature for this specific turn
+            std::optional<double> tempOpt;
+            
+            // First try exact match
+            auto it = nodeTemperatures.find(turnName);
+            if (it != nodeTemperatures.end()) {
+                tempOpt = it->second;
+            } else {
+                // Try to find by layer or section name - names are "Coil_Layer_0", "Coil", etc.
+                tempOpt = findNodeTemperature("Coil_Layer");
+                if (!tempOpt) {
+                    tempOpt = findNodeTemperature("Coil");
+                }
+            }
+            
+            if (tempOpt) {
+                double temp = tempOpt.value();
+                auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+                
+                std::stringstream stream;
+                stream << std::fixed << std::setprecision(1) << temp;
+                std::string label = turnName + ": " + stream.str() + " °C";
+                
+                if (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+                    double xCoordinate = turn.get_coordinates()[0];
+                    double yCoordinate = turn.get_coordinates()[1];
+                    double diameter = turn.get_dimensions().value()[0];
+                    std::string cssClassName = generate_random_string();
+                    _root.style("." + cssClassName).set_attr("fill", color);
+                    paint_circle(xCoordinate, yCoordinate, diameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
+                } else {
+                    if (turn.get_dimensions().value()[0] && turn.get_dimensions().value()[1]) {
+                        double xCoordinate = turn.get_coordinates()[0];
+                        double yCoordinate = turn.get_coordinates()[1];
+                        double conductingWidth = turn.get_dimensions().value()[0];
+                        double conductingHeight = turn.get_dimensions().value()[1];
+                        std::string cssClassName = generate_random_string();
+                        _root.style("." + cssClassName).set_attr("fill", color);
+                        paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, cssClassName, shapes, 0, {0, 0}, label);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Add temperature legend/colorbar inside the winding window area (optional)
+    if (showColorBar) {
+        // Get winding window coordinates for positioning
+        auto windingWindow = core.get_winding_window();
+        double windowWidth = windingWindow.get_width() ? windingWindow.get_width().value() : _imageWidth * 0.3;
+        double windowHeight = windingWindow.get_height() ? windingWindow.get_height().value() : _imageHeight * 0.6;
+        auto windowCoords = windingWindow.get_coordinates();
+        double windowX = windowCoords ? windowCoords.value()[0] : 0;
+        double windowY = windowCoords ? windowCoords.value()[1] : 0;
+        
+        // Position legend in the right side of the winding window
+        double legendWidth = windowWidth * 0.08;
+        double legendHeight = windowHeight * 0.6;
+        double legendX = windowX + windowWidth * 0.85;
+        size_t numSteps = 10;
+        
+        for (size_t i = 0; i <= numSteps; ++i) {
+            double t = static_cast<double>(i) / numSteps;
+            double temp = minimumTemperature + t * (maximumTemperature - minimumTemperature);
+            auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+            
+            double stepHeight = legendHeight / numSteps;
+            // Y goes from bottom (low temp) to top (high temp)
+            double stepY = windowY - legendHeight / 2 + (numSteps - i - 0.5) * stepHeight;
+            
+            std::string cssClassName = generate_random_string();
+            _root.style("." + cssClassName).set_attr("fill", color);
+            paint_rectangle(legendX, stepY, legendWidth, stepHeight, cssClassName, shapes);
+            
+            // Add temperature labels at key positions (min, mid, max)
+            if (i == 0 || i == numSteps / 2 || i == numSteps) {
+                std::stringstream stream;
+                stream << std::fixed << std::setprecision(0) << temp;
+                // Text position needs to be in scaled coordinates for SVG::Text
+                double textX = (legendX + legendWidth * 0.7) * _scale;
+                double textY = -stepY * _scale;  // Note: SVG Y is inverted
+                auto* text = _root.add_child<SVG::Text>(textX, textY, stream.str() + "C");
+                text->set_attr("font-size", std::to_string(windowHeight * _scale * 0.03));
+                text->set_attr("fill", "#000000");
+            }
+        }
+    }
+}
+
 std::string BasicPainter::export_svg() {
     if (!_filepath.empty()) {
         if (!std::filesystem::exists(_filepath)) {
