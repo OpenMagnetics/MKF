@@ -16,6 +16,7 @@
 #include <magic_enum.hpp>
 #include <vector>
 #include <time.h>
+#include <set>
 using json = nlohmann::json;
 #include <typeinfo>
 #include <chrono>
@@ -28,7 +29,7 @@ using namespace OpenMagneticsTesting;
 namespace {
 
 auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
-bool plot = false;
+bool plot = true;
 
 TEST_CASE("Test_Coil_Json_0", "[constructive-model][coil][bug][smoke-test]") {
     std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"Primary","name":"Primary","numberParallels":1,"numberTurns":23,"wire":"Dummy"}]})";
@@ -9144,6 +9145,9 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Add
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
+        auto path = outputFilePath;
+        path.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Additional_Coordinates.json");
+        to_file(path.string(), magnetic);
 
         painter.paint_core(magnetic);
         painter.paint_coil_turns(magnetic);
@@ -9157,6 +9161,95 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Add
         REQUIRE(turn.get_additional_coordinates());
     }
     OpenMagneticsTesting::check_turns_description(coil);
+}
+
+TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-window][bug]") {
+    clear_databases();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_include_additional_coordinates(true);
+    
+    // Create a toroidal core similar to T 20/10/7
+    std::string coreShape = "T 20/10/7";
+    std::string coreMaterial = "3C97";
+    auto emptyGapping = json::array();
+    int64_t numberStacks = 1;
+    
+    // Create a coil with 60 turns to force 2 layers (similar to original bug)
+    std::vector<int64_t> numberTurns = {60};
+    std::vector<int64_t> numberParallels = {1};
+    uint8_t interleavingLevel = 1;
+    
+    WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+    WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+    CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
+    CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+    auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+    auto turns = coil.get_turns_description().value();
+    auto layers = coil.get_layers_description().value();
+    
+    std::cout << "Number of layers: " << layers.size() << std::endl;
+    
+    // Check that all turns have additional coordinates
+    for (auto& turn : turns) {
+        REQUIRE(turn.get_additional_coordinates());
+    }
+    
+    // Group turns by layer and check additional coordinates
+    std::map<std::string, std::vector<size_t>> turnsByLayer;
+    for (size_t i = 0; i < turns.size(); ++i) {
+        turnsByLayer[turns[i].get_layer().value()].push_back(i);
+    }
+    
+    std::cout << "Turns per layer:" << std::endl;
+    for (auto& [layerName, indices] : turnsByLayer) {
+        std::cout << "  " << layerName << ": " << indices.size() << " turns" << std::endl;
+    }
+    
+    // Collect all additional radii
+    std::vector<double> additionalRadii;
+    for (size_t i = 0; i < turns.size(); ++i) {
+        auto addCoords = turns[i].get_additional_coordinates().value()[0];
+        double radius = sqrt(addCoords[0]*addCoords[0] + addCoords[1]*addCoords[1]);
+        additionalRadii.push_back(radius);
+    }
+    
+    // Find unique radii
+    std::set<double> uniqueRadii;
+    for (auto r : additionalRadii) {
+        // Round to 0.1mm precision
+        uniqueRadii.insert(round(r * 10000) / 10000);
+    }
+    
+    std::cout << "Unique additional radii: ";
+    for (auto r : uniqueRadii) {
+        std::cout << r * 1000 << "mm ";
+    }
+    std::cout << std::endl;
+    
+    // The bug was that additional turns from layer 1 were placed at a different radius
+    // than turns from layer 0, even though there was space in the first additional layer.
+    // After the fix, all additional turns should be at the same radius (compacted).
+    REQUIRE(uniqueRadii.size() == 1);
+
+    if (plot) {
+        auto outFile = outputFilePath;
+        outFile.append("Test_Additiona_Turns_Bug.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        painter.paint_core(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        REQUIRE(std::filesystem::exists(outFile));
+    }
+    settings.reset();
 }
 
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Additional_Coordinates", "[constructive-model][coil][round-winding-window][smoke-test]") {
