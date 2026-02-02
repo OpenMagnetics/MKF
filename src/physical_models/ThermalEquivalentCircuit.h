@@ -8,11 +8,51 @@
 #include <map>
 #include <string>
 #include <memory>
-#include <Eigen/Dense>
 
 using namespace MAS;
 
 namespace OpenMagnetics {
+
+/**
+ * @brief Simple matrix class for thermal circuit solver (replaces Eigen dependency)
+ */
+class SimpleMatrix {
+private:
+    std::vector<std::vector<double>> data;
+    size_t rows_, cols_;
+    
+public:
+    SimpleMatrix() : rows_(0), cols_(0) {}
+    SimpleMatrix(size_t rows, size_t cols, double val = 0.0) 
+        : data(rows, std::vector<double>(cols, val)), rows_(rows), cols_(cols) {}
+    
+    size_t rows() const { return rows_; }
+    size_t cols() const { return cols_; }
+    
+    double& operator()(size_t i, size_t j) { return data[i][j]; }
+    const double& operator()(size_t i, size_t j) const { return data[i][j]; }
+    
+    void setZero() {
+        for (auto& row : data) {
+            std::fill(row.begin(), row.end(), 0.0);
+        }
+    }
+    
+    // Set a row to zero
+    void setRowZero(size_t row) {
+        std::fill(data[row].begin(), data[row].end(), 0.0);
+    }
+    
+    // Set a column to zero
+    void setColZero(size_t col) {
+        for (size_t i = 0; i < rows_; ++i) {
+            data[i][col] = 0.0;
+        }
+    }
+    
+    // Solve Ax = b using Gauss-Jordan elimination with partial pivoting
+    static std::vector<double> solve(SimpleMatrix A, std::vector<double> b);
+};
 
 /**
  * @brief Types of thermal nodes in the equivalent circuit
@@ -118,6 +158,11 @@ struct ThermalModelConfiguration {
     bool nodePerCoreColumn = true;
     bool nodePerCoilLayer = true;               // If false, one node per section
     bool nodePerCoilTurn = false;               // Maximum granularity (expensive)
+    
+    // Wire thermal conductivity (copper default)
+    double wireThermalConductivity = 385.0;     // W/(m·K) - copper
+    // Effective conductivity for impregnated windings (much lower due to insulation)
+    double windingEffectiveThermalConductivity = 1.0;  // W/(m·K) - composite
 };
 
 /**
@@ -161,17 +206,19 @@ private:
     std::vector<ThermalResistanceElement> resistances;
     size_t ambientNodeId;
     
-    // Conductance matrix and power vector for solving
-    Eigen::MatrixXd conductanceMatrix;
-    Eigen::VectorXd powerVector;
-    Eigen::VectorXd temperatureVector;
+    // Conductance matrix and power/temperature vectors for solving
+    SimpleMatrix conductanceMatrix;
+    std::vector<double> powerVector;
+    std::vector<double> temperatureVector;
+    
+    // Stored losses for per-element distribution
     
     /**
-     * @brief Build the thermal network from magnetic geometry
+     * @brief Build the thermal network using WindingLossesOutput with per-turn losses
      */
-    void buildNetwork(Magnetic magnetic, 
-                      const std::map<std::string, double>& coreLossesPerElement,
-                      const std::map<std::string, double>& windingLossesPerElement);
+    void buildNetworkWithWindingLosses(Magnetic magnetic,
+                                       double coreLosses,
+                                       const WindingLossesOutput& windingLosses);
     
     /**
      * @brief Create nodes for the core
@@ -179,9 +226,14 @@ private:
     void createCoreNodes(Core core);
     
     /**
-     * @brief Create nodes for the coil
+     * @brief Create nodes for the coil (sections or layers)
      */
-    void createCoilNodes(const Coil& coil);
+    void createCoilNodes(const Coil& coil, const Core& core);
+    
+    /**
+     * @brief Create individual turn nodes for maximum granularity
+     */
+    void createCoilTurnNodes(Coil coil, const Core& core);
     
     /**
      * @brief Create bobbin nodes
@@ -192,6 +244,46 @@ private:
      * @brief Create thermal resistances between nodes
      */
     void createThermalResistances(Magnetic magnetic);
+    
+    /**
+     * @brief Create thermal resistances for per-turn model
+     */
+    void createTurnThermalResistances(Magnetic magnetic);
+    
+    /**
+     * @brief Distribute losses to turn nodes using actual per-turn losses (required)
+     */
+    void distributeTurnLosses(const Coil& coil, const WindingLossesOutput& windingLosses);
+    
+    /**
+     * @brief Get total losses from a WindingLossesPerElement
+     */
+    static double getTotalLossFromElement(const WindingLossesPerElement& element);
+    
+    /**
+     * @brief Find neighboring turns for a given turn
+     */
+    std::vector<size_t> findNeighboringTurnNodes(size_t turnNodeId, const Coil& coil);
+    
+    /**
+     * @brief Calculate distance between two nodes
+     */
+    static double calculateNodeDistance(const ThermalNode& node1, const ThermalNode& node2);
+    
+    /**
+     * @brief Determine if a turn is adjacent to core
+     */
+    bool isTurnAdjacentToCore(const Turn& turn, Core core) const;
+    
+    /**
+     * @brief Determine if a turn is on the outer layer (exposed to air)
+     */
+    bool isTurnOnOuterLayer(const Turn& turn, const Coil& coil) const;
+    
+    /**
+     * @brief Determine if a turn is adjacent to bobbin
+     */
+    bool isTurnAdjacentToBobbin(const Turn& turn, const Coil& coil) const;
     
     /**
      * @brief Assemble the conductance matrix
@@ -211,7 +303,7 @@ private:
     /**
      * @brief Check convergence of temperature values
      */
-    bool checkConvergence(const Eigen::VectorXd& oldTemperatures);
+    bool checkConvergence(const std::vector<double>& oldTemperatures);
 
 public:
     ThermalEquivalentCircuit() = default;
@@ -234,20 +326,23 @@ public:
     ThermalAnalysisOutput calculateTemperatures(
         Magnetic magnetic,
         double coreLosses,
-        double windingLosses);
+        const WindingLossesOutput& windingLosses);
     
     /**
-     * @brief Calculate temperatures with detailed loss distribution
+     * @brief Calculate steady-state temperatures with scalar losses (backward-compatible overload)
+     * 
+     * This overload distributes winding losses proportionally to the number of turns
+     * in each winding, creating per-turn losses internally.
      * 
      * @param magnetic The magnetic component
-     * @param coreLossesPerElement Map of element name to loss (W)
-     * @param windingLossesPerElement Map of layer/section name to loss (W)
-     * @return ThermalAnalysisOutput Results of the analysis
+     * @param coreLosses Total core losses (W)
+     * @param windingLosses Total winding losses (W)
+     * @return ThermalAnalysisOutput with component temperatures
      */
-    ThermalAnalysisOutput calculateTemperaturesDetailed(
+    ThermalAnalysisOutput calculateTemperatures(
         Magnetic magnetic,
-        const std::map<std::string, double>& coreLossesPerElement,
-        const std::map<std::string, double>& windingLossesPerElement);
+        double coreLosses,
+        double windingLosses);
     
     /**
      * @brief Get the temperature at a specific point
@@ -347,6 +442,13 @@ public:
      * @return Thermal conductivity in W/(m·K), or default ferrite value if not available
      */
     static double getCoreMaterialThermalConductivity(const CoreMaterial& coreMaterial);
+    
+    /**
+     * @brief Get thermal conductivity from insulation material (from MAS data)
+     * @param material The insulation material
+     * @return Thermal conductivity in W/(m·K), or default 0.2 if not available
+     */
+    static double getInsulationMaterialThermalConductivity(const InsulationMaterial& material);
     
     /**
      * @brief Calculate gap thermal resistance

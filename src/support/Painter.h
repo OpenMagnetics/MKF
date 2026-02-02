@@ -286,6 +286,7 @@ class BasicPainter : public PainterInterface {
     void paint_coil_layers(Magnetic magnetic);
     void paint_wire(Wire wire);
     void paint_coil_turns(Magnetic magnetic);
+    void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false);
     void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0) {
         throw std::runtime_error("Not implemented in basic painter");
     }

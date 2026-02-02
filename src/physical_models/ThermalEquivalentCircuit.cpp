@@ -4,6 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <iostream>
+#include <set>
 
 namespace OpenMagnetics {
 
@@ -11,6 +12,70 @@ namespace OpenMagnetics {
 constexpr double STEFAN_BOLTZMANN = 5.670374419e-8;  // W/(m²·K⁴)
 constexpr double GRAVITY = 9.81;                      // m/s²
 constexpr double KELVIN_OFFSET = 273.15;
+
+//=============================================================================
+// SimpleMatrix Implementation
+//=============================================================================
+
+std::vector<double> SimpleMatrix::solve(SimpleMatrix A, std::vector<double> b) {
+    // Gauss-Jordan elimination with partial pivoting
+    size_t n = A.rows();
+    if (n == 0 || b.size() != n) {
+        throw std::invalid_argument("Matrix dimensions mismatch");
+    }
+    
+    // Create augmented matrix [A|b]
+    std::vector<std::vector<double>> aug(n, std::vector<double>(n + 1));
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            aug[i][j] = A(i, j);
+        }
+        aug[i][n] = b[i];
+    }
+    
+    // Forward elimination with partial pivoting
+    for (size_t col = 0; col < n; ++col) {
+        // Find pivot
+        size_t maxRow = col;
+        double maxVal = std::abs(aug[col][col]);
+        for (size_t row = col + 1; row < n; ++row) {
+            if (std::abs(aug[row][col]) > maxVal) {
+                maxVal = std::abs(aug[row][col]);
+                maxRow = row;
+            }
+        }
+        
+        // Swap rows
+        if (maxRow != col) {
+            std::swap(aug[col], aug[maxRow]);
+        }
+        
+        // Check for singular matrix
+        if (std::abs(aug[col][col]) < 1e-15) {
+            throw std::runtime_error("Matrix is singular or nearly singular");
+        }
+        
+        // Eliminate column entries below pivot
+        for (size_t row = col + 1; row < n; ++row) {
+            double factor = aug[row][col] / aug[col][col];
+            for (size_t j = col; j <= n; ++j) {
+                aug[row][j] -= factor * aug[col][j];
+            }
+        }
+    }
+    
+    // Back substitution
+    std::vector<double> x(n);
+    for (int i = static_cast<int>(n) - 1; i >= 0; --i) {
+        x[i] = aug[i][n];
+        for (size_t j = i + 1; j < n; ++j) {
+            x[i] -= aug[i][j] * x[j];
+        }
+        x[i] /= aug[i][i];
+    }
+    
+    return x;
+}
 
 //=============================================================================
 // FluidProperties Implementation
@@ -205,28 +270,22 @@ double ThermalEquivalentCircuit::calculateRadiationResistance(
 
 double ThermalEquivalentCircuit::getMaterialThermalConductivity(const std::string& materialName) {
     // First try to look up from MAS databases
+    // Convert to lowercase for database lookup
+    std::string lowerName = materialName;
+    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
     
     // Try wire material database (copper, aluminium have thermalConductivity as array)
     try {
-        auto wireMaterial = find_wire_material_by_name(materialName);
-        auto thermalCond = wireMaterial.get_thermal_conductivity();
-        if (thermalCond && !thermalCond->empty()) {
-            // Return value at room temperature (20-25°C)
-            for (const auto& elem : *thermalCond) {
-                if (elem.get_temperature() >= 20 && elem.get_temperature() <= 30) {
-                    return elem.get_value();
-                }
-            }
-            // If no room temp value, return first available
-            return thermalCond->front().get_value();
-        }
+        auto wireMaterial = find_wire_material_by_name(lowerName);
+        // Use the interpolation function at room temperature (25°C)
+        return getWireMaterialThermalConductivity(wireMaterial, 25.0);
     } catch (...) {
         // Not a wire material, continue
     }
     
     // Try insulation material database
     try {
-        auto insulationMaterial = find_insulation_material_by_name(materialName);
+        auto insulationMaterial = find_insulation_material_by_name(lowerName);
         auto thermalCond = insulationMaterial.get_thermal_conductivity();
         if (thermalCond) {
             return *thermalCond;
@@ -237,12 +296,13 @@ double ThermalEquivalentCircuit::getMaterialThermalConductivity(const std::strin
     
     // Try core material database (uses heatConductivity field)
     try {
-        auto coreMaterial = find_core_material_by_name(materialName);
+        auto coreMaterial = find_core_material_by_name(materialName);  // Core materials may be case-sensitive (e.g., "N87")
         auto heatCond = coreMaterial.get_heat_conductivity();
         if (heatCond) {
             // DimensionWithTolerance has nominal value
-            if (std::holds_alternative<double>(heatCond->get_nominal())) {
-                return std::get<double>(heatCond->get_nominal());
+            auto nominal = heatCond->get_nominal();
+            if (nominal) {
+                return *nominal;
             }
         }
     } catch (...) {
@@ -327,8 +387,8 @@ double ThermalEquivalentCircuit::getCoreMaterialThermalConductivity(const CoreMa
     auto heatCond = coreMaterial.get_heat_conductivity();
     if (heatCond) {
         auto nominal = heatCond->get_nominal();
-        if (std::holds_alternative<double>(nominal)) {
-            return std::get<double>(nominal);
+        if (nominal) {
+            return *nominal;
         }
     }
     
@@ -348,6 +408,16 @@ double ThermalEquivalentCircuit::getCoreMaterialThermalConductivity(const CoreMa
         default:
             return 4.0;     // Default ferrite
     }
+}
+
+double ThermalEquivalentCircuit::getInsulationMaterialThermalConductivity(const InsulationMaterial& material) {
+    auto thermalCond = material.get_thermal_conductivity();
+    if (thermalCond) {
+        return *thermalCond;
+    }
+    
+    // Default for insulation materials (typical plastics)
+    return 0.2;  // W/(m·K)
 }
 
 double ThermalEquivalentCircuit::calculateGapThermalResistance(const CoreGap& gap) {
@@ -461,51 +531,62 @@ void ThermalEquivalentCircuit::createCoreNodes(Core core) {
     nodes.push_back(bottomYoke);
 }
 
-void ThermalEquivalentCircuit::createCoilNodes(const Coil& coil) {
+void ThermalEquivalentCircuit::createCoilNodes(const Coil& coil, const Core& core) {
     auto sections = coil.get_sections_description();
+    auto layers = coil.get_layers_description();
+    auto turns = coil.get_turns_description();
     
-    if (!sections || sections->empty()) {
-        return;  // No coil geometry available
+    // If per-turn nodes requested and turns are available, use createCoilTurnNodes
+    if (config.nodePerCoilTurn && turns && !turns->empty()) {
+        // Note: createCoilTurnNodes takes Coil by copy, so we need to pass a copy
+        Coil coilCopy = coil;
+        createCoilTurnNodes(coilCopy, core);
+        return;
     }
     
-    if (config.nodePerCoilLayer) {
-        // Create one node per layer (more detailed)
-        auto layers = coil.get_layers_description();
-        if (layers && !layers->empty()) {
-            for (size_t l = 0; l < layers->size(); ++l) {
-                auto& layer = (*layers)[l];
-                
-                ThermalNode node;
-                node.id = nodes.size();
-                node.type = ThermalNodeType::COIL_LAYER;
-                node.name = "Coil_Layer_" + std::to_string(l);
-                node.temperature = config.ambientTemperature;
-                node.powerDissipation = 0.0;
-                
-                auto layerDims = layer.get_dimensions();
-                auto layerCoords = layer.get_coordinates();
-                
-                // Estimate volume and surface area
-                if (layerDims.size() >= 2 && layerCoords.size() >= 2) {
-                    // Cylindrical layer approximation
-                    double width = layerDims[0];
-                    double height = layerDims[1];
-                    double radius = layerCoords[0] + width / 2;
-                    node.volume = M_PI * width * radius * 2 * height;
-                    node.exposedSurfaceArea = 2 * M_PI * radius * height;
-                    node.coordinates = {layerCoords[0], layerCoords[1], 0};
-                } else {
-                    node.volume = 1e-6;  // 1 mm³ default
-                    node.exposedSurfaceArea = 1e-4;  // 1 cm² default
-                    node.coordinates = {0, 0, 0};
-                }
-                
-                node.emissivity = config.defaultEmissivity;
-                nodes.push_back(node);
+    // Try layer-based nodes first if configured and layers exist
+    if (config.nodePerCoilLayer && layers && !layers->empty()) {
+        // Create one node per conduction layer (skip insulation layers)
+        size_t conductionLayerIndex = 0;
+        for (size_t l = 0; l < layers->size(); ++l) {
+            auto& layer = (*layers)[l];
+            
+            // Skip insulation layers - they don't generate heat
+            if (layer.get_type() == ElectricalType::INSULATION) {
+                continue;
             }
+            
+            ThermalNode node;
+            node.id = nodes.size();
+            node.type = ThermalNodeType::COIL_LAYER;
+            node.name = layer.get_name();
+            node.temperature = config.ambientTemperature;
+            node.powerDissipation = 0.0;  // Will be set by distributeLayerLosses
+            
+            auto layerDims = layer.get_dimensions();
+            auto layerCoords = layer.get_coordinates();
+            
+            // Estimate volume and surface area
+            if (layerDims.size() >= 2 && layerCoords.size() >= 2) {
+                // Cylindrical layer approximation
+                double width = layerDims[0];
+                double height = layerDims[1];
+                double radius = layerCoords[0] + width / 2;
+                node.volume = M_PI * width * radius * 2 * height;
+                node.exposedSurfaceArea = 2 * M_PI * radius * height;
+                node.coordinates = {layerCoords[0], layerCoords[1], 0};
+            } else {
+                node.volume = 1e-6;  // 1 mm³ default
+                node.exposedSurfaceArea = 1e-4;  // 1 cm² default
+                node.coordinates = {0, 0, 0};
+            }
+            
+            node.emissivity = config.defaultEmissivity;
+            nodes.push_back(node);
+            conductionLayerIndex++;
         }
-    } else {
-        // Create one node per section (simpler)
+    } else if (sections && !sections->empty()) {
+        // Fallback to section-based nodes if no layers available
         for (size_t s = 0; s < sections->size(); ++s) {
             auto& section = (*sections)[s];
             auto dims = section.get_dimensions();
@@ -516,7 +597,7 @@ void ThermalEquivalentCircuit::createCoilNodes(const Coil& coil) {
             node.type = ThermalNodeType::COIL_SECTION;
             node.name = section.get_name();
             node.temperature = config.ambientTemperature;
-            node.powerDissipation = 0.0;
+            node.powerDissipation = 0.0;  // Will be set by distributeSectionLosses
             
             if (dims.size() >= 2 && coords.size() >= 2) {
                 double width = dims[0];
@@ -534,15 +615,74 @@ void ThermalEquivalentCircuit::createCoilNodes(const Coil& coil) {
             node.emissivity = config.defaultEmissivity;
             nodes.push_back(node);
         }
+    } else {
+        // Last resort: create a generic coil node based on winding window dimensions
+        auto windings = coil.get_functional_description();
+        if (!windings.empty()) {
+            ThermalNode node;
+            node.id = nodes.size();
+            node.type = ThermalNodeType::COIL_SECTION;
+            node.name = "Coil";
+            node.temperature = config.ambientTemperature;
+            node.powerDissipation = 0.0;
+            
+            // Estimate coil dimensions from core's winding window
+            auto processedCore = core.get_processed_description();
+            double coilVolume = 1e-6;  // Default 1 mm³
+            double coilSurfaceArea = 1e-4;  // Default 1 cm²
+            
+            if (processedCore) {
+                auto windingWindows = processedCore->get_winding_windows();
+                if (!windingWindows.empty()) {
+                    auto& window = windingWindows[0];
+                    double windowWidth = 0.010;   // 10mm default
+                    double windowHeight = 0.020;  // 20mm default
+                    
+                    // Get actual dimensions - WindingWindowElement has get_width(), get_height(), get_radial_height()
+                    auto radialHeight = window.get_radial_height();
+                    auto height = window.get_height();
+                    if (radialHeight) windowWidth = *radialHeight;
+                    if (height) windowHeight = *height;
+                    
+                    // Estimate fill factor around 50%
+                    double fillFactor = 0.5;
+                    
+                    // For ETD/E type cores, coil wraps around central column
+                    auto columns = processedCore->get_columns();
+                    double centralRadius = 0.005;  // 5mm default
+                    if (!columns.empty()) {
+                        auto& col = columns[0];
+                        // ColumnElement has get_width() directly
+                        centralRadius = col.get_width() / 2.0;
+                    }
+                    
+                    // Coil is an annular cylinder
+                    double innerRadius = centralRadius;
+                    double outerRadius = centralRadius + windowWidth * fillFactor;
+                    double coilHeight = windowHeight * 0.9;  // 90% fill
+                    
+                    coilVolume = M_PI * (outerRadius * outerRadius - innerRadius * innerRadius) * coilHeight;
+                    // Surface area: inner + outer cylindrical surfaces
+                    coilSurfaceArea = 2 * M_PI * outerRadius * coilHeight + 
+                                     2 * M_PI * innerRadius * coilHeight;
+                }
+            }
+            
+            node.volume = coilVolume;
+            node.exposedSurfaceArea = coilSurfaceArea;
+            node.coordinates = {0, 0, 0};
+            node.emissivity = config.defaultEmissivity;
+            nodes.push_back(node);
+        }
     }
 }
 
 void ThermalEquivalentCircuit::createBobbinNodes(Bobbin bobbin) {
     // Create inner and outer bobbin surface nodes
-    auto functional = bobbin.get_functional_description();
-    if (!functional) return;
+    auto processed = bobbin.get_processed_description();
+    if (!processed) return;
     
-    double wallThickness = functional->get_wall_thickness();
+    double wallThickness = processed->get_wall_thickness();
     
     // Get winding window dimensions [width, height]
     auto windingWindowDims = bobbin.get_winding_window_dimensions(0);
@@ -580,9 +720,377 @@ void ThermalEquivalentCircuit::createBobbinNodes(Bobbin bobbin) {
     nodes.push_back(outerNode);
 }
 
+void ThermalEquivalentCircuit::createCoilTurnNodes(Coil coil, const Core& core) {
+    auto turns = coil.get_turns_description();
+    if (!turns || turns->empty()) {
+        return;
+    }
+    
+    for (size_t t = 0; t < turns->size(); ++t) {
+        const auto& turn = (*turns)[t];
+        
+        ThermalNode node;
+        node.id = nodes.size();
+        node.type = ThermalNodeType::COIL_TURN;
+        node.name = turn.get_name();
+        node.temperature = config.ambientTemperature;
+        node.powerDissipation = 0.0;  // Will be set by distributeTurnLosses
+        
+        // Get turn dimensions and coordinates
+        auto coords = turn.get_coordinates();
+        auto dims = turn.get_dimensions();
+        double turnLength = turn.get_length();
+        
+        // Estimate turn cross-sectional area
+        double turnArea = 0;
+        if (dims && dims->size() >= 2) {
+            // Rectangular or defined dimensions
+            turnArea = (*dims)[0] * (*dims)[1];
+        } else if (dims && dims->size() >= 1) {
+            // Round wire - diameter given
+            double d = (*dims)[0];
+            turnArea = M_PI * d * d / 4.0;
+        } else {
+            // Fallback: try to get from wire
+            turnArea = 1e-6;  // 1 mm² default
+        }
+        
+        node.volume = turnArea * turnLength;
+        node.exposedSurfaceArea = std::sqrt(turnArea * M_PI) * turnLength;  // Approximate circumference * length
+        
+        if (coords.size() >= 2) {
+            node.coordinates = {coords[0], coords[1], coords.size() >= 3 ? coords[2] : 0};
+        } else {
+            node.coordinates = {0, 0, 0};
+        }
+        
+        node.emissivity = config.defaultEmissivity;
+        nodes.push_back(node);
+    }
+}
+
+double ThermalEquivalentCircuit::getTotalLossFromElement(const WindingLossesPerElement& element) {
+    double total = 0.0;
+    
+    // Add ohmic losses
+    if (element.get_ohmic_losses()) {
+        total += element.get_ohmic_losses()->get_losses();
+    }
+    
+    // Add skin effect losses (sum of harmonics)
+    if (element.get_skin_effect_losses()) {
+        auto skinLosses = element.get_skin_effect_losses()->get_losses_per_harmonic();
+        for (double loss : skinLosses) {
+            total += loss;
+        }
+    }
+    
+    // Add proximity effect losses (sum of harmonics)
+    if (element.get_proximity_effect_losses()) {
+        auto proxLosses = element.get_proximity_effect_losses()->get_losses_per_harmonic();
+        for (double loss : proxLosses) {
+            total += loss;
+        }
+    }
+    
+    return total;
+}
+
+void ThermalEquivalentCircuit::distributeTurnLosses(const Coil& coil, const WindingLossesOutput& windingLosses) {
+    auto lossesPerTurnOpt = windingLosses.get_winding_losses_per_turn();
+    if (!lossesPerTurnOpt) {
+        throw std::runtime_error("Per-turn losses are required but not available in WindingLossesOutput");
+    }
+    
+    auto& lossesPerTurn = *lossesPerTurnOpt;
+    
+    // Match turn nodes to their losses by index
+    size_t turnIndex = 0;
+    for (auto& node : nodes) {
+        if (node.type == ThermalNodeType::COIL_TURN) {
+            if (turnIndex < lossesPerTurn.size()) {
+                node.powerDissipation = getTotalLossFromElement(lossesPerTurn[turnIndex]);
+            }
+            turnIndex++;
+        }
+    }
+}
+
+double ThermalEquivalentCircuit::calculateNodeDistance(const ThermalNode& node1, const ThermalNode& node2) {
+    double dist = 0;
+    size_t n = std::min(node1.coordinates.size(), node2.coordinates.size());
+    for (size_t i = 0; i < n; ++i) {
+        dist += std::pow(node1.coordinates[i] - node2.coordinates[i], 2);
+    }
+    return std::sqrt(dist);
+}
+
+bool ThermalEquivalentCircuit::isTurnAdjacentToCore(const Turn& turn, Core core) const {
+    // A turn is adjacent to core if it's in the innermost layer (closest to central column)
+    // or if it's at the top/bottom of the winding window (close to yokes)
+    auto coords = turn.get_coordinates();
+    if (coords.empty()) return false;
+    
+    // Get core column radius
+    auto columns = core.get_columns();
+    double centralColumnRadius = 0.005;  // Default 5mm
+    for (const auto& col : columns) {
+        if (col.get_type() == ColumnType::CENTRAL) {
+            centralColumnRadius = col.get_width() / 2.0;
+            break;
+        }
+    }
+    
+    // Check radial proximity to central column
+    double turnRadius = coords[0];  // x-coordinate is radial distance
+    double gapToCore = turnRadius - centralColumnRadius;
+    
+    // Consider adjacent if within 2mm of core surface
+    return gapToCore < 0.002;
+}
+
+bool ThermalEquivalentCircuit::isTurnOnOuterLayer(const Turn& turn, const Coil& coil) const {
+    // Check if turn is on the outermost layer (furthest from core)
+    auto turns = coil.get_turns_description();
+    if (!turns || turns->empty()) return false;
+    
+    auto coords = turn.get_coordinates();
+    if (coords.empty()) return false;
+    
+    double turnRadius = coords[0];
+    
+    // Find maximum radius among all turns
+    double maxRadius = 0;
+    for (const auto& t : *turns) {
+        auto tc = t.get_coordinates();
+        if (!tc.empty()) {
+            maxRadius = std::max(maxRadius, tc[0]);
+        }
+    }
+    
+    // Consider on outer layer if within 1mm of max radius
+    return (maxRadius - turnRadius) < 0.001;
+}
+
+bool ThermalEquivalentCircuit::isTurnAdjacentToBobbin(const Turn& turn, const Coil& coil) const {
+    // A turn is adjacent to bobbin if it's in the innermost layer
+    // (bobbin is between core and winding)
+    auto turns = coil.get_turns_description();
+    if (!turns || turns->empty()) return false;
+    
+    auto coords = turn.get_coordinates();
+    if (coords.empty()) return false;
+    
+    double turnRadius = coords[0];
+    
+    // Find minimum radius among all turns
+    double minRadius = std::numeric_limits<double>::max();
+    for (const auto& t : *turns) {
+        auto tc = t.get_coordinates();
+        if (!tc.empty()) {
+            minRadius = std::min(minRadius, tc[0]);
+        }
+    }
+    
+    // Consider adjacent to bobbin if within 0.5mm of min radius
+    return (turnRadius - minRadius) < 0.0005;
+}
+
+std::vector<size_t> ThermalEquivalentCircuit::findNeighboringTurnNodes(size_t turnNodeId, const Coil& coil) {
+    std::vector<size_t> neighbors;
+    
+    const ThermalNode& turnNode = nodes[turnNodeId];
+    
+    // Find other turn nodes that are close (within 3x turn diameter)
+    double searchRadius = 0.003;  // 3mm default
+    if (!turnNode.coordinates.empty()) {
+        // Estimate turn size from volume
+        double turnDiameter = std::pow(turnNode.volume, 1.0/3.0) * 2;
+        searchRadius = turnDiameter * 3;
+    }
+    
+    for (const auto& node : nodes) {
+        if (node.id == turnNodeId) continue;
+        if (node.type != ThermalNodeType::COIL_TURN) continue;
+        
+        double dist = calculateNodeDistance(turnNode, node);
+        if (dist < searchRadius && dist > 0) {
+            neighbors.push_back(node.id);
+        }
+    }
+    
+    return neighbors;
+}
+
+void ThermalEquivalentCircuit::createTurnThermalResistances(Magnetic magnetic) {
+    Core core = magnetic.get_core();
+    Coil coil = magnetic.get_coil();
+    auto turns = coil.get_turns_description();
+    
+    if (!turns || turns->empty()) {
+        return;
+    }
+    
+    // Find node IDs by type
+    std::vector<size_t> turnNodes;
+    std::vector<size_t> coreColumnNodes;
+    size_t topYokeNode = 0, bottomYokeNode = 0;
+    size_t bobbinInnerNode = 0;
+    
+    for (const auto& node : nodes) {
+        switch (node.type) {
+            case ThermalNodeType::COIL_TURN:
+                turnNodes.push_back(node.id);
+                break;
+            case ThermalNodeType::CORE_CENTRAL_COLUMN:
+            case ThermalNodeType::CORE_LATERAL_COLUMN:
+                coreColumnNodes.push_back(node.id);
+                break;
+            case ThermalNodeType::CORE_TOP_YOKE:
+                topYokeNode = node.id;
+                break;
+            case ThermalNodeType::CORE_BOTTOM_YOKE:
+                bottomYokeNode = node.id;
+                break;
+            case ThermalNodeType::BOBBIN_INNER:
+                bobbinInnerNode = node.id;
+                break;
+            default:
+                break;
+        }
+    }
+    
+    // Get thermal conductivities
+    double windingK = config.windingEffectiveThermalConductivity;
+    // double bobbinK = config.bobbinThermalConductivity;  // For future use
+    
+    // Create resistances between neighboring turns (turn-to-turn conduction)
+    std::set<std::pair<size_t, size_t>> connectedPairs;
+    
+    for (size_t i = 0; i < turnNodes.size(); ++i) {
+        size_t turnNodeId = turnNodes[i];
+        
+        // Find the corresponding Turn by matching node name
+        const Turn* turnPtr = nullptr;
+        for (const auto& t : *turns) {
+            if (t.get_name() == nodes[turnNodeId].name) {
+                turnPtr = &t;
+                break;
+            }
+        }
+        if (!turnPtr) continue;  // Skip if we can't find the turn
+        const Turn& turn = *turnPtr;
+        
+        // Connect to neighboring turns
+        auto neighbors = findNeighboringTurnNodes(turnNodeId, coil);
+        for (size_t neighborId : neighbors) {
+            // Avoid duplicate connections
+            auto pairKey = std::make_pair(std::min(turnNodeId, neighborId), std::max(turnNodeId, neighborId));
+            if (connectedPairs.count(pairKey) > 0) continue;
+            connectedPairs.insert(pairKey);
+            
+            ThermalResistanceElement res;
+            res.nodeFromId = turnNodeId;
+            res.nodeToId = neighborId;
+            res.transferType = HeatTransferType::CONDUCTION;
+            
+            double dist = calculateNodeDistance(nodes[turnNodeId], nodes[neighborId]);
+            res.length = dist;
+            res.thermalConductivity = windingK;
+            
+            // Contact area - approximate as turn cross-section
+            double area = std::min(nodes[turnNodeId].volume, nodes[neighborId].volume) / 
+                         std::max(res.length, 0.0001);
+            res.area = area;
+            
+            res.resistance = calculateConductionResistance(res.length, res.thermalConductivity, res.area);
+            if (res.resistance > 0 && res.resistance < 1e6) {
+                resistances.push_back(res);
+            }
+        }
+        
+        // Connect turns adjacent to bobbin
+        if (isTurnAdjacentToBobbin(turn, coil) && bobbinInnerNode > 0) {
+            ThermalResistanceElement res;
+            res.nodeFromId = turnNodeId;
+            res.nodeToId = bobbinInnerNode;
+            res.transferType = HeatTransferType::CONDUCTION;
+            res.length = 0.0005;  // 0.5mm insulation gap
+            res.thermalConductivity = 0.2;  // Insulation/air
+            res.area = nodes[turnNodeId].exposedSurfaceArea * 0.3;
+            res.resistance = calculateConductionResistance(res.length, res.thermalConductivity, res.area);
+            if (res.resistance > 0) {
+                resistances.push_back(res);
+            }
+        }
+        
+        // Connect turns on outer layer to ambient (convection)
+        if (isTurnOnOuterLayer(turn, coil)) {
+            ThermalResistanceElement convRes;
+            convRes.nodeFromId = turnNodeId;
+            convRes.nodeToId = ambientNodeId;
+            convRes.transferType = config.includeForcedConvection ? 
+                                   HeatTransferType::CONVECTION_FORCED : HeatTransferType::CONVECTION_NATURAL;
+            convRes.area = nodes[turnNodeId].exposedSurfaceArea * 0.5;  // Partial exposure
+            convRes.orientation = SurfaceOrientation::VERTICAL;
+            
+            double charLength = std::pow(nodes[turnNodeId].volume, 1.0/3.0);
+            double h = config.includeForcedConvection ?
+                      calculateForcedConvectionCoefficient(config.airVelocity, charLength, config.ambientTemperature) :
+                      calculateNaturalConvectionCoefficient(nodes[turnNodeId].temperature, config.ambientTemperature,
+                                                           charLength, convRes.orientation);
+            convRes.resistance = calculateConvectionResistance(h, convRes.area);
+            resistances.push_back(convRes);
+        }
+        
+        // Connect turns adjacent to core
+        if (isTurnAdjacentToCore(turn, core) && !coreColumnNodes.empty()) {
+            // Connect to nearest core column
+            size_t nearestCoreNode = coreColumnNodes[0];
+            double minDist = std::numeric_limits<double>::max();
+            for (size_t colId : coreColumnNodes) {
+                double dist = calculateNodeDistance(nodes[turnNodeId], nodes[colId]);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearestCoreNode = colId;
+                }
+            }
+            
+            ThermalResistanceElement res;
+            res.nodeFromId = turnNodeId;
+            res.nodeToId = nearestCoreNode;
+            res.transferType = HeatTransferType::CONDUCTION;
+            res.length = minDist;
+            res.thermalConductivity = 0.05;  // Air/insulation between turn and core
+            res.area = nodes[turnNodeId].exposedSurfaceArea * 0.2;
+            res.resistance = calculateConductionResistance(res.length, res.thermalConductivity, res.area);
+            if (res.resistance > 0 && res.resistance < 1e6) {
+                resistances.push_back(res);
+            }
+        }
+    }
+}
+
 void ThermalEquivalentCircuit::createThermalResistances(Magnetic magnetic) {
     Core core = magnetic.get_core();
     Coil coil = magnetic.get_coil();
+    
+    // Check if we have turn nodes - if so, use turn-based resistances
+    bool hasTurnNodes = false;
+    for (const auto& node : nodes) {
+        if (node.type == ThermalNodeType::COIL_TURN) {
+            hasTurnNodes = true;
+            break;
+        }
+    }
+    
+    if (hasTurnNodes) {
+        // Use turn-based thermal network
+        createTurnThermalResistances(magnetic);
+        
+        // Still need to create core resistances
+        // (createTurnThermalResistances handles turn-to-core connections)
+    }
     
     // Find node IDs by type
     std::vector<size_t> coreColumnNodes;
@@ -734,9 +1242,9 @@ void ThermalEquivalentCircuit::createThermalResistances(Magnetic magnetic) {
         
         // Use wall thickness as length
         Bobbin bobbin = magnetic.get_bobbin();
-        auto functional = bobbin.get_functional_description();
-        if (functional) {
-            bobbinRes.length = functional->get_wall_thickness();
+        auto processed = bobbin.get_processed_description();
+        if (processed) {
+            bobbinRes.length = processed->get_wall_thickness();
         } else {
             bobbinRes.length = 0.001;  // Default 1mm
         }
@@ -748,34 +1256,126 @@ void ThermalEquivalentCircuit::createThermalResistances(Magnetic magnetic) {
         resistances.push_back(bobbinRes);
     }
     
-    // Coil to bobbin inner surface (conduction through insulation layer)
-    for (size_t coilId : coilNodes) {
-        ThermalResistanceElement coilBobbinRes;
-        coilBobbinRes.nodeFromId = coilId;
-        coilBobbinRes.nodeToId = bobbinInnerNode;
-        coilBobbinRes.transferType = HeatTransferType::CONDUCTION;
-        coilBobbinRes.length = 0.0005;  // Assume 0.5mm gap/insulation
-        coilBobbinRes.thermalConductivity = 0.2;  // Insulation conductivity
-        coilBobbinRes.area = nodes[coilId].exposedSurfaceArea * 0.5;  // Partial contact
-        coilBobbinRes.resistance = calculateConductionResistance(coilBobbinRes.length, 
-                                                                 coilBobbinRes.thermalConductivity,
-                                                                 coilBobbinRes.area);
-        resistances.push_back(coilBobbinRes);
+    // Get layer descriptions for insulation data
+    auto layersOpt = coil.get_layers_description();
+    std::vector<Layer> layers;
+    if (layersOpt) {
+        layers = *layersOpt;
     }
     
-    // Inter-layer conduction in coil
+    // Find insulation layers (they sit between conduction layers)
+    std::vector<InsulationMaterial> interLayerInsulation;
+    for (const auto& layer : layers) {
+        if (layer.get_type() == ElectricalType::INSULATION) {
+            try {
+                auto insulationMaterial = coil.resolve_insulation_layer_insulation_material(layer);
+                interLayerInsulation.push_back(insulationMaterial);
+            } catch (...) {
+                // Use default if resolution fails
+                try {
+                    auto defaultMaterial = find_insulation_material_by_name("mylar");
+                    interLayerInsulation.push_back(defaultMaterial);
+                } catch (...) {
+                    // No insulation material data available
+                }
+            }
+        }
+    }
+    
+    // Coil to bobbin inner surface (conduction through first insulation layer)
+    double innerInsulationK = 0.2;  // Default
+    double innerInsulationThickness = 0.0005;  // Default 0.5mm
+    
+    // Try to get the innermost insulation layer properties
+    for (const auto& layer : layers) {
+        if (layer.get_type() == ElectricalType::INSULATION) {
+            // First insulation layer is typically between bobbin and first winding layer
+            auto dims = layer.get_dimensions();
+            if (!dims.empty() && dims[0] > 0) {
+                innerInsulationThickness = dims[0];  // Radial thickness
+            }
+            try {
+                auto material = coil.resolve_insulation_layer_insulation_material(layer);
+                innerInsulationK = getInsulationMaterialThermalConductivity(material);
+            } catch (...) {
+                // Use default
+            }
+            break;  // Only need first insulation layer
+        }
+    }
+    
+    for (size_t coilId : coilNodes) {
+        if (bobbinInnerNode > 0) {
+            // Connect coil to bobbin inner surface through insulation
+            ThermalResistanceElement coilBobbinRes;
+            coilBobbinRes.nodeFromId = coilId;
+            coilBobbinRes.nodeToId = bobbinInnerNode;
+            coilBobbinRes.transferType = HeatTransferType::CONDUCTION;
+            coilBobbinRes.length = innerInsulationThickness;
+            coilBobbinRes.thermalConductivity = innerInsulationK;
+            coilBobbinRes.area = nodes[coilId].exposedSurfaceArea * 0.5;  // Partial contact
+            coilBobbinRes.resistance = calculateConductionResistance(coilBobbinRes.length, 
+                                                                     coilBobbinRes.thermalConductivity,
+                                                                     coilBobbinRes.area);
+            resistances.push_back(coilBobbinRes);
+        } else {
+            // No bobbin - connect coil directly to core columns through air/insulation
+            for (size_t colId : coreColumnNodes) {
+                ThermalResistanceElement coilCoreRes;
+                coilCoreRes.nodeFromId = coilId;
+                coilCoreRes.nodeToId = colId;
+                coilCoreRes.transferType = HeatTransferType::CONDUCTION;
+                coilCoreRes.length = 0.002;  // 2mm gap estimate
+                coilCoreRes.thermalConductivity = 0.05;  // Air/insulation composite
+                coilCoreRes.area = nodes[coilId].exposedSurfaceArea * 0.3;
+                coilCoreRes.resistance = calculateConductionResistance(coilCoreRes.length, 
+                                                                       coilCoreRes.thermalConductivity,
+                                                                       coilCoreRes.area);
+                resistances.push_back(coilCoreRes);
+            }
+        }
+    }
+    
+    // Inter-layer conduction in coil (through insulation layers)
+    size_t insulationIdx = 0;
     for (size_t i = 0; i + 1 < coilNodes.size(); ++i) {
         ThermalResistanceElement layerRes;
         layerRes.nodeFromId = coilNodes[i];
         layerRes.nodeToId = coilNodes[i + 1];
         layerRes.transferType = HeatTransferType::CONDUCTION;
-        layerRes.length = 0.0002;  // Inter-layer insulation thickness
-        layerRes.thermalConductivity = 0.2;  // Insulation
+        
+        // Try to use actual insulation layer thickness and material
+        double layerK = 0.2;  // Default insulation k
+        double layerThickness = 0.0002;  // Default 0.2mm
+        
+        // Get insulation properties from corresponding layer
+        if (insulationIdx < interLayerInsulation.size()) {
+            layerK = getInsulationMaterialThermalConductivity(interLayerInsulation[insulationIdx]);
+        }
+        
+        // Try to find insulation layer dimensions between these conduction layers
+        size_t insulationLayerCount = 0;
+        for (const auto& layer : layers) {
+            if (layer.get_type() == ElectricalType::INSULATION) {
+                if (insulationLayerCount == insulationIdx + 1) {  // +1 to skip first (bobbin) insulation
+                    auto dims = layer.get_dimensions();
+                    if (!dims.empty() && dims[0] > 0) {
+                        layerThickness = dims[0];
+                    }
+                    break;
+                }
+                insulationLayerCount++;
+            }
+        }
+        
+        layerRes.length = layerThickness;
+        layerRes.thermalConductivity = layerK;
         layerRes.area = std::min(nodes[coilNodes[i]].exposedSurfaceArea, 
                                  nodes[coilNodes[i + 1]].exposedSurfaceArea);
         layerRes.resistance = calculateConductionResistance(layerRes.length, layerRes.thermalConductivity,
                                                            layerRes.area);
         resistances.push_back(layerRes);
+        insulationIdx++;
     }
     
     // Outer coil layer to ambient (if exposed)
@@ -800,9 +1400,9 @@ void ThermalEquivalentCircuit::createThermalResistances(Magnetic magnetic) {
     }
 }
 
-void ThermalEquivalentCircuit::buildNetwork(Magnetic magnetic,
-                                            const std::map<std::string, double>& coreLossesPerElement,
-                                            const std::map<std::string, double>& windingLossesPerElement) {
+void ThermalEquivalentCircuit::buildNetworkWithWindingLosses(Magnetic magnetic,
+                                                             double coreLosses,
+                                                             const WindingLossesOutput& windingLosses) {
     nodes.clear();
     resistances.clear();
     
@@ -824,18 +1424,12 @@ void ThermalEquivalentCircuit::buildNetwork(Magnetic magnetic,
     createCoreNodes(core);
     
     Coil coil = magnetic.get_coil();
-    createCoilNodes(coil);
+    createCoilNodes(coil, core);  // This will use createCoilTurnNodes if nodePerCoilTurn is enabled
     
-    // Get bobbin and create nodes (get_bobbin always returns a valid Bobbin)
+    // Get bobbin and create nodes
     Bobbin bobbin = magnetic.get_bobbin();
     if (bobbin.get_functional_description()) {
         createBobbinNodes(bobbin);
-    }
-    
-    // Distribute losses to nodes
-    double totalCoreLosses = 0;
-    for (const auto& [name, loss] : coreLossesPerElement) {
-        totalCoreLosses += loss;
     }
     
     // Distribute core losses proportionally to volume
@@ -854,33 +1448,14 @@ void ThermalEquivalentCircuit::buildNetwork(Magnetic magnetic,
             node.type == ThermalNodeType::CORE_LATERAL_COLUMN ||
             node.type == ThermalNodeType::CORE_TOP_YOKE ||
             node.type == ThermalNodeType::CORE_BOTTOM_YOKE) {
-            node.powerDissipation = totalCoreLosses * (node.volume / totalCoreVolume);
-        }
-    }
-    
-    // Distribute winding losses
-    double totalWindingLosses = 0;
-    for (const auto& [name, loss] : windingLossesPerElement) {
-        totalWindingLosses += loss;
-    }
-    
-    size_t numCoilNodes = 0;
-    for (const auto& node : nodes) {
-        if (node.type == ThermalNodeType::COIL_SECTION ||
-            node.type == ThermalNodeType::COIL_LAYER) {
-            numCoilNodes++;
-        }
-    }
-    
-    if (numCoilNodes > 0) {
-        double lossPerNode = totalWindingLosses / numCoilNodes;
-        for (auto& node : nodes) {
-            if (node.type == ThermalNodeType::COIL_SECTION ||
-                node.type == ThermalNodeType::COIL_LAYER) {
-                node.powerDissipation = lossPerNode;
+            if (totalCoreVolume > 0) {
+                node.powerDissipation = coreLosses * (node.volume / totalCoreVolume);
             }
         }
     }
+    
+    // Distribute winding losses using per-turn losses (required)
+    distributeTurnLosses(coil, windingLosses);
     
     // Create thermal resistances
     createThermalResistances(magnetic);
@@ -889,14 +1464,14 @@ void ThermalEquivalentCircuit::buildNetwork(Magnetic magnetic,
 void ThermalEquivalentCircuit::assembleMatrix() {
     size_t n = nodes.size();
     
-    conductanceMatrix = Eigen::MatrixXd::Zero(n, n);
-    powerVector = Eigen::VectorXd::Zero(n);
-    temperatureVector = Eigen::VectorXd::Zero(n);
+    conductanceMatrix = SimpleMatrix(n, n, 0.0);
+    powerVector.assign(n, 0.0);
+    temperatureVector.assign(n, 0.0);
     
     // Initialize temperatures
     for (size_t i = 0; i < n; ++i) {
-        temperatureVector(i) = nodes[i].temperature;
-        powerVector(i) = nodes[i].powerDissipation;
+        temperatureVector[i] = nodes[i].temperature;
+        powerVector[i] = nodes[i].powerDissipation;
     }
     
     // Fill conductance matrix
@@ -918,21 +1493,33 @@ void ThermalEquivalentCircuit::assembleMatrix() {
     }
     
     // Handle ambient node (fixed temperature boundary condition)
-    // Set row and column for ambient node to enforce T_ambient = config.ambientTemperature
-    conductanceMatrix.row(ambientNodeId).setZero();
-    conductanceMatrix.col(ambientNodeId).setZero();
+    // Method: Modify the power vector to account for known ambient temperature
+    // For each node i connected to ambient: P_i -= G_i,amb * T_amb
+    // Then set the ambient equation to T_amb = config.ambientTemperature
+    
+    double T_amb = config.ambientTemperature;
+    
+    // Move known T_amb terms to the right-hand side
+    for (size_t i = 0; i < n; ++i) {
+        if (i != ambientNodeId) {
+            powerVector[i] -= conductanceMatrix(i, ambientNodeId) * T_amb;
+        }
+    }
+    
+    // Now zero the ambient row/column and set diagonal to 1
+    conductanceMatrix.setRowZero(ambientNodeId);
+    conductanceMatrix.setColZero(ambientNodeId);
     conductanceMatrix(ambientNodeId, ambientNodeId) = 1.0;
-    powerVector(ambientNodeId) = config.ambientTemperature;
+    powerVector[ambientNodeId] = T_amb;
 }
 
 void ThermalEquivalentCircuit::solveCircuit() {
-    // Solve [G][T] = [P] using Eigen's direct solver
-    // LU decomposition with partial pivoting is efficient for dense matrices
-    temperatureVector = conductanceMatrix.partialPivLu().solve(powerVector);
+    // Solve [G][T] = [P] using Gauss-Jordan elimination
+    temperatureVector = SimpleMatrix::solve(conductanceMatrix, powerVector);
     
     // Update node temperatures
     for (size_t i = 0; i < nodes.size(); ++i) {
-        nodes[i].temperature = temperatureVector(i);
+        nodes[i].temperature = temperatureVector[i];
     }
 }
 
@@ -966,11 +1553,11 @@ void ThermalEquivalentCircuit::updateResistances() {
     }
 }
 
-bool ThermalEquivalentCircuit::checkConvergence(const Eigen::VectorXd& oldTemperatures) {
+bool ThermalEquivalentCircuit::checkConvergence(const std::vector<double>& oldTemperatures) {
     double maxDiff = 0.0;
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (!nodes[i].isAmbient()) {
-            maxDiff = std::max(maxDiff, std::abs(temperatureVector(i) - oldTemperatures(i)));
+            maxDiff = std::max(maxDiff, std::abs(temperatureVector[i] - oldTemperatures[i]));
         }
     }
     return maxDiff < config.convergenceTolerance;
@@ -979,39 +1566,30 @@ bool ThermalEquivalentCircuit::checkConvergence(const Eigen::VectorXd& oldTemper
 ThermalAnalysisOutput ThermalEquivalentCircuit::calculateTemperatures(
     Magnetic magnetic,
     double coreLosses,
-    double windingLosses) {
+    const WindingLossesOutput& windingLosses) {
     
-    // Create simple loss distribution
-    std::map<std::string, double> coreLossMap = {{"total", coreLosses}};
-    std::map<std::string, double> windingLossMap = {{"total", windingLosses}};
-    
-    return calculateTemperaturesDetailed(magnetic, coreLossMap, windingLossMap);
-}
-
-ThermalAnalysisOutput ThermalEquivalentCircuit::calculateTemperaturesDetailed(
-    Magnetic magnetic,
-    const std::map<std::string, double>& coreLossesPerElement,
-    const std::map<std::string, double>& windingLossesPerElement) {
+    // Always use per-turn model
+    config.nodePerCoilTurn = true;
     
     ThermalAnalysisOutput output;
     output.methodUsed = "ThermalEquivalentCircuit";
     output.converged = false;
     output.iterationsToConverge = 0;
     
-    // Build the thermal network
-    buildNetwork(magnetic, coreLossesPerElement, windingLossesPerElement);
+    // Build the thermal network using actual per-element losses
+    buildNetworkWithWindingLosses(magnetic, coreLosses, windingLosses);
     
     if (nodes.size() < 2) {
         throw std::runtime_error("Insufficient nodes in thermal network");
     }
     
     // Iterative solution (for temperature-dependent properties)
-    Eigen::VectorXd oldTemperatures = Eigen::VectorXd::Zero(nodes.size());
+    std::vector<double> oldTemperatures(nodes.size(), 0.0);
     
     for (size_t iter = 0; iter < config.maxIterations; ++iter) {
         // Store old temperatures
         for (size_t i = 0; i < nodes.size(); ++i) {
-            oldTemperatures(i) = nodes[i].temperature;
+            oldTemperatures[i] = nodes[i].temperature;
         }
         
         // Assemble and solve
@@ -1047,7 +1625,8 @@ ThermalAnalysisOutput ThermalEquivalentCircuit::calculateTemperaturesDetailed(
         }
         
         if (node.type == ThermalNodeType::COIL_SECTION ||
-            node.type == ThermalNodeType::COIL_LAYER) {
+            node.type == ThermalNodeType::COIL_LAYER ||
+            node.type == ThermalNodeType::COIL_TURN) {
             sumCoilTemp += node.temperature;
             numCoilNodes++;
         }
@@ -1057,13 +1636,7 @@ ThermalAnalysisOutput ThermalEquivalentCircuit::calculateTemperaturesDetailed(
     output.averageCoilTemperature = numCoilNodes > 0 ? sumCoilTemp / numCoilNodes : config.ambientTemperature;
     
     // Calculate bulk thermal resistance
-    double totalLosses = 0;
-    for (const auto& [name, loss] : coreLossesPerElement) {
-        totalLosses += loss;
-    }
-    for (const auto& [name, loss] : windingLossesPerElement) {
-        totalLosses += loss;
-    }
+    double totalLosses = coreLosses + windingLosses.get_winding_losses();
     
     if (totalLosses > 0) {
         output.totalThermalResistance = (output.maximumTemperature - config.ambientTemperature) / totalLosses;
@@ -1074,6 +1647,49 @@ ThermalAnalysisOutput ThermalEquivalentCircuit::calculateTemperaturesDetailed(
     output.thermalResistances = resistances;
     
     return output;
+}
+
+ThermalAnalysisOutput ThermalEquivalentCircuit::calculateTemperatures(
+    Magnetic magnetic,
+    double coreLosses,
+    double windingLosses) {
+    
+    // Create WindingLossesOutput with losses distributed proportionally by number of turns
+    WindingLossesOutput windingLossesOutput;
+    windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
+    windingLossesOutput.set_method_used("ProportionalDistribution");
+    windingLossesOutput.set_winding_losses(windingLosses);
+    
+    // Ensure coil has turns description
+    Coil coil = magnetic.get_coil();
+    if (!coil.get_turns_description()) {
+        magnetic.get_mutable_coil().wind();
+        coil = magnetic.get_coil();
+    }
+    
+    auto turnsOpt = coil.get_turns_description();
+    
+    if (turnsOpt && !turnsOpt->empty()) {
+        size_t totalTurns = turnsOpt->size();
+        double lossPerTurn = windingLosses / totalTurns;
+        
+        std::vector<WindingLossesPerElement> perTurnLosses;
+        for (size_t i = 0; i < totalTurns; ++i) {
+            WindingLossesPerElement turnLoss;
+            
+            // Set ohmic losses for this turn
+            OhmicLosses ohmic;
+            ohmic.set_losses(lossPerTurn);
+            ohmic.set_origin(ResultOrigin::SIMULATION);
+            turnLoss.set_ohmic_losses(ohmic);
+            
+            perTurnLosses.push_back(turnLoss);
+        }
+        
+        windingLossesOutput.set_winding_losses_per_turn(perTurnLosses);
+    }
+    
+    return calculateTemperatures(magnetic, coreLosses, windingLossesOutput);
 }
 
 double ThermalEquivalentCircuit::getTemperatureAtPoint(const std::vector<double>& coordinates) {
