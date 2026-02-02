@@ -1588,9 +1588,11 @@ TEST_CASE("ThermalEquivalentCircuit: Circuit Schematic Export", "[thermal][schem
     REQUIRE(content.find("<svg") != std::string::npos);
     REQUIRE(content.find("Thermal Equivalent Circuit") != std::string::npos);
     REQUIRE(content.find("°C") != std::string::npos);
-    REQUIRE(content.find("K/W") != std::string::npos);
+    REQUIRE(content.find("CORE") != std::string::npos);  // Core block
+    REQUIRE(content.find("Winding") != std::string::npos);  // Winding labels
+    REQUIRE(content.find("nodes") != std::string::npos);  // Node count info
     
-    std::cout << "Thermal circuit schematic exported to: " << outFile << std::endl;
+    std::cout << "Thermal circuit schematic exported to: \"" << outFile << "\"" << std::endl;
 }
 
 } // anonymous namespace
