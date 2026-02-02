@@ -299,6 +299,14 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
 
     auto scoringsPerReferencePerFilter = get_scorings();
 
+    // Build weight lookup from filter flow for weighted scoring
+    std::map<MagneticFilters, double> filterWeights;
+    double totalWeight = 0;
+    for (auto& filterConfiguration : filterFlow) {
+        filterWeights[filterConfiguration.get_filter()] = filterConfiguration.get_weight();
+        totalWeight += filterConfiguration.get_weight();
+    }
+
     std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
 
     if (validMas.size() > 0) {
@@ -306,10 +314,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         for (auto mas : validMas) {
             auto reference = mas.get_mutable_magnetic().get_reference();
             double totalScoring = 0;
+            double usedWeight = 0;
             for (auto [filter, scoring] : scoringsPerReferencePerFilter[reference]) {
-                totalScoring += scoring;
+                double weight = filterWeights.count(filter) ? filterWeights[filter] : 1.0;
+                totalScoring += scoring * weight;
+                usedWeight += weight;
             }
-            totalScoring /= scoringsPerReferencePerFilter[reference].size();
+            // Normalize by total weight used (weighted average)
+            if (usedWeight > 0) {
+                totalScoring /= usedWeight;
+            }
             masMagneticsWithScoring.push_back({mas, totalScoring});
         }
 

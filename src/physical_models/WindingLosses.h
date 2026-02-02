@@ -9,20 +9,35 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+// Struct to hold all optional model choices for winding losses calculation
+struct WindingLossesModels {
+    std::optional<MagneticFieldStrengthModels> magneticFieldStrengthModel = std::nullopt;
+    std::optional<MagneticFieldStrengthFringingEffectModels> magneticFieldStrengthFringingEffectModel = std::nullopt;
+    std::optional<WindingSkinEffectLossesModels> skinEffectModel = std::nullopt;
+    std::optional<WindingProximityEffectLossesModels> proximityEffectModel = std::nullopt;
+};
+
 class WindingLosses
 {
     private:
         int64_t _quickModeForManyTurnsThreshold = 1000;
-        MagneticFieldStrengthModels _magneticFieldStrengthModel;
-        MagneticFieldStrengthFringingEffectModels _magneticFieldStrengthFringingEffectModel;
+        WindingLossesModels _models;
 
     public:
 
-        WindingLosses(MagneticFieldStrengthModels magneticFieldStrengthModel = Defaults().magneticFieldStrengthModelDefault,
+        WindingLosses() {}
+        
+        WindingLosses(WindingLossesModels models) : _models(models) {}
+
+        // Legacy constructor for backwards compatibility
+        WindingLosses(std::optional<MagneticFieldStrengthModels> magneticFieldStrengthModel,
                       MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModel = Defaults().magneticFieldStrengthFringingEffectModelDefault) {
-            _magneticFieldStrengthModel = magneticFieldStrengthModel;
-            _magneticFieldStrengthFringingEffectModel = magneticFieldStrengthFringingEffectModel;
+            _models.magneticFieldStrengthModel = magneticFieldStrengthModel;
+            _models.magneticFieldStrengthFringingEffectModel = magneticFieldStrengthFringingEffectModel;
         }
+        
+        WindingLossesModels get_models() const { return _models; }
+        void set_models(WindingLossesModels models) { _models = models; }
 
         WindingLossesOutput calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature);
         static WindingLossesOutput combine_turn_losses(WindingLossesOutput windingLossesOutput, Coil coil);

@@ -65,6 +65,7 @@ class Settings
         std::string _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../../cci_coords/coordinates/");
         std::string _painterColorMagneticFieldMinimum = "0x2b35f5";
         std::string _painterColorMagneticFieldMaximum = "0xe84922";
+        std::optional<MagneticFieldStrengthModels> _painterMagneticFieldStrengthModel = std::nullopt;
 
         size_t _magneticFieldNumberPointsX = 25;
         size_t _magneticFieldNumberPointsY = 50;
@@ -97,6 +98,17 @@ class Settings
 
 
         std::vector<CoreLossesModels> _coreLossesModelNames;
+
+        // Centralized model configuration
+        MagneticFieldStrengthModels _magneticFieldStrengthModel;
+        MagneticFieldStrengthFringingEffectModels _magneticFieldStrengthFringingEffectModel;
+        MagneticFieldStrengthModels _leakageInductanceMagneticFieldStrengthModel;
+        ReluctanceModels _reluctanceModel;
+        CoreTemperatureModels _coreTemperatureModel;
+        CoreThermalResistanceModels _coreThermalResistanceModel;
+        WindingSkinEffectLossesModels _windingSkinEffectLossesModel;
+        WindingProximityEffectLossesModels _windingProximityEffectLossesModel;
+        StrayCapacitanceModels _strayCapacitanceModel;
 
         bool _verbose = false;
 
@@ -254,6 +266,9 @@ class Settings
         std::string get_painter_color_magnetic_field_maximum() const;
         void set_painter_color_magnetic_field_maximum(std::string value);
 
+        std::optional<MagneticFieldStrengthModels> get_painter_magnetic_field_strength_model() const;
+        void set_painter_magnetic_field_strength_model(std::optional<MagneticFieldStrengthModels> value);
+
         int get_painter_mirroring_dimension() const;
         void set_painter_mirroring_dimension(int value);
 
@@ -334,6 +349,34 @@ class Settings
 
         bool get_core_cross_referencer_allow_different_core_material_type() const;
         void set_core_cross_referencer_allow_different_core_material_type(bool value);
+
+        // Centralized model configuration getters/setters
+        MagneticFieldStrengthModels get_magnetic_field_strength_model() const;
+        void set_magnetic_field_strength_model(MagneticFieldStrengthModels value);
+
+        MagneticFieldStrengthFringingEffectModels get_magnetic_field_strength_fringing_effect_model() const;
+        void set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels value);
+
+        MagneticFieldStrengthModels get_leakage_inductance_magnetic_field_strength_model() const;
+        void set_leakage_inductance_magnetic_field_strength_model(MagneticFieldStrengthModels value);
+
+        ReluctanceModels get_reluctance_model() const;
+        void set_reluctance_model(ReluctanceModels value);
+
+        CoreTemperatureModels get_core_temperature_model() const;
+        void set_core_temperature_model(CoreTemperatureModels value);
+
+        CoreThermalResistanceModels get_core_thermal_resistance_model() const;
+        void set_core_thermal_resistance_model(CoreThermalResistanceModels value);
+
+        WindingSkinEffectLossesModels get_winding_skin_effect_losses_model() const;
+        void set_winding_skin_effect_losses_model(WindingSkinEffectLossesModels value);
+
+        WindingProximityEffectLossesModels get_winding_proximity_effect_losses_model() const;
+        void set_winding_proximity_effect_losses_model(WindingProximityEffectLossesModels value);
+
+        StrayCapacitanceModels get_stray_capacitance_model() const;
+        void set_stray_capacitance_model(StrayCapacitanceModels value);
 
 
     };
