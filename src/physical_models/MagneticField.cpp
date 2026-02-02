@@ -8,8 +8,18 @@
 #include "processors/MagneticSimulator.h"
 #include "physical_models/InitialPermeability.h"
 #include "support/Settings.h"
+#include "support/Utils.h"
 
 #include <cmath>
+
+// Some platforms (Emscripten, Apple libc++) don't have std::comp_ellint_1/2
+// Use custom implementations from Utils.h via namespace injection
+#if defined(__EMSCRIPTEN__) || defined(__APPLE__)
+namespace std {
+    using OpenMagnetics::comp_ellint_1;
+    using OpenMagnetics::comp_ellint_2;
+}
+#endif
 #include <filesystem>
 #include <fstream>
 #include <iostream>
