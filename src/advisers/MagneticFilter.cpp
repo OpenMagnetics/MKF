@@ -201,7 +201,17 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
             bobbinFillingFactor = Bobbin::get_filling_factor(windingWindow.get_width().value(), core.get_winding_windows()[0].get_height().value());
         }
         else {
-            bobbinFillingFactor = 1;
+            // For toroids: apply a realistic filling factor penalty
+            // The inner circumference is smaller than outer, limiting wire packing
+            // Also, manual winding of toroids is less efficient than bobbin-based winding
+            // Use a conservative factor of 0.55-0.70 depending on geometry
+            auto radialHeight = windingWindow.get_radial_height().value();
+            double outerRadius = core.get_width() / 2;
+            double innerRadius = outerRadius - radialHeight;
+            // Ratio of inner to outer circumference limits packing efficiency
+            double circumferenceRatio = (innerRadius > 0) ? (innerRadius / outerRadius) : 0.5;
+            // Base toroid filling factor around 0.6, adjusted by geometry
+            bobbinFillingFactor = 0.55 + 0.15 * circumferenceRatio;
         }
         _bobbinFillingFactors[core.get_shape_name()] = bobbinFillingFactor;
     }
