@@ -48,7 +48,7 @@ class CoreAdviser {
         std::map<CoreAdviserFilters, std::map<std::string, bool>> _filterConfiguration{
                 { CoreAdviserFilters::COST,                  { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", true} } },
-                { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } }
+                { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", false} } }
             };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
         CoreAdviser(std::map<std::string, std::string> models) {
