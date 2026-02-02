@@ -12,8 +12,9 @@
 
 #include <cmath>
 
-// Emscripten libc++ doesn't have std::comp_ellint_1/2, use custom implementations
-#ifdef __EMSCRIPTEN__
+// Some platforms (Emscripten, Apple libc++) don't have std::comp_ellint_1/2
+// Use custom implementations from Utils.h via namespace injection
+#if defined(__EMSCRIPTEN__) || defined(__APPLE__)
 namespace std {
     using OpenMagnetics::comp_ellint_1;
     using OpenMagnetics::comp_ellint_2;
