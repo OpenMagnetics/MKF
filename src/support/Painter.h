@@ -2,6 +2,7 @@
 
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
+#include "physical_models/ThermalEquivalentCircuit.h"
 #include "support/Utils.h"
 #include <MAS.hpp>
 #include "svg.hpp"
@@ -287,6 +288,33 @@ class BasicPainter : public PainterInterface {
     void paint_wire(Wire wire);
     void paint_coil_turns(Magnetic magnetic);
     void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false);
+    
+    /**
+     * @brief Paint a schematic of the thermal equivalent circuit
+     * 
+     * Creates an SVG schematic showing:
+     * - Thermal nodes as circles with temperature labels
+     * - Thermal resistances as resistor symbols between nodes
+     * - Power sources (losses) at dissipating nodes
+     * - Ambient node with ground symbol
+     * 
+     * The layout is automatic based on node positions:
+     * - Core nodes on the left
+     * - Coil/winding nodes in the center
+     * - Ambient at the bottom
+     * 
+     * @param nodes Vector of thermal nodes from the circuit
+     * @param resistances Vector of thermal resistance elements
+     * @param width SVG width in pixels
+     * @param height SVG height in pixels
+     * @return SVG string of the schematic
+     */
+    std::string paint_thermal_circuit_schematic(
+        const std::vector<ThermalNode>& nodes,
+        const std::vector<ThermalResistanceElement>& resistances,
+        double width = 1200,
+        double height = 800);
+    
     void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0) {
         throw std::runtime_error("Not implemented in basic painter");
     }
