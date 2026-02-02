@@ -1832,4 +1832,41 @@ TEST_CASE("Test_CoreAdviserStandardCores_Planar_Transformer", "[adviser][core-ad
     }
 }
 
+TEST_CASE("Test_Core_Adviser_Pruning_Settings", "[adviser][core-adviser][settings][smoke-test]") {
+    // Test that the new pruning settings work correctly
+    auto& settings = Settings::GetInstance();
+
+    // Store original values
+    bool originalPruningEnabled = settings.get_core_adviser_enable_intermediate_pruning();
+    size_t originalMaxMagnetics = settings.get_core_adviser_maximum_magnetics_after_filtering();
+
+    // Test default values
+    settings.reset();
+    REQUIRE(settings.get_core_adviser_enable_intermediate_pruning() == true);
+    REQUIRE(settings.get_core_adviser_maximum_magnetics_after_filtering() == 500);
+
+    // Test setting pruning enabled/disabled
+    settings.set_core_adviser_enable_intermediate_pruning(false);
+    REQUIRE(settings.get_core_adviser_enable_intermediate_pruning() == false);
+
+    settings.set_core_adviser_enable_intermediate_pruning(true);
+    REQUIRE(settings.get_core_adviser_enable_intermediate_pruning() == true);
+
+    // Test setting maximum magnetics after filtering
+    settings.set_core_adviser_maximum_magnetics_after_filtering(1000);
+    REQUIRE(settings.get_core_adviser_maximum_magnetics_after_filtering() == 1000);
+
+    settings.set_core_adviser_maximum_magnetics_after_filtering(2000);
+    REQUIRE(settings.get_core_adviser_maximum_magnetics_after_filtering() == 2000);
+
+    // Test reset restores defaults
+    settings.reset();
+    REQUIRE(settings.get_core_adviser_enable_intermediate_pruning() == true);
+    REQUIRE(settings.get_core_adviser_maximum_magnetics_after_filtering() == 500);
+
+    // Restore original values
+    settings.set_core_adviser_enable_intermediate_pruning(originalPruningEnabled);
+    settings.set_core_adviser_maximum_magnetics_after_filtering(originalMaxMagnetics);
+}
+
 }  // namespace

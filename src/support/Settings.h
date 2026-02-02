@@ -82,6 +82,8 @@ class Settings
         bool _coreAdviserIncludeStacks = true;
         bool _coreAdviserIncludeDistributedGaps = true;
         bool _coreAdviserIncludeMargin = false;
+        bool _coreAdviserEnableIntermediatePruning = true;
+        size_t _coreAdviserMaximumMagneticsAfterFiltering;
 
 
         bool _wireAdviserIncludePlanar = false;
@@ -305,6 +307,12 @@ class Settings
 
         bool get_core_adviser_include_margin() const;
         void set_core_adviser_include_margin(bool value);
+
+        bool get_core_adviser_enable_intermediate_pruning() const;
+        void set_core_adviser_enable_intermediate_pruning(bool value);
+
+        size_t get_core_adviser_maximum_magnetics_after_filtering() const;
+        void set_core_adviser_maximum_magnetics_after_filtering(size_t value);
 
         bool get_wire_adviser_include_planar() const;
         void set_wire_adviser_include_planar(bool value);
