@@ -949,13 +949,30 @@ OperatingPoint NgspiceRunner::extract_operating_point(
     OperatingPoint operatingPoint;
     
     // Build a map from waveform names to indices for quick lookup
+    // Handle ngspice naming: v(node) for voltage, i(vsource) for current
     std::map<std::string, size_t> nameToIndex;
     for (size_t i = 0; i < result.waveformNames.size(); ++i) {
-        // Store both original and lowercase for case-insensitive matching
-        nameToIndex[result.waveformNames[i]] = i;
-        std::string lower = result.waveformNames[i];
+        std::string name = result.waveformNames[i];
+        std::string lower = name;
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        
+        // Store original and lowercase
+        nameToIndex[name] = i;
         nameToIndex[lower] = i;
+        
+        // Strip v() or i() prefix if present and store both versions
+        // ngspice returns: v(node), i(vsource) - we need to match both with and without prefix
+        if (lower.size() > 2 && (lower[0] == 'v' || lower[0] == 'i') && lower[1] == '(') {
+            size_t closeParenPos = lower.rfind(')');
+            if (closeParenPos != std::string::npos && closeParenPos > 2) {
+                std::string stripped = lower.substr(2, closeParenPos - 2);
+                nameToIndex[stripped] = i;
+                // For current, ngspice uses i(vsource) but code may look for vsource#branch
+                if (lower[0] == 'i') {
+                    nameToIndex[stripped + "#branch"] = i;
+                }
+            }
+        }
     }
     
     // Process each winding

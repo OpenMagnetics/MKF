@@ -5,6 +5,7 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/CoreTemperature.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/LeakageInductance.h"
 #include <magic_enum.hpp>
 
 #include <cfloat>
@@ -107,8 +108,10 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             return std::make_shared<MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise>();
         case MagneticFilters::MAGNETOMOTIVE_FORCE:
             return std::make_shared<MagnetomotiveForce>();
+        case MagneticFilters::LEAKAGE_INDUCTANCE:
+            return std::make_shared<MagneticFilterLeakageInductance>();
         default:
-            throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE}");
+            throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE}");
     }
 }
 
@@ -1065,7 +1068,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
 
         for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
             auto frequency = impedanceAtFrequency.get_frequency();
-            if (frequency > 0.25 * selfResonantFrequency) {  // hardcoded 20% of SRF
+            if (frequency > defaults.selfResonantFrequencyMargin * selfResonantFrequency) {
                 validDesign = false;
                 break;
             }
@@ -1831,6 +1834,76 @@ std::pair<bool, double> MagnetomotiveForce::evaluate_magnetic(Magnetic* magnetic
 
     }
     return {true, maximumMagnetomotiveForce};
+}
+
+std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    // Leakage inductance filter for CMC optimization
+    // For Common Mode Chokes, we want to minimize leakage inductance to maximize coupling coefficient
+    // Coupling coefficient k = 1 - (Lk / Lm), where Lk is leakage and Lm is magnetizing inductance
+    // Lower leakage means higher coupling, which means better common mode rejection
+    
+    bool valid = true;
+    double scoring = 0;
+
+    if (magnetic->get_coil().get_functional_description().size() < 2) {
+        // Single winding - no leakage calculation possible
+        return {true, 0.0};
+    }
+
+    // Use the first operating point frequency for leakage calculation
+    double frequency = defaults.measurementFrequency;
+    if (inputs->get_operating_points().size() > 0) {
+        frequency = inputs->get_operating_points()[0].get_excitations_per_winding()[0].get_frequency();
+    }
+
+    try {
+        LeakageInductance leakageModel;
+        auto leakageOutput = leakageModel.calculate_leakage_inductance(*magnetic, frequency, 0, 1);
+        double leakageInductance = resolve_dimensional_values(leakageOutput.get_leakage_inductance_per_winding()[0]);
+
+        // Get magnetizing inductance for normalization
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
+        OperatingPoint* operatingPoint = nullptr;
+        if (inputs->get_operating_points().size() > 0) {
+            operatingPoint = &inputs->get_mutable_operating_points()[0];
+        }
+        auto magnetizingOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+            magnetic->get_mutable_core(), 
+            magnetic->get_mutable_coil(), 
+            operatingPoint
+        );
+        double magnetizingInductance = resolve_dimensional_values(magnetizingOutput.get_magnetizing_inductance());
+
+        if (magnetizingInductance > 0) {
+            // Score is leakage ratio Lk/Lm - lower is better for CMC
+            // A perfect CMC has k ≈ 1, meaning Lk/Lm ≈ 0
+            scoring = leakageInductance / magnetizingInductance;
+        }
+        else {
+            scoring = std::numeric_limits<double>::max();
+            valid = false;
+        }
+
+        if (outputs != nullptr && inputs->get_operating_points().size() > 0) {
+            for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
+                while (outputs->size() < operatingPointIndex + 1) {
+                    outputs->push_back(Outputs());
+                }
+                InductanceOutput inductanceOutput;
+                if ((*outputs)[operatingPointIndex].get_inductance()) {
+                    inductanceOutput = *(*outputs)[operatingPointIndex].get_inductance();
+                }
+                inductanceOutput.set_leakage_inductance(leakageOutput);
+                (*outputs)[operatingPointIndex].set_inductance(inductanceOutput);
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        // If leakage calculation fails, return a high score to deprioritize
+        return {false, std::numeric_limits<double>::max()};
+    }
+
+    return {valid, scoring};
 }
 
 } // namespace OpenMagnetics

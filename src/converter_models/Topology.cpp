@@ -1,4 +1,5 @@
 #include "converter_models/PushPull.h"
+#include "converter_models/Topology.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
@@ -6,6 +7,10 @@
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
+
+    Topology::Topology(const json& j) {
+        // Base class constructor - derived classes should handle their own JSON deserialization
+    }
 
     OperatingPointExcitation Topology::complete_excitation(Waveform currentWaveform, Waveform voltageWaveform, double switchingFrequency, std::string name) {
         OperatingPointExcitation excitation;
