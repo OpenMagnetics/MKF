@@ -2483,4 +2483,160 @@ namespace {
         }
     }
 
+    TEST_CASE("Test_MagneticAdviser_Flyback_Standard_Cores_Performance", "[adviser][magnetic-adviser][performance]") {
+        // This test investigates performance issues with standard cores mode
+        // for a flyback converter design
+        clear_databases();
+        settings.reset();
+
+        auto testStart = std::chrono::high_resolution_clock::now();
+        auto printElapsed = [&testStart](const std::string& msg) {
+            auto now = std::chrono::high_resolution_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - testStart);
+            std::cout << "[" << elapsed.count() << " ms] " << msg << std::endl;
+            std::cout.flush();
+        };
+
+        printElapsed("Test started");
+
+        // JSON inputs from Python example - flyback with 500uH magnetizing inductance
+        std::string inputsString = R"({
+            "designRequirements": {
+                "magnetizingInductance": {
+                    "nominal": 500e-6
+                },
+                "turnsRatios": [
+                    {
+                        "nominal": 0.1
+                    }
+                ],
+                "topology": "Flyback Converter"
+            },
+            "operatingPoints": [
+                {
+                    "conditions": {
+                        "ambientTemperature": 25
+                    },
+                    "excitationsPerWinding": [
+                        {
+                            "current": {
+                                "waveform": {
+                                    "data": [
+                                        0,
+                                        0.21208333333333335,
+                                        0.45458333333333334,
+                                        0.1425,
+                                        0,
+                                        0,
+                                        0
+                                    ],
+                                    "time": [
+                                        0,
+                                        0,
+                                        0.0000021375,
+                                        0.0000021375,
+                                        0.000004275,
+                                        0.000005,
+                                        0.000005
+                                    ]
+                                }
+                            },
+                            "frequency": 200000,
+                            "name": "First primary",
+                            "voltage": {
+                                "waveform": {
+                                    "data": [
+                                        0,
+                                        100,
+                                        100,
+                                        -101.4,
+                                        -101.4,
+                                        0,
+                                        0
+                                    ],
+                                    "time": [
+                                        0,
+                                        0,
+                                        0.0000021375,
+                                        0.0000021375,
+                                        0.000004275,
+                                        0.000004275,
+                                        0.000005
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "current": {
+                                "waveform": {
+                                    "data": [
+                                        0,
+                                        4.25,
+                                        5.75,
+                                        0,
+                                        0
+                                    ],
+                                    "time": [
+                                        0,
+                                        0,
+                                        0.00000225,
+                                        0.00000225,
+                                        0.000005
+                                    ]
+                                }
+                            },
+                            "frequency": 200000,
+                            "name": "Secondary 0",
+                            "voltage": {
+                                "waveform": {
+                                    "data": [
+                                        0,
+                                        7.291333333333334,
+                                        7.291333333333334,
+                                        -6.135333333333334,
+                                        -6.135333333333334,
+                                        0,
+                                        0
+                                    ],
+                                    "time": [
+                                        0,
+                                        0,
+                                        0.00000225,
+                                        0.00000225,
+                                        0.000004275,
+                                        0.000004275,
+                                        0.000005
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        })";
+
+        printElapsed("Parsing JSON inputs");
+        json inputsJson = json::parse(inputsString);
+        OpenMagnetics::Inputs inputs(inputsJson);
+        
+        printElapsed("Processing inputs");
+        inputs.process();
+        printElapsed("Inputs processed");
+
+        // Now test the full MagneticAdviser
+        printElapsed("Creating MagneticAdviser");
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        
+        printElapsed("Calling get_advised_magnetic with 5 results");
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
+        printElapsed("MagneticAdviser returned " + std::to_string(masMagnetics.size()) + " magnetics");
+
+        for (auto& [mas, scoring] : masMagnetics) {
+            std::cout << "  Magnetic: " << mas.get_magnetic().get_core().get_name().value() << " - Score: " << scoring << std::endl;
+        }
+
+        printElapsed("Test completed");
+    }
+
 }  // namespace
