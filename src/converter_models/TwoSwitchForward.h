@@ -4,19 +4,56 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
 
 using namespace MAS;
 
 namespace OpenMagnetics {
 
+/**
+ * @brief Structure holding topology-level waveforms for Two-Switch Forward converter validation
+ */
+struct TwoSwitchForwardTopologyWaveforms {
+    // Time base
+    std::vector<double> time;
+    double frequency;
+    
+    // Input side signals
+    std::vector<double> inputVoltage;
+    
+    // Transformer signals
+    std::vector<double> primaryVoltage;
+    std::vector<double> primaryCurrent;
+    
+    // Output side signals  
+    std::vector<std::vector<double>> secondaryVoltages;
+    std::vector<std::vector<double>> secondaryCurrents;
+    std::vector<double> outputVoltage;
+    
+    // Metadata
+    std::string operatingPointName;
+    double inputVoltageValue;
+    double dutyCycle;
+};
+
 
 class TwoSwitchForward : public MAS::Forward, public Topology {
+private:
+    int numPeriodsToExtract = 5;
+    int numSteadyStatePeriods = 5;
+    
 public:
     bool _assertErrors = false;
 
     TwoSwitchForward(const json& j);
     TwoSwitchForward() {
     };
+    
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool run_checks(bool assert = false) override;
 
@@ -28,6 +65,29 @@ public:
     OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio, size_t outputIndex);
     double get_maximum_duty_cycle();
+
+    /**
+     * @brief Generate an ngspice circuit for this Two-Switch Forward converter
+     */
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the Two-Switch Forward converter and extract operating points
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
+    
+    /**
+     * @brief Simulate and extract topology-level waveforms for converter validation
+     */
+    std::vector<TwoSwitchForwardTopologyWaveforms> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
 
 };
 

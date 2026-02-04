@@ -10,6 +10,7 @@
 #include <cfloat>
 #include <set>
 #include "support/Exceptions.h"
+#include <magic_enum.hpp>
 
 namespace OpenMagnetics {
 
@@ -1266,6 +1267,8 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
     strayCapacitanceOutput.set_capacitance_matrix(capacitanceMatrix);
     strayCapacitanceOutput.set_six_capacitor_network_per_winding(sixCapacitorNetworkPerWinding);
     strayCapacitanceOutput.set_tripole_capacitance_per_winding(tripoleCapacitancePerWinding);
+    strayCapacitanceOutput.set_origin(ResultOrigin::SIMULATION);
+    strayCapacitanceOutput.set_method_used(_model->methodName);
 
     return strayCapacitanceOutput;
 }

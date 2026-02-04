@@ -54,6 +54,7 @@ private:
     std::optional<double> maximumDutyCycle = 0.5;
     double efficiency = 1;
     int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
+    int numSteadyStatePeriods = 5;  // Number of steady-state cycles to skip
 
 public:
     const std::vector<OpenMagnetics::FlybackOperatingPoint> & get_operating_points() const { return operatingPoints; }
@@ -62,6 +63,9 @@ public:
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool _assertErrors = false;
 
