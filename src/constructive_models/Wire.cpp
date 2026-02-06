@@ -1669,6 +1669,78 @@ namespace OpenMagnetics {
         return coatingInsulationMaterial.get_dielectric_strength_by_thickness(coatingThickness);
     }
 
+    double Wire::get_coating_thermal_conductivity() {
+        return get_coating_thermal_conductivity(*this);
+    }
+
+    double Wire::get_coating_thermal_conductivity(Wire wire) {
+        auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
+        
+        // If the material has thermal conductivity specified, use it
+        if (coatingInsulationMaterial.get_thermal_conductivity().has_value()) {
+            return coatingInsulationMaterial.get_thermal_conductivity().value();
+        }
+        
+        // Default values based on common coating materials
+        // These are typical values from literature
+        auto coatingType = wire.resolve_coating();
+        if (coatingType) {
+            auto coatingTypeEnum = coatingType->get_type();
+            if (coatingTypeEnum == InsulationWireCoatingType::INSULATED) {
+                // Polyimide, polyurethane, etc.
+                return 0.25;  // W/(m·K) - typical for polyimide
+            } else if (coatingTypeEnum == InsulationWireCoatingType::BARE) {
+                return 0.0;  // No coating
+            } else if (coatingTypeEnum == InsulationWireCoatingType::SERVED) {
+                return 0.2;  // Served/litz wire insulation
+            }
+        }
+        
+        // Fallback default
+        return 0.25;  // Conservative default for wire enamel
+    }
+
+    double Wire::get_coating_thickness(const InsulationWireCoating& coating) {
+        // First try to get explicit thickness
+        if (coating.get_thickness().has_value()) {
+            return resolve_dimensional_values(coating.get_thickness().value());
+        }
+        
+        // Otherwise calculate from layers
+        if (coating.get_thickness_layers().has_value() && coating.get_number_layers().has_value()) {
+            return coating.get_thickness_layers().value() * coating.get_number_layers().value();
+        }
+        
+        // Default thickness for insulated wires (typical enamel coating)
+        return 30e-6;  // 30 micrometers
+    }
+
+    double Wire::get_coating_thermal_conductivity(const InsulationWireCoating& coating) {
+        // Try to get from material specification
+        auto materialOpt = coating.get_material();
+        if (materialOpt.has_value()) {
+            auto materialVariant = materialOpt.value();
+            if (std::holds_alternative<MAS::InsulationMaterial>(materialVariant)) {
+                auto material = std::get<MAS::InsulationMaterial>(materialVariant);
+                if (material.get_thermal_conductivity().has_value()) {
+                    return material.get_thermal_conductivity().value();
+                }
+            }
+        }
+        
+        // Default values based on coating type
+        auto coatingType = coating.get_type();
+        if (coatingType == InsulationWireCoatingType::INSULATED) {
+            return 0.25;  // Polyimide/polyurethane
+        } else if (coatingType == InsulationWireCoatingType::SERVED) {
+            return 0.2;
+        } else if (coatingType == InsulationWireCoatingType::BARE) {
+            return 0.0;  // No coating
+        }
+        
+        return 0.25;  // Conservative default
+    }
+
     double Wire::get_coating_relative_permittivity() {
         return get_coating_relative_permittivity(*this);
     }

@@ -178,7 +178,8 @@ bool is_instantaneously_conducting_power(OperatingPoint operatingPoint) {
             voltageWaveform = excitation.get_voltage()->get_waveform()->get_data();
         }
         std::vector<double> powerWaveform;
-        for (size_t i = 0; i < currentWaveform.size(); ++i) {
+        size_t minSize = std::min(currentWaveform.size(), voltageWaveform.size());
+        for (size_t i = 0; i < minSize; ++i) {
             powerWaveform.push_back(currentWaveform[i] * voltageWaveform[i]);
         }
         double peakPower = *max_element(powerWaveform.begin(), powerWaveform.end());

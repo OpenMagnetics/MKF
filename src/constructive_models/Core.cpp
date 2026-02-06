@@ -106,14 +106,55 @@ double Core::get_width() {
 }
 
 double Core::get_mass() {
-    if (get_shape_family() == CoreShapeFamily::T) {
-        auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
-        double volume = std::numbers::pi * (pow(dimensions["A"] / 2, 2) - pow(dimensions["B"] / 2, 2)) * dimensions["C"];
-        return volume * get_density();
+    auto shapeFamily = get_shape_family();
+    auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
+    double density = get_density();
+    double volume = 0.0;
+    
+    if (shapeFamily == CoreShapeFamily::T) {
+        // Toroidal: V = π * (R_outer² - R_inner²) * height
+        volume = std::numbers::pi * (pow(dimensions["A"] / 2, 2) - pow(dimensions["B"] / 2, 2)) * dimensions["C"];
     }
-    else{
-        throw NotImplementedException("get_mass only implemented for toroidal cores for now");
+    else if (shapeFamily == CoreShapeFamily::E || shapeFamily == CoreShapeFamily::ETD ||
+             shapeFamily == CoreShapeFamily::ER || shapeFamily == CoreShapeFamily::EQ) {
+        // E-type cores: Approximate as 2 * A_eff * l_eff (both halves)
+        // This is a rough approximation; exact calculation would require detailed geometry
+        double effectiveArea = get_effective_area();
+        double effectiveLength = get_effective_length();
+        volume = 2.0 * effectiveArea * effectiveLength;
     }
+    else if (shapeFamily == CoreShapeFamily::U || shapeFamily == CoreShapeFamily::UT) {
+        // U cores: Similar to E cores but single piece
+        double effectiveArea = get_effective_area();
+        double effectiveLength = get_effective_length();
+        volume = effectiveArea * effectiveLength;
+    }
+    else if (shapeFamily == CoreShapeFamily::PQ) {
+        // PQ cores: Approximate as E core
+        double effectiveArea = get_effective_area();
+        double effectiveLength = get_effective_length();
+        volume = 2.0 * effectiveArea * effectiveLength;
+    }
+    else if (shapeFamily == CoreShapeFamily::RM || shapeFamily == CoreShapeFamily::P) {
+        // RM and Pot cores: Approximate as toroidal-like structure
+        double effectiveArea = get_effective_area();
+        double effectiveLength = get_effective_length();
+        volume = effectiveArea * effectiveLength;
+    }
+    else if (shapeFamily == CoreShapeFamily::EP || shapeFamily == CoreShapeFamily::EPX) {
+        // EP cores: Similar to E cores
+        double effectiveArea = get_effective_area();
+        double effectiveLength = get_effective_length();
+        volume = 2.0 * effectiveArea * effectiveLength;
+    }
+    else {
+        // Generic approximation for unknown core types
+        double effectiveArea = get_effective_area();
+        double effectiveLength = get_effective_length();
+        volume = effectiveArea * effectiveLength;
+    }
+    
+    return volume * density;
 }
 
 double Core::get_effective_length() {
