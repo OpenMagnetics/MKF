@@ -46,6 +46,7 @@ enum class CoreLossesModels : int {
 
 enum class CoreThermalResistanceModels : int {
     MANIKTALA,
+    DIXON
 };
 
 

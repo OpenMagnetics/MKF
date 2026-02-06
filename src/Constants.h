@@ -14,6 +14,11 @@ struct Constants {
     const double minimumNonResidualGap = 0.1e-3;
     const double vacuumPermeability = 1.25663706212e-6;
     const double vacuumPermittivity =  8.8541878128e-12;
+    
+    // Thermal constants
+    const double gravityAcceleration = 9.80665;                    // m/s² - standard gravity
+    const double kelvinOffset = 273.15;                            // K - offset from Celsius to Kelvin
+    const double stefanBoltzmannConstant = 5.670374419e-8;         // W/(m²·K⁴) - Stefan-Boltzmann constant
 
     const double quasiStaticFrequencyLimit = 100;
 

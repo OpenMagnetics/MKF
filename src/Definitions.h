@@ -315,12 +315,14 @@ void to_json(json & j, const CoreThermalResistanceModels & x);
 inline void to_json(json & j, const CoreThermalResistanceModels & x) {
     switch (x) {
         case CoreThermalResistanceModels::MANIKTALA: j = "Maniktala"; break;
+        case CoreThermalResistanceModels::DIXON: j = "Dixon"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"CoreThermalResistanceModels\": " + std::to_string(static_cast<int>(x)));
     }
 }
 
 inline void from_json(const json & j, CoreThermalResistanceModels & x) {
     if (j == "Maniktala" || j == "maniktala" || j == "MANIKTALA") x = CoreThermalResistanceModels::MANIKTALA;
+    else if (j == "Dixon" || j == "dixon" || j == "DIXON") x = CoreThermalResistanceModels::DIXON;
     else { throw std::runtime_error("Input JSON does not conform to CoreThermalResistanceModels schema: " + to_string(j)); }
 }
 

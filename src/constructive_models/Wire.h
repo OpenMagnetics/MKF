@@ -267,8 +267,13 @@ class Wire : public MAS::Wire {
 
         double get_coating_thickness();
         double get_coating_dielectric_strength();
+        double get_coating_thermal_conductivity();  // NEW: Thermal conductivity for thermal modeling
         static double get_coating_thickness(Wire wire);
         static double get_coating_dielectric_strength(Wire wire);
+        static double get_coating_thermal_conductivity(Wire wire);  // NEW: Static version
+        // NEW: Overloads that work directly with InsulationWireCoating (for thermal modeling)
+        static double get_coating_thickness(const InsulationWireCoating& coating);
+        static double get_coating_thermal_conductivity(const InsulationWireCoating& coating);
         std::string encode_coating_label();
         static std::string encode_coating_label(Wire wire);
         static std::optional<InsulationWireCoating> decode_coating_label(std::string label);

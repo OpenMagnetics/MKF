@@ -1536,7 +1536,7 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     }
 }
 
-void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar) {
+void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature) {
     set_image_size(magnetic);
     
     if (nodeTemperatures.empty()) {
@@ -1551,6 +1551,10 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         if (temp > maximumTemperature) maximumTemperature = temp;
     }
     
+    // Use the provided ambient temperature as the color scale minimum
+    // This ensures the color scale shows the full range from ambient to max temp
+    minimumTemperature = ambientTemperature;
+    
     // Apply colorbar settings if provided
     if (settings.get_painter_minimum_value_colorbar().has_value()) {
         minimumTemperature = settings.get_painter_minimum_value_colorbar().value();
@@ -1562,14 +1566,24 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         minimumTemperature = maximumTemperature - 1;
     }
     
-    // Use blue (cold) to red (hot) color scale
-    auto coldColor = settings.get_painter_color_magnetic_field_minimum();  // Typically blue
-    auto hotColor = settings.get_painter_color_magnetic_field_maximum();   // Typically red
+    // Helper lambda to get color from temperature using the selected palette
+    auto getColorForTemperature = [&](double temp) -> std::string {
+        double ratio = (temp - minimumTemperature) / (maximumTemperature - minimumTemperature);
+        ratio = clamp(ratio, 0.0, 1.0);
+        uint32_t colorUint = get_uint_color_from_palette(ratio, palette);
+        return uint_to_hex(colorUint, "#");
+    };
     
     Coil coil = magnetic.get_coil();
     Core core = magnetic.get_mutable_core();
     
     auto shapes = _root.add_child<SVG::Group>();
+    
+    // Add ambient temperature background for entire SVG (centered at origin)
+    auto ambientColor = uint_to_hex(get_uint_color_from_palette(0.0, palette), "#");
+    std::string bgClassName = generate_random_string();
+    _root.style("." + bgClassName).set_attr("fill", ambientColor).set_attr("opacity", "1.0");
+    paint_rectangle(0, 0, 10000, 10000, bgClassName, shapes);
     
     // Helper function to find a node temperature by exact name match
     auto findNodeTemperatureExact = [&nodeTemperatures](const std::string& name) -> std::optional<double> {
@@ -1627,9 +1641,11 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
     double mainColumnHeight = mainColumn.get_height();
     
     // Paint columns with matching 2D view geometry
-    for (size_t i = 0; i < columns.size(); ++i) {
-        auto column = columns[i];
-        std::string nodeName = "Core_Column_" + std::to_string(i);
+    // Skip for toroidal cores as they use segments instead
+    if (family != MAS::CoreShapeFamily::T) {
+        for (size_t i = 0; i < columns.size(); ++i) {
+            auto column = columns[i];
+            std::string nodeName = "Core_Column_" + std::to_string(i);
         
         auto tempOpt = findNodeTemperature(nodeName);
         if (!tempOpt) {
@@ -1638,7 +1654,7 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         
         if (tempOpt) {
             double temp = tempOpt.value();
-            auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+            auto color = getColorForTemperature(temp);
             
             std::stringstream stream;
             stream << std::fixed << std::setprecision(1) << temp;
@@ -1659,19 +1675,22 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
             }
             
             std::string cssClassName = generate_random_string();
-            _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 0.8);
+            _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 1.0);
             paint_rectangle(xCoord, 0, colWidth, colHeight, cssClassName, shapes, 0, {0, 0}, label);
+        }
         }
     }
     
     // Paint top yoke
-    auto topYokeTempOpt = findNodeTemperatureExact("Core_Top_Yoke");
-    if (!topYokeTempOpt) {
-        topYokeTempOpt = findNodeTemperature("Core");
-    }
-    if (topYokeTempOpt) {
+    // Skip for toroidal cores as they don't have yokes
+    if (family != MAS::CoreShapeFamily::T) {
+        auto topYokeTempOpt = findNodeTemperatureExact("Core_Top_Yoke");
+        if (!topYokeTempOpt) {
+            topYokeTempOpt = findNodeTemperature("Core");
+        }
+        if (topYokeTempOpt) {
         double temp = topYokeTempOpt.value();
-        auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+        auto color = getColorForTemperature(temp);
         
         std::stringstream stream;
         stream << std::fixed << std::setprecision(1) << temp;
@@ -1681,19 +1700,22 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         double yokeHeight = (coreHeight - mainColumnHeight) / 2;
         double yokeY = mainColumnHeight / 2 + yokeHeight / 2;
         
-        std::string cssClassName = generate_random_string();
-        _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 0.8);
-        paint_rectangle(showingCoreWidth / 2, yokeY, showingCoreWidth, yokeHeight, cssClassName, shapes, 0, {0, 0}, label);
+            std::string cssClassName = generate_random_string();
+            _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 1.0);
+            paint_rectangle(showingCoreWidth / 2, yokeY, showingCoreWidth, yokeHeight, cssClassName, shapes, 0, {0, 0}, label);
+        }
     }
     
     // Paint bottom yoke
+    // Skip for toroidal cores as they don't have yokes
+    if (family != MAS::CoreShapeFamily::T) {
     auto bottomYokeTempOpt = findNodeTemperatureExact("Core_Bottom_Yoke");
     if (!bottomYokeTempOpt) {
         bottomYokeTempOpt = findNodeTemperature("Core");
     }
     if (bottomYokeTempOpt) {
         double temp = bottomYokeTempOpt.value();
-        auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+        auto color = getColorForTemperature(temp);
         
         std::stringstream stream;
         stream << std::fixed << std::setprecision(1) << temp;
@@ -1703,20 +1725,146 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         double yokeHeight = (coreHeight - mainColumnHeight) / 2;
         double yokeY = -(mainColumnHeight / 2 + yokeHeight / 2);
         
+            std::string cssClassName = generate_random_string();
+            _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 1.0);
+            paint_rectangle(showingCoreWidth / 2, yokeY, showingCoreWidth, yokeHeight, cssClassName, shapes, 0, {0, 0}, label);
+        }
+    }
+    
+    // Paint toroidal core segments if toroidal shape
+    if (family == MAS::CoreShapeFamily::T) {
+        // Get toroidal core dimensions
+        // For toroids, the processedElements.get_width() gives outer diameter
+        // and mainColumn.get_width() gives the core cross-section thickness
+        double outerDiameter = processedElements.get_width();
+        double coreThickness = mainColumn.get_width();
+        double innerDiameter = outerDiameter - 2 * coreThickness;
+        double outerRadius = outerDiameter / 2;
+        double innerRadius = innerDiameter / 2;
+        
+        // Paint winding window (inside toroid) with ambient temperature color
+        auto ambientColor = getColorForTemperature(ambientTemperature);
+        
+        std::stringstream stream;
+        stream << std::fixed << std::setprecision(1) << ambientTemperature;
+        std::string label = "Winding Window: " + stream.str() + " °C";
+        
+        // For toroidal winding window, paint inner circle
         std::string cssClassName = generate_random_string();
-        _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", 0.8);
-        paint_rectangle(showingCoreWidth / 2, yokeY, showingCoreWidth, yokeHeight, cssClassName, shapes, 0, {0, 0}, label);
+        _root.style("." + cssClassName).set_attr("fill", ambientColor).set_attr("opacity", "1.0");
+        paint_circle(0, 0, innerRadius, cssClassName, shapes, 360, 0, {0, 0}, label);
+        
+        // Find the maximum turn radius to determine outer ring extent
+        double maxTurnRadius = innerRadius;
+        if (coil.get_turns_description()) {
+            auto turns = coil.get_turns_description().value();
+            for (const auto& turn : turns) {
+                double x = turn.get_coordinates()[0];
+                double y = turn.get_coordinates()[1];
+                double turnRadius = std::sqrt(x * x + y * y);
+                if (turn.get_dimensions().value()[0]) {
+                    double wireDiameter = turn.get_dimensions().value()[0];
+                    turnRadius += wireDiameter / 2;
+                }
+                maxTurnRadius = std::max(maxTurnRadius, turnRadius);
+                
+                // Check additional coordinates
+                if (turn.get_additional_coordinates()) {
+                    auto addCoords = turn.get_additional_coordinates().value();
+                    for (const auto& coord : addCoords) {
+                        double xAdd = coord[0];
+                        double yAdd = coord[1];
+                        double addRadius = std::sqrt(xAdd * xAdd + yAdd * yAdd);
+                        if (turn.get_dimensions().value()[0]) {
+                            double wireDiameter = turn.get_dimensions().value()[0];
+                            addRadius += wireDiameter / 2;
+                        }
+                        maxTurnRadius = std::max(maxTurnRadius, addRadius);
+                    }
+                }
+            }
+        }
+        
+        // Number of segments (should match Temperature.cpp)
+        const int numSegments = 8;
+        const double anglePerSegment = 2.0 * std::numbers::pi / numSegments;
+        
+        // Draw each segment as an arc
+        for (int i = 0; i < numSegments; ++i) {
+            std::string nodeName = "Core_Segment_" + std::to_string(i);
+            auto tempOpt = findNodeTemperatureExact(nodeName);
+            
+            if (tempOpt) {
+                double temp = tempOpt.value();
+                auto color = getColorForTemperature(temp);
+                
+                std::stringstream stream;
+                stream << std::fixed << std::setprecision(1) << temp;
+                std::string label = nodeName + ": " + stream.str() + " °C";
+                
+                // Calculate start and end angles (start from top, go clockwise)
+                // In SVG, angles are measured clockwise from 3 o'clock
+                // We want to start from top (12 o'clock = -90 degrees)
+                double startAngle = -std::numbers::pi / 2.0 + i * anglePerSegment;
+                double endAngle = startAngle + anglePerSegment;
+                
+                // Convert to degrees for SVG
+                double startAngleDeg = startAngle * 180.0 / std::numbers::pi;
+                double endAngleDeg = endAngle * 180.0 / std::numbers::pi;
+                
+                // Calculate points for the arc path
+                // Start point on outer circle
+                double x1 = outerRadius * std::cos(startAngle);
+                double y1 = outerRadius * std::sin(startAngle);
+                
+                // End point on outer circle
+                double x2 = outerRadius * std::cos(endAngle);
+                double y2 = outerRadius * std::sin(endAngle);
+                
+                // End point on inner circle
+                double x3 = innerRadius * std::cos(endAngle);
+                double y3 = innerRadius * std::sin(endAngle);
+                
+                // Start point on inner circle
+                double x4 = innerRadius * std::cos(startAngle);
+                double y4 = innerRadius * std::sin(startAngle);
+                
+                // Create SVG path for the arc segment (annular sector)
+                // M = move to, A = arc, L = line, Z = close path
+                std::stringstream pathData;
+                pathData << "M " << (x1 * _scale) << "," << (-y1 * _scale)  // Move to start on outer circle
+                         << " A " << (outerRadius * _scale) << "," << (outerRadius * _scale)  // Arc on outer circle
+                         << " 0 0 0 "  // x-axis-rotation, large-arc-flag, sweep-flag (counter-clockwise)
+                         << (x2 * _scale) << "," << (-y2 * _scale)  // End point on outer circle
+                         << " L " << (x3 * _scale) << "," << (-y3 * _scale)  // Line to inner circle
+                         << " A " << (innerRadius * _scale) << "," << (innerRadius * _scale)  // Arc on inner circle
+                         << " 0 0 1 "  // clockwise for proper annular sector
+                         << (x4 * _scale) << "," << (-y4 * _scale)  // Back to start on inner circle
+                         << " Z";  // Close path
+                
+                // Add the path to the SVG
+                std::string cssClassName = generate_random_string();
+                _root.style("." + cssClassName)
+                    .set_attr("fill", color)
+                    .set_attr("opacity", "1.0");
+                auto* path = shapes->add_child<SVG::Path>();
+                path->set_attr("d", pathData.str());
+                path->set_attr("class", cssClassName);
+                path->add_child<SVG::Title>(label);
+            }
+        }
     }
     
     // Paint bobbin if present - bobbin is a variant<Bobbin, string>
+    // Skip bobbin for toroidal cores as they don't have a traditional bobbin structure
     auto bobbinVariant = magnetic.get_coil().get_bobbin();
-    if (std::holds_alternative<Bobbin>(bobbinVariant)) {
+    if (family != MAS::CoreShapeFamily::T && std::holds_alternative<Bobbin>(bobbinVariant)) {
         
         // Try to find bobbin temperature - node names are "Bobbin_Inner" or "Bobbin_Outer"
         auto bobbinTempOpt = findNodeTemperature("Bobbin");
         if (bobbinTempOpt) {
             double temp = bobbinTempOpt.value();
-            auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+            auto color = getColorForTemperature(temp);
             
             std::stringstream stream;
             stream << std::fixed << std::setprecision(1) << temp;
@@ -1748,21 +1896,34 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
             // Try to find temperature for this specific turn
             std::optional<double> tempOpt;
             
-            // First try exact match
+            // First try exact match with turn name
             auto it = nodeTemperatures.find(turnName);
             if (it != nodeTemperatures.end()) {
                 tempOpt = it->second;
             } else {
-                // Try to find by layer or section name - names are "Coil_Layer_0", "Coil", etc.
-                tempOpt = findNodeTemperature("Coil_Layer");
-                if (!tempOpt) {
-                    tempOpt = findNodeTemperature("Coil");
+                // Try with _inner or _outer suffix for toroidal turns with split nodes
+                // Note: Node names use capitalized "_Inner" and "_Outer"
+                auto innerIt = nodeTemperatures.find(turnName + "_Inner");
+                auto outerIt = nodeTemperatures.find(turnName + "_Outer");
+                if (innerIt != nodeTemperatures.end() && outerIt != nodeTemperatures.end()) {
+                    // Average the inner and outer temperatures
+                    tempOpt = (innerIt->second + outerIt->second) / 2.0;
+                } else if (innerIt != nodeTemperatures.end()) {
+                    tempOpt = innerIt->second;
+                } else if (outerIt != nodeTemperatures.end()) {
+                    tempOpt = outerIt->second;
+                } else {
+                    // Fallback: try layer or coil-wide temperature
+                    tempOpt = findNodeTemperature("Coil_Layer");
+                    if (!tempOpt) {
+                        tempOpt = findNodeTemperature("Coil");
+                    }
                 }
             }
             
             if (tempOpt) {
                 double temp = tempOpt.value();
-                auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+                auto color = getColorForTemperature(temp);
                 
                 std::stringstream stream;
                 stream << std::fixed << std::setprecision(1) << temp;
@@ -1773,7 +1934,7 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                     double yCoordinate = turn.get_coordinates()[1];
                     double diameter = turn.get_dimensions().value()[0];
                     std::string cssClassName = generate_random_string();
-                    _root.style("." + cssClassName).set_attr("fill", color);
+                    _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
                     paint_circle(xCoordinate, yCoordinate, diameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
                 } else {
                     if (turn.get_dimensions().value()[0] && turn.get_dimensions().value()[1]) {
@@ -1781,56 +1942,188 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                         double yCoordinate = turn.get_coordinates()[1];
                         double conductingWidth = turn.get_dimensions().value()[0];
                         double conductingHeight = turn.get_dimensions().value()[1];
+                        
+                        // Get rotation angle if available (for rectangular wires in toroidal cores)
+                        double turnAngle = 0;
+                        std::vector<double> turnCenter = {xCoordinate, -yCoordinate};
+                        if (turn.get_rotation()) {
+                            turnAngle = turn.get_rotation().value();
+                        }
+                        
                         std::string cssClassName = generate_random_string();
-                        _root.style("." + cssClassName).set_attr("fill", color);
-                        paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, cssClassName, shapes, 0, {0, 0}, label);
+                        _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
+                        paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, cssClassName, shapes, turnAngle, turnCenter, label);
+                    }
+                }
+                
+                // Paint additional coordinates if present (e.g., outer half of toroidal turns)
+                if (turn.get_additional_coordinates()) {
+                    auto additionalCoords = turn.get_additional_coordinates().value();
+                    
+                    for (size_t addIdx = 0; addIdx < additionalCoords.size(); ++addIdx) {
+                        // For toroidal turns, additional coords have _Outer suffix in thermal nodes
+                        std::string additionalNodeName = turnName + "_Outer";
+                        auto addTempIt = nodeTemperatures.find(additionalNodeName);
+                        
+                        double additionalTemp = temp;  // Default to same as main turn
+                        std::string additionalLabel = turnName + "_outer";
+                        
+                        if (addTempIt != nodeTemperatures.end()) {
+                            additionalTemp = addTempIt->second;
+                            std::stringstream addStream;
+                            addStream << std::fixed << std::setprecision(1) << additionalTemp;
+                            additionalLabel = turnName + "_outer: " + addStream.str() + " °C";
+                        }
+                        
+                        auto additionalColor = getColorForTemperature(additionalTemp);
+                        
+                        if (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+                            double xCoord = additionalCoords[addIdx][0];
+                            double yCoord = additionalCoords[addIdx][1];
+                            double diameter = turn.get_dimensions().value()[0];
+                            std::string cssClassName = generate_random_string();
+                            _root.style("." + cssClassName).set_attr("fill", additionalColor).set_attr("opacity", "1.0");
+                            paint_circle(xCoord, yCoord, diameter / 2, cssClassName, shapes, 360, 0, {0, 0}, additionalLabel);
+                        } else {
+                            if (turn.get_dimensions().value()[0] && turn.get_dimensions().value()[1]) {
+                                double xCoord = additionalCoords[addIdx][0];
+                                double yCoord = additionalCoords[addIdx][1];
+                                double conductingWidth = turn.get_dimensions().value()[0];
+                                double conductingHeight = turn.get_dimensions().value()[1];
+                                
+                                // Get rotation angle if available (for rectangular wires in toroidal cores)
+                                double turnAngle = 0;
+                                std::vector<double> turnCenter = {xCoord, -yCoord};
+                                if (turn.get_rotation()) {
+                                    turnAngle = turn.get_rotation().value();
+                                }
+                                
+                                std::string cssClassName = generate_random_string();
+                                _root.style("." + cssClassName).set_attr("fill", additionalColor).set_attr("opacity", "1.0");
+                                paint_rectangle(xCoord, yCoord, conductingWidth, conductingHeight, cssClassName, shapes, turnAngle, turnCenter, additionalLabel);
+                            }
+                        }
                     }
                 }
             }
         }
     }
     
-    // Add temperature legend/colorbar inside the winding window area (optional)
+    // Add temperature color bar on the right side
     if (showColorBar) {
-        // Get winding window coordinates for positioning
-        auto windingWindow = core.get_winding_window();
-        double windowWidth = windingWindow.get_width() ? windingWindow.get_width().value() : _imageWidth * 0.3;
-        double windowHeight = windingWindow.get_height() ? windingWindow.get_height().value() : _imageHeight * 0.6;
-        auto windowCoords = windingWindow.get_coordinates();
-        double windowX = windowCoords ? windowCoords.value()[0] : 0;
-        double windowY = windowCoords ? windowCoords.value()[1] : 0;
+        // Find the rightmost extent of all geometry
+        double maxX = 0;
+        double minY = 0;
+        double maxY = 0;
         
-        // Position legend in the right side of the winding window
-        double legendWidth = windowWidth * 0.08;
-        double legendHeight = windowHeight * 0.6;
-        double legendX = windowX + windowWidth * 0.85;
-        size_t numSteps = 10;
+        // Check core geometry
+        if (family == MAS::CoreShapeFamily::T) {
+            // Toroidal: rightmost point is outerDiameter/2
+            maxX = processedElements.get_width() / 2;
+            minY = -processedElements.get_width() / 2;
+            maxY = processedElements.get_width() / 2;
+        } else {
+            // Concentric cores
+            maxX = showingCoreWidth;
+            minY = -coreHeight / 2;
+            maxY = coreHeight / 2;
+        }
         
-        for (size_t i = 0; i <= numSteps; ++i) {
+        // Check turn positions to find actual extent
+        if (coil.get_turns_description()) {
+            auto turns = coil.get_turns_description().value();
+            for (const auto& turn : turns) {
+                auto coords = turn.get_coordinates();
+                if (coords.size() >= 2) {
+                    double turnX = coords[0];
+                    double turnY = coords[1];
+                    double turnRadius = 0;
+                    if (turn.get_dimensions().has_value() && !turn.get_dimensions().value().empty()) {
+                        turnRadius = turn.get_dimensions().value()[0] / 2;
+                    }
+                    maxX = std::max(maxX, turnX + turnRadius);
+                    minY = std::min(minY, turnY - turnRadius);
+                    maxY = std::max(maxY, turnY + turnRadius);
+                }
+            }
+        }
+        
+        // Position color bar on the right with some margin
+        double marginFactor = 0.15;  // 15% margin from rightmost geometry
+        double barWidth = (maxX - 0) * 0.08;  // 8% of horizontal extent
+        double barHeight = (maxY - minY) * 0.7;  // 70% of vertical extent
+        double barX = maxX + (maxX - 0) * marginFactor;
+        double barY = (maxY + minY) / 2;
+        
+        // Draw white background box for color bar area (extends to include text)
+        double textWidthEstimate = (barHeight * 0.08) * 7;
+        double textHeight = barHeight * 0.08;
+        double whiteBgPadding = barWidth * 0.2;
+        double whiteBgWidth = barWidth + barWidth * 1.3 + textWidthEstimate + whiteBgPadding;
+        double whiteBgHeight = barHeight + whiteBgPadding * 2;
+        std::string whiteBgClass = generate_random_string();
+        _root.style("." + whiteBgClass).set_attr("fill", "#FFFFFF").set_attr("opacity", "1.0");
+        paint_rectangle(barX + whiteBgWidth / 2 - barWidth / 2 - whiteBgPadding, barY, whiteBgWidth, whiteBgHeight, whiteBgClass, shapes);
+        
+        size_t numSteps = 20;
+        
+        // Draw color bar rectangles
+        for (size_t i = 0; i < numSteps; ++i) {
             double t = static_cast<double>(i) / numSteps;
             double temp = minimumTemperature + t * (maximumTemperature - minimumTemperature);
-            auto color = get_color(minimumTemperature, maximumTemperature, coldColor, hotColor, temp);
+            auto color = getColorForTemperature(temp);
             
-            double stepHeight = legendHeight / numSteps;
-            // Y goes from bottom (low temp) to top (high temp)
-            double stepY = windowY - legendHeight / 2 + (numSteps - i - 0.5) * stepHeight;
+            double stepHeight = barHeight / numSteps;
+            // Y goes from bottom (low temp at i=0) to top (high temp at i=numSteps-1)
+            double stepY = barY - barHeight / 2 + (i + 0.5) * stepHeight;
             
             std::string cssClassName = generate_random_string();
             _root.style("." + cssClassName).set_attr("fill", color);
-            paint_rectangle(legendX, stepY, legendWidth, stepHeight, cssClassName, shapes);
-            
-            // Add temperature labels at key positions (min, mid, max)
-            if (i == 0 || i == numSteps / 2 || i == numSteps) {
-                std::stringstream stream;
-                stream << std::fixed << std::setprecision(0) << temp;
-                // Text position needs to be in scaled coordinates for SVG::Text
-                double textX = (legendX + legendWidth * 0.7) * _scale;
-                double textY = -stepY * _scale;  // Note: SVG Y is inverted
-                auto* text = _root.add_child<SVG::Text>(textX, textY, stream.str() + "C");
-                text->set_attr("font-size", std::to_string(windowHeight * _scale * 0.03));
-                text->set_attr("fill", "#000000");
-            }
+            paint_rectangle(barX, stepY, barWidth, stepHeight, cssClassName, shapes);
         }
+        
+        // Add outline around color bar
+        std::string outlineClass = generate_random_string();
+        _root.style("." + outlineClass).set_attr("fill", "none").set_attr("stroke", "#000000").set_attr("stroke-width", "1");
+        paint_rectangle(barX, barY, barWidth, barHeight, outlineClass, shapes);
+        
+        // Add temperature labels
+        std::vector<std::pair<double, std::string>> labels;
+        labels.push_back({1.0, std::to_string(static_cast<int>(std::round(maximumTemperature))) + "°C"});
+        labels.push_back({0.5, std::to_string(static_cast<int>(std::round((minimumTemperature + maximumTemperature) / 2))) + "°C"});
+        labels.push_back({0.0, std::to_string(static_cast<int>(std::round(minimumTemperature))) + "°C"});
+        
+        for (const auto& [position, label] : labels) {
+            double labelY = barY - barHeight / 2 + position * barHeight;
+            // Adjust top label position to stay within white box
+            if (position == 1.0) {
+                labelY -= textHeight * 0.8;  // Move top label down
+            }
+            // Text position needs to be in scaled coordinates for SVG::Text
+            double textX = (barX + barWidth * 1.3) * _scale;
+            double textY = -labelY * _scale;  // Note: SVG Y is inverted
+            auto* text = _root.add_child<SVG::Text>(textX, textY, label);
+            text->set_attr("font-size", std::to_string(barHeight * _scale * 0.08));
+            text->set_attr("fill", "#000000");
+            text->set_attr("text-anchor", "start");
+        }
+        
+        // Update viewBox to include the color bar
+        double newMaxX = barX + barWidth * 1.3 + textWidthEstimate;
+        double newImageWidth = newMaxX * 2;  // Since the view is centered at origin
+        
+        // Ensure the height includes the full color bar extent
+        double colorBarTop = barY + barHeight / 2;
+        double colorBarBottom = barY - barHeight / 2;
+        double newMaxY = std::max(maxY, colorBarTop);
+        double newMinY = std::min(minY, colorBarBottom);
+        double newImageHeight = newMaxY - newMinY;
+        
+        // Update the image dimensions and viewBox
+        _imageWidth = std::max(_imageWidth, newImageWidth);
+        _imageHeight = std::max(_imageHeight, newImageHeight);
+        _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);
+        _root.set_attr("viewBox", std::to_string(-_imageWidth / 2 * _scale) + " " + std::to_string(-_imageHeight / 2 * _scale) + " " + std::to_string(_imageWidth * _scale) + " " + std::to_string(_imageHeight * _scale));
     }
 }
 
@@ -2037,10 +2330,15 @@ std::string BasicPainter::paint_operating_point_waveforms(
 }
 
 std::string BasicPainter::paint_thermal_circuit_schematic(
-    const std::vector<ThermalNode>& nodes,
+    const std::vector<ThermalNetworkNode>& nodes,
     const std::vector<ThermalResistanceElement>& resistances,
     double width,
     double height) {
+    
+    // Configurable colors for thermal visualization
+    const std::string COLOR_AMBIENT = "#4CAF50";      // Green - exposed to ambient air
+    const std::string COLOR_CONDUCTION = "#FF9800";   // Orange - thermal conduction
+    const std::string COLOR_NO_CONNECTION = "#795548"; // Brown - no thermal path
     
     // Create a new SVG root for the schematic
     _root = SVG::SVG();
@@ -2052,329 +2350,829 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     auto* bg = _root.add_child<SVG::Rect>(0, 0, width, height);
     bg->set_attr("fill", "#ffffff");
     
-    // Add title
-    auto* titleText = _root.add_child<SVG::Text>(width / 2, 30, "Thermal Equivalent Circuit");
-    titleText->set_attr("font-size", "16");
-    titleText->set_attr("font-weight", "bold");
-    titleText->set_attr("text-anchor", "middle");
-    titleText->set_attr("fill", "#333333");
-    
     if (nodes.empty()) {
         return export_svg();
     }
     
-    // Categorize nodes by type
-    std::vector<const ThermalNode*> coreNodes;
-    std::map<int, std::vector<const ThermalNode*>> coilNodesByWinding;
-    const ThermalNode* ambientNode = nullptr;
+    // =========================================================================
+    // Calculate minimum node separation and scale factor for schematic
+    // This ensures nodes don't overlap, especially with quadrant visualization
+    // =========================================================================
+    double minNodeSeparation = std::numeric_limits<double>::max();
     
-    for (const auto& node : nodes) {
-        switch (node.type) {
-            case ThermalNodeType::CORE_CENTRAL_COLUMN:
-            case ThermalNodeType::CORE_LATERAL_COLUMN:
-            case ThermalNodeType::CORE_TOP_YOKE:
-            case ThermalNodeType::CORE_BOTTOM_YOKE:
-                coreNodes.push_back(&node);
-                break;
-            case ThermalNodeType::COIL_TURN: {
-                int windingIdx = 0;
-                size_t pos = node.name.find("winding ");
-                if (pos != std::string::npos) {
-                    windingIdx = std::stoi(node.name.substr(pos + 8));
-                }
-                coilNodesByWinding[windingIdx].push_back(&node);
-                break;
+    // Find minimum distance between ANY two non-ambient nodes (not just connected ones)
+    // This is critical for dense layouts like T36 with many turns
+    for (size_t i = 0; i < nodes.size(); i++) {
+        if (nodes[i].isAmbient()) continue;
+        
+        for (size_t j = i + 1; j < nodes.size(); j++) {
+            if (nodes[j].isAmbient()) continue;
+            
+            // Calculate 3D Euclidean distance between nodes
+            double dx = nodes[i].physicalCoordinates.size() >= 1 && nodes[j].physicalCoordinates.size() >= 1 ? 
+                        nodes[i].physicalCoordinates[0] - nodes[j].physicalCoordinates[0] : 0.0;
+            double dy = nodes[i].physicalCoordinates.size() >= 2 && nodes[j].physicalCoordinates.size() >= 2 ? 
+                        nodes[i].physicalCoordinates[1] - nodes[j].physicalCoordinates[1] : 0.0;
+            double dz = nodes[i].physicalCoordinates.size() >= 3 && nodes[j].physicalCoordinates.size() >= 3 ? 
+                        nodes[i].physicalCoordinates[2] - nodes[j].physicalCoordinates[2] : 0.0;
+            double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+            
+            if (dist > 1e-6) {  // Avoid zero distances
+                minNodeSeparation = std::min(minNodeSeparation, dist);
             }
-            case ThermalNodeType::AMBIENT:
-                ambientNode = &node;
-                break;
-            default:
-                break;
         }
     }
     
-    // Find temperature range
-    double minTemp = std::numeric_limits<double>::max();
-    double maxTemp = std::numeric_limits<double>::lowest();
+    // Define node visualization requirements (in SVG units)
+    double nodeCircleRadius = 8.0;       // Radius of node circles (base)
+    double nodeQuadrantRadius = nodeCircleRadius * 1.15;  // Extended radius with quadrants
+    double minClearance = 12.0;          // Minimum clearance between node edges
+    
+    // Calculate required SVG space between node centers
+    // We need: 2 node radii (with quadrants) + minimum clearance
+    double minSvgSpaceNeeded = 2 * nodeQuadrantRadius + minClearance;
+    
+    // Calculate scale factor automatically from minimum node separation
+    // scaleFactor = SVG_pixels / physical_meters
+    // For the smallest separation, we need at least minSvgSpaceNeeded pixels
+    double scaleFactor = 5000.0;  // Fallback if no valid distances found
+    
+    if (minNodeSeparation < std::numeric_limits<double>::max() && minNodeSeparation > 1e-6) {
+        // Calculate exact scale needed for minimum separation
+        scaleFactor = minSvgSpaceNeeded / minNodeSeparation;
+        
+        // Add 50% safety margin for comfortable spacing
+        scaleFactor *= 1.5;
+        
+        // Ensure minimum practical scale
+        scaleFactor = std::max(1000.0, scaleFactor);
+    }
+    
+    // Find bounding box of all nodes in physical coordinates
+    double minX = std::numeric_limits<double>::max();
+    double maxX = std::numeric_limits<double>::lowest();
+    double minY = std::numeric_limits<double>::max();
+    double maxY = std::numeric_limits<double>::lowest();
+    
     for (const auto& node : nodes) {
-        if (!node.isAmbient()) {
-            minTemp = std::min(minTemp, node.temperature);
-            maxTemp = std::max(maxTemp, node.temperature);
+        if (!node.isAmbient() && node.physicalCoordinates.size() >= 2) {
+            minX = std::min(minX, node.physicalCoordinates[0]);
+            maxX = std::max(maxX, node.physicalCoordinates[0]);
+            minY = std::min(minY, node.physicalCoordinates[1]);
+            maxY = std::max(maxY, node.physicalCoordinates[1]);
         }
     }
-    if (std::abs(maxTemp - minTemp) < 0.1) minTemp = maxTemp - 10;
     
-    // Color helper
-    auto getTempColor = [&](double temp) -> std::string {
-        double ratio = (temp - minTemp) / (maxTemp - minTemp);
-        ratio = std::max(0.0, std::min(1.0, ratio));
-        int r = static_cast<int>(ratio * 255);
-        int b = static_cast<int>((1 - ratio) * 255);
-        int g = static_cast<int>((1 - std::abs(ratio - 0.5) * 2) * 80);
-        std::stringstream ss;
-        ss << "rgb(" << r << "," << g << "," << b << ")";
-        return ss.str();
+    // Calculate required SVG canvas size based on physical dimensions
+    double physicalWidth = (maxX - minX) * scaleFactor;
+    double physicalHeight = (maxY - minY) * scaleFactor;
+    
+    // Add margins
+    double margin = 80;
+    double schematicWidth = physicalWidth + 2 * margin;
+    double schematicHeight = physicalHeight + 2 * margin;  // Removed extra space for legend
+    
+    // Update SVG dimensions if using magnetic coordinates
+    if (schematicWidth > 100 && schematicHeight > 100) {
+        _root.set_attr("width", std::to_string(static_cast<int>(schematicWidth)));
+        _root.set_attr("height", std::to_string(static_cast<int>(schematicHeight)));
+        _root.set_attr("viewBox", "0 0 " + std::to_string(static_cast<int>(schematicWidth)) + " " + 
+                                    std::to_string(static_cast<int>(schematicHeight)));
+        
+        // Update background
+        bg->set_attr("width", std::to_string(schematicWidth));
+        bg->set_attr("height", std::to_string(schematicHeight));
+        
+        // Use scaled magnetic coordinates for layout
+        width = schematicWidth;
+        height = schematicHeight;
+    }
+    
+    // =========================================================================
+    // End of scaling calculation
+    // =========================================================================
+    
+    // Categorize nodes by part type
+    std::vector<const ThermalNetworkNode*> coreNodes;
+    std::map<int, std::vector<const ThermalNetworkNode*>> coilNodesByWinding;
+    
+    for (const auto& node : nodes) {
+        if (node.part == ThermalNodePartType::AMBIENT) {
+            // Ambient node - no visualization needed
+        } else if (node.part == ThermalNodePartType::TURN) {
+            // Extract winding index from windingIndex field or name
+            int windingIdx = 0;
+            if (node.windingIndex.has_value()) {
+                windingIdx = node.windingIndex.value();
+            }
+            coilNodesByWinding[windingIdx].push_back(&node);
+        } else {
+            // All other parts are core nodes
+            coreNodes.push_back(&node);
+        }
+    }
+    
+    // =========================================================================
+    // GEOMETRIC LAYOUT: Use actual physical coordinates with calculated scaling
+    // =========================================================================
+    
+    // Map node coordinates to SVG positions
+    auto mapNodeToSvg = [&](const ThermalNetworkNode& node) -> std::pair<double, double> {
+        if (node.physicalCoordinates.size() < 2) {
+            // Fallback for nodes without coordinates
+            return {width / 2, height / 2};
+        }
+        
+        // Map physical coordinates to SVG space
+        // Physical: (node.physicalCoordinates[0], node.physicalCoordinates[1]) in meters
+        // SVG: (margin to width-margin, margin to height-margin)
+        
+        double svgX = margin + (node.physicalCoordinates[0] - minX) * scaleFactor;
+        double svgY = margin + (node.physicalCoordinates[1] - minY) * scaleFactor;
+        
+        return {svgX, svgY};
     };
     
     // Layout parameters
-    double margin = 60;
-    double nodeRadius = 18;
-    double groundY = height - 80;
+    double defaultNodeRadius = 8;  // Default size for core/ambient nodes
+    double groundY = height - 60;
     
-    // === SIMPLIFIED SCHEMATIC LAYOUT ===
-    // Left side: Core section (aggregated)
-    // Right side: Windings (each winding as a row of turns)
-    // Bottom: Ground/Ambient bus
+    // === GEOMETRIC LAYOUT ===
+    // Nodes positioned based on their physical coordinates
+    // Resistors drawn as connections between node positions
+    // Ambient ground at bottom
     
-    // Draw ground bus
-    auto* busGroup = _root.add_child<SVG::Group>();
-    busGroup->set_attr("id", "buses");
+    // Ground bus and ground symbol removed for cleaner visualization
     
-    // SVG::Line takes (x1, x2, y1, y2) - NOT (x1, y1, x2, y2)
-    auto* groundBus = busGroup->add_child<SVG::Line>(margin, width - margin, groundY, groundY);
-    groundBus->set_attr("stroke", "#333333");
-    groundBus->set_attr("stroke-width", "3");
+    // === DRAW THERMAL RESISTANCES AS CONNECTIONS ===
+    auto* resistorGroup = _root.add_child<SVG::Group>();
+    resistorGroup->set_attr("id", "resistances");
     
-    // Ground symbol at center
-    double gndX = width / 2;
-    for (int i = 0; i < 3; ++i) {
-        double lineWidth = 30 - i * 8;
-        auto* hLine = busGroup->add_child<SVG::Line>(
-            gndX - lineWidth / 2, gndX + lineWidth / 2,
-            groundY + 10 + i * 6, groundY + 10 + i * 6);
-        hLine->set_attr("stroke", "#333333");
-        hLine->set_attr("stroke-width", "2");
-    }
+    // Helper to get limit coordinate for a specific quadrant face from a node
+    auto getQuadrantLimitCoordinate = [&](const ThermalNetworkNode& node, ThermalNodeFace face) -> std::optional<std::array<double, 3>> {
+        for (const auto& quadrant : node.quadrants) {
+            if (quadrant.face == face) {
+                return quadrant.limitCoordinates;
+            }
+        }
+        return std::nullopt;
+    };
     
-    double ambientTemp = ambientNode ? ambientNode->temperature : 25.0;
-    std::stringstream ambStr;
-    ambStr << "Ambient: " << std::fixed << std::setprecision(0) << ambientTemp << "°C";
-    auto* ambLabel = busGroup->add_child<SVG::Text>(gndX, groundY + 45, ambStr.str());
-    ambLabel->set_attr("font-size", "11");
-    ambLabel->set_attr("text-anchor", "middle");
-    ambLabel->set_attr("fill", "#333333");
-    
-    // === CORE SECTION (Left side) ===
-    double coreX = margin + 80;
-    double coreTopY = 80;
-    double coreHeight = (groundY - coreTopY - 100);
-    
-    auto* coreGroup = _root.add_child<SVG::Group>();
-    coreGroup->set_attr("id", "core");
-    
-    // Calculate aggregate core stats
-    double totalCorePower = 0;
-    double avgCoreTemp = 0;
-    for (const auto* node : coreNodes) {
-        totalCorePower += node->powerDissipation;
-        avgCoreTemp += node->temperature;
-    }
-    if (!coreNodes.empty()) avgCoreTemp /= coreNodes.size();
-    
-    // Draw core as a rounded rectangle block
-    double coreBlockWidth = 100;
-    double coreBlockHeight = std::min(200.0, coreHeight * 0.6);
-    double coreBlockY = coreTopY + (coreHeight - coreBlockHeight) / 2;
-    
-    auto* coreRect = coreGroup->add_child<SVG::Rect>(
-        coreX - coreBlockWidth/2, coreBlockY, coreBlockWidth, coreBlockHeight);
-    coreRect->set_attr("fill", getTempColor(avgCoreTemp));
-    coreRect->set_attr("stroke", "#333333");
-    coreRect->set_attr("stroke-width", "2");
-    coreRect->set_attr("rx", "10");
-    
-    auto* coreLabel = coreGroup->add_child<SVG::Text>(coreX, coreBlockY + coreBlockHeight/2 - 10, "CORE");
-    coreLabel->set_attr("font-size", "14");
-    coreLabel->set_attr("font-weight", "bold");
-    coreLabel->set_attr("text-anchor", "middle");
-    coreLabel->set_attr("fill", "#ffffff");
-    
-    std::stringstream coreTempStr;
-    coreTempStr << std::fixed << std::setprecision(0) << avgCoreTemp << "°C";
-    auto* coreTempLabel = coreGroup->add_child<SVG::Text>(coreX, coreBlockY + coreBlockHeight/2 + 10, coreTempStr.str());
-    coreTempLabel->set_attr("font-size", "12");
-    coreTempLabel->set_attr("text-anchor", "middle");
-    coreTempLabel->set_attr("fill", "#ffffff");
-    
-    std::stringstream corePowerStr;
-    if (totalCorePower >= 1.0) {
-        corePowerStr << std::fixed << std::setprecision(2) << totalCorePower << " W";
-    } else {
-        corePowerStr << std::fixed << std::setprecision(0) << totalCorePower * 1000 << " mW";
-    }
-    auto* corePowerLabel = coreGroup->add_child<SVG::Text>(coreX, coreBlockY + coreBlockHeight/2 + 25, corePowerStr.str());
-    corePowerLabel->set_attr("font-size", "10");
-    corePowerLabel->set_attr("text-anchor", "middle");
-    corePowerLabel->set_attr("fill", "#ffcc00");
-    
-    // Core to ground connection with resistor
-    auto* coreWire = coreGroup->add_child<SVG::Line>(coreX, coreX, coreBlockY + coreBlockHeight, groundY);
-    coreWire->set_attr("stroke", "#333333");
-    coreWire->set_attr("stroke-width", "2");
-    
-    // === WINDING SECTIONS ===
-    double windingStartX = coreX + coreBlockWidth/2 + 80;
-    double windingEndX = width - margin - 20;
-    size_t numWindings = coilNodesByWinding.size();
-    double windingRowHeight = std::min(100.0, (groundY - coreTopY - 60) / std::max(1.0, static_cast<double>(numWindings)));
-    
-    auto* windingsGroup = _root.add_child<SVG::Group>();
-    windingsGroup->set_attr("id", "windings");
-    
-    size_t windingIdx = 0;
-    for (auto& [wIdx, turnNodes] : coilNodesByWinding) {
-        double rowY = coreTopY + 40 + windingIdx * windingRowHeight;
+    // Helper function to draw a resistor symbol between two points
+    auto drawResistor = [&](double x1, double y1, double x2, double y2, double resistance) {
+        // Calculate line direction
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double length = std::sqrt(dx*dx + dy*dy);
         
-        // Winding label
-        std::string windingName = "Winding " + std::to_string(wIdx);
-        auto* wLabel = windingsGroup->add_child<SVG::Text>(windingStartX - 10, rowY + 5, windingName);
-        wLabel->set_attr("font-size", "11");
-        wLabel->set_attr("font-weight", "bold");
-        wLabel->set_attr("text-anchor", "end");
-        wLabel->set_attr("fill", "#333333");
+        if (length < 1e-6) return;  // Skip zero-length resistors
         
-        // Calculate winding stats
-        double totalWindingPower = 0;
-        double minWindingTemp = std::numeric_limits<double>::max();
-        double maxWindingTemp = std::numeric_limits<double>::lowest();
-        for (const auto* node : turnNodes) {
-            totalWindingPower += node->powerDissipation;
-            minWindingTemp = std::min(minWindingTemp, node->temperature);
-            maxWindingTemp = std::max(maxWindingTemp, node->temperature);
+        // Normalize
+        double ux = dx / length;
+        double uy = dy / length;
+        
+        // Perpendicular unit vector
+        double px = -uy;
+        double py = ux;
+        
+        // Resistor zigzag parameters
+        double zigzagLength = 16.0;
+        double zigzagWidth = 4.0;
+        int numZigs = 4;
+        
+        // Start and end clearance from nodes
+        double clearance = defaultNodeRadius + 2.0;
+        
+        // Calculate where zigzag should be centered between the two nodes
+        double availableLength = length - 2 * clearance;
+        double zigzagStartOffset = clearance + (availableLength - zigzagLength) / 2;
+        
+        // Zigzag start and end positions
+        double zigzagStartX = x1 + ux * zigzagStartOffset;
+        double zigzagStartY = y1 + uy * zigzagStartOffset;
+        double zigzagEndX = zigzagStartX + ux * zigzagLength;
+        double zigzagEndY = zigzagStartY + uy * zigzagLength;
+        
+        // Draw line from node1 to zigzag start
+        auto* wire1 = resistorGroup->add_child<SVG::Line>(x1, zigzagStartX, y1, zigzagStartY);
+        wire1->set_attr("stroke", "#666666");
+        wire1->set_attr("stroke-width", "1");
+        
+        // Draw resistor zigzag
+        std::stringstream pathData;
+        pathData << "M " << zigzagStartX << " " << zigzagStartY;
+        
+        for (int i = 1; i <= numZigs; ++i) {
+            double t = static_cast<double>(i) / numZigs;
+            double sign = (i % 2 == 1) ? 1.0 : -1.0;
+            double midX = zigzagStartX + ux * zigzagLength * t + px * zigzagWidth * sign;
+            double midY = zigzagStartY + uy * zigzagLength * t + py * zigzagWidth * sign;
+            pathData << " L " << midX << " " << midY;
+        }
+        pathData << " L " << zigzagEndX << " " << zigzagEndY;
+        
+        auto* zigzag = resistorGroup->add_child<SVG::Path>();
+        zigzag->set_attr("d", pathData.str());
+        zigzag->set_attr("stroke", "#666666");
+        zigzag->set_attr("stroke-width", "1.5");
+        zigzag->set_attr("fill", "none");
+        
+        // Draw line from zigzag end to node2
+        auto* wire2 = resistorGroup->add_child<SVG::Line>(zigzagEndX, x2, zigzagEndY, y2);
+        wire2->set_attr("stroke", "#666666");
+        wire2->set_attr("stroke-width", "1");
+        
+        // Label resistance value at midpoint
+        double labelX = (x1 + x2) / 2 + px * 10;
+        double labelY = (y1 + y2) / 2 + py * 10;
+        
+        std::stringstream rStr;
+        if (resistance >= 1000.0) {
+            rStr << std::fixed << std::setprecision(1) << resistance / 1000.0 << "k";
+        } else if (resistance >= 1.0) {
+            rStr << std::fixed << std::setprecision(1) << resistance;
+        } else {
+            rStr << std::fixed << std::setprecision(0) << resistance * 1000.0 << "m";
+        }
+        rStr << "K/W";
+        
+        auto* rLabel = resistorGroup->add_child<SVG::Text>(labelX, labelY, rStr.str());
+        rLabel->set_attr("font-size", "6");
+        rLabel->set_attr("fill", "#cc6600");
+    };
+    
+    // Draw all resistances
+    for (const auto& res : resistances) {
+        const ThermalNetworkNode* node1 = nullptr;
+        const ThermalNetworkNode* node2 = nullptr;
+        if (res.nodeFromId < nodes.size()) node1 = &nodes[res.nodeFromId];
+        if (res.nodeToId < nodes.size()) node2 = &nodes[res.nodeToId];
+        
+        if (!node1 || !node2) continue;
+        if (node1->isAmbient() || node2->isAmbient()) continue;
+        
+        // Get connection points
+        // For turn nodes: use quadrant limit coordinate
+        // For core nodes: use node center
+        double x1, y1, x2, y2;
+        
+        // For node1: use limit coordinate only if it's a turn node
+        if (node1->part == ThermalNodePartType::TURN) {
+            auto limit1 = getQuadrantLimitCoordinate(*node1, res.quadrantFrom);
+            if (limit1 && ((*limit1)[0] != 0.0 || (*limit1)[1] != 0.0)) {
+                x1 = margin + ((*limit1)[0] - minX) * scaleFactor;
+                y1 = margin + ((*limit1)[1] - minY) * scaleFactor;
+            } else {
+                auto pos1 = mapNodeToSvg(*node1);
+                x1 = pos1.first;
+                y1 = pos1.second;
+            }
+        } else {
+            auto pos1 = mapNodeToSvg(*node1);
+            x1 = pos1.first;
+            y1 = pos1.second;
         }
         
-        // Sample turns to display (max 8)
-        size_t maxTurns = 8;
-        std::vector<const ThermalNode*> displayTurns;
-        if (turnNodes.size() <= maxTurns) {
-            displayTurns = turnNodes;
+        // For node2: use limit coordinate only if it's a turn node
+        if (node2->part == ThermalNodePartType::TURN) {
+            auto limit2 = getQuadrantLimitCoordinate(*node2, res.quadrantTo);
+            if (limit2 && ((*limit2)[0] != 0.0 || (*limit2)[1] != 0.0)) {
+                x2 = margin + ((*limit2)[0] - minX) * scaleFactor;
+                y2 = margin + ((*limit2)[1] - minY) * scaleFactor;
+            } else {
+                auto pos2 = mapNodeToSvg(*node2);
+                x2 = pos2.first;
+                y2 = pos2.second;
+            }
         } else {
-            for (size_t i = 0; i < maxTurns; ++i) {
-                displayTurns.push_back(turnNodes[i * turnNodes.size() / maxTurns]);
+            auto pos2 = mapNodeToSvg(*node2);
+            x2 = pos2.first;
+            y2 = pos2.second;
+        }
+        
+        // Draw conduction as full resistor symbols
+        if (res.type == HeatTransferType::CONDUCTION) {
+            drawResistor(x1, y1, x2, y2, res.resistance);
+        } else {
+            // Use dashed line for convection/radiation
+            auto* line = resistorGroup->add_child<SVG::Line>(x1, x2, y1, y2);
+            if (res.type == HeatTransferType::NATURAL_CONVECTION || 
+                res.type == HeatTransferType::FORCED_CONVECTION) {
+                line->set_attr("stroke", "#3399ff");
+                line->set_attr("stroke-dasharray", "3,2");
+            } else {
+                line->set_attr("stroke", "#ff6600");
+                line->set_attr("stroke-dasharray", "2,1");
+            }
+            line->set_attr("stroke-width", "1");
+            line->set_attr("opacity", "0.6");
+        }
+    }
+    
+    // === DRAW NODES ===
+    auto* nodesGroup = _root.add_child<SVG::Group>();
+    nodesGroup->set_attr("id", "nodes");
+    
+    // Draw core nodes (placeholder - will add quadrants after helper functions)
+    std::vector<const ThermalNetworkNode*> coreNodesForQuadrants = coreNodes;
+    
+    // Helper to get surface coverage for a specific face from the node's quadrants
+    auto getSurfaceCoverage = [&](const ThermalNetworkNode& node, ThermalNodeFace face) -> double {
+        for (const auto& quadrant : node.quadrants) {
+            if (quadrant.face == face) {
+                return quadrant.surfaceCoverage;
+            }
+        }
+        return 1.0;  // Default: fully exposed if quadrant not found
+    };
+    
+    // Helper to check if a specific face has convection to ambient
+    auto hasConvectionToAmbientOnFace = [&](size_t nodeIdx, ThermalNodeFace face, double nodeAngle) -> bool {
+        const auto& node = nodes[nodeIdx];
+        for (const auto& res : resistances) {
+            if ((res.nodeFromId == nodeIdx || res.nodeToId == nodeIdx) &&
+                (res.type == HeatTransferType::NATURAL_CONVECTION || 
+                 res.type == HeatTransferType::FORCED_CONVECTION)) {
+                size_t otherIdx = (res.nodeFromId == nodeIdx) ? res.nodeToId : res.nodeFromId;
+                if (otherIdx < nodes.size() && nodes[otherIdx].isAmbient()) {
+                    // For turn nodes: check which face connects to ambient
+                    if (node.part == ThermalNodePartType::TURN) {
+                        // Inner turn nodes: RADIAL_INNER connects to ambient (inner winding window)
+                        // Outer turn nodes: RADIAL_OUTER connects to ambient (external air)
+                        std::string nameLower = node.name;
+                        std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+                        if (nameLower.find("_inner") != std::string::npos) {
+                            return face == ThermalNodeFace::RADIAL_INNER;
+                        } else if (nameLower.find("_outer") != std::string::npos) {
+                            return face == ThermalNodeFace::RADIAL_OUTER;
+                        }
+                    }
+                    // For core nodes: check which faces connect to ambient AND have surface coverage > 0
+                    else if (node.part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT) {
+                        // Toroidal core: only RADIAL_INNER and RADIAL_OUTER face ambient
+                        // Check surface coverage - if fully covered (coverage = 0), no convection
+                        if (face == ThermalNodeFace::RADIAL_INNER || face == ThermalNodeFace::RADIAL_OUTER) {
+                            double coverage = getSurfaceCoverage(node, face);
+                            return coverage > 0.01;  // Exposed if coverage > 1%
+                        }
+                        return false;  // Tangential faces don't have ambient convection
+                    }
+                    else if (node.part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
+                             node.part == ThermalNodePartType::CORE_LATERAL_COLUMN ||
+                             node.part == ThermalNodePartType::CORE_TOP_YOKE ||
+                             node.part == ThermalNodePartType::CORE_BOTTOM_YOKE) {
+                        return true;  // Other core types: all exposed surfaces
+                    }
+                }
+            }
+        }
+        return false;
+    };
+    
+    // Helper to check if a specific face has conduction connection
+    auto hasConductionConnectionOnFace = [&](size_t nodeIdx, ThermalNodeFace face, double nodeAngle) -> bool {
+        for (const auto& res : resistances) {
+            if (res.type == HeatTransferType::CONDUCTION) {
+                // Check if this resistance connects to the given node on the given face
+                if (res.nodeFromId == nodeIdx && res.quadrantFrom == face) {
+                    return true;
+                }
+                if (res.nodeToId == nodeIdx && res.quadrantTo == face) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    
+    // Helper to draw a pie slice (ring quadrant)
+    auto drawPieSlice = [&](double cx, double cy, double radius, double startAngleDeg, double endAngleDeg, 
+                            const std::string& color, double opacity) {
+        double startAngle = startAngleDeg * M_PI / 180.0;
+        double endAngle = endAngleDeg * M_PI / 180.0;
+        
+        double x1 = cx + radius * std::cos(startAngle);
+        double y1 = cy + radius * std::sin(startAngle);
+        double x2 = cx + radius * std::cos(endAngle);
+        double y2 = cy + radius * std::sin(endAngle);
+        
+        std::stringstream pathData;
+        pathData << "M " << cx << " " << cy;
+        pathData << " L " << x1 << " " << y1;
+        
+        int largeArc = (endAngleDeg - startAngleDeg > 180) ? 1 : 0;
+        pathData << " A " << radius << " " << radius << " 0 " << largeArc << " 1 " << x2 << " " << y2;
+        pathData << " Z";
+        
+        auto* slice = nodesGroup->add_child<SVG::Path>();
+        slice->set_attr("d", pathData.str());
+        slice->set_attr("fill", color);
+        slice->set_attr("opacity", std::to_string(opacity));
+        slice->set_attr("stroke", "#222222");
+        slice->set_attr("stroke-width", "0.5");
+    };
+    
+    // Draw core nodes with quadrants
+    for (const auto* node : coreNodesForQuadrants) {
+        // Find node index in full nodes array
+        size_t nodeIdx = 0;
+        for (size_t i = 0; i < nodes.size(); i++) {
+            if (&nodes[i] == node) {
+                nodeIdx = i;
+                break;
             }
         }
         
-        // Draw horizontal bus for this winding
-        double busY = rowY;
-        auto* windingBus = windingsGroup->add_child<SVG::Line>(windingStartX, windingEndX, busY, busY);
-        windingBus->set_attr("stroke", "#666666");
-        windingBus->set_attr("stroke-width", "2");
+        auto [x, y] = mapNodeToSvg(*node);
         
-        // Draw turn nodes
-        double turnSpacing = (windingEndX - windingStartX) / (displayTurns.size() + 1);
-        for (size_t t = 0; t < displayTurns.size(); ++t) {
-            const auto* turn = displayTurns[t];
-            double turnX = windingStartX + (t + 1) * turnSpacing;
+        // Calculate angular position for polar orientation
+        double nodeAngle = std::atan2(node->physicalCoordinates.size() >= 2 ? node->physicalCoordinates[1] : 0,
+                                     node->physicalCoordinates.size() >= 1 ? node->physicalCoordinates[0] : 1);
+        
+        // Node circle (base) - white with connection colors on quadrants
+        auto* circle = nodesGroup->add_child<SVG::Circle>(x, y, defaultNodeRadius);
+        circle->set_attr("fill", "#ffffff");
+        circle->set_attr("stroke", "#333333");
+        circle->set_attr("stroke-width", "1.5");
+        
+        // Draw 4 slices on each core node
+        std::array<ThermalNodeFace, 4> quadrants = {
+            ThermalNodeFace::RADIAL_OUTER,
+            ThermalNodeFace::RADIAL_INNER,
+            ThermalNodeFace::TANGENTIAL_LEFT,
+            ThermalNodeFace::TANGENTIAL_RIGHT
+        };
+        
+        for (int q = 0; q < 4; q++) {
+            double sliceStartAngle = 0;
             
-            // Vertical wire from bus to node
-            auto* turnWire = windingsGroup->add_child<SVG::Line>(turnX, turnX, busY, busY + 25);
-            turnWire->set_attr("stroke", "#666666");
-            turnWire->set_attr("stroke-width", "1.5");
+            // Orient slices based on node's angular position in the toroid
+            switch (quadrants[q]) {
+                case ThermalNodeFace::RADIAL_OUTER:
+                    sliceStartAngle = nodeAngle * 180.0 / M_PI - 45;
+                    break;
+                case ThermalNodeFace::RADIAL_INNER:
+                    sliceStartAngle = (nodeAngle + M_PI) * 180.0 / M_PI - 45;
+                    break;
+                case ThermalNodeFace::TANGENTIAL_LEFT:
+                    sliceStartAngle = (nodeAngle + M_PI/2) * 180.0 / M_PI - 45;
+                    break;
+                case ThermalNodeFace::TANGENTIAL_RIGHT:
+                    sliceStartAngle = (nodeAngle - M_PI/2) * 180.0 / M_PI - 45;
+                    break;
+                default:
+                    sliceStartAngle = q * 90 - 45;
+                    break;
+            }
+            double sliceEndAngle = sliceStartAngle + 90;
             
-            // Turn circle
-            double turnY = busY + 25 + nodeRadius;
-            auto* turnCircle = windingsGroup->add_child<SVG::Circle>(turnX, turnY, nodeRadius);
-            turnCircle->set_attr("fill", getTempColor(turn->temperature));
-            turnCircle->set_attr("stroke", "#333333");
-            turnCircle->set_attr("stroke-width", "1.5");
+            // Determine color based on connections and surface coverage for this specific quadrant
+            std::string sliceColor;
             
-            // Temperature
+            // Get surface coverage for this quadrant (if available)
+            double coverage = getSurfaceCoverage(*node, quadrants[q]);
+            
+            if (hasConductionConnectionOnFace(nodeIdx, quadrants[q], nodeAngle)) {
+                sliceColor = COLOR_CONDUCTION;  // Orange: connected via conduction (priority)
+            } else if (hasConvectionToAmbientOnFace(nodeIdx, quadrants[q], nodeAngle)) {
+                sliceColor = COLOR_AMBIENT;  // Green: exposed to air
+            } else if (coverage > 0.5) {
+                // Surface coverage > 50% means mostly exposed to air
+                sliceColor = COLOR_AMBIENT;  // Green: mostly exposed
+            } else {
+                // No explicit connection and mostly covered
+                if (quadrants[q] == ThermalNodeFace::TANGENTIAL_LEFT || quadrants[q] == ThermalNodeFace::TANGENTIAL_RIGHT) {
+                    sliceColor = COLOR_AMBIENT;  // Green: tangential surface always exposed to air
+                } else {
+                    sliceColor = COLOR_NO_CONNECTION;  // Brown: mostly covered by turns
+                }
+            }
+            
+            drawPieSlice(x, y, defaultNodeRadius * 1.15, sliceStartAngle, sliceEndAngle, sliceColor, 0.6);
+        }
+        
+        // Temperature label
+        std::stringstream tStr;
+        tStr << std::fixed << std::setprecision(0) << node->temperature << "°";
+        auto* tLabel = nodesGroup->add_child<SVG::Text>(x, y + 3, tStr.str());
+        tLabel->set_attr("font-size", "7");
+        tLabel->set_attr("text-anchor", "middle");
+        tLabel->set_attr("fill", "#ffffff");
+        tLabel->set_attr("font-weight", "bold");
+        
+        // Node name below
+        auto* nameLabel = nodesGroup->add_child<SVG::Text>(x, y + defaultNodeRadius + 10, "C");
+        nameLabel->set_attr("font-size", "6");
+        nameLabel->set_attr("text-anchor", "middle");
+        nameLabel->set_attr("fill", "#666666");
+    }
+    
+    // Helper function to draw a triangle quadrant
+    auto drawTriangleQuadrant = [&](double cx, double cy, double width, double height, 
+                                     double angleRad, ThermalNodeFace face,
+                                     const std::string& color, double opacity) {
+        // For rectangular wire, draw pie-slice style quadrants
+        // Each quadrant is a triangle from center to two adjacent corners
+        double halfW = width / 2.0;
+        double halfH = height / 2.0;
+        
+        // Local corner coordinates (before rotation):
+        // top-left:    (-halfW, -halfH)
+        // top-right:   (+halfW, -halfH)
+        // bottom-right:(+halfW, +halfH)
+        // bottom-left: (-halfW, +halfH)
+        
+        auto rotate = [&](double lx, double ly) -> std::pair<double, double> {
+            double rx = cx + lx * std::cos(angleRad) - ly * std::sin(angleRad);
+            double ry = cy + lx * std::sin(angleRad) + ly * std::cos(angleRad);
+            return {rx, ry};
+        };
+        
+        // Calculate all four corners in screen space
+        auto tl = rotate(-halfW, -halfH);  // top-left
+        auto tr = rotate(+halfW, -halfH);  // top-right
+        auto br = rotate(+halfW, +halfH);  // bottom-right
+        auto bl = rotate(-halfW, +halfH);  // bottom-left
+        
+        // For toroidal geometry, "inner" means toward the center of the toroid
+        // and "outer" means away from the center. 
+        // The node's angle (angleRad) points from the toroid center to the node.
+        // So RADIAL_INNER is toward angleRad + PI, RADIAL_OUTER is toward angleRad.
+        // We determine inner vs outer by comparing each corner's angle to the node's angle.
+        
+        auto cornerAngle = [&](const std::pair<double, double>& p) {
+            return std::atan2(p.second - cy, p.first - cx);  // Angle from node center to corner
+        };
+        
+        // Normalize angle to [0, 2*PI)
+        auto normalize = [&](double a) {
+            while (a < 0) a += 2 * M_PI;
+            while (a >= 2 * M_PI) a -= 2 * M_PI;
+            return a;
+        };
+        
+        double nodeAngleNorm = normalize(angleRad);
+        double innerDirection = normalize(nodeAngleNorm + M_PI);  // Toward center
+        double outerDirection = normalize(nodeAngleNorm);          // Away from center
+        
+        // Calculate angular distance from inner/outer direction for each corner
+        auto angularDist = [&](double a, double ref) {
+            double d = std::abs(normalize(a - ref));
+            if (d > M_PI) d = 2 * M_PI - d;
+            return d;
+        };
+        
+        struct Corner { std::pair<double, double> p; double angle; double innerDist; double outerDist; const char* name; };
+        Corner corners[4] = {
+            {tl, cornerAngle(tl), angularDist(cornerAngle(tl), innerDirection), angularDist(cornerAngle(tl), outerDirection), "tl"},
+            {tr, cornerAngle(tr), angularDist(cornerAngle(tr), innerDirection), angularDist(cornerAngle(tr), outerDirection), "tr"},
+            {br, cornerAngle(br), angularDist(cornerAngle(br), innerDirection), angularDist(cornerAngle(br), outerDirection), "br"},
+            {bl, cornerAngle(bl), angularDist(cornerAngle(bl), innerDirection), angularDist(cornerAngle(bl), outerDirection), "bl"}
+        };
+        
+        // Sort by how close each corner is to the inner direction (toward center)
+        std::sort(corners, corners + 4, [](const Corner& a, const Corner& b) { return a.innerDist < b.innerDist; });
+        
+        // corners[0] and corners[1] are inner (closest to inner direction = toward center)
+        // corners[2] and corners[3] are outer (farthest from inner direction = away from center)
+        auto& inner1 = corners[0];
+        auto& inner2 = corners[1];
+        auto& outer1 = corners[2];
+        auto& outer2 = corners[3];
+        
+        double x1, y1, x2, y2, x3, y3;
+        
+        switch (face) {
+            case ThermalNodeFace::RADIAL_INNER:
+                // RADIAL_INNER: the face pointing toward origin
+                // Triangle: center -> inner corners
+                x1 = cx; y1 = cy;
+                x2 = inner1.p.first; y2 = inner1.p.second;
+                x3 = inner2.p.first; y3 = inner2.p.second;
+                break;
+            case ThermalNodeFace::RADIAL_OUTER:
+                // RADIAL_OUTER: the face pointing away from origin
+                // Triangle: center -> outer corners
+                x1 = cx; y1 = cy;
+                x2 = outer1.p.first; y2 = outer1.p.second;
+                x3 = outer2.p.first; y3 = outer2.p.second;
+                break;
+            case ThermalNodeFace::TANGENTIAL_LEFT:
+            case ThermalNodeFace::TANGENTIAL_RIGHT:
+                // For tangential faces, we need to pair inner with outer
+                // Find adjacent corners (inner with outer that share an edge)
+                // The two inner corners should be adjacent to different outer corners
+                // inner1 is adjacent to outer1 or outer2?
+                // Check which outer corner is closer to inner1
+                {
+                    double d1 = std::sqrt(std::pow(inner1.p.first - outer1.p.first, 2) + 
+                                          std::pow(inner1.p.second - outer1.p.second, 2));
+                    double d2 = std::sqrt(std::pow(inner1.p.first - outer2.p.first, 2) + 
+                                          std::pow(inner1.p.second - outer2.p.second, 2));
+                    
+                    auto& leftInner = inner1;
+                    auto& rightInner = inner2;
+                    auto& leftOuter = (d1 < d2) ? outer1 : outer2;
+                    auto& rightOuter = (d1 < d2) ? outer2 : outer1;
+                    
+                    if (face == ThermalNodeFace::TANGENTIAL_LEFT) {
+                        // Left face: inner1 -> outer1
+                        x1 = cx; y1 = cy;
+                        x2 = leftInner.p.first; y2 = leftInner.p.second;
+                        x3 = leftOuter.p.first; y3 = leftOuter.p.second;
+                    } else {
+                        // Right face: inner2 -> outer2
+                        x1 = cx; y1 = cy;
+                        x2 = rightInner.p.first; y2 = rightInner.p.second;
+                        x3 = rightOuter.p.first; y3 = rightOuter.p.second;
+                    }
+                }
+                break;
+            default:
+                return;
+        }
+        
+        // Create triangle path
+        std::stringstream pathD;
+        pathD << "M " << x1 << " " << y1 << " L " << x2 << " " << y2 << " L " << x3 << " " << y3 << " Z";
+        
+        auto* triangle = nodesGroup->add_child<SVG::Path>();
+        triangle->set_attr("d", pathD.str());
+        triangle->set_attr("fill", color);
+        triangle->set_attr("opacity", std::to_string(opacity));
+        triangle->set_attr("stroke", "#222222");
+        triangle->set_attr("stroke-width", "0.5");
+    };
+    
+    // Draw coil nodes
+    for (auto& [wIdx, turnNodes] : coilNodesByWinding) {
+        for (size_t nodeListIdx = 0; nodeListIdx < turnNodes.size(); nodeListIdx++) {
+            const auto* node = turnNodes[nodeListIdx];
+            
+            // Find node index in full nodes array
+            size_t nodeIdx = 0;
+            for (size_t i = 0; i < nodes.size(); i++) {
+                if (&nodes[i] == node) {
+                    nodeIdx = i;
+                    break;
+                }
+            }
+            
+            auto [x, y] = mapNodeToSvg(*node);
+            
+            // Calculate angular position for polar orientation
+            double nodeAngle = std::atan2(node->physicalCoordinates.size() >= 2 ? node->physicalCoordinates[1] : 0,
+                                         node->physicalCoordinates.size() >= 1 ? node->physicalCoordinates[0] : 1);
+            
+            // Get node dimensions (proportional to wire size)
+            double nodeWidth = node->dimensions.width * scaleFactor;
+            double nodeHeight = node->dimensions.height * scaleFactor;
+            
+            // Draw node shape based on cross-sectional shape
+            if (node->crossSectionalShape == TurnCrossSectionalShape::RECTANGULAR) {
+                // Draw rotated rectangle for rectangular wire using a path
+                // Calculate corner points
+                double halfW = nodeWidth / 2.0;
+                double halfH = nodeHeight / 2.0;
+                
+                // Corners before rotation
+                double corners[4][2] = {
+                    {x - halfW, y - halfH},  // top-left
+                    {x + halfW, y - halfH},  // top-right
+                    {x + halfW, y + halfH},  // bottom-right
+                    {x - halfW, y + halfH}   // bottom-left
+                };
+                
+                // Rotate corners by node angle
+                std::string pathD = "M ";
+                for (int i = 0; i < 4; i++) {
+                    double dx = corners[i][0] - x;
+                    double dy = corners[i][1] - y;
+                    double rx = x + dx * std::cos(nodeAngle) - dy * std::sin(nodeAngle);
+                    double ry = y + dx * std::sin(nodeAngle) + dy * std::cos(nodeAngle);
+                    pathD += std::to_string(rx) + " " + std::to_string(ry);
+                    if (i < 3) pathD += " L ";
+                }
+                pathD += " Z";
+                
+                auto* rectPath = nodesGroup->add_child<SVG::Path>();
+                rectPath->set_attr("d", pathD);
+                rectPath->set_attr("fill", "#ffffff");
+                rectPath->set_attr("stroke", "#333333");
+                rectPath->set_attr("stroke-width", "1.5");
+            } else {
+                // Draw circle for round wire - use average of width and height as diameter
+                double diameter = (nodeWidth + nodeHeight) / 2.0;
+                auto* circle = nodesGroup->add_child<SVG::Circle>(x, y, diameter / 2.0);
+                circle->set_attr("fill", "#ffffff");
+                circle->set_attr("stroke", "#333333");
+                circle->set_attr("stroke-width", "1.5");
+            }
+            
+            // Draw 4 triangle quadrants
+            std::array<ThermalNodeFace, 4> quadrants = {
+                ThermalNodeFace::RADIAL_OUTER,
+                ThermalNodeFace::RADIAL_INNER,
+                ThermalNodeFace::TANGENTIAL_LEFT,
+                ThermalNodeFace::TANGENTIAL_RIGHT
+            };
+            
+            for (int q = 0; q < 4; q++) {
+                // Determine color based on connections for this specific quadrant
+                std::string triColor;
+                if (hasConductionConnectionOnFace(nodeIdx, quadrants[q], nodeAngle)) {
+                    triColor = COLOR_CONDUCTION;  // Orange: connected via conduction (priority)
+                } else if (hasConvectionToAmbientOnFace(nodeIdx, quadrants[q], nodeAngle)) {
+                    triColor = COLOR_AMBIENT;  // Green: exposed to air
+                } else {
+                    // No explicit connection - check if it's a tangential face
+                    if (quadrants[q] == ThermalNodeFace::TANGENTIAL_LEFT || quadrants[q] == ThermalNodeFace::TANGENTIAL_RIGHT) {
+                        triColor = COLOR_AMBIENT;  // Green: tangential surface exposed to air
+                    } else {
+                        triColor = COLOR_NO_CONNECTION;  // Brown: not connected
+                    }
+                }
+                
+                // Draw quadrant shape based on cross-sectional shape
+                if (node->crossSectionalShape == TurnCrossSectionalShape::ROUND) {
+                    // For round wires: use pie slices (circular sectors)
+                    double sliceStartAngle = 0;
+                    switch (quadrants[q]) {
+                        case ThermalNodeFace::RADIAL_OUTER:
+                            sliceStartAngle = nodeAngle * 180.0 / M_PI - 45;
+                            break;
+                        case ThermalNodeFace::RADIAL_INNER:
+                            sliceStartAngle = (nodeAngle + M_PI) * 180.0 / M_PI - 45;
+                            break;
+                        case ThermalNodeFace::TANGENTIAL_LEFT:
+                            sliceStartAngle = (nodeAngle + M_PI/2) * 180.0 / M_PI - 45;
+                            break;
+                        case ThermalNodeFace::TANGENTIAL_RIGHT:
+                            sliceStartAngle = (nodeAngle - M_PI/2) * 180.0 / M_PI - 45;
+                            break;
+                        default:
+                            sliceStartAngle = q * 90 - 45;
+                            break;
+                    }
+                    double sliceEndAngle = sliceStartAngle + 90;
+                    double avgSize = (nodeWidth + nodeHeight) / 2.0;
+                    drawPieSlice(x, y, avgSize * 0.6, sliceStartAngle, sliceEndAngle, triColor, 0.6);
+                } else {
+                    // For rectangular wires: use triangles
+                    drawTriangleQuadrant(x, y, nodeWidth, nodeHeight, nodeAngle, quadrants[q], triColor, 0.6);
+                }
+            }
+            
+            // Draw limit coordinates as small black dots for turn quadrants only
+            if (node->part == ThermalNodePartType::TURN) {
+                for (const auto& quadrant : node->quadrants) {
+                    if (quadrant.face == ThermalNodeFace::NONE) continue;
+                    
+                    // Map limit coordinates to SVG space
+                    double limitX = margin + (quadrant.limitCoordinates[0] - minX) * scaleFactor;
+                    double limitY = margin + (quadrant.limitCoordinates[1] - minY) * scaleFactor;
+                    
+                    // Draw small black dot
+                    auto* limitDot = nodesGroup->add_child<SVG::Circle>(limitX, limitY, 2.0);
+                    limitDot->set_attr("fill", "#000000");
+                    limitDot->set_attr("stroke", "none");
+                }
+            }
+            
+            // Temperature label
             std::stringstream tStr;
-            tStr << std::fixed << std::setprecision(0) << turn->temperature << "°";
-            auto* tLabel = windingsGroup->add_child<SVG::Text>(turnX, turnY + 4, tStr.str());
-            tLabel->set_attr("font-size", "8");
+            tStr << std::fixed << std::setprecision(0) << node->temperature << "°";
+            auto* tLabel = nodesGroup->add_child<SVG::Text>(x, y + 3, tStr.str());
+            tLabel->set_attr("font-size", "7");
             tLabel->set_attr("text-anchor", "middle");
             tLabel->set_attr("fill", "#ffffff");
             tLabel->set_attr("font-weight", "bold");
             
-            // Turn number below
+            // Turn number below with inner/outer suffix for toroidal cores
             size_t turnNum = 0;
-            size_t pos = turn->name.find("turn ");
-            if (pos != std::string::npos) {
-                turnNum = std::stoi(turn->name.substr(pos + 5));
+            if (node->turnIndex.has_value()) {
+                turnNum = node->turnIndex.value();
             }
-            auto* numLabel = windingsGroup->add_child<SVG::Text>(turnX, turnY + nodeRadius + 10, "T" + std::to_string(turnNum));
-            numLabel->set_attr("font-size", "7");
+            
+            // Check if this is an inner or outer turn node (toroidal)
+            std::string turnLabel = "T" + std::to_string(turnNum);
+            std::string nameLower = node->name;
+            std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+            if (nameLower.find("_inner") != std::string::npos) {
+                turnLabel += "_i";
+            } else if (nameLower.find("_outer") != std::string::npos) {
+                turnLabel += "_o";
+            }
+            
+            double labelOffset = std::max(nodeHeight, nodeWidth) / 2.0 + 12;
+            auto* numLabel = nodesGroup->add_child<SVG::Text>(x, y + labelOffset, turnLabel);
+            numLabel->set_attr("font-size", "6");
             numLabel->set_attr("text-anchor", "middle");
             numLabel->set_attr("fill", "#666666");
         }
-        
-        // Winding stats on right side
-        std::stringstream statsStr;
-        statsStr << std::fixed << std::setprecision(0) << minWindingTemp << "-" << maxWindingTemp << "°C";
-        auto* statsLabel = windingsGroup->add_child<SVG::Text>(windingEndX + 10, busY + 5, statsStr.str());
-        statsLabel->set_attr("font-size", "9");
-        statsLabel->set_attr("text-anchor", "start");
-        statsLabel->set_attr("fill", "#666666");
-        
-        // Power
-        std::stringstream powerStr;
-        if (totalWindingPower >= 1.0) {
-            powerStr << std::fixed << std::setprecision(1) << totalWindingPower << "W";
-        } else {
-            powerStr << std::fixed << std::setprecision(0) << totalWindingPower * 1000 << "mW";
-        }
-        auto* powerLabel = windingsGroup->add_child<SVG::Text>(windingEndX + 10, busY + 18, powerStr.str());
-        powerLabel->set_attr("font-size", "8");
-        powerLabel->set_attr("text-anchor", "start");
-        powerLabel->set_attr("fill", "#cc6600");
-        
-        // Vertical connection from winding bus down to ground
-        double dropX = windingStartX + 20 + windingIdx * 15;
-        auto* vDrop = windingsGroup->add_child<SVG::Line>(dropX, dropX, busY, groundY);
-        vDrop->set_attr("stroke", "#aaaaaa");
-        vDrop->set_attr("stroke-width", "1.5");
-        vDrop->set_attr("stroke-dasharray", "4,2");
-        
-        windingIdx++;
     }
     
-    // === LEGEND ===
-    double legendX = margin;
-    double legendY = height - 35;
-    
-    auto* legendGroup = _root.add_child<SVG::Group>();
-    legendGroup->set_attr("id", "legend");
-    
-    // Temperature scale
-    double scaleWidth = 120;
-    for (int i = 0; i < 20; ++i) {
-        double ratio = static_cast<double>(i) / 19.0;
-        int r = static_cast<int>(ratio * 255);
-        int b = static_cast<int>((1 - ratio) * 255);
-        int g = static_cast<int>((1 - std::abs(ratio - 0.5) * 2) * 80);
-        
-        std::stringstream colorStr;
-        colorStr << "rgb(" << r << "," << g << "," << b << ")";
-        
-        auto* rect = legendGroup->add_child<SVG::Rect>(legendX + i * 6, legendY, 7, 12);
-        rect->set_attr("fill", colorStr.str());
-    }
-    
-    std::stringstream minStr, maxStr;
-    minStr << std::fixed << std::setprecision(0) << minTemp << "°C";
-    maxStr << std::fixed << std::setprecision(0) << maxTemp << "°C";
-    
-    auto* minLabel = legendGroup->add_child<SVG::Text>(legendX, legendY + 22, minStr.str());
-    minLabel->set_attr("font-size", "8");
-    minLabel->set_attr("fill", "#333333");
-    
-    auto* maxLabel = legendGroup->add_child<SVG::Text>(legendX + scaleWidth, legendY + 22, maxStr.str());
-    maxLabel->set_attr("font-size", "8");
-    maxLabel->set_attr("text-anchor", "end");
-    maxLabel->set_attr("fill", "#333333");
-    
-    // Node count
-    size_t totalTurns = 0;
-    for (const auto& [wIdx, turns] : coilNodesByWinding) {
-        totalTurns += turns.size();
-    }
-    std::stringstream countStr;
-    countStr << nodes.size() << " nodes (" << coreNodes.size() << " core, " << totalTurns << " turns)";
-    auto* countLabel = legendGroup->add_child<SVG::Text>(width - margin, legendY + 10, countStr.str());
-    countLabel->set_attr("font-size", "9");
-    countLabel->set_attr("text-anchor", "end");
-    countLabel->set_attr("fill", "#999999");
+    // Legend removed for cleaner visualization
     
     return export_svg();
 }

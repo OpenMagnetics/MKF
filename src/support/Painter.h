@@ -2,7 +2,7 @@
 
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
-#include "physical_models/ThermalEquivalentCircuit.h"
+#include "physical_models/Temperature.h"
 #include "support/Utils.h"
 #include <MAS.hpp>
 #include "svg.hpp"
@@ -12,6 +12,16 @@
 using namespace MAS;
 
 namespace OpenMagnetics {
+
+enum class ColorPalette {
+    BLUE_TO_RED,      // Cold (blue) to hot (red) - traditional thermal
+    RED_TO_BLUE,      // Hot (red) to cold (blue) - reversed
+    VIRIDIS,          // Purple to yellow - perceptually uniform
+    PLASMA,           // Purple to pink to yellow
+    INFERNO,          // Black to red to yellow
+    MAGMA,            // Black to purple to white
+    GRAYSCALE         // Black to white
+};
 
 class PainterInterface {
     private:
@@ -108,7 +118,137 @@ class PainterInterface {
                 break;
             }
             
-            return r + (g << 8) + (b << 16);
+            // Return color in RGB format: 0x00RRGGBB
+            return (r << 16) + (g << 8) + b;
+        }
+
+        // Get color from palette based on ratio (0.0 to 1.0)
+        uint32_t get_uint_color_from_palette(double ratio, ColorPalette palette) {
+            ratio = clamp(ratio, 0.0, 1.0);
+            
+            uint8_t r = 0, g = 0, b = 0;
+            
+            switch (palette) {
+                case ColorPalette::BLUE_TO_RED: {
+                    // Dark blue (0,0,150) -> Purple -> Magenta -> Soft red (200,0,0)
+                    // Softer colors for less contrast
+                    r = static_cast<uint8_t>(ratio * 200);
+                    g = 0;
+                    b = static_cast<uint8_t>((1.0 - ratio) * 150);
+                    break;
+                }
+                case ColorPalette::RED_TO_BLUE: {
+                    // Soft red (200,0,0) -> Purple -> Magenta -> Dark blue (0,0,150)
+                    // Softer colors for less contrast
+                    r = static_cast<uint8_t>((1.0 - ratio) * 200);
+                    g = 0;
+                    b = static_cast<uint8_t>(ratio * 150);
+                    break;
+                }
+                case ColorPalette::VIRIDIS: {
+                    // Approximation of matplotlib's viridis
+                    if (ratio < 0.2) {
+                        double t = ratio / 0.2;
+                        r = static_cast<uint8_t>(68 + t * (59 - 68));
+                        g = static_cast<uint8_t>(1 + t * (82 - 1));
+                        b = static_cast<uint8_t>(84 + t * (139 - 84));
+                    } else if (ratio < 0.4) {
+                        double t = (ratio - 0.2) / 0.2;
+                        r = static_cast<uint8_t>(59 + t * (33 - 59));
+                        g = static_cast<uint8_t>(82 + t * (145 - 82));
+                        b = static_cast<uint8_t>(139 + t * (140 - 139));
+                    } else if (ratio < 0.6) {
+                        double t = (ratio - 0.4) / 0.2;
+                        r = static_cast<uint8_t>(33 + t * (53 - 33));
+                        g = static_cast<uint8_t>(145 + t * (183 - 145));
+                        b = static_cast<uint8_t>(140 + t * (121 - 140));
+                    } else if (ratio < 0.8) {
+                        double t = (ratio - 0.6) / 0.2;
+                        r = static_cast<uint8_t>(53 + t * (122 - 53));
+                        g = static_cast<uint8_t>(183 + t * (209 - 183));
+                        b = static_cast<uint8_t>(121 + t * (81 - 121));
+                    } else {
+                        double t = (ratio - 0.8) / 0.2;
+                        r = static_cast<uint8_t>(122 + t * (253 - 122));
+                        g = static_cast<uint8_t>(209 + t * (231 - 209));
+                        b = static_cast<uint8_t>(81 + t * (37 - 81));
+                    }
+                    break;
+                }
+                case ColorPalette::PLASMA: {
+                    // Approximation of matplotlib's plasma
+                    if (ratio < 0.33) {
+                        double t = ratio / 0.33;
+                        r = static_cast<uint8_t>(13 + t * (126 - 13));
+                        g = static_cast<uint8_t>(8 + t * (3 - 8));
+                        b = static_cast<uint8_t>(135 + t * (186 - 135));
+                    } else if (ratio < 0.67) {
+                        double t = (ratio - 0.33) / 0.34;
+                        r = static_cast<uint8_t>(126 + t * (240 - 126));
+                        g = static_cast<uint8_t>(3 + t * (97 - 3));
+                        b = static_cast<uint8_t>(186 + t * (59 - 186));
+                    } else {
+                        double t = (ratio - 0.67) / 0.33;
+                        r = static_cast<uint8_t>(240 + t * (240 - 240));
+                        g = static_cast<uint8_t>(97 + t * (249 - 97));
+                        b = static_cast<uint8_t>(59 + t * (33 - 59));
+                    }
+                    break;
+                }
+                case ColorPalette::INFERNO: {
+                    // Approximation of matplotlib's inferno
+                    if (ratio < 0.25) {
+                        double t = ratio / 0.25;
+                        r = static_cast<uint8_t>(t * 66);
+                        g = static_cast<uint8_t>(t * 10);
+                        b = static_cast<uint8_t>(t * 104);
+                    } else if (ratio < 0.5) {
+                        double t = (ratio - 0.25) / 0.25;
+                        r = static_cast<uint8_t>(66 + t * (180 - 66));
+                        g = static_cast<uint8_t>(10 + t * (20 - 10));
+                        b = static_cast<uint8_t>(104 + t * (22 - 104));
+                    } else if (ratio < 0.75) {
+                        double t = (ratio - 0.5) / 0.25;
+                        r = static_cast<uint8_t>(180 + t * (252 - 180));
+                        g = static_cast<uint8_t>(20 + t * (128 - 20));
+                        b = static_cast<uint8_t>(22 + t * (20 - 22));
+                    } else {
+                        double t = (ratio - 0.75) / 0.25;
+                        r = static_cast<uint8_t>(252);
+                        g = static_cast<uint8_t>(128 + t * (252 - 128));
+                        b = static_cast<uint8_t>(20 + t * (164 - 20));
+                    }
+                    break;
+                }
+                case ColorPalette::MAGMA: {
+                    // Approximation of matplotlib's magma
+                    if (ratio < 0.33) {
+                        double t = ratio / 0.33;
+                        r = static_cast<uint8_t>(t * 91);
+                        g = static_cast<uint8_t>(t * 21);
+                        b = static_cast<uint8_t>(t * 131);
+                    } else if (ratio < 0.67) {
+                        double t = (ratio - 0.33) / 0.34;
+                        r = static_cast<uint8_t>(91 + t * (222 - 91));
+                        g = static_cast<uint8_t>(21 + t * (73 - 21));
+                        b = static_cast<uint8_t>(131 + t * (104 - 131));
+                    } else {
+                        double t = (ratio - 0.67) / 0.33;
+                        r = static_cast<uint8_t>(222 + t * (252 - 222));
+                        g = static_cast<uint8_t>(73 + t * (253 - 73));
+                        b = static_cast<uint8_t>(104 + t * (191 - 104));
+                    }
+                    break;
+                }
+                case ColorPalette::GRAYSCALE: {
+                    uint8_t gray = static_cast<uint8_t>(ratio * 255);
+                    r = g = b = gray;
+                    break;
+                }
+            }
+            
+            // Return color in RGB format: 0x00RRGGBB
+            return (r << 16) + (g << 8) + b;
         }
 
         struct CoatingInfo {
@@ -287,7 +427,7 @@ class BasicPainter : public PainterInterface {
     void paint_coil_layers(Magnetic magnetic);
     void paint_wire(Wire wire);
     void paint_coil_turns(Magnetic magnetic);
-    void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false);
+    void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false, ColorPalette palette = ColorPalette::BLUE_TO_RED, double ambientTemperature = 25.0);
     
     /**
      * @brief Paint a schematic of the thermal equivalent circuit
@@ -310,7 +450,7 @@ class BasicPainter : public PainterInterface {
      * @return SVG string of the schematic
      */
     std::string paint_thermal_circuit_schematic(
-        const std::vector<ThermalNode>& nodes,
+        const std::vector<ThermalNetworkNode>& nodes,
         const std::vector<ThermalResistanceElement>& resistances,
         double width = 1200,
         double height = 800);
