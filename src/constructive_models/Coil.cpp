@@ -4725,7 +4725,8 @@ std::vector<std::pair<double, std::vector<double>>> Coil::get_collision_distance
     for (auto placedTurnCoordinates : placedTurnsCoordinates) {
         auto placedTurnCartesianCoordinates = polar_to_cartesian(placedTurnCoordinates);
         double distance = sqrt(pow(turnCartesianCoordinates[0] - placedTurnCartesianCoordinates[0], 2) + pow(turnCartesianCoordinates[1] - placedTurnCartesianCoordinates[1], 2));
-        if (distance - wireHeight < 0) {
+        // Use a small tolerance to account for floating point precision
+        if (distance < wireHeight - 1e-9) {
             double collisionDistance = wireHeight - distance;
             auto placedCoordinates = placedTurnCoordinates;
             collisions.push_back({collisionDistance, placedCoordinates});
@@ -4806,7 +4807,9 @@ bool Coil::wind_toroidal_additional_turns() {
                         if (!areLayersTaped) {
 
                             // If the turn is not on the first layer of the section, we try to place it in a slot there
-                            if (roundFloat(turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2, 9) > 0) {
+                            // Use a small tolerance to account for floating point precision issues
+                            double turnInnerEdge = turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2;
+                            if (turnInnerEdge > 1e-9) {
                                 std::vector<double> newCoordinates = {additionalCoordinates[0], additionalCoordinates[1]};
                                 newCoordinates[0] = currentBaseRadialHeight;
                                 auto collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
@@ -4938,13 +4941,36 @@ bool Coil::wind_toroidal_additional_turns() {
                                             // Only try slot scanning if we're still at the first additional layer
                                             if (std::abs(newCoordinates[0] - currentBaseRadialHeight) < turn.get_dimensions().value()[0] / 4) {
                                                 // Scan from minimum angle to maximum angle looking for an empty slot
-                                                for (double testAngle = sectionMinAngle + currentWireAngle / 2; testAngle <= sectionMaxAngle - currentWireAngle / 2; testAngle += currentWireAngle) {
+                                                // Use a smaller step for denser packing - half the wire angle for better slot finding
+                                                double scanStep = currentWireAngle / 2;
+                                                for (double testAngle = sectionMinAngle + currentWireAngle / 2; testAngle <= sectionMaxAngle - currentWireAngle / 2; testAngle += scanStep) {
                                                     std::vector<double> testCoords = {currentBaseRadialHeight, testAngle};
                                                     auto testCollisions = get_collision_distances(testCoords, placedTurnsCoordinates, wireHeight);
                                                     if (testCollisions.size() == 0) {
                                                         newCoordinates = testCoords;
                                                         foundSlot = true;
                                                         break;
+                                                    }
+                                                }
+                                                
+                                                // If still not found, try with even smaller steps and offset starting positions
+                                                if (!foundSlot) {
+                                                    for (double offset = 0; offset < currentWireAngle; offset += scanStep) {
+                                                        for (double testAngle = sectionMinAngle + offset; testAngle <= sectionMaxAngle; testAngle += currentWireAngle) {
+                                                            // Normalize angle to avoid boundary issues
+                                                            double normalizedAngle = testAngle;
+                                                            while (normalizedAngle < 0) normalizedAngle += 360;
+                                                            while (normalizedAngle >= 360) normalizedAngle -= 360;
+                                                            
+                                                            std::vector<double> testCoords = {currentBaseRadialHeight, normalizedAngle};
+                                                            auto testCollisions = get_collision_distances(testCoords, placedTurnsCoordinates, wireHeight);
+                                                            if (testCollisions.size() == 0) {
+                                                                newCoordinates = testCoords;
+                                                                foundSlot = true;
+                                                                break;
+                                                            }
+                                                        }
+                                                        if (foundSlot) break;
                                                     }
                                                 }
                                             }
@@ -4973,11 +4999,41 @@ bool Coil::wind_toroidal_additional_turns() {
                                         double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
                                         double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
 
-                                        if (newCoordinates[1] - currentWireAngle / 2 < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2)) {
-                                            newCoordinates[1] = additionalCoordinates[1];
-                                        }
-                                        if (newCoordinates[1] + currentWireAngle / 2 > (section.get_coordinates()[1] + section.get_dimensions()[1] / 2)) {
-                                            newCoordinates[1] = additionalCoordinates[1];
+                                        // Normalize angles for comparison to handle wrap-around cases
+                                        double sectionMinAngle = section.get_coordinates()[1] - section.get_dimensions()[1] / 2;
+                                        double sectionMaxAngle = section.get_coordinates()[1] + section.get_dimensions()[1] / 2;
+                                        
+                                        // Normalize all angles to [0, 360) range for consistent comparison
+                                        auto normalizeAngle = [](double angle) -> double {
+                                            while (angle < 0) angle += 360;
+                                            while (angle >= 360) angle -= 360;
+                                            return angle;
+                                        };
+                                        
+                                        double normNewAngle = normalizeAngle(newCoordinates[1]);
+                                        double normSectionMin = normalizeAngle(sectionMinAngle);
+                                        double normSectionMax = normalizeAngle(sectionMaxAngle);
+                                        double normAdditionalAngle = normalizeAngle(additionalCoordinates[1]);
+                                        
+                                        // Check if angle is outside section bounds
+                                        // For full 360 degree sections, skip the check
+                                        bool isFullCircle = (section.get_dimensions()[1] >= 360 - 1e-6);
+                                        
+                                        if (!isFullCircle) {
+                                            bool outsideBounds = false;
+                                            if (normSectionMin < normSectionMax) {
+                                                // Normal case: min < max
+                                                outsideBounds = (normNewAngle < normSectionMin + currentWireAngle / 2) || 
+                                                               (normNewAngle > normSectionMax - currentWireAngle / 2);
+                                            } else {
+                                                // Wrap-around case: min > max (section crosses 0/360 boundary)
+                                                outsideBounds = (normNewAngle < normSectionMin + currentWireAngle / 2) && 
+                                                               (normNewAngle > normSectionMax - currentWireAngle / 2);
+                                            }
+                                            
+                                            if (outsideBounds) {
+                                                newCoordinates[1] = normAdditionalAngle;
+                                            }
                                         }
 
                                         collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
@@ -6003,6 +6059,11 @@ bool Coil::delimit_and_compact_round_window() {
             }
 
             double compactingShiftAngle = sections[sectionIndex].get_coordinates()[1] - currentCoilAngle;
+            
+            // Normalize the shift angle to handle 360-degree wrap-around for toroidal cores
+            // The shift should be the smallest angle that achieves the desired alignment
+            while (compactingShiftAngle > 180) compactingShiftAngle -= 360;
+            while (compactingShiftAngle < -180) compactingShiftAngle += 360;
 
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
                 if (sections[sectionIndex].get_type() == ElectricalType::INSULATION) {
