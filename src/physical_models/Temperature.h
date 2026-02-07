@@ -1,5 +1,119 @@
 #pragma once
 
+/**
+ * @file Temperature.h
+ * @brief Thermal analysis system for magnetic components
+ * 
+ * @author OpenMagnetics Team
+ * @date 2024-2025
+ * 
+ * @section overview Overview
+ * 
+ * This module provides comprehensive thermal analysis for magnetic components
+ * (inductors, transformers) by modeling heat generation, conduction, convection,
+ * and radiation. It creates a thermal equivalent circuit and solves for
+ * temperature distribution.
+ * 
+ * @section theory Physical Theory
+ * 
+ * The thermal model is based on the thermal-electrical analogy:
+ * - Temperature (T) ↔ Voltage (V)
+ * - Heat flow (Q) ↔ Current (I)
+ * - Thermal resistance (Rth) ↔ Electrical resistance (R)
+ * 
+ * Key equations:
+ * - Conduction: R_th = L / (k × A)  [K/W]
+ *   where L = length, k = thermal conductivity, A = cross-sectional area
+ * 
+ * - Convection: R_th = 1 / (h × A)  [K/W]
+ *   where h = convection coefficient [W/(m²·K)]
+ * 
+ * - Natural convection coefficient (Churchill & Chu correlation):
+ *   Nu_L = {0.825 + 0.387 Ra_L^(1/6) / [1 + (0.492/Pr)^(9/16)]^(8/9)}²
+ *   h = Nu_L × k_air / L
+ * 
+ * - Radiation: R_th = 1 / (h_rad × A)
+ *   where h_rad = ε × σ × (T_s² + T_a²)(T_s + T_a)  [Stefan-Boltzmann law]
+ * 
+ * @section architecture Architecture
+ * 
+ * The system uses a node-based thermal network:
+ * 
+ * 1. **ThermalNetworkNode**: Represents discrete temperature points
+ *    - Core nodes: Central column, yokes, toroidal segments
+ *    - Turn nodes: Individual windings with quadrant subdivision
+ *    - Ambient node: Reference temperature boundary
+ * 
+ * 2. **ThermalNodeQuadrant**: Subdivision of turn surfaces for directional heat transfer
+ *    - TOROIDAL: RI (Radial Inner), RO (Radial Outer), TL (Tangential Left), TR (Tangential Right)
+ *    - CONCENTRIC: L (Left), R (Right), T (Top), B (Bottom)
+ * 
+ * 3. **ThermalResistanceElement**: Connections between node quadrants
+ *    - Type: CONDUCTION, NATURAL_CONVECTION, FORCED_CONVECTION, RADIATION
+ *    - Calculated based on geometry and material properties
+ * 
+ * @section algorithm Connection Algorithm
+ * 
+ * Turn-to-Turn Connections (Purely Geometric):
+ * - Condition: surface_distance < min(wire_width, wire_height) / 4
+ * - Surface distance = center_distance - extent1 - extent2
+ * - Extent = min(wire_dimensions) / 2 for each wire
+ * - Facing quadrants determined by dot product of direction vectors
+ * 
+ * Convection to Air (Purely Geometric):
+ * - Blocked if object exists in quadrant direction within wire_max_dim distance
+ * - Minimum radial difference > wire_min_dim/4 to avoid tangential neighbor blocking
+ * - Angular tolerance: 0.3 rad (~17°)
+ * 
+ * @section references References
+ * 
+ * 1. Churchill & Chu (1975) - Correlating equations for laminar and turbulent free
+ *    convection from a vertical plate. Int. J. Heat Mass Transfer.
+ * 
+ * 2. Incropera & DeWitt (2002) - Fundamentals of Heat and Mass Transfer, 6th Ed.
+ *    Wiley. Chapter 7 (External Convection).
+ * 
+ * 3. Kyaw et al. (2018) - Thermal modeling of litz wire windings. IEEE Trans. Magn.
+ * 
+ * 4. López et al. (2019) - Anisotropic thermal conductivity in magnetic component
+ *    windings. IEEE Trans. Power Electron.
+ * 
+ * 5. Mukosiej et al. (2022) - Thermal modeling of high-frequency magnetic components
+ *    using homogenization techniques. IEEE Trans. Power Electron.
+ * 
+ * @section ferrite_materials Ferrite Thermal Properties
+ * 
+ * Material         Thermal Conductivity (W/m·K)  Source
+ * ------------------------------------------------------------------------
+ * 3C90 (Ferroxcube)        4.0-4.5            Ferroxcube Datasheet
+ * 3C95 (Ferroxcube)        4.0-4.5            Ferroxcube Datasheet
+ * 3C97 (Ferroxcube)        4.5-5.0            Ferroxcube Datasheet
+ * N87 (TDK)                4.0-4.5            TDK Datasheet
+ * N97 (TDK)                4.0-4.5            TDK Datasheet
+ * PC40 (TDK)               4.0                TDK Datasheet
+ * PC95 (TDK)               4.0                TDK Datasheet
+ * 
+ * @section copper_wire Copper Wire Properties
+ * 
+ * Property                    Value                      Source
+ * ------------------------------------------------------------------------
+ * Thermal Conductivity        385-400 W/(m·K)           CRC Handbook
+ * Electrical Resistivity      1.68×10⁻⁸ Ω·m            @ 20°C
+ * Temperature Coefficient     0.00393 /°C              α (resistance)
+ * Enamel Insulation Thickness 20-50 μm                 IEC 60317
+ * Enamel k                    0.2-0.4 W/(m·K)          Polyimide
+ * 
+ * @section air_properties Air Properties (@ 25°C, 1 atm)
+ * 
+ * Property                    Value
+ * ------------------------------------------------------------------------
+ * Density                     1.184 kg/m³
+ * Thermal Conductivity        0.0261 W/(m·K)
+ * Kinematic Viscosity         15.7×10⁻⁶ m²/s
+ * Prandtl Number              0.71
+ * Thermal Expansion Coeff.    3.35×10⁻³ /K
+ */
+
 #include "ThermalNode.h"
 #include "ThermalResistance.h"
 #include "Magnetic.h"
@@ -63,6 +177,17 @@ struct ThermalResult {
 
 /**
  * @brief Configuration for thermal analysis
+ * 
+ * This structure controls all aspects of the thermal simulation, including:
+ * - Model fidelity (per-turn vs per-layer vs single coil node)
+ * - Physics inclusion (convection types, radiation)
+ * - Material properties (thermal conductivities)
+ * - Insulation modeling (inter-turn, turn-to-core)
+ * - Solver settings (convergence tolerance, max iterations)
+ * - Output options (schematic generation)
+ * 
+ * @note Default values are set for typical ferrite core + copper winding
+ *       applications at natural convection conditions.
  */
 struct TemperatureConfig {
     // Core settings
@@ -263,13 +388,30 @@ private:
      * 
      * Checks distances between node surfaces and creates resistances
      * between connecting quadrants.
+     * 
+     * Connection types created:
+     * - Core-to-core conduction (through core material)
+     * - Turn-to-turn conduction (when surfaces are close)
+     * - Turn-to-bobbin conduction (when in contact)
+     * - Convection/radiation to ambient (exposed surfaces)
      */
     void createThermalResistances();
     
     /**
      * @brief Create core-to-core conduction resistances
+     * 
+     * For concentric cores: connects central column to yokes, yokes to lateral columns
+     * Resistance formula: R = L / (k_core × A)
+     * where L is path length, A is cross-sectional area
      */
     void createConcentricCoreConnections();
+    
+    /**
+     * @brief Create core-to-core conduction resistances for toroidal cores
+     * 
+     * Connects adjacent segments in the toroidal ring.
+     * Also creates connection from innermost segments to ambient (inner window).
+     */
     void createToroidalCoreConnections();
     
     /**
@@ -297,14 +439,36 @@ private:
     /**
      * @brief Create turn-to-turn connections for concentric cores
      * 
-     * Connects adjacent turns through appropriate quadrants based on relative position
+     * Connects adjacent turns through appropriate quadrants based on relative position.
+     * 
+     * Connection criteria:
+     * - surface_distance < min(wire_dims) / 4
+     * - surface_distance = center_distance - extent1 - extent2
+     * - extent = min(wire_width, wire_height) / 2
+     * 
+     * @param turnNodeIndices List of turn node indices to connect
+     * @param minConductionDist Minimum distance for conduction threshold
      */
     void createConcentricTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist);
     
     /**
      * @brief Create turn-to-turn connections for toroidal cores
      * 
-     * Connects inner/outer turns through radial faces and tangentially adjacent turns
+     * Connects turns through radial and tangential faces based on geometric proximity.
+     * 
+     * Connection Logic:
+     * 1. Calculate center distance between all turn pairs
+     * 2. Calculate surface distance using wire extents
+     * 3. If surface_distance < threshold, find facing quadrants using dot product
+     * 4. Create conduction resistance between facing quadrants
+     * 
+     * Facing quadrant determination:
+     * - Calculate turn angles using atan2(y, x)
+     * - Quadrant directions derived from turn angle
+     * - Best facing pair found via maximum dot product with connection direction
+     * 
+     * @param turnNodeIndices List of turn node indices to connect
+     * @param minConductionDist Minimum distance for conduction threshold
      */
     void createToroidalTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist);
     
