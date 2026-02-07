@@ -481,35 +481,131 @@ void Temperature::createToroidalCoreNodes() {
 void Temperature::createConcentricCoreNodes() {
     auto core = _magnetic.get_core();
     auto columns = core.get_columns();
+    auto processedDesc = core.get_processed_description();
     
-    if (columns.empty()) {
+    if (columns.empty() || !processedDesc) {
         return;
     }
     
     double coreK = _config.coreThermalConductivity;
+    double coreWidth = processedDesc->get_width();
+    double coreHeight = processedDesc->get_height();
+    double coreDepth = processedDesc->get_depth();
     
-    for (size_t i = 0; i < columns.size(); ++i) {
-        ThermalNetworkNode node;
-        node.part = (columns[i].get_type() == ColumnType::CENTRAL) 
-                    ? ThermalNodePartType::CORE_CENTRAL_COLUMN 
-                    : ThermalNodePartType::CORE_LATERAL_COLUMN;
-        node.name = "Core_Column_" + std::to_string(i);
-        node.temperature = _config.ambientTemperature;
-        node.powerDissipation = _config.coreLosses / columns.size();
-        
-        double width = columns[i].get_width();
-        double depth = columns[i].get_depth();
-        double height = columns[i].get_height();
-        
-        if (columns[i].get_type() == ColumnType::CENTRAL) {
-            node.physicalCoordinates = {0, 0, 0};
-        } else {
-            double offset = width * 2.0;
-            node.physicalCoordinates = {(i == 1) ? offset : -offset, 0, 0};
+    // Get gaps for each column
+    auto gaps = core.get_functional_description().get_gapping();
+    
+    // Find main (central) column and right lateral column
+    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
+    auto rightColumn = core.find_closest_column_by_coordinates(
+        std::vector<double>({coreWidth / 2, 0, -coreDepth / 2}));
+    
+    // Helper to count gaps in a column
+    auto countGapsInColumn = [&](const ColumnElement& col) -> int {
+        int count = 0;
+        for (const auto& gap : gaps) {
+            if (!gap.get_coordinates()) continue;
+            auto gapCoords = gap.get_coordinates().value();
+            // Check if gap is in this column (by x-coordinate proximity)
+            double colX = (col.get_type() == ColumnType::CENTRAL) ? 0 : 
+                         (col.get_coordinates()[0] > 0 ? coreWidth/2 : -coreWidth/2);
+            if (std::abs(gapCoords[0] - colX) < coreWidth * 0.25) {
+                count++;
+            }
         }
-        
-        node.initializeConcentricQuadrant(width, depth, height, coreK);
+        return count;
+    };
+    
+    // Create central column node(s) - using HALF depth for symmetry (left half only)
+    int mainColGaps = countGapsInColumn(mainColumn);
+    double halfDepth = mainColumn.get_depth() / 2.0;  // Model half the core
+    if (mainColGaps == 0) {
+        // Single central column node
+        ThermalNetworkNode node;
+        node.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;
+        node.name = "Core_CentralColumn";
+        node.temperature = _config.ambientTemperature;
+        node.powerDissipation = _config.coreLosses * 0.4;  // 40% of core losses
+        node.physicalCoordinates = {0, 0, 0};
+        node.initializeConcentricCoreQuadrants(mainColumn.get_width(), 
+                                                mainColumn.get_height(), halfDepth, coreK);
         _nodes.push_back(node);
+    } else {
+        // Split central column by gaps
+        double chunkHeight = mainColumn.get_height() / (mainColGaps + 1);
+        for (int i = 0; i <= mainColGaps; ++i) {
+            ThermalNetworkNode node;
+            node.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;
+            node.name = "Core_CentralColumn_Chunk_" + std::to_string(i);
+            node.temperature = _config.ambientTemperature;
+            node.powerDissipation = (_config.coreLosses * 0.4) / (mainColGaps + 1);
+            // Position each chunk along Y axis
+            double yPos = -mainColumn.get_height()/2 + chunkHeight * (i + 0.5);
+            node.physicalCoordinates = {0, yPos, 0};
+            node.initializeConcentricCoreQuadrants(mainColumn.get_width(), 
+                                                    chunkHeight, halfDepth, coreK);
+            _nodes.push_back(node);
+        }
+    }
+    
+    // Create top yoke node - using HALF depth for symmetry
+    // Position between center (x=0) and right lateral column (x=coreWidth/2)
+    ThermalNetworkNode topYoke;
+    topYoke.part = ThermalNodePartType::CORE_TOP_YOKE;
+    topYoke.name = "Core_TopYoke";
+    topYoke.temperature = _config.ambientTemperature;
+    topYoke.powerDissipation = _config.coreLosses * 0.1;  // 10% of core losses
+    topYoke.physicalCoordinates = {coreWidth / 4, coreHeight / 2 - mainColumn.get_width()/4, 0};
+    topYoke.initializeConcentricCoreQuadrants(coreWidth / 2, mainColumn.get_width()/2, coreDepth / 2, coreK);
+    _nodes.push_back(topYoke);
+    
+    // Create bottom yoke node - using HALF depth for symmetry
+    // Position between center (x=0) and right lateral column (x=coreWidth/2)
+    ThermalNetworkNode bottomYoke;
+    bottomYoke.part = ThermalNodePartType::CORE_BOTTOM_YOKE;
+    bottomYoke.name = "Core_BottomYoke";
+    bottomYoke.temperature = _config.ambientTemperature;
+    bottomYoke.powerDissipation = _config.coreLosses * 0.1;  // 10% of core losses
+    bottomYoke.physicalCoordinates = {coreWidth / 4, -coreHeight / 2 + mainColumn.get_width()/4, 0};
+    bottomYoke.initializeConcentricCoreQuadrants(coreWidth / 2, mainColumn.get_width()/2, coreDepth / 2, coreK);
+    _nodes.push_back(bottomYoke);
+    
+    // Create lateral column node (RIGHT side only for symmetry - half core model)
+    if (columns.size() > 1) {
+        int latColGaps = countGapsInColumn(rightColumn);
+        double halfDepth = rightColumn.get_depth() / 2.0;  // Model half the core
+        
+        double offset = coreWidth / 2 - rightColumn.get_width() / 2;
+        
+        if (latColGaps == 0) {
+            // Single lateral column node (RIGHT side only)
+            ThermalNetworkNode rightNode;
+            rightNode.part = ThermalNodePartType::CORE_LATERAL_COLUMN;
+            rightNode.name = "Core_LateralColumn_Right";
+            rightNode.temperature = _config.ambientTemperature;
+            rightNode.powerDissipation = _config.coreLosses * 0.2;  // 20% of core losses
+            rightNode.physicalCoordinates = {offset, 0, 0};
+            rightNode.initializeConcentricCoreQuadrants(rightColumn.get_width(), 
+                                                         rightColumn.get_height(), halfDepth, coreK);
+            _nodes.push_back(rightNode);
+        } else {
+            // Split lateral column by gaps
+            double chunkHeight = rightColumn.get_height() / (latColGaps + 1);
+            for (int i = 0; i <= latColGaps; ++i) {
+                double yPos = -rightColumn.get_height()/2 + chunkHeight * (i + 0.5);
+                
+                // Right lateral chunk only
+                ThermalNetworkNode rightNode;
+                rightNode.part = ThermalNodePartType::CORE_LATERAL_COLUMN;
+                rightNode.name = "Core_LateralColumn_Right_Chunk_" + std::to_string(i);
+                rightNode.temperature = _config.ambientTemperature;
+                rightNode.powerDissipation = (_config.coreLosses * 0.2) / (latColGaps + 1);
+                rightNode.physicalCoordinates = {offset, yPos, 0};
+                rightNode.initializeConcentricCoreQuadrants(rightColumn.get_width(), 
+                                                             chunkHeight, halfDepth, coreK);
+                _nodes.push_back(rightNode);
+            }
+        }
     }
 }
 
@@ -523,16 +619,86 @@ void Temperature::createBobbinNodes() {
         return;
     }
     
-    ThermalNetworkNode columnNode;
-    columnNode.part = ThermalNodePartType::BOBBIN_CENTRAL_COLUMN;
-    columnNode.name = "Bobbin_CentralColumn";
-    columnNode.temperature = _config.ambientTemperature;
-    columnNode.powerDissipation = 0.0;
-    columnNode.physicalCoordinates = {0, 0, 0};
+    auto bobbin = std::get<Bobbin>(bobbinOpt);
+    auto processedDesc = bobbin.get_processed_description();
+    if (!processedDesc) {
+        return;
+    }
     
-    double bobbinK = 0.2;
-    columnNode.initializeConcentricQuadrant(0.01, 0.01, 0.01, bobbinK);
-    _nodes.push_back(columnNode);
+    double bobbinK = 0.2;  // Thermal conductivity of typical bobbin material (W/m·K)
+    double wallThickness = processedDesc->get_wall_thickness();
+    
+    // Only create bobbin nodes if there's actual wall thickness
+    if (wallThickness <= 0) {
+        return;
+    }
+    
+    auto core = _magnetic.get_core();
+    auto processedCore = core.get_processed_description();
+    if (!processedCore) {
+        return;
+    }
+    
+    double coreWidth = processedCore->get_width();
+    double coreHeight = processedCore->get_height();
+    double coreDepth = processedCore->get_depth();
+    
+    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
+    double columnWidth = mainColumn.get_width();
+    
+    // Get winding window for proper bobbin positioning
+    auto windingWindows = core.get_winding_windows();
+    double windingWindowWidth = 0.01;  // Default 10mm
+    double windingWindowHeight = coreHeight * 0.8;
+    if (!windingWindows.empty()) {
+        windingWindowWidth = windingWindows[0].get_width().value_or(0.01);
+        windingWindowHeight = windingWindows[0].get_height().value_or(coreHeight * 0.8);
+    }
+    
+    // Calculate bobbin positions
+    // Bobbin column is at the INNER edge of the winding window (closer to center)
+    double bobbinColumnX = columnWidth / 2 + wallThickness / 2;
+    
+    // Bobbin yokes are aligned with core yokes (same X coordinate)
+    // Core yokes are at coreWidth/4, so bobbin yokes should be at the same X
+    double bobbinYokeX = coreWidth / 4;
+    
+    // 1. Bobbin Central Column Wall
+    // Positioned at the inner surface of the central column winding window
+    ThermalNetworkNode columnWall;
+    columnWall.part = ThermalNodePartType::BOBBIN_CENTRAL_COLUMN;
+    columnWall.name = "Bobbin_CentralColumn_Wall";
+    columnWall.temperature = _config.ambientTemperature;
+    columnWall.powerDissipation = 0.0;
+    // Position at the winding window inner edge (closer to center)
+    columnWall.physicalCoordinates = {bobbinColumnX, 0, 0};
+    columnWall.initializeConcentricCoreQuadrants(wallThickness, windingWindowHeight, coreDepth / 2, bobbinK);
+    _nodes.push_back(columnWall);
+    
+    // 2. Bobbin Top Yoke Wall
+    // Positioned at the top of the winding window
+    ThermalNetworkNode topYokeWall;
+    topYokeWall.part = ThermalNodePartType::BOBBIN_TOP_YOKE;
+    topYokeWall.name = "Bobbin_TopYoke_Wall";
+    topYokeWall.temperature = _config.ambientTemperature;
+    topYokeWall.powerDissipation = 0.0;
+    // X: outer edge of winding window, Y: top of winding window
+    double windingWindowTop = windingWindowHeight / 2;
+    topYokeWall.physicalCoordinates = {bobbinYokeX, windingWindowTop - wallThickness / 2, 0};
+    topYokeWall.initializeConcentricCoreQuadrants(windingWindowWidth / 2, wallThickness, coreDepth / 2, bobbinK);
+    _nodes.push_back(topYokeWall);
+    
+    // 3. Bobbin Bottom Yoke Wall
+    // Positioned at the bottom of the winding window
+    ThermalNetworkNode bottomYokeWall;
+    bottomYokeWall.part = ThermalNodePartType::BOBBIN_BOTTOM_YOKE;
+    bottomYokeWall.name = "Bobbin_BottomYoke_Wall";
+    bottomYokeWall.temperature = _config.ambientTemperature;
+    bottomYokeWall.powerDissipation = 0.0;
+    double windingWindowBottom = -windingWindowHeight / 2;
+    bottomYokeWall.physicalCoordinates = {bobbinYokeX, windingWindowBottom + wallThickness / 2, 0};
+    bottomYokeWall.initializeConcentricCoreQuadrants(windingWindowWidth / 2, wallThickness, coreDepth / 2, bobbinK);
+    _nodes.push_back(bottomYokeWall);
 }
 
 void Temperature::createTurnNodes() {
@@ -695,8 +861,12 @@ void Temperature::createTurnNodes() {
             }
             
             double turnLength = turn.get_length();
-            node.initializeConcentricQuadrant(_wireWidth, _wireHeight, turnLength, _wireThermalCond,
-                                               _wireCoating);
+            // For concentric cores, use toroidal quadrant initialization with 0 angle
+            // This gives proper RADIAL_INNER/OUTER and TANGENTIAL_LEFT/RIGHT quadrants
+            node.initializeToroidalQuadrants(_wireWidth, _wireHeight, turnLength, 
+                                             _wireThermalCond, true, 0.0,
+                                             _wireCoating,
+                                             _isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
             _nodes.push_back(node);
         }
     }
@@ -717,6 +887,9 @@ void Temperature::createThermalResistances() {
     
     createBobbinConnections();
     createTurnToTurnConnections();
+    if (!_isToroidal) {
+        createTurnToBobbinConnections();
+    }
     createTurnToSolidConnections();
     createConvectionConnections();
     
@@ -759,38 +932,193 @@ void Temperature::createToroidalCoreConnections() {
 }
 
 void Temperature::createConcentricCoreConnections() {
-    std::vector<size_t> coreNodeIndices;
+    // Collect all core node indices by type
+    std::vector<size_t> centralColumnIndices;
+    std::vector<size_t> lateralColumnIndices;
+    std::vector<size_t> topYokeIndices;
+    std::vector<size_t> bottomYokeIndices;
+    
     for (size_t i = 0; i < _nodes.size(); ++i) {
-        if (_nodes[i].part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
-            _nodes[i].part == ThermalNodePartType::CORE_LATERAL_COLUMN) {
-            coreNodeIndices.push_back(i);
+        switch (_nodes[i].part) {
+            case ThermalNodePartType::CORE_CENTRAL_COLUMN:
+                centralColumnIndices.push_back(i);
+                break;
+            case ThermalNodePartType::CORE_LATERAL_COLUMN:
+                lateralColumnIndices.push_back(i);
+                break;
+            case ThermalNodePartType::CORE_TOP_YOKE:
+                topYokeIndices.push_back(i);
+                break;
+            case ThermalNodePartType::CORE_BOTTOM_YOKE:
+                bottomYokeIndices.push_back(i);
+                break;
+            default:
+                break;
         }
     }
     
-    for (size_t i = 0; i < coreNodeIndices.size(); ++i) {
-        for (size_t j = i + 1; j < coreNodeIndices.size(); ++j) {
-            size_t node1Idx = coreNodeIndices[i];
-            size_t node2Idx = coreNodeIndices[j];
-            
-            double dist = calculateSurfaceDistance(_nodes[node1Idx], _nodes[node2Idx]);
-            
-            if (dist < 0.05) {
-                ThermalResistanceElement r;
-                r.nodeFromId = node1Idx;
-                r.quadrantFrom = ThermalNodeFace::NONE;
-                r.nodeToId = node2Idx;
-                r.quadrantTo = ThermalNodeFace::NONE;
-                r.type = HeatTransferType::CONDUCTION;
-                
-                double avgK = (_nodes[node1Idx].quadrants[0].thermalConductivity + 
-                              _nodes[node2Idx].quadrants[0].thermalConductivity) / 2.0;
-                double area = std::min(_nodes[node1Idx].getTotalSurfaceArea(),
-                                      _nodes[node2Idx].getTotalSurfaceArea()) * 0.1;
-                
-                r.resistance = ThermalResistance::calculateConductionResistance(dist, avgK, area);
-                _resistances.push_back(r);
+    auto core = _magnetic.get_core();
+    auto processedDesc = core.get_processed_description();
+    double coreK = _config.coreThermalConductivity;
+    
+    // Helper to create conduction connection between core nodes with specific quadrants
+    auto createCoreConnection = [&](size_t fromIdx, ThermalNodeFace fromFace,
+                                    size_t toIdx, ThermalNodeFace toFace,
+                                    double contactArea) {
+        ThermalResistanceElement r;
+        r.nodeFromId = fromIdx;
+        r.quadrantFrom = fromFace;
+        r.nodeToId = toIdx;
+        r.quadrantTo = toFace;
+        r.type = HeatTransferType::CONDUCTION;
+        
+        // Distance is the distance between node centers
+        double dx = _nodes[fromIdx].physicalCoordinates[0] - _nodes[toIdx].physicalCoordinates[0];
+        double dy = _nodes[fromIdx].physicalCoordinates[1] - _nodes[toIdx].physicalCoordinates[1];
+        double dist = std::sqrt(dx*dx + dy*dy);
+        
+        r.resistance = ThermalResistance::calculateConductionResistance(dist, coreK, contactArea);
+        _resistances.push_back(r);
+    };
+    
+    // Helper to get appropriate cross-sectional area based on connection direction
+    auto getColumnCrossSection = [&](size_t idx) -> double {
+        // For columns, use the area perpendicular to the column axis (x-axis for central, y for lateral)
+        return _nodes[idx].dimensions.height * _nodes[idx].dimensions.depth;
+    };
+    auto getYokeCrossSection = [&](size_t idx) -> double {
+        // For yokes, use width * depth
+        return _nodes[idx].dimensions.width * _nodes[idx].dimensions.depth;
+    };
+    
+    // Helper to find closest node in a list
+    auto findClosestNode = [&](size_t fromIdx, const std::vector<size_t>& candidates) -> size_t {
+        size_t closestIdx = candidates[0];
+        double minDist = std::numeric_limits<double>::max();
+        for (size_t candidateIdx : candidates) {
+            if (candidateIdx == fromIdx) continue;
+            double dx = _nodes[fromIdx].physicalCoordinates[0] - _nodes[candidateIdx].physicalCoordinates[0];
+            double dy = _nodes[fromIdx].physicalCoordinates[1] - _nodes[candidateIdx].physicalCoordinates[1];
+            double dist = std::sqrt(dx*dx + dy*dy);
+            if (dist < minDist) {
+                minDist = dist;
+                closestIdx = candidateIdx;
             }
         }
+        return closestIdx;
+    };
+    
+    // 1. Connect central column chunks to closest neighbors only (vertical chain)
+    if (centralColumnIndices.size() > 1) {
+        // Sort by Y position
+        std::sort(centralColumnIndices.begin(), centralColumnIndices.end(), 
+                  [&](size_t a, size_t b) {
+                      return _nodes[a].physicalCoordinates[1] < _nodes[b].physicalCoordinates[1];
+                  });
+        // Connect each chunk to its vertical neighbor
+        // Lower chunk uses TANGENTIAL_LEFT (up), higher chunk uses TANGENTIAL_RIGHT (down)
+        for (size_t i = 0; i < centralColumnIndices.size() - 1; ++i) {
+            double area = getColumnCrossSection(centralColumnIndices[i]) * 0.5;
+            createCoreConnection(centralColumnIndices[i], ThermalNodeFace::TANGENTIAL_LEFT,
+                                centralColumnIndices[i+1], ThermalNodeFace::TANGENTIAL_RIGHT,
+                                area);
+        }
+    }
+    
+    // 2. Connect lateral column chunks to closest neighbors (vertical chain)
+    if (lateralColumnIndices.size() > 1) {
+        std::sort(lateralColumnIndices.begin(), lateralColumnIndices.end(),
+                  [&](size_t a, size_t b) {
+                      return _nodes[a].physicalCoordinates[1] < _nodes[b].physicalCoordinates[1];
+                  });
+        // Connect each chunk to its vertical neighbor
+        // Lower chunk uses TANGENTIAL_LEFT (up), higher chunk uses TANGENTIAL_RIGHT (down)
+        for (size_t i = 0; i < lateralColumnIndices.size() - 1; ++i) {
+            double area = getColumnCrossSection(lateralColumnIndices[i]) * 0.5;
+            createCoreConnection(lateralColumnIndices[i], ThermalNodeFace::TANGENTIAL_LEFT,
+                                lateralColumnIndices[i+1], ThermalNodeFace::TANGENTIAL_RIGHT,
+                                area);
+        }
+    }
+    
+    // 3. Connect TOP central column chunk to closest top yoke only
+    if (!centralColumnIndices.empty() && !topYokeIndices.empty()) {
+        // Find top-most central column chunk (highest Y)
+        size_t topColIdx = centralColumnIndices[0];
+        double maxY = _nodes[topColIdx].physicalCoordinates[1];
+        for (size_t colIdx : centralColumnIndices) {
+            double y = _nodes[colIdx].physicalCoordinates[1];
+            if (y > maxY) {
+                maxY = y;
+                topColIdx = colIdx;
+            }
+        }
+        size_t closestYoke = findClosestNode(topColIdx, topYokeIndices);
+        double area = getColumnCrossSection(topColIdx);
+        // With cardinal mapping: Column TOP ↔ Yoke BOTTOM
+        createCoreConnection(topColIdx, ThermalNodeFace::TANGENTIAL_LEFT,  // Column TOP
+                            closestYoke, ThermalNodeFace::TANGENTIAL_RIGHT, // Yoke BOTTOM
+                            area);
+    }
+    
+    // 4. Connect BOTTOM central column chunk to closest bottom yoke only
+    if (!centralColumnIndices.empty() && !bottomYokeIndices.empty()) {
+        // Find bottom-most central column chunk (lowest Y)
+        size_t botColIdx = centralColumnIndices[0];
+        double minY = _nodes[botColIdx].physicalCoordinates[1];
+        for (size_t colIdx : centralColumnIndices) {
+            double y = _nodes[colIdx].physicalCoordinates[1];
+            if (y < minY) {
+                minY = y;
+                botColIdx = colIdx;
+            }
+        }
+        size_t closestYoke = findClosestNode(botColIdx, bottomYokeIndices);
+        double area = getColumnCrossSection(botColIdx);
+        // With cardinal mapping: Column BOTTOM ↔ Yoke TOP
+        createCoreConnection(botColIdx, ThermalNodeFace::TANGENTIAL_RIGHT, // Column BOTTOM
+                            closestYoke, ThermalNodeFace::TANGENTIAL_LEFT,  // Yoke TOP
+                            area);
+    }
+    
+    // 5. Connect TOP lateral column chunk to closest top yoke only
+    if (!lateralColumnIndices.empty() && !topYokeIndices.empty()) {
+        // Find top-most lateral column chunk
+        size_t topColIdx = lateralColumnIndices[0];
+        double maxY = _nodes[topColIdx].physicalCoordinates[1];
+        for (size_t colIdx : lateralColumnIndices) {
+            double y = _nodes[colIdx].physicalCoordinates[1];
+            if (y > maxY) {
+                maxY = y;
+                topColIdx = colIdx;
+            }
+        }
+        size_t closestYoke = findClosestNode(topColIdx, topYokeIndices);
+        double area = getColumnCrossSection(topColIdx);
+        // With cardinal mapping: Column TOP ↔ Yoke BOTTOM
+        createCoreConnection(topColIdx, ThermalNodeFace::TANGENTIAL_LEFT,  // Column TOP
+                            closestYoke, ThermalNodeFace::TANGENTIAL_RIGHT, // Yoke BOTTOM
+                            area);
+    }
+    
+    // 6. Connect BOTTOM lateral column chunk to closest bottom yoke only
+    if (!lateralColumnIndices.empty() && !bottomYokeIndices.empty()) {
+        // Find bottom-most lateral column chunk
+        size_t botColIdx = lateralColumnIndices[0];
+        double minY = _nodes[botColIdx].physicalCoordinates[1];
+        for (size_t colIdx : lateralColumnIndices) {
+            double y = _nodes[colIdx].physicalCoordinates[1];
+            if (y < minY) {
+                minY = y;
+                botColIdx = colIdx;
+            }
+        }
+        size_t closestYoke = findClosestNode(botColIdx, bottomYokeIndices);
+        double area = getColumnCrossSection(botColIdx);
+        // With cardinal mapping: Column BOTTOM ↔ Yoke TOP
+        createCoreConnection(botColIdx, ThermalNodeFace::TANGENTIAL_RIGHT, // Column BOTTOM
+                            closestYoke, ThermalNodeFace::TANGENTIAL_LEFT,  // Yoke TOP
+                            area);
     }
 }
 
@@ -799,33 +1127,169 @@ void Temperature::createBobbinConnections() {
         return;
     }
     
-    size_t bobbinIdx = 0;
+    // Collect bobbin node indices
+    size_t bobbinColumnIdx = std::numeric_limits<size_t>::max();
+    size_t bobbinTopYokeIdx = std::numeric_limits<size_t>::max();
+    size_t bobbinBottomYokeIdx = std::numeric_limits<size_t>::max();
+    
+    std::vector<size_t> coreColumnIndices;
+    std::vector<size_t> coreTopYokeIndices;
+    std::vector<size_t> coreBottomYokeIndices;
+    
     for (size_t i = 0; i < _nodes.size(); ++i) {
-        if (_nodes[i].part == ThermalNodePartType::BOBBIN_CENTRAL_COLUMN) {
-            bobbinIdx = i;
-            break;
+        switch (_nodes[i].part) {
+            case ThermalNodePartType::BOBBIN_CENTRAL_COLUMN:
+                bobbinColumnIdx = i;
+                break;
+            case ThermalNodePartType::BOBBIN_TOP_YOKE:
+                bobbinTopYokeIdx = i;
+                break;
+            case ThermalNodePartType::BOBBIN_BOTTOM_YOKE:
+                bobbinBottomYokeIdx = i;
+                break;
+            case ThermalNodePartType::CORE_CENTRAL_COLUMN:
+                coreColumnIndices.push_back(i);
+                break;
+            case ThermalNodePartType::CORE_TOP_YOKE:
+                coreTopYokeIndices.push_back(i);
+                break;
+            case ThermalNodePartType::CORE_BOTTOM_YOKE:
+                coreBottomYokeIndices.push_back(i);
+                break;
+            default:
+                break;
         }
     }
     
-    for (size_t i = 0; i < _nodes.size(); ++i) {
-        if (_nodes[i].part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
-            _nodes[i].part == ThermalNodePartType::CORE_LATERAL_COLUMN) {
-            
-            ThermalResistanceElement r;
-            r.nodeFromId = bobbinIdx;
-            r.quadrantFrom = ThermalNodeFace::NONE;
-            r.nodeToId = i;
-            r.quadrantTo = ThermalNodeFace::NONE;
-            r.type = HeatTransferType::CONDUCTION;
-            
-            double dist = 0.001;
-            double area = _nodes[bobbinIdx].getTotalSurfaceArea() * 0.5;
-            double bobbinK = 0.2;
-            
-            r.resistance = ThermalResistance::calculateConductionResistance(dist, bobbinK, area);
-            _resistances.push_back(r);
+    // Helper to create conduction connection with specific quadrants
+    auto createConnectionWithQuadrants = [&](size_t fromIdx, ThermalNodeFace fromFace,
+                                              size_t toIdx, ThermalNodeFace toFace,
+                                              double dist, double area, double k = 0.2) {
+        ThermalResistanceElement r;
+        r.nodeFromId = fromIdx;
+        r.quadrantFrom = fromFace;
+        r.nodeToId = toIdx;
+        r.quadrantTo = toFace;
+        r.type = HeatTransferType::CONDUCTION;
+        
+        r.resistance = ThermalResistance::calculateConductionResistance(dist, k, area);
+        _resistances.push_back(r);
+        
+        if (THERMAL_DEBUG) {
+            std::cout << "Connection: " << _nodes[fromIdx].name << "[" << magic_enum::enum_name(fromFace) 
+                      << "] -> " << _nodes[toIdx].name << "[" << magic_enum::enum_name(toFace)
+                      << "] (R=" << r.resistance << " K/W)" << std::endl;
+        }
+    };
+    
+    // Helper to calculate contact area between bobbin and core surfaces
+    auto calculateBobbinColumnContactArea = [&](size_t bobbinIdx, size_t coreIdx) -> double {
+        double bobbinHeight = _nodes[bobbinIdx].dimensions.height;
+        double bobbinDepth = _nodes[bobbinIdx].dimensions.depth;
+        double coreDepth = _nodes[coreIdx].dimensions.depth;
+        return bobbinHeight * std::min(bobbinDepth, coreDepth);
+    };
+    
+    auto calculateBobbinYokeContactArea = [&](size_t bobbinIdx, size_t coreIdx) -> double {
+        double wallThickness = _nodes[bobbinIdx].dimensions.height;
+        double bobbinDepth = _nodes[bobbinIdx].dimensions.depth;
+        double coreDepth = _nodes[coreIdx].dimensions.depth;
+        return wallThickness * std::min(bobbinDepth, coreDepth);
+    };
+    
+    // 1. Bobbin column connects to ALL core column nodes
+    // Bobbin uses RADIAL_INNER (facing toward core), Core uses RADIAL_OUTER (facing toward bobbin)
+    if (bobbinColumnIdx != std::numeric_limits<size_t>::max()) {
+        for (size_t coreIdx : coreColumnIndices) {
+            double dx = _nodes[bobbinColumnIdx].physicalCoordinates[0] - _nodes[coreIdx].physicalCoordinates[0];
+            double dy = _nodes[bobbinColumnIdx].physicalCoordinates[1] - _nodes[coreIdx].physicalCoordinates[1];
+            double dist = std::sqrt(dx*dx + dy*dy);
+            double area = calculateBobbinColumnContactArea(bobbinColumnIdx, coreIdx);
+            createConnectionWithQuadrants(bobbinColumnIdx, ThermalNodeFace::RADIAL_INNER,
+                                          coreIdx, ThermalNodeFace::RADIAL_OUTER,
+                                          dist, area, 0.2);
         }
     }
+    
+    // 2. Bobbin top yoke connects ONLY to closest top core yoke
+    // Bobbin uses RADIAL_INNER (facing down/toward core), Core uses TANGENTIAL_LEFT (facing up/toward bobbin)
+    if (bobbinTopYokeIdx != std::numeric_limits<size_t>::max() && !coreTopYokeIndices.empty()) {
+        size_t closestIdx = coreTopYokeIndices[0];
+        double minDist = std::numeric_limits<double>::max();
+        for (size_t coreIdx : coreTopYokeIndices) {
+            double dx = _nodes[bobbinTopYokeIdx].physicalCoordinates[0] - _nodes[coreIdx].physicalCoordinates[0];
+            double dy = _nodes[bobbinTopYokeIdx].physicalCoordinates[1] - _nodes[coreIdx].physicalCoordinates[1];
+            double dist = std::sqrt(dx*dx + dy*dy);
+            if (dist < minDist) {
+                minDist = dist;
+                closestIdx = coreIdx;
+            }
+        }
+        double area = calculateBobbinYokeContactArea(bobbinTopYokeIdx, closestIdx);
+        // With cardinal mapping: Bobbin yoke TOP ↔ Core yoke BOTTOM
+        createConnectionWithQuadrants(bobbinTopYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT,  // Bobbin TOP
+                                      closestIdx, ThermalNodeFace::TANGENTIAL_RIGHT,       // Core yoke BOTTOM
+                                      minDist, area, 0.2);
+    }
+    
+    // 3. Bobbin bottom yoke connects ONLY to closest bottom core yoke
+    // With cardinal mapping: Bobbin yoke BOTTOM ↔ Core yoke TOP
+    if (bobbinBottomYokeIdx != std::numeric_limits<size_t>::max() && !coreBottomYokeIndices.empty()) {
+        size_t closestIdx = coreBottomYokeIndices[0];
+        double minDist = std::numeric_limits<double>::max();
+        for (size_t coreIdx : coreBottomYokeIndices) {
+            double dx = _nodes[bobbinBottomYokeIdx].physicalCoordinates[0] - _nodes[coreIdx].physicalCoordinates[0];
+            double dy = _nodes[bobbinBottomYokeIdx].physicalCoordinates[1] - _nodes[coreIdx].physicalCoordinates[1];
+            double dist = std::sqrt(dx*dx + dy*dy);
+            if (dist < minDist) {
+                minDist = dist;
+                closestIdx = coreIdx;
+            }
+        }
+        double area = calculateBobbinYokeContactArea(bobbinBottomYokeIdx, closestIdx);
+        // With cardinal mapping: Bobbin yoke BOTTOM ↔ Core yoke TOP
+        createConnectionWithQuadrants(bobbinBottomYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT, // Bobbin BOTTOM
+                                      closestIdx, ThermalNodeFace::TANGENTIAL_LEFT,           // Core yoke TOP
+                                      minDist, area, 0.2);
+    }
+    
+    // 4. Bobbin column connects to bobbin yokes (internal bobbin conduction)
+    // With cardinal mapping:
+    // - Column TOP (TANGENTIAL_LEFT) connects to Top yoke LEFT (RADIAL_INNER)
+    // - Column BOTTOM (TANGENTIAL_RIGHT) connects to Bottom yoke LEFT (RADIAL_INNER)
+    if (bobbinColumnIdx != std::numeric_limits<size_t>::max()) {
+        if (bobbinTopYokeIdx != std::numeric_limits<size_t>::max()) {
+            double dx = _nodes[bobbinColumnIdx].physicalCoordinates[0] - _nodes[bobbinTopYokeIdx].physicalCoordinates[0];
+            double dy = _nodes[bobbinColumnIdx].physicalCoordinates[1] - _nodes[bobbinTopYokeIdx].physicalCoordinates[1];
+            double dist = std::sqrt(dx*dx + dy*dy);
+            double area = _nodes[bobbinColumnIdx].dimensions.depth * _nodes[bobbinColumnIdx].dimensions.width * 0.5;
+            // Column TOP ↔ Top yoke LEFT
+            createConnectionWithQuadrants(bobbinColumnIdx, ThermalNodeFace::TANGENTIAL_LEFT,  // Column TOP
+                                          bobbinTopYokeIdx, ThermalNodeFace::RADIAL_INNER,     // Yoke LEFT
+                                          dist, area, 0.2);
+        }
+        if (bobbinBottomYokeIdx != std::numeric_limits<size_t>::max()) {
+            double dx = _nodes[bobbinColumnIdx].physicalCoordinates[0] - _nodes[bobbinBottomYokeIdx].physicalCoordinates[0];
+            double dy = _nodes[bobbinColumnIdx].physicalCoordinates[1] - _nodes[bobbinBottomYokeIdx].physicalCoordinates[1];
+            double dist = std::sqrt(dx*dx + dy*dy);
+            double area = _nodes[bobbinColumnIdx].dimensions.depth * _nodes[bobbinColumnIdx].dimensions.width * 0.5;
+            // Column BOTTOM ↔ Bottom yoke LEFT
+            createConnectionWithQuadrants(bobbinColumnIdx, ThermalNodeFace::TANGENTIAL_RIGHT, // Column BOTTOM
+                                          bobbinBottomYokeIdx, ThermalNodeFace::RADIAL_INNER,  // Yoke LEFT
+                                          dist, area, 0.2);
+        }
+    }
+    
+    // 5. Bobbin yokes connect to nearby turns on their tangential faces
+    // Top yoke: TANGENTIAL_RIGHT faces toward turns (downward)
+    // Bottom yoke: TANGENTIAL_LEFT faces toward turns (upward)
+    std::vector<size_t> turnNodeIndices;
+    for (size_t i = 0; i < _nodes.size(); i++) {
+        if (_nodes[i].part == ThermalNodePartType::TURN) {
+            turnNodeIndices.push_back(i);
+        }
+    }
+    createBobbinYokeToTurnConnections(bobbinTopYokeIdx, bobbinBottomYokeIdx, turnNodeIndices);
 }
 
 // ============================================================================
@@ -833,10 +1297,6 @@ void Temperature::createBobbinConnections() {
 // ============================================================================
 
 void Temperature::createTurnToTurnConnections() {
-    if (!_isToroidal) {
-        return;
-    }
-    
     double minConductionDist = getMinimumDistanceForConduction();
     
     std::vector<size_t> turnNodeIndices;
@@ -846,6 +1306,15 @@ void Temperature::createTurnToTurnConnections() {
         }
     }
     
+    if (_isToroidal) {
+        createToroidalTurnToTurnConnections(turnNodeIndices, minConductionDist);
+    } else {
+        createConcentricTurnToTurnConnections(turnNodeIndices, minConductionDist);
+    }
+}
+
+void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist) {
+    // Pure geometry-based connections - no layer or consecutiveness logic
     for (size_t i = 0; i < turnNodeIndices.size(); i++) {
         size_t node1Idx = turnNodeIndices[i];
         const auto& node1 = _nodes[node1Idx];
@@ -858,130 +1327,408 @@ void Temperature::createTurnToTurnConnections() {
             double dy = node1.physicalCoordinates[1] - node2.physicalCoordinates[1];
             double centerDistance = std::sqrt(dx*dx + dy*dy);
             
-            double surfaceDistance = centerDistance - _wireWidth;
+            // Connection condition: surface distance < min(min_outer_dim1, min_outer_dim2) / 4
+            double minOuterDim1 = std::min(node1.dimensions.width, node1.dimensions.height);
+            double minOuterDim2 = std::min(node2.dimensions.width, node2.dimensions.height);
+            double thresholdDist = std::min(minOuterDim1, minOuterDim2) / 4.0;
             
-            if (surfaceDistance <= minConductionDist) {
-                double angle1 = std::atan2(node1.physicalCoordinates[1], node1.physicalCoordinates[0]);
-                double angle2 = std::atan2(node2.physicalCoordinates[1], node2.physicalCoordinates[0]);
+            // For rectangular wires, calculate surface distance based on relative orientation
+            // The surface distance is center distance minus the projected size in the connection direction
+            double surfaceDistance;
+            if (centerDistance < 1e-9) {
+                surfaceDistance = 0;
+            } else {
+                // For each node, use half the min dimension as the conservative extent estimate
+                // This works for both rectangular and round wires
+                double extent1 = minOuterDim1 / 2.0;
+                double extent2 = minOuterDim2 / 2.0;
                 
-                double angleDiff = angle1 - angle2;
-                while (angleDiff > std::numbers::pi) angleDiff -= 2 * std::numbers::pi;
-                while (angleDiff < -std::numbers::pi) angleDiff += 2 * std::numbers::pi;
+                surfaceDistance = centerDistance - extent1 - extent2;
+            }
+            
+            if (surfaceDistance > thresholdDist) continue;
+            
+            // Find which quadrants are facing each other
+            ThermalNodeFace face1, face2;
+            
+            // Determine primary direction of connection
+            bool moreHorizontal = std::abs(dx) > std::abs(dy);
+            
+            if (moreHorizontal) {
+                // Horizontal connection - use RADIAL faces
+                if (dx > 0) {
+                    // node1 is to the right of node2
+                    face1 = ThermalNodeFace::RADIAL_INNER;  // LEFT face of node1
+                    face2 = ThermalNodeFace::RADIAL_OUTER;  // RIGHT face of node2
+                } else {
+                    // node1 is to the left of node2
+                    face1 = ThermalNodeFace::RADIAL_OUTER;  // RIGHT face of node1
+                    face2 = ThermalNodeFace::RADIAL_INNER;  // LEFT face of node2
+                }
+            } else {
+                // Vertical connection - use TANGENTIAL faces
+                if (dy > 0) {
+                    // node1 is above node2
+                    face1 = ThermalNodeFace::TANGENTIAL_RIGHT; // BOTTOM face of node1
+                    face2 = ThermalNodeFace::TANGENTIAL_LEFT;  // TOP face of node2
+                } else {
+                    // node1 is below node2
+                    face1 = ThermalNodeFace::TANGENTIAL_LEFT;  // TOP face of node1
+                    face2 = ThermalNodeFace::TANGENTIAL_RIGHT; // BOTTOM face of node2
+                }
+            }
+            
+            ThermalResistanceElement r;
+            r.nodeFromId = node1Idx;
+            r.quadrantFrom = face1;
+            r.nodeToId = node2Idx;
+            r.quadrantTo = face2;
+            r.type = HeatTransferType::CONDUCTION;
+            
+            auto* q1 = _nodes[node1Idx].getQuadrant(face1);
+            auto* q2 = _nodes[node2Idx].getQuadrant(face2);
+            
+            if (q1 && q2) {
+                double contactArea = std::min(q1->surfaceArea, q2->surfaceArea);
+                int turn1Idx = _nodes[node1Idx].turnIndex.value_or(0);
+                int turn2Idx = _nodes[node2Idx].turnIndex.value_or(0);
                 
-                double r1 = std::sqrt(node1.physicalCoordinates[0]*node1.physicalCoordinates[0] + 
-                                      node1.physicalCoordinates[1]*node1.physicalCoordinates[1]);
-                double r2 = std::sqrt(node2.physicalCoordinates[0]*node2.physicalCoordinates[0] + 
-                                      node2.physicalCoordinates[1]*node2.physicalCoordinates[1]);
-                double radialDiff = std::abs(r1 - r2);
+                r.resistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
                 
-                // Tangential connection
-                if (radialDiff < _wireWidth && std::abs(angleDiff) > 0.1) {
-                    size_t leftNodeIdx, rightNodeIdx;
-                    
-                    if (angle1 > angle2) {
-                        leftNodeIdx = node1Idx;
-                        rightNodeIdx = node2Idx;
-                    } else {
-                        leftNodeIdx = node2Idx;
-                        rightNodeIdx = node1Idx;
-                    }
-                    
-                    ThermalResistanceElement r;
-                    r.nodeFromId = leftNodeIdx;
-                    r.quadrantFrom = ThermalNodeFace::TANGENTIAL_RIGHT;
-                    r.nodeToId = rightNodeIdx;
-                    r.quadrantTo = ThermalNodeFace::TANGENTIAL_LEFT;
-                    r.type = HeatTransferType::CONDUCTION;
-                    
-                    auto* qLeft = _nodes[leftNodeIdx].getQuadrant(ThermalNodeFace::TANGENTIAL_RIGHT);
-                    auto* qRight = _nodes[rightNodeIdx].getQuadrant(ThermalNodeFace::TANGENTIAL_LEFT);
-                    
-                    if (qLeft && qRight) {
-                        double contactArea = std::min(qLeft->surfaceArea, qRight->surfaceArea) * 0.5;
-                        int turn1Idx = _nodes[leftNodeIdx].turnIndex.value_or(0);
-                        int turn2Idx = _nodes[rightNodeIdx].turnIndex.value_or(0);
-                        
-                        // Base resistance from insulation layers
-                        double baseResistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
-                        
-                        // Add coating resistances from both quadrants if they exist
-                        if (qLeft->coating.has_value()) {
-                            baseResistance += WireCoatingUtils::calculateCoatingResistance(qLeft->coating.value(), contactArea);
-                        }
-                        if (qRight->coating.has_value()) {
-                            baseResistance += WireCoatingUtils::calculateCoatingResistance(qRight->coating.value(), contactArea);
-                        }
-                        
-                        r.resistance = baseResistance;
-                        
-                        // Add additional inter-turn insulation from config if enabled
-                        if (_config.useInterTurnInsulation && _config.interTurnInsulationThickness > 0) {
-                            r.addInsulationLayer(
-                                _config.interTurnInsulationThickness,
-                                _config.interTurnInsulationConductivity,
-                                "inter_turn_insulation",
-                                "Additional insulation between turns from config"
-                            );
-                            r.resistance += r.calculateTotalInsulationResistance(contactArea);
-                        }
-                        
-                        _resistances.push_back(r);
-                    }
+                if (q1->coating.has_value()) {
+                    r.resistance += WireCoatingUtils::calculateCoatingResistance(q1->coating.value(), contactArea);
+                }
+                if (q2->coating.has_value()) {
+                    r.resistance += WireCoatingUtils::calculateCoatingResistance(q2->coating.value(), contactArea);
                 }
                 
-                // Radial connection
-                if (radialDiff < _wireWidth * 1.5 && std::abs(angleDiff) < 0.3) {
-                    size_t innerNodeIdx, outerNodeIdx;
-                    
-                    if (r1 < r2) {
-                        innerNodeIdx = node1Idx;
-                        outerNodeIdx = node2Idx;
-                    } else {
-                        innerNodeIdx = node2Idx;
-                        outerNodeIdx = node1Idx;
-                    }
-                    
-                    ThermalResistanceElement r;
-                    r.nodeFromId = innerNodeIdx;
-                    r.quadrantFrom = ThermalNodeFace::RADIAL_OUTER;
-                    r.nodeToId = outerNodeIdx;
-                    r.quadrantTo = ThermalNodeFace::RADIAL_INNER;
-                    r.type = HeatTransferType::CONDUCTION;
-                    
-                    auto* qInner = _nodes[innerNodeIdx].getQuadrant(ThermalNodeFace::RADIAL_OUTER);
-                    auto* qOuter = _nodes[outerNodeIdx].getQuadrant(ThermalNodeFace::RADIAL_INNER);
-                    
-                    if (qInner && qOuter) {
-                        double contactArea = std::min(qInner->surfaceArea, qOuter->surfaceArea) * 0.5;
-                        int turn1Idx = _nodes[innerNodeIdx].turnIndex.value_or(0);
-                        int turn2Idx = _nodes[outerNodeIdx].turnIndex.value_or(0);
-                        
-                        // Base resistance from insulation layers
-                        double baseResistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
-                        
-                        // Add coating resistances from both quadrants
-                        if (qInner->coating.has_value()) {
-                            baseResistance += WireCoatingUtils::calculateCoatingResistance(qInner->coating.value(), contactArea);
-                        }
-                        if (qOuter->coating.has_value()) {
-                            baseResistance += WireCoatingUtils::calculateCoatingResistance(qOuter->coating.value(), contactArea);
-                        }
-                        
-                        r.resistance = baseResistance;
-                        
-                        // Add additional inter-turn insulation from config if enabled
-                        if (_config.useInterTurnInsulation && _config.interTurnInsulationThickness > 0) {
-                            r.addInsulationLayer(
-                                _config.interTurnInsulationThickness,
-                                _config.interTurnInsulationConductivity,
-                                "inter_turn_insulation",
-                                "Additional insulation between turns from config"
-                            );
-                            r.resistance += r.calculateTotalInsulationResistance(contactArea);
-                        }
-                        _resistances.push_back(r);
-                    }
+                _resistances.push_back(r);
+            }
+        }
+    }
+}
+
+void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist) {
+    // Pure geometry-based connections using turn rotation to determine facing quadrants
+    for (size_t i = 0; i < turnNodeIndices.size(); i++) {
+        size_t node1Idx = turnNodeIndices[i];
+        const auto& node1 = _nodes[node1Idx];
+        
+        for (size_t j = i + 1; j < turnNodeIndices.size(); j++) {
+            size_t node2Idx = turnNodeIndices[j];
+            const auto& node2 = _nodes[node2Idx];
+            
+            double dx = node1.physicalCoordinates[0] - node2.physicalCoordinates[0];
+            double dy = node1.physicalCoordinates[1] - node2.physicalCoordinates[1];
+            double centerDistance = std::sqrt(dx*dx + dy*dy);
+            
+            // Get minimum dimensions from both wires (used for both threshold and surface distance)
+            double minDim1 = std::min(node1.dimensions.width, node1.dimensions.height);
+            double minDim2 = std::min(node2.dimensions.width, node2.dimensions.height);
+            double thresholdDist = std::min(minDim1, minDim2) / 4.0;
+            
+            // Calculate surface distance: center distance minus half of min dimensions
+            // This is more accurate than using max dimension for rectangular wires
+            double extent1 = minDim1 / 2.0;
+            double extent2 = minDim2 / 2.0;
+            double surfaceDistance = centerDistance - extent1 - extent2;
+            
+            if (surfaceDistance > thresholdDist) continue;
+            
+            // Get the angle of each turn (rotation around the toroid)
+            double angle1 = std::atan2(node1.physicalCoordinates[1], node1.physicalCoordinates[0]);
+            double angle2 = std::atan2(node2.physicalCoordinates[1], node2.physicalCoordinates[0]);
+            
+            // Direction from turn1 to turn2
+            double dirX = -dx / centerDistance;  // unit vector from 1 to 2
+            double dirY = -dy / centerDistance;
+            
+            // For each turn, determine which quadrant faces the other turn
+            // Quadrant directions (in global coordinates):
+            // RADIAL_OUTER:  direction = angle
+            // RADIAL_INNER:  direction = angle + pi
+            // TANGENTIAL_LEFT:  direction = angle + pi/2 (CCW tangent)
+            // TANGENTIAL_RIGHT: direction = angle - pi/2 (CW tangent)
+            
+            auto getQuadrantDirection = [](double turnAngle, ThermalNodeFace face) -> std::pair<double, double> {
+                switch (face) {
+                    case ThermalNodeFace::RADIAL_OUTER:
+                        return {std::cos(turnAngle), std::sin(turnAngle)};
+                    case ThermalNodeFace::RADIAL_INNER:
+                        return {std::cos(turnAngle + std::numbers::pi), std::sin(turnAngle + std::numbers::pi)};
+                    case ThermalNodeFace::TANGENTIAL_LEFT:
+                        return {std::cos(turnAngle + std::numbers::pi/2), std::sin(turnAngle + std::numbers::pi/2)};
+                    case ThermalNodeFace::TANGENTIAL_RIGHT:
+                        return {std::cos(turnAngle - std::numbers::pi/2), std::sin(turnAngle - std::numbers::pi/2)};
+                    default:
+                        return {0, 0};
                 }
+            };
+            
+            // Find which quadrant of turn1 best faces turn2
+            // (quadrant whose direction has highest dot product with dirX,dirY)
+            std::array<ThermalNodeFace, 4> faces = {
+                ThermalNodeFace::RADIAL_OUTER, ThermalNodeFace::RADIAL_INNER,
+                ThermalNodeFace::TANGENTIAL_LEFT, ThermalNodeFace::TANGENTIAL_RIGHT
+            };
+            
+            double bestDot1 = -1.0;
+            ThermalNodeFace face1 = ThermalNodeFace::NONE;
+            for (auto face : faces) {
+                auto [qx, qy] = getQuadrantDirection(angle1, face);
+                double dot = qx * dirX + qy * dirY;
+                if (dot > bestDot1) {
+                    bestDot1 = dot;
+                    face1 = face;
+                }
+            }
+            
+            // Find which quadrant of turn2 best faces turn1
+            // (direction opposite to dirX, dirY)
+            double bestDot2 = -1.0;
+            ThermalNodeFace face2 = ThermalNodeFace::NONE;
+            for (auto face : faces) {
+                auto [qx, qy] = getQuadrantDirection(angle2, face);
+                double dot = qx * (-dirX) + qy * (-dirY);  // opposite direction
+                if (dot > bestDot2) {
+                    bestDot2 = dot;
+                    face2 = face;
+                }
+            }
+            
+            // Only connect if we found valid facing quadrants
+            if (face1 == ThermalNodeFace::NONE || face2 == ThermalNodeFace::NONE) continue;
+            
+            ThermalResistanceElement r;
+            r.nodeFromId = node1Idx;
+            r.quadrantFrom = face1;
+            r.nodeToId = node2Idx;
+            r.quadrantTo = face2;
+            r.type = HeatTransferType::CONDUCTION;
+            
+            auto* q1 = _nodes[node1Idx].getQuadrant(face1);
+            auto* q2 = _nodes[node2Idx].getQuadrant(face2);
+            
+            if (q1 && q2) {
+                double contactArea = std::min(q1->surfaceArea, q2->surfaceArea);
+                int turn1Idx = _nodes[node1Idx].turnIndex.value_or(0);
+                int turn2Idx = _nodes[node2Idx].turnIndex.value_or(0);
+                
+                double baseResistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
+                
+                if (q1->coating.has_value()) {
+                    baseResistance += WireCoatingUtils::calculateCoatingResistance(q1->coating.value(), contactArea);
+                }
+                if (q2->coating.has_value()) {
+                    baseResistance += WireCoatingUtils::calculateCoatingResistance(q2->coating.value(), contactArea);
+                }
+                
+                r.resistance = baseResistance;
+                
+                if (_config.useInterTurnInsulation && _config.interTurnInsulationThickness > 0) {
+                    r.addInsulationLayer(
+                        _config.interTurnInsulationThickness,
+                        _config.interTurnInsulationConductivity,
+                        "inter_turn_insulation",
+                        "Additional insulation between turns from config"
+                    );
+                    r.resistance += r.calculateTotalInsulationResistance(contactArea);
+                }
+                
+                _resistances.push_back(r);
+            }
+        }
+    }
+}
+
+void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, size_t bobbinBottomYokeIdx, 
+                                                     const std::vector<size_t>& turnNodeIndices) {
+    // Threshold distance for turn-to-bobbin contact (turn diameter / 4)
+    double contactThreshold = _wireWidth / 4.0;
+    
+    auto findNearbyTurns = [&](size_t yokeIdx, ThermalNodeFace yokeFace) -> std::vector<std::pair<size_t, double>> {
+        std::vector<std::pair<size_t, double>> nearbyTurns;
+        if (yokeIdx == std::numeric_limits<size_t>::max()) return nearbyTurns;
+        
+        const auto& yokeNode = _nodes[yokeIdx];
+        double yokeX = yokeNode.physicalCoordinates[0];
+        double yokeY = yokeNode.physicalCoordinates[1];
+        
+        for (size_t turnIdx : turnNodeIndices) {
+            const auto& turnNode = _nodes[turnIdx];
+            double turnX = turnNode.physicalCoordinates[0];
+            double turnY = turnNode.physicalCoordinates[1];
+            
+            // Calculate distance from yoke to turn
+            double dx = turnX - yokeX;
+            double dy = turnY - yokeY;
+            double dist = std::sqrt(dx*dx + dy*dy);
+            
+            // Check if turn is within contact threshold
+            if (dist < contactThreshold + _wireWidth) {
+                // Check if turn is on the correct side of the yoke
+                bool correctSide = false;
+                if (yokeFace == ThermalNodeFace::TANGENTIAL_RIGHT) {
+                    // Top yoke: turn should be below yoke (dy < 0)
+                    correctSide = dy < 0;
+                } else if (yokeFace == ThermalNodeFace::TANGENTIAL_LEFT) {
+                    // Bottom yoke: turn should be above yoke (dy > 0)
+                    correctSide = dy > 0;
+                }
+                
+                if (correctSide) {
+                    nearbyTurns.push_back({turnIdx, dist});
+                }
+            }
+        }
+        
+        return nearbyTurns;
+    };
+    
+    // Helper to create bobbin-to-turn connection
+    auto createBobbinToTurnConnection = [&](size_t bobbinIdx, ThermalNodeFace bobbinFace, 
+                                            size_t turnIdx, double dist) {
+        ThermalResistanceElement r;
+        r.nodeFromId = bobbinIdx;
+        r.quadrantFrom = bobbinFace;
+        r.nodeToId = turnIdx;
+        r.quadrantTo = (bobbinFace == ThermalNodeFace::TANGENTIAL_RIGHT) ? 
+                       ThermalNodeFace::TANGENTIAL_LEFT : ThermalNodeFace::TANGENTIAL_RIGHT;
+        r.type = HeatTransferType::CONDUCTION;
+        
+        // Calculate resistance through air/bobbin gap
+        double contactArea = _wireWidth * _wireHeight * 0.5;
+        double k_air = 0.025;  // W/m·K
+        r.resistance = dist / (k_air * contactArea);
+        
+        _resistances.push_back(r);
+    };
+    
+    // Connect top bobbin yoke to nearby turns on TANGENTIAL_RIGHT face
+    if (bobbinTopYokeIdx != std::numeric_limits<size_t>::max()) {
+        auto nearbyTurns = findNearbyTurns(bobbinTopYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT);
+        
+        if (!nearbyTurns.empty()) {
+            // Connect to all nearby turns (like toroidal core chunk approach)
+            double totalContactArea = 0;
+            for (const auto& [turnIdx, dist] : nearbyTurns) {
+                // Estimate contact area for this turn
+                double turnContactArea = _wireWidth * _wireHeight * 0.25;
+                totalContactArea += turnContactArea;
+            }
+            
+            // Create connections with proportional area
+            for (const auto& [turnIdx, dist] : nearbyTurns) {
+                double turnContactArea = _wireWidth * _wireHeight * 0.25;
+                double proportion = turnContactArea / totalContactArea;
+                createBobbinToTurnConnection(bobbinTopYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT, 
+                                            turnIdx, dist);
+            }
+        }
+        // If no nearby turns, convection to air will be handled by createConvectionConnections
+    }
+    
+    // Connect bottom bobbin yoke to nearby turns on TANGENTIAL_LEFT face
+    if (bobbinBottomYokeIdx != std::numeric_limits<size_t>::max()) {
+        auto nearbyTurns = findNearbyTurns(bobbinBottomYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT);
+        
+        if (!nearbyTurns.empty()) {
+            double totalContactArea = 0;
+            for (const auto& [turnIdx, dist] : nearbyTurns) {
+                double turnContactArea = _wireWidth * _wireHeight * 0.25;
+                totalContactArea += turnContactArea;
+            }
+            
+            for (const auto& [turnIdx, dist] : nearbyTurns) {
+                double turnContactArea = _wireWidth * _wireHeight * 0.25;
+                double proportion = turnContactArea / totalContactArea;
+                createBobbinToTurnConnection(bobbinBottomYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT, 
+                                            turnIdx, dist);
+            }
+        }
+    }
+}
+
+void Temperature::createTurnToBobbinConnections() {
+    // Find bobbin nodes
+    std::vector<size_t> bobbinNodeIndices;
+    std::vector<size_t> turnNodeIndices;
+    
+    for (size_t i = 0; i < _nodes.size(); i++) {
+        if (_nodes[i].part == ThermalNodePartType::BOBBIN_CENTRAL_COLUMN ||
+            _nodes[i].part == ThermalNodePartType::BOBBIN_TOP_YOKE ||
+            _nodes[i].part == ThermalNodePartType::BOBBIN_BOTTOM_YOKE) {
+            bobbinNodeIndices.push_back(i);
+        } else if (_nodes[i].part == ThermalNodePartType::TURN) {
+            turnNodeIndices.push_back(i);
+        }
+    }
+    
+    if (bobbinNodeIndices.empty()) {
+        return;  // No bobbin, turns will connect directly to core
+    }
+    
+    double minConductionDist = getMinimumDistanceForConduction();
+    
+    // For each turn, find the closest quadrant to any bobbin and connect only that one
+    for (size_t turnIdx : turnNodeIndices) {
+        auto& turnNode = _nodes[turnIdx];
+        
+        double bestDist = std::numeric_limits<double>::max();
+        ThermalNodeFace bestFace = ThermalNodeFace::NONE;
+        size_t bestBobbinIdx = std::numeric_limits<size_t>::max();
+        
+        // Find the closest quadrant-bobbin pair for this turn
+        for (const auto& quadrant : turnNode.quadrants) {
+            if (quadrant.face == ThermalNodeFace::NONE) continue;
+            
+            double limitX = quadrant.limitCoordinates[0];
+            double limitY = quadrant.limitCoordinates[1];
+            
+            for (size_t bobbinIdx : bobbinNodeIndices) {
+                const auto& bobbinNode = _nodes[bobbinIdx];
+                
+                double dx = limitX - bobbinNode.physicalCoordinates[0];
+                double dy = limitY - bobbinNode.physicalCoordinates[1];
+                double dist = std::sqrt(dx*dx + dy*dy);
+                
+                double bobbinWidth = bobbinNode.dimensions.width;
+                double bobbinHeight = bobbinNode.dimensions.height;
+                
+                bool withinX = std::abs(dx) < (bobbinWidth / 2 + minConductionDist);
+                bool withinY = std::abs(dy) < (bobbinHeight / 2 + minConductionDist);
+                
+                if (withinX && withinY && dist < bestDist) {
+                    bestDist = dist;
+                    bestFace = quadrant.face;
+                    bestBobbinIdx = bobbinIdx;
+                }
+            }
+        }
+        
+        // Create only the best connection for this turn
+        if (bestFace != ThermalNodeFace::NONE && bestDist < (minConductionDist * 2)) {
+            const auto& bobbinNode = _nodes[bestBobbinIdx];
+            
+            ThermalResistanceElement r;
+            r.nodeFromId = turnIdx;
+            r.quadrantFrom = bestFace;
+            r.nodeToId = bestBobbinIdx;
+            r.quadrantTo = ThermalNodeFace::NONE;
+            r.type = HeatTransferType::CONDUCTION;
+            
+            auto* q = turnNode.getQuadrant(bestFace);
+            double contactArea = q ? q->surfaceArea * 0.5 : (_wireWidth * _wireHeight * 0.25);
+            double distance = std::max(bestDist, 1e-6);
+            
+            double k_air = 0.025;  // W/m·K
+            r.resistance = distance / (k_air * contactArea);
+            
+            _resistances.push_back(r);
+            
+            if (THERMAL_DEBUG) {
+                std::cout << "Turn " << turnNode.name << " -> Bobbin " << bobbinNode.name 
+                          << " (distance=" << bestDist * 1000 << "mm)" << std::endl;
             }
         }
     }
@@ -1256,8 +2003,15 @@ void Temperature::createConvectionConnections() {
                 bool isExposed = true;
                 
                 // Check for blocking objects in the quadrant's direction
+                // Purely geometric: block if there's a turn in the quadrant direction
+                // that is significantly offset radially (not a tangential neighbor)
+                // AND within wire.get_maximum_outer_dimension() distance
+                double maxBlockingDist = std::max(_wireWidth, _wireHeight);
+                // Minimum radial difference to distinguish radial from tangential neighbors
+                double minRadialDiff = std::min(_wireWidth, _wireHeight) / 4.0;
+                
                 if (face == ThermalNodeFace::RADIAL_INNER) {
-                    // Check for turns or core closer to center
+                    // Check for any object significantly closer to center in this direction
                     for (size_t j = 0; j < _nodes.size(); j++) {
                         if (i == j) continue;
                         
@@ -1266,13 +2020,14 @@ void Temperature::createConvectionConnections() {
                         double otherR = std::sqrt(otherX*otherX + otherY*otherY);
                         double otherAngle = std::atan2(otherY, otherX);
                         
-                        // Check if other object is in the radial inward direction
-                        if (otherR < nodeR) {
+                        double radialDiff = nodeR - otherR;
+                        // Must be: significantly closer (not tangential) AND within max blocking distance
+                        if (radialDiff > minRadialDiff && radialDiff < maxBlockingDist) {
                             double angleDiff = std::abs(nodeAngle - otherAngle);
                             while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
                             
-                            // Roughly same angular position and within max convection distance
-                            if (std::abs(angleDiff) < 0.3 && (nodeR - otherR) < maxConvectionDist) {
+                            // Block if there's an object in roughly same angular direction
+                            if (std::abs(angleDiff) < 0.3) {
                                 isExposed = false;
                                 break;
                             }
@@ -1280,7 +2035,7 @@ void Temperature::createConvectionConnections() {
                     }
                 }
                 else if (face == ThermalNodeFace::RADIAL_OUTER) {
-                    // Check for turns or core farther from center
+                    // Check for any object significantly farther from center in this direction
                     for (size_t j = 0; j < _nodes.size(); j++) {
                         if (i == j) continue;
                         
@@ -1289,11 +2044,14 @@ void Temperature::createConvectionConnections() {
                         double otherR = std::sqrt(otherX*otherX + otherY*otherY);
                         double otherAngle = std::atan2(otherY, otherX);
                         
-                        if (otherR > nodeR) {
+                        double radialDiff = otherR - nodeR;
+                        // Must be: significantly farther (not tangential) AND within max blocking distance
+                        if (radialDiff > minRadialDiff && radialDiff < maxBlockingDist) {
                             double angleDiff = std::abs(nodeAngle - otherAngle);
                             while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
                             
-                            if (std::abs(angleDiff) < 0.3 && (otherR - nodeR) < maxConvectionDist) {
+                            // Block if there's an object in roughly same angular direction
+                            if (std::abs(angleDiff) < 0.3) {
                                 isExposed = false;
                                 break;
                             }
@@ -1440,21 +2198,130 @@ void Temperature::createConvectionConnections() {
             }
         }
     } else {
-        // Concentric core - simplified convection for all exposed surfaces
-        for (size_t i = 0; i < _nodes.size(); i++) {
-            if (_nodes[i].part == ThermalNodePartType::AMBIENT) continue;
+        // Check if we have concentric core nodes
+        bool hasConcentricCoreNodes = false;
+        for (const auto& node : _nodes) {
+            if (node.part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
+                node.part == ThermalNodePartType::CORE_TOP_YOKE ||
+                node.part == ThermalNodePartType::CORE_BOTTOM_YOKE) {
+                hasConcentricCoreNodes = true;
+                break;
+            }
+        }
+        
+        if (hasConcentricCoreNodes) {
+            // Concentric core - quadrant-specific convection with symmetry boundary
+            // Build a map of which quadrants are already connected by conduction
+            std::set<std::string> connectedQuadrants;
+            for (const auto& res : _resistances) {
+                if (res.type == HeatTransferType::CONDUCTION) {
+                    std::string key1 = std::to_string(res.nodeFromId) + "_" + 
+                                       std::string(magic_enum::enum_name(res.quadrantFrom));
+                    std::string key2 = std::to_string(res.nodeToId) + "_" + 
+                                       std::string(magic_enum::enum_name(res.quadrantTo));
+                    connectedQuadrants.insert(key1);
+                    connectedQuadrants.insert(key2);
+                }
+            }
             
-            ThermalResistanceElement r;
-            r.nodeFromId = i;
-            r.quadrantFrom = ThermalNodeFace::NONE;
-            r.nodeToId = ambientIdx;
-            r.quadrantTo = ThermalNodeFace::NONE;
-            r.type = _config.includeForcedConvection ? 
-                     HeatTransferType::FORCED_CONVECTION : 
-                     HeatTransferType::NATURAL_CONVECTION;
-            r.resistance = ThermalResistance::calculateConvectionResistance(
-                h_conv, _nodes[i].getTotalSurfaceArea());
-            _resistances.push_back(r);
+            for (size_t i = 0; i < _nodes.size(); i++) {
+                if (_nodes[i].part == ThermalNodePartType::AMBIENT) continue;
+                
+                // Check if this is a central column node or yoke (symmetry boundary on LEFT side)
+                bool isCentralColumn = (_nodes[i].part == ThermalNodePartType::CORE_CENTRAL_COLUMN);
+                bool isYoke = (_nodes[i].part == ThermalNodePartType::CORE_TOP_YOKE ||
+                              _nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE);
+                bool isTurn = (_nodes[i].part == ThermalNodePartType::TURN);
+                
+                // Check each quadrant for convection exposure
+                for (int qIdx = 0; qIdx < 4; ++qIdx) {
+                    ThermalNodeFace face = _nodes[i].quadrants[qIdx].face;
+                    if (face == ThermalNodeFace::NONE) continue;
+                    
+                    // Skip if this quadrant is already connected by conduction
+                    std::string qKey = std::to_string(i) + "_" + std::string(magic_enum::enum_name(face));
+                    if (connectedQuadrants.count(qKey) > 0) continue;
+                    
+                    // Symmetry boundary: Central column's LEFT face (RADIAL_INNER) is adiabatic
+                    if (isCentralColumn && face == ThermalNodeFace::RADIAL_INNER) continue;
+                    
+                    // Symmetry boundary: Yoke's LEFT face (RADIAL_INNER) is adiabatic
+                    if (isYoke && face == ThermalNodeFace::RADIAL_INNER) continue;
+                    
+                    // For turns: check if quadrant is blocked by another turn
+                    if (isTurn) {
+                        bool isBlocked = false;
+                        double turnX = _nodes[i].physicalCoordinates[0];
+                        double turnY = _nodes[i].physicalCoordinates[1];
+                        
+                        // Determine direction based on face
+                        double dirX = 0.0, dirY = 0.0;
+                        if (face == ThermalNodeFace::RADIAL_INNER) dirX = -1.0;
+                        else if (face == ThermalNodeFace::RADIAL_OUTER) dirX = 1.0;
+                        else if (face == ThermalNodeFace::TANGENTIAL_LEFT) dirY = 1.0;
+                        else if (face == ThermalNodeFace::TANGENTIAL_RIGHT) dirY = -1.0;
+                        
+                        // Check for blocking turns in that direction
+                        for (size_t j = 0; j < _nodes.size(); j++) {
+                            if (i == j) continue;
+                            if (_nodes[j].part != ThermalNodePartType::TURN) continue;
+                            
+                            double otherX = _nodes[j].physicalCoordinates[0];
+                            double otherY = _nodes[j].physicalCoordinates[1];
+                            double dx = otherX - turnX;
+                            double dy = otherY - turnY;
+                            
+                            // Check if other turn is in the blocking direction
+                            bool inDirection = false;
+                            if (dirX != 0.0 && std::abs(dy) < _wireHeight && dx * dirX > 0 && std::abs(dx) < _wireWidth * 1.5) {
+                                inDirection = true;
+                            }
+                            if (dirY != 0.0 && std::abs(dx) < _wireWidth && dy * dirY > 0 && std::abs(dy) < _wireHeight * 1.5) {
+                                inDirection = true;
+                            }
+                            
+                            if (inDirection) {
+                                isBlocked = true;
+                                break;
+                            }
+                        }
+                        
+                        if (isBlocked) continue;
+                    }
+                    
+                    // All other exposed quadrants get convection
+                    auto* q = _nodes[i].getQuadrant(face);
+                    if (q && q->surfaceArea > 0) {
+                        ThermalResistanceElement r;
+                        r.nodeFromId = i;
+                        r.quadrantFrom = face;
+                        r.nodeToId = ambientIdx;
+                        r.quadrantTo = ThermalNodeFace::NONE;
+                        r.type = _config.includeForcedConvection ? 
+                                 HeatTransferType::FORCED_CONVECTION : 
+                                 HeatTransferType::NATURAL_CONVECTION;
+                        r.resistance = q->calculateConvectionResistance(h_conv);
+                        _resistances.push_back(r);
+                    }
+                }
+            }
+        } else {
+            // Non-toroidal, non-concentric core (e.g., E/ETD shapes) - simplified convection
+            for (size_t i = 0; i < _nodes.size(); i++) {
+                if (_nodes[i].part == ThermalNodePartType::AMBIENT) continue;
+                
+                ThermalResistanceElement r;
+                r.nodeFromId = i;
+                r.quadrantFrom = ThermalNodeFace::NONE;
+                r.nodeToId = ambientIdx;
+                r.quadrantTo = ThermalNodeFace::NONE;
+                r.type = _config.includeForcedConvection ? 
+                         HeatTransferType::FORCED_CONVECTION : 
+                         HeatTransferType::NATURAL_CONVECTION;
+                r.resistance = ThermalResistance::calculateConvectionResistance(
+                    h_conv, _nodes[i].getTotalSurfaceArea());
+                _resistances.push_back(r);
+            }
         }
     }
 }

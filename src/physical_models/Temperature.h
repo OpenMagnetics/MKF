@@ -278,6 +278,15 @@ private:
     void createBobbinConnections();
     
     /**
+     * @brief Create connections from bobbin yokes to nearby turns
+     * @param bobbinTopYokeIdx Index of top bobbin yoke node
+     * @param bobbinBottomYokeIdx Index of bottom bobbin yoke node  
+     * @param turnNodeIndices Vector of turn node indices
+     */
+    void createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, size_t bobbinBottomYokeIdx,
+                                           const std::vector<size_t>& turnNodeIndices);
+    
+    /**
      * @brief Create turn-to-turn conduction resistances based on distance
      * 
      * For toroidal: connects quadrants of adjacent turns if surfaces are close
@@ -286,9 +295,32 @@ private:
     void createTurnToTurnConnections();
     
     /**
+     * @brief Create turn-to-turn connections for concentric cores
+     * 
+     * Connects adjacent turns through appropriate quadrants based on relative position
+     */
+    void createConcentricTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist);
+    
+    /**
+     * @brief Create turn-to-turn connections for toroidal cores
+     * 
+     * Connects inner/outer turns through radial faces and tangentially adjacent turns
+     */
+    void createToroidalTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist);
+    
+    /**
+     * @brief Create turn-to-bobbin conduction resistances for concentric cores
+     * 
+     * Checks turn quadrant limit coordinates against bobbin surfaces
+     * Creates connections when turns are close to bobbin walls
+     */
+    void createTurnToBobbinConnections();
+    
+    /**
      * @brief Create turn-to-core conduction resistances based on distance
      * 
      * For toroidal: inner turn quadrants connect to inner core, outer to outer
+     * For concentric: turns connect to core if no bobbin present
      */
     void createTurnToSolidConnections();
     
