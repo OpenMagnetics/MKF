@@ -89,6 +89,84 @@ class Bobbin : public MAS::Bobbin {
     void set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex = 0);
     std::optional<WindingOrientation> get_winding_orientation(size_t windingWindowIndex = 0);
     std::vector<double> get_maximum_dimensions();
+    
+    // Thermal surface area calculations
+    /**
+     * @brief Get the column's right face area (facing winding window)
+     * @param coreDepth The core depth (depth of the magnetic circuit)
+     * @param windingWindowIndex Index of the winding window
+     * @return Surface area in m²
+     */
+    double get_column_right_face_area(double coreDepth, size_t windingWindowIndex = 0);
+    
+    /**
+     * @brief Get the column's top face area
+     * @param coreDepth The core depth
+     * @param windingWindowIndex Index of the winding window
+     * @return Surface area in m²
+     */
+    double get_column_top_face_area(double coreDepth, size_t windingWindowIndex = 0);
+    
+    /**
+     * @brief Get the column's bottom face area
+     * @param coreDepth The core depth
+     * @param windingWindowIndex Index of the winding window
+     * @return Surface area in m²
+     */
+    double get_column_bottom_face_area(double coreDepth, size_t windingWindowIndex = 0);
+    
+    /**
+     * @brief Get the yoke's interior face area (facing winding window, bottom of top yoke / top of bottom yoke)
+     * @param coreDepth The core depth
+     * @param isTopYoke True for top yoke, false for bottom yoke
+     * @param windingWindowIndex Index of the winding window
+     * @return Surface area in m²
+     */
+    double get_yoke_interior_face_area(double coreDepth, bool isTopYoke, size_t windingWindowIndex = 0);
+    
+    /**
+     * @brief Get the yoke's exterior face area (facing away from winding, top of top yoke / bottom of bottom yoke)
+     * @param coreDepth The core depth
+     * @param isTopYoke True for top yoke, false for bottom yoke
+     * @param windingWindowIndex Index of the winding window
+     * @return Surface area in m²
+     */
+    double get_yoke_exterior_face_area(double coreDepth, bool isTopYoke, size_t windingWindowIndex = 0);
+    
+    /**
+     * @brief Get the yoke's right face area (vertical face facing winding window)
+     * @param wallThickness The bobbin wall thickness
+     * @param coreDepth The core depth
+     * @param windingWindowIndex Index of the winding window
+     * @return Surface area in m²
+     */
+    double get_yoke_right_face_area(double wallThickness, double coreDepth, size_t windingWindowIndex = 0);
+    
+    /**
+     * @brief Get the winding window height
+     * @param windingWindowIndex Index of the winding window
+     * @return Height in m
+     */
+    double get_winding_window_height(size_t windingWindowIndex = 0);
+    
+    /**
+     * @brief Get the winding window width
+     * @param windingWindowIndex Index of the winding window
+     * @return Width in m
+     */
+    double get_winding_window_width(size_t windingWindowIndex = 0);
+    
+    /**
+     * @brief Get the column width (full width including bobbin thickness)
+     * @return Column width in m
+     */
+    double get_column_width();
+    
+    /**
+     * @brief Get the column depth (full depth including bobbin thickness)
+     * @return Column depth in m
+     */
+    double get_column_depth();
 };
 
 
