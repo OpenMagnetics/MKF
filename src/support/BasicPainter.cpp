@@ -1877,9 +1877,9 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                 double width = windingWindow.get_width().value();
                 double height = windingWindow.get_height().value();
                 
-                // Draw bobbin outline as a rectangle
+                // Draw bobbin filled with temperature color
                 std::string cssClassName = generate_random_string();
-                _root.style("." + cssClassName).set_attr("fill", "none").set_attr("stroke", color).set_attr("stroke-width", "3");
+                _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
                 paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
             }
         }
@@ -2011,19 +2011,21 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
     
     // Add temperature color bar on the right side
     if (showColorBar) {
-        // Find the rightmost extent of all geometry
-        double maxX = 0;
-        double minY = 0;
-        double maxY = 0;
+        // Find the extent of all geometry
+        double minX = 0, maxX = 0;
+        double minY = 0, maxY = 0;
         
         // Check core geometry
         if (family == MAS::CoreShapeFamily::T) {
-            // Toroidal: rightmost point is outerDiameter/2
-            maxX = processedElements.get_width() / 2;
-            minY = -processedElements.get_width() / 2;
-            maxY = processedElements.get_width() / 2;
+            // Toroidal: centered at origin, symmetric
+            double halfWidth = processedElements.get_width() / 2;
+            minX = -halfWidth;
+            maxX = halfWidth;
+            minY = -halfWidth;
+            maxY = halfWidth;
         } else {
-            // Concentric cores
+            // Concentric cores: start at x=0
+            minX = 0;
             maxX = showingCoreWidth;
             minY = -coreHeight / 2;
             maxY = coreHeight / 2;
@@ -2041,9 +2043,25 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                     if (turn.get_dimensions().has_value() && !turn.get_dimensions().value().empty()) {
                         turnRadius = turn.get_dimensions().value()[0] / 2;
                     }
+                    minX = std::min(minX, turnX - turnRadius);
                     maxX = std::max(maxX, turnX + turnRadius);
                     minY = std::min(minY, turnY - turnRadius);
                     maxY = std::max(maxY, turnY + turnRadius);
+                    
+                    // For toroidal turns, also check additional coordinates (outer half of turn)
+                    if (family == MAS::CoreShapeFamily::T && turn.get_additional_coordinates()) {
+                        auto addCoords = turn.get_additional_coordinates().value();
+                        for (const auto& addCoord : addCoords) {
+                            if (addCoord.size() >= 2) {
+                                double addX = addCoord[0];
+                                double addY = addCoord[1];
+                                minX = std::min(minX, addX - turnRadius);
+                                maxX = std::max(maxX, addX + turnRadius);
+                                minY = std::min(minY, addY - turnRadius);
+                                maxY = std::max(maxY, addY + turnRadius);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2055,15 +2073,19 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         double barX = maxX + (maxX - 0) * marginFactor;
         double barY = (maxY + minY) / 2;
         
-        // Draw white background box for color bar area (extends to include text)
-        double textWidthEstimate = (barHeight * 0.08) * 7;
+        // Draw white background box for color bar area (very tight fit)
         double textHeight = barHeight * 0.08;
-        double whiteBgPadding = barWidth * 0.2;
-        double whiteBgWidth = barWidth + barWidth * 1.3 + textWidthEstimate + whiteBgPadding;
-        double whiteBgHeight = barHeight + whiteBgPadding * 2;
+        double textWidthEstimate = textHeight * 3.5;  // ~3-4 chars for "100°C"
+        double whiteBgPaddingX = barWidth * 0.03;  // Minimal horizontal padding
+        double whiteBgPaddingY = textHeight * 0.2;  // Minimal vertical padding
+        // Total width: bar + small gap + text + minimal padding on both sides
+        double whiteBgWidth = barWidth + barWidth * 0.15 + textWidthEstimate + whiteBgPaddingX * 2;
+        double whiteBgHeight = barHeight + whiteBgPaddingY * 2;
+        // Position: left edge at barX - barWidth/2 (start of color bar), centered
+        double whiteBgCenterX = (barX - barWidth / 2) + whiteBgWidth / 2;
         std::string whiteBgClass = generate_random_string();
         _root.style("." + whiteBgClass).set_attr("fill", "#FFFFFF").set_attr("opacity", "1.0");
-        paint_rectangle(barX + whiteBgWidth / 2 - barWidth / 2 - whiteBgPadding, barY, whiteBgWidth, whiteBgHeight, whiteBgClass, shapes);
+        paint_rectangle(whiteBgCenterX, barY, whiteBgWidth, whiteBgHeight, whiteBgClass, shapes);
         
         size_t numSteps = 20;
         
@@ -2100,7 +2122,8 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                 labelY -= textHeight * 0.8;  // Move top label down
             }
             // Text position needs to be in scaled coordinates for SVG::Text
-            double textX = (barX + barWidth * 1.3) * _scale;
+            // Position text closer to the color bar
+            double textX = (barX + barWidth * 1.7) * _scale;
             double textY = -labelY * _scale;  // Note: SVG Y is inverted
             auto* text = _root.add_child<SVG::Text>(textX, textY, label);
             text->set_attr("font-size", std::to_string(barHeight * _scale * 0.08));
@@ -2109,21 +2132,24 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         }
         
         // Update viewBox to include the color bar
-        double newMaxX = barX + barWidth * 1.3 + textWidthEstimate;
-        double newImageWidth = newMaxX * 2;  // Since the view is centered at origin
+        double colorBarRight = barX - barWidth/2 + whiteBgWidth + whiteBgPaddingX;
+        double colorBarTop = barY + barHeight / 2 + whiteBgPaddingY;
+        double colorBarBottom = barY - barHeight / 2 - whiteBgPaddingY;
         
-        // Ensure the height includes the full color bar extent
-        double colorBarTop = barY + barHeight / 2;
-        double colorBarBottom = barY - barHeight / 2;
-        double newMaxY = std::max(maxY, colorBarTop);
+        // Find overall bounds
+        double newMinX = minX;
+        double newMaxX = std::max(maxX, colorBarRight);
         double newMinY = std::min(minY, colorBarBottom);
-        double newImageHeight = newMaxY - newMinY;
+        double newMaxY = std::max(maxY, colorBarTop);
+        
+        double viewBoxWidth = newMaxX - newMinX;
+        double viewBoxHeight = newMaxY - newMinY;
         
         // Update the image dimensions and viewBox
-        _imageWidth = std::max(_imageWidth, newImageWidth);
-        _imageHeight = std::max(_imageHeight, newImageHeight);
+        _imageWidth = viewBoxWidth;
+        _imageHeight = viewBoxHeight;
         _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);
-        _root.set_attr("viewBox", std::to_string(-_imageWidth / 2 * _scale) + " " + std::to_string(-_imageHeight / 2 * _scale) + " " + std::to_string(_imageWidth * _scale) + " " + std::to_string(_imageHeight * _scale));
+        _root.set_attr("viewBox", std::to_string(newMinX * _scale) + " " + std::to_string(-newMaxY * _scale) + " " + std::to_string(viewBoxWidth * _scale) + " " + std::to_string(viewBoxHeight * _scale));
     }
 }
 
@@ -2624,54 +2650,54 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         if (!node1 || !node2) continue;
         if (node1->isAmbient() || node2->isAmbient()) continue;
         
+        // Helper to get connection point for a node/quadrant
+        auto getConnectionPoint = [&](const ThermalNetworkNode& node, ThermalNodeFace face) -> std::pair<double, double> {
+            auto pos = mapNodeToSvg(node);
+            
+            if (node.part != ThermalNodePartType::TURN || face == ThermalNodeFace::NONE) {
+                return pos;
+            }
+            
+            // For turns, calculate offset based on face
+            // For concentric: use horizontal/vertical offsets
+            // For toroidal: use angled limit coordinates
+            double offsetX = 0, offsetY = 0;
+            
+            if (isConcentricCore) {
+                // Concentric: fixed horizontal/vertical offsets
+                double nodeWidth = node.dimensions.width * scaleFactor / 2.0;
+                double nodeHeight = node.dimensions.height * scaleFactor / 2.0;
+                double radius = (nodeWidth + nodeHeight) / 4.0;  // Node radius in SVG coords
+                
+                switch (face) {
+                    case ThermalNodeFace::RADIAL_INNER:   // Left (-X)
+                        offsetX = -radius; offsetY = 0; break;
+                    case ThermalNodeFace::RADIAL_OUTER:   // Right (+X)
+                        offsetX = radius; offsetY = 0; break;
+                    case ThermalNodeFace::TANGENTIAL_LEFT:  // Top (+Y)
+                        offsetX = 0; offsetY = radius; break;
+                    case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y)
+                        offsetX = 0; offsetY = -radius; break;
+                    default: break;
+                }
+                return {pos.first + offsetX, pos.second + offsetY};
+            } else {
+                // Toroidal: use angled limit coordinates from 3D geometry
+                auto limit = getQuadrantLimitCoordinate(node, face);
+                if (limit && ((*limit)[0] != 0.0 || (*limit)[1] != 0.0)) {
+                    double centerX = node.physicalCoordinates[0];
+                    double centerY = node.physicalCoordinates[1];
+                    offsetX = ((*limit)[0] - centerX) / 2.0 * scaleFactor;
+                    offsetY = ((*limit)[1] - centerY) / 2.0 * scaleFactor;
+                    return {pos.first + offsetX, pos.second + offsetY};
+                }
+            }
+            return pos;
+        };
+        
         // Get connection points
-        // For turn nodes: use quadrant limit coordinate
-        // For core nodes: use node center
-        double x1, y1, x2, y2;
-        
-        // For node1: use limit coordinate only if it's a turn node
-        if (node1->part == ThermalNodePartType::TURN) {
-            auto limit1 = getQuadrantLimitCoordinate(*node1, res.quadrantFrom);
-            if (limit1 && ((*limit1)[0] != 0.0 || (*limit1)[1] != 0.0)) {
-                // Scale offset by 1/2 to match visual node size
-                double centerX = node1->physicalCoordinates[0];
-                double centerY = node1->physicalCoordinates[1];
-                double offsetX = (*limit1)[0] - centerX;
-                double offsetY = (*limit1)[1] - centerY;
-                x1 = margin + (centerX + offsetX / 2.0 - minX) * scaleFactor;
-                y1 = margin + (centerY + offsetY / 2.0 - minY) * scaleFactor;
-            } else {
-                auto pos1 = mapNodeToSvg(*node1);
-                x1 = pos1.first;
-                y1 = pos1.second;
-            }
-        } else {
-            auto pos1 = mapNodeToSvg(*node1);
-            x1 = pos1.first;
-            y1 = pos1.second;
-        }
-        
-        // For node2: use limit coordinate only if it's a turn node
-        if (node2->part == ThermalNodePartType::TURN) {
-            auto limit2 = getQuadrantLimitCoordinate(*node2, res.quadrantTo);
-            if (limit2 && ((*limit2)[0] != 0.0 || (*limit2)[1] != 0.0)) {
-                // Scale offset by 1/2 to match visual node size
-                double centerX = node2->physicalCoordinates[0];
-                double centerY = node2->physicalCoordinates[1];
-                double offsetX = (*limit2)[0] - centerX;
-                double offsetY = (*limit2)[1] - centerY;
-                x2 = margin + (centerX + offsetX / 2.0 - minX) * scaleFactor;
-                y2 = margin + (centerY + offsetY / 2.0 - minY) * scaleFactor;
-            } else {
-                auto pos2 = mapNodeToSvg(*node2);
-                x2 = pos2.first;
-                y2 = pos2.second;
-            }
-        } else {
-            auto pos2 = mapNodeToSvg(*node2);
-            x2 = pos2.first;
-            y2 = pos2.second;
-        }
+        auto [x1, y1] = getConnectionPoint(*node1, res.quadrantFrom);
+        auto [x2, y2] = getConnectionPoint(*node2, res.quadrantTo);
         
         // Draw conduction as full resistor symbols
         if (res.type == HeatTransferType::CONDUCTION) {
@@ -2728,6 +2754,11 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                             return face == ThermalNodeFace::RADIAL_INNER;
                         } else if (nameLower.find("_outer") != std::string::npos) {
                             return face == ThermalNodeFace::RADIAL_OUTER;
+                        } else {
+                            // Concentric turns (no _inner/_outer suffix): check actual face in resistance
+                            // For concentric: RADIAL_INNER=LEFT (toward center), RADIAL_OUTER=RIGHT (toward air)
+                            ThermalNodeFace connectedFace = (res.nodeFromId == nodeIdx) ? res.quadrantFrom : res.quadrantTo;
+                            return face == connectedFace;
                         }
                     }
                     // For core nodes: check which faces connect to ambient AND have surface coverage > 0
@@ -3216,13 +3247,36 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                 for (const auto& quadrant : node->quadrants) {
                     if (quadrant.face == ThermalNodeFace::NONE) continue;
                     
-                    // Scale limit offset by 1/2 to match the visual node size
-                    double centerX = node->physicalCoordinates[0];
-                    double centerY = node->physicalCoordinates[1];
-                    double offsetX = quadrant.limitCoordinates[0] - centerX;
-                    double offsetY = quadrant.limitCoordinates[1] - centerY;
-                    double limitX = margin + (centerX + offsetX / 2.0 - minX) * scaleFactor;
-                    double limitY = margin + (centerY + offsetY / 2.0 - minY) * scaleFactor;
+                    double limitX, limitY;
+                    
+                    if (isConcentricCore) {
+                        // For concentric: use fixed horizontal/vertical offsets in SVG coordinates
+                        double radius = (nodeWidth + nodeHeight) / 4.0;  // Node radius in SVG coordinates
+                        double offsetX = 0, offsetY = 0;
+                        switch (quadrant.face) {
+                            case ThermalNodeFace::RADIAL_INNER:   // Left (-X)
+                                offsetX = -radius; offsetY = 0; break;
+                            case ThermalNodeFace::RADIAL_OUTER:   // Right (+X)
+                                offsetX = radius; offsetY = 0; break;
+                            case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y)
+                                offsetX = 0; offsetY = radius; break;
+                            case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y)
+                                offsetX = 0; offsetY = -radius; break;
+                            default: break;
+                        }
+                        // Position directly in SVG coordinates (center is already scaled in x, y)
+                        limitX = x + offsetX;
+                        limitY = y + offsetY;
+                    } else {
+                        // For toroidal: use actual 3D limit coordinates (angled)
+                        double centerX = node->physicalCoordinates[0];
+                        double centerY = node->physicalCoordinates[1];
+                        double offsetX = quadrant.limitCoordinates[0] - centerX;
+                        double offsetY = quadrant.limitCoordinates[1] - centerY;
+                        // Scale limit offset by 1/2 to match the visual node size
+                        limitX = margin + (centerX + offsetX / 2.0 - minX) * scaleFactor;
+                        limitY = margin + (centerY + offsetY / 2.0 - minY) * scaleFactor;
+                    }
                     
                     // Draw small black dot
                     auto* limitDot = nodesGroup->add_child<SVG::Circle>(limitX, limitY, 2.0);
@@ -3261,15 +3315,36 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                     std::string initial = getQuadrantInitial(quadrant.face);
                     if (initial.empty()) continue;
                     
-                    // Calculate label position - offset from center toward quadrant limit
-                    double centerX = node->physicalCoordinates[0];
-                    double centerY = node->physicalCoordinates[1];
-                    double offsetX = quadrant.limitCoordinates[0] - centerX;
-                    double offsetY = quadrant.limitCoordinates[1] - centerY;
+                    double labelX, labelY;
                     
-                    // Position label at 25% of the way from center to limit (inside the quadrant)
-                    double labelX = margin + (centerX + offsetX * 0.25 - minX) * scaleFactor;
-                    double labelY = margin + (centerY + offsetY * 0.25 - minY) * scaleFactor;
+                    if (isConcentricCore) {
+                        // For concentric: use fixed horizontal/vertical offsets in SVG coordinates
+                        double radius = (nodeWidth + nodeHeight) / 4.0;  // Node radius in SVG coordinates
+                        double offsetX = 0, offsetY = 0;
+                        switch (quadrant.face) {
+                            case ThermalNodeFace::RADIAL_INNER:   // Left (-X)
+                                offsetX = -radius; offsetY = 0; break;
+                            case ThermalNodeFace::RADIAL_OUTER:   // Right (+X)
+                                offsetX = radius; offsetY = 0; break;
+                            case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y)
+                                offsetX = 0; offsetY = radius; break;
+                            case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y)
+                                offsetX = 0; offsetY = -radius; break;
+                            default: break;
+                        }
+                        // Position label at 50% of the way from center to limit (inside the quadrant)
+                        labelX = x + offsetX * 0.5;
+                        labelY = y + offsetY * 0.5;
+                    } else {
+                        // For toroidal: use actual 3D limit coordinates (angled)
+                        double centerX = node->physicalCoordinates[0];
+                        double centerY = node->physicalCoordinates[1];
+                        double offsetX = quadrant.limitCoordinates[0] - centerX;
+                        double offsetY = quadrant.limitCoordinates[1] - centerY;
+                        // Position label at 25% of the way from center to limit (inside the quadrant)
+                        labelX = margin + (centerX + offsetX * 0.25 - minX) * scaleFactor;
+                        labelY = margin + (centerY + offsetY * 0.25 - minY) * scaleFactor;
+                    }
                     
                     // Draw quadrant initial
                     auto* qLabel = nodesGroup->add_child<SVG::Text>(labelX, labelY + 2, initial);
