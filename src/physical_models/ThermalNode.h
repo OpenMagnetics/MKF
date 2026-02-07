@@ -369,6 +369,22 @@ public:
                                        const std::optional<InsulationWireCoating>& wireCoating = std::nullopt);
     
     /**
+     * @brief Initialize quadrants for concentric core/bobbin nodes with cardinal directions
+     * 
+     * For concentric cores, maps quadrants to cardinal directions:
+     * - TANGENTIAL_LEFT  ↔ TOP    (+Y direction)
+     * - TANGENTIAL_RIGHT ↔ BOTTOM (-Y direction)  
+     * - RADIAL_INNER     ↔ LEFT   (-X direction, toward center)
+     * - RADIAL_OUTER     ↔ RIGHT  (+X direction, away from center)
+     * 
+     * @param width Width in X direction (horizontal size)
+     * @param height Height in Y direction (vertical size)
+     * @param depth Depth in Z direction (into the page)
+     * @param thermalCond Thermal conductivity of material
+     */
+    void initializeConcentricCoreQuadrants(double width, double height, double depth, double thermalCond);
+    
+    /**
      * @brief Calculate surface coverage for toroidal core quadrants
      * 
      * For toroidal cores, calculates what fraction of the inner/outer arc surface

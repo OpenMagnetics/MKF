@@ -263,6 +263,7 @@ class Wire : public MAS::Wire {
         double get_maximum_conducting_width();
         double get_maximum_conducting_height();
         double get_minimum_conducting_dimension();
+        double get_minimum_outer_dimension();
 
 
         double get_coating_thickness();

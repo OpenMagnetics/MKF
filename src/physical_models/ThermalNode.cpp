@@ -238,6 +238,61 @@ void ThermalNetworkNode::initializeConcentricQuadrant(double wireWidth, double w
     }
 }
 
+void ThermalNetworkNode::initializeConcentricCoreQuadrants(double width, double height, double depth, 
+                                                           double thermalCond) {
+    // Store geometry
+    dimensions = NodeDimensions(width, height, depth);
+    
+    // For concentric cores, map quadrants to cardinal directions:
+    // TANGENTIAL_LEFT  (index 2) ↔ TOP    (+Y direction)
+    // TANGENTIAL_RIGHT (index 3) ↔ BOTTOM (-Y direction)
+    // RADIAL_INNER     (index 1) ↔ LEFT   (-X direction, toward center)
+    // RADIAL_OUTER     (index 0) ↔ RIGHT  (+X direction, away from center)
+    
+    // Calculate surface areas for each face
+    // RIGHT/LEFT faces: height * depth
+    double sideArea = height * depth;
+    // TOP/BOTTOM faces: width * depth
+    double topBottomArea = width * depth;
+    
+    // RIGHT face (+X direction)
+    quadrants[0].face = ThermalNodeFace::RADIAL_OUTER;
+    quadrants[0].surfaceArea = sideArea;
+    quadrants[0].length = depth;
+    quadrants[0].thermalConductivity = thermalCond;
+    
+    // LEFT face (-X direction, toward center)
+    quadrants[1].face = ThermalNodeFace::RADIAL_INNER;
+    quadrants[1].surfaceArea = sideArea;
+    quadrants[1].length = depth;
+    quadrants[1].thermalConductivity = thermalCond;
+    
+    // TOP face (+Y direction)
+    quadrants[2].face = ThermalNodeFace::TANGENTIAL_LEFT;
+    quadrants[2].surfaceArea = topBottomArea;
+    quadrants[2].length = width;
+    quadrants[2].thermalConductivity = thermalCond;
+    
+    // BOTTOM face (-Y direction)
+    quadrants[3].face = ThermalNodeFace::TANGENTIAL_RIGHT;
+    quadrants[3].surfaceArea = topBottomArea;
+    quadrants[3].length = width;
+    quadrants[3].thermalConductivity = thermalCond;
+    
+    // Set limit coordinates for each quadrant (relative to node center)
+    double nodeX = physicalCoordinates[0];
+    double nodeY = physicalCoordinates[1];
+    
+    // RIGHT limit (+X)
+    quadrants[0].limitCoordinates = {nodeX + width/2, nodeY, 0.0};
+    // LEFT limit (-X)
+    quadrants[1].limitCoordinates = {nodeX - width/2, nodeY, 0.0};
+    // TOP limit (+Y)
+    quadrants[2].limitCoordinates = {nodeX, nodeY + height/2, 0.0};
+    // BOTTOM limit (-Y)
+    quadrants[3].limitCoordinates = {nodeX, nodeY - height/2, 0.0};
+}
+
 // ============================================================================
 // Surface Coverage Calculations
 // ============================================================================

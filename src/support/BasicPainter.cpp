@@ -2333,7 +2333,8 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     const std::vector<ThermalNetworkNode>& nodes,
     const std::vector<ThermalResistanceElement>& resistances,
     double width,
-    double height) {
+    double height,
+    bool showQuadrantLabels) {
     
     // Configurable colors for thermal visualization
     const std::string COLOR_AMBIENT = "#4CAF50";      // Green - exposed to ambient air
@@ -2352,6 +2353,18 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     
     if (nodes.empty()) {
         return export_svg();
+    }
+    
+    // Detect if this is a concentric core (not toroidal) - needed for proper scaling
+    bool isConcentricCore = false;
+    for (const auto& node : nodes) {
+        if (node.part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
+            node.part == ThermalNodePartType::CORE_LATERAL_COLUMN ||
+            node.part == ThermalNodePartType::CORE_TOP_YOKE ||
+            node.part == ThermalNodePartType::CORE_BOTTOM_YOKE) {
+            isConcentricCore = true;
+            break;
+        }
     }
     
     // =========================================================================
@@ -2401,8 +2414,8 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         // Calculate exact scale needed for minimum separation
         scaleFactor = minSvgSpaceNeeded / minNodeSeparation;
         
-        // Add 50% safety margin for comfortable spacing
-        scaleFactor *= 1.5;
+        // Add 150% safety margin for comfortable spacing and clear resistor display
+        scaleFactor *= 2.5;
         
         // Ensure minimum practical scale
         scaleFactor = std::max(1000.0, scaleFactor);
@@ -2620,8 +2633,13 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         if (node1->part == ThermalNodePartType::TURN) {
             auto limit1 = getQuadrantLimitCoordinate(*node1, res.quadrantFrom);
             if (limit1 && ((*limit1)[0] != 0.0 || (*limit1)[1] != 0.0)) {
-                x1 = margin + ((*limit1)[0] - minX) * scaleFactor;
-                y1 = margin + ((*limit1)[1] - minY) * scaleFactor;
+                // Scale offset by 1/2 to match visual node size
+                double centerX = node1->physicalCoordinates[0];
+                double centerY = node1->physicalCoordinates[1];
+                double offsetX = (*limit1)[0] - centerX;
+                double offsetY = (*limit1)[1] - centerY;
+                x1 = margin + (centerX + offsetX / 2.0 - minX) * scaleFactor;
+                y1 = margin + (centerY + offsetY / 2.0 - minY) * scaleFactor;
             } else {
                 auto pos1 = mapNodeToSvg(*node1);
                 x1 = pos1.first;
@@ -2637,8 +2655,13 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         if (node2->part == ThermalNodePartType::TURN) {
             auto limit2 = getQuadrantLimitCoordinate(*node2, res.quadrantTo);
             if (limit2 && ((*limit2)[0] != 0.0 || (*limit2)[1] != 0.0)) {
-                x2 = margin + ((*limit2)[0] - minX) * scaleFactor;
-                y2 = margin + ((*limit2)[1] - minY) * scaleFactor;
+                // Scale offset by 1/2 to match visual node size
+                double centerX = node2->physicalCoordinates[0];
+                double centerY = node2->physicalCoordinates[1];
+                double offsetX = (*limit2)[0] - centerX;
+                double offsetY = (*limit2)[1] - centerY;
+                x2 = margin + (centerX + offsetX / 2.0 - minX) * scaleFactor;
+                y2 = margin + (centerY + offsetY / 2.0 - minY) * scaleFactor;
             } else {
                 auto pos2 = mapNodeToSvg(*node2);
                 x2 = pos2.first;
@@ -2785,9 +2808,18 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         
         auto [x, y] = mapNodeToSvg(*node);
         
-        // Calculate angular position for polar orientation
-        double nodeAngle = std::atan2(node->physicalCoordinates.size() >= 2 ? node->physicalCoordinates[1] : 0,
-                                     node->physicalCoordinates.size() >= 1 ? node->physicalCoordinates[0] : 1);
+        // For concentric cores, use fixed orientation:
+        // RADIAL_INNER: toward central column (-X direction) -> slice at 180°
+        // RADIAL_OUTER: toward lateral column (+X direction) -> slice at 0°
+        // TANGENTIAL_LEFT: toward top (+Y direction) -> slice at 90°
+        // TANGENTIAL_RIGHT: toward bottom (-Y direction) -> slice at 270°
+        bool isConcentric = (node->part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
+                            node->part == ThermalNodePartType::CORE_LATERAL_COLUMN ||
+                            node->part == ThermalNodePartType::CORE_TOP_YOKE ||
+                            node->part == ThermalNodePartType::CORE_BOTTOM_YOKE ||
+                            node->part == ThermalNodePartType::BOBBIN_CENTRAL_COLUMN ||
+                            node->part == ThermalNodePartType::BOBBIN_TOP_YOKE ||
+                            node->part == ThermalNodePartType::BOBBIN_BOTTOM_YOKE);
         
         // Node circle (base) - white with connection colors on quadrants
         auto* circle = nodesGroup->add_child<SVG::Circle>(x, y, defaultNodeRadius);
@@ -2806,23 +2838,46 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         for (int q = 0; q < 4; q++) {
             double sliceStartAngle = 0;
             
-            // Orient slices based on node's angular position in the toroid
-            switch (quadrants[q]) {
-                case ThermalNodeFace::RADIAL_OUTER:
-                    sliceStartAngle = nodeAngle * 180.0 / M_PI - 45;
-                    break;
-                case ThermalNodeFace::RADIAL_INNER:
-                    sliceStartAngle = (nodeAngle + M_PI) * 180.0 / M_PI - 45;
-                    break;
-                case ThermalNodeFace::TANGENTIAL_LEFT:
-                    sliceStartAngle = (nodeAngle + M_PI/2) * 180.0 / M_PI - 45;
-                    break;
-                case ThermalNodeFace::TANGENTIAL_RIGHT:
-                    sliceStartAngle = (nodeAngle - M_PI/2) * 180.0 / M_PI - 45;
-                    break;
-                default:
-                    sliceStartAngle = q * 90 - 45;
-                    break;
+            if (isConcentric) {
+                // Fixed orientation for concentric cores
+                switch (quadrants[q]) {
+                    case ThermalNodeFace::RADIAL_OUTER:  // Toward lateral column (+X)
+                        sliceStartAngle = -45;
+                        break;
+                    case ThermalNodeFace::RADIAL_INNER:  // Toward central column (-X)
+                        sliceStartAngle = 135;
+                        break;
+                    case ThermalNodeFace::TANGENTIAL_LEFT:  // Toward top (+Y)
+                        sliceStartAngle = 45;
+                        break;
+                    case ThermalNodeFace::TANGENTIAL_RIGHT:  // Toward bottom (-Y)
+                        sliceStartAngle = 225;
+                        break;
+                    default:
+                        sliceStartAngle = q * 90 - 45;
+                        break;
+                }
+            } else {
+                // Toroidal: Orient slices based on node's angular position
+                double nodeAngle = std::atan2(node->physicalCoordinates.size() >= 2 ? node->physicalCoordinates[1] : 0,
+                                             node->physicalCoordinates.size() >= 1 ? node->physicalCoordinates[0] : 1);
+                switch (quadrants[q]) {
+                    case ThermalNodeFace::RADIAL_OUTER:
+                        sliceStartAngle = nodeAngle * 180.0 / M_PI - 45;
+                        break;
+                    case ThermalNodeFace::RADIAL_INNER:
+                        sliceStartAngle = (nodeAngle + M_PI) * 180.0 / M_PI - 45;
+                        break;
+                    case ThermalNodeFace::TANGENTIAL_LEFT:
+                        sliceStartAngle = (nodeAngle + M_PI/2) * 180.0 / M_PI - 45;
+                        break;
+                    case ThermalNodeFace::TANGENTIAL_RIGHT:
+                        sliceStartAngle = (nodeAngle - M_PI/2) * 180.0 / M_PI - 45;
+                        break;
+                    default:
+                        sliceStartAngle = q * 90 - 45;
+                        break;
+                }
             }
             double sliceEndAngle = sliceStartAngle + 90;
             
@@ -2832,9 +2887,9 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
             // Get surface coverage for this quadrant (if available)
             double coverage = getSurfaceCoverage(*node, quadrants[q]);
             
-            if (hasConductionConnectionOnFace(nodeIdx, quadrants[q], nodeAngle)) {
+            if (hasConductionConnectionOnFace(nodeIdx, quadrants[q], 0)) {
                 sliceColor = COLOR_CONDUCTION;  // Orange: connected via conduction (priority)
-            } else if (hasConvectionToAmbientOnFace(nodeIdx, quadrants[q], nodeAngle)) {
+            } else if (hasConvectionToAmbientOnFace(nodeIdx, quadrants[q], 0)) {
                 sliceColor = COLOR_AMBIENT;  // Green: exposed to air
             } else if (coverage > 0.5) {
                 // Surface coverage > 50% means mostly exposed to air
@@ -2860,8 +2915,14 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         tLabel->set_attr("fill", "#ffffff");
         tLabel->set_attr("font-weight", "bold");
         
-        // Node name below
-        auto* nameLabel = nodesGroup->add_child<SVG::Text>(x, y + defaultNodeRadius + 10, "C");
+        // Node name based on type
+        std::string nodeLabel = "C";
+        if (node->part == ThermalNodePartType::BOBBIN_CENTRAL_COLUMN ||
+            node->part == ThermalNodePartType::BOBBIN_TOP_YOKE ||
+            node->part == ThermalNodePartType::BOBBIN_BOTTOM_YOKE) {
+            nodeLabel = "B";
+        }
+        auto* nameLabel = nodesGroup->add_child<SVG::Text>(x, y + defaultNodeRadius + 10, nodeLabel);
         nameLabel->set_attr("font-size", "6");
         nameLabel->set_attr("text-anchor", "middle");
         nameLabel->set_attr("fill", "#666666");
@@ -3021,12 +3082,17 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
             auto [x, y] = mapNodeToSvg(*node);
             
             // Calculate angular position for polar orientation
-            double nodeAngle = std::atan2(node->physicalCoordinates.size() >= 2 ? node->physicalCoordinates[1] : 0,
-                                         node->physicalCoordinates.size() >= 1 ? node->physicalCoordinates[0] : 1);
+            // For concentric cores: turns are NOT angled (0 degrees), radial is purely horizontal
+            double nodeAngle = 0.0;
+            if (!isConcentricCore) {
+                // Toroidal: calculate angle from position
+                nodeAngle = std::atan2(node->physicalCoordinates.size() >= 2 ? node->physicalCoordinates[1] : 0,
+                                      node->physicalCoordinates.size() >= 1 ? node->physicalCoordinates[0] : 1);
+            }
             
-            // Get node dimensions (proportional to wire size)
-            double nodeWidth = node->dimensions.width * scaleFactor;
-            double nodeHeight = node->dimensions.height * scaleFactor;
+            // Get node dimensions - scale all turns by scaleFactor/2, no clamping
+            double nodeWidth = node->dimensions.width * scaleFactor / 2.0;
+            double nodeHeight = node->dimensions.height * scaleFactor / 2.0;
             
             // Draw node shape based on cross-sectional shape
             if (node->crossSectionalShape == TurnCrossSectionalShape::RECTANGULAR) {
@@ -3097,22 +3163,44 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                 if (node->crossSectionalShape == TurnCrossSectionalShape::ROUND) {
                     // For round wires: use pie slices (circular sectors)
                     double sliceStartAngle = 0;
-                    switch (quadrants[q]) {
-                        case ThermalNodeFace::RADIAL_OUTER:
-                            sliceStartAngle = nodeAngle * 180.0 / M_PI - 45;
-                            break;
-                        case ThermalNodeFace::RADIAL_INNER:
-                            sliceStartAngle = (nodeAngle + M_PI) * 180.0 / M_PI - 45;
-                            break;
-                        case ThermalNodeFace::TANGENTIAL_LEFT:
-                            sliceStartAngle = (nodeAngle + M_PI/2) * 180.0 / M_PI - 45;
-                            break;
-                        case ThermalNodeFace::TANGENTIAL_RIGHT:
-                            sliceStartAngle = (nodeAngle - M_PI/2) * 180.0 / M_PI - 45;
-                            break;
-                        default:
-                            sliceStartAngle = q * 90 - 45;
-                            break;
+                    if (isConcentricCore) {
+                        // Concentric: fixed orientation (0 degrees, radial is horizontal)
+                        switch (quadrants[q]) {
+                            case ThermalNodeFace::RADIAL_OUTER:  // Right (+X)
+                                sliceStartAngle = -45;
+                                break;
+                            case ThermalNodeFace::RADIAL_INNER:  // Left (-X)
+                                sliceStartAngle = 135;
+                                break;
+                            case ThermalNodeFace::TANGENTIAL_LEFT:  // Up (+Y)
+                                sliceStartAngle = 45;
+                                break;
+                            case ThermalNodeFace::TANGENTIAL_RIGHT:  // Down (-Y)
+                                sliceStartAngle = 225;
+                                break;
+                            default:
+                                sliceStartAngle = q * 90 - 45;
+                                break;
+                        }
+                    } else {
+                        // Toroidal: rotate based on position
+                        switch (quadrants[q]) {
+                            case ThermalNodeFace::RADIAL_OUTER:
+                                sliceStartAngle = nodeAngle * 180.0 / M_PI - 45;
+                                break;
+                            case ThermalNodeFace::RADIAL_INNER:
+                                sliceStartAngle = (nodeAngle + M_PI) * 180.0 / M_PI - 45;
+                                break;
+                            case ThermalNodeFace::TANGENTIAL_LEFT:
+                                sliceStartAngle = (nodeAngle + M_PI/2) * 180.0 / M_PI - 45;
+                                break;
+                            case ThermalNodeFace::TANGENTIAL_RIGHT:
+                                sliceStartAngle = (nodeAngle - M_PI/2) * 180.0 / M_PI - 45;
+                                break;
+                            default:
+                                sliceStartAngle = q * 90 - 45;
+                                break;
+                        }
                     }
                     double sliceEndAngle = sliceStartAngle + 90;
                     double avgSize = (nodeWidth + nodeHeight) / 2.0;
@@ -3128,14 +3216,67 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                 for (const auto& quadrant : node->quadrants) {
                     if (quadrant.face == ThermalNodeFace::NONE) continue;
                     
-                    // Map limit coordinates to SVG space
-                    double limitX = margin + (quadrant.limitCoordinates[0] - minX) * scaleFactor;
-                    double limitY = margin + (quadrant.limitCoordinates[1] - minY) * scaleFactor;
+                    // Scale limit offset by 1/2 to match the visual node size
+                    double centerX = node->physicalCoordinates[0];
+                    double centerY = node->physicalCoordinates[1];
+                    double offsetX = quadrant.limitCoordinates[0] - centerX;
+                    double offsetY = quadrant.limitCoordinates[1] - centerY;
+                    double limitX = margin + (centerX + offsetX / 2.0 - minX) * scaleFactor;
+                    double limitY = margin + (centerY + offsetY / 2.0 - minY) * scaleFactor;
                     
                     // Draw small black dot
                     auto* limitDot = nodesGroup->add_child<SVG::Circle>(limitX, limitY, 2.0);
                     limitDot->set_attr("fill", "#000000");
                     limitDot->set_attr("stroke", "none");
+                }
+            }
+            
+            // Draw quadrant labels (initials) if enabled
+            if (showQuadrantLabels && node->part == ThermalNodePartType::TURN) {
+                auto getQuadrantInitial = [isConcentricCore](ThermalNodeFace face) -> std::string {
+                    if (isConcentricCore) {
+                        // Concentric cores: T, B, L, R mapping
+                        switch (face) {
+                            case ThermalNodeFace::RADIAL_INNER: return "L";      // LEFT (-X)
+                            case ThermalNodeFace::RADIAL_OUTER: return "R";      // RIGHT (+X)
+                            case ThermalNodeFace::TANGENTIAL_LEFT: return "T";   // TOP (+Y)
+                            case ThermalNodeFace::TANGENTIAL_RIGHT: return "B";  // BOTTOM (-Y)
+                            default: return "";
+                        }
+                    } else {
+                        // Toroidal cores: RI, RO, TL, TR (note: TL and TR are swapped)
+                        switch (face) {
+                            case ThermalNodeFace::RADIAL_INNER: return "RI";
+                            case ThermalNodeFace::RADIAL_OUTER: return "RO";
+                            case ThermalNodeFace::TANGENTIAL_LEFT: return "TR";  // Swapped
+                            case ThermalNodeFace::TANGENTIAL_RIGHT: return "TL"; // Swapped
+                            default: return "";
+                        }
+                    }
+                };
+                
+                for (const auto& quadrant : node->quadrants) {
+                    if (quadrant.face == ThermalNodeFace::NONE) continue;
+                    
+                    std::string initial = getQuadrantInitial(quadrant.face);
+                    if (initial.empty()) continue;
+                    
+                    // Calculate label position - offset from center toward quadrant limit
+                    double centerX = node->physicalCoordinates[0];
+                    double centerY = node->physicalCoordinates[1];
+                    double offsetX = quadrant.limitCoordinates[0] - centerX;
+                    double offsetY = quadrant.limitCoordinates[1] - centerY;
+                    
+                    // Position label at 25% of the way from center to limit (inside the quadrant)
+                    double labelX = margin + (centerX + offsetX * 0.25 - minX) * scaleFactor;
+                    double labelY = margin + (centerY + offsetY * 0.25 - minY) * scaleFactor;
+                    
+                    // Draw quadrant initial
+                    auto* qLabel = nodesGroup->add_child<SVG::Text>(labelX, labelY + 2, initial);
+                    qLabel->set_attr("font-size", "4");
+                    qLabel->set_attr("text-anchor", "middle");
+                    qLabel->set_attr("fill", "#ffffff");
+                    qLabel->set_attr("font-weight", "bold");
                 }
             }
             

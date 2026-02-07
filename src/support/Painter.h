@@ -453,7 +453,8 @@ class BasicPainter : public PainterInterface {
         const std::vector<ThermalNetworkNode>& nodes,
         const std::vector<ThermalResistanceElement>& resistances,
         double width = 1200,
-        double height = 800);
+        double height = 800,
+        bool showQuadrantLabels = true);
     
     void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0) {
         throw std::runtime_error("Not implemented in basic painter");

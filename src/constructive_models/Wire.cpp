@@ -1567,6 +1567,21 @@ namespace OpenMagnetics {
         }
     }
 
+    double Wire::get_minimum_outer_dimension() {
+        switch (get_type()) {
+            case WireType::LITZ:
+            case WireType::ROUND:
+                    return resolve_dimensional_values(get_outer_diameter().value());
+            case WireType::PLANAR:
+            case WireType::RECTANGULAR:
+                    return resolve_dimensional_values(get_outer_height().value());
+            case WireType::FOIL:
+                    return resolve_dimensional_values(get_outer_width().value());
+            default:
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+        }
+    }
+
     void Wire::cut_foil_wire_to_section(Section section) {
         if (get_type() != WireType::FOIL) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Method only valid for Foil wire");
