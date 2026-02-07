@@ -673,6 +673,36 @@ void Temperature::createBobbinNodes() {
     // Position at the winding window inner edge (closer to center)
     columnWall.physicalCoordinates = {bobbinColumnX, 0, 0};
     columnWall.initializeConcentricCoreQuadrants(wallThickness, windingWindowHeight, coreDepth / 2, bobbinK);
+    
+    // Calculate surface coverage for the RIGHT face (facing turns)
+    // Find turns that are adjacent to the bobbin central column
+    std::vector<double> turnHeights;
+    auto coil = _magnetic.get_mutable_coil();
+    if (coil.get_turns_description()) {
+        auto turns = coil.get_turns_description().value();
+        for (const auto& turn : turns) {
+            auto coords = turn.get_coordinates();
+            if (coords.size() >= 2) {
+                double turnX = coords[0];
+                double turnY = coords[1];
+                double turnHeight = 0;
+                if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 2) {
+                    turnHeight = turn.get_dimensions().value()[1];  // Y dimension
+                }
+                // Check if turn is close to bobbin (within wire width + bobbin thickness)
+                double turnLeftEdge = turnX - _wireWidth / 2;
+                double bobbinRightEdge = bobbinColumnX + wallThickness / 2;
+                if (std::abs(turnLeftEdge - bobbinRightEdge) < (_wireWidth + wallThickness) && 
+                    turnY >= -windingWindowHeight/2 && turnY <= windingWindowHeight/2) {
+                    turnHeights.push_back(turnHeight);
+                }
+            }
+        }
+    }
+    double rightFaceCoverage = ThermalNetworkNode::calculateConcentricSurfaceCoverage(
+        windingWindowHeight, turnHeights);
+    columnWall.quadrants[0].surfaceCoverage = rightFaceCoverage;  // RIGHT face
+    
     _nodes.push_back(columnWall);
     
     // 2. Bobbin Top Yoke Wall
@@ -686,6 +716,34 @@ void Temperature::createBobbinNodes() {
     double windingWindowTop = windingWindowHeight / 2;
     topYokeWall.physicalCoordinates = {bobbinYokeX, windingWindowTop - wallThickness / 2, 0};
     topYokeWall.initializeConcentricCoreQuadrants(windingWindowWidth / 2, wallThickness, coreDepth / 2, bobbinK);
+    
+    // Calculate surface coverage for the RIGHT face (facing turns)
+    std::vector<double> topYokeTurnWidths;
+    if (coil.get_turns_description()) {
+        auto turns = coil.get_turns_description().value();
+        for (const auto& turn : turns) {
+            auto coords = turn.get_coordinates();
+            if (coords.size() >= 2) {
+                double turnX = coords[0];
+                double turnY = coords[1];
+                double turnWidth = 0;
+                if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 1) {
+                    turnWidth = turn.get_dimensions().value()[0];  // X dimension
+                }
+                // Check if turn is near the top yoke's right face
+                double turnBottom = turnY - _wireHeight / 2;
+                double yokeTop = windingWindowTop;
+                if (std::abs(turnBottom - yokeTop) < (_wireHeight + wallThickness) &&
+                    turnX >= bobbinYokeX - windingWindowWidth/4 && turnX <= bobbinYokeX + windingWindowWidth/2) {
+                    topYokeTurnWidths.push_back(turnWidth);
+                }
+            }
+        }
+    }
+    double topYokeRightCoverage = ThermalNetworkNode::calculateConcentricSurfaceCoverage(
+        windingWindowWidth / 2, topYokeTurnWidths);
+    topYokeWall.quadrants[0].surfaceCoverage = topYokeRightCoverage;  // RIGHT face
+    
     _nodes.push_back(topYokeWall);
     
     // 3. Bobbin Bottom Yoke Wall
@@ -698,6 +756,34 @@ void Temperature::createBobbinNodes() {
     double windingWindowBottom = -windingWindowHeight / 2;
     bottomYokeWall.physicalCoordinates = {bobbinYokeX, windingWindowBottom + wallThickness / 2, 0};
     bottomYokeWall.initializeConcentricCoreQuadrants(windingWindowWidth / 2, wallThickness, coreDepth / 2, bobbinK);
+    
+    // Calculate surface coverage for the RIGHT face (facing turns)
+    std::vector<double> bottomYokeTurnWidths;
+    if (coil.get_turns_description()) {
+        auto turns = coil.get_turns_description().value();
+        for (const auto& turn : turns) {
+            auto coords = turn.get_coordinates();
+            if (coords.size() >= 2) {
+                double turnX = coords[0];
+                double turnY = coords[1];
+                double turnWidth = 0;
+                if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 1) {
+                    turnWidth = turn.get_dimensions().value()[0];  // X dimension
+                }
+                // Check if turn is near the bottom yoke's right face
+                double turnTop = turnY + _wireHeight / 2;
+                double yokeBottom = windingWindowBottom;
+                if (std::abs(turnTop - yokeBottom) < (_wireHeight + wallThickness) &&
+                    turnX >= bobbinYokeX - windingWindowWidth/4 && turnX <= bobbinYokeX + windingWindowWidth/2) {
+                    bottomYokeTurnWidths.push_back(turnWidth);
+                }
+            }
+        }
+    }
+    double bottomYokeRightCoverage = ThermalNetworkNode::calculateConcentricSurfaceCoverage(
+        windingWindowWidth / 2, bottomYokeTurnWidths);
+    bottomYokeWall.quadrants[0].surfaceCoverage = bottomYokeRightCoverage;  // RIGHT face
+    
     _nodes.push_back(bottomYokeWall);
 }
 
@@ -1670,65 +1756,98 @@ void Temperature::createTurnToBobbinConnections() {
     
     double minConductionDist = getMinimumDistanceForConduction();
     
-    // For each turn, find the closest quadrant to any bobbin and connect only that one
+    // For each turn, create conduction connections for ALL quadrants touching any bobbin
     for (size_t turnIdx : turnNodeIndices) {
         auto& turnNode = _nodes[turnIdx];
         
-        double bestDist = std::numeric_limits<double>::max();
-        ThermalNodeFace bestFace = ThermalNodeFace::NONE;
-        size_t bestBobbinIdx = std::numeric_limits<size_t>::max();
+        double turnX = turnNode.physicalCoordinates[0];
+        double turnY = turnNode.physicalCoordinates[1];
         
-        // Find the closest quadrant-bobbin pair for this turn
+        // Track which (face, bobbin) pairs we've already connected to avoid duplicates
+        std::set<std::pair<ThermalNodeFace, size_t>> connectedPairs;
+        
         for (const auto& quadrant : turnNode.quadrants) {
             if (quadrant.face == ThermalNodeFace::NONE) continue;
             
-            double limitX = quadrant.limitCoordinates[0];
-            double limitY = quadrant.limitCoordinates[1];
+            // For concentric turns, calculate limit position based on horizontal/vertical offset
+            // (not angled like toroidal turns)
+            double limitX, limitY;
+            switch (quadrant.face) {
+                case ThermalNodeFace::RADIAL_INNER:   // Left face (-X)
+                    limitX = turnX - _wireWidth / 2.0;
+                    limitY = turnY;
+                    break;
+                case ThermalNodeFace::RADIAL_OUTER:   // Right face (+X)
+                    limitX = turnX + _wireWidth / 2.0;
+                    limitY = turnY;
+                    break;
+                case ThermalNodeFace::TANGENTIAL_LEFT:  // Top face (+Y)
+                    limitX = turnX;
+                    limitY = turnY + _wireHeight / 2.0;
+                    break;
+                case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom face (-Y)
+                    limitX = turnX;
+                    limitY = turnY - _wireHeight / 2.0;
+                    break;
+                default:
+                    limitX = quadrant.limitCoordinates[0];
+                    limitY = quadrant.limitCoordinates[1];
+                    break;
+            }
             
+            // Check all bobbin nodes for this quadrant
             for (size_t bobbinIdx : bobbinNodeIndices) {
-                const auto& bobbinNode = _nodes[bobbinIdx];
+                // Skip if we already connected this face to this bobbin
+                if (connectedPairs.count({quadrant.face, bobbinIdx})) continue;
                 
-                double dx = limitX - bobbinNode.physicalCoordinates[0];
-                double dy = limitY - bobbinNode.physicalCoordinates[1];
-                double dist = std::sqrt(dx*dx + dy*dy);
+                const auto& bobbinNode = _nodes[bobbinIdx];
                 
                 double bobbinWidth = bobbinNode.dimensions.width;
                 double bobbinHeight = bobbinNode.dimensions.height;
                 
-                bool withinX = std::abs(dx) < (bobbinWidth / 2 + minConductionDist);
-                bool withinY = std::abs(dy) < (bobbinHeight / 2 + minConductionDist);
+                // Calculate distance to bobbin surface (not center)
+                double bobbinLeft = bobbinNode.physicalCoordinates[0] - bobbinWidth / 2;
+                double bobbinRight = bobbinNode.physicalCoordinates[0] + bobbinWidth / 2;
+                double bobbinBottom = bobbinNode.physicalCoordinates[1] - bobbinHeight / 2;
+                double bobbinTop = bobbinNode.physicalCoordinates[1] + bobbinHeight / 2;
                 
-                if (withinX && withinY && dist < bestDist) {
-                    bestDist = dist;
-                    bestFace = quadrant.face;
-                    bestBobbinIdx = bobbinIdx;
+                // Closest point on bobbin to the turn's limit point
+                double closestX = std::max(bobbinLeft, std::min(limitX, bobbinRight));
+                double closestY = std::max(bobbinBottom, std::min(limitY, bobbinTop));
+                
+                double dx = limitX - closestX;
+                double dy = limitY - closestY;
+                double dist = std::sqrt(dx*dx + dy*dy);
+                
+                // Check if within the expanded bounding box for conduction
+                bool withinX = std::abs(limitX - bobbinNode.physicalCoordinates[0]) < (bobbinWidth / 2 + minConductionDist);
+                bool withinY = std::abs(limitY - bobbinNode.physicalCoordinates[1]) < (bobbinHeight / 2 + minConductionDist);
+                
+                // Create conduction connection if within range
+                if (withinX && withinY && dist < (minConductionDist * 2)) {
+                    ThermalResistanceElement r;
+                    r.nodeFromId = turnIdx;
+                    r.quadrantFrom = quadrant.face;
+                    r.nodeToId = bobbinIdx;
+                    r.quadrantTo = ThermalNodeFace::NONE;
+                    r.type = HeatTransferType::CONDUCTION;
+                    
+                    auto* q = turnNode.getQuadrant(quadrant.face);
+                    double contactArea = q ? q->surfaceArea * 0.5 : (_wireWidth * _wireHeight * 0.25);
+                    double distance = std::max(dist, 1e-6);
+                    
+                    double k_air = 0.025;  // W/m·K
+                    r.resistance = distance / (k_air * contactArea);
+                    
+                    _resistances.push_back(r);
+                    connectedPairs.insert({quadrant.face, bobbinIdx});
+                    
+                    if (THERMAL_DEBUG) {
+                        std::cout << "Turn " << turnNode.name << " face=" << static_cast<int>(quadrant.face) 
+                                  << " -> Bobbin " << bobbinNode.name 
+                                  << " (distance=" << dist * 1000 << "mm)" << std::endl;
+                    }
                 }
-            }
-        }
-        
-        // Create only the best connection for this turn
-        if (bestFace != ThermalNodeFace::NONE && bestDist < (minConductionDist * 2)) {
-            const auto& bobbinNode = _nodes[bestBobbinIdx];
-            
-            ThermalResistanceElement r;
-            r.nodeFromId = turnIdx;
-            r.quadrantFrom = bestFace;
-            r.nodeToId = bestBobbinIdx;
-            r.quadrantTo = ThermalNodeFace::NONE;
-            r.type = HeatTransferType::CONDUCTION;
-            
-            auto* q = turnNode.getQuadrant(bestFace);
-            double contactArea = q ? q->surfaceArea * 0.5 : (_wireWidth * _wireHeight * 0.25);
-            double distance = std::max(bestDist, 1e-6);
-            
-            double k_air = 0.025;  // W/m·K
-            r.resistance = distance / (k_air * contactArea);
-            
-            _resistances.push_back(r);
-            
-            if (THERMAL_DEBUG) {
-                std::cout << "Turn " << turnNode.name << " -> Bobbin " << bobbinNode.name 
-                          << " (distance=" << bestDist * 1000 << "mm)" << std::endl;
             }
         }
     }

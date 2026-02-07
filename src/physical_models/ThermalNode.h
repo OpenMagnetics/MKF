@@ -487,6 +487,20 @@ public:
                                                     const std::vector<double>& turnWidths);
     
     /**
+     * @brief Calculate surface coverage for concentric bobbin nodes
+     * 
+     * For concentric bobbins, calculates what fraction of the RIGHT face (facing turns)
+     * is covered by turns vs exposed to air. The bobbin height is divided among turns,
+     * so coverage depends on how many turns touch the bobbin surface.
+     * 
+     * @param bobbinHeight Height of the bobbin central column (m)
+     * @param turnHeights Vector of heights (Y dimension) of turns touching this surface
+     * @return Coverage ratio 0.0 to 1.0 (1.0 = fully exposed, 0.0 = fully covered)
+     */
+    static double calculateConcentricSurfaceCoverage(double bobbinHeight,
+                                                      const std::vector<double>& turnHeights);
+    
+    /**
      * @brief Convert to JSON for serialization
      */
     json toJson() const {

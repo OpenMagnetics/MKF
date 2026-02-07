@@ -323,4 +323,27 @@ double ThermalNetworkNode::calculateToroidalSurfaceCoverage(double coreRadius, d
     return std::clamp(coverage, 0.0, 1.0);
 }
 
+double ThermalNetworkNode::calculateConcentricSurfaceCoverage(double bobbinHeight,
+                                                               const std::vector<double>& turnHeights) {
+    // For concentric bobbin, the RIGHT face height is covered by turns
+    // Coverage ratio = exposed / total
+    
+    if (bobbinHeight <= 0.0) {
+        return 1.0;  // No surface, fully exposed (degenerate case)
+    }
+    
+    // Calculate total height covered by turns
+    double coveredHeight = 0.0;
+    for (double turnHeight : turnHeights) {
+        coveredHeight += turnHeight;
+    }
+    
+    // Coverage ratio = exposed / total
+    double exposedHeight = std::max(0.0, bobbinHeight - coveredHeight);
+    double coverage = exposedHeight / bobbinHeight;
+    
+    // Clamp to [0, 1]
+    return std::clamp(coverage, 0.0, 1.0);
+}
+
 } // namespace OpenMagnetics
