@@ -1,5 +1,73 @@
 #pragma once
 
+/**
+ * @file ThermalNode.h
+ * @brief Thermal node data structures and utilities for magnetic component thermal modeling
+ * 
+ * @author OpenMagnetics Team
+ * @date 2024-2025
+ * 
+ * @section node_architecture Thermal Node Architecture
+ * 
+ * The thermal model represents magnetic components as a network of discrete thermal nodes.
+ * Each node has:
+ * - Geometric properties (position, dimensions)
+ * - Thermal properties (temperature, power dissipation)
+ * - Surface subdivision into quadrants for directional heat transfer
+ * 
+ * @section quadrant_system Quadrant System
+ * 
+ * Turn nodes are subdivided into quadrants representing different surface directions:
+ * 
+ * TOROIDAL CORES (polar coordinate system):
+ * @code
+ *                    TL (Tangential Left)
+ *                         ↑
+ *                         |
+ *    RI (Radial Inner) ←──●──→ RO (Radial Outer)
+ *                         |
+ *                         ↓
+ *                    TR (Tangential Right)
+ * @endcode
+ * 
+ * CONCENTRIC CORES (Cartesian coordinate system):
+ * @code
+ *                         T (Top, +Y)
+ *                         ↑
+ *                         |
+ *         L (Left, -X) ←──●──→ R (Right, +X)
+ *                         |
+ *                         ↓
+ *                         B (Bottom, -Y)
+ * @endcode
+ * 
+ * Each quadrant stores:
+ * - surfaceArea: Physical surface area [m²]
+ * - surfaceCoverage: Fraction exposed to air (0-1)
+ * - limitCoordinates: Point on the quadrant surface for connection routing
+ * - connectionType: Primary heat transfer mechanism
+ * 
+ * @section resistance_calc Resistance Calculation Methods
+ * 
+ * 1. CONDUCTION between touching quadrants:
+ *    R = (t₁/k₁ + t₂/k₂ + gap/k_air) / A_contact
+ *    where t = coating thickness, k = conductivity, gap = air gap between turns
+ * 
+ * 2. CONVECTION to ambient:
+ *    R = 1 / (h_conv × A_exposed)
+ *    h_conv from Churchill-Chu correlation for natural convection
+ * 
+ * 3. RADIATION to ambient:
+ *    R = 1 / (h_rad × A_exposed)
+ *    h_rad = εσ(T_s² + T_a²)(T_s + T_a)
+ * 
+ * @section references References
+ * 
+ * - IEC 60317: Specifications for particular types of winding wires
+ * - ASTM D2214: Standard Test Method for Estimating Thermal Conductivity
+ * - JEDEC JESD51: Methodology for Thermal Measurement of Component Packages
+ */
+
 #include "json.hpp"
 #include <magic_enum.hpp>
 #include <string>
@@ -15,6 +83,25 @@ namespace OpenMagnetics {
 
 /**
  * @brief Types of heat transfer mechanisms
+ * 
+ * Used to classify thermal resistances and specify how heat flows
+ * between nodes or from nodes to ambient.
+ * 
+ * @var CONDUCTION Heat transfer through solid materials
+ *      - Dominant in metal components (core, windings)
+ *      - Calculated as R = L / (k × A)
+ * 
+ * @var NATURAL_CONVECTION Heat transfer to surrounding fluid (air) via buoyancy
+ *      - Occurs when fluid motion is driven by temperature differences
+ *      - Calculated using Churchill-Chu correlation
+ * 
+ * @var FORCED_CONVECTION Heat transfer with externally-driven fluid flow
+ *      - Occurs with fans, blowers, or forced air cooling
+ *      - Calculated using flat plate correlations with Reynolds number
+ * 
+ * @var RADIATION Heat transfer via electromagnetic waves
+ *      - Significant at high temperatures (>100°C above ambient)
+ *      - Calculated using Stefan-Boltzmann law
  */
 enum class HeatTransferType {
     CONDUCTION,
