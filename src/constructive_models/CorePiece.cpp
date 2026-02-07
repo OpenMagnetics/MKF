@@ -1858,6 +1858,138 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
                                  "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T, C}");
 }
 
+// ============================================================================
+// Thermal Surface Area Calculations
+// ============================================================================
+
+double CorePiece::get_column_right_face_area(size_t columnIndex) {
+    if (columnIndex >= columns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Column index out of range");
+    }
+    
+    auto& column = columns[columnIndex];
+    auto shape = column.get_shape();
+    double columnHeight = column.get_height();
+    double columnDepth = column.get_depth();
+    double columnWidth = column.get_width();
+    
+    if (shape == ColumnShape::RECTANGULAR || shape == ColumnShape::IRREGULAR) {
+        // For rectangular: height * depth
+        return columnHeight * columnDepth;
+    }
+    else if (shape == ColumnShape::ROUND || shape == ColumnShape::OBLONG) {
+        // For round: curved surface area = π * d * h (for half cylinder facing winding)
+        double diameter = columnWidth;
+        return std::numbers::pi * diameter * columnHeight / 2.0;  // Half circumference * height
+    }
+    else {
+        // Default to rectangular approximation
+        return columnHeight * columnDepth;
+    }
+}
+
+double CorePiece::get_column_top_face_area(size_t columnIndex) {
+    if (columnIndex >= columns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Column index out of range");
+    }
+    
+    auto& column = columns[columnIndex];
+    auto shape = column.get_shape();
+    double columnWidth = column.get_width();
+    double columnDepth = column.get_depth();
+    
+    if (shape == ColumnShape::RECTANGULAR || shape == ColumnShape::IRREGULAR) {
+        // For rectangular: width * depth
+        return columnWidth * columnDepth;
+    }
+    else if (shape == ColumnShape::ROUND) {
+        // For round: circular area = π * r²
+        double radius = columnWidth / 2.0;
+        return std::numbers::pi * radius * radius;
+    }
+    else if (shape == ColumnShape::OBLONG) {
+        // For oblong: rectangle + two half circles
+        // Approximate as width * depth (conservative)
+        return columnWidth * columnDepth;
+    }
+    else {
+        return columnWidth * columnDepth;
+    }
+}
+
+double CorePiece::get_column_bottom_face_area(size_t columnIndex) {
+    // Same as top face for symmetrical cores
+    return get_column_top_face_area(columnIndex);
+}
+
+double CorePiece::get_yoke_interior_face_area(bool isTopYoke) {
+    // The interior yoke face is the face facing the winding window
+    // For E-shaped cores, this is the bottom of top yoke or top of bottom yoke
+    
+    double windingWindowWidth = get_winding_window_width();
+    double depth = get_depth();
+    
+    // For most E-core families, the yoke interior face spans the winding window
+    // Area = winding window width * depth (for one side of the core piece)
+    return windingWindowWidth * depth;
+}
+
+double CorePiece::get_yoke_exterior_face_area(bool isTopYoke) {
+    // The exterior yoke face faces away from the winding window
+    // This is typically the outer edge of the core
+    
+    double totalWidth = get_width();
+    double centralColumnWidth = (columns.size() > 0) ? columns[0].get_width() : 0;
+    double lateralColumnWidth = (columns.size() > 1) ? columns[1].get_width() : 0;
+    double depth = get_depth();
+    
+    // For E-cores: total width minus central column gives the yoke span
+    // We approximate the exterior face as (totalWidth - centralColumnWidth) / 2 * depth
+    // This accounts for one side of the yoke
+    double yokeSpan = (totalWidth - centralColumnWidth) / 2.0;
+    return yokeSpan * depth;
+}
+
+double CorePiece::get_yoke_right_face_area(bool isTopYoke) {
+    // The right face of the yoke is the vertical face at the end of the yoke
+    // For E-cores, this connects to the lateral column
+    
+    double yokeHeight = (height - windingWindow.get_height().value()) / 2.0;  // Top/bottom yoke thickness
+    double depth = get_depth();
+    
+    // Area = yoke thickness * depth
+    return yokeHeight * depth;
+}
+
+double CorePiece::get_winding_window_height() {
+    return windingWindow.get_height().value();
+}
+
+double CorePiece::get_winding_window_width() {
+    return windingWindow.get_width().value();
+}
+
+double CorePiece::get_column_width(size_t columnIndex) {
+    if (columnIndex >= columns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Column index out of range");
+    }
+    return columns[columnIndex].get_width();
+}
+
+double CorePiece::get_column_depth(size_t columnIndex) {
+    if (columnIndex >= columns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Column index out of range");
+    }
+    return columns[columnIndex].get_depth();
+}
+
+ColumnShape CorePiece::get_column_shape(size_t columnIndex) {
+    if (columnIndex >= columns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Column index out of range");
+    }
+    return columns[columnIndex].get_shape();
+}
+
 inline void from_json(const json& j, CorePiece& x) {
     x.set_columns(j.at("columns").get<std::vector<ColumnElement>>());
     x.set_depth(j.at("depth").get<double>());

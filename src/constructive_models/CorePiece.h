@@ -81,6 +81,82 @@ class CorePiece {
     static std::shared_ptr<CorePiece> factory(CoreShape shape, bool process=true);
 
     void process();
+    
+    // Thermal surface area calculations
+    /**
+     * @brief Get the central column's right face area (facing winding window)
+     * @param columnIndex Index of the column (0 for central column)
+     * @return Surface area in m²
+     */
+    double get_column_right_face_area(size_t columnIndex = 0);
+    
+    /**
+     * @brief Get the central column's top face area
+     * @param columnIndex Index of the column
+     * @return Surface area in m²
+     */
+    double get_column_top_face_area(size_t columnIndex = 0);
+    
+    /**
+     * @brief Get the central column's bottom face area
+     * @param columnIndex Index of the column
+     * @return Surface area in m²
+     */
+    double get_column_bottom_face_area(size_t columnIndex = 0);
+    
+    /**
+     * @brief Get the yoke's interior face area (facing winding window)
+     * @param isTopYoke True for top yoke, false for bottom yoke
+     * @return Surface area in m²
+     */
+    double get_yoke_interior_face_area(bool isTopYoke);
+    
+    /**
+     * @brief Get the yoke's exterior face area (facing away from winding)
+     * @param isTopYoke True for top yoke, false for bottom yoke
+     * @return Surface area in m²
+     */
+    double get_yoke_exterior_face_area(bool isTopYoke);
+    
+    /**
+     * @brief Get the yoke's right face area (vertical face facing winding window)
+     * @param isTopYoke True for top yoke, false for bottom yoke
+     * @return Surface area in m²
+     */
+    double get_yoke_right_face_area(bool isTopYoke);
+    
+    /**
+     * @brief Get the winding window height
+     * @return Height in m
+     */
+    double get_winding_window_height();
+    
+    /**
+     * @brief Get the winding window width
+     * @return Width in m
+     */
+    double get_winding_window_width();
+    
+    /**
+     * @brief Get the column width by index
+     * @param columnIndex Index of the column
+     * @return Width in m
+     */
+    double get_column_width(size_t columnIndex = 0);
+    
+    /**
+     * @brief Get the column depth by index
+     * @param columnIndex Index of the column
+     * @return Depth in m
+     */
+    double get_column_depth(size_t columnIndex = 0);
+    
+    /**
+     * @brief Get the column shape by index
+     * @param columnIndex Index of the column
+     * @return ColumnShape enum
+     */
+    ColumnShape get_column_shape(size_t columnIndex = 0);
 };
 
 void from_json(const json& j, OpenMagnetics::CorePiece& x);
