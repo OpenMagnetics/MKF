@@ -351,6 +351,12 @@ private:
     void extractWireProperties();
     
     /**
+     * @brief Extract wire from first winding in coil
+     * @return Optional wire object (null if no wire found)
+     */
+    std::optional<Wire> extractWire() const;
+    
+    /**
      * @brief Create all thermal nodes (core and turns)
      */
     void createThermalNodes();
