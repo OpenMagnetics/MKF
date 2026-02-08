@@ -3,6 +3,7 @@
 #include "converter_models/PushPull.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
+#include "processors/NgspiceRunner.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -12,6 +13,7 @@
 #include <magic_enum.hpp>
 #include <vector>
 #include <typeinfo>
+#include <numeric>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -283,7 +285,85 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_voltage()->get_processed()->get_label() == WaveformLabel::CUSTOM);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_current()->get_processed()->get_label() == WaveformLabel::CUSTOM);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_current()->get_processed()->get_offset() > 0);
+    }
 
+    TEST_CASE("Test_PushPull_Ngspice_Simulation", "[converter-model][push-pull-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+        
+        // Create a Push-Pull converter specification
+        OpenMagnetics::PushPull pushPull;
+        
+        // Input voltage
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(24.0);
+        inputVoltage.set_minimum(18.0);
+        inputVoltage.set_maximum(32.0);
+        pushPull.set_input_voltage(inputVoltage);
+        
+        // Diode voltage drop
+        pushPull.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        pushPull.set_efficiency(0.9);
+        
+        // Current ripple ratio
+        pushPull.set_current_ripple_ratio(0.3);
+        
+        // Operating point: 12V @ 5A output, 100kHz
+        PushPullOperatingPoint opPoint;
+        opPoint.set_output_voltages({12.0});
+        opPoint.set_output_currents({5.0});
+        opPoint.set_switching_frequency(100000.0);
+        opPoint.set_ambient_temperature(25.0);
+        pushPull.set_operating_points({opPoint});
+        
+        // Process design requirements
+        auto designReqs = pushPull.process_design_requirements();
+        
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        INFO("Push-Pull - Turns ratio: " << turnsRatios[0]);
+        INFO("Push-Pull - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
+        auto operatingPoints = pushPull.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        
+        // Verify we have excitations (primary center-tapped + secondary)
+        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() >= 3);
+        
+        // Get primary excitation
+        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExc.get_voltage().has_value());
+        REQUIRE(primaryExc.get_current().has_value());
+        
+        // Extract waveform data
+        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
+        
+        // Calculate statistics
+        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
+        double priV_min = *std::min_element(priVoltageData.begin(), priVoltageData.end());
+        
+        INFO("Primary voltage max: " << priV_max << " V");
+        INFO("Primary voltage min: " << priV_min << " V");
+        
+        // For push-pull, primary voltage swings around input voltage
+        // Note: Simulation may show voltage spikes due to leakage inductance
+        CHECK(priV_max > 15.0);  // Should be around input voltage (24V)
+        CHECK(priV_max < 100.0);
+        CHECK(priV_min < -15.0);  // Should have negative swing
+        CHECK(priV_min > -700.0);  // Allow for voltage spikes
+        
+        INFO("Push-Pull ngspice simulation test passed");
     }
 
 // End of SUITE

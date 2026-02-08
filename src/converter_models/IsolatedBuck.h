@@ -26,6 +26,7 @@ public:
 
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(const std::vector<double>& turnsRatios, double magnetizingInductance);
 
 };
 
