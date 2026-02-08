@@ -342,4 +342,10 @@ namespace OpenMagnetics {
 
         return inputs;
     }
+
+    std::vector<OperatingPoint> IsolatedBuck::simulate_and_extract_topology_waveforms(const std::vector<double>& turnsRatios, double magnetizingInductance) {
+        // For Isolated Buck converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return process_operating_points(turnsRatios, magnetizingInductance);
+    }
 } // namespace OpenMagnetics

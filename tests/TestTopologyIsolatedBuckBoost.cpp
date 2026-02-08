@@ -3,6 +3,7 @@
 #include "converter_models/IsolatedBuckBoost.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
+#include "processors/NgspiceRunner.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -12,6 +13,7 @@
 #include <magic_enum.hpp>
 #include <vector>
 #include <typeinfo>
+#include <numeric>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -100,6 +102,82 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset(), 0.01));
+    }
+
+    TEST_CASE("Test_IsolatedBuckBoost_Ngspice_Simulation", "[converter-model][isolated-buck-boost-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+        
+        // Create an Isolated Buck-Boost converter
+        OpenMagnetics::IsolatedBuckBoost isolatedBuckBoost;
+        
+        // Input voltage: 12V nominal
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(12.0);
+        inputVoltage.set_minimum(9.0);
+        inputVoltage.set_maximum(15.0);
+        isolatedBuckBoost.set_input_voltage(inputVoltage);
+        
+        // Diode voltage drop
+        isolatedBuckBoost.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        isolatedBuckBoost.set_efficiency(0.9);
+        
+        // Current ripple ratio
+        isolatedBuckBoost.set_current_ripple_ratio(0.3);
+        
+        // Operating point: 5V @ 1A output on secondary, 200kHz
+        // For Isolated Buck-Boost: output_voltages[0] = primary voltage/current (inductor side)
+        // output_voltages[1] = secondary voltage/current
+        IsolatedBuckBoostOperatingPoint opPoint;
+        opPoint.set_output_voltages({6.0, 5.0});  // primary ~6V, secondary 5V
+        opPoint.set_output_currents({0.5, 1.0});  // primary ~0.5A, secondary 1A
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        isolatedBuckBoost.set_operating_points({opPoint});
+        
+        // Process design requirements
+        auto designReqs = isolatedBuckBoost.process_design_requirements();
+        
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        INFO("Isolated Buck-Boost - Turns ratio: " << turnsRatios[0]);
+        INFO("Isolated Buck-Boost - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
+        auto operatingPoints = isolatedBuckBoost.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        
+        // Verify we have excitations
+        REQUIRE(!operatingPoints[0].get_excitations_per_winding().empty());
+        
+        // Get primary excitation
+        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExc.get_voltage().has_value());
+        REQUIRE(primaryExc.get_current().has_value());
+        
+        // Extract waveform data
+        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
+        
+        // Calculate statistics
+        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
+        
+        INFO("Primary voltage max: " << priV_max << " V");
+        
+        // For Buck-Boost, primary voltage should be close to input voltage during ON time
+        CHECK(priV_max > 5.0);  // Should be around 12V input
+        CHECK(priV_max < 20.0);
+        
+        INFO("Isolated Buck-Boost ngspice simulation test passed");
     }
 
 }  // namespace
