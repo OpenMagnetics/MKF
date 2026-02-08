@@ -383,28 +383,29 @@ std::string CircuitSimulatorExporter::export_magnetic_as_symbol(Magnetic magneti
 
 std::string CircuitSimulatorExporterSimbaModel::generate_id() {
     // generator for hex numbers from 0 to F
-    std::uniform_int_distribution<int> dis(0x0, 0xF);
+    std::uniform_int_distribution<int> dis(0, 15);
     
-    const char hexChars[16] = { '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F' };
+    const char hexChars[] = { '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F' };
+    const std::size_t hexCharsSize = sizeof(hexChars) / sizeof(hexChars[0]);
     std::string id = "";
     for (std::size_t i = 0; i < 8; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     id += "-";
     for (std::size_t i = 0; i < 4; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     id += "-";
     for (std::size_t i = 0; i < 4; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     id += "-";
     for (std::size_t i = 0; i < 4; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     id += "-";
     for (std::size_t i = 0; i < 12; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     return id;
 }
