@@ -2699,6 +2699,41 @@ void Temperature::createConvectionConnections() {
                             }
                         }
                         
+                        // For RIGHT face (RADIAL_OUTER), check if blocked by insulation layer
+                        // Only allow convection to ambient if NO insulation layer exists to the right
+                        if (!isBlocked && face == ThermalNodeFace::RADIAL_OUTER) {
+                            double turnRightEdge = turnX + _wireWidth / 2;
+                            double turnTop = turnY + _wireHeight / 2;
+                            double turnBottom = turnY - _wireHeight / 2;
+                            
+                            for (size_t j = 0; j < _nodes.size(); j++) {
+                                if (_nodes[j].part != ThermalNodePartType::INSULATION_LAYER) continue;
+                                
+                                double insX = _nodes[j].physicalCoordinates[0];
+                                double insY = _nodes[j].physicalCoordinates[1];
+                                double insWidth = _nodes[j].dimensions.width;
+                                double insHeight = _nodes[j].dimensions.height;
+                                
+                                double insLeftEdge = insX - insWidth / 2;
+                                double insTop = insY + insHeight / 2;
+                                double insBottom = insY - insHeight / 2;
+                                
+                                // Check if insulation layer is to the right of this turn
+                                // AND overlaps in Y (vertically)
+                                bool isToTheRight = insLeftEdge >= turnRightEdge;
+                                bool overlapsVertically = !(insBottom > turnTop || insTop < turnBottom);
+                                
+                                if (isToTheRight && overlapsVertically) {
+                                    isBlocked = true;
+                                    if (THERMAL_DEBUG) {
+                                        std::cout << "Turn " << _nodes[i].name << " RIGHT face blocked by " 
+                                                  << _nodes[j].name << std::endl;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        
                         if (isBlocked) continue;
                     }
                     
