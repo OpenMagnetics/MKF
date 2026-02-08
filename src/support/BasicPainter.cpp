@@ -2064,8 +2064,10 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
             // Concentric cores: start at x=0
             minX = 0;
             maxX = showingCoreWidth;
-            minY = -coreHeight / 2;
-            maxY = coreHeight / 2;
+            // Add margin to top and bottom for concentric cores
+            double verticalMargin = coreHeight * 0.1;  // 10% margin on top and bottom
+            minY = -coreHeight / 2 - verticalMargin;
+            maxY = coreHeight / 2 + verticalMargin;
         }
         
         // Check turn positions to find actual extent
