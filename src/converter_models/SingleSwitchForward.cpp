@@ -268,8 +268,10 @@ namespace OpenMagnetics {
             outputInductancePerSecondary = get_desired_output_inductances().value();
         }
         else {
-            for (size_t secondaryIndex = 0; secondaryIndex < turnsRatios.size(); ++secondaryIndex) {
-                auto minimumOutputInductance = get_output_inductance(turnsRatios[secondaryIndex], secondaryIndex);
+            // For SingleSwitchForward, turnsRatios[0] is demagnetization winding, so secondary indices start at 1
+            for (size_t secondaryIndex = 1; secondaryIndex < turnsRatios.size(); ++secondaryIndex) {
+                // secondaryIndex - 1 because output_voltages/output_currents don't include demag winding
+                auto minimumOutputInductance = get_output_inductance(turnsRatios[secondaryIndex], secondaryIndex - 1);
                 outputInductancePerSecondary.push_back(minimumOutputInductance);
             }
         }
