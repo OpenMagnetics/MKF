@@ -1,0 +1,86 @@
+site_name: OpenMagnetics Documentation
+site_url: https://openmagnetics.github.io/MKF/
+repo_url: https://github.com/OpenMagnetics/MKF
+repo_name: OpenMagnetics/MKF
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/OpenMagnetics/MKF
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Examples: getting-started/examples.md
+  - Physical Models:
+    - Overview: models/index.md
+    - Core Losses: models/core-losses.md
+    - Winding Losses: models/winding-losses.md
+    - Inductance: models/inductance.md
+    - Reluctance: models/reluctance.md
+    - Magnetic Field: models/magnetic-field.md
+    - Thermal Models: models/thermal.md
+    - Capacitance: models/capacitance.md
+  - Settings Reference: settings/reference.md
+  - Algorithms:
+    - Core Adviser: algorithms/core-adviser.md
+    - Coil Adviser: algorithms/coil-adviser.md
+    - Wire Adviser: algorithms/wire-adviser.md
+    - Magnetic Adviser: algorithms/magnetic-adviser.md
+  - API Reference: api/index.md
