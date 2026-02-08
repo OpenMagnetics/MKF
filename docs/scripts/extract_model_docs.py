@@ -41,6 +41,17 @@ class ModelCategory:
 
 # Comprehensive documentation for model categories
 # This supplements the auto-extracted content with scientific context
+
+# Constants for duplicated string literals
+REF_ALBACH_2011 = "https://ieeexplore.ieee.org/document/5680877"
+REF_TEXT_ALBACH = "Albach et al. 'Calculating core losses in transformers.' IEEE Trans. Magnetics, 2011"
+REF_DOWELL_1966 = "https://ieeexplore.ieee.org/document/5256365"
+REF_TEXT_DOWELL = "Dowell, P.L. 'Effects of eddy currents in transformer windings.' Proc. IEE, 1966"
+LINK_WINDING_LOSSES = "winding-losses.md"
+LINK_INDUCTANCE = "inductance.md"
+LINK_THERMAL = "thermal.md"
+CODE_BLOCK_CPP = "```cpp"
+
 DETAILED_DOCS = {
     "core-losses.md": {
         "intro": """
@@ -88,7 +99,7 @@ peak values. This allows accurate predictions for:
 **Advantage:** Uses the same Steinmetz parameters (k, α, β) as the original equation,
 requiring no additional material characterization.
 """,
-                "reference": "http://inductor.thayerschool.org/papers/IGSE.pdf",
+                "reference": "https://inductor.thayerschool.org/papers/IGSE.pdf",
                 "reference_text": "Li, Abdallah, Sullivan. 'Accurate Prediction of Ferrite Core Loss with Nonsinusoidal Waveforms.' IEEE COMPEL, 2001"
             },
             "MSE": {
@@ -152,8 +163,8 @@ Where:
 
 This provides good accuracy across a wide frequency range.
 """,
-                "reference": "https://ieeexplore.ieee.org/document/5680877",
-                "reference_text": "Albach et al. 'Calculating core losses in transformers.' IEEE Trans. Magnetics, 2011"
+                "reference": REF_ALBACH_2011,
+                "reference_text": REF_TEXT_ALBACH
             },
             "Barg": {
                 "description": """
@@ -362,8 +373,8 @@ Where $\\xi = h/\\delta$ is the ratio of conductor height to skin depth.
 Originally developed for foil windings, widely used for all wire types despite
 being a 1D approximation.
 """,
-                "reference": "https://ieeexplore.ieee.org/document/5256365",
-                "reference_text": "Dowell, P.L. 'Effects of eddy currents in transformer windings.' Proc. IEE, 1966"
+                "reference": REF_DOWELL_1966,
+                "reference_text": REF_TEXT_DOWELL
             },
             "Wojda (Skin)": {
                 "description": """
@@ -382,15 +393,15 @@ Albach's comprehensive model includes:
 
 Particularly accurate for litz wire bundles.
 """,
-                "reference": "https://ieeexplore.ieee.org/document/5680877",
-                "reference_text": "Albach et al. 'Calculating core losses in transformers.' IEEE Trans. Magnetics, 2011"
+                "reference": REF_ALBACH_2011,
+                "reference_text": REF_TEXT_ALBACH
             },
             "Payne (Skin)": {
                 "description": """
 Payne's model provides empirically-validated corrections for practical winding
 configurations, including non-ideal layer stacking and partial layers.
 """,
-                "reference": "http://g3rbj.co.uk/wp-content/uploads/2014/05/Skin-Effect-revised.pdf",
+                "reference": "https://g3rbj.co.uk/wp-content/uploads/2014/05/Skin-Effect-revised.pdf",
                 "reference_text": "Payne, A. 'Skin Effect, Proximity Effect and the Resistance of Conductors.' 2014"
             },
             "Kutkut (Skin)": {
@@ -447,16 +458,16 @@ $$F_R = \\frac{\\xi}{2} \\left[ ... + \\frac{2(m^2-1)}{3}(...) \\right]$$
 Where $m$ is the number of layers. For 10 layers, proximity losses can be
 50x higher than skin effect alone.
 """,
-                "reference": "https://ieeexplore.ieee.org/document/5256365",
-                "reference_text": "Dowell, P.L. 'Effects of eddy currents in transformer windings.' Proc. IEE, 1966"
+                "reference": REF_DOWELL_1966,
+                "reference_text": REF_TEXT_DOWELL
             },
             "Albach (Proximity)": {
                 "description": """
 Albach's 2D field solution for proximity effect in round conductors.
 Provides better accuracy than 1D models, especially for sparse windings.
 """,
-                "reference": "https://ieeexplore.ieee.org/document/5680877",
-                "reference_text": "Albach et al. 'Calculating core losses in transformers.' IEEE Trans. Magnetics, 2011"
+                "reference": REF_ALBACH_2011,
+                "reference_text": REF_TEXT_ALBACH
             },
             "Ferreira (Proximity)": {
                 "description": """
@@ -596,8 +607,8 @@ Where $w$ is winding width and $h$ is window height.
 **Limitations:** 1D approximation, best for full-width layers.
 **Advantage:** Very fast computation.
 """,
-                "reference": "https://ieeexplore.ieee.org/document/5256365",
-                "reference_text": "Dowell, P.L. 'Effects of eddy currents in transformer windings.' Proc. IEE, 1966"
+                "reference": REF_DOWELL_1966,
+                "reference_text": REF_TEXT_DOWELL
             },
             "Wang": {
                 "description": """
@@ -612,8 +623,8 @@ accounting for end effects and non-ideal layer positioning.
 Albach's 2D analytical solution for round conductors provides accurate field
 distributions even with partial layers and non-uniform spacing.
 """,
-                "reference": "https://ieeexplore.ieee.org/document/5680877",
-                "reference_text": "Albach et al. 'Calculating core losses in transformers.' IEEE Trans. Magnetics, 2011"
+                "reference": REF_ALBACH_2011,
+                "reference_text": REF_TEXT_ALBACH
             }
         },
         "fringing_section": """
@@ -896,8 +907,13 @@ def extract_models_from_header(header_path: Path) -> Optional[ModelCategory]:
     stem = header_path.stem
     category_name = stem.replace('_', ' ').title()
 
-    # Find the main class name
-    class_pattern = r'class\s+(\w+Model)\s*(?::\s*public\s+\w+)?\s*\{'
+    # Find the main class name - using a non-backtracking regex pattern
+    # Pattern explanation:
+    #   class\s+(\w+Model) - matches 'class' followed by whitespace and the class name ending in 'Model'
+    #   (?:\s*:\s*public\s+\w+)? - optionally matches inheritance (whitespace tolerant)
+    #   \s*\{ - matches optional whitespace and opening brace
+    # Using possessive-style quantifiers by avoiding nested optional groups that could backtrack
+    class_pattern = r'class\s+(\w+Model)(?:\s*:\s*public\s+\w+)?\s*\{'
     class_match = re.search(class_pattern, content)
     class_name = class_match.group(1) if class_match else stem + "Model"
 
@@ -938,17 +954,14 @@ def extract_models_from_header(header_path: Path) -> Optional[ModelCategory]:
     )
 
 
-def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]) -> str:
-    """Generate enhanced Markdown using DETAILED_DOCS plus extracted data."""
-    detailed = DETAILED_DOCS.get(output_name, {})
-
+def _generate_header(output_name: str, categories: List[ModelCategory],
+                     detailed: dict) -> List[str]:
+    """Generate the markdown header section."""
     lines = []
 
     # Determine main title from first category or detailed docs
-    if categories:
-        main_title = categories[0].name
-    else:
-        main_title = output_name.replace(".md", "").replace("-", " ").title()
+    main_title = categories[0].name if categories else output_name.replace(
+        ".md", "").replace("-", " ").title()
 
     lines.append(f"# {main_title}")
     lines.append("")
@@ -964,88 +977,113 @@ def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]
         lines.append(detailed["intro"].strip())
         lines.append("")
 
-    # Process each category
-    for cat in categories:
-        if len(categories) > 1:
-            lines.append(f"## {cat.name}")
-            lines.append("")
+    return lines
 
-        # Add category-specific intro if available
-        cat_key = cat.name.lower().replace(" ", "_")
 
-        lines.append("## Available Models")
+def _generate_model_section(model: ModelInfo, detailed_models: dict) -> List[str]:
+    """Generate markdown for a single model."""
+    lines = []
+    lines.append(f"### {model.name}")
+    lines.append("")
+
+    # Use detailed description if available, otherwise extracted
+    if model.name in detailed_models:
+        dm = detailed_models[model.name]
+        lines.append(dm["description"].strip())
         lines.append("")
 
-        # Process each model
-        detailed_models = detailed.get("models", {})
-        for model in cat.models:
-            lines.append(f"### {model.name}")
+        if model.error is not None:
+            lines.append(f"**Validation Error:** {model.error:.1%} mean deviation")
             lines.append("")
 
-            # Use detailed description if available, otherwise extracted
-            if model.name in detailed_models:
-                dm = detailed_models[model.name]
-                lines.append(dm["description"].strip())
-                lines.append("")
+        # Use detailed reference if available
+        if dm.get("reference"):
+            lines.append(f"**Reference:** [{dm['reference_text']}]({dm['reference']})")
+        elif model.external_link:
+            lines.append(f"**Reference:** [{model.external_link}]({model.external_link})")
+        lines.append("")
+    else:
+        # Fall back to extracted description
+        lines.append(model.description)
+        lines.append("")
 
-                if model.error is not None:
-                    lines.append(f"**Validation Error:** {model.error:.1%} mean deviation")
-                    lines.append("")
-
-                # Use detailed reference if available
-                if dm.get("reference"):
-                    lines.append(f"**Reference:** [{dm['reference_text']}]({dm['reference']})")
-                elif model.external_link:
-                    lines.append(f"**Reference:** [{model.external_link}]({model.external_link})")
-                lines.append("")
-            else:
-                # Fall back to extracted description
-                lines.append(model.description)
-                lines.append("")
-
-                if model.error is not None:
-                    lines.append(f"**Validation Error:** {model.error:.1%} mean deviation")
-                    lines.append("")
-
-                if model.external_link:
-                    lines.append(f"**Reference:** [{model.external_link}]({model.external_link})")
-                    lines.append("")
-
-        # Add skin effect intro for winding losses
-        if "skin_effect_intro" in detailed:
-            lines.append(detailed["skin_effect_intro"].strip())
+        if model.error is not None:
+            lines.append(f"**Validation Error:** {model.error:.1%} mean deviation")
             lines.append("")
 
-        # Add proximity effect section for winding losses
-        if "proximity_effect_intro" in detailed:
-            lines.append(detailed["proximity_effect_intro"].strip())
+        if model.external_link:
+            lines.append(f"**Reference:** [{model.external_link}]({model.external_link})")
             lines.append("")
 
-            proximity_models = detailed.get("proximity_models", {})
-            for name, pm in proximity_models.items():
-                lines.append(f"### {name}")
-                lines.append("")
-                lines.append(pm["description"].strip())
-                lines.append("")
-                if pm.get("reference"):
-                    lines.append(f"**Reference:** [{pm['reference_text']}]({pm['reference']})")
-                    lines.append("")
+    return lines
 
-        # Add fringing section for magnetic field
-        if "fringing_section" in detailed:
-            lines.append(detailed["fringing_section"].strip())
-            lines.append("")
 
-        # Add leakage section for inductance
-        if "leakage_section" in detailed:
-            lines.append(detailed["leakage_section"].strip())
-            lines.append("")
-
-    # Add model comparison table
-    lines.append("## Model Comparison")
+def _generate_proximity_section(detailed: dict) -> List[str]:
+    """Generate proximity effect section for winding losses."""
+    lines = []
+    lines.append(detailed["proximity_effect_intro"].strip())
     lines.append("")
-    lines.append("| Model | Error | Reference |")
-    lines.append("|-------|-------|-----------|")
+
+    proximity_models = detailed.get("proximity_models", {})
+    for name, pm in proximity_models.items():
+        lines.append(f"### {name}")
+        lines.append("")
+        lines.append(pm["description"].strip())
+        lines.append("")
+        if pm.get("reference"):
+            lines.append(f"**Reference:** [{pm['reference_text']}]({pm['reference']})")
+            lines.append("")
+
+    return lines
+
+
+def _generate_category_content(cat: ModelCategory, detailed: dict,
+                               show_category_header: bool) -> List[str]:
+    """Generate content for a single category."""
+    lines = []
+
+    if show_category_header:
+        lines.append(f"## {cat.name}")
+        lines.append("")
+
+    lines.append("## Available Models")
+    lines.append("")
+
+    # Process each model
+    detailed_models = detailed.get("models", {})
+    for model in cat.models:
+        lines.extend(_generate_model_section(model, detailed_models))
+
+    # Add skin effect intro for winding losses
+    if "skin_effect_intro" in detailed:
+        lines.append(detailed["skin_effect_intro"].strip())
+        lines.append("")
+
+    # Add proximity effect section for winding losses
+    if "proximity_effect_intro" in detailed:
+        lines.extend(_generate_proximity_section(detailed))
+
+    # Add fringing section for magnetic field
+    if "fringing_section" in detailed:
+        lines.append(detailed["fringing_section"].strip())
+        lines.append("")
+
+    # Add leakage section for inductance
+    if "leakage_section" in detailed:
+        lines.append(detailed["leakage_section"].strip())
+        lines.append("")
+
+    return lines
+
+
+def _generate_comparison_table(categories: List[ModelCategory]) -> List[str]:
+    """Generate model comparison table."""
+    lines = [
+        "## Model Comparison",
+        "",
+        "| Model | Error | Reference |",
+        "|-------|-------|-----------|",
+    ]
 
     for cat in categories:
         for model in cat.models:
@@ -1054,6 +1092,64 @@ def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]
             lines.append(f"| {model.name} | {error_str} | {ref_str} |")
 
     lines.append("")
+    return lines
+
+
+def _generate_usage_section(categories: List[ModelCategory]) -> List[str]:
+    """Generate usage code example section."""
+    if not categories:
+        return []
+
+    cat = categories[0]
+    lines = [
+        "## Usage",
+        "",
+        CODE_BLOCK_CPP,
+        f"#include \"physical_models/{cat.source_file}\"",
+        "",
+        "// Create a specific model",
+        f"auto model = OpenMagnetics::{cat.class_name}::factory(",
+    ]
+
+    if cat.models:
+        enum_name = cat.class_name.replace("Model", "Models")
+        model_enum = cat.models[0].name.upper().replace(" ", "_").replace("-", "_")
+        lines.append(f"    OpenMagnetics::{enum_name}::{model_enum}")
+
+    setting_name = cat.name.lower().replace(" ", "_")
+    lines.extend([
+        ");",
+        "",
+        "// Or use the default model",
+        f"auto model = OpenMagnetics::{cat.class_name}::factory();",
+        "```",
+        "",
+        "## Configuring Default Model",
+        "",
+        CODE_BLOCK_CPP,
+        "auto& settings = OpenMagnetics::Settings::GetInstance();",
+        f"// settings.set_{setting_name}_model(OpenMagnetics::{cat.class_name.replace('Model', 'Models')}::...);",
+        "```",
+    ])
+
+    return lines
+
+
+def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]) -> str:
+    """Generate enhanced Markdown using DETAILED_DOCS plus extracted data."""
+    detailed = DETAILED_DOCS.get(output_name, {})
+    lines = []
+
+    # Generate header section
+    lines.extend(_generate_header(output_name, categories, detailed))
+
+    # Process each category
+    show_category_header = len(categories) > 1
+    for cat in categories:
+        lines.extend(_generate_category_content(cat, detailed, show_category_header))
+
+    # Add model comparison table
+    lines.extend(_generate_comparison_table(categories))
 
     # Add selection guide
     if "selection_guide" in detailed:
@@ -1061,12 +1157,15 @@ def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]
         lines.append("")
 
     # Add usage section
+    lines.extend(_generate_usage_section(categories))
+
+    # Add usage section
     if categories:
         cat = categories[0]
         lines.extend([
             "## Usage",
             "",
-            "```cpp",
+            CODE_BLOCK_CPP,
             f"#include \"physical_models/{cat.source_file}\"",
             "",
             "// Create a specific model",
@@ -1087,7 +1186,7 @@ def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]
             "",
             "## Configuring Default Model",
             "",
-            "```cpp",
+            CODE_BLOCK_CPP,
             "auto& settings = OpenMagnetics::Settings::GetInstance();",
         ])
 
@@ -1151,7 +1250,7 @@ def generate_model_markdown(category: ModelCategory) -> str:
         "",
         "## Usage",
         "",
-        "```cpp",
+        CODE_BLOCK_CPP,
         f"#include \"physical_models/{category.source_file}\"",
         "",
         "// Create a specific model",
@@ -1175,7 +1274,7 @@ def generate_model_markdown(category: ModelCategory) -> str:
         "",
         "To set a default model globally:",
         "",
-        "```cpp",
+        CODE_BLOCK_CPP,
         "auto& settings = OpenMagnetics::Settings::GetInstance();",
     ])
 

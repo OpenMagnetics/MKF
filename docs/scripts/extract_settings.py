@@ -100,7 +100,7 @@ def format_type(cpp_type: str) -> str:
     return type_map.get(cpp_type, f"`{cpp_type}`")
 
 
-def format_default(value: Optional[str], cpp_type: str) -> str:
+def format_default(value: Optional[str]) -> str:
     """Format default value for documentation."""
     if value is None:
         return "N/A"
@@ -168,6 +168,10 @@ def parse_settings_header(header_path: Path) -> List[Setting]:
 
 def generate_settings_markdown(settings: List[Setting]) -> str:
     """Generate Markdown documentation for settings."""
+    # Constants for commonly used strings
+    CODE_BLOCK_CPP = "```cpp"
+    SETTINGS_INSTANCE = "auto& settings = OpenMagnetics::Settings::GetInstance();"
+
     lines = [
         "# Settings Reference",
         "",
@@ -178,8 +182,8 @@ def generate_settings_markdown(settings: List[Setting]) -> str:
         "MKF uses a singleton `Settings` class to configure global behavior. "
         "Access it via `Settings::GetInstance()`.",
         "",
-        "```cpp",
-        "auto& settings = OpenMagnetics::Settings::GetInstance();",
+        CODE_BLOCK_CPP,
+        SETTINGS_INSTANCE,
         "",
         "// Example: Enable verbose logging",
         "settings.set_verbose(true);",
@@ -219,13 +223,11 @@ def generate_settings_markdown(settings: List[Setting]) -> str:
     lines.append("## Categories")
     lines.append("")
     for category in sorted_categories:
-        anchor = category.lower().replace("/", "").replace(" ", "-")
-        lines.append(f"- [{category}](#{anchor})")
+        lines.append(f"- [{category}](#{category.lower().replace('/', '').replace(' ', '-')})")
     lines.append("")
 
     # Generate each category
     for category in sorted_categories:
-        anchor = category.lower().replace("/", "").replace(" ", "-")
         lines.append(f"## {category}")
         lines.append("")
         lines.append("| Setting | Type | Default | Description |")
@@ -234,21 +236,24 @@ def generate_settings_markdown(settings: List[Setting]) -> str:
         for setting in sorted(categories[category], key=lambda s: s.name):
             name = f"`{setting.name}`"
             type_str = format_type(setting.type)
-            default_str = format_default(setting.default_value, setting.type)
+            default_str = format_default(setting.default_value)
             desc = setting.description or get_description(setting.name)
 
             lines.append(f"| {name} | {type_str} | {default_str} | {desc} |")
 
         lines.append("")
 
-    # Add usage examples
+    # Add usage examples using constants for duplicated strings
+    CODE_BLOCK_CPP = "```cpp"
+    SETTINGS_INSTANCE = "auto& settings = OpenMagnetics::Settings::GetInstance();"
+
     lines.extend([
         "## Usage Examples",
         "",
         "### Configuring Core Adviser",
         "",
-        "```cpp",
-        "auto& settings = OpenMagnetics::Settings::GetInstance();",
+        CODE_BLOCK_CPP,
+        SETTINGS_INSTANCE,
         "",
         "// Include stacked core configurations",
         "settings.set_core_adviser_include_stacks(true);",
@@ -263,8 +268,8 @@ def generate_settings_markdown(settings: List[Setting]) -> str:
         "",
         "### Configuring Wire Adviser",
         "",
-        "```cpp",
-        "auto& settings = OpenMagnetics::Settings::GetInstance();",
+        CODE_BLOCK_CPP,
+        SETTINGS_INSTANCE,
         "",
         "// Enable litz wire",
         "settings.set_wire_adviser_include_litz(true);",
@@ -278,8 +283,8 @@ def generate_settings_markdown(settings: List[Setting]) -> str:
         "",
         "### Configuring Physical Models",
         "",
-        "```cpp",
-        "auto& settings = OpenMagnetics::Settings::GetInstance();",
+        CODE_BLOCK_CPP,
+        SETTINGS_INSTANCE,
         "",
         "// Set reluctance model",
         "settings.set_reluctance_model(OpenMagnetics::ReluctanceModels::MUEHLETHALER);",
@@ -297,8 +302,8 @@ def generate_settings_markdown(settings: List[Setting]) -> str:
         "",
         "### Resetting to Defaults",
         "",
-        "```cpp",
-        "auto& settings = OpenMagnetics::Settings::GetInstance();",
+        CODE_BLOCK_CPP,
+        SETTINGS_INSTANCE,
         "settings.reset();  // Reset all settings to defaults",
         "```",
     ])
