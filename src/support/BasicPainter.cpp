@@ -2,6 +2,9 @@
 #include "support/Painter.h"
 #include <cfloat>
 #include <map>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
@@ -1542,6 +1545,197 @@ std::string BasicPainter::export_svg() {
         outfile << std::string(_root);
     }
     return std::string(_root);
+}
+
+void BasicPainter::paint_waveform_svg(
+    const Waveform& waveform,
+    const std::string& name,
+    const std::string& color,
+    double xOffset,
+    double yOffset,
+    double plotWidth,
+    double plotHeight) {
+    
+    auto data = waveform.get_data();
+    if (data.empty()) return;
+    
+    std::optional<std::vector<double>> timeOpt = waveform.get_time();
+    std::vector<double> time;
+    if (timeOpt && !timeOpt->empty()) {
+        time = timeOpt.value();
+    } else {
+        // Generate time axis from 0 to 1
+        time.resize(data.size());
+        for (size_t i = 0; i < data.size(); ++i) {
+            time[i] = static_cast<double>(i) / static_cast<double>(data.size() - 1);
+        }
+    }
+    
+    // Find min/max for scaling
+    double minVal = *std::min_element(data.begin(), data.end());
+    double maxVal = *std::max_element(data.begin(), data.end());
+    double minTime = *std::min_element(time.begin(), time.end());
+    double maxTime = *std::max_element(time.begin(), time.end());
+    
+    // Add padding
+    double valRange = maxVal - minVal;
+    if (valRange < 1e-12) valRange = 1.0;
+    double timeRange = maxTime - minTime;
+    if (timeRange < 1e-12) timeRange = 1.0;
+    
+    minVal -= valRange * 0.1;
+    maxVal += valRange * 0.1;
+    valRange = maxVal - minVal;
+    
+    // Create path string
+    std::stringstream pathData;
+    for (size_t i = 0; i < data.size(); ++i) {
+        double x = xOffset + ((time[i] - minTime) / timeRange) * plotWidth;
+        double y = yOffset + plotHeight - ((data[i] - minVal) / valRange) * plotHeight;
+        
+        if (i == 0) {
+            pathData << "M " << x << " " << y;
+        } else {
+            pathData << " L " << x << " " << y;
+        }
+    }
+    
+    // Add path element
+    std::string cssClassName = generate_random_string();
+    _root.style("." + cssClassName)
+        .set_attr("fill", "none")
+        .set_attr("stroke", color)
+        .set_attr("stroke-width", "1.5");
+    
+    auto* path = _root.add_child<SVG::Path>();
+    path->set_attr("d", pathData.str());
+    path->set_attr("class", cssClassName);
+    
+    // Add label
+    auto* text = _root.add_child<SVG::Text>(xOffset + 5, yOffset + 15, name);
+    text->set_attr("font-size", "12");
+    text->set_attr("fill", color);
+    
+    // Add axis lines
+    std::string axisClass = generate_random_string();
+    _root.style("." + axisClass)
+        .set_attr("stroke", "#888888")
+        .set_attr("stroke-width", "1")
+        .set_attr("fill", "none");
+    
+    // SVG::Line constructor takes (x1, x2, y1, y2) - NOT (x1, y1, x2, y2)
+    
+    // X-axis (bottom) - horizontal line from left to right at bottom of plot
+    auto* xAxis = _root.add_child<SVG::Line>(xOffset, xOffset + plotWidth, yOffset + plotHeight, yOffset + plotHeight);
+    xAxis->set_attr("class", axisClass);
+    
+    // Y-axis (left) - vertical line from top to bottom at left of plot
+    auto* yAxis = _root.add_child<SVG::Line>(xOffset, xOffset, yOffset, yOffset + plotHeight);
+    yAxis->set_attr("class", axisClass);
+    
+    // X-axis top border
+    auto* xAxisTop = _root.add_child<SVG::Line>(xOffset, xOffset + plotWidth, yOffset, yOffset);
+    xAxisTop->set_attr("class", axisClass);
+    
+    // Y-axis right border  
+    auto* yAxisRight = _root.add_child<SVG::Line>(xOffset + plotWidth, xOffset + plotWidth, yOffset, yOffset + plotHeight);
+    yAxisRight->set_attr("class", axisClass);
+    
+    // Add value labels
+    std::stringstream maxLabel, minLabel;
+    maxLabel << std::scientific << std::setprecision(2) << maxVal;
+    minLabel << std::scientific << std::setprecision(2) << minVal;
+    
+    auto* maxText = _root.add_child<SVG::Text>(xOffset - 60, yOffset + 12, maxLabel.str());
+    maxText->set_attr("font-size", "10");
+    maxText->set_attr("fill", "#666666");
+    
+    auto* minText = _root.add_child<SVG::Text>(xOffset - 60, yOffset + plotHeight, minLabel.str());
+    minText->set_attr("font-size", "10");
+    minText->set_attr("fill", "#666666");
+}
+
+std::string BasicPainter::paint_operating_point_waveforms(
+    const OperatingPoint& operatingPoint,
+    const std::string& title,
+    double width,
+    double height) {
+    
+    std::vector<Waveform> waveforms;
+    std::vector<std::string> waveformNames;
+    
+    const auto& excitations = operatingPoint.get_excitations_per_winding();
+    
+    // Collect all windings' voltage and current waveforms
+    for (size_t i = 0; i < excitations.size(); ++i) {
+        const auto& excitation = excitations[i];
+        std::string windingName = excitation.get_name().value_or("Winding " + std::to_string(i));
+        
+        // Add voltage waveform if present
+        if (excitation.get_voltage() && excitation.get_voltage()->get_waveform()) {
+            waveforms.push_back(excitation.get_voltage()->get_waveform().value());
+            waveformNames.push_back(windingName + " Voltage (V)");
+        }
+        
+        // Add current waveform if present
+        if (excitation.get_current() && excitation.get_current()->get_waveform()) {
+            waveforms.push_back(excitation.get_current()->get_waveform().value());
+            waveformNames.push_back(windingName + " Current (A)");
+        }
+    }
+    
+    if (waveforms.empty()) {
+        return "";  // No waveforms to plot
+    }
+    
+    // Reset root SVG
+    _root = SVG::SVG();
+    _root.set_attr("width", std::to_string(static_cast<int>(width)));
+    _root.set_attr("height", std::to_string(static_cast<int>(height)));
+    _root.set_attr("viewBox", "0 0 " + std::to_string(static_cast<int>(width)) + " " + std::to_string(static_cast<int>(height)));
+    
+    // Add white background
+    auto* bg = _root.add_child<SVG::Rect>(0, 0, width, height);
+    bg->set_attr("fill", "#ffffff");
+    
+    // Add title
+    auto* titleText = _root.add_child<SVG::Text>(width / 2, 25, title);
+    titleText->set_attr("font-size", "16");
+    titleText->set_attr("font-weight", "bold");
+    titleText->set_attr("text-anchor", "middle");
+    titleText->set_attr("fill", "#333333");
+    
+    // Calculate layout
+    size_t numPlots = waveforms.size();
+    double margin = 80;
+    double plotSpacing = 20;
+    double availableHeight = height - margin - 40;  // Top and bottom margins
+    double plotHeight = (availableHeight - (numPlots - 1) * plotSpacing) / numPlots;
+    double plotWidth = width - 2 * margin;
+    
+    // Color palette
+    std::vector<std::string> colors = {
+        "#1f77b4",  // Blue
+        "#ff7f0e",  // Orange
+        "#2ca02c",  // Green
+        "#d62728",  // Red
+        "#9467bd",  // Purple
+        "#8c564b",  // Brown
+        "#e377c2",  // Pink
+        "#7f7f7f",  // Gray
+        "#bcbd22",  // Olive
+        "#17becf"   // Cyan
+    };
+    
+    // Draw each waveform
+    for (size_t i = 0; i < numPlots; ++i) {
+        double yOffset = 50 + i * (plotHeight + plotSpacing);
+        std::string color = colors[i % colors.size()];
+        
+        paint_waveform_svg(waveforms[i], waveformNames[i], color, margin, yOffset, plotWidth, plotHeight);
+    }
+    
+    return export_svg();
 }
 
 } // namespace OpenMagnetics
