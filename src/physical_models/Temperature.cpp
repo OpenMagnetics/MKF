@@ -286,6 +286,7 @@ void Temperature::createThermalNodes() {
     }
     
     createBobbinNodes();
+    createInsulationLayerNodes();
     createTurnNodes();
     
     // Add ambient node (always last)
@@ -787,6 +788,98 @@ void Temperature::createBobbinNodes() {
     _nodes.push_back(bottomYokeWall);
 }
 
+void Temperature::createInsulationLayerNodes() {
+    auto coil = _magnetic.get_mutable_coil();
+    
+    // Check if we have layers description
+    if (!coil.get_layers_description()) {
+        if (THERMAL_DEBUG) {
+            std::cout << "No layers description, skipping insulation layer nodes" << std::endl;
+        }
+        return;
+    }
+    
+    // Get all insulation layers
+    auto insulationLayers = coil.get_layers_description_insulation();
+    if (insulationLayers.empty()) {
+        if (THERMAL_DEBUG) {
+            std::cout << "No insulation layers found" << std::endl;
+        }
+        return;
+    }
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Found " << insulationLayers.size() << " insulation layers" << std::endl;
+    }
+    
+    // Get core depth for insulation layer depth
+    auto core = _magnetic.get_core();
+    auto processedCore = core.get_processed_description();
+    double coreDepth = 0.01;  // Default 10mm
+    if (processedCore) {
+        coreDepth = processedCore->get_depth();
+    }
+    
+    size_t layerIdx = 0;
+    size_t createdCount = 0;
+    for (const auto& layer : insulationLayers) {
+        // Skip layers without proper dimensions or coordinates
+        if (layer.get_dimensions().size() < 2) {
+            continue;
+        }
+        if (layer.get_coordinates().size() < 2) {
+            continue;
+        }
+        
+        // Get layer geometry
+        double layerWidth = layer.get_dimensions()[0];   // X dimension (thickness)
+        double layerHeight = layer.get_dimensions()[1];  // Y dimension (span)
+        double layerDepth = coreDepth / 2.0;  // Half depth for single side modeling
+        
+        // Get layer center coordinates
+        double layerX = layer.get_coordinates()[0];
+        double layerY = layer.get_coordinates()[1];
+        
+        // Get layer thermal conductivity from material
+        double layerK = 0.2;  // Default for typical insulation material
+        try {
+            auto insulationMaterial = coil.resolve_insulation_layer_insulation_material(layer);
+            if (insulationMaterial.get_thermal_conductivity()) {
+                layerK = insulationMaterial.get_thermal_conductivity().value();
+            }
+        } catch (...) {
+            // Use default if material cannot be resolved
+        }
+        
+        // Create insulation layer node
+        ThermalNetworkNode insulationNode;
+        insulationNode.part = ThermalNodePartType::INSULATION_LAYER;
+        insulationNode.name = "InsulationLayer_" + layer.get_name();
+        insulationNode.insulationLayerIndex = layerIdx;
+        insulationNode.temperature = _config.ambientTemperature;
+        insulationNode.powerDissipation = 0.0;  // No heat generation in insulation
+        insulationNode.physicalCoordinates = {layerX, layerY, 0};
+        
+        // Initialize quadrants for rectangular insulation layer
+        insulationNode.initializeInsulationLayerQuadrants(layerWidth, layerHeight, layerDepth, layerK);
+        
+        _nodes.push_back(insulationNode);
+        layerIdx++;
+        createdCount++;
+        
+        if (THERMAL_DEBUG) {
+            std::cout << "Created insulation layer node: " << insulationNode.name 
+                      << " at (" << layerX * 1000 << "mm, " << layerY * 1000 << "mm)"
+                      << " size (" << layerWidth * 1000 << "mm x " << layerHeight * 1000 << "mm)"
+                      << std::endl;
+        }
+    }
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Created " << createdCount << " insulation layer nodes" << std::endl;
+    }
+}
+
 void Temperature::createTurnNodes() {
     auto coil = _magnetic.get_coil();
     auto turns = coil.get_turns_description();
@@ -976,6 +1069,7 @@ void Temperature::createThermalResistances() {
     if (!_isToroidal) {
         createTurnToBobbinConnections();
     }
+    createTurnToInsulationConnections();
     createTurnToSolidConnections();
     createConvectionConnections();
     
@@ -1479,16 +1573,40 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                 int turn1Idx = _nodes[node1Idx].turnIndex.value_or(0);
                 int turn2Idx = _nodes[node2Idx].turnIndex.value_or(0);
                 
-                r.resistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
+                // Check if there's a solid insulation layer between these turns
+                // If so, skip direct connection - turns will connect through insulation layer node
+                auto coil = _magnetic.get_coil();
+                auto turnsDescription = coil.get_turns_description();
+                bool hasSolidInsulationBetween = false;
                 
-                if (q1->coating.has_value()) {
-                    r.resistance += WireCoatingUtils::calculateCoatingResistance(q1->coating.value(), contactArea);
-                }
-                if (q2->coating.has_value()) {
-                    r.resistance += WireCoatingUtils::calculateCoatingResistance(q2->coating.value(), contactArea);
+                if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
+                    turn2Idx >= 0 && turn2Idx < static_cast<int>(turnsDescription->size())) {
+                    try {
+                        auto& turn1 = (*turnsDescription)[turn1Idx];
+                        auto& turn2 = (*turnsDescription)[turn2Idx];
+                        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
+                        hasSolidInsulationBetween = !layersBetween.empty();
+                    } catch (...) {
+                        // If we can't determine insulation layers (e.g., missing layer description),
+                        // assume no solid insulation and create direct connection
+                        hasSolidInsulationBetween = false;
+                    }
                 }
                 
-                _resistances.push_back(r);
+                // Only create direct turn-to-turn connection if there's NO solid insulation layer
+                // Solid insulation layers are now modeled as separate thermal nodes
+                if (!hasSolidInsulationBetween) {
+                    r.resistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
+                    
+                    if (q1->coating.has_value()) {
+                        r.resistance += WireCoatingUtils::calculateCoatingResistance(q1->coating.value(), contactArea);
+                    }
+                    if (q2->coating.has_value()) {
+                        r.resistance += WireCoatingUtils::calculateCoatingResistance(q2->coating.value(), contactArea);
+                    }
+                    
+                    _resistances.push_back(r);
+                }
             }
         }
     }
@@ -1600,28 +1718,52 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                 int turn1Idx = _nodes[node1Idx].turnIndex.value_or(0);
                 int turn2Idx = _nodes[node2Idx].turnIndex.value_or(0);
                 
-                double baseResistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
+                // Check if there's a solid insulation layer between these turns
+                // If so, skip direct connection - turns will connect through insulation layer node
+                auto coil = _magnetic.get_coil();
+                auto turnsDescription = coil.get_turns_description();
+                bool hasSolidInsulationBetween = false;
                 
-                if (q1->coating.has_value()) {
-                    baseResistance += WireCoatingUtils::calculateCoatingResistance(q1->coating.value(), contactArea);
+                if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
+                    turn2Idx >= 0 && turn2Idx < static_cast<int>(turnsDescription->size())) {
+                    try {
+                        auto& turn1 = (*turnsDescription)[turn1Idx];
+                        auto& turn2 = (*turnsDescription)[turn2Idx];
+                        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
+                        hasSolidInsulationBetween = !layersBetween.empty();
+                    } catch (...) {
+                        // If we can't determine insulation layers (e.g., missing layer description),
+                        // assume no solid insulation and create direct connection
+                        hasSolidInsulationBetween = false;
+                    }
                 }
-                if (q2->coating.has_value()) {
-                    baseResistance += WireCoatingUtils::calculateCoatingResistance(q2->coating.value(), contactArea);
+                
+                // Only create direct turn-to-turn connection if there's NO solid insulation layer
+                // Solid insulation layers are now modeled as separate thermal nodes
+                if (!hasSolidInsulationBetween) {
+                    double baseResistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
+                    
+                    if (q1->coating.has_value()) {
+                        baseResistance += WireCoatingUtils::calculateCoatingResistance(q1->coating.value(), contactArea);
+                    }
+                    if (q2->coating.has_value()) {
+                        baseResistance += WireCoatingUtils::calculateCoatingResistance(q2->coating.value(), contactArea);
+                    }
+                    
+                    r.resistance = baseResistance;
+                    
+                    if (_config.useInterTurnInsulation && _config.interTurnInsulationThickness > 0) {
+                        r.addInsulationLayer(
+                            _config.interTurnInsulationThickness,
+                            _config.interTurnInsulationConductivity,
+                            "inter_turn_insulation",
+                            "Additional insulation between turns from config"
+                        );
+                        r.resistance += r.calculateTotalInsulationResistance(contactArea);
+                    }
+                    
+                    _resistances.push_back(r);
                 }
-                
-                r.resistance = baseResistance;
-                
-                if (_config.useInterTurnInsulation && _config.interTurnInsulationThickness > 0) {
-                    r.addInsulationLayer(
-                        _config.interTurnInsulationThickness,
-                        _config.interTurnInsulationConductivity,
-                        "inter_turn_insulation",
-                        "Additional insulation between turns from config"
-                    );
-                    r.resistance += r.calculateTotalInsulationResistance(contactArea);
-                }
-                
-                _resistances.push_back(r);
             }
         }
     }
@@ -1847,6 +1989,158 @@ void Temperature::createTurnToBobbinConnections() {
                                   << " -> Bobbin " << bobbinNode.name 
                                   << " (distance=" << dist * 1000 << "mm)" << std::endl;
                     }
+                }
+            }
+        }
+    }
+}
+
+void Temperature::createTurnToInsulationConnections() {
+    // Find all insulation layer nodes
+    std::vector<size_t> insulationNodeIndices;
+    std::vector<size_t> turnNodeIndices;
+    
+    for (size_t i = 0; i < _nodes.size(); i++) {
+        if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) {
+            insulationNodeIndices.push_back(i);
+        } else if (_nodes[i].part == ThermalNodePartType::TURN) {
+            turnNodeIndices.push_back(i);
+        }
+    }
+    
+    if (insulationNodeIndices.empty()) {
+        return;  // No insulation layers to connect
+    }
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Creating turn-to-insulation connections: " << insulationNodeIndices.size() 
+                  << " insulation layers, " << turnNodeIndices.size() << " turns" << std::endl;
+    }
+    
+    double minConductionDist = getMinimumDistanceForConduction();
+    
+    // For each insulation layer, find adjacent turns on each face
+    for (size_t insulationIdx : insulationNodeIndices) {
+        const auto& insulationNode = _nodes[insulationIdx];
+        
+        // Get insulation layer geometry
+        double insulationX = insulationNode.physicalCoordinates[0];
+        double insulationY = insulationNode.physicalCoordinates[1];
+        double insulationWidth = insulationNode.dimensions.width;
+        double insulationHeight = insulationNode.dimensions.height;
+        
+        // Get insulation material properties for resistance calculation
+        double insulationK = 0.2;  // Default
+        if (insulationNode.quadrants[0].thermalConductivity > 0) {
+            insulationK = insulationNode.quadrants[0].thermalConductivity;
+        }
+        
+        // Define the four faces of the insulation layer
+        struct FaceCheck {
+            ThermalNodeFace face;
+            double edgeX;  // X coordinate of the face edge
+            double edgeY;  // Y coordinate of the face edge
+            bool isVertical;  // true for LEFT/RIGHT faces, false for TOP/BOTTOM
+            int direction;  // +1 or -1 indicating outward normal direction
+        };
+        
+        std::vector<FaceCheck> faces = {
+            {ThermalNodeFace::RADIAL_OUTER,  insulationX + insulationWidth/2, insulationY, true, +1},   // RIGHT
+            {ThermalNodeFace::RADIAL_INNER,  insulationX - insulationWidth/2, insulationY, true, -1},   // LEFT
+            {ThermalNodeFace::TANGENTIAL_LEFT,  insulationX, insulationY + insulationHeight/2, false, +1}, // TOP
+            {ThermalNodeFace::TANGENTIAL_RIGHT, insulationX, insulationY - insulationHeight/2, false, -1}  // BOTTOM
+        };
+        
+        // Check each face for adjacent turns
+        for (const auto& face : faces) {
+            std::vector<std::pair<size_t, double>> adjacentTurns;  // (turnIdx, distance)
+            
+            for (size_t turnIdx : turnNodeIndices) {
+                const auto& turnNode = _nodes[turnIdx];
+                double turnX = turnNode.physicalCoordinates[0];
+                double turnY = turnNode.physicalCoordinates[1];
+                
+                // Calculate distance from turn center to insulation face
+                double dist;
+                if (face.isVertical) {
+                    // For vertical faces (LEFT/RIGHT), check X distance
+                    double turnEdgeX = (face.direction > 0) ? turnX - _wireWidth/2 : turnX + _wireWidth/2;
+                    dist = std::abs(face.edgeX - turnEdgeX);
+                    
+                    // Check if turn is within Y range of the face
+                    double yOverlap = std::min(
+                        std::abs(turnY - (insulationY + insulationHeight/2)),
+                        std::abs(turnY - (insulationY - insulationHeight/2))
+                    );
+                    
+                    if (dist < minConductionDist && yOverlap < (insulationHeight/2 + _wireHeight/2)) {
+                        adjacentTurns.push_back({turnIdx, dist});
+                    }
+                } else {
+                    // For horizontal faces (TOP/BOTTOM), check Y distance
+                    double turnEdgeY = (face.direction > 0) ? turnY - _wireHeight/2 : turnY + _wireHeight/2;
+                    dist = std::abs(face.edgeY - turnEdgeY);
+                    
+                    // Check if turn is within X range of the face
+                    double xOverlap = std::min(
+                        std::abs(turnX - (insulationX + insulationWidth/2)),
+                        std::abs(turnX - (insulationX - insulationWidth/2))
+                    );
+                    
+                    if (dist < minConductionDist && xOverlap < (insulationWidth/2 + _wireWidth/2)) {
+                        adjacentTurns.push_back({turnIdx, dist});
+                    }
+                }
+            }
+            
+            // Create connections to all adjacent turns
+            for (const auto& [turnIdx, dist] : adjacentTurns) {
+                ThermalResistanceElement r;
+                r.nodeFromId = insulationIdx;
+                r.quadrantFrom = face.face;
+                r.nodeToId = turnIdx;
+                
+                // Map insulation face to corresponding turn face
+                // Turn face should be opposite of insulation face (they touch)
+                switch (face.face) {
+                    case ThermalNodeFace::RADIAL_OUTER:
+                        r.quadrantTo = ThermalNodeFace::RADIAL_INNER;  // Turn's LEFT touches insulation's RIGHT
+                        break;
+                    case ThermalNodeFace::RADIAL_INNER:
+                        r.quadrantTo = ThermalNodeFace::RADIAL_OUTER;  // Turn's RIGHT touches insulation's LEFT
+                        break;
+                    case ThermalNodeFace::TANGENTIAL_LEFT:
+                        r.quadrantTo = ThermalNodeFace::TANGENTIAL_RIGHT;  // Turn's BOTTOM touches insulation's TOP
+                        break;
+                    case ThermalNodeFace::TANGENTIAL_RIGHT:
+                        r.quadrantTo = ThermalNodeFace::TANGENTIAL_LEFT;  // Turn's TOP touches insulation's BOTTOM
+                        break;
+                    default:
+                        r.quadrantTo = ThermalNodeFace::NONE;
+                        break;
+                }
+                
+                r.type = HeatTransferType::CONDUCTION;
+                
+                // Calculate contact area
+                double contactArea = _wireWidth * _wireHeight * 0.5;
+                
+                // Resistance through insulation: R = thickness / (k * A)
+                // Use half the insulation thickness as the conduction path
+                double conductionDistance = insulationWidth / 2.0;
+                if (!face.isVertical) {
+                    conductionDistance = insulationHeight / 2.0;
+                }
+                
+                r.resistance = ThermalResistance::calculateConductionResistance(
+                    conductionDistance, insulationK, contactArea);
+                
+                _resistances.push_back(r);
+                
+                if (THERMAL_DEBUG) {
+                    std::cout << "Insulation " << insulationNode.name << " face=" << static_cast<int>(face.face) 
+                              << " -> Turn " << _nodes[turnIdx].name 
+                              << " R=" << r.resistance << " K/W" << std::endl;
                 }
             }
         }

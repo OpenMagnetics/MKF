@@ -153,6 +153,7 @@ enum class ThermalNodePartType {
     BOBBIN_TOP_YOKE,
     BOBBIN_BOTTOM_YOKE,
     TURN,
+    INSULATION_LAYER,  // Solid insulation layer between turns/sections
     AMBIENT
 };
 
@@ -340,6 +341,7 @@ public:
     std::optional<size_t> windingIndex;
     std::optional<size_t> turnIndex;
     std::optional<size_t> coreSegmentIndex;
+    std::optional<size_t> insulationLayerIndex;  // For INSULATION_LAYER nodes
     
     // True if this is an inner half of a toroidal turn
     bool isInnerTurn = false;
@@ -470,6 +472,26 @@ public:
      * @param thermalCond Thermal conductivity of material
      */
     void initializeConcentricCoreQuadrants(double width, double height, double depth, double thermalCond);
+    
+    /**
+     * @brief Initialize quadrants for insulation layer nodes (always rectangular)
+     * 
+     * Insulation layers are rectangular nodes that sit between turns or sections.
+     * They have 4 quadrants representing their 4 faces, allowing heat conduction
+     * from any adjacent turn.
+     * 
+     * Quadrant mapping for insulation layers:
+     * - Index 0 (RADIAL_OUTER): RIGHT face (+X direction) - facing outer turns
+     * - Index 1 (RADIAL_INNER): LEFT face (-X direction) - facing inner turns/core
+     * - Index 2 (TANGENTIAL_LEFT): TOP face (+Y direction) - facing top turns/yoke
+     * - Index 3 (TANGENTIAL_RIGHT): BOTTOM face (-Y direction) - facing bottom turns/yoke
+     * 
+     * @param width Layer width in X direction (m) - typically thickness of insulation
+     * @param height Layer height in Y direction (m) - typically span of winding window
+     * @param depth Layer depth in Z direction (m) - typically depth of coil
+     * @param thermalCond Thermal conductivity of insulation material (W/m·K)
+     */
+    void initializeInsulationLayerQuadrants(double width, double height, double depth, double thermalCond);
     
     /**
      * @brief Calculate surface coverage for toroidal core quadrants

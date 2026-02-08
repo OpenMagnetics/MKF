@@ -489,6 +489,29 @@ private:
     void createTurnToSolidConnections();
     
     /**
+     * @brief Create thermal nodes for insulation layers
+     * 
+     * Creates nodes for solid insulation layers between turns or sections.
+     * Each insulation layer becomes a thermal node with 4 quadrants (faces)
+     * that can conduct heat to/from adjacent turns.
+     * 
+     * Insulation layers have no heat generation but provide conduction paths
+     * between turns that are separated by insulation material.
+     */
+    void createInsulationLayerNodes();
+    
+    /**
+     * @brief Create connections between turns and insulation layers
+     * 
+     * Geometrically determines which turns are adjacent to each insulation
+     * layer quadrant and creates conduction resistances between them.
+     * 
+     * Connections are based on spatial proximity - if a turn is close enough
+     * to an insulation layer face, a thermal connection is created.
+     */
+    void createTurnToInsulationConnections();
+    
+    /**
      * @brief Create convection resistances to ambient
      * 
      * Creates convection connections for exposed quadrants
