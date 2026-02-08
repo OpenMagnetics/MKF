@@ -10,34 +10,6 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-/**
- * @brief Structure holding topology-level waveforms for Isolated Buck-Boost converter validation
- */
-struct IsolatedBuckBoostTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;
-    std::vector<double> switchNodeVoltage;
-    
-    // Transformer signals
-    std::vector<double> primaryVoltage;
-    std::vector<double> primaryCurrent;
-    
-    // Output side signals  
-    std::vector<std::vector<double>> secondaryVoltages;
-    std::vector<std::vector<double>> secondaryCurrents;
-    std::vector<double> outputVoltage;
-    std::vector<double> outputCurrent;
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    double dutyCycle;
-};
-
 
 class IsolatedBuckBoost : public MAS::IsolatedBuckBoost, public Topology {
 private:
@@ -97,9 +69,9 @@ public:
      * 
      * @param turnsRatios Turns ratios for each winding
      * @param magnetizingInductance Magnetizing inductance in H
-     * @return Vector of IsolatedBuckBoostTopologyWaveforms for each operating condition
+     * @return Vector of OperatingPoints extracted from simulation
      */
-    std::vector<IsolatedBuckBoostTopologyWaveforms> simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 

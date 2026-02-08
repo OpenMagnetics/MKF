@@ -1374,96 +1374,11 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
     
-    std::vector<PushPullTopologyWaveforms> PushPull::simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> PushPull::simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance) {
-        
-        std::vector<PushPullTopologyWaveforms> allWaveforms;
-        
-        NgspiceRunner runner;
-        if (!runner.is_available()) {
-            throw std::runtime_error("ngspice is not available for simulation");
-        }
-        
-        std::vector<double> inputVoltages;
-        std::vector<std::string> inputVoltagesNames;
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        
-        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            double inputVoltage = inputVoltages[inputVoltageIndex];
-            
-            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
-                auto ppOpPoint = get_operating_points()[opIndex];
-                
-                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
-                
-                double switchingFrequency = ppOpPoint.get_switching_frequency();
-                
-                SimulationConfig config;
-                config.frequency = switchingFrequency;
-                config.extractOnePeriod = false;
-                config.numberOfPeriods = get_num_periods_to_extract();
-                config.steadyStateCycles = get_num_steady_state_periods();
-                config.keepTempFiles = false;
-                
-                auto simResult = runner.run_simulation(netlist, config);
-                
-                if (!simResult.success) {
-                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
-                }
-                
-                PushPullTopologyWaveforms waveforms;
-                waveforms.frequency = switchingFrequency;
-                waveforms.inputVoltageValue = inputVoltage;
-                waveforms.dutyCycle = get_maximum_duty_cycle();
-                
-                // Extract waveforms by name from the simulation result
-                for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-                    const auto& name = simResult.waveformNames[i];
-                    const auto& waveform = simResult.waveforms[i];
-                    
-                    if (waveforms.time.empty() && waveform.get_time()) {
-                        waveforms.time = waveform.get_time().value();
-                    }
-                    
-                    if (name == "pri_top") {
-                        waveforms.primaryTopVoltage = waveform.get_data();
-                    } else if (name == "vpri_top_sense#branch") {
-                        waveforms.primaryTopCurrent = waveform.get_data();
-                    } else if (name == "pri_bot") {
-                        waveforms.primaryBottomVoltage = waveform.get_data();
-                    } else if (name == "vpri_bot_sense#branch") {
-                        waveforms.primaryBottomCurrent = waveform.get_data();
-                    } else if (name == "sec_top") {
-                        waveforms.secondaryVoltage = waveform.get_data();
-                    } else if (name == "vsec_sense#branch") {
-                        waveforms.secondaryCurrent = waveform.get_data();
-                    } else if (name == "vout") {
-                        waveforms.outputVoltage = waveform.get_data();
-                    }
-                }
-                
-                std::string opName = inputVoltagesNames[inputVoltageIndex] + " input volt.";
-                if (get_operating_points().size() > 1) {
-                    opName += " with op. point " + std::to_string(opIndex);
-                }
-                waveforms.operatingPointName = opName;
-                
-                allWaveforms.push_back(waveforms);
-            }
-        }
-        
-        return allWaveforms;
+        // For Push-Pull converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
     }
 } // namespace OpenMagnetics

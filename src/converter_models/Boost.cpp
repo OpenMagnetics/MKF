@@ -434,9 +434,9 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
 
-    std::vector<BoostTopologyWaveforms> Boost::simulate_and_extract_topology_waveforms(double inductance) {
+    std::vector<OperatingPoint> Boost::simulate_and_extract_topology_waveforms(double inductance) {
         
-        std::vector<BoostTopologyWaveforms> topologyWaveforms;
+        std::vector<OperatingPoint> operatingPoints;
         
         NgspiceRunner runner;
         if (!runner.is_available()) {
@@ -469,13 +469,6 @@ namespace OpenMagnetics {
                 std::string netlist = generate_ngspice_circuit(inductance, inputVoltageIndex, opIndex);
                 
                 double switchingFrequency = boostOpPoint.get_switching_frequency();
-                double outputVoltage = boostOpPoint.get_output_voltage();
-                double diodeVoltageDrop = get_diode_voltage_drop();
-                double efficiency = 1.0;
-                if (get_efficiency()) {
-                    efficiency = get_efficiency().value();
-                }
-                double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, diodeVoltageDrop, efficiency);
                 
                 // Run simulation
                 SimulationConfig config;
@@ -490,62 +483,35 @@ namespace OpenMagnetics {
                     throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
                 }
                 
-                // Build name-to-index map for waveform lookup (case-insensitive)
-                std::map<std::string, size_t> nameToIndex;
-                for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-                    std::string lower = simResult.waveformNames[i];
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    nameToIndex[lower] = i;
-                }
-                
-                // Helper lambda to get waveform data by name
-                auto getWaveformData = [&](const std::string& name) -> std::vector<double> {
-                    std::string lower = name;
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    auto it = nameToIndex.find(lower);
-                    if (it != nameToIndex.end()) {
-                        return simResult.waveforms[it->second].get_data();
-                    }
-                    return {};
+                // For boost, the inductor voltage is Vin - Vsw
+                // We measure the switch node voltage and use input as reference
+                NgspiceRunner::WaveformNameMapping waveformMapping = {
+                    {{"voltage", "l_in"}, {"current", "vl_sense#branch"}}
                 };
                 
-                // Extract topology waveforms
-                BoostTopologyWaveforms waveforms;
-                waveforms.frequency = switchingFrequency;
-                waveforms.inputVoltageValue = inputVoltage;
-                waveforms.outputVoltageValue = outputVoltage;
-                waveforms.dutyCycle = dutyCycle;
+                std::vector<std::string> windingNames = {"Primary"};
+                std::vector<bool> flipCurrentSign = {false};
+                
+                OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
+                    simResult,
+                    waveformMapping,
+                    switchingFrequency,
+                    windingNames,
+                    boostOpPoint.get_ambient_temperature(),
+                    flipCurrentSign);
                 
                 // Set name
-                waveforms.operatingPointName = inputVoltagesNames[inputVoltageIndex] + " input";
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input";
                 if (get_operating_points().size() > 1) {
-                    waveforms.operatingPointName += " op. point " + std::to_string(opIndex);
+                    name += " op. point " + std::to_string(opIndex);
                 }
+                operatingPoint.set_name(name);
                 
-                // Extract time vector
-                waveforms.time = getWaveformData("time");
-                
-                // Extract voltage signals
-                waveforms.switchNodeVoltage = getWaveformData("sw");
-                waveforms.outputVoltage = getWaveformData("vout");
-                
-                // Extract current signals
-                waveforms.inductorCurrent = getWaveformData("vl_sense#branch");
-                
-                // Calculate inductor voltage = Vin - Vsw
-                auto swVoltage = waveforms.switchNodeVoltage;
-                if (!swVoltage.empty()) {
-                    waveforms.inductorVoltage.resize(swVoltage.size());
-                    for (size_t i = 0; i < swVoltage.size(); ++i) {
-                        waveforms.inductorVoltage[i] = inputVoltage - swVoltage[i];
-                    }
-                }
-                
-                topologyWaveforms.push_back(waveforms);
+                operatingPoints.push_back(operatingPoint);
             }
         }
         
-        return topologyWaveforms;
+        return operatingPoints;
     }
 
 } // namespace OpenMagnetics

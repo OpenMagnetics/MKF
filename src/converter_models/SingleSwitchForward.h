@@ -10,36 +10,6 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-/**
- * @brief Structure holding topology-level waveforms for Single-Switch Forward converter validation
- */
-struct SingleSwitchForwardTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;
-    std::vector<double> switchNodeVoltage;
-    
-    // Transformer signals
-    std::vector<double> primaryVoltage;
-    std::vector<double> primaryCurrent;
-    std::vector<double> demagVoltage;
-    std::vector<double> demagCurrent;
-    
-    // Output side signals  
-    std::vector<std::vector<double>> secondaryVoltages;
-    std::vector<std::vector<double>> secondaryCurrents;
-    std::vector<double> outputVoltage;
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    double dutyCycle;
-};
-
-
 class SingleSwitchForward : public MAS::Forward, public Topology {
 private:
     int numPeriodsToExtract = 5;
@@ -96,13 +66,13 @@ public:
         double magnetizingInductance);
     
     /**
-     * @brief Simulate and extract topology-level waveforms for converter validation
+     * @brief Simulate the Single-Switch Forward converter and extract operating points
      * 
      * @param turnsRatios Turns ratios for each winding
      * @param magnetizingInductance Magnetizing inductance in H
-     * @return Vector of SingleSwitchForwardTopologyWaveforms for each operating condition
+     * @return Vector of OperatingPoints extracted from simulation
      */
-    std::vector<SingleSwitchForwardTopologyWaveforms> simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 

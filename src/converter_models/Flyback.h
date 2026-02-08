@@ -10,36 +10,6 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-/**
- * @brief Structure holding topology-level waveforms for converter validation
- * 
- * These waveforms are used to validate that the simulation matches expected
- * converter behavior, not for magnetic component analysis.
- */
-struct FlybackTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;           // v(vin_dc) - DC input voltage
-    std::vector<double> switchNodeVoltage;      // v(pri_in) - switch node / primary winding voltage
-    
-    // Output side signals (one per secondary winding)
-    std::vector<std::vector<double>> secondaryWindingVoltages; // v(sec_N_in) - secondary winding voltages
-    std::vector<std::vector<double>> outputVoltages;          // v(vout_N) - DC output voltages after rectifiers
-    
-    // Currents
-    std::vector<double> primaryCurrent;                       // i(vpri_sense) - primary winding current
-    std::vector<std::vector<double>> secondaryCurrents;       // i(vsec_sense_N) - secondary winding currents
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    std::vector<double> outputVoltageValues;  // One per secondary
-    double dutyCycle;
-};
-
 class FlybackOperatingPoint : public MAS::FlybackOperatingPoint{
 public:
     double resolve_switching_frequency(double inputVoltage, double diodeVoltageDrop, std::optional<double> inductance = std::nullopt, std::optional<std::vector<double>> turnsRatios = std::nullopt, double efficiency = 0.85);
@@ -163,9 +133,9 @@ public:
      * @param turnsRatios Turns ratios for each secondary
      * @param magnetizingInductance Magnetizing inductance in H
      * @param numberOfPeriods Number of switching periods to simulate (default 2)
-     * @return Vector of FlybackTopologyWaveforms for each operating condition
+     * @return Vector of OperatingPoints for each operating condition
      */
-    std::vector<FlybackTopologyWaveforms> simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
         size_t numberOfPeriods = 2);
