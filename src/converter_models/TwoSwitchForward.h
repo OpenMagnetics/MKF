@@ -10,33 +10,6 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-/**
- * @brief Structure holding topology-level waveforms for Two-Switch Forward converter validation
- */
-struct TwoSwitchForwardTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;
-    
-    // Transformer signals
-    std::vector<double> primaryVoltage;
-    std::vector<double> primaryCurrent;
-    
-    // Output side signals  
-    std::vector<std::vector<double>> secondaryVoltages;
-    std::vector<std::vector<double>> secondaryCurrents;
-    std::vector<double> outputVoltage;
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    double dutyCycle;
-};
-
-
 class TwoSwitchForward : public MAS::Forward, public Topology {
 private:
     int numPeriodsToExtract = 5;
@@ -85,7 +58,7 @@ public:
     /**
      * @brief Simulate and extract topology-level waveforms for converter validation
      */
-    std::vector<TwoSwitchForwardTopologyWaveforms> simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 

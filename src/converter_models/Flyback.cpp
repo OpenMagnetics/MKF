@@ -756,129 +756,13 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
 
-    std::vector<FlybackTopologyWaveforms> Flyback::simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> Flyback::simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
         size_t numberOfPeriods) {
-        
-        std::vector<FlybackTopologyWaveforms> topologyWaveforms;
-        
-        NgspiceRunner runner;
-        if (!runner.is_available()) {
-            throw std::runtime_error("ngspice is not available for simulation");
-        }
-        
-        // Collect input voltages to simulate
-        std::vector<double> inputVoltages;
-        std::vector<std::string> inputVoltagesNames;
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        
-        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            double inputVoltage = inputVoltages[inputVoltageIndex];
-            
-            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
-                auto flybackOpPoint = get_mutable_operating_points()[opIndex];
-                
-                // Generate circuit
-                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
-                
-                // Calculate switching frequency
-                double switchingFrequency = flybackOpPoint.resolve_switching_frequency(
-                    inputVoltage, get_diode_voltage_drop(), magnetizingInductance, turnsRatios, get_efficiency());
-                
-                // Calculate duty cycle (same formula as in generate_ngspice_circuit)
-                double totalOutputPower = get_total_input_power(flybackOpPoint.get_output_currents(), flybackOpPoint.get_output_voltages(), 1, 0);
-                double maximumEffectiveLoadCurrent = totalOutputPower / flybackOpPoint.get_output_voltages()[0];
-                double maximumEffectiveLoadCurrentReflected = maximumEffectiveLoadCurrent / turnsRatios[0];
-                double totalInputPower = get_total_input_power(flybackOpPoint.get_output_currents(), flybackOpPoint.get_output_voltages(), get_efficiency(), 0);
-                double averageInputCurrent = totalInputPower / inputVoltage;
-                double dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
-                
-                // Run simulation
-                SimulationConfig config;
-                config.frequency = switchingFrequency;
-                config.extractOnePeriod = true;  // Enable period extraction
-                config.numberOfPeriods = numberOfPeriods;  // Use configured number of periods
-                config.steadyStateCycles = get_num_steady_state_periods();
-                std::cout << "DEBUG [Flyback]: Setting config.steadyStateCycles = " << config.steadyStateCycles << std::endl;
-                config.keepTempFiles = false;
-                
-                auto simResult = runner.run_simulation(netlist, config);
-                
-                if (!simResult.success) {
-                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
-                }
-                
-                // Build name-to-index map for waveform lookup (case-insensitive)
-                std::map<std::string, size_t> nameToIndex;
-                std::cout << "DEBUG Flyback: Available waveform names:" << std::endl;
-                for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-                    std::cout << "  [" << i << "] = '" << simResult.waveformNames[i] << "'" << std::endl;
-                    std::string lower = simResult.waveformNames[i];
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    nameToIndex[lower] = i;
-                }
-                
-                // Helper lambda to get waveform data by name
-                auto getWaveformData = [&](const std::string& name) -> std::vector<double> {
-                    std::string lower = name;
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    auto it = nameToIndex.find(lower);
-                    if (it != nameToIndex.end()) {
-                        std::cout << "DEBUG Flyback: Found waveform '" << name << "' at index " << it->second << std::endl;
-                        return simResult.waveforms[it->second].get_data();
-                    }
-                    std::cout << "DEBUG Flyback: Waveform '" << name << "' NOT FOUND" << std::endl;
-                    return {};
-                };
-                
-                // Extract topology waveforms
-                FlybackTopologyWaveforms waveforms;
-                waveforms.frequency = switchingFrequency;
-                waveforms.inputVoltageValue = inputVoltage;
-                waveforms.outputVoltageValues = flybackOpPoint.get_output_voltages();
-                waveforms.dutyCycle = dutyCycle;
-                
-                // Set name
-                waveforms.operatingPointName = inputVoltagesNames[inputVoltageIndex] + " input";
-                if (get_operating_points().size() > 1) {
-                    waveforms.operatingPointName += " op. point " + std::to_string(opIndex);
-                }
-                
-                // Extract time vector
-                waveforms.time = getWaveformData("time");
-                
-                // Extract primary voltage signals (ngspice node names)
-                waveforms.switchNodeVoltage = getWaveformData("pri_in");
-                
-                // Extract secondary waveforms for each secondary winding
-                size_t numSecondaries = turnsRatios.size();
-                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-                    waveforms.secondaryWindingVoltages.push_back(getWaveformData("sec" + std::to_string(secIdx) + "_in"));
-                    waveforms.outputVoltages.push_back(getWaveformData("vout" + std::to_string(secIdx)));
-                    waveforms.secondaryCurrents.push_back(getWaveformData("vsec_sense" + std::to_string(secIdx) + "#branch"));
-                }
-                
-                // Extract primary current signal
-                waveforms.primaryCurrent = getWaveformData("vpri_sense#branch");
-                
-                topologyWaveforms.push_back(waveforms);
-            }
-        }
-        
-        return topologyWaveforms;
+        // For Flyback converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
     }
 
     double Flyback::get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop) {

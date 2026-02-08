@@ -683,103 +683,11 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
     
-    std::vector<ActiveClampForwardTopologyWaveforms> ActiveClampForward::simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> ActiveClampForward::simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance) {
-        
-        std::vector<ActiveClampForwardTopologyWaveforms> allWaveforms;
-        
-        NgspiceRunner runner;
-        if (!runner.is_available()) {
-            throw std::runtime_error("ngspice is not available for simulation");
-        }
-        
-        std::vector<double> inputVoltages;
-        std::vector<std::string> inputVoltagesNames;
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        
-        size_t numSecondaries = turnsRatios.size();
-        
-        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            double inputVoltage = inputVoltages[inputVoltageIndex];
-            
-            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
-                auto forwardOpPoint = get_operating_points()[opIndex];
-                
-                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
-                
-                double switchingFrequency = forwardOpPoint.get_switching_frequency();
-                
-                SimulationConfig config;
-                config.frequency = switchingFrequency;
-                config.extractOnePeriod = false;
-                config.numberOfPeriods = get_num_periods_to_extract();
-                config.steadyStateCycles = get_num_steady_state_periods();
-                config.keepTempFiles = false;
-                
-                auto simResult = runner.run_simulation(netlist, config);
-                
-                if (!simResult.success) {
-                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
-                }
-                
-                ActiveClampForwardTopologyWaveforms waveforms;
-                waveforms.frequency = switchingFrequency;
-                waveforms.inputVoltageValue = inputVoltage;
-                waveforms.dutyCycle = get_maximum_duty_cycle();
-                
-                for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-                    const auto& name = simResult.waveformNames[i];
-                    const auto& waveform = simResult.waveforms[i];
-                    
-                    if (waveforms.time.empty() && waveform.get_time()) {
-                        waveforms.time = waveform.get_time().value();
-                    }
-                    
-                    if (name == "pri_in") {
-                        waveforms.primaryVoltage = waveform.get_data();
-                    } else if (name == "vpri_sense#branch") {
-                        waveforms.primaryCurrent = waveform.get_data();
-                    }
-                    
-                    for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-                        if (name == "sec" + std::to_string(secIdx) + "_in") {
-                            while (waveforms.secondaryVoltages.size() <= secIdx) {
-                                waveforms.secondaryVoltages.push_back({});
-                            }
-                            waveforms.secondaryVoltages[secIdx] = waveform.get_data();
-                        } else if (name == "vsec_sense" + std::to_string(secIdx) + "#branch") {
-                            while (waveforms.secondaryCurrents.size() <= secIdx) {
-                                waveforms.secondaryCurrents.push_back({});
-                            }
-                            waveforms.secondaryCurrents[secIdx] = waveform.get_data();
-                        } else if (name == "vout" + std::to_string(secIdx)) {
-                            waveforms.outputVoltage = waveform.get_data();
-                        }
-                    }
-                }
-                
-                std::string opName = inputVoltagesNames[inputVoltageIndex] + " input volt.";
-                if (get_operating_points().size() > 1) {
-                    opName += " with op. point " + std::to_string(opIndex);
-                }
-                waveforms.operatingPointName = opName;
-                
-                allWaveforms.push_back(waveforms);
-            }
-        }
-        
-        return allWaveforms;
+        // For Active Clamp Forward converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
     }
 } // namespace OpenMagnetics

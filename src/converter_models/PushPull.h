@@ -10,35 +10,6 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-/**
- * @brief Structure holding topology-level waveforms for Push-Pull converter validation
- */
-struct PushPullTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;
-    
-    // Transformer signals
-    std::vector<double> primaryTopVoltage;
-    std::vector<double> primaryTopCurrent;
-    std::vector<double> primaryBottomVoltage;
-    std::vector<double> primaryBottomCurrent;
-    
-    // Output side signals  
-    std::vector<double> secondaryVoltage;
-    std::vector<double> secondaryCurrent;
-    std::vector<double> outputVoltage;
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    double dutyCycle;
-};
-
-
 class PushPull : public MAS::PushPull, public Topology {
 private:
     int numPeriodsToExtract = 5;
@@ -95,13 +66,13 @@ public:
         double magnetizingInductance);
     
     /**
-     * @brief Simulate and extract topology-level waveforms for converter validation
+     * @brief Simulate and extract operating points from topology waveforms
      * 
      * @param turnsRatios Turns ratios for each winding
      * @param magnetizingInductance Magnetizing inductance in H
-     * @return Vector of PushPullTopologyWaveforms for each operating condition
+     * @return Vector of OperatingPoints extracted from simulation
      */
-    std::vector<PushPullTopologyWaveforms> simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 

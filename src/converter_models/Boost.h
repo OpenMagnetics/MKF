@@ -10,36 +10,6 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-/**
- * @brief Structure holding topology-level waveforms for Boost converter validation
- * 
- * These waveforms are used to validate that the simulation matches expected
- * converter behavior, not for magnetic component analysis.
- */
-struct BoostTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;           // v(vin_dc) - DC input voltage
-    std::vector<double> switchNodeVoltage;      // v(sw) - switch node voltage
-    
-    // Output side signals  
-    std::vector<double> inductorVoltage;        // v(vin_dc) - v(sw) - voltage across inductor
-    std::vector<double> outputVoltage;          // v(vout) - DC output voltage
-    
-    // Currents
-    std::vector<double> inductorCurrent;        // i(vl_sense) - inductor current
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    double outputVoltageValue;
-    double dutyCycle;
-};
-
-
 class Boost : public MAS::Boost, public Topology {
 private:
     int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
@@ -89,12 +59,12 @@ public:
     std::vector<OperatingPoint> simulate_and_extract_operating_points(double inductance);
     
     /**
-     * @brief Simulate and extract topology-level waveforms for converter validation
+     * @brief Simulate the Boost converter and extract operating points from waveforms
      * 
      * @param inductance Inductance in H
-     * @return Vector of BoostTopologyWaveforms for each operating condition
+     * @return Vector of OperatingPoints extracted from simulation
      */
-    std::vector<BoostTopologyWaveforms> simulate_and_extract_topology_waveforms(double inductance);
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(double inductance);
 };
 
 class AdvancedBoost : public Boost {
