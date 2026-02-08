@@ -458,6 +458,27 @@ public:
                                        const std::optional<InsulationWireCoating>& wireCoating = std::nullopt);
     
     /**
+     * @brief Initialize quadrants for concentric turn nodes with cardinal directions
+     * 
+     * For concentric turns arranged in horizontal layers, maps quadrants to
+     * cardinal directions (aligned with Cartesian axes):
+     * - RADIAL_INNER     (index 0) ↔ LEFT   (-X direction, toward center/bobbin)
+     * - RADIAL_OUTER     (index 1) ↔ RIGHT  (+X direction, away from center)
+     * - TANGENTIAL_LEFT  (index 2) ↔ TOP    (+Y direction)
+     * - TANGENTIAL_RIGHT (index 3) ↔ BOTTOM (-Y direction)
+     * 
+     * @param wireWidth Wire width in X direction (radial/horizontal)
+     * @param wireHeight Wire height in Y direction (axial/vertical)
+     * @param turnLength Length of the turn (circumferential)
+     * @param thermalCond Thermal conductivity of wire material
+     * @param wireCoating Optional wire coating information
+     */
+    void initializeConcentricTurnQuadrants(double wireWidth, double wireHeight, double turnLength,
+                                            double thermalCond,
+                                            const std::optional<InsulationWireCoating>& wireCoating = std::nullopt,
+                                            TurnCrossSectionalShape shape = TurnCrossSectionalShape::ROUND);
+    
+    /**
      * @brief Initialize quadrants for concentric core/bobbin nodes with cardinal directions
      * 
      * For concentric cores, maps quadrants to cardinal directions:

@@ -238,6 +238,66 @@ void ThermalNetworkNode::initializeConcentricQuadrant(double wireWidth, double w
     }
 }
 
+void ThermalNetworkNode::initializeConcentricTurnQuadrants(double wireWidth, double wireHeight, 
+                                                            double turnLength,
+                                                            double thermalCond,
+                                                            const std::optional<InsulationWireCoating>& wireCoating,
+                                                            TurnCrossSectionalShape shape) {
+    isInnerTurn = false;
+    
+    // Store geometry
+    crossSectionalShape = shape;
+    dimensions = NodeDimensions(wireWidth, wireHeight, turnLength);
+    
+    // For concentric turns: quadrants map to cardinal directions (Cartesian-aligned)
+    // This is different from toroidal where directions are angle-dependent
+    //
+    // Quadrant mapping for concentric turns:
+    // - RADIAL_INNER  (index 0): LEFT face (-X) - facing toward bobbin/center
+    // - RADIAL_OUTER  (index 1): RIGHT face (+X) - facing away from center
+    // - TANGENTIAL_LEFT  (index 2): TOP face (+Y) - facing up
+    // - TANGENTIAL_RIGHT (index 3): BOTTOM face (-Y) - facing down
+    
+    double sideArea = wireHeight * turnLength;    // LEFT/RIGHT faces: height * length
+    double topBottomArea = wireWidth * turnLength; // TOP/BOTTOM faces: width * length
+    
+    // Get node center position
+    double nodeX = physicalCoordinates.size() >= 1 ? physicalCoordinates[0] : 0.0;
+    double nodeY = physicalCoordinates.size() >= 2 ? physicalCoordinates[1] : 0.0;
+    
+    // LEFT face (-X direction) - toward center/bobbin
+    quadrants[0].face = ThermalNodeFace::RADIAL_INNER;
+    quadrants[0].surfaceArea = sideArea;
+    quadrants[0].length = turnLength;
+    quadrants[0].thermalConductivity = thermalCond;
+    quadrants[0].coating = wireCoating;
+    quadrants[0].limitCoordinates = {nodeX - wireWidth/2, nodeY, 0.0};
+    
+    // RIGHT face (+X direction) - away from center
+    quadrants[1].face = ThermalNodeFace::RADIAL_OUTER;
+    quadrants[1].surfaceArea = sideArea;
+    quadrants[1].length = turnLength;
+    quadrants[1].thermalConductivity = thermalCond;
+    quadrants[1].coating = wireCoating;
+    quadrants[1].limitCoordinates = {nodeX + wireWidth/2, nodeY, 0.0};
+    
+    // TOP face (+Y direction)
+    quadrants[2].face = ThermalNodeFace::TANGENTIAL_LEFT;
+    quadrants[2].surfaceArea = topBottomArea;
+    quadrants[2].length = turnLength;
+    quadrants[2].thermalConductivity = thermalCond;
+    quadrants[2].coating = wireCoating;
+    quadrants[2].limitCoordinates = {nodeX, nodeY + wireHeight/2, 0.0};
+    
+    // BOTTOM face (-Y direction)
+    quadrants[3].face = ThermalNodeFace::TANGENTIAL_RIGHT;
+    quadrants[3].surfaceArea = topBottomArea;
+    quadrants[3].length = turnLength;
+    quadrants[3].thermalConductivity = thermalCond;
+    quadrants[3].coating = wireCoating;
+    quadrants[3].limitCoordinates = {nodeX, nodeY - wireHeight/2, 0.0};
+}
+
 void ThermalNetworkNode::initializeConcentricCoreQuadrants(double width, double height, double depth, 
                                                            double thermalCond) {
     // Store geometry

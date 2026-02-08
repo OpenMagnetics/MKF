@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
@@ -1860,27 +1861,63 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
     auto bobbinVariant = magnetic.get_coil().get_bobbin();
     if (family != MAS::CoreShapeFamily::T && std::holds_alternative<Bobbin>(bobbinVariant)) {
         
-        // Try to find bobbin temperature - node names are "Bobbin_Inner" or "Bobbin_Outer"
-        auto bobbinTempOpt = findNodeTemperature("Bobbin");
-        if (bobbinTempOpt) {
-            double temp = bobbinTempOpt.value();
-            auto color = getColorForTemperature(temp);
-            
-            std::stringstream stream;
-            stream << std::fixed << std::setprecision(1) << temp;
-            std::string label = "bobbin: " + stream.str() + " °C";
-            
-            auto windingWindow = core.get_winding_window();
-            if (windingWindow.get_width()) {
-                double xCoord = windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2;
-                double yCoord = windingWindow.get_coordinates().value()[1];
-                double width = windingWindow.get_width().value();
-                double height = windingWindow.get_height().value();
+        // Draw each bobbin wall separately with its actual dimensions
+        // Look for bobbin nodes by their specific names
+        for (const auto& [name, temp] : nodeTemperatures) {
+            if (name.find("Bobbin_") == 0) {
+                auto color = getColorForTemperature(temp);
                 
-                // Draw bobbin filled with temperature color
+                std::stringstream stream;
+                stream << std::fixed << std::setprecision(1) << temp;
+                std::string label = name + ": " + stream.str() + " °C";
+                
                 std::string cssClassName = generate_random_string();
                 _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
-                paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
+                
+                // Get bobbin wall dimensions from the node temperature data
+                // The node positions and dimensions are stored in the Temperature object
+                // For now, use the winding window to estimate positions
+                auto windingWindow = core.get_winding_window();
+                if (windingWindow.get_width()) {
+                    double wwX = windingWindow.get_coordinates().value()[0];
+                    double wwY = windingWindow.get_coordinates().value()[1];
+                    double wwWidth = windingWindow.get_width().value();
+                    double wwHeight = windingWindow.get_height().value();
+                    
+                    // Get bobbin processed description for wall thickness
+                    auto bobbinProcessed = std::get<Bobbin>(bobbinVariant).get_processed_description();
+                    double wallThickness = 0.002;  // Default 2mm
+                    if (bobbinProcessed) {
+                        wallThickness = bobbinProcessed->get_wall_thickness();
+                    }
+                    
+                    double xCoord, yCoord, width, height;
+                    
+                    if (name.find("CentralColumn") != std::string::npos) {
+                        // Central column wall - thin vertical strip at left side of winding window
+                        xCoord = wwX;
+                        yCoord = wwY;
+                        width = wallThickness;
+                        height = wwHeight;
+                    } else if (name.find("TopYoke") != std::string::npos) {
+                        // Top yoke wall - thin horizontal strip at top of winding window
+                        xCoord = wwX + wwWidth / 4;  // Center in the winding window width
+                        yCoord = wwY + wwHeight / 2 - wallThickness / 2;
+                        width = wwWidth / 2;
+                        height = wallThickness;
+                    } else if (name.find("BottomYoke") != std::string::npos) {
+                        // Bottom yoke wall - thin horizontal strip at bottom of winding window
+                        xCoord = wwX + wwWidth / 4;
+                        yCoord = wwY - wwHeight / 2 + wallThickness / 2;
+                        width = wwWidth / 2;
+                        height = wallThickness;
+                    } else {
+                        // Default: skip unknown bobbin node types
+                        continue;
+                    }
+                    
+                    paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
+                }
             }
         }
     }
@@ -2492,17 +2529,30 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     }
     
     // Find bounding box of all nodes in physical coordinates
+    // Skip nodes with invalid coordinates (outside reasonable range of -10 to 10 meters)
     double minX = std::numeric_limits<double>::max();
     double maxX = std::numeric_limits<double>::lowest();
     double minY = std::numeric_limits<double>::max();
     double maxY = std::numeric_limits<double>::lowest();
     
+    const double REASONABLE_COORD_LIMIT = 10.0;  // 10 meters is way larger than any magnetic component
+    
     for (const auto& node : nodes) {
         if (!node.isAmbient() && node.physicalCoordinates.size() >= 2) {
-            minX = std::min(minX, node.physicalCoordinates[0]);
-            maxX = std::max(maxX, node.physicalCoordinates[0]);
-            minY = std::min(minY, node.physicalCoordinates[1]);
-            maxY = std::max(maxY, node.physicalCoordinates[1]);
+            double x = node.physicalCoordinates[0];
+            double y = node.physicalCoordinates[1];
+            
+            // Skip nodes with unreasonable coordinates (likely corrupted or uninitialized)
+            if (std::abs(x) > REASONABLE_COORD_LIMIT || std::abs(y) > REASONABLE_COORD_LIMIT) {
+                std::cerr << "Warning: Node '" << node.name << "' has invalid coordinates (" 
+                          << x << ", " << y << "), skipping in schematic" << std::endl;
+                continue;
+            }
+            
+            minX = std::min(minX, x);
+            maxX = std::max(maxX, x);
+            minY = std::min(minY, y);
+            maxY = std::max(maxY, y);
         }
     }
     
@@ -2542,7 +2592,19 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     for (const auto& node : nodes) {
         if (node.part == ThermalNodePartType::AMBIENT) {
             // Ambient node - no visualization needed
-        } else if (node.part == ThermalNodePartType::TURN) {
+            continue;
+        }
+        
+        // Skip nodes with invalid coordinates
+        if (node.physicalCoordinates.size() >= 2) {
+            double x = node.physicalCoordinates[0];
+            double y = node.physicalCoordinates[1];
+            if (std::abs(x) > REASONABLE_COORD_LIMIT || std::abs(y) > REASONABLE_COORD_LIMIT) {
+                continue;  // Skip invalid nodes
+            }
+        }
+        
+        if (node.part == ThermalNodePartType::TURN) {
             // Extract winding index from windingIndex field or name
             int windingIdx = 0;
             if (node.windingIndex.has_value()) {
@@ -2566,12 +2628,20 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
             return {width / 2, height / 2};
         }
         
+        // Check for unreasonable coordinates
+        double x = node.physicalCoordinates[0];
+        double y = node.physicalCoordinates[1];
+        if (std::abs(x) > REASONABLE_COORD_LIMIT || std::abs(y) > REASONABLE_COORD_LIMIT) {
+            // Return a position off-screen for invalid nodes
+            return {-1000, -1000};
+        }
+        
         // Map physical coordinates to SVG space
         // Physical: (node.physicalCoordinates[0], node.physicalCoordinates[1]) in meters
         // SVG: (margin to width-margin, margin to height-margin)
         
-        double svgX = margin + (node.physicalCoordinates[0] - minX) * scaleFactor;
-        double svgY = margin + (node.physicalCoordinates[1] - minY) * scaleFactor;
+        double svgX = margin + (x - minX) * scaleFactor;
+        double svgY = margin + (y - minY) * scaleFactor;
         
         return {svgX, svgY};
     };
@@ -2790,20 +2860,10 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                 if (otherIdx < nodes.size() && nodes[otherIdx].isAmbient()) {
                     // For turn nodes: check which face connects to ambient
                     if (node.part == ThermalNodePartType::TURN) {
-                        // Inner turn nodes: RADIAL_INNER connects to ambient (inner winding window)
-                        // Outer turn nodes: RADIAL_OUTER connects to ambient (external air)
-                        std::string nameLower = node.name;
-                        std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-                        if (nameLower.find("_inner") != std::string::npos) {
-                            return face == ThermalNodeFace::RADIAL_INNER;
-                        } else if (nameLower.find("_outer") != std::string::npos) {
-                            return face == ThermalNodeFace::RADIAL_OUTER;
-                        } else {
-                            // Concentric turns (no _inner/_outer suffix): check actual face in resistance
-                            // For concentric: RADIAL_INNER=LEFT (toward center), RADIAL_OUTER=RIGHT (toward air)
-                            ThermalNodeFace connectedFace = (res.nodeFromId == nodeIdx) ? res.quadrantFrom : res.quadrantTo;
-                            return face == connectedFace;
-                        }
+                        // Check which face actually has the convection connection
+                        ThermalNodeFace connectedFace = (res.nodeFromId == nodeIdx) ? res.quadrantFrom : res.quadrantTo;
+                        if (face == connectedFace) return true;  // Found matching face
+                        // Otherwise continue checking other resistances
                     }
                     // For core nodes: check which faces connect to ambient AND have surface coverage > 0
                     else if (node.part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT) {
@@ -2971,11 +3031,7 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                 sliceColor = COLOR_AMBIENT;  // Green: mostly exposed
             } else {
                 // No explicit connection and mostly covered
-                if (quadrants[q] == ThermalNodeFace::TANGENTIAL_LEFT || quadrants[q] == ThermalNodeFace::TANGENTIAL_RIGHT) {
-                    sliceColor = COLOR_AMBIENT;  // Green: tangential surface always exposed to air
-                } else {
-                    sliceColor = COLOR_NO_CONNECTION;  // Brown: mostly covered by turns
-                }
+                sliceColor = COLOR_NO_CONNECTION;  // Brown: mostly covered
             }
             
             drawPieSlice(x, y, defaultNodeRadius * 1.15, sliceStartAngle, sliceEndAngle, sliceColor, 0.6);
@@ -3095,12 +3151,26 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                 break;
             case ThermalNodeFace::TANGENTIAL_LEFT:
             case ThermalNodeFace::TANGENTIAL_RIGHT:
-                // For tangential faces, we need to pair inner with outer
-                // Find adjacent corners (inner with outer that share an edge)
-                // The two inner corners should be adjacent to different outer corners
-                // inner1 is adjacent to outer1 or outer2?
-                // Check which outer corner is closer to inner1
-                {
+                // For concentric cores (angleRad ≈ 0): use Y coordinates to determine top/bottom
+                // For toroidal cores: use inner/outer corner sorting
+                if (std::abs(angleRad) < 0.1 || std::abs(angleRad - M_PI) < 0.1 || 
+                    std::abs(angleRad - 2*M_PI) < 0.1) {
+                    // Concentric core: TANGENTIAL_LEFT = top, TANGENTIAL_RIGHT = bottom
+                    // In SVG: top = smaller Y, bottom = larger Y
+                    // tl and tr have smaller Y (top), bl and br have larger Y (bottom)
+                    if (face == ThermalNodeFace::TANGENTIAL_LEFT) {
+                        // Top face: use tl and tr
+                        x1 = cx; y1 = cy;
+                        x2 = tl.first; y2 = tl.second;
+                        x3 = tr.first; y3 = tr.second;
+                    } else {
+                        // Bottom face: use bl and br
+                        x1 = cx; y1 = cy;
+                        x2 = bl.first; y2 = bl.second;
+                        x3 = br.first; y3 = br.second;
+                    }
+                } else {
+                    // Toroidal core: use inner/outer corner sorting
                     double d1 = std::sqrt(std::pow(inner1.p.first - outer1.p.first, 2) + 
                                           std::pow(inner1.p.second - outer1.p.second, 2));
                     double d2 = std::sqrt(std::pow(inner1.p.first - outer2.p.first, 2) + 
@@ -3112,12 +3182,10 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                     auto& rightOuter = (d1 < d2) ? outer2 : outer1;
                     
                     if (face == ThermalNodeFace::TANGENTIAL_LEFT) {
-                        // Left face: inner1 -> outer1
                         x1 = cx; y1 = cy;
                         x2 = leftInner.p.first; y2 = leftInner.p.second;
                         x3 = leftOuter.p.first; y3 = leftOuter.p.second;
                     } else {
-                        // Right face: inner2 -> outer2
                         x1 = cx; y1 = cy;
                         x2 = rightInner.p.first; y2 = rightInner.p.second;
                         x3 = rightOuter.p.first; y3 = rightOuter.p.second;
@@ -3226,12 +3294,8 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                 } else if (hasConvectionToAmbientOnFace(nodeIdx, quadrants[q], nodeAngle)) {
                     triColor = COLOR_AMBIENT;  // Green: exposed to air
                 } else {
-                    // No explicit connection - check if it's a tangential face
-                    if (quadrants[q] == ThermalNodeFace::TANGENTIAL_LEFT || quadrants[q] == ThermalNodeFace::TANGENTIAL_RIGHT) {
-                        triColor = COLOR_AMBIENT;  // Green: tangential surface exposed to air
-                    } else {
-                        triColor = COLOR_NO_CONNECTION;  // Brown: not connected
-                    }
+                    // No explicit connection - not exposed to air
+                    triColor = COLOR_NO_CONNECTION;  // Brown: not connected
                 }
                 
                 // Draw quadrant shape based on cross-sectional shape
@@ -3302,10 +3366,10 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                                 offsetX = -radius; offsetY = 0; break;
                             case ThermalNodeFace::RADIAL_OUTER:   // Right (+X)
                                 offsetX = radius; offsetY = 0; break;
-                            case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y)
-                                offsetX = 0; offsetY = radius; break;
-                            case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y)
+                            case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y in physics = -Y in SVG)
                                 offsetX = 0; offsetY = -radius; break;
+                            case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y in physics = +Y in SVG)
+                                offsetX = 0; offsetY = radius; break;
                             default: break;
                         }
                         // Position directly in SVG coordinates (center is already scaled in x, y)
@@ -3363,6 +3427,7 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                     
                     if (isConcentricCore) {
                         // For concentric: use fixed horizontal/vertical offsets in SVG coordinates
+                        // Note: SVG Y increases downward, opposite of physics
                         double radius = (nodeWidth + nodeHeight) / 4.0;  // Node radius in SVG coordinates
                         double offsetX = 0, offsetY = 0;
                         switch (quadrant.face) {
@@ -3370,10 +3435,10 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                                 offsetX = -radius; offsetY = 0; break;
                             case ThermalNodeFace::RADIAL_OUTER:   // Right (+X)
                                 offsetX = radius; offsetY = 0; break;
-                            case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y)
-                                offsetX = 0; offsetY = radius; break;
-                            case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y)
+                            case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y in physics = -Y in SVG)
                                 offsetX = 0; offsetY = -radius; break;
+                            case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y in physics = +Y in SVG)
+                                offsetX = 0; offsetY = radius; break;
                             default: break;
                         }
                         // Position label at 50% of the way from center to limit (inside the quadrant)

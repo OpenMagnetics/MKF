@@ -20,6 +20,107 @@ constexpr bool THERMAL_DEBUG = false;
 // Contact threshold: surfaces must be within this distance to conduct
 constexpr double CONTACT_THRESHOLD_FACTOR = 0.25;  // wireDiameter / 4
 
+// ============================================================================
+// Wire Property Helper Functions (extract properties from Wire object locally)
+// ============================================================================
+
+/**
+ * @brief Extract wire dimensions from Wire object
+ * @return Pair of {width, height} in meters
+ */
+static std::pair<double, double> getWireDimensions(const Wire& wire) {
+    double width = 0.001;   // Default 1mm
+    double height = 0.001;  // Default 1mm
+    
+    bool isRound = (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ);
+    
+    // Get wire dimensions
+    if (wire.get_conducting_diameter()) {
+        auto condDiam = wire.get_conducting_diameter().value();
+        if (condDiam.get_nominal()) {
+            width = condDiam.get_nominal().value();
+            height = width;  // Round wire
+        }
+    }
+    
+    if (wire.get_outer_diameter()) {
+        auto outerDiam = wire.get_outer_diameter().value();
+        if (outerDiam.get_nominal()) {
+            double outer = outerDiam.get_nominal().value();
+            if (!isRound) {
+                width = outer;  // For rectangular, width = radial
+            }
+        }
+    }
+    
+    // For rectangular wires, dimensions are estimated from conducting diameter
+    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        if (wire.get_outer_diameter()) {
+            auto outerDiam = wire.get_outer_diameter().value();
+            if (outerDiam.get_nominal()) {
+                width = outerDiam.get_nominal().value();
+                height = width * 0.5;  // Assume 2:1 aspect ratio
+            }
+        }
+    }
+    
+    return {width, height};
+}
+
+/**
+ * @brief Check if wire is round (including litz)
+ */
+static bool isRoundWire(const Wire& wire) {
+    return (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ);
+}
+
+/**
+ * @brief Get wire thermal conductivity from Wire object
+ */
+static double getWireThermalConductivity(const Wire& wire) {
+    double thermalCond = 385.0;  // Default copper
+    
+    if (wire.get_material()) {
+        auto materialVariant = wire.get_material().value();
+        if (std::holds_alternative<std::string>(materialVariant)) {
+            std::string materialName = std::get<std::string>(materialVariant);
+            try {
+                auto wireMaterial = find_wire_material_by_name(materialName);
+                auto tc = wireMaterial.get_thermal_conductivity();
+                if (tc && !tc->empty()) {
+                    thermalCond = (*tc)[0].get_value();
+                }
+            } catch (...) {
+                thermalCond = 385.0;
+            }
+        }
+    }
+    
+    return thermalCond;
+}
+
+/**
+ * @brief Calculate minimum distance for conduction detection
+ */
+static double getMinimumConductionDistance(double wireWidth, double wireHeight, bool round) {
+    if (round) {
+        return std::max(wireWidth, wireHeight) * 0.75;  // 75% of wire diameter
+    } else {
+        return std::min(wireWidth, wireHeight) * 0.75;  // 75% of wire thickness
+    }
+}
+
+/**
+ * @brief Calculate maximum distance for convection detection
+ */
+static double getMaximumConvectionDistance(double wireWidth, double wireHeight, bool round) {
+    if (round) {
+        return std::max(wireWidth, wireHeight);  // wire diameter
+    } else {
+        return std::min(wireWidth, wireHeight);  // min(width, height)
+    }
+}
+
 /**
  * @brief Simple matrix class for thermal circuit solver
  */
@@ -255,6 +356,22 @@ void Temperature::extractWireProperties() {
     }
 }
 
+std::optional<Wire> Temperature::extractWire() const {
+    auto coil = _magnetic.get_coil();
+    auto windings = coil.get_functional_description();
+    
+    if (windings.empty()) {
+        return std::nullopt;
+    }
+    
+    auto wireVariant = windings[0].get_wire();
+    if (!std::holds_alternative<Wire>(wireVariant)) {
+        return std::nullopt;
+    }
+    
+    return std::get<Wire>(wireVariant);
+}
+
 // ============================================================================
 // Node Creation
 // ============================================================================
@@ -344,10 +461,13 @@ void Temperature::createToroidalCoreNodes() {
                 bool isInner = turnRadius < meanRadius;
                 
                 // Calculate turn width at inner and outer radii
-                // For rectangular wires, width is constant
-                // For round wires, projected width varies with radius
-                double innerWidth = _wireWidth;
-                double outerWidth = _wireWidth;
+                // Use turn's actual dimensions if available, otherwise use defaults
+                double innerWidth = 0.001;  // Default 1mm
+                double outerWidth = 0.001;
+                if (turn.get_dimensions() && turn.get_dimensions()->size() >= 1) {
+                    innerWidth = (*turn.get_dimensions())[0];
+                    outerWidth = innerWidth;
+                }
                 
                 turnCoverageInfo.push_back({turnAngle, innerWidth, outerWidth, isInner});
             }
@@ -686,14 +806,16 @@ void Temperature::createBobbinNodes() {
             if (coords.size() >= 2) {
                 double turnX = coords[0];
                 double turnY = coords[1];
+                double turnWidth = 0;
                 double turnHeight = 0;
                 if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 2) {
+                    turnWidth = turn.get_dimensions().value()[0];   // X dimension
                     turnHeight = turn.get_dimensions().value()[1];  // Y dimension
                 }
-                // Check if turn is close to bobbin (within wire width + bobbin thickness)
-                double turnLeftEdge = turnX - _wireWidth / 2;
+                // Check if turn is close to bobbin (within turn width + bobbin thickness)
+                double turnLeftEdge = turnX - turnWidth / 2;
                 double bobbinRightEdge = bobbinColumnX + wallThickness / 2;
-                if (std::abs(turnLeftEdge - bobbinRightEdge) < (_wireWidth + wallThickness) && 
+                if (std::abs(turnLeftEdge - bobbinRightEdge) < (turnWidth + wallThickness) && 
                     turnY >= -windingWindowHeight/2 && turnY <= windingWindowHeight/2) {
                     turnHeights.push_back(turnHeight);
                 }
@@ -728,13 +850,15 @@ void Temperature::createBobbinNodes() {
                 double turnX = coords[0];
                 double turnY = coords[1];
                 double turnWidth = 0;
-                if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 1) {
-                    turnWidth = turn.get_dimensions().value()[0];  // X dimension
+                double turnHeight = 0;
+                if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 2) {
+                    turnWidth = turn.get_dimensions().value()[0];   // X dimension
+                    turnHeight = turn.get_dimensions().value()[1];  // Y dimension
                 }
                 // Check if turn is near the top yoke's right face
-                double turnBottom = turnY - _wireHeight / 2;
+                double turnBottom = turnY - turnHeight / 2;
                 double yokeTop = windingWindowTop;
-                if (std::abs(turnBottom - yokeTop) < (_wireHeight + wallThickness) &&
+                if (std::abs(turnBottom - yokeTop) < (turnHeight + wallThickness) &&
                     turnX >= bobbinYokeX - windingWindowWidth/4 && turnX <= bobbinYokeX + windingWindowWidth/2) {
                     topYokeTurnWidths.push_back(turnWidth);
                 }
@@ -768,13 +892,15 @@ void Temperature::createBobbinNodes() {
                 double turnX = coords[0];
                 double turnY = coords[1];
                 double turnWidth = 0;
-                if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 1) {
-                    turnWidth = turn.get_dimensions().value()[0];  // X dimension
+                double turnHeight = 0;
+                if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 2) {
+                    turnWidth = turn.get_dimensions().value()[0];   // X dimension
+                    turnHeight = turn.get_dimensions().value()[1];  // Y dimension
                 }
                 // Check if turn is near the bottom yoke's right face
-                double turnTop = turnY + _wireHeight / 2;
+                double turnTop = turnY + turnHeight / 2;
                 double yokeBottom = windingWindowBottom;
-                if (std::abs(turnTop - yokeBottom) < (_wireHeight + wallThickness) &&
+                if (std::abs(turnTop - yokeBottom) < (turnHeight + wallThickness) &&
                     turnX >= bobbinYokeX - windingWindowWidth/4 && turnX <= bobbinYokeX + windingWindowWidth/2) {
                     bottomYokeTurnWidths.push_back(turnWidth);
                 }
@@ -789,6 +915,15 @@ void Temperature::createBobbinNodes() {
 }
 
 void Temperature::createInsulationLayerNodes() {
+    // Skip insulation layers for toroidal cores - coordinate system is complex
+    // and requires proper handling of polar coordinates relative to section positions
+    if (_isToroidal) {
+        if (THERMAL_DEBUG) {
+            std::cout << "Skipping insulation layer nodes for toroidal core" << std::endl;
+        }
+        return;
+    }
+    
     auto coil = _magnetic.get_mutable_coil();
     
     // Check if we have layers description
@@ -831,14 +966,40 @@ void Temperature::createInsulationLayerNodes() {
             continue;
         }
         
+        // Get layer center coordinates
+        double layerX = layer.get_coordinates()[0];
+        double layerY = layer.get_coordinates()[1];
+        
         // Get layer geometry
         double layerWidth = layer.get_dimensions()[0];   // X dimension (thickness)
         double layerHeight = layer.get_dimensions()[1];  // Y dimension (span)
         double layerDepth = coreDepth / 2.0;  // Half depth for single side modeling
         
-        // Get layer center coordinates
-        double layerX = layer.get_coordinates()[0];
-        double layerY = layer.get_coordinates()[1];
+        // Check coordinate system and convert if necessary
+        auto coordSystem = layer.get_coordinate_system();
+        if (coordSystem.has_value() && coordSystem.value() == MAS::CoordinateSystem::POLAR) {
+            // Polar coordinates: layerX = radius, layerY = angle in degrees
+            // Dimensions: width = radial thickness, height = angular span (in degrees * 1000)
+            double radius = layerX;
+            double angleDeg = layerY;
+            double angleRad = angleDeg * M_PI / 180.0;
+            
+            // Convert center position to Cartesian (relative to section center)
+            layerX = radius * std::cos(angleRad);
+            layerY = radius * std::sin(angleRad);
+            
+            // Convert dimensions: width is radial (already in meters), height is arc length
+            double radialThickness = layerWidth;  // Already in meters (radial direction)
+            double angularSpanDeg = layerHeight / 1000.0;  // Convert from millidegrees to degrees
+            double angularSpanRad = angularSpanDeg * M_PI / 180.0;
+            double arcLength = radius * angularSpanRad;  // Arc length = radius * angle
+            
+            // For insulation layers in polar coordinates:
+            // - layerWidth becomes the radial thickness
+            // - layerHeight becomes the arc length (circumferential span)
+            layerWidth = radialThickness;
+            layerHeight = arcLength;
+        }
         
         // Get layer thermal conductivity from material
         double layerK = 0.2;  // Default for typical insulation material
@@ -886,6 +1047,22 @@ void Temperature::createTurnNodes() {
     
     if (!turns || turns->empty()) {
         return;
+    }
+    
+    // Extract wire properties locally from the coil
+    auto wireOpt = extractWire();
+    double defaultWireWidth = 0.001;
+    double defaultWireHeight = 0.001;
+    double defaultWireThermalCond = 385.0;
+    bool defaultIsRoundWire = false;    std::optional<InsulationWireCoating> defaultWireCoating;
+    
+    if (wireOpt) {
+        auto [w, h] = getWireDimensions(wireOpt.value());
+        defaultWireWidth = w;
+        defaultWireHeight = h;
+        defaultWireThermalCond = getWireThermalConductivity(wireOpt.value());
+        defaultIsRoundWire = isRoundWire(wireOpt.value());
+        defaultWireCoating = wireOpt.value().resolve_coating();
     }
     
     if (_isToroidal) {
@@ -946,9 +1123,9 @@ void Temperature::createTurnNodes() {
                 turnCenterRadius = std::sqrt(coords[0]*coords[0] + coords[1]*coords[1]);
             }
             
-            // Get wire dimensions from turn
-            double wireWidth = _wireWidth;
-            double wireHeight = _wireHeight;
+            // Get wire dimensions from turn (use turn-specific if available, otherwise use defaults)
+            double wireWidth = defaultWireWidth;
+            double wireHeight = defaultWireHeight;
             if (turn.get_dimensions() && turn.get_dimensions()->size() >= 2) {
                 wireWidth = (*turn.get_dimensions())[0];   // radial dimension
                 wireHeight = (*turn.get_dimensions())[1];  // axial dimension
@@ -982,15 +1159,15 @@ void Temperature::createTurnNodes() {
             if (hasAdditionalCoords) {
                 innerNode.powerDissipation = turnLoss / 2.0;
                 innerNode.initializeToroidalQuadrants(wireWidth, wireHeight, halfLength, 
-                                                       _wireThermalCond, true, innerSurfaceRadius,
-                                                       _wireCoating,
-                                                       _isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
+                                                       defaultWireThermalCond, true, innerSurfaceRadius,
+                                                       defaultWireCoating,
+                                                       defaultIsRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
             } else {
                 innerNode.powerDissipation = turnLoss;  // All loss to inner node
                 innerNode.initializeToroidalQuadrants(wireWidth, wireHeight, totalTurnLength, 
-                                                       _wireThermalCond, true, innerSurfaceRadius,
-                                                       _wireCoating,
-                                                       _isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
+                                                       defaultWireThermalCond, true, innerSurfaceRadius,
+                                                       defaultWireCoating,
+                                                       defaultIsRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
             }
             _nodes.push_back(innerNode);
             
@@ -1012,9 +1189,9 @@ void Temperature::createTurnNodes() {
                 outerNode.physicalCoordinates = {outerSurfaceX, outerSurfaceY, 0};
                 
                 outerNode.initializeToroidalQuadrants(wireWidth, wireHeight, halfLength,
-                                                       _wireThermalCond, false, outerSurfaceRadius,
-                                                       _wireCoating,
-                                                       _isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
+                                                       defaultWireThermalCond, false, outerSurfaceRadius,
+                                                       defaultWireCoating,
+                                                       defaultIsRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
                 _nodes.push_back(outerNode);
             }
         }
@@ -1040,9 +1217,9 @@ void Temperature::createTurnNodes() {
             }
             
             // Get wire dimensions from turn (each turn may have different wire size)
-            double wireWidth = _wireWidth;
-            double wireHeight = _wireHeight;
-            bool isRoundWire = _isRoundWire;
+            double wireWidth = defaultWireWidth;
+            double wireHeight = defaultWireHeight;
+            bool isRoundWire = defaultIsRoundWire;
             if (turn.get_dimensions() && turn.get_dimensions()->size() >= 2) {
                 wireWidth = (*turn.get_dimensions())[0];
                 wireHeight = (*turn.get_dimensions())[1];
@@ -1056,8 +1233,8 @@ void Temperature::createTurnNodes() {
             // For concentric cores, use toroidal quadrant initialization with 0 angle
             // This gives proper RADIAL_INNER/OUTER and TANGENTIAL_LEFT/RIGHT quadrants
             node.initializeToroidalQuadrants(wireWidth, wireHeight, turnLength, 
-                                             _wireThermalCond, true, 0.0,
-                                             _wireCoating,
+                                             defaultWireThermalCond, true, 0.0,
+                                             defaultWireCoating,
                                              isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
             _nodes.push_back(node);
         }
@@ -1606,9 +1783,62 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                     }
                 }
                 
+                // Also check geometrically if an insulation layer node is between these turns
+                // This is important for concentric cores where insulation layers are explicit nodes
+                bool insulationNodeBetween = false;
+                for (size_t k = 0; k < _nodes.size(); k++) {
+                    if (_nodes[k].part != ThermalNodePartType::INSULATION_LAYER) continue;
+                    
+                    const auto& insulationNode = _nodes[k];
+                    double insX = insulationNode.physicalCoordinates[0];
+                    double insY = insulationNode.physicalCoordinates[1];
+                    double insWidth = insulationNode.dimensions.width;
+                    double insHeight = insulationNode.dimensions.height;
+                    
+                    // Check if insulation layer is between the two turns
+                    // For horizontal (radial) connections: insulation X should be between turn1 X and turn2 X
+                    // For vertical (tangential) connections: insulation Y should be between turn1 Y and turn2 Y
+                    double turn1X = node1.physicalCoordinates[0];
+                    double turn1Y = node1.physicalCoordinates[1];
+                    double turn2X = node2.physicalCoordinates[0];
+                    double turn2Y = node2.physicalCoordinates[1];
+                    
+                    if (moreHorizontal) {
+                        // Horizontal connection - check if insulation is between turns in X direction
+                        double minTurnX = std::min(turn1X, turn2X);
+                        double maxTurnX = std::max(turn1X, turn2X);
+                        double insLeft = insX - insWidth / 2;
+                        double insRight = insX + insWidth / 2;
+                        
+                        // Check if insulation overlaps the line between turns
+                        bool xOverlap = (insLeft < maxTurnX) && (insRight > minTurnX);
+                        bool yOverlap = std::abs(insY - turn1Y) < (insHeight / 2 + node1.dimensions.height / 2);
+                        
+                        if (xOverlap && yOverlap) {
+                            insulationNodeBetween = true;
+                            break;
+                        }
+                    } else {
+                        // Vertical connection - check if insulation is between turns in Y direction
+                        double minTurnY = std::min(turn1Y, turn2Y);
+                        double maxTurnY = std::max(turn1Y, turn2Y);
+                        double insBottom = insY - insHeight / 2;
+                        double insTop = insY + insHeight / 2;
+                        
+                        // Check if insulation overlaps the line between turns
+                        bool yOverlap = (insBottom < maxTurnY) && (insTop > minTurnY);
+                        bool xOverlap = std::abs(insX - turn1X) < (insWidth / 2 + node1.dimensions.width / 2);
+                        
+                        if (xOverlap && yOverlap) {
+                            insulationNodeBetween = true;
+                            break;
+                        }
+                    }
+                }
+                
                 // Only create direct turn-to-turn connection if there's NO solid insulation layer
                 // Solid insulation layers are now modeled as separate thermal nodes
-                if (!hasSolidInsulationBetween) {
+                if (!hasSolidInsulationBetween && !insulationNodeBetween) {
                     r.resistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
                     
                     if (q1->coating.has_value()) {
@@ -1784,9 +2014,6 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
 
 void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, size_t bobbinBottomYokeIdx, 
                                                      const std::vector<size_t>& turnNodeIndices) {
-    // Threshold distance for turn-to-bobbin contact (turn diameter / 4)
-    double contactThreshold = _wireWidth / 4.0;
-    
     auto findNearbyTurns = [&](size_t yokeIdx, ThermalNodeFace yokeFace) -> std::vector<std::pair<size_t, double>> {
         std::vector<std::pair<size_t, double>> nearbyTurns;
         if (yokeIdx == std::numeric_limits<size_t>::max()) return nearbyTurns;
@@ -1799,6 +2026,11 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
             const auto& turnNode = _nodes[turnIdx];
             double turnX = turnNode.physicalCoordinates[0];
             double turnY = turnNode.physicalCoordinates[1];
+            double turnWidth = turnNode.dimensions.width;
+            double turnHeight = turnNode.dimensions.height;
+            
+            // Threshold distance for turn-to-bobbin contact based on this turn's dimensions
+            double contactThreshold = std::max(turnWidth, turnHeight) / 4.0;
             
             // Calculate distance from yoke to turn
             double dx = turnX - yokeX;
@@ -1806,7 +2038,7 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
             double dist = std::sqrt(dx*dx + dy*dy);
             
             // Check if turn is within contact threshold
-            if (dist < contactThreshold + _wireWidth) {
+            if (dist < contactThreshold + std::max(turnWidth, turnHeight)) {
                 // Check if turn is on the correct side of the yoke
                 bool correctSide = false;
                 if (yokeFace == ThermalNodeFace::TANGENTIAL_RIGHT) {
@@ -1829,6 +2061,10 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
     // Helper to create bobbin-to-turn connection
     auto createBobbinToTurnConnection = [&](size_t bobbinIdx, ThermalNodeFace bobbinFace, 
                                             size_t turnIdx, double dist) {
+        const auto& turnNode = _nodes[turnIdx];
+        double turnWidth = turnNode.dimensions.width;
+        double turnHeight = turnNode.dimensions.height;
+        
         ThermalResistanceElement r;
         r.nodeFromId = bobbinIdx;
         r.quadrantFrom = bobbinFace;
@@ -1837,8 +2073,8 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
                        ThermalNodeFace::TANGENTIAL_LEFT : ThermalNodeFace::TANGENTIAL_RIGHT;
         r.type = HeatTransferType::CONDUCTION;
         
-        // Calculate resistance through air/bobbin gap
-        double contactArea = _wireWidth * _wireHeight * 0.5;
+        // Calculate resistance through air/bobbin gap - use turn's actual dimensions
+        double contactArea = turnWidth * turnHeight * 0.5;
         double k_air = 0.025;  // W/m·K
         r.resistance = dist / (k_air * contactArea);
         
@@ -1853,15 +2089,14 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
             // Connect to all nearby turns (like toroidal core chunk approach)
             double totalContactArea = 0;
             for (const auto& [turnIdx, dist] : nearbyTurns) {
-                // Estimate contact area for this turn
-                double turnContactArea = _wireWidth * _wireHeight * 0.25;
+                // Estimate contact area for this turn using its stored dimensions
+                const auto& turnNode = _nodes[turnIdx];
+                double turnContactArea = turnNode.dimensions.width * turnNode.dimensions.height * 0.25;
                 totalContactArea += turnContactArea;
             }
             
             // Create connections with proportional area
             for (const auto& [turnIdx, dist] : nearbyTurns) {
-                double turnContactArea = _wireWidth * _wireHeight * 0.25;
-                double proportion = turnContactArea / totalContactArea;
                 createBobbinToTurnConnection(bobbinTopYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT, 
                                             turnIdx, dist);
             }
@@ -1876,13 +2111,12 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
         if (!nearbyTurns.empty()) {
             double totalContactArea = 0;
             for (const auto& [turnIdx, dist] : nearbyTurns) {
-                double turnContactArea = _wireWidth * _wireHeight * 0.25;
+                const auto& turnNode = _nodes[turnIdx];
+                double turnContactArea = turnNode.dimensions.width * turnNode.dimensions.height * 0.25;
                 totalContactArea += turnContactArea;
             }
             
             for (const auto& [turnIdx, dist] : nearbyTurns) {
-                double turnContactArea = _wireWidth * _wireHeight * 0.25;
-                double proportion = turnContactArea / totalContactArea;
                 createBobbinToTurnConnection(bobbinBottomYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT, 
                                             turnIdx, dist);
             }
@@ -1925,24 +2159,26 @@ void Temperature::createTurnToBobbinConnections() {
             if (quadrant.face == ThermalNodeFace::NONE) continue;
             
             // For concentric turns, calculate limit position based on horizontal/vertical offset
-            // (not angled like toroidal turns)
+            // (not angled like toroidal turns) - use turn node's stored dimensions
+            double turnWidth = turnNode.dimensions.width;
+            double turnHeight = turnNode.dimensions.height;
             double limitX, limitY;
             switch (quadrant.face) {
                 case ThermalNodeFace::RADIAL_INNER:   // Left face (-X)
-                    limitX = turnX - _wireWidth / 2.0;
+                    limitX = turnX - turnWidth / 2.0;
                     limitY = turnY;
                     break;
                 case ThermalNodeFace::RADIAL_OUTER:   // Right face (+X)
-                    limitX = turnX + _wireWidth / 2.0;
+                    limitX = turnX + turnWidth / 2.0;
                     limitY = turnY;
                     break;
                 case ThermalNodeFace::TANGENTIAL_LEFT:  // Top face (+Y)
                     limitX = turnX;
-                    limitY = turnY + _wireHeight / 2.0;
+                    limitY = turnY + turnHeight / 2.0;
                     break;
                 case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom face (-Y)
                     limitX = turnX;
-                    limitY = turnY - _wireHeight / 2.0;
+                    limitY = turnY - turnHeight / 2.0;
                     break;
                 default:
                     limitX = quadrant.limitCoordinates[0];
@@ -1956,6 +2192,19 @@ void Temperature::createTurnToBobbinConnections() {
                 if (connectedPairs.count({quadrant.face, bobbinIdx})) continue;
                 
                 const auto& bobbinNode = _nodes[bobbinIdx];
+                bool isCentralColumn = (bobbinNode.part == ThermalNodePartType::BOBBIN_CENTRAL_COLUMN);
+                bool isTopYoke = (bobbinNode.part == ThermalNodePartType::BOBBIN_TOP_YOKE);
+                bool isBottomYoke = (bobbinNode.part == ThermalNodePartType::BOBBIN_BOTTOM_YOKE);
+                
+                // For concentric cores, only connect specific faces to specific bobbin parts:
+                // - RADIAL_INNER (LEFT face) -> Central column only
+                // - TANGENTIAL_LEFT (TOP face) -> Top yoke only (if turn is at top)
+                // - TANGENTIAL_RIGHT (BOTTOM face) -> Bottom yoke only (if turn is at bottom)
+                // - RADIAL_OUTER (RIGHT face) -> No bobbin connection
+                if (quadrant.face == ThermalNodeFace::RADIAL_INNER && !isCentralColumn) continue;
+                if (quadrant.face == ThermalNodeFace::TANGENTIAL_LEFT && !isTopYoke) continue;
+                if (quadrant.face == ThermalNodeFace::TANGENTIAL_RIGHT && !isBottomYoke) continue;
+                if (quadrant.face == ThermalNodeFace::RADIAL_OUTER) continue;
                 
                 double bobbinWidth = bobbinNode.dimensions.width;
                 double bobbinHeight = bobbinNode.dimensions.height;
@@ -1988,7 +2237,7 @@ void Temperature::createTurnToBobbinConnections() {
                     r.type = HeatTransferType::CONDUCTION;
                     
                     auto* q = turnNode.getQuadrant(quadrant.face);
-                    double contactArea = q ? q->surfaceArea * 0.5 : (_wireWidth * _wireHeight * 0.25);
+                    double contactArea = q ? q->surfaceArea * 0.5 : (turnWidth * turnHeight * 0.25);
                     double distance = std::max(dist, 1e-6);
                     
                     double k_air = 0.025;  // W/m·K
@@ -2065,6 +2314,7 @@ void Temperature::createTurnToInsulationConnections() {
         };
         
         // Check each face for adjacent turns
+        // Connection threshold: surface-to-surface distance must be < 5% of turn diameter
         for (const auto& face : faces) {
             std::vector<std::pair<size_t, double>> adjacentTurns;  // (turnIdx, distance)
             
@@ -2072,12 +2322,19 @@ void Temperature::createTurnToInsulationConnections() {
                 const auto& turnNode = _nodes[turnIdx];
                 double turnX = turnNode.physicalCoordinates[0];
                 double turnY = turnNode.physicalCoordinates[1];
+                double turnWidth = turnNode.dimensions.width;
+                double turnHeight = turnNode.dimensions.height;
                 
-                // Calculate distance from turn center to insulation face
+                // Calculate turn "diameter" (max dimension for round, min for rectangular)
+                double turnDiameter = std::max(turnWidth, turnHeight);
+                // Threshold: 5% of turn diameter for surface-to-surface connection
+                double connectionThreshold = turnDiameter * 0.05;
+                
+                // Calculate distance from turn surface to insulation face
                 double dist;
                 if (face.isVertical) {
                     // For vertical faces (LEFT/RIGHT), check X distance
-                    double turnEdgeX = (face.direction > 0) ? turnX - _wireWidth/2 : turnX + _wireWidth/2;
+                    double turnEdgeX = (face.direction > 0) ? turnX - turnWidth/2 : turnX + turnWidth/2;
                     dist = std::abs(face.edgeX - turnEdgeX);
                     
                     // Check if turn is within Y range of the face
@@ -2086,12 +2343,13 @@ void Temperature::createTurnToInsulationConnections() {
                         std::abs(turnY - (insulationY - insulationHeight/2))
                     );
                     
-                    if (dist < minConductionDist && yOverlap < (insulationHeight/2 + _wireHeight/2)) {
+                    // Connect only if surface distance < 5% of turn diameter
+                    if (dist < connectionThreshold && yOverlap < (insulationHeight/2 + turnHeight/2)) {
                         adjacentTurns.push_back({turnIdx, dist});
                     }
                 } else {
                     // For horizontal faces (TOP/BOTTOM), check Y distance
-                    double turnEdgeY = (face.direction > 0) ? turnY - _wireHeight/2 : turnY + _wireHeight/2;
+                    double turnEdgeY = (face.direction > 0) ? turnY - turnHeight/2 : turnY + turnHeight/2;
                     dist = std::abs(face.edgeY - turnEdgeY);
                     
                     // Check if turn is within X range of the face
@@ -2100,7 +2358,8 @@ void Temperature::createTurnToInsulationConnections() {
                         std::abs(turnX - (insulationX - insulationWidth/2))
                     );
                     
-                    if (dist < minConductionDist && xOverlap < (insulationWidth/2 + _wireWidth/2)) {
+                    // Connect only if surface distance < 5% of turn diameter
+                    if (dist < connectionThreshold && xOverlap < (insulationWidth/2 + turnWidth/2)) {
                         adjacentTurns.push_back({turnIdx, dist});
                     }
                 }
@@ -2108,6 +2367,10 @@ void Temperature::createTurnToInsulationConnections() {
             
             // Create connections to all adjacent turns
             for (const auto& [turnIdx, dist] : adjacentTurns) {
+                const auto& turnNode = _nodes[turnIdx];
+                double turnWidth = turnNode.dimensions.width;
+                double turnHeight = turnNode.dimensions.height;
+                
                 ThermalResistanceElement r;
                 r.nodeFromId = insulationIdx;
                 r.quadrantFrom = face.face;
@@ -2133,10 +2396,18 @@ void Temperature::createTurnToInsulationConnections() {
                         break;
                 }
                 
+                // For concentric cores, only allow connections to RADIAL faces of turns
+                // TANGENTIAL (top/bottom) faces should only connect to ambient via convection
+                if (!_isToroidal && 
+                    (r.quadrantTo == ThermalNodeFace::TANGENTIAL_LEFT || 
+                     r.quadrantTo == ThermalNodeFace::TANGENTIAL_RIGHT)) {
+                    continue;
+                }
+                
                 r.type = HeatTransferType::CONDUCTION;
                 
-                // Calculate contact area
-                double contactArea = _wireWidth * _wireHeight * 0.5;
+                // Calculate contact area using turn's actual dimensions
+                double contactArea = turnWidth * turnHeight * 0.5;
                 
                 // Resistance through insulation: R = thickness / (k * A)
                 // Use half the insulation thickness as the conduction path
@@ -2246,10 +2517,11 @@ void Temperature::createTurnToSolidConnections() {
                     int turnIdx = turnNode.turnIndex.value_or(0);
                     
                     // Copper conduction: from turn node center to surface
-                    // Node is at wire surface, so conduction length is half the distance to opposite surface
-                    double copperLength = _wireWidth / 2.0;
+                    // Node is at wire surface, so conduction length is half the turn's width
+                    double turnWidth = turnNode.dimensions.width;
+                    double copperLength = turnWidth / 2.0;
                     double copperResistance = ThermalResistance::calculateConductionResistance(
-                        copperLength, _wireThermalCond, qOuter->surfaceArea);
+                        copperLength, qOuter->thermalConductivity, qOuter->surfaceArea);
                     
                     // Insulation/enamel resistance
                     double enamelResistance = getInsulationLayerThermalResistance(turnIdx, -1, qOuter->surfaceArea);
@@ -2330,9 +2602,10 @@ void Temperature::createTurnToSolidConnections() {
                     int turnIdx = turnNode.turnIndex.value_or(0);
                     
                     // Copper conduction: from turn node center to surface
-                    double copperLength = _wireWidth / 2.0;
+                    double turnWidth = turnNode.dimensions.width;
+                    double copperLength = turnWidth / 2.0;
                     double copperResistance = ThermalResistance::calculateConductionResistance(
-                        copperLength, _wireThermalCond, qInner->surfaceArea);
+                        copperLength, qInner->thermalConductivity, qInner->surfaceArea);
                     
                     // Insulation/enamel resistance
                     double enamelResistance = getInsulationLayerThermalResistance(turnIdx, -1, qInner->surfaceArea);
@@ -2371,8 +2644,20 @@ void Temperature::createTurnToSolidConnections() {
 void Temperature::createConvectionConnections() {
     size_t ambientIdx = _nodes.size() - 1;
     
-    double maxConvectionDist = getMaximumDistanceForConvection();
-    double minConductionDist = getMinimumDistanceForConduction();
+    // Extract wire properties locally for convection calculations
+    auto wireOpt = extractWire();
+    double wireWidth = 0.001;  // Default 1mm
+    double wireHeight = 0.001;
+    bool isRound = false;
+    if (wireOpt) {
+        auto [w, h] = getWireDimensions(wireOpt.value());
+        wireWidth = w;
+        wireHeight = h;
+        isRound = isRoundWire(wireOpt.value());
+    }
+    
+    double maxConvectionDist = getMaximumConvectionDistance(wireWidth, wireHeight, isRound);
+    double minConductionDist = getMinimumConductionDistance(wireWidth, wireHeight, isRound);
     
     // Get convection coefficient
     double surfaceTemp = _config.ambientTemperature + 30.0;
@@ -2380,10 +2665,10 @@ void Temperature::createConvectionConnections() {
     
     if (_config.includeForcedConvection) {
         h_conv = ThermalResistance::calculateForcedConvectionCoefficient(
-            _config.airVelocity, _wireWidth, _config.ambientTemperature);
+            _config.airVelocity, wireWidth, _config.ambientTemperature);
     } else {
         h_conv = ThermalResistance::calculateNaturalConvectionCoefficient(
-            surfaceTemp, _config.ambientTemperature, _wireWidth, SurfaceOrientation::VERTICAL);
+            surfaceTemp, _config.ambientTemperature, wireWidth, SurfaceOrientation::VERTICAL);
     }
     
     if (_config.includeRadiation) {
@@ -2416,6 +2701,8 @@ void Temperature::createConvectionConnections() {
             double nodeY = node.physicalCoordinates[1];
             double nodeR = std::sqrt(nodeX*nodeX + nodeY*nodeY);
             double nodeAngle = std::atan2(nodeY, nodeX);
+            double nodeWidth = node.dimensions.width;
+            double nodeHeight = node.dimensions.height;
             
             // Check each quadrant
             for (int qIdx = 0; qIdx < 4; ++qIdx) {
@@ -2431,10 +2718,10 @@ void Temperature::createConvectionConnections() {
                 // Check for blocking objects in the quadrant's direction
                 // Purely geometric: block if there's a turn in the quadrant direction
                 // that is significantly offset radially (not a tangential neighbor)
-                // AND within wire.get_maximum_outer_dimension() distance
-                double maxBlockingDist = std::max(_wireWidth, _wireHeight);
+                // AND within this node's max dimension distance
+                double maxBlockingDist = std::max(nodeWidth, nodeHeight);
                 // Minimum radial difference to distinguish radial from tangential neighbors
-                double minRadialDiff = std::min(_wireWidth, _wireHeight) / 4.0;
+                double minRadialDiff = std::min(nodeWidth, nodeHeight) / 4.0;
                 
                 if (face == ThermalNodeFace::RADIAL_INNER) {
                     // Check for any object significantly closer to center in this direction
@@ -2498,7 +2785,7 @@ void Temperature::createConvectionConnections() {
                         double otherAngle = std::atan2(otherY, otherX);
                         
                         // Similar radius (same "layer" inner or outer)
-                        if (std::abs(otherR - nodeR) < _wireWidth) {
+                        if (std::abs(otherR - nodeR) < nodeWidth) {
                             double angleDiff = otherAngle - nodeAngle;
                             while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
                             while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
@@ -2537,6 +2824,8 @@ void Temperature::createConvectionConnections() {
                             r.resistance += WireCoatingUtils::calculateCoatingResistance(q->coating.value(), q->surfaceArea);
                         }
                         _resistances.push_back(r);
+                    } else if (THERMAL_DEBUG) {
+                        std::cout << "    NOT CREATED: q==null or surfaceArea=0" << std::endl;
                     }
                 }
             }
@@ -2560,8 +2849,9 @@ void Temperature::createConvectionConnections() {
                     _nodes[j].physicalCoordinates[0]*_nodes[j].physicalCoordinates[0] +
                     _nodes[j].physicalCoordinates[1]*_nodes[j].physicalCoordinates[1]
                 );
+                double turnWidth = _nodes[j].dimensions.width;
                 
-                if (std::abs(turnR - coreOuterR) < _wireWidth) {
+                if (std::abs(turnR - coreOuterR) < turnWidth) {
                     outerBlocked = true;
                     break;
                 }
@@ -2596,8 +2886,9 @@ void Temperature::createConvectionConnections() {
                     _nodes[j].physicalCoordinates[0]*_nodes[j].physicalCoordinates[0] +
                     _nodes[j].physicalCoordinates[1]*_nodes[j].physicalCoordinates[1]
                 );
+                double turnWidth = _nodes[j].dimensions.width;
                 
-                if (std::abs(turnR - coreInnerR) < _wireWidth) {
+                if (std::abs(turnR - coreInnerR) < turnWidth) {
                     innerBlocked = true;
                     break;
                 }
@@ -2688,6 +2979,9 @@ void Temperature::createConvectionConnections() {
                         else if (face == ThermalNodeFace::TANGENTIAL_RIGHT) dirY = -1.0;
                         
                         // Check for blocking turns in that direction
+                        double turnWidth = _nodes[i].dimensions.width;
+                        double turnHeight = _nodes[i].dimensions.height;
+                        
                         for (size_t j = 0; j < _nodes.size(); j++) {
                             if (i == j) continue;
                             if (_nodes[j].part != ThermalNodePartType::TURN) continue;
@@ -2699,10 +2993,10 @@ void Temperature::createConvectionConnections() {
                             
                             // Check if other turn is in the blocking direction
                             bool inDirection = false;
-                            if (dirX != 0.0 && std::abs(dy) < _wireHeight && dx * dirX > 0 && std::abs(dx) < _wireWidth * 1.5) {
+                            if (dirX != 0.0 && std::abs(dy) < turnHeight && dx * dirX > 0 && std::abs(dx) < turnWidth * 1.5) {
                                 inDirection = true;
                             }
-                            if (dirY != 0.0 && std::abs(dx) < _wireWidth && dy * dirY > 0 && std::abs(dy) < _wireHeight * 1.5) {
+                            if (dirY != 0.0 && std::abs(dx) < turnWidth && dy * dirY > 0 && std::abs(dy) < turnHeight * 1.5) {
                                 inDirection = true;
                             }
                             
@@ -2712,38 +3006,55 @@ void Temperature::createConvectionConnections() {
                             }
                         }
                         
-                        // For RIGHT face (RADIAL_OUTER), check if blocked by insulation layer
-                        // Only allow convection to ambient if NO insulation layer exists to the right
-                        if (!isBlocked && face == ThermalNodeFace::RADIAL_OUTER) {
-                            double turnRightEdge = turnX + _wireWidth / 2;
-                            double turnTop = turnY + _wireHeight / 2;
-                            double turnBottom = turnY - _wireHeight / 2;
+                        // Check if there's an insulation layer to the right of this turn
+                        // If so, block RIGHT, TOP, and BOTTOM faces from convection
+                        bool hasInsulationToRight = false;
+                        double turnRightEdge = turnX + turnWidth / 2;
+                        double turnTop = turnY + turnHeight / 2;
+                        double turnBottom = turnY - turnHeight / 2;
+                        
+                        for (size_t j = 0; j < _nodes.size(); j++) {
+                            if (_nodes[j].part != ThermalNodePartType::INSULATION_LAYER) continue;
                             
-                            for (size_t j = 0; j < _nodes.size(); j++) {
-                                if (_nodes[j].part != ThermalNodePartType::INSULATION_LAYER) continue;
-                                
-                                double insX = _nodes[j].physicalCoordinates[0];
-                                double insY = _nodes[j].physicalCoordinates[1];
-                                double insWidth = _nodes[j].dimensions.width;
-                                double insHeight = _nodes[j].dimensions.height;
-                                
-                                double insLeftEdge = insX - insWidth / 2;
-                                double insTop = insY + insHeight / 2;
-                                double insBottom = insY - insHeight / 2;
-                                
-                                // Check if insulation layer is to the right of this turn
-                                // AND overlaps in Y (vertically)
-                                bool isToTheRight = insLeftEdge >= turnRightEdge;
-                                bool overlapsVertically = !(insBottom > turnTop || insTop < turnBottom);
-                                
-                                if (isToTheRight && overlapsVertically) {
-                                    isBlocked = true;
-                                    if (THERMAL_DEBUG) {
-                                        std::cout << "Turn " << _nodes[i].name << " RIGHT face blocked by " 
-                                                  << _nodes[j].name << std::endl;
-                                    }
-                                    break;
+                            double insX = _nodes[j].physicalCoordinates[0];
+                            double insY = _nodes[j].physicalCoordinates[1];
+                            double insWidth = _nodes[j].dimensions.width;
+                            double insHeight = _nodes[j].dimensions.height;
+                            
+                            double insLeftEdge = insX - insWidth / 2;
+                            double insTop = insY + insHeight / 2;
+                            double insBottom = insY - insHeight / 2;
+                            
+                            // Check if insulation layer is to the right of this turn
+                            // AND overlaps in Y (vertically)
+                            bool isToTheRight = insLeftEdge >= turnRightEdge;
+                            bool overlapsVertically = !(insBottom > turnTop || insTop < turnBottom);
+                            
+                            if (isToTheRight && overlapsVertically) {
+                                hasInsulationToRight = true;
+                                if (THERMAL_DEBUG) {
+                                    std::cout << "Turn " << _nodes[i].name << " has insulation layer to right: " 
+                                              << _nodes[j].name << std::endl;
                                 }
+                                break;
+                            }
+                        }
+                        
+                        // Block RIGHT, TOP, and BOTTOM faces if there's insulation to the right
+                        if (hasInsulationToRight && 
+                            (face == ThermalNodeFace::RADIAL_OUTER || 
+                             face == ThermalNodeFace::TANGENTIAL_LEFT || 
+                             face == ThermalNodeFace::TANGENTIAL_RIGHT)) {
+                            isBlocked = true;
+                            // Update surface coverage to show as covered (for schematic visualization)
+                            auto* q = _nodes[i].getQuadrant(face);
+                            if (q) {
+                                q->surfaceCoverage = 0.0;
+                            }
+                            if (THERMAL_DEBUG) {
+                                std::cout << "Turn " << _nodes[i].name << " " 
+                                          << magic_enum::enum_name(face) 
+                                          << " face blocked by insulation to right" << std::endl;
                             }
                         }
                         
@@ -2802,12 +3113,19 @@ double Temperature::calculateSurfaceDistance(const ThermalNetworkNode& node1,
 bool Temperature::shouldConnectQuadrants(const ThermalNetworkNode& node1, ThermalNodeFace face1,
                                           const ThermalNetworkNode& node2, ThermalNodeFace face2) const {
     double dist = calculateSurfaceDistance(node1, node2);
-    return dist <= getMinimumDistanceForConduction();
+    // Use average dimensions for conduction threshold
+    double avgWidth = (node1.dimensions.width + node2.dimensions.width) / 2.0;
+    double avgHeight = (node1.dimensions.height + node2.dimensions.height) / 2.0;
+    // Assume rectangular for threshold calculation (conservative)
+    double minConductionDist = std::min(avgWidth, avgHeight) * 0.75;
+    return dist <= minConductionDist;
 }
 
 double Temperature::calculateContactArea(const ThermalNodeQuadrant& q1, const ThermalNodeQuadrant& q2) const {
     double minLength = std::min(q1.length, q2.length);
-    return _wireHeight * minLength;
+    // Use quadrant dimensions if available, otherwise use a default
+    double height = q1.surfaceArea / (q1.length > 1e-9 ? q1.length : 0.001);
+    return height * minLength;
 }
 
 double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnIdx2, double contactArea) {
