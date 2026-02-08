@@ -854,7 +854,7 @@ void Temperature::createInsulationLayerNodes() {
         // Create insulation layer node
         ThermalNetworkNode insulationNode;
         insulationNode.part = ThermalNodePartType::INSULATION_LAYER;
-        insulationNode.name = "InsulationLayer_" + layer.get_name();
+        insulationNode.name = "L_" + std::to_string(layerIdx);
         insulationNode.insulationLayerIndex = layerIdx;
         insulationNode.temperature = _config.ambientTemperature;
         insulationNode.powerDissipation = 0.0;  // No heat generation in insulation
