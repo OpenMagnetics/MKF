@@ -2731,4 +2731,83 @@ TEST_CASE("Temperature: Concentric Round Wire Simple", "[thermal][concentric][ro
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
+TEST_CASE("Temperature: Concentric with Insulation Layers", "[thermal][insulation][concentric]") {
+    // Load the test file with insulation layers
+    std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" / "concentric_round_wire_insulation_layers.json";
+    
+    std::ifstream file(testFile);
+    REQUIRE(file.good());
+    
+    json j;
+    file >> j;
+    
+    // Parse inputs and magnetic
+    OpenMagnetics::Inputs inputs(j["inputs"]);
+    OpenMagnetics::Magnetic magnetic(j["magnetic"]);
+    
+    std::cout << "Testing concentric round wire with insulation layers:" << std::endl;
+    std::cout << "  Windings: " << magnetic.get_coil().get_functional_description().size() << std::endl;
+    
+    if (magnetic.get_coil().get_layers_description()) {
+        auto layers = magnetic.get_coil().get_layers_description().value();
+        size_t insulationCount = 0;
+        for (const auto& layer : layers) {
+            if (layer.get_type() == MAS::ElectricalType::INSULATION) {
+                insulationCount++;
+            }
+        }
+        std::cout << "  Total layers: " << layers.size() << std::endl;
+        std::cout << "  Insulation layers: " << insulationCount << std::endl;
+    }
+    
+    if (magnetic.get_coil().get_turns_description()) {
+        std::cout << "  Turns: " << magnetic.get_coil().get_turns_description()->size() << std::endl;
+    }
+    
+    // Run magnetic simulation to get actual losses
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    
+    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
+    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
+    
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing from simulation results");
+    }
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = true;
+    config.schematicOutputPath = (getOutputDir() / "thermal_schematic_concentric_insulation_layers.svg").string();
+    
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+    
+    std::cout << "Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
+    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
+    std::cout << "Number of nodes: " << temp.getNodes().size() << std::endl;
+    std::cout << "Number of resistances: " << temp.getResistances().size() << std::endl;
+    
+    // Count insulation layer nodes
+    size_t insulationNodeCount = 0;
+    for (const auto& node : temp.getNodes()) {
+        if (node.part == OpenMagnetics::ThermalNodePartType::INSULATION_LAYER) {
+            insulationNodeCount++;
+        }
+    }
+    std::cout << "Insulation layer nodes: " << insulationNodeCount << std::endl;
+    
+    // Export temperature field visualization with turns and insulation colored by temperature
+    exportTemperatureFieldSvg("concentric_insulation_layers", magnetic, result.nodeTemperatures, config.ambientTemperature);
+    
+    // Export thermal circuit schematic
+    exportThermalCircuitSchematic("concentric_insulation_layers", temp);
+    
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+    REQUIRE(result.totalThermalResistance > 0.0);
+    REQUIRE(insulationNodeCount > 0);  // Should have created insulation layer nodes
+}
+
 } // namespace
