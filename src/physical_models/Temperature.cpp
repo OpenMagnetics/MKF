@@ -1039,13 +1039,26 @@ void Temperature::createTurnNodes() {
                 node.physicalCoordinates = {0, 0, 0};
             }
             
+            // Get wire dimensions from turn (each turn may have different wire size)
+            double wireWidth = _wireWidth;
+            double wireHeight = _wireHeight;
+            bool isRoundWire = _isRoundWire;
+            if (turn.get_dimensions() && turn.get_dimensions()->size() >= 2) {
+                wireWidth = (*turn.get_dimensions())[0];
+                wireHeight = (*turn.get_dimensions())[1];
+            }
+            // Check turn's cross-sectional shape
+            if (turn.get_cross_sectional_shape().has_value()) {
+                isRoundWire = (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND);
+            }
+            
             double turnLength = turn.get_length();
             // For concentric cores, use toroidal quadrant initialization with 0 angle
             // This gives proper RADIAL_INNER/OUTER and TANGENTIAL_LEFT/RIGHT quadrants
-            node.initializeToroidalQuadrants(_wireWidth, _wireHeight, turnLength, 
+            node.initializeToroidalQuadrants(wireWidth, wireHeight, turnLength, 
                                              _wireThermalCond, true, 0.0,
                                              _wireCoating,
-                                             _isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
+                                             isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
             _nodes.push_back(node);
         }
     }
