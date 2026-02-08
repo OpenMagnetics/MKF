@@ -1886,36 +1886,41 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
     }
     
     // Paint insulation layers with their temperatures
-    // Look for insulation layer nodes (e.g., "InsulationLayer_layer1")
+    // Look for insulation layer nodes (e.g., "L_0", "L_1", etc.)
     for (const auto& [name, temp] : nodeTemperatures) {
-        if (name.find("InsulationLayer_") == 0) {
-            // Extract layer name from node name (InsulationLayer_<layerName>)
-            std::string layerName = name.substr(16);  // Skip "InsulationLayer_"
+        if (name.find("L_") == 0) {
+            // Extract layer index from node name (L_<index>)
+            std::string idxStr = name.substr(2);  // Skip "L_"
+            size_t layerIdx = std::stoull(idxStr);
             
-            // Find the layer in coil description
+            // Find the insulation layer by index
             if (coil.get_layers_description()) {
                 auto layers = coil.get_layers_description().value();
+                size_t insulationIdx = 0;
                 for (const auto& layer : layers) {
-                    if (layer.get_name() == layerName && layer.get_type() == MAS::ElectricalType::INSULATION) {
-                        auto color = getColorForTemperature(temp);
-                        
-                        std::stringstream stream;
-                        stream << std::fixed << std::setprecision(1) << temp;
-                        std::string label = layerName + ": " + stream.str() + " °C";
-                        
-                        // Get layer geometry
-                        if (layer.get_coordinates().size() >= 2 && layer.get_dimensions().size() >= 2) {
-                            double xCoord = layer.get_coordinates()[0];
-                            double yCoord = layer.get_coordinates()[1];
-                            double width = layer.get_dimensions()[0];
-                            double height = layer.get_dimensions()[1];
+                    if (layer.get_type() == MAS::ElectricalType::INSULATION) {
+                        if (insulationIdx == layerIdx) {
+                            auto color = getColorForTemperature(temp);
                             
-                            // Draw insulation layer filled with temperature color
-                            std::string cssClassName = generate_random_string();
-                            _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
-                            paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
+                            std::stringstream stream;
+                            stream << std::fixed << std::setprecision(1) << temp;
+                            std::string label = name + ": " + stream.str() + " °C";
+                            
+                            // Get layer geometry
+                            if (layer.get_coordinates().size() >= 2 && layer.get_dimensions().size() >= 2) {
+                                double xCoord = layer.get_coordinates()[0];
+                                double yCoord = layer.get_coordinates()[1];
+                                double width = layer.get_dimensions()[0];
+                                double height = layer.get_dimensions()[1];
+                                
+                                // Draw insulation layer filled with temperature color
+                                std::string cssClassName = generate_random_string();
+                                _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
+                                paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
+                            }
+                            break;
                         }
-                        break;
+                        insulationIdx++;
                     }
                 }
             }
