@@ -5,6 +5,7 @@
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
 #include "processors/NgspiceRunner.h"
+#include "converter_models/ForwardConverterUtils.h"
 
 using namespace MAS;
 

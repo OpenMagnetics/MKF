@@ -206,34 +206,7 @@ namespace OpenMagnetics {
     }
 
     bool TwoSwitchForward::run_checks(bool assert) {
-        if (get_operating_points().size() == 0) {
-            if (!assert) {
-                return false;
-            }
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "At least one operating point is needed");
-        }
-        for (size_t forwardOperatingPointIndex = 0; forwardOperatingPointIndex < get_operating_points().size(); ++forwardOperatingPointIndex) {
-            if (get_operating_points()[forwardOperatingPointIndex].get_output_voltages().size() != get_operating_points()[0].get_output_voltages().size()) {
-                if (!assert) {
-                    return false;
-                }
-                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output voltages");
-            }
-            if (get_operating_points()[forwardOperatingPointIndex].get_output_currents().size() != get_operating_points()[0].get_output_currents().size()) {
-                if (!assert) {
-                    return false;
-                }
-                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output currents");
-            }
-        }
-        if (!get_input_voltage().get_nominal() && !get_input_voltage().get_maximum() && !get_input_voltage().get_minimum()) {
-            if (!assert) {
-                return false;
-            }
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "No input voltage introduced");
-        }
-
-        return true;
+        return ForwardConverterUtils::run_checks_common(this, assert);
     }
 
     DesignRequirements TwoSwitchForward::process_design_requirements() {
@@ -285,12 +258,8 @@ namespace OpenMagnetics {
         DimensionWithTolerance inductanceWithTolerance;
         inductanceWithTolerance.set_minimum(roundFloat(minimumNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        std::vector<IsolationSide> isolationSides;
-        isolationSides.push_back(get_isolation_side_from_index(0)); // For primary
-        for (size_t windingIndex = 0; windingIndex < get_operating_points()[0].get_output_currents().size(); ++windingIndex) {
-            isolationSides.push_back(get_isolation_side_from_index(windingIndex + 1));
-        }
-        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_isolation_sides(
+            ForwardConverterUtils::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), false));
         designRequirements.set_topology(Topologies::TWO_SWITCH_FORWARD_CONVERTER);
         return designRequirements;
     }
@@ -314,18 +283,7 @@ namespace OpenMagnetics {
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         std::vector<double> outputInductancePerSecondary;
 
@@ -389,18 +347,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
 
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         DesignRequirements designRequirements;
 
@@ -414,12 +361,8 @@ namespace OpenMagnetics {
         DimensionWithTolerance inductanceWithTolerance;
         inductanceWithTolerance.set_nominal(roundFloat(minimumNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        std::vector<IsolationSide> isolationSides;
-        isolationSides.push_back(get_isolation_side_from_index(0)); // For primary
-        for (size_t windingIndex = 0; windingIndex < get_operating_points()[0].get_output_currents().size(); ++windingIndex) {
-            isolationSides.push_back(get_isolation_side_from_index(windingIndex + 1));
-        }
-        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_isolation_sides(
+            ForwardConverterUtils::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), false));
         designRequirements.set_topology(Topologies::TWO_SWITCH_FORWARD_CONVERTER);
 
         inputs.set_design_requirements(designRequirements);
