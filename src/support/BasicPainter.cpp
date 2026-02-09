@@ -1544,12 +1544,19 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         return;
     }
     
-    // Find temperature range for color mapping
+    // Find temperature range for color mapping (skip NaN/inf values)
     double minimumTemperature = DBL_MAX;
     double maximumTemperature = -DBL_MAX;
     for (const auto& [name, temp] : nodeTemperatures) {
+        if (!std::isfinite(temp)) continue;  // Skip invalid temperatures
         if (temp < minimumTemperature) minimumTemperature = temp;
         if (temp > maximumTemperature) maximumTemperature = temp;
+    }
+    
+    // If no valid temperatures found, fall back to ambient
+    if (minimumTemperature == DBL_MAX || maximumTemperature == -DBL_MAX) {
+        minimumTemperature = ambientTemperature;
+        maximumTemperature = ambientTemperature + 1.0;
     }
     
     // Use the provided ambient temperature as the color scale minimum
@@ -1563,12 +1570,17 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
     if (settings.get_painter_maximum_value_colorbar().has_value()) {
         maximumTemperature = settings.get_painter_maximum_value_colorbar().value();
     }
-    if (minimumTemperature == maximumTemperature) {
-        minimumTemperature = maximumTemperature - 1;
+    if (minimumTemperature == maximumTemperature || !std::isfinite(minimumTemperature) || !std::isfinite(maximumTemperature)) {
+        minimumTemperature = ambientTemperature;
+        maximumTemperature = ambientTemperature + 1.0;
     }
     
     // Helper lambda to get color from temperature using the selected palette
     auto getColorForTemperature = [&](double temp) -> std::string {
+        if (!std::isfinite(temp)) {
+            // Return gray for invalid temperatures
+            return "#808080";
+        }
         double ratio = (temp - minimumTemperature) / (maximumTemperature - minimumTemperature);
         ratio = clamp(ratio, 0.0, 1.0);
         uint32_t colorUint = get_uint_color_from_palette(ratio, palette);
