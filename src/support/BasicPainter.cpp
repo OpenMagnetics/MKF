@@ -1876,7 +1876,7 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                 
                 // Get bobbin wall dimensions from the node temperature data
                 // The node positions and dimensions are stored in the Temperature object
-                // For now, use the winding window to estimate positions
+                // Use bobbin's own coordinate system (not winding window coordinates)
                 auto windingWindow = core.get_winding_window();
                 if (windingWindow.get_width()) {
                     double wwX = windingWindow.get_coordinates().value()[0];
@@ -1884,48 +1884,106 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                     double wwWidth = windingWindow.get_width().value();
                     double wwHeight = windingWindow.get_height().value();
                     
-                    // Get bobbin processed description for wall thickness
+                    // Get bobbin processed description for actual dimensions
                     auto bobbinProcessed = std::get<Bobbin>(bobbinVariant).get_processed_description();
                     double wallThickness = 0.002;  // Default 2mm
+                    double columnThickness = 0.002;  // Default 2mm
+                    double columnWidth = 0.005;  // Default 5mm (bobbin depth)
                     if (bobbinProcessed) {
                         wallThickness = bobbinProcessed->get_wall_thickness();
+                        columnThickness = bobbinProcessed->get_column_thickness();
+                        if (bobbinProcessed->get_column_width()) {
+                            columnWidth = bobbinProcessed->get_column_width().value();
+                        }
                     }
+                    
+                    // Calculate bobbin column position
+                    // The bobbin sits on top of the core column
+                    // Column left edge is at: showingMainColumnWidth (edge of core column)
+                    // Column right edge is at: showingMainColumnWidth + columnThickness
+                    double columnLeftEdge = showingMainColumnWidth;
+                    double columnRightEdge = showingMainColumnWidth + columnThickness;
+                    
+                    // Calculate bobbin yoke vertical positions
+                    // Yokes sit on top/bottom of the core column (where core yokes end)
+                    double coreColumnTopY = mainColumnHeight / 2;
+                    double coreColumnBottomY = -mainColumnHeight / 2;
+                    
+                    // First pass: draw the bobbin column wall
+                    if (name.find("CentralColumn") != std::string::npos) {
+                        // Central column wall - vertical strip
+                        // Positioned at the right edge of the core column
+                        double xCoord = (columnLeftEdge + columnRightEdge) / 2;
+                        double yCoord = wwY;
+                        double width = columnThickness;
+                        double height = wwHeight;
+                        paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Second pass: draw bobbin yokes on top of the column
+    auto bobbinVariant2 = magnetic.get_coil().get_bobbin();
+    if (family != MAS::CoreShapeFamily::T && std::holds_alternative<Bobbin>(bobbinVariant2)) {
+        for (const auto& [name, temp] : nodeTemperatures) {
+            if (name.find("Bobbin_") == 0 && (name.find("TopYoke") != std::string::npos || name.find("BottomYoke") != std::string::npos)) {
+                auto color = getColorForTemperature(temp);
+                
+                std::stringstream stream;
+                stream << std::fixed << std::setprecision(1) << temp;
+                std::string label = name + ": " + stream.str() + " °C";
+                
+                std::string cssClassName = generate_random_string();
+                _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
+                
+                auto windingWindow = core.get_winding_window();
+                if (windingWindow.get_width()) {
+                    double wwX = windingWindow.get_coordinates().value()[0];
+                    double wwY = windingWindow.get_coordinates().value()[1];
+                    double wwWidth = windingWindow.get_width().value();
+                    double wwHeight = windingWindow.get_height().value();
+                    
+                    auto bobbinProcessed = std::get<Bobbin>(bobbinVariant2).get_processed_description();
+                    double wallThickness = 0.002;
+                    double columnThickness = 0.002;
+                    if (bobbinProcessed) {
+                        wallThickness = bobbinProcessed->get_wall_thickness();
+                        columnThickness = bobbinProcessed->get_column_thickness();
+                    }
+                    
+                    double columnLeftEdge = showingMainColumnWidth;
+                    double coreColumnTopY = mainColumnHeight / 2;
+                    double coreColumnBottomY = -mainColumnHeight / 2;
                     
                     double xCoord, yCoord, width, height;
                     
-                    if (name.find("CentralColumn") != std::string::npos) {
-                        // Central column wall - thin vertical strip at left side of winding window
-                        xCoord = wwX;
-                        yCoord = wwY;
-                        width = wallThickness;
-                        height = wwHeight;
-                    } else if (name.find("TopYoke") != std::string::npos) {
-                        // Top yoke wall - thin horizontal strip at top of winding window
-                        xCoord = wwX + wwWidth / 4;  // Center in the winding window width
-                        yCoord = wwY + wwHeight / 2 - wallThickness / 2;
-                        width = wwWidth / 2;
+                    if (name.find("TopYoke") != std::string::npos) {
+                        // Top yoke - full winding window width, flush against core
+                        xCoord = columnLeftEdge + wwWidth / 2;
+                        yCoord = coreColumnTopY - wallThickness / 2;
+                        width = wwWidth;
                         height = wallThickness;
+                        paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
                     } else if (name.find("BottomYoke") != std::string::npos) {
-                        // Bottom yoke wall - thin horizontal strip at bottom of winding window
-                        xCoord = wwX + wwWidth / 4;
-                        yCoord = wwY - wwHeight / 2 + wallThickness / 2;
-                        width = wwWidth / 2;
+                        // Bottom yoke - full winding window width, flush against core
+                        xCoord = columnLeftEdge + wwWidth / 2;
+                        yCoord = coreColumnBottomY + wallThickness / 2;
+                        width = wwWidth;
                         height = wallThickness;
-                    } else {
-                        // Default: skip unknown bobbin node types
-                        continue;
+                        paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
                     }
-                    
-                    paint_rectangle(xCoord, yCoord, width, height, cssClassName, shapes, 0, {0, 0}, label);
                 }
             }
         }
     }
     
     // Paint insulation layers with their temperatures
-    // Look for insulation layer nodes (e.g., "L_0", "L_1", etc.)
+    // Look for insulation layer nodes (e.g., "L_0", "L_1" for concentric, "IL_0_0_i", "IL_0_0_o" for toroidal)
     for (const auto& [name, temp] : nodeTemperatures) {
-        if (name.find("L_") == 0) {
+        // Handle concentric core insulation layers (L_0, L_1, etc.)
+        if (name.find("L_") == 0 && name.find("IL_") != 0) {
             // Extract layer index from node name (L_<index>)
             std::string idxStr = name.substr(2);  // Skip "L_"
             size_t layerIdx = std::stoull(idxStr);
@@ -1958,6 +2016,82 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                             break;
                         }
                         insulationIdx++;
+                    }
+                }
+            }
+        }
+        // Handle toroidal insulation layer nodes (IL_<layer>_<segment>_<i/o>)
+        else if (name.find("IL_") == 0 && family == MAS::CoreShapeFamily::T) {
+            auto color = getColorForTemperature(temp);
+            
+            // Parse node name: IL_<layer>_<segment>_<i/o>
+            std::vector<std::string> parts;
+            std::stringstream ss(name);
+            std::string part;
+            while (std::getline(ss, part, '_')) {
+                parts.push_back(part);
+            }
+            
+            if (parts.size() >= 4) {
+                size_t layerIdx = std::stoull(parts[1]);
+                size_t segmentIdx = std::stoull(parts[2]);
+                std::string innerOuter = parts[3]; // "i" or "o"
+                
+                // Find the insulation layer
+                if (coil.get_layers_description()) {
+                    auto layers = coil.get_layers_description().value();
+                    
+                    // Get core dimensions to calculate initialRadius (core outer radius)
+                    auto processedDescription = core.get_processed_description().value();
+                    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
+                    double initialRadius = processedDescription.get_width() / 2 - mainColumn.get_width();
+                    
+                    size_t insulationIdx = 0;
+                    for (const auto& layer : layers) {
+                        if (layer.get_type() == MAS::ElectricalType::INSULATION) {
+                            if (insulationIdx == layerIdx) {
+                                // Calculate radius based on inner (_i) or outer (_o) node
+                                double layerRadialPos = layer.get_coordinates()[0]; // Distance from winding window edge
+                                double radialThickness = layer.get_dimensions()[0];
+                                if (radialThickness < 1e-6) {
+                                    radialThickness = 0.00005; // Default 50 microns
+                                }
+                                
+                                double radius;
+                                if (innerOuter == "i") {
+                                    // Inner node - at inner surface of insulation (closer to core)
+                                    radius = initialRadius - layerRadialPos - radialThickness;
+                                } else {
+                                    // Outer node - at outer surface of insulation (farther from core)
+                                    // Use additionalCoordinates if available (like in paint_toroidal_coil_turns)
+                                    if (layer.get_additional_coordinates()) {
+                                        double outerRadialPos = layer.get_additional_coordinates().value()[0][0];
+                                        radius = initialRadius - outerRadialPos;
+                                    } else {
+                                        // Fallback: use inner position
+                                        radius = initialRadius - layerRadialPos;
+                                    }
+                                }
+                                
+                                double circleDiameter = radius * 2;
+                                double anglePerSegment = 360.0 / 8.0; // 8 segments
+                                double startAngle = segmentIdx * anglePerSegment;
+                                double endAngle = (segmentIdx + 1) * anglePerSegment;
+                                
+                                // Create style with all attributes at once
+                                std::string cssClassName = generate_random_string();
+                                _root.style("." + cssClassName)
+                                    .set_attr("stroke", color)
+                                    .set_attr("fill", "none")
+                                    .set_attr("opacity", "1.0")
+                                    .set_attr("stroke-width", std::to_string(radialThickness * _scale));
+                                
+                                paint_circle(0, 0, circleDiameter / 2, cssClassName, shapes, 
+                                            endAngle - startAngle, -startAngle - (endAngle - startAngle) / 2, {0, 0});
+                                break;
+                            }
+                            insulationIdx++;
+                        }
                     }
                 }
             }
@@ -2484,9 +2618,13 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     // This is critical for dense layouts like T36 with many turns
     for (size_t i = 0; i < nodes.size(); i++) {
         if (nodes[i].isAmbient()) continue;
+        // Skip insulation layer nodes for min separation calculation
+        if (nodes[i].part == ThermalNodePartType::INSULATION_LAYER) continue;
         
         for (size_t j = i + 1; j < nodes.size(); j++) {
             if (nodes[j].isAmbient()) continue;
+            // Skip insulation layer nodes for min separation calculation
+            if (nodes[j].part == ThermalNodePartType::INSULATION_LAYER) continue;
             
             // Calculate 3D Euclidean distance between nodes
             double dx = nodes[i].physicalCoordinates.size() >= 1 && nodes[j].physicalCoordinates.size() >= 1 ? 
@@ -2539,6 +2677,12 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     
     for (const auto& node : nodes) {
         if (!node.isAmbient() && node.physicalCoordinates.size() >= 2) {
+            // Skip insulation layer nodes for bounding box calculation
+            // They can be positioned far from turns and cause excessive scaling
+            if (node.part == ThermalNodePartType::INSULATION_LAYER) {
+                continue;
+            }
+            
             double x = node.physicalCoordinates[0];
             double y = node.physicalCoordinates[1];
             
@@ -2768,17 +2912,35 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         auto getConnectionPoint = [&](const ThermalNetworkNode& node, ThermalNodeFace face) -> std::pair<double, double> {
             auto pos = mapNodeToSvg(node);
             
-            if (node.part != ThermalNodePartType::TURN || face == ThermalNodeFace::NONE) {
+            // For nodes without specific faces, just return center position
+            if (face == ThermalNodeFace::NONE) {
                 return pos;
             }
             
-            // For turns, calculate offset based on face
+            // Only TURN and INSULATION_LAYER nodes use limit coordinates for connection points
+            bool useLimitCoords = (node.part == ThermalNodePartType::TURN || 
+                                   node.part == ThermalNodePartType::INSULATION_LAYER);
+            if (!useLimitCoords) {
+                return pos;
+            }
+            
+            // For turns and insulation layers, calculate offset based on face
             // For concentric: use horizontal/vertical offsets
             // For toroidal: use angled limit coordinates
             double offsetX = 0, offsetY = 0;
             
             if (isConcentricCore) {
-                // Concentric: fixed horizontal/vertical offsets
+                // Always try to use limit coordinates first (for both turns and insulation layers)
+                auto limit = getQuadrantLimitCoordinate(node, face);
+                if (limit && ((*limit)[0] != 0.0 || (*limit)[1] != 0.0)) {
+                    double centerX = node.physicalCoordinates[0];
+                    double centerY = node.physicalCoordinates[1];
+                    offsetX = ((*limit)[0] - centerX) / 2.0 * scaleFactor;
+                    offsetY = ((*limit)[1] - centerY) / 2.0 * scaleFactor;
+                    return {pos.first + offsetX, pos.second + offsetY};
+                }
+                
+                // Fallback: fixed horizontal/vertical offsets based on dimensions
                 double nodeWidth = node.dimensions.width * scaleFactor / 2.0;
                 double nodeHeight = node.dimensions.height * scaleFactor / 2.0;
                 double radius = (nodeWidth + nodeHeight) / 4.0;  // Node radius in SVG coords
@@ -2812,6 +2974,8 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         // Get connection points
         auto [x1, y1] = getConnectionPoint(*node1, res.quadrantFrom);
         auto [x2, y2] = getConnectionPoint(*node2, res.quadrantTo);
+        
+        // Connection points calculated - proceed with drawing
         
         // Draw conduction as full resistor symbols
         if (res.type == HeatTransferType::CONDUCTION) {
@@ -2881,6 +3045,18 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                              node.part == ThermalNodePartType::CORE_BOTTOM_YOKE) {
                         return true;  // Other core types: all exposed surfaces
                     }
+                    // For insulation layer nodes: only radial faces connect to ambient
+                    else if (node.part == ThermalNodePartType::INSULATION_LAYER) {
+                        // Check which face actually has the convection connection
+                        ThermalNodeFace connectedFace = (res.nodeFromId == nodeIdx) ? res.quadrantFrom : res.quadrantTo;
+                        // Only RADIAL_INNER and RADIAL_OUTER faces should show convection
+                        if (face == connectedFace && 
+                            (face == ThermalNodeFace::RADIAL_INNER || face == ThermalNodeFace::RADIAL_OUTER)) {
+                            return true;
+                        }
+                        // TANGENTIAL faces should not show convection (left unconnected)
+                        return false;
+                    }
                 }
             }
         }
@@ -2929,6 +3105,15 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
         slice->set_attr("stroke", "#222222");
         slice->set_attr("stroke-width", "0.5");
     };
+    
+    // Check if insulation layers exist in the model
+    bool hasInsulationLayers = false;
+    for (const auto& node : nodes) {
+        if (node.part == ThermalNodePartType::INSULATION_LAYER) {
+            hasInsulationLayers = true;
+            break;
+        }
+    }
     
     // Draw core nodes with quadrants
     for (const auto* node : coreNodesForQuadrants) {
@@ -3026,8 +3211,9 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                 sliceColor = COLOR_CONDUCTION;  // Orange: connected via conduction (priority)
             } else if (hasConvectionToAmbientOnFace(nodeIdx, quadrants[q], 0)) {
                 sliceColor = COLOR_AMBIENT;  // Green: exposed to air
-            } else if (coverage > 0.5) {
+            } else if (!hasInsulationLayers && coverage > 0.5) {
                 // Surface coverage > 50% means mostly exposed to air
+                // Only use this when insulation layers are NOT present
                 sliceColor = COLOR_AMBIENT;  // Green: mostly exposed
             } else {
                 // No explicit connection and mostly covered
@@ -3052,11 +3238,41 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
             node->part == ThermalNodePartType::BOBBIN_TOP_YOKE ||
             node->part == ThermalNodePartType::BOBBIN_BOTTOM_YOKE) {
             nodeLabel = "B";
+        } else if (node->part == ThermalNodePartType::INSULATION_LAYER) {
+            // Use full name for insulation layers (e.g., "IL_0_0_i")
+            nodeLabel = node->name;
         }
         auto* nameLabel = nodesGroup->add_child<SVG::Text>(x, y + defaultNodeRadius + 10, nodeLabel);
         nameLabel->set_attr("font-size", "6");
         nameLabel->set_attr("text-anchor", "middle");
         nameLabel->set_attr("fill", "#666666");
+    }
+    
+    // Draw insulation layer nodes with black dots at limit coordinates
+    for (const auto* node : coreNodesForQuadrants) {
+        if (node->part != ThermalNodePartType::INSULATION_LAYER) continue;
+        
+        auto [x, y] = mapNodeToSvg(*node);
+        
+        // Draw black dots at quadrant limit coordinates
+        for (const auto& quadrant : node->quadrants) {
+            if (quadrant.face == ThermalNodeFace::NONE) continue;
+            
+            // Calculate limit position in SVG coordinates
+            double centerX = node->physicalCoordinates[0];
+            double centerY = node->physicalCoordinates[1];
+            double offsetX = quadrant.limitCoordinates[0] - centerX;
+            double offsetY = quadrant.limitCoordinates[1] - centerY;
+            
+            // Scale to match visual node size (same as turn nodes)
+            double limitX = margin + (centerX + offsetX / 2.0 - minX) * scaleFactor;
+            double limitY = margin + (centerY + offsetY / 2.0 - minY) * scaleFactor;
+            
+            // Draw small black dot
+            auto* limitDot = nodesGroup->add_child<SVG::Circle>(limitX, limitY, 2.0);
+            limitDot->set_attr("fill", "#000000");
+            limitDot->set_attr("stroke", "none");
+        }
     }
     
     // Helper function to draw a triangle quadrant
@@ -3351,7 +3567,9 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
             }
             
             // Draw limit coordinates as small black dots for turn quadrants only
-            if (node->part == ThermalNodePartType::TURN) {
+            // Draw limit dots (black dots) for TURN and INSULATION_LAYER nodes
+            if (node->part == ThermalNodePartType::TURN || 
+                node->part == ThermalNodePartType::INSULATION_LAYER) {
                 for (const auto& quadrant : node->quadrants) {
                     if (quadrant.face == ThermalNodeFace::NONE) continue;
                     
@@ -3474,13 +3692,18 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
             tLabel->set_attr("font-weight", "bold");
             
             // Turn number below with inner/outer suffix for toroidal cores
+            // Format: W_i_T_j_i or W_i_T_j_o (winding index, turn index, inner/outer)
+            size_t windingNum = 0;
             size_t turnNum = 0;
+            if (node->windingIndex.has_value()) {
+                windingNum = node->windingIndex.value();
+            }
             if (node->turnIndex.has_value()) {
                 turnNum = node->turnIndex.value();
             }
             
             // Check if this is an inner or outer turn node (toroidal)
-            std::string turnLabel = "T" + std::to_string(turnNum);
+            std::string turnLabel = "W" + std::to_string(windingNum) + "_T" + std::to_string(turnNum);
             std::string nameLower = node->name;
             std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
             if (nameLower.find("_inner") != std::string::npos) {
