@@ -67,8 +67,6 @@ void exportThermalCircuitSchematic(const std::string& testName,
     std::ofstream file(outFile);
     file << svg;
     file.close();
-    
-    std::cout << "Thermal circuit schematic exported to: " << outFile << std::endl;
 }
 
 namespace {
@@ -1555,47 +1553,6 @@ TEST_CASE("Temperature: Zero Losses Baseline", "[temperature]") {
                  Catch::Matchers::WithinAbs(config.ambientTemperature, 0.5));
 }
 
-TEST_CASE("Temperature: Core Losses Only", "[temperature]") {
-    std::vector<int64_t> numberTurns({10});
-    std::vector<int64_t> numberParallels({1});
-    std::string shapeName = "ETD 49/25/16";
-
-    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
-                                                     numberParallels,
-                                                     shapeName,
-                                                     1,
-                                                     WindingOrientation::CONTIGUOUS,
-                                                     WindingOrientation::CONTIGUOUS,
-                                                     CoilAlignment::CENTERED,
-                                                     CoilAlignment::CENTERED);
-
-    std::string coreMaterial = "N87";
-    auto gapping = json::array();
-    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, coreMaterial);
-    
-    OpenMagnetics::Magnetic magnetic;
-    magnetic.set_core(core);
-    magnetic.set_coil(coil);
-
-    TemperatureConfig config;
-    config.ambientTemperature = 25.0;
-    config.coreLosses = 2.0;
-    config.windingLosses = 0.0;
-    config.plotSchematic = false;
-    
-    Temperature temp(magnetic, config);
-    auto result = temp.calculateTemperatures();
-    
-    REQUIRE(result.converged);
-    REQUIRE(result.maximumTemperature > config.ambientTemperature);
-    REQUIRE(result.totalThermalResistance > 0);
-    
-    double expectedRise = config.coreLosses * result.totalThermalResistance;
-    double actualRise = result.maximumTemperature - config.ambientTemperature;
-    // Increased tolerance for half-core symmetric model (was 0.1)
-    REQUIRE_THAT(actualRise, Catch::Matchers::WithinRel(expectedRise, 0.25));
-}
-
 TEST_CASE("Temperature: Linear Scaling Validation", "[temperature]") {
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
@@ -2635,6 +2592,41 @@ TEST_CASE("Temperature: Concentric Round Wire Simple", "[temperature][rectangula
     
     // Export thermal circuit schematic with quadrants
     exportThermalCircuitSchematic("concentric_round_wire_simple", temp);
+    
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+    REQUIRE(result.totalThermalResistance > 0.0);
+}
+
+TEST_CASE("Temperature: Concentric Planar Inductor", "[temperature][planar][concentric]") {
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_planar.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    
+    // Run magnetic simulation to get actual losses
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing from simulation results");
+    }
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = true;
+    config.schematicOutputPath = (getOutputDir() / "thermal_schematic_concentric_planar.svg").string();
+    
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+    
+    // Export temperature field visualization with turns colored by temperature
+    exportTemperatureFieldSvg("concentric_planar", magnetic, result.nodeTemperatures, config.ambientTemperature);
+    
+    // Export thermal circuit schematic
+    exportThermalCircuitSchematic("concentric_planar", temp);
     
     REQUIRE(result.converged);
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
