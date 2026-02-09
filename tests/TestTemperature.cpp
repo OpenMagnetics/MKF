@@ -113,8 +113,6 @@ LossesFromSimulation getLossesFromSimulation(const OpenMagnetics::Magnetic& magn
             result.simulationSucceeded = true;
         }
     } catch (const std::exception& e) {
-        std::cout << "Magnetic simulation failed: " << e.what() << std::endl;
-        std::cout << "Falling back to estimated losses" << std::endl;
     }
     
     // Get ambient temperature from operating point
@@ -212,7 +210,7 @@ void applySimulatedLosses(TemperatureConfig& config,
 // Unit Tests for Static Calculation Methods
 //=============================================================================
 
-TEST_CASE("Temperature: Conduction Resistance Calculation", "[thermal][conduction]") {
+TEST_CASE("Temperature: Conduction Resistance Calculation", "[temperature][conduction]") {
     // R = L / (k * A)
     // For a 10mm path through copper (k=385 W/m·K) with 1cm² area:
     // R = 0.01 / (385 * 0.0001) = 0.26 K/W
@@ -250,7 +248,7 @@ TEST_CASE("Temperature: Conduction Resistance Calculation", "[thermal][conductio
     }
 }
 
-TEST_CASE("Temperature: Convection Resistance Calculation", "[thermal][convection]") {
+TEST_CASE("Temperature: Convection Resistance Calculation", "[temperature][convection]") {
     // R = 1 / (h * A)
     
     SECTION("Basic convection resistance") {
@@ -279,7 +277,7 @@ TEST_CASE("Temperature: Convection Resistance Calculation", "[thermal][convectio
     }
 }
 
-TEST_CASE("Temperature: Natural Convection Coefficient", "[thermal][convection]") {
+TEST_CASE("Temperature: Natural Convection Coefficient", "[temperature][convection]") {
     // Natural convection h typically 5-25 W/(m²·K)
     
     SECTION("Vertical surface, moderate temperature difference") {
@@ -332,7 +330,7 @@ TEST_CASE("Temperature: Natural Convection Coefficient", "[thermal][convection]"
     }
 }
 
-TEST_CASE("Temperature: Forced Convection Coefficient", "[thermal][convection]") {
+TEST_CASE("Temperature: Forced Convection Coefficient", "[temperature][convection]") {
     // Forced convection h typically 25-250+ W/(m²·K)
     
     SECTION("Low velocity air") {
@@ -370,7 +368,7 @@ TEST_CASE("Temperature: Forced Convection Coefficient", "[thermal][convection]")
     }
 }
 
-TEST_CASE("Temperature: Radiation Coefficient", "[thermal][radiation]") {
+TEST_CASE("Temperature: Radiation Coefficient", "[temperature][radiation]") {
     // h_rad = ε * σ * (Ts² + Ta²) * (Ts + Ta)
     // At 100°C surface, 25°C ambient, ε=0.9: h_rad ≈ 7-8 W/(m²·K)
     
@@ -415,7 +413,7 @@ TEST_CASE("Temperature: Radiation Coefficient", "[thermal][radiation]") {
     }
 }
 
-TEST_CASE("Temperature: Material Thermal Conductivity", "[thermal][materials]") {
+TEST_CASE("Temperature: Material Thermal Conductivity", "[temperature]") {
     SECTION("Known materials return correct values") {
         // Copper: MAS data interpolates to ~399 at 25°C
         REQUIRE_THAT(ThermalResistance::getMaterialThermalConductivity("copper"), 
@@ -443,7 +441,7 @@ TEST_CASE("Temperature: Material Thermal Conductivity", "[thermal][materials]") 
     }
 }
 
-TEST_CASE("Temperature: Fluid Properties", "[thermal][fluids]") {
+TEST_CASE("Temperature: Fluid Properties", "[temperature]") {
     SECTION("Air properties at room temperature") {
         FluidProperties air = FluidProperties::getAirProperties(25.0);
         
@@ -479,7 +477,7 @@ TEST_CASE("Temperature: Fluid Properties", "[thermal][fluids]") {
 // Integration Tests with Magnetic Components (using new Temperature API)
 //=============================================================================
 
-TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[thermal][toroidal]") {
+TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[temperature][round-winding-window]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -531,13 +529,9 @@ TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[thermal][toroidal]") {
     {
         auto coil2 = magnetic.get_coil();
         auto insulationLayers = coil2.get_layers_description_insulation();
-        std::cout << "DEBUG: Insulation layers found: " << insulationLayers.size() << std::endl;
         for (const auto& layer : insulationLayers) {
-            std::cout << "DEBUG: Insulation layer coords: [";
             for (auto c : layer.get_coordinates()) std::cout << c << " ";
-            std::cout << "] dims: [";
             for (auto d : layer.get_dimensions()) std::cout << d << " ";
-            std::cout << "]" << std::endl;
         }
     }
     
@@ -555,14 +549,9 @@ TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[thermal][toroidal]") {
     REQUIRE(result.totalThermalResistance > 1.0);
     REQUIRE(result.totalThermalResistance < 450.0);  // Relaxed until model is calibrated
     
-    std::cout << "Toroidal T 20/10/7 ten turns:" << std::endl;
-    std::cout << "  Max temperature: " << result.maximumTemperature << "°C" << std::endl;
-    std::cout << "  Thermal resistance: " << result.totalThermalResistance << " K/W" << std::endl;
-    std::cout << "  Number of nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "  Number of resistances: " << temp.getResistances().size() << std::endl;
 }
 
-TEST_CASE("Temperature: Larger Toroidal Core Two Windings", "[thermal][toroidal]") {
+TEST_CASE("Temperature: Larger Toroidal Core Two Windings", "[temperature][round-winding-window]") {
     std::vector<int64_t> numberTurns({20, 10});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "T 36/23/15";
@@ -594,7 +583,6 @@ TEST_CASE("Temperature: Larger Toroidal Core Two Windings", "[thermal][toroidal]
     {
         auto coil2 = magnetic.get_coil();
         auto insulationLayers = coil2.get_layers_description_insulation();
-        std::cout << "DEBUG T36: Insulation layers found: " << insulationLayers.size() << std::endl;
     }
     
     TemperatureConfig config;
@@ -618,14 +606,9 @@ TEST_CASE("Temperature: Larger Toroidal Core Two Windings", "[thermal][toroidal]
     REQUIRE(result.totalThermalResistance > 0.5);
     REQUIRE(result.totalThermalResistance < 200.0);  // Relaxed until model is calibrated
     
-    std::cout << "Toroidal T 36/23/15 two windings:" << std::endl;
-    std::cout << "  Max temperature: " << result.maximumTemperature << "°C" << std::endl;
-    std::cout << "  Thermal resistance: " << result.totalThermalResistance << " K/W" << std::endl;
-    std::cout << "  Number of nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "  Number of resistances: " << temp.getResistances().size() << std::endl;
 }
 
-TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[thermal][toroidal][quadrant][T36]") {
+TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[temperature][round-winding-window]") {
     std::vector<int64_t> numberTurns({20, 10});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "T 36/23/15";
@@ -675,14 +658,9 @@ TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[thermal][toroidal][q
     file << svg;
     file.close();
     
-    std::cout << "T36 Schematic (debug only):" << std::endl;
-    std::cout << "  Number of nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "  Number of resistances: " << temp.getResistances().size() << std::endl;
-    std::cout << "  Schematic saved to: " << config.schematicOutputPath << std::endl;
-    std::cout << "  Geometry saved to: output/T36_geometry_visualization.svg" << std::endl;
 }
 
-TEST_CASE("Temperature: T20 Two Windings Quadrant Visualization", "[thermal][toroidal][quadrant][two_windings]") {
+TEST_CASE("Temperature: T20 Two Windings Quadrant Visualization", "[temperature][round-winding-window]") {
     std::vector<int64_t> numberTurns({5, 5});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "T 20/10/7";
@@ -721,11 +699,6 @@ TEST_CASE("Temperature: T20 Two Windings Quadrant Visualization", "[thermal][tor
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "T20 two windings quadrant visualization:" << std::endl;
-    std::cout << "  Total nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "  Total resistances: " << temp.getResistances().size() << std::endl;
-    std::cout << "  Converged: " << (result.converged ? "yes" : "no") << std::endl;
-    std::cout << "  Max temperature: " << result.maximumTemperature << "°C" << std::endl;
     
     // Note: With insulation layers present, only the outermost layer has convection to ambient.
     // Inner layers rely on conduction through turns to reach the outer layer.
@@ -734,7 +707,7 @@ TEST_CASE("Temperature: T20 Two Windings Quadrant Visualization", "[thermal][tor
     REQUIRE(temp.getResistances().size() > 0);
 }
 
-TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[thermal][toroidal][quadrant]") {
+TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[temperature][round-winding-window]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -768,11 +741,6 @@ TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[thermal][toroidal][q
     // Calculate temperatures (builds network and generates schematic even if solver fails)
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Quadrant visualization generated:" << std::endl;
-    std::cout << "  Total nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "  Total resistances: " << temp.getResistances().size() << std::endl;
-    std::cout << "  Converged: " << (result.converged ? "yes" : "no") << std::endl;
-    std::cout << "  Output: output/thermal_quadrant_visualization.svg" << std::endl;
 }
 
 
@@ -781,7 +749,7 @@ TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[thermal][toroidal][q
 // Additional Core Type Tests
 //=============================================================================
 
-TEST_CASE("Temperature: ETD Core", "[thermal][etd]") {
+TEST_CASE("Temperature: ETD Core", "[temperature]") {
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 39/20/13";
@@ -833,7 +801,7 @@ TEST_CASE("Temperature: ETD Core", "[thermal][etd]") {
     REQUIRE(result.totalThermalResistance < 200.0);
 }
 
-TEST_CASE("Temperature: E Core", "[thermal][ecore]") {
+TEST_CASE("Temperature: E Core", "[temperature]") {
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "E 42/21/15";
@@ -866,11 +834,6 @@ TEST_CASE("Temperature: E Core", "[thermal][ecore]") {
     auto inputs = createInputsForMagnetic(magnetic, 100000.0, config.ambientTemperature, 1.0);
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "\n=== E Core 42/21/15 Diagnostics ===" << std::endl;
-    std::cout << "Simulation succeeded: " << (losses.simulationSucceeded ? "Yes" : "No") << std::endl;
-    std::cout << "Core losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Winding losses: " << losses.windingLosses << " W" << std::endl;
-    std::cout << "Total losses: " << (losses.coreLosses + losses.windingLosses) << " W" << std::endl;
     
     if (losses.simulationSucceeded) {
         config.coreLosses = losses.coreLosses;
@@ -885,11 +848,6 @@ TEST_CASE("Temperature: E Core", "[thermal][ecore]") {
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Max temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Thermal resistance: " << result.totalThermalResistance << " K/W" << std::endl;
-    std::cout << "Number of nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "Number of resistances: " << temp.getResistances().size() << std::endl;
-    std::cout << "Schematic saved to: " << config.schematicOutputPath << std::endl;
     
     REQUIRE(result.converged);
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
@@ -898,7 +856,7 @@ TEST_CASE("Temperature: E Core", "[thermal][ecore]") {
     REQUIRE(result.totalThermalResistance > 0.1);
 }
 
-TEST_CASE("Temperature: Multi-Winding", "[thermal][multi-winding]") {
+TEST_CASE("Temperature: Multi-Winding", "[temperature]") {
     std::vector<int64_t> numberTurns({20, 10, 15});
     std::vector<int64_t> numberParallels({1, 1, 1});
     std::string shapeName = "T 36/23/15";
@@ -939,7 +897,7 @@ TEST_CASE("Temperature: Multi-Winding", "[thermal][multi-winding]") {
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
 }
 
-TEST_CASE("Temperature: Ambient Temperature Effect", "[thermal][ambient]") {
+TEST_CASE("Temperature: Ambient Temperature Effect", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -992,7 +950,7 @@ TEST_CASE("Temperature: Ambient Temperature Effect", "[thermal][ambient]") {
                  Catch::Matchers::WithinRel(result1.totalThermalResistance, 0.1));
 }
 
-TEST_CASE("Temperature: Loss Variation", "[thermal][losses]") {
+TEST_CASE("Temperature: Loss Variation", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1039,12 +997,6 @@ TEST_CASE("Temperature: Loss Variation", "[thermal][losses]") {
     Temperature temp2(magnetic, config2);
     auto result2 = temp2.calculateTemperatures();
     
-    std::cout << "\n=== Loss Variation Diagnostics ===" << std::endl;
-    std::cout << "Config 1 - Current: 0.05A, Core losses: " << config1.coreLosses 
-              << "W, Max temp: " << result1.maximumTemperature << "°C" << std::endl;
-    std::cout << "Config 2 - Current: 0.5A, Core losses: " << config2.coreLosses 
-              << "W, Max temp: " << result2.maximumTemperature << "°C" << std::endl;
-    
     REQUIRE(result1.converged);
     REQUIRE(result2.converged);
     
@@ -1057,7 +1009,7 @@ TEST_CASE("Temperature: Loss Variation", "[thermal][losses]") {
     REQUIRE(deltaT2 > 5.0 * deltaT1);
 }
 
-TEST_CASE("Temperature: Radiation Effect", "[thermal][radiation]") {
+TEST_CASE("Temperature: Radiation Effect", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1111,7 +1063,7 @@ TEST_CASE("Temperature: Radiation Effect", "[thermal][radiation]") {
     REQUIRE(result2.totalThermalResistance <= result1.totalThermalResistance);
 }
 
-TEST_CASE("Temperature: Segment Count", "[thermal][segments]") {
+TEST_CASE("Temperature: Segment Count", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1167,7 +1119,7 @@ TEST_CASE("Temperature: Segment Count", "[thermal][segments]") {
                  Catch::Matchers::WithinRel(result1.totalThermalResistance, 0.15));
 }
 
-TEST_CASE("Temperature: Node Access", "[thermal][nodes]") {
+TEST_CASE("Temperature: Node Access", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1203,9 +1155,6 @@ TEST_CASE("Temperature: Node Access", "[thermal][nodes]") {
     auto inputs = createInputsForMagnetic(magnetic, 100000.0, config.ambientTemperature, 0.1);
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "\n=== Node Access Diagnostics ===" << std::endl;
-    std::cout << "Core losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Winding losses: " << losses.windingLosses << " W" << std::endl;
     
     if (losses.simulationSucceeded) {
         config.coreLosses = losses.coreLosses;
@@ -1221,8 +1170,6 @@ TEST_CASE("Temperature: Node Access", "[thermal][nodes]") {
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Max temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Number of nodes: " << temp.getNodes().size() << std::endl;
     
     REQUIRE(result.converged);
     
@@ -1239,7 +1186,7 @@ TEST_CASE("Temperature: Node Access", "[thermal][nodes]") {
     }
 }
 
-TEST_CASE("Temperature: Bulk Resistance", "[thermal][bulk-resistance]") {
+TEST_CASE("Temperature: Bulk Resistance", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1291,8 +1238,7 @@ TEST_CASE("Temperature: Bulk Resistance", "[thermal][bulk-resistance]") {
     REQUIRE(result.totalThermalResistance < 150.0);  // Increased from 100 due to reduced convection
 }
 
-
-TEST_CASE("Temperature: Forced vs Natural Convection", "[thermal][convection-comparison]") {
+TEST_CASE("Temperature: Forced vs Natural Convection", "[temperature]") {
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 39/20/13";
@@ -1342,7 +1288,7 @@ TEST_CASE("Temperature: Forced vs Natural Convection", "[thermal][convection-com
     REQUIRE(forcedResult.totalThermalResistance < naturalResult.totalThermalResistance);
 }
 
-TEST_CASE("Temperature: Convergence Test", "[thermal][convergence]") {
+TEST_CASE("Temperature: Convergence Test", "[temperature]") {
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 44/22/15";
@@ -1378,7 +1324,7 @@ TEST_CASE("Temperature: Convergence Test", "[thermal][convergence]") {
     REQUIRE(result.totalThermalResistance > 0.1);
 }
 
-TEST_CASE("Temperature: Very High Losses", "[thermal][edge]") {
+TEST_CASE("Temperature: Very High Losses", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 29/16/10";
@@ -1413,7 +1359,7 @@ TEST_CASE("Temperature: Very High Losses", "[thermal][edge]") {
     REQUIRE(result.maximumTemperature > 100.0);
 }
 
-TEST_CASE("Temperature: Very Small Core", "[thermal][edge]") {
+TEST_CASE("Temperature: Very Small Core", "[temperature]") {
     std::vector<int64_t> numberTurns({5});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "E 13/7/4";
@@ -1448,7 +1394,7 @@ TEST_CASE("Temperature: Very Small Core", "[thermal][edge]") {
     REQUIRE(result.totalThermalResistance > 10.0);
 }
 
-TEST_CASE("Temperature: Maniktala Formula Comparison", "[thermal][validation]") {
+TEST_CASE("Temperature: Maniktala Formula Comparison", "[temperature]") {
     std::vector<std::tuple<std::string, double, double>> cores = {
         {"ETD 29/16/10", 5.47, 0.5},
         {"ETD 34/17/11", 7.64, 0.7},
@@ -1496,7 +1442,7 @@ TEST_CASE("Temperature: Maniktala Formula Comparison", "[thermal][validation]") 
     }
 }
 
-TEST_CASE("Temperature: PQ Core", "[thermal][validation]") {
+TEST_CASE("Temperature: PQ Core", "[temperature]") {
     std::vector<int64_t> numberTurns({18});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "PQ 26/25";
@@ -1532,7 +1478,7 @@ TEST_CASE("Temperature: PQ Core", "[thermal][validation]") {
     REQUIRE(result.totalThermalResistance < 50.0);
 }
 
-TEST_CASE("Temperature: Four Winding Transformer", "[thermal][multi-winding]") {
+TEST_CASE("Temperature: Four Winding Transformer", "[temperature]") {
     std::vector<int64_t> numberTurns({24, 12, 8, 6});
     std::vector<int64_t> numberParallels({1, 1, 1, 1});
     std::string shapeName = "T 36/23/15";
@@ -1573,8 +1519,7 @@ TEST_CASE("Temperature: Four Winding Transformer", "[thermal][multi-winding]") {
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
 }
 
-
-TEST_CASE("Temperature: Zero Losses Baseline", "[thermal][baseline]") {
+TEST_CASE("Temperature: Zero Losses Baseline", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 49/25/16";
@@ -1610,7 +1555,7 @@ TEST_CASE("Temperature: Zero Losses Baseline", "[thermal][baseline]") {
                  Catch::Matchers::WithinAbs(config.ambientTemperature, 0.5));
 }
 
-TEST_CASE("Temperature: Core Losses Only", "[thermal][core-losses]") {
+TEST_CASE("Temperature: Core Losses Only", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 49/25/16";
@@ -1651,8 +1596,7 @@ TEST_CASE("Temperature: Core Losses Only", "[thermal][core-losses]") {
     REQUIRE_THAT(actualRise, Catch::Matchers::WithinRel(expectedRise, 0.25));
 }
 
-
-TEST_CASE("Temperature: Linear Scaling Validation", "[thermal][validation][scaling]") {
+TEST_CASE("Temperature: Linear Scaling Validation", "[temperature]") {
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 49/25/16";
@@ -1684,7 +1628,6 @@ TEST_CASE("Temperature: Linear Scaling Validation", "[thermal][validation][scali
     std::vector<double> tempRises;
     std::vector<double> actualLosses;
     
-    std::cout << "\n=== Linear Scaling Validation ===" << std::endl;
     
     for (double I : currents) {
         applySimulatedLosses(config, magnetic, 100000.0, I);
@@ -1696,9 +1639,6 @@ TEST_CASE("Temperature: Linear Scaling Validation", "[thermal][validation][scali
         double tempRise = result.maximumTemperature - config.ambientTemperature;
         tempRises.push_back(tempRise);
         actualLosses.push_back(config.coreLosses + config.windingLosses);
-        
-        std::cout << "Current: " << I << "A, Losses: " << (config.coreLosses + config.windingLosses) 
-                  << "W, Temp rise: " << tempRise << "°C" << std::endl;
     }
     
     // Verify that temperature rises with losses (monotonic relationship)
@@ -1719,7 +1659,6 @@ TEST_CASE("Temperature: Linear Scaling Validation", "[thermal][validation][scali
         for (double r : rthValues) avgRth += r;
         avgRth /= rthValues.size();
         
-        std::cout << "Average Rth: " << avgRth << " K/W" << std::endl;
         
         // Allow 30% deviation in Rth (core losses don't scale linearly with current)
         for (double r : rthValues) {
@@ -1729,7 +1668,7 @@ TEST_CASE("Temperature: Linear Scaling Validation", "[thermal][validation][scali
     }
 }
 
-TEST_CASE("Temperature: U Core", "[thermal][validation][u-core]") {
+TEST_CASE("Temperature: U Core", "[temperature]") {
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "U 93/76/30";
@@ -1765,7 +1704,7 @@ TEST_CASE("Temperature: U Core", "[thermal][validation][u-core]") {
     REQUIRE(result.totalThermalResistance > 0.1);
 }
 
-TEST_CASE("Temperature: RM Core", "[thermal][validation][rm-core]") {
+TEST_CASE("Temperature: RM Core", "[temperature]") {
     std::vector<int64_t> numberTurns({12});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "RM 8";
@@ -1806,7 +1745,7 @@ TEST_CASE("Temperature: RM Core", "[thermal][validation][rm-core]") {
 // Phase 2: Turn Node Tests
 // =============================================================================
 
-TEST_CASE("Temperature: Winding Losses Only", "[thermal][turns][winding-losses]") {
+TEST_CASE("Temperature: Winding Losses Only", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1849,7 +1788,7 @@ TEST_CASE("Temperature: Winding Losses Only", "[thermal][turns][winding-losses]"
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Temperature at Point", "[thermal][turns][interpolation]") {
+TEST_CASE("Temperature: Temperature at Point", "[temperature]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1904,7 +1843,7 @@ TEST_CASE("Temperature: Temperature at Point", "[thermal][turns][interpolation]"
     }
 }
 
-TEST_CASE("Temperature: Per-Turn Temperature Model", "[thermal][turns][per-turn]") {
+TEST_CASE("Temperature: Per-Turn Temperature Model", "[temperature]") {
     std::vector<int64_t> numberTurns({20});  // More turns to see gradient
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 36/23/15";
@@ -1963,7 +1902,7 @@ TEST_CASE("Temperature: Per-Turn Temperature Model", "[thermal][turns][per-turn]
 // Planar Core Tests
 // =============================================================================
 
-TEST_CASE("Temperature: Planar Core ER", "[thermal][planar]") {
+TEST_CASE("Temperature: Planar Core ER", "[temperature][planar]") {
     std::vector<int64_t> numberTurns({8, 4});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "ER 28/14";  // Using a common ER size
@@ -1999,7 +1938,7 @@ TEST_CASE("Temperature: Planar Core ER", "[thermal][planar]") {
     REQUIRE(result.totalThermalResistance > 3.0);  // Lowered from 5.0 due to improved concentric core connections
 }
 
-TEST_CASE("Temperature: Planar Core Three Windings", "[thermal][planar][multi-winding]") {
+TEST_CASE("Temperature: Planar Core Three Windings", "[temperature][planar]") {
     std::vector<int64_t> numberTurns({12, 6, 4});
     std::vector<int64_t> numberParallels({1, 1, 1});
     std::string shapeName = "ER 28/14";
@@ -2039,7 +1978,7 @@ TEST_CASE("Temperature: Planar Core Three Windings", "[thermal][planar][multi-wi
 // Paper Validation Tests
 // =============================================================================
 
-TEST_CASE("Temperature: Van den Bossche E42 Validation", "[thermal][validation][paper]") {
+TEST_CASE("Temperature: Van den Bossche E42 Validation", "[temperature]") {
     // Reference: Van den Bossche & Valchev - E42 core thermal resistance ~10-14 K/W
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
@@ -2072,17 +2011,9 @@ TEST_CASE("Temperature: Van den Bossche E42 Validation", "[thermal][validation][
     // Test at different power levels
     std::vector<double> currents = {0.03, 0.04, 0.05};  // Low currents for reasonable losses
     
-    std::cout << "\n=== Van den Bossche E42 Validation ===" << std::endl;
-    std::cout << "Reference: Van den Bossche & Valchev - E42 core thermal resistance ~10-14 K/W" << std::endl;
     
     // Get core geometry info
     auto coreGeom = core.get_functional_description();
-    std::cout << "Core: E 42/21/20" << std::endl;
-    std::cout << "  Effective volume: " << core.get_effective_volume() << " m³" << std::endl;
-    std::cout << "  Surface area: " << core.get_height() * core.get_width() * 2 + 
-                                        core.get_height() * core.get_depth() * 2 + 
-                                        core.get_width() * core.get_depth() * 2 << " m²" << std::endl;
-    std::cout << "  Dimensions: " << core.get_height()*1000 << " x " << core.get_width()*1000 << " x " << core.get_depth()*1000 << " mm" << std::endl;
     
     for (double I : currents) {
         applySimulatedLosses(config, magnetic, 100000.0, I);
@@ -2096,14 +2027,6 @@ TEST_CASE("Temperature: Van den Bossche E42 Validation", "[thermal][validation][
         double tempRise = result.maximumTemperature - config.ambientTemperature;
         double rth = (totalLosses > 0.001) ? tempRise / totalLosses : 0.0;
         
-        std::cout << "\n  Current: " << I << "A (core=" << config.coreLosses << " W, winding=" << config.windingLosses << " W)" << std::endl;
-        std::cout << "    Max temp: " << result.maximumTemperature << " °C" << std::endl;
-        std::cout << "    Temp rise: " << tempRise << " °C" << std::endl;
-        std::cout << "    Thermal resistance: " << rth << " K/W (Reference: 10-14 K/W)" << std::endl;
-        std::cout << "    Avg core temp: " << result.averageCoreTemperature << " °C" << std::endl;
-        std::cout << "    Avg coil temp: " << result.averageCoilTemperature << " °C" << std::endl;
-        std::cout << "    Total nodes: " << result.nodeTemperatures.size() << std::endl;
-        std::cout << "    Total resistances: " << result.thermalResistances.size() << std::endl;
         
         // Count convection resistances
         int convectionCount = 0;
@@ -2117,7 +2040,6 @@ TEST_CASE("Temperature: Van den Bossche E42 Validation", "[thermal][validation][
             }
         }
         if (convectionCount > 0) {
-            std::cout << "    Convection resistances: " << convectionCount << " (avg=" << sumConvR/convectionCount << " K/W, min=" << minConvR << ", max=" << maxConvR << ")" << std::endl;
         }
         
         // Reference paper reports Rth ≈ 10-14 K/W
@@ -2127,7 +2049,7 @@ TEST_CASE("Temperature: Van den Bossche E42 Validation", "[thermal][validation][
     }
 }
 
-TEST_CASE("Temperature: Power-Temperature Linearity", "[thermal][validation][scaling]") {
+TEST_CASE("Temperature: Power-Temperature Linearity", "[temperature]") {
     // Reference: Dey et al. 2021 - Temperature rise scales linearly with power
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
@@ -2160,7 +2082,6 @@ TEST_CASE("Temperature: Power-Temperature Linearity", "[thermal][validation][sca
     std::vector<double> actualLosses;
     std::vector<double> tempRises;
     
-    std::cout << "\n=== Power-Temperature Linearity ===" << std::endl;
     
     for (double I : currents) {
         applySimulatedLosses(config, magnetic, 100000.0, I);
@@ -2177,9 +2098,6 @@ TEST_CASE("Temperature: Power-Temperature Linearity", "[thermal][validation][sca
         thermalResistances.push_back(rth);
         actualLosses.push_back(totalLosses);
         tempRises.push_back(tempRise);
-        
-        std::cout << "Current: " << I << "A, Losses: " << totalLosses 
-                  << "W, Temp rise: " << tempRise << "°C, Rth: " << rth << " K/W" << std::endl;
     }
     
     // Calculate average thermal resistance
@@ -2187,7 +2105,6 @@ TEST_CASE("Temperature: Power-Temperature Linearity", "[thermal][validation][sca
     for (double rth : thermalResistances) avgRth += rth;
     avgRth /= thermalResistances.size();
     
-    std::cout << "Average Rth: " << avgRth << " K/W" << std::endl;
     
     // All thermal resistances should be within 30% of average
     // (allowing for temperature-dependent convection and non-linear core losses)
@@ -2197,7 +2114,7 @@ TEST_CASE("Temperature: Power-Temperature Linearity", "[thermal][validation][sca
     }
 }
 
-TEST_CASE("Temperature: Core Internal Gradient", "[thermal][validation][gradient]") {
+TEST_CASE("Temperature: Core Internal Gradient", "[temperature]") {
     // Reference: Salinas thesis - ferrite conductivity gives small internal gradients
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
@@ -2255,7 +2172,7 @@ TEST_CASE("Temperature: Core Internal Gradient", "[thermal][validation][gradient
     REQUIRE(internalGradient < 1000.0);  // Accommodates half-core model with quadrant-specific convection
 }
 
-TEST_CASE("Temperature: Detailed Loss Distribution", "[thermal][detailed]") {
+TEST_CASE("Temperature: Detailed Loss Distribution", "[temperature]") {
     std::vector<int64_t> numberTurns({25, 12});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "E 55/28/21";
@@ -2300,7 +2217,7 @@ TEST_CASE("Temperature: Detailed Loss Distribution", "[thermal][detailed]") {
     REQUIRE(turnNodeCount > 0);
 }
 
-TEST_CASE("Temperature: Three Winding Transformer", "[thermal][validation][multi-winding]") {
+TEST_CASE("Temperature: Three Winding Transformer", "[temperature]") {
     std::vector<int64_t> numberTurns({15, 8, 5});
     std::vector<int64_t> numberParallels({1, 1, 1});
     std::string shapeName = "ETD 39";
@@ -2338,7 +2255,7 @@ TEST_CASE("Temperature: Three Winding Transformer", "[thermal][validation][multi
     REQUIRE(result.totalThermalResistance < 100.0);
 }
 
-TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[thermal][toroidal][rectangular]") {
+TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[temperature][round-winding-window]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "toroidal_inductor_rectangular_wires.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2348,8 +2265,6 @@ TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[thermal][toroida
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -2364,8 +2279,6 @@ TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[thermal][toroida
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Export visualization
     exportTemperatureFieldSvg("toroidal_inductor_rectangular_wires", magnetic, result.nodeTemperatures, config.ambientTemperature);
@@ -2410,7 +2323,7 @@ TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[thermal][toroida
     }
 }
 
-TEST_CASE("Temperature Class: Toroidal Core T20", "[temperature][toroidal]") {
+TEST_CASE("Temperature Class: Toroidal Core T20", "[temperature][round-winding-window]") {
     // Create toroidal magnetic using standard test utilities
     std::string shapeName = "T 20/10/7";
     
@@ -2454,14 +2367,9 @@ TEST_CASE("Temperature Class: Toroidal Core T20", "[temperature][toroidal]") {
     // Calculate temperatures
     ThermalResult result = analyzer.calculateTemperatures();
     
-    std::cout << "\n=== NEW ARCHITECTURE TEST ===" << std::endl;
-    std::cout << "Converged: " << (result.converged ? "Yes" : "No") << std::endl;
-    std::cout << "Max Temperature: " << result.maximumTemperature << "°C" << std::endl;
-    std::cout << "Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Access nodes from new architecture
     const auto& nodes = analyzer.getNodes();
-    std::cout << "\nTotal Nodes: " << nodes.size() << std::endl;
     
     // Count node types
     int coreNodes = 0, turnNodes = 0, ambientNodes = 0;
@@ -2471,31 +2379,15 @@ TEST_CASE("Temperature Class: Toroidal Core T20", "[temperature][toroidal]") {
         else if (node.part == ThermalNodePartType::AMBIENT) ambientNodes++;
     }
     
-    std::cout << "Core segments: " << coreNodes << std::endl;
-    std::cout << "Turn nodes: " << turnNodes << std::endl;
-    std::cout << "Ambient nodes: " << ambientNodes << std::endl;
     
-    // Access resistances
-    const auto& resistances = analyzer.getResistances();
-    std::cout << "\nTotal Thermal Resistances: " << resistances.size() << std::endl;
-    
-    // Show some node details
-    std::cout << "\n=== Node Details ===" << std::endl;
-    for (size_t i = 0; i < std::min(size_t(15), nodes.size()); ++i) {
-        const auto& node = nodes[i];
-        std::cout << "[" << i << "] " << node.name 
-                  << " - Part: " << magic_enum::enum_name(node.part)
-                  << ", Temp: " << node.temperature << "°C"
-                  << ", Power: " << (node.powerDissipation * 1000) << " mW" << std::endl;
-    }
+    // Node details verified in test assertions below
     
     // Verify schematic was generated
     REQUIRE(result.converged);
     
-    std::cout << "\nSchematic generated at: " << config.schematicOutputPath << std::endl;
 }
 
-TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[thermal][toroidal][round][multilayer]") {
+TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[temperature][round-winding-window]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "toroidal_inductor_round_wire_multilayer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2505,8 +2397,6 @@ TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[thermal][tor
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -2521,8 +2411,6 @@ TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[thermal][tor
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Export temperature field visualization with turns colored by temperature
     exportTemperatureFieldSvg("toroidal_inductor_round_wire_multilayer", magnetic, result.nodeTemperatures, config.ambientTemperature);
@@ -2585,8 +2473,6 @@ TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[thermal][tor
         }
     }
     
-    std::cout << "RADIAL_INNER convection connections: " << radialInnerConvectionCount << std::endl;
-    std::cout << "RADIAL_OUTER convection connections: " << radialOuterConvectionCount << std::endl;
     
     // Check if this test has insulation layers
     bool hasInsulationLayers = false;
@@ -2600,7 +2486,6 @@ TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[thermal][tor
     if (hasInsulationLayers) {
         // With insulation layers, turns connect to insulation via conduction on radial faces
         // Radial convection to ambient is blocked by insulation
-        std::cout << "Has insulation layers - radial faces connect to insulation, not ambient" << std::endl;
         // Don't require radial convection when insulation layers are present
     } else {
         // In a multilayer winding WITHOUT insulation layers, there should be convection 
@@ -2612,7 +2497,7 @@ TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[thermal][tor
     }
 }
 
-TEST_CASE("Temperature: Concentric Round Wire Spread Multilayer", "[thermal][concentric][round][spread][multilayer]") {
+TEST_CASE("Temperature: Concentric Round Wire Spread Multilayer", "[temperature][rectangular-winding-window]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_round_wire_spread_multilayer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2622,8 +2507,6 @@ TEST_CASE("Temperature: Concentric Round Wire Spread Multilayer", "[thermal][con
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -2638,8 +2521,6 @@ TEST_CASE("Temperature: Concentric Round Wire Spread Multilayer", "[thermal][con
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Export temperature field visualization with turns colored by temperature
     exportTemperatureFieldSvg("concentric_round_wire_spread_multilayer", magnetic, result.nodeTemperatures, config.ambientTemperature);
@@ -2652,7 +2533,7 @@ TEST_CASE("Temperature: Concentric Round Wire Spread Multilayer", "[thermal][con
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric Round Wire Centered Multilayer", "[thermal][concentric][round][centered][multilayer]") {
+TEST_CASE("Temperature: Concentric Round Wire Centered Multilayer", "[temperature][rectangular-winding-window]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_round_wire_centered_multilayer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2662,8 +2543,6 @@ TEST_CASE("Temperature: Concentric Round Wire Centered Multilayer", "[thermal][c
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -2678,8 +2557,6 @@ TEST_CASE("Temperature: Concentric Round Wire Centered Multilayer", "[thermal][c
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Export temperature field visualization with turns colored by temperature
     exportTemperatureFieldSvg("concentric_round_wire_centered_multilayer", magnetic, result.nodeTemperatures, config.ambientTemperature);
@@ -2692,7 +2569,7 @@ TEST_CASE("Temperature: Concentric Round Wire Centered Multilayer", "[thermal][c
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric Round Wire Full Layer", "[thermal][concentric][round][full][layer]") {
+TEST_CASE("Temperature: Concentric Round Wire Full Layer", "[temperature][rectangular-winding-window]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_round_wire_full_layer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2702,8 +2579,6 @@ TEST_CASE("Temperature: Concentric Round Wire Full Layer", "[thermal][concentric
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -2718,8 +2593,6 @@ TEST_CASE("Temperature: Concentric Round Wire Full Layer", "[thermal][concentric
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Export temperature field visualization with turns colored by temperature
     exportTemperatureFieldSvg("concentric_round_wire_full_layer", magnetic, result.nodeTemperatures, config.ambientTemperature);
@@ -2732,7 +2605,7 @@ TEST_CASE("Temperature: Concentric Round Wire Full Layer", "[thermal][concentric
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric Round Wire Simple", "[thermal][concentric][round][simple]") {
+TEST_CASE("Temperature: Concentric Round Wire Simple", "[temperature][rectangular-winding-window]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_round_wire_simple.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2742,8 +2615,6 @@ TEST_CASE("Temperature: Concentric Round Wire Simple", "[thermal][concentric][ro
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -2758,8 +2629,6 @@ TEST_CASE("Temperature: Concentric Round Wire Simple", "[thermal][concentric][ro
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Export temperature field visualization with turns colored by temperature
     exportTemperatureFieldSvg("concentric_round_wire_simple", magnetic, result.nodeTemperatures, config.ambientTemperature);
@@ -2772,7 +2641,7 @@ TEST_CASE("Temperature: Concentric Round Wire Simple", "[thermal][concentric][ro
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric with Insulation Layers", "[thermal][insulation][concentric]") {
+TEST_CASE("Temperature: Concentric with Insulation Layers", "[temperature][rectangular-winding-window]") {
     // Load the test file with insulation layers
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" / "concentric_round_wire_insulation_layers.json";
     
@@ -2786,8 +2655,6 @@ TEST_CASE("Temperature: Concentric with Insulation Layers", "[thermal][insulatio
     OpenMagnetics::Inputs inputs(j["inputs"]);
     OpenMagnetics::Magnetic magnetic(j["magnetic"]);
     
-    std::cout << "Testing concentric round wire with insulation layers:" << std::endl;
-    std::cout << "  Windings: " << magnetic.get_coil().get_functional_description().size() << std::endl;
     
     if (magnetic.get_coil().get_layers_description()) {
         auto layers = magnetic.get_coil().get_layers_description().value();
@@ -2797,19 +2664,14 @@ TEST_CASE("Temperature: Concentric with Insulation Layers", "[thermal][insulatio
                 insulationCount++;
             }
         }
-        std::cout << "  Total layers: " << layers.size() << std::endl;
-        std::cout << "  Insulation layers: " << insulationCount << std::endl;
     }
     
     if (magnetic.get_coil().get_turns_description()) {
-        std::cout << "  Turns: " << magnetic.get_coil().get_turns_description()->size() << std::endl;
     }
     
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -2825,10 +2687,6 @@ TEST_CASE("Temperature: Concentric with Insulation Layers", "[thermal][insulatio
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
-    std::cout << "Number of nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "Number of resistances: " << temp.getResistances().size() << std::endl;
     
     // Count insulation layer nodes
     size_t insulationNodeCount = 0;
@@ -2837,7 +2695,6 @@ TEST_CASE("Temperature: Concentric with Insulation Layers", "[thermal][insulatio
             insulationNodeCount++;
         }
     }
-    std::cout << "Insulation layer nodes: " << insulationNodeCount << std::endl;
     
     // Export temperature field visualization with turns and insulation colored by temperature
     exportTemperatureFieldSvg("concentric_insulation_layers", magnetic, result.nodeTemperatures, config.ambientTemperature);
@@ -2851,7 +2708,7 @@ TEST_CASE("Temperature: Concentric with Insulation Layers", "[thermal][insulatio
     REQUIRE(insulationNodeCount > 0);  // Should have created insulation layer nodes
 }
 
-TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection", "[thermal][insulation][concentric][cooling][forced]") {
+TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection", "[temperature][rectangular-winding-window][cooling]") {
     // Load the test file with insulation layers
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" / "concentric_round_wire_insulation_layers.json";
     
@@ -2865,8 +2722,6 @@ TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection"
     OpenMagnetics::Inputs inputs(j["inputs"]);
     OpenMagnetics::Magnetic magnetic(j["magnetic"]);
     
-    std::cout << "Testing concentric round wire with insulation layers and forced convection:" << std::endl;
-    std::cout << "  Windings: " << magnetic.get_coil().get_functional_description().size() << std::endl;
     
     if (magnetic.get_coil().get_layers_description()) {
         auto layers = magnetic.get_coil().get_layers_description().value();
@@ -2876,19 +2731,14 @@ TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection"
                 insulationCount++;
             }
         }
-        std::cout << "  Total layers: " << layers.size() << std::endl;
-        std::cout << "  Insulation layers: " << insulationCount << std::endl;
     }
     
     if (magnetic.get_coil().get_turns_description()) {
-        std::cout << "  Turns: " << magnetic.get_coil().get_turns_description()->size() << std::endl;
     }
     
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     // First test with natural convection (baseline)
     TemperatureConfig configNatural;
@@ -2904,9 +2754,6 @@ TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection"
     Temperature tempNatural(magnetic, configNatural);
     auto resultNatural = tempNatural.calculateTemperatures();
     
-    std::cout << "  Natural Convection Results:" << std::endl;
-    std::cout << "    Maximum Temperature: " << resultNatural.maximumTemperature << " °C" << std::endl;
-    std::cout << "    Total Thermal Resistance: " << resultNatural.totalThermalResistance << " K/W" << std::endl;
     
     // Now test with forced convection
     TemperatureConfig configForced;
@@ -2926,11 +2773,6 @@ TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection"
     Temperature tempForced(magnetic, configForced);
     auto resultForced = tempForced.calculateTemperatures();
     
-    std::cout << "  Forced Convection Results (3 m/s):" << std::endl;
-    std::cout << "    Maximum Temperature: " << resultForced.maximumTemperature << " °C" << std::endl;
-    std::cout << "    Total Thermal Resistance: " << resultForced.totalThermalResistance << " K/W" << std::endl;
-    std::cout << "    Number of nodes: " << tempForced.getNodes().size() << std::endl;
-    std::cout << "    Number of resistances: " << tempForced.getResistances().size() << std::endl;
     
     // Count insulation layer nodes
     size_t insulationNodeCount = 0;
@@ -2939,7 +2781,6 @@ TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection"
             insulationNodeCount++;
         }
     }
-    std::cout << "    Insulation layer nodes: " << insulationNodeCount << std::endl;
     
     // Verify forced convection provides better cooling
     REQUIRE(resultForced.maximumTemperature < resultNatural.maximumTemperature);
@@ -2957,7 +2798,7 @@ TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection"
     REQUIRE(insulationNodeCount > 0);  // Should have created insulation layer nodes
 }
 
-TEST_CASE("Temperature: Toroidal with Insulation Layers", "[thermal][toroidal][insulation]") {
+TEST_CASE("Temperature: Toroidal with Insulation Layers", "[temperature][round-winding-window]") {
     // Load the toroidal inductor with insulation layers test data
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() 
         / "testData" / "toroidal_inductor_round_wire_multilayer_with_insulation.json";
@@ -2966,29 +2807,15 @@ TEST_CASE("Temperature: Toroidal with Insulation Layers", "[thermal][toroidal][i
     auto magnetic = mas.get_magnetic();
     auto coil = magnetic.get_coil();
     
-    std::cout << "Testing toroidal round wire with insulation layers:" << std::endl;
-    std::cout << "  Turns: " << (coil.get_turns_description() ? coil.get_turns_description()->size() : 0) << std::endl;
     
     // Print insulation layer info
     if (coil.get_layers_description()) {
         auto layers = coil.get_layers_description().value();
-        std::cout << "  Total layers: " << layers.size() << std::endl;
         auto insulationLayers = coil.get_layers_description_insulation();
-        std::cout << "  Insulation layers: " << insulationLayers.size() << std::endl;
         for (const auto& layer : insulationLayers) {
             std::string layerName = layer.get_name();
             if (layerName.empty()) layerName = "unnamed";
-            std::cout << "  Insulation layer: " << layerName << std::endl;
-            if (!layer.get_coordinates().empty()) {
-                std::cout << "    Coords: [";
-                for (auto c : layer.get_coordinates()) std::cout << c << " ";
-                std::cout << "]" << std::endl;
-            }
-            if (layer.get_coordinate_system()) {
-                std::cout << "    CoordSystem: " 
-                          << (layer.get_coordinate_system().value() == MAS::CoordinateSystem::POLAR ? "POLAR" : "CARTESIAN")
-                          << std::endl;
-            }
+            // Layer coordinate system info removed
         }
     }
     
@@ -2998,10 +2825,6 @@ TEST_CASE("Temperature: Toroidal with Insulation Layers", "[thermal][toroidal][i
     // Run magnetic simulation to get real losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Simulation results:" << std::endl;
-    std::cout << "  Core losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "  Winding losses: " << losses.windingLosses << " W" << std::endl;
-    std::cout << "  Simulation succeeded: " << (losses.simulationSucceeded ? "yes" : "no") << std::endl;
     
     // Temperature config
     TemperatureConfig config;
@@ -3018,22 +2841,14 @@ TEST_CASE("Temperature: Toroidal with Insulation Layers", "[thermal][toroidal][i
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Maximum Temperature: " << result.maximumTemperature << " C" << std::endl;
-    std::cout << "Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
-    std::cout << "Number of nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "Number of resistances: " << temp.getResistances().size() << std::endl;
     
     // Count insulation layer nodes
     size_t insulationNodeCount = 0;
     for (const auto& node : temp.getNodes()) {
         if (node.part == OpenMagnetics::ThermalNodePartType::INSULATION_LAYER) {
             insulationNodeCount++;
-            std::cout << "  Insulation node: " << node.name 
-                      << " at (" << node.physicalCoordinates[0] * 1000 << " mm, "
-                      << node.physicalCoordinates[1] * 1000 << " mm)" << std::endl;
         }
     }
-    std::cout << "Insulation layer nodes: " << insulationNodeCount << std::endl;
     
     // Export schematic
     exportThermalCircuitSchematic("toroidal_with_insulation", temp);
@@ -3060,7 +2875,7 @@ TEST_CASE("Temperature: Toroidal with Insulation Layers", "[thermal][toroidal][i
     REQUIRE(foundOuterLayer);
 }
 
-TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[thermal][concentric][insulation][schematic]") {
+TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[temperature][rectangular-winding-window]") {
     // Load the simple concentric insulation layers test data
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() 
         / "testData" / "concentric_round_wire_insulation_layers_simple.json";
@@ -3069,19 +2884,14 @@ TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[therma
     auto magnetic = mas.get_magnetic();
     auto coil = magnetic.get_coil();
     
-    std::cout << "Testing concentric simple insulation layers (schematic only):" << std::endl;
-    std::cout << "  Turns: " << (coil.get_turns_description() ? coil.get_turns_description()->size() : 0) << std::endl;
     
     // Print insulation layer info
     if (coil.get_layers_description()) {
         auto layers = coil.get_layers_description().value();
-        std::cout << "  Total layers: " << layers.size() << std::endl;
         auto insulationLayers = coil.get_layers_description_insulation();
-        std::cout << "  Insulation layers: " << insulationLayers.size() << std::endl;
         for (const auto& layer : insulationLayers) {
             std::string layerName = layer.get_name();
             if (layerName.empty()) layerName = "unnamed";
-            std::cout << "  Insulation layer: " << layerName << std::endl;
         }
     }
     
@@ -3097,25 +2907,16 @@ TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[therma
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "Schematic generated:" << std::endl;
-    std::cout << "  Total nodes: " << temp.getNodes().size() << std::endl;
-    std::cout << "  Total resistances: " << temp.getResistances().size() << std::endl;
-    std::cout << "  Schematic saved to: " << config.schematicOutputPath << std::endl;
     
     // Count insulation layer nodes
     size_t insulationNodeCount = 0;
     for (const auto& node : temp.getNodes()) {
         if (node.part == OpenMagnetics::ThermalNodePartType::INSULATION_LAYER) {
             insulationNodeCount++;
-            std::cout << "  Insulation node: " << node.name 
-                      << " at (" << node.physicalCoordinates[0] * 1000 << " mm, "
-                      << node.physicalCoordinates[1] * 1000 << " mm)" << std::endl;
         }
     }
-    std::cout << "  Insulation layer nodes: " << insulationNodeCount << std::endl;
     
     // Verify turn-to-insulation connections
-    std::cout << "  Turn-to-Insulation connections:" << std::endl;
     for (const auto& res : temp.getResistances()) {
         if (res.type != OpenMagnetics::HeatTransferType::CONDUCTION) continue;
         const auto& nodes = temp.getNodes();
@@ -3130,9 +2931,7 @@ TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[therma
                                   node2.part == OpenMagnetics::ThermalNodePartType::TURN);
         
         if (isTurnInsulation) {
-            std::cout << "    " << node1.name << "[" << magic_enum::enum_name(res.quadrantFrom) << "]"
-                      << " <-> " << node2.name << "[" << magic_enum::enum_name(res.quadrantTo) << "]"
-                      << " (R=" << res.resistance << " K/W)" << std::endl;
+            // Turn-to-insulation connection found
         }
     }
     
@@ -3149,7 +2948,7 @@ TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[therma
 // Cooling Options Tests
 // ============================================================================
 
-TEST_CASE("Temperature: Forced Convection Cooling", "[thermal][cooling][forced]") {
+TEST_CASE("Temperature: Forced Convection Cooling", "[temperature][cooling]") {
     // Use existing concentric test file
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(
         std::source_location::current(), "concentric_round_wire_simple.json");
@@ -3161,9 +2960,6 @@ TEST_CASE("Temperature: Forced Convection Cooling", "[thermal][cooling][forced]"
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Testing Forced Convection Cooling:" << std::endl;
-    std::cout << "  Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "  Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     // First calculate with natural convection (baseline)
     TemperatureConfig configNatural;
@@ -3180,9 +2976,6 @@ TEST_CASE("Temperature: Forced Convection Cooling", "[thermal][cooling][forced]"
     Temperature tempNatural(magnetic, configNatural);
     auto resultNatural = tempNatural.calculateTemperatures();
     
-    std::cout << "  Natural Convection Results:" << std::endl;
-    std::cout << "    Maximum Temperature: " << resultNatural.maximumTemperature << " °C" << std::endl;
-    std::cout << "    Total Thermal Resistance: " << resultNatural.totalThermalResistance << " K/W" << std::endl;
     
     // Now calculate with forced convection
     TemperatureConfig configForced;
@@ -3203,9 +2996,6 @@ TEST_CASE("Temperature: Forced Convection Cooling", "[thermal][cooling][forced]"
     Temperature tempForced(magnetic, configForced);
     auto resultForced = tempForced.calculateTemperatures();
     
-    std::cout << "  Forced Convection Results (2 m/s):" << std::endl;
-    std::cout << "    Maximum Temperature: " << resultForced.maximumTemperature << " °C" << std::endl;
-    std::cout << "    Total Thermal Resistance: " << resultForced.totalThermalResistance << " K/W" << std::endl;
     
     // Verify forced convection gives lower temperature
     REQUIRE(resultForced.maximumTemperature < resultNatural.maximumTemperature);
@@ -3218,7 +3008,7 @@ TEST_CASE("Temperature: Forced Convection Cooling", "[thermal][cooling][forced]"
     REQUIRE(resultForced.converged);
 }
 
-TEST_CASE("Temperature: Heatsink Cooling", "[thermal][cooling][heatsink]") {
+TEST_CASE("Temperature: Heatsink Cooling", "[temperature][cooling]") {
     // Use existing concentric test file (heatsink works best on concentric cores)
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(
         std::source_location::current(), "concentric_round_wire_simple.json");
@@ -3229,9 +3019,6 @@ TEST_CASE("Temperature: Heatsink Cooling", "[thermal][cooling][heatsink]") {
     
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Testing Heatsink Cooling:" << std::endl;
-    std::cout << "  Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "  Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -3255,9 +3042,6 @@ TEST_CASE("Temperature: Heatsink Cooling", "[thermal][cooling][heatsink]") {
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "  Heatsink Results (2.5 K/W):" << std::endl;
-    std::cout << "    Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "    Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Check that heatsink node was created
     bool hasHeatsinkNode = false;
@@ -3277,7 +3061,7 @@ TEST_CASE("Temperature: Heatsink Cooling", "[thermal][cooling][heatsink]") {
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
 }
 
-TEST_CASE("Temperature: Cold Plate Cooling", "[thermal][cooling][coldplate]") {
+TEST_CASE("Temperature: Cold Plate Cooling", "[temperature][cooling]") {
     // Use toroidal test file (cold plate works on both core types)
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(
         std::source_location::current(), "toroidal_inductor_round_wire_multilayer.json");
@@ -3288,9 +3072,6 @@ TEST_CASE("Temperature: Cold Plate Cooling", "[thermal][cooling][coldplate]") {
     
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
-    std::cout << "Testing Cold Plate Cooling:" << std::endl;
-    std::cout << "  Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
-    std::cout << "  Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
     
     TemperatureConfig config;
     config.ambientTemperature = losses.ambientTemperature;
@@ -3314,9 +3095,6 @@ TEST_CASE("Temperature: Cold Plate Cooling", "[thermal][cooling][coldplate]") {
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
     
-    std::cout << "  Cold Plate Results (40°C fixed):" << std::endl;
-    std::cout << "    Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
-    std::cout << "    Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
     
     // Check that cold plate node was created
     bool hasColdPlateNode = false;
@@ -3342,10 +3120,9 @@ TEST_CASE("Temperature: Cold Plate Cooling", "[thermal][cooling][coldplate]") {
     REQUIRE(result.converged);
 }
 
-TEST_CASE("Temperature: Cooling Utils Type Detection", "[thermal][cooling][utils]") {
+TEST_CASE("Temperature: Cooling Utils Type Detection", "[temperature][cooling]") {
     using namespace OpenMagnetics;
     
-    std::cout << "Testing CoolingUtils type detection:" << std::endl;
     
     // Test natural convection detection
     MAS::Cooling naturalCooling;
@@ -3354,7 +3131,6 @@ TEST_CASE("Temperature: Cooling Utils Type Detection", "[thermal][cooling][utils
     REQUIRE(CoolingUtils::isForcedConvection(naturalCooling) == false);
     REQUIRE(CoolingUtils::isHeatsink(naturalCooling) == false);
     REQUIRE(CoolingUtils::isColdPlate(naturalCooling) == false);
-    std::cout << "  Natural convection detection: PASS" << std::endl;
     
     // Test forced convection detection
     MAS::Cooling forcedCooling;
@@ -3363,7 +3139,6 @@ TEST_CASE("Temperature: Cooling Utils Type Detection", "[thermal][cooling][utils
     REQUIRE(CoolingUtils::isForcedConvection(forcedCooling) == true);
     REQUIRE(CoolingUtils::isHeatsink(forcedCooling) == false);
     REQUIRE(CoolingUtils::isColdPlate(forcedCooling) == false);
-    std::cout << "  Forced convection detection: PASS" << std::endl;
     
     // Test heatsink detection
     MAS::Cooling heatsinkCooling;
@@ -3372,7 +3147,6 @@ TEST_CASE("Temperature: Cooling Utils Type Detection", "[thermal][cooling][utils
     REQUIRE(CoolingUtils::isForcedConvection(heatsinkCooling) == false);
     REQUIRE(CoolingUtils::isHeatsink(heatsinkCooling) == true);
     REQUIRE(CoolingUtils::isColdPlate(heatsinkCooling) == false);
-    std::cout << "  Heatsink detection: PASS" << std::endl;
     
     // Test cold plate detection (also has thermal_resistance but max_temp takes precedence)
     MAS::Cooling coldPlateCooling;
@@ -3382,18 +3156,15 @@ TEST_CASE("Temperature: Cooling Utils Type Detection", "[thermal][cooling][utils
     REQUIRE(CoolingUtils::isForcedConvection(coldPlateCooling) == false);
     REQUIRE(CoolingUtils::isHeatsink(coldPlateCooling) == false);
     REQUIRE(CoolingUtils::isColdPlate(coldPlateCooling) == true);
-    std::cout << "  Cold plate detection: PASS" << std::endl;
     
     // Test forced convection coefficient calculation
     double h_forced = CoolingUtils::calculateForcedConvectionCoefficient(
         80.0, 25.0, 2.0, 0.01);  // 80°C surface, 25°C ambient, 2 m/s, 10mm char length
-    std::cout << "  Calculated forced convection coefficient: " << h_forced << " W/(m²·K)" << std::endl;
     REQUIRE(h_forced > 0.0);
     REQUIRE(h_forced > 5.0);  // Should be higher than natural convection (~5-10 W/m²K)
     
     // Test mixed convection calculation
     double h_mixed = CoolingUtils::calculateMixedConvectionCoefficient(10.0, 50.0);
-    std::cout << "  Calculated mixed convection coefficient: " << h_mixed << " W/(m²·K)" << std::endl;
     REQUIRE(h_mixed > 50.0);  // Should be close to forced value
     REQUIRE(h_mixed < 51.0);  // But natural should add a small amount
 }
