@@ -2851,6 +2851,112 @@ TEST_CASE("Temperature: Concentric with Insulation Layers", "[thermal][insulatio
     REQUIRE(insulationNodeCount > 0);  // Should have created insulation layer nodes
 }
 
+TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection", "[thermal][insulation][concentric][cooling][forced]") {
+    // Load the test file with insulation layers
+    std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" / "concentric_round_wire_insulation_layers.json";
+    
+    std::ifstream file(testFile);
+    REQUIRE(file.good());
+    
+    json j;
+    file >> j;
+    
+    // Parse inputs and magnetic
+    OpenMagnetics::Inputs inputs(j["inputs"]);
+    OpenMagnetics::Magnetic magnetic(j["magnetic"]);
+    
+    std::cout << "Testing concentric round wire with insulation layers and forced convection:" << std::endl;
+    std::cout << "  Windings: " << magnetic.get_coil().get_functional_description().size() << std::endl;
+    
+    if (magnetic.get_coil().get_layers_description()) {
+        auto layers = magnetic.get_coil().get_layers_description().value();
+        size_t insulationCount = 0;
+        for (const auto& layer : layers) {
+            if (layer.get_type() == MAS::ElectricalType::INSULATION) {
+                insulationCount++;
+            }
+        }
+        std::cout << "  Total layers: " << layers.size() << std::endl;
+        std::cout << "  Insulation layers: " << insulationCount << std::endl;
+    }
+    
+    if (magnetic.get_coil().get_turns_description()) {
+        std::cout << "  Turns: " << magnetic.get_coil().get_turns_description()->size() << std::endl;
+    }
+    
+    // Run magnetic simulation to get actual losses
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    
+    std::cout << "Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
+    std::cout << "Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
+    
+    // First test with natural convection (baseline)
+    TemperatureConfig configNatural;
+    configNatural.ambientTemperature = losses.ambientTemperature;
+    configNatural.coreLosses = losses.coreLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing from simulation results");
+    }
+    configNatural.windingLosses = losses.windingLosses;
+    configNatural.windingLossesOutput = losses.windingLossesOutput.value();
+    configNatural.plotSchematic = false;
+    
+    Temperature tempNatural(magnetic, configNatural);
+    auto resultNatural = tempNatural.calculateTemperatures();
+    
+    std::cout << "  Natural Convection Results:" << std::endl;
+    std::cout << "    Maximum Temperature: " << resultNatural.maximumTemperature << " °C" << std::endl;
+    std::cout << "    Total Thermal Resistance: " << resultNatural.totalThermalResistance << " K/W" << std::endl;
+    
+    // Now test with forced convection
+    TemperatureConfig configForced;
+    configForced.ambientTemperature = losses.ambientTemperature;
+    configForced.coreLosses = losses.coreLosses;
+    configForced.windingLosses = losses.windingLosses;
+    configForced.windingLossesOutput = losses.windingLossesOutput.value();
+    configForced.plotSchematic = true;
+    configForced.schematicOutputPath = (getOutputDir() / "thermal_schematic_concentric_insulation_forced_convection.svg").string();
+    
+    // Create MAS cooling object for forced convection
+    MAS::Cooling forcedCooling;
+    forcedCooling.set_temperature(losses.ambientTemperature);
+    forcedCooling.set_velocity(std::vector<double>{3.0, 0.0, 0.0});  // 3 m/s airflow
+    configForced.masCooling = forcedCooling;
+    
+    Temperature tempForced(magnetic, configForced);
+    auto resultForced = tempForced.calculateTemperatures();
+    
+    std::cout << "  Forced Convection Results (3 m/s):" << std::endl;
+    std::cout << "    Maximum Temperature: " << resultForced.maximumTemperature << " °C" << std::endl;
+    std::cout << "    Total Thermal Resistance: " << resultForced.totalThermalResistance << " K/W" << std::endl;
+    std::cout << "    Number of nodes: " << tempForced.getNodes().size() << std::endl;
+    std::cout << "    Number of resistances: " << tempForced.getResistances().size() << std::endl;
+    
+    // Count insulation layer nodes
+    size_t insulationNodeCount = 0;
+    for (const auto& node : tempForced.getNodes()) {
+        if (node.part == OpenMagnetics::ThermalNodePartType::INSULATION_LAYER) {
+            insulationNodeCount++;
+        }
+    }
+    std::cout << "    Insulation layer nodes: " << insulationNodeCount << std::endl;
+    
+    // Verify forced convection provides better cooling
+    REQUIRE(resultForced.maximumTemperature < resultNatural.maximumTemperature);
+    REQUIRE(resultForced.totalThermalResistance < resultNatural.totalThermalResistance);
+    
+    // Export temperature field visualization
+    exportTemperatureFieldSvg("concentric_insulation_forced_convection", magnetic, resultForced.nodeTemperatures, configForced.ambientTemperature);
+    
+    // Export thermal circuit schematic
+    exportThermalCircuitSchematic("concentric_insulation_forced_convection", tempForced);
+    
+    REQUIRE(resultForced.converged);
+    REQUIRE(resultForced.maximumTemperature > configForced.ambientTemperature);
+    REQUIRE(resultForced.totalThermalResistance > 0.0);
+    REQUIRE(insulationNodeCount > 0);  // Should have created insulation layer nodes
+}
+
 TEST_CASE("Temperature: Toroidal with Insulation Layers", "[thermal][toroidal][insulation]") {
     // Load the toroidal inductor with insulation layers test data
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() 
@@ -3037,6 +3143,259 @@ TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[therma
     REQUIRE(insulationNodeCount > 0);
     REQUIRE(temp.getNodes().size() > 0);
     REQUIRE(temp.getResistances().size() > 0);
+}
+
+// ============================================================================
+// Cooling Options Tests
+// ============================================================================
+
+TEST_CASE("Temperature: Forced Convection Cooling", "[thermal][cooling][forced]") {
+    // Use existing concentric test file
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(), "concentric_round_wire_simple.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    
+    // Run magnetic simulation to get actual losses
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    
+    std::cout << "Testing Forced Convection Cooling:" << std::endl;
+    std::cout << "  Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
+    std::cout << "  Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
+    
+    // First calculate with natural convection (baseline)
+    TemperatureConfig configNatural;
+    configNatural.ambientTemperature = losses.ambientTemperature;
+    configNatural.coreLosses = losses.coreLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing from simulation results");
+    }
+    configNatural.windingLosses = losses.windingLosses;
+    configNatural.windingLossesOutput = losses.windingLossesOutput.value();
+    configNatural.plotSchematic = true;
+    configNatural.schematicOutputPath = (getOutputDir() / "thermal_natural_convection.svg").string();
+    
+    Temperature tempNatural(magnetic, configNatural);
+    auto resultNatural = tempNatural.calculateTemperatures();
+    
+    std::cout << "  Natural Convection Results:" << std::endl;
+    std::cout << "    Maximum Temperature: " << resultNatural.maximumTemperature << " °C" << std::endl;
+    std::cout << "    Total Thermal Resistance: " << resultNatural.totalThermalResistance << " K/W" << std::endl;
+    
+    // Now calculate with forced convection
+    TemperatureConfig configForced;
+    configForced.ambientTemperature = losses.ambientTemperature;
+    configForced.coreLosses = losses.coreLosses;
+    configForced.windingLosses = losses.windingLosses;
+    configForced.windingLossesOutput = losses.windingLossesOutput.value();
+    configForced.plotSchematic = true;
+    configForced.schematicOutputPath = (getOutputDir() / "thermal_forced_convection.svg").string();
+    
+    // Create MAS cooling object for forced convection
+    MAS::Cooling forcedCooling;
+    forcedCooling.set_velocity(std::vector<double>{2.0, 0.0, 0.0});  // 2 m/s
+    forcedCooling.set_flow_diameter(0.04);  // 40mm fan
+    forcedCooling.set_fluid("air");
+    configForced.masCooling = forcedCooling;
+    
+    Temperature tempForced(magnetic, configForced);
+    auto resultForced = tempForced.calculateTemperatures();
+    
+    std::cout << "  Forced Convection Results (2 m/s):" << std::endl;
+    std::cout << "    Maximum Temperature: " << resultForced.maximumTemperature << " °C" << std::endl;
+    std::cout << "    Total Thermal Resistance: " << resultForced.totalThermalResistance << " K/W" << std::endl;
+    
+    // Verify forced convection gives lower temperature
+    REQUIRE(resultForced.maximumTemperature < resultNatural.maximumTemperature);
+    REQUIRE(resultForced.totalThermalResistance < resultNatural.totalThermalResistance);
+    
+    // Export visualizations
+    exportTemperatureFieldSvg("forced_convection", magnetic, resultForced.nodeTemperatures, configForced.ambientTemperature);
+    exportThermalCircuitSchematic("forced_convection", tempForced);
+    
+    REQUIRE(resultForced.converged);
+}
+
+TEST_CASE("Temperature: Heatsink Cooling", "[thermal][cooling][heatsink]") {
+    // Use existing concentric test file (heatsink works best on concentric cores)
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(), "concentric_round_wire_simple.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    
+    std::cout << "Testing Heatsink Cooling:" << std::endl;
+    std::cout << "  Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
+    std::cout << "  Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
+    
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing from simulation results");
+    }
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = true;
+    config.schematicOutputPath = (getOutputDir() / "thermal_heatsink.svg").string();
+    
+    // Create MAS cooling object for heatsink
+    MAS::Cooling heatsinkCooling;
+    heatsinkCooling.set_thermal_resistance(2.5);  // 2.5 K/W heatsink
+    heatsinkCooling.set_interface_thermal_resistance(3.0);  // 3 W/mK TIM
+    heatsinkCooling.set_interface_thickness(0.0001);  // 100 microns
+    heatsinkCooling.set_dimensions(std::vector<double>{0.05, 0.05, 0.02});  // 50x50x20mm
+    config.masCooling = heatsinkCooling;
+    
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+    
+    std::cout << "  Heatsink Results (2.5 K/W):" << std::endl;
+    std::cout << "    Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
+    std::cout << "    Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
+    
+    // Check that heatsink node was created
+    bool hasHeatsinkNode = false;
+    for (const auto& node : temp.getNodes()) {
+        if (node.name == "Heatsink") {
+            hasHeatsinkNode = true;
+            break;
+        }
+    }
+    REQUIRE(hasHeatsinkNode);
+    
+    // Export visualizations
+    exportTemperatureFieldSvg("heatsink_cooling", magnetic, result.nodeTemperatures, config.ambientTemperature);
+    exportThermalCircuitSchematic("heatsink_cooling", temp);
+    
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+}
+
+TEST_CASE("Temperature: Cold Plate Cooling", "[thermal][cooling][coldplate]") {
+    // Use toroidal test file (cold plate works on both core types)
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(), "toroidal_inductor_round_wire_multilayer.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    
+    std::cout << "Testing Cold Plate Cooling:" << std::endl;
+    std::cout << "  Computed Core Losses: " << losses.coreLosses << " W" << std::endl;
+    std::cout << "  Computed Winding Losses: " << losses.windingLosses << " W" << std::endl;
+    
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing from simulation results");
+    }
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = true;
+    config.schematicOutputPath = (getOutputDir() / "thermal_cold_plate.svg").string();
+    
+    // Create MAS cooling object for cold plate
+    MAS::Cooling coldPlateCooling;
+    coldPlateCooling.set_maximum_temperature(40.0);  // 40°C cold plate
+    coldPlateCooling.set_interface_thermal_resistance(3.0);  // 3 W/mK TIM
+    coldPlateCooling.set_interface_thickness(0.0002);  // 200 microns
+    coldPlateCooling.set_dimensions(std::vector<double>{0.06, 0.06, 0.01});  // 60x60x10mm
+    config.masCooling = coldPlateCooling;
+    
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+    
+    std::cout << "  Cold Plate Results (40°C fixed):" << std::endl;
+    std::cout << "    Maximum Temperature: " << result.maximumTemperature << " °C" << std::endl;
+    std::cout << "    Total Thermal Resistance: " << result.totalThermalResistance << " K/W" << std::endl;
+    
+    // Check that cold plate node was created
+    bool hasColdPlateNode = false;
+    for (const auto& node : temp.getNodes()) {
+        if (node.name == "ColdPlate") {
+            hasColdPlateNode = true;
+            REQUIRE(node.isFixedTemperature == true);
+            // Temperature should be close to 40°C (allowing for solver tolerance)
+            REQUIRE(std::abs(node.temperature - 40.0) < 1.0);
+            break;
+        }
+    }
+    REQUIRE(hasColdPlateNode);
+    
+    // Verify temperature is reduced compared to natural convection
+    // With a 40°C cold plate, max temp should be significantly lower than 115°C (natural convection result)
+    REQUIRE(result.maximumTemperature < 115.0);  // Should be lower than natural convection
+    
+    // Export visualizations
+    exportTemperatureFieldSvg("cold_plate_cooling", magnetic, result.nodeTemperatures, config.ambientTemperature);
+    exportThermalCircuitSchematic("cold_plate_cooling", temp);
+    
+    REQUIRE(result.converged);
+}
+
+TEST_CASE("Temperature: Cooling Utils Type Detection", "[thermal][cooling][utils]") {
+    using namespace OpenMagnetics;
+    
+    std::cout << "Testing CoolingUtils type detection:" << std::endl;
+    
+    // Test natural convection detection
+    MAS::Cooling naturalCooling;
+    naturalCooling.set_temperature(25.0);
+    REQUIRE(CoolingUtils::isNaturalConvection(naturalCooling) == true);
+    REQUIRE(CoolingUtils::isForcedConvection(naturalCooling) == false);
+    REQUIRE(CoolingUtils::isHeatsink(naturalCooling) == false);
+    REQUIRE(CoolingUtils::isColdPlate(naturalCooling) == false);
+    std::cout << "  Natural convection detection: PASS" << std::endl;
+    
+    // Test forced convection detection
+    MAS::Cooling forcedCooling;
+    forcedCooling.set_velocity(std::vector<double>{1.0, 0.0, 0.0});
+    REQUIRE(CoolingUtils::isNaturalConvection(forcedCooling) == false);
+    REQUIRE(CoolingUtils::isForcedConvection(forcedCooling) == true);
+    REQUIRE(CoolingUtils::isHeatsink(forcedCooling) == false);
+    REQUIRE(CoolingUtils::isColdPlate(forcedCooling) == false);
+    std::cout << "  Forced convection detection: PASS" << std::endl;
+    
+    // Test heatsink detection
+    MAS::Cooling heatsinkCooling;
+    heatsinkCooling.set_thermal_resistance(2.0);
+    REQUIRE(CoolingUtils::isNaturalConvection(heatsinkCooling) == false);
+    REQUIRE(CoolingUtils::isForcedConvection(heatsinkCooling) == false);
+    REQUIRE(CoolingUtils::isHeatsink(heatsinkCooling) == true);
+    REQUIRE(CoolingUtils::isColdPlate(heatsinkCooling) == false);
+    std::cout << "  Heatsink detection: PASS" << std::endl;
+    
+    // Test cold plate detection (also has thermal_resistance but max_temp takes precedence)
+    MAS::Cooling coldPlateCooling;
+    coldPlateCooling.set_maximum_temperature(40.0);
+    coldPlateCooling.set_thermal_resistance(1.0);  // This should be ignored
+    REQUIRE(CoolingUtils::isNaturalConvection(coldPlateCooling) == false);
+    REQUIRE(CoolingUtils::isForcedConvection(coldPlateCooling) == false);
+    REQUIRE(CoolingUtils::isHeatsink(coldPlateCooling) == false);
+    REQUIRE(CoolingUtils::isColdPlate(coldPlateCooling) == true);
+    std::cout << "  Cold plate detection: PASS" << std::endl;
+    
+    // Test forced convection coefficient calculation
+    double h_forced = CoolingUtils::calculateForcedConvectionCoefficient(
+        80.0, 25.0, 2.0, 0.01);  // 80°C surface, 25°C ambient, 2 m/s, 10mm char length
+    std::cout << "  Calculated forced convection coefficient: " << h_forced << " W/(m²·K)" << std::endl;
+    REQUIRE(h_forced > 0.0);
+    REQUIRE(h_forced > 5.0);  // Should be higher than natural convection (~5-10 W/m²K)
+    
+    // Test mixed convection calculation
+    double h_mixed = CoolingUtils::calculateMixedConvectionCoefficient(10.0, 50.0);
+    std::cout << "  Calculated mixed convection coefficient: " << h_mixed << " W/(m²·K)" << std::endl;
+    REQUIRE(h_mixed > 50.0);  // Should be close to forced value
+    REQUIRE(h_mixed < 51.0);  // But natural should add a small amount
 }
 
 } // namespace

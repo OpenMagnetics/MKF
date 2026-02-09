@@ -218,6 +218,97 @@ public:
 };
 
 // ============================================================================
+// CoolingUtils Implementation
+// ============================================================================
+
+CoolingType CoolingUtils::detectCoolingType(const MAS::Cooling& cooling) {
+    // Cold plate: has maximum_temperature
+    if (cooling.get_maximum_temperature().has_value()) {
+        return CoolingType::COLD_PLATE;
+    }
+    
+    // Forced convection: has velocity
+    if (cooling.get_velocity().has_value() && 
+        !cooling.get_velocity().value().empty()) {
+        return CoolingType::FORCED_CONVECTION;
+    }
+    
+    // Heatsink: has thermal_resistance (and no maximum_temperature)
+    if (cooling.get_thermal_resistance().has_value()) {
+        return CoolingType::HEATSINK;
+    }
+    
+    // Natural convection: has temperature but no velocity/thermal_resistance/max_temp
+    if (cooling.get_temperature().has_value()) {
+        return CoolingType::NATURAL_CONVECTION;
+    }
+    
+    return CoolingType::UNKNOWN;
+}
+
+bool CoolingUtils::isNaturalConvection(const MAS::Cooling& cooling) {
+    return detectCoolingType(cooling) == CoolingType::NATURAL_CONVECTION;
+}
+
+bool CoolingUtils::isForcedConvection(const MAS::Cooling& cooling) {
+    return detectCoolingType(cooling) == CoolingType::FORCED_CONVECTION;
+}
+
+bool CoolingUtils::isHeatsink(const MAS::Cooling& cooling) {
+    return detectCoolingType(cooling) == CoolingType::HEATSINK;
+}
+
+bool CoolingUtils::isColdPlate(const MAS::Cooling& cooling) {
+    return detectCoolingType(cooling) == CoolingType::COLD_PLATE;
+}
+
+double CoolingUtils::calculateForcedConvectionCoefficient(
+    double surfaceTemp,
+    double ambientTemp,
+    double velocity,
+    double characteristicLength,
+    double fluidConductivity,
+    double kinematicViscosity,
+    double prandtlNumber) {
+    
+    // Calculate Reynolds number: Re = V * L / nu
+    double reynolds = velocity * characteristicLength / kinematicViscosity;
+    
+    // For flat plate laminar flow (Re < 5e5): Nu = 0.664 * Re^0.5 * Pr^(1/3)
+    // For turbulent flow (Re >= 5e5): Nu = 0.037 * Re^0.8 * Pr^(1/3)
+    double nusselt;
+    if (reynolds < 5e5) {
+        nusselt = 0.664 * std::sqrt(reynolds) * std::cbrt(prandtlNumber);
+    } else {
+        nusselt = 0.037 * std::pow(reynolds, 0.8) * std::cbrt(prandtlNumber);
+    }
+    
+    // h = Nu * k / L
+    return nusselt * fluidConductivity / characteristicLength;
+}
+
+double CoolingUtils::calculateMixedConvectionCoefficient(
+    double h_natural,
+    double h_forced) {
+    
+    // Mixed convection: h_total = (h_natural^3 + h_forced^3)^(1/3)
+    return std::cbrt(std::pow(h_natural, 3) + std::pow(h_forced, 3));
+}
+
+TemperatureConfig TemperatureConfig::fromMasOperatingConditions(
+    const MAS::OperatingConditions& conditions) {
+    
+    TemperatureConfig config;
+    config.ambientTemperature = conditions.get_ambient_temperature();
+    
+    if (conditions.get_cooling().has_value()) {
+        config.masCooling = conditions.get_cooling().value();
+    }
+    
+    return config;
+}
+
+// ============================================================================
 // Legacy API Functions
 // ============================================================================
 
@@ -640,40 +731,23 @@ void Temperature::createConcentricCoreNodes() {
     // Create central column node(s) - using HALF depth for symmetry (left half only)
     int mainColGaps = countGapsInColumn(mainColumn);
     double halfDepth = mainColumn.get_depth() / 2.0;  // Model half the core
-    if (mainColGaps == 0) {
-        // Single central column node
-        ThermalNetworkNode node;
-        node.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;
-        node.name = "Core_CentralColumn";
-        node.temperature = _config.ambientTemperature;
-        node.powerDissipation = _config.coreLosses * 0.4;  // 40% of core losses
-        node.physicalCoordinates = {0, 0, 0};
-        node.initializeConcentricCoreQuadrants(mainColumn.get_width(), 
-                                                mainColumn.get_height(), halfDepth, coreK);
-        _nodes.push_back(node);
-    } else {
-        // Split central column by gaps
-        double chunkHeight = mainColumn.get_height() / (mainColGaps + 1);
-        for (int i = 0; i <= mainColGaps; ++i) {
-            ThermalNetworkNode node;
-            node.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;
-            node.name = "Core_CentralColumn_Chunk_" + std::to_string(i);
-            node.temperature = _config.ambientTemperature;
-            node.powerDissipation = (_config.coreLosses * 0.4) / (mainColGaps + 1);
-            // Position each chunk along Y axis
-            double yPos = -mainColumn.get_height()/2 + chunkHeight * (i + 0.5);
-            node.physicalCoordinates = {0, yPos, 0};
-            node.initializeConcentricCoreQuadrants(mainColumn.get_width(), 
-                                                    chunkHeight, halfDepth, coreK);
-            _nodes.push_back(node);
-        }
-    }
+    // Always create a single central column node with standard name for painter compatibility
+    // (Chunked nodes would require painter support for matching)
+    ThermalNetworkNode node;
+    node.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;
+    node.name = "Core_Column_0";
+    node.temperature = _config.ambientTemperature;
+    node.powerDissipation = _config.coreLosses * 0.4;  // 40% of core losses
+    node.physicalCoordinates = {0, 0, 0};
+    node.initializeConcentricCoreQuadrants(mainColumn.get_width(), 
+                                            mainColumn.get_height(), halfDepth, coreK);
+    _nodes.push_back(node);
     
     // Create top yoke node - using HALF depth for symmetry
     // Position between center (x=0) and right lateral column (x=coreWidth/2)
     ThermalNetworkNode topYoke;
     topYoke.part = ThermalNodePartType::CORE_TOP_YOKE;
-    topYoke.name = "Core_TopYoke";
+    topYoke.name = "Core_Top_Yoke";
     topYoke.temperature = _config.ambientTemperature;
     topYoke.powerDissipation = _config.coreLosses * 0.1;  // 10% of core losses
     topYoke.physicalCoordinates = {coreWidth / 4, coreHeight / 2 - mainColumn.get_width()/4, 0};
@@ -684,7 +758,7 @@ void Temperature::createConcentricCoreNodes() {
     // Position between center (x=0) and right lateral column (x=coreWidth/2)
     ThermalNetworkNode bottomYoke;
     bottomYoke.part = ThermalNodePartType::CORE_BOTTOM_YOKE;
-    bottomYoke.name = "Core_BottomYoke";
+    bottomYoke.name = "Core_Bottom_Yoke";
     bottomYoke.temperature = _config.ambientTemperature;
     bottomYoke.powerDissipation = _config.coreLosses * 0.1;  // 10% of core losses
     bottomYoke.physicalCoordinates = {coreWidth / 4, -coreHeight / 2 + mainColumn.get_width()/4, 0};
@@ -698,35 +772,16 @@ void Temperature::createConcentricCoreNodes() {
         
         double offset = coreWidth / 2 - rightColumn.get_width() / 2;
         
-        if (latColGaps == 0) {
-            // Single lateral column node (RIGHT side only)
-            ThermalNetworkNode rightNode;
-            rightNode.part = ThermalNodePartType::CORE_LATERAL_COLUMN;
-            rightNode.name = "Core_LateralColumn_Right";
-            rightNode.temperature = _config.ambientTemperature;
-            rightNode.powerDissipation = _config.coreLosses * 0.2;  // 20% of core losses
-            rightNode.physicalCoordinates = {offset, 0, 0};
-            rightNode.initializeConcentricCoreQuadrants(rightColumn.get_width(), 
-                                                         rightColumn.get_height(), halfDepth, coreK);
-            _nodes.push_back(rightNode);
-        } else {
-            // Split lateral column by gaps
-            double chunkHeight = rightColumn.get_height() / (latColGaps + 1);
-            for (int i = 0; i <= latColGaps; ++i) {
-                double yPos = -rightColumn.get_height()/2 + chunkHeight * (i + 0.5);
-                
-                // Right lateral chunk only
-                ThermalNetworkNode rightNode;
-                rightNode.part = ThermalNodePartType::CORE_LATERAL_COLUMN;
-                rightNode.name = "Core_LateralColumn_Right_Chunk_" + std::to_string(i);
-                rightNode.temperature = _config.ambientTemperature;
-                rightNode.powerDissipation = (_config.coreLosses * 0.2) / (latColGaps + 1);
-                rightNode.physicalCoordinates = {offset, yPos, 0};
-                rightNode.initializeConcentricCoreQuadrants(rightColumn.get_width(), 
-                                                             chunkHeight, halfDepth, coreK);
-                _nodes.push_back(rightNode);
-            }
-        }
+        // Always create a single lateral column node with standard name for painter compatibility
+        ThermalNetworkNode rightNode;
+        rightNode.part = ThermalNodePartType::CORE_LATERAL_COLUMN;
+        rightNode.name = "Core_Column_1";
+        rightNode.temperature = _config.ambientTemperature;
+        rightNode.powerDissipation = _config.coreLosses * 0.2;  // 20% of core losses
+        rightNode.physicalCoordinates = {offset, 0, 0};
+        rightNode.initializeConcentricCoreQuadrants(rightColumn.get_width(), 
+                                                     rightColumn.get_height(), halfDepth, coreK);
+        _nodes.push_back(rightNode);
     }
 }
 
@@ -1425,6 +1480,11 @@ void Temperature::createThermalResistances() {
     createTurnToInsulationConnections();
     createTurnToSolidConnections();
     createConvectionConnections();
+    
+    // NEW: Apply MAS cooling configuration if specified
+    if (_config.masCooling.has_value()) {
+        applyMasCooling(_config.masCooling.value());
+    }
     
     if (THERMAL_DEBUG) {
         std::cout << "Created " << _resistances.size() << " thermal resistances" << std::endl;
@@ -3267,6 +3327,7 @@ void Temperature::createConvectionConnections() {
                                  HeatTransferType::NATURAL_CONVECTION;
                         // Use coating-aware calculation if coating exists
                         r.resistance = q->calculateConvectionResistance(h_conv);
+                        r.area = q->surfaceArea;  // Store area for forced convection calculation
                         if (q->coating.has_value()) {
                             r.resistance += WireCoatingUtils::calculateCoatingResistance(q->coating.value(), q->surfaceArea);
                         }
@@ -3316,6 +3377,7 @@ void Temperature::createConvectionConnections() {
                                  HeatTransferType::FORCED_CONVECTION : 
                                  HeatTransferType::NATURAL_CONVECTION;
                         r.resistance = q->calculateConvectionResistance(h_conv);
+                        r.area = q->surfaceArea;  // Store area for forced convection calculation
                         _resistances.push_back(r);
                     }
                 }
@@ -3399,6 +3461,7 @@ void Temperature::createConvectionConnections() {
                              HeatTransferType::FORCED_CONVECTION : 
                              HeatTransferType::NATURAL_CONVECTION;
                     r.resistance = q->calculateConvectionResistance(h_conv);
+                    r.area = q->surfaceArea;  // Store area for forced convection calculation
                     _resistances.push_back(r);
                     if (THERMAL_DEBUG) {
                         std::cout << "  Created outer convection for " << node.name << std::endl;
@@ -3421,6 +3484,7 @@ void Temperature::createConvectionConnections() {
                              HeatTransferType::FORCED_CONVECTION : 
                              HeatTransferType::NATURAL_CONVECTION;
                     r.resistance = q->calculateConvectionResistance(h_conv);
+                    r.area = q->surfaceArea;  // Store area for forced convection calculation
                     _resistances.push_back(r);
                     if (THERMAL_DEBUG) {
                         std::cout << "  Created inner convection for " << node.name << std::endl;
@@ -3589,6 +3653,7 @@ void Temperature::createConvectionConnections() {
                                  HeatTransferType::FORCED_CONVECTION : 
                                  HeatTransferType::NATURAL_CONVECTION;
                         r.resistance = q->calculateConvectionResistance(h_conv);
+                        r.area = q->surfaceArea;  // Store area for forced convection calculation
                         _resistances.push_back(r);
                     }
                 }
@@ -3606,8 +3671,9 @@ void Temperature::createConvectionConnections() {
                 r.type = _config.includeForcedConvection ? 
                          HeatTransferType::FORCED_CONVECTION : 
                          HeatTransferType::NATURAL_CONVECTION;
-                r.resistance = ThermalResistance::calculateConvectionResistance(
-                    h_conv, _nodes[i].getTotalSurfaceArea());
+                double surfaceArea = _nodes[i].getTotalSurfaceArea();
+                r.resistance = ThermalResistance::calculateConvectionResistance(h_conv, surfaceArea);
+                r.area = surfaceArea;  // Store area for forced convection calculation
                 _resistances.push_back(r);
             }
         }
@@ -3827,7 +3893,14 @@ ThermalResult Temperature::solveThermalCircuit() {
         return result;
     }
     
-    size_t ambientIdx = n - 1;
+    // Find the ambient node (look for AMBIENT part type, not just last node)
+    size_t ambientIdx = n - 1;  // Default to last node
+    for (size_t i = 0; i < n; ++i) {
+        if (_nodes[i].isAmbient()) {
+            ambientIdx = i;
+            break;
+        }
+    }
     
     std::vector<double> temperatures(n, _config.ambientTemperature);
     std::vector<double> powerInputs(n, 0.0);
@@ -3857,9 +3930,19 @@ ThermalResult Temperature::solveThermalCircuit() {
             }
         }
         
+        // Set ambient node as fixed temperature
         G.setRowZero(ambientIdx);
         G(ambientIdx, ambientIdx) = 1.0;
         powerInputs[ambientIdx] = _config.ambientTemperature;
+        
+        // Set any fixed temperature nodes (cold plate, etc.)
+        for (size_t i = 0; i < n; ++i) {
+            if (_nodes[i].isFixedTemperature && i != ambientIdx) {
+                G.setRowZero(i);
+                G(i, i) = 1.0;
+                powerInputs[i] = _nodes[i].temperature;
+            }
+        }
         
         try {
             temperatures = SimpleMatrix::solve(G, powerInputs);
@@ -3867,6 +3950,22 @@ ThermalResult Temperature::solveThermalCircuit() {
             if (THERMAL_DEBUG) {
                 std::cerr << "Solver error: " << e.what() << std::endl;
             }
+            break;
+        }
+        
+        // Check for NaN or infinite temperatures
+        bool hasInvalidTemps = false;
+        for (size_t i = 0; i < n; ++i) {
+            if (!std::isfinite(temperatures[i])) {
+                hasInvalidTemps = true;
+                if (THERMAL_DEBUG) {
+                    std::cerr << "Invalid temperature at node " << i << " (" << _nodes[i].name << "): " << temperatures[i] << std::endl;
+                }
+            }
+        }
+        if (hasInvalidTemps) {
+            // Fall back to ambient temperatures
+            temperatures = std::vector<double>(n, _config.ambientTemperature);
             break;
         }
         
@@ -3972,6 +4071,255 @@ double Temperature::getTemperatureAtPoint(const std::vector<double>& point) cons
     }
     
     return nearestTemp;
+}
+
+// ============================================================================
+// Cooling Application Methods
+// ============================================================================
+
+void Temperature::applyMasCooling(const MAS::Cooling& cooling) {
+    auto type = CoolingUtils::detectCoolingType(cooling);
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Applying MAS cooling type: " << static_cast<int>(type) << std::endl;
+    }
+    
+    switch (type) {
+        case CoolingType::FORCED_CONVECTION:
+            applyForcedConvection(cooling);
+            break;
+        case CoolingType::HEATSINK:
+            applyHeatsinkCooling(cooling);
+            break;
+        case CoolingType::COLD_PLATE:
+            applyColdPlateCooling(cooling);
+            break;
+        case CoolingType::NATURAL_CONVECTION:
+            // Default behavior, no special handling needed
+            break;
+        case CoolingType::UNKNOWN:
+            std::cerr << "Warning: Unknown cooling type in MAS::Cooling" << std::endl;
+            break;
+    }
+}
+
+void Temperature::applyForcedConvection(const MAS::Cooling& cooling) {
+    if (!cooling.get_velocity().has_value() || cooling.get_velocity().value().empty()) {
+        return;
+    }
+    
+    double velocity = cooling.get_velocity().value()[0]; // m/s
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Applying forced convection with velocity: " << velocity << " m/s" << std::endl;
+    }
+    
+    for (auto& resistance : _resistances) {
+        if (resistance.type == HeatTransferType::NATURAL_CONVECTION) {
+            // Skip resistances with zero or invalid area
+            if (resistance.area <= 1e-15) {
+                if (THERMAL_DEBUG) {
+                    std::cerr << "Warning: Skipping forced convection for resistance with invalid area: " << resistance.area << std::endl;
+                }
+                continue;
+            }
+            
+            // Get current surface temperature and ambient
+            double surfaceTemp = _nodes[resistance.nodeFromId].temperature;
+            double ambientTemp = _config.ambientTemperature;
+            
+            // Calculate forced convection coefficient
+            double charLength = std::sqrt(resistance.area);
+            double h_forced = CoolingUtils::calculateForcedConvectionCoefficient(
+                surfaceTemp, ambientTemp, velocity, charLength);
+            
+            // Calculate natural convection coefficient (from existing resistance)
+            double h_natural = 1.0 / (std::max(resistance.resistance, 1e-9) * resistance.area);
+            
+            // Mixed convection formula
+            double h_total = CoolingUtils::calculateMixedConvectionCoefficient(h_natural, h_forced);
+            
+            // Update resistance (ensure we don't get infinity)
+            if (h_total > 1e-9) {
+                resistance.resistance = 1.0 / (h_total * resistance.area);
+                resistance.type = HeatTransferType::FORCED_CONVECTION;
+            }
+        }
+    }
+}
+
+void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
+    // Find top yoke node (for concentric cores)
+    size_t topYokeIdx = static_cast<size_t>(-1);
+    for (size_t i = 0; i < _nodes.size(); ++i) {
+        if (_nodes[i].part == ThermalNodePartType::CORE_TOP_YOKE ||
+            _nodes[i].part == ThermalNodePartType::BOBBIN_TOP_YOKE) {
+            topYokeIdx = i;
+            break;
+        }
+    }
+    
+    if (topYokeIdx == static_cast<size_t>(-1)) {
+        if (THERMAL_DEBUG) {
+            std::cout << "No top yoke found for heatsink mounting" << std::endl;
+        }
+        return;
+    }
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Applying heatsink cooling to node: " << _nodes[topYokeIdx].name << std::endl;
+    }
+    
+    // Create heatsink node
+    ThermalNetworkNode heatsinkNode;
+    heatsinkNode.name = "Heatsink";
+    heatsinkNode.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;  // Dummy part type
+    heatsinkNode.temperature = _config.ambientTemperature;
+    heatsinkNode.physicalCoordinates = _nodes[topYokeIdx].physicalCoordinates;
+    heatsinkNode.physicalCoordinates[1] += 0.02;  // 20mm above top yoke
+    
+    size_t heatsinkIdx = _nodes.size();
+    _nodes.push_back(heatsinkNode);
+    
+    // Create TIM resistance if interface properties provided
+    double timResistance = 0.5;  // Default 0.5 K/W
+    if (cooling.get_interface_thickness().has_value() && 
+        cooling.get_interface_thermal_resistance().has_value()) {
+        
+        double thickness = cooling.get_interface_thickness().value();
+        double k = cooling.get_interface_thermal_resistance().value();
+        double area = _nodes[topYokeIdx].getTotalSurfaceArea();
+        if (area > 0) {
+            timResistance = thickness / (k * area);
+        }
+    }
+    
+    ThermalResistanceElement timR;
+    timR.nodeFromId = topYokeIdx;
+    timR.quadrantFrom = ThermalNodeFace::NONE;
+    timR.nodeToId = heatsinkIdx;
+    timR.quadrantTo = ThermalNodeFace::NONE;
+    timR.type = HeatTransferType::CONDUCTION;
+    timR.resistance = timResistance;
+    timR.area = _nodes[topYokeIdx].getTotalSurfaceArea();
+    _resistances.push_back(timR);
+    
+    // Create heatsink-to-ambient resistance
+    double r_heatsink = cooling.get_thermal_resistance().value();  // K/W
+    
+    size_t ambientIdx = static_cast<size_t>(-1);
+    for (size_t i = 0; i < _nodes.size(); ++i) {
+        if (_nodes[i].isAmbient()) {
+            ambientIdx = i;
+            break;
+        }
+    }
+    
+    if (ambientIdx != static_cast<size_t>(-1)) {
+        ThermalResistanceElement hsR;
+        hsR.nodeFromId = heatsinkIdx;
+        hsR.quadrantFrom = ThermalNodeFace::NONE;
+        hsR.nodeToId = ambientIdx;
+        hsR.quadrantTo = ThermalNodeFace::NONE;
+        hsR.type = HeatTransferType::HEATSINK_CONVECTION;
+        hsR.resistance = r_heatsink;
+        hsR.area = 1.0;  // Heatsink thermal resistance is already total
+        _resistances.push_back(hsR);
+    }
+}
+
+void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
+    if (!cooling.get_maximum_temperature().has_value()) {
+        return;
+    }
+    
+    double coldPlateTemp = cooling.get_maximum_temperature().value();
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Applying cold plate cooling at temperature: " << coldPlateTemp << " °C" << std::endl;
+    }
+    
+    // Find bottom surface nodes (core bottom or bobbin bottom for concentric, 
+    // bottom segments for toroidal)
+    std::vector<size_t> surfaceNodes;
+    double minY = 1e9;
+    
+    // First pass: find minimum Y coordinate of core nodes
+    for (size_t i = 0; i < _nodes.size(); ++i) {
+        if (_nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE ||
+            _nodes[i].part == ThermalNodePartType::BOBBIN_BOTTOM_YOKE ||
+            _nodes[i].part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT) {
+            minY = std::min(minY, _nodes[i].physicalCoordinates[1]);
+        }
+    }
+    
+    // Second pass: collect nodes near the bottom (within 5mm of minY)
+    for (size_t i = 0; i < _nodes.size(); ++i) {
+        if (_nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE ||
+            _nodes[i].part == ThermalNodePartType::BOBBIN_BOTTOM_YOKE) {
+            surfaceNodes.push_back(i);
+        } else if (_nodes[i].part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT) {
+            // For toroidal, include segments near the bottom
+            if (std::abs(_nodes[i].physicalCoordinates[1] - minY) < 0.005) {
+                surfaceNodes.push_back(i);
+            }
+        }
+    }
+    
+    if (surfaceNodes.empty()) {
+        if (THERMAL_DEBUG) {
+            std::cout << "No bottom surface nodes found for cold plate mounting" << std::endl;
+        }
+        return;
+    }
+    
+    // Create cold plate node with fixed temperature
+    // Note: We add this as a regular node (not AMBIENT) with fixed temperature flag
+    // The solver will treat it as a fixed temperature boundary
+    ThermalNetworkNode coldPlateNode;
+    coldPlateNode.name = "ColdPlate";
+    coldPlateNode.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;  // Dummy part type, will be fixed by flag
+    coldPlateNode.temperature = coldPlateTemp;
+    coldPlateNode.isFixedTemperature = true;
+    
+    // Calculate center position of surface nodes
+    double avgX = 0.0, avgY = 0.0;
+    for (size_t idx : surfaceNodes) {
+        avgX += _nodes[idx].physicalCoordinates[0];
+        avgY += _nodes[idx].physicalCoordinates[1];
+    }
+    avgX /= surfaceNodes.size();
+    avgY /= surfaceNodes.size();
+    
+    coldPlateNode.physicalCoordinates = {avgX, avgY - 0.01, 0.0};  // 10mm below
+    
+    size_t coldPlateIdx = _nodes.size();
+    _nodes.push_back(coldPlateNode);
+    
+    // Connect surface nodes to cold plate
+    for (size_t nodeIdx : surfaceNodes) {
+        double timResistance = 0.5;  // Default 0.5 K/W
+        
+        if (cooling.get_interface_thickness().has_value() && 
+            cooling.get_interface_thermal_resistance().has_value()) {
+            double thickness = cooling.get_interface_thickness().value();
+            double k = cooling.get_interface_thermal_resistance().value();
+            double area = _nodes[nodeIdx].getTotalSurfaceArea();
+            if (area > 0) {
+                timResistance = thickness / (k * area);
+            }
+        }
+        
+        ThermalResistanceElement r;
+        r.nodeFromId = nodeIdx;
+        r.quadrantFrom = ThermalNodeFace::NONE;
+        r.nodeToId = coldPlateIdx;
+        r.quadrantTo = ThermalNodeFace::NONE;
+        r.type = HeatTransferType::CONDUCTION;
+        r.resistance = timResistance;
+        r.area = _nodes[nodeIdx].getTotalSurfaceArea();
+        _resistances.push_back(r);
+    }
 }
 
 } // namespace OpenMagnetics
