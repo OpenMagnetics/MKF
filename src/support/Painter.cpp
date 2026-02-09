@@ -5,7 +5,9 @@
 #include "MAS.hpp"
 #include "support/Utils.h"
 #include "json.hpp"
+#ifdef ENABLE_MATPLOTPP
 #include <matplot/matplot.h>
+#endif
 #include <cfloat>
 #include <chrono>
 #include <thread>
@@ -170,12 +172,19 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
 }
 
 std::shared_ptr<PainterInterface> Painter::factory(bool useAdvancedPainter, std::filesystem::path filepath, bool addProportionForColorBar, bool showTicks) {
+#ifdef ENABLE_MATPLOTPP
     if (useAdvancedPainter) {
         return std::make_shared<AdvancedPainter>(filepath, addProportionForColorBar, showTicks);
     }
     else {
         return std::make_shared<BasicPainter>(filepath);
     }
+#else
+    (void)useAdvancedPainter;
+    (void)addProportionForColorBar;
+    (void)showTicks;
+    return std::make_shared<BasicPainter>(filepath);
+#endif
 }
 
 void Painter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
