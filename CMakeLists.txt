@@ -65,9 +65,11 @@ option(HAVE_LAPACK "Use LAPACK" OFF)
 option(INCLUDE_PYMKF "Compile the Python interface" OFF)
 option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile high resolution maps for geoplots" OFF)
 option(ENABLE_NGSPICE "Enable ngspice integration for circuit simulation" OFF)
+option(ENABLE_MATPLOTPP "Enable matplotplusplus for AdvancedPainter" ON)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "ngspice integration: ${ENABLE_NGSPICE}")
+message(STATUS "matplotplusplus support: ${ENABLE_MATPLOTPP}")
 message(STATUS "Embedding MAS Data: ${EMBED_MAS_DATA}")
 message(STATUS "Embedding MAS Cores: ${EMBED_MAS_CORES}")
 message(STATUS "Embedding MAS CoreShapes: ${EMBED_MAS_CORE_SHAPES}")
@@ -107,13 +109,16 @@ FetchContent_Declare(magic-enum
 FetchContent_MakeAvailable(magic-enum)
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum")
 
-FetchContent_Declare(matplotplusplus
-    GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
-    GIT_TAG tags/v1.2.1)
-FetchContent_GetProperties(matplotplusplus)
-if(NOT matplotplusplus_POPULATED)
-    FetchContent_MakeAvailable(matplotplusplus)
-    # add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
+if(ENABLE_MATPLOTPP)
+    FetchContent_Declare(matplotplusplus
+        GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
+        GIT_TAG tags/v1.2.1)
+    FetchContent_GetProperties(matplotplusplus)
+    if(NOT matplotplusplus_POPULATED)
+        FetchContent_MakeAvailable(matplotplusplus)
+        # add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
+    endif()
+    add_compile_definitions(ENABLE_MATPLOTPP)
 endif()
     
 FetchContent_Declare(spline
@@ -401,7 +406,11 @@ message(${DATA_LIST})
 cmrc_add_resource_library(data ALIAS data::data NAMESPACE data ${DATA_LIST})
 target_link_libraries(MKF PUBLIC data::data)
 
-target_link_libraries(MKF PUBLIC matplot rapidfuzz::rapidfuzz)
+if(ENABLE_MATPLOTPP)
+    target_link_libraries(MKF PUBLIC matplot rapidfuzz::rapidfuzz)
+else()
+    target_link_libraries(MKF PUBLIC rapidfuzz::rapidfuzz)
+endif()
 target_link_libraries(MKF PRIVATE nlohmann_json::nlohmann_json)
 
 # Link ngspice if enabled

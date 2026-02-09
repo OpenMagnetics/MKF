@@ -6,7 +6,6 @@
 #include "MAS.hpp"
 #include "support/Utils.h"
 #include "json.hpp"
-#include <matplot/matplot.h>
 #include <cfloat>
 #include <set>
 #include "support/Exceptions.h"
