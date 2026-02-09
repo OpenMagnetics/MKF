@@ -6,9 +6,9 @@
 #include "converter_models/Topology.h"
 #include "processors/NgspiceRunner.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 
 class PushPull : public MAS::PushPull, public Topology {
 private:
@@ -32,10 +32,10 @@ public:
 
     Inputs process();
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, PushPullOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double outputInductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const PushPullOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double outputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio);
     double get_maximum_duty_cycle();
 
@@ -86,8 +86,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedPushPull() = default;
     ~AdvancedPushPull() = default;
 

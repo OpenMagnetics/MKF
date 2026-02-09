@@ -5,7 +5,9 @@
 #include "support/Utils.h"
 #include <MAS.hpp>
 #include "svg.hpp"
+#ifdef ENABLE_MATPLOTPP
 #include <matplot/matplot.h>
+#endif
 #include "support/Exceptions.h"
 
 using namespace MAS;
@@ -343,6 +345,7 @@ class BasicPainter : public PainterInterface {
         double plotHeight);
 };
 
+#ifdef ENABLE_MATPLOTPP
 class AdvancedPainter : public PainterInterface {
     protected:
         double _fixedScale = constants.coilPainterScale;
@@ -443,6 +446,7 @@ class AdvancedPainter : public PainterInterface {
 
     void paint_curve(Curve2D curve2D, bool logScale = false);
 };
+#endif  // ENABLE_MATPLOTPP
 
 class Painter{
     public:
@@ -450,12 +454,19 @@ class Painter{
 
         static std::shared_ptr<PainterInterface> factory(bool useAdvancedPainter, std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false);
         Painter(std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false, bool useAdvancedPainter = false){
+#ifdef ENABLE_MATPLOTPP
             if (addProportionForColorBar || showTicks) {
                 _painter = factory(true, filepath, addProportionForColorBar, showTicks);
             }
             else {
                 _painter = factory(useAdvancedPainter, filepath, addProportionForColorBar, showTicks);
             }
+#else
+            (void)useAdvancedPainter;
+            (void)addProportionForColorBar;
+            (void)showTicks;
+            _painter = factory(false, filepath, false, false);
+#endif
         };
         virtual ~Painter() = default;
 

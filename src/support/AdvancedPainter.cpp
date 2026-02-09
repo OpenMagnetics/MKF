@@ -1,3 +1,5 @@
+#ifdef ENABLE_MATPLOTPP
+
 #include "physical_models/MagneticField.h"
 #include "support/Painter.h"
 #include "support/CoilMesher.h"
@@ -1855,3 +1857,5 @@ void AdvancedPainter::paint_curve(Curve2D curve2D, bool logScale) {
 }
 
 } // namespace OpenMagnetics
+
+#endif  // ENABLE_MATPLOTPP

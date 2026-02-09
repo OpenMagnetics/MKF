@@ -3,9 +3,9 @@
 #include <MAS.hpp>
 #include "processors/Inputs.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 namespace ForwardConverterUtils {
 
 /**
