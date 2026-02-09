@@ -1,4 +1,5 @@
 #include "physical_models/Temperature.h"
+#include "constructive_models/CorePiece.h"
 #include "physical_models/ThermalResistance.h"
 #include "StrayCapacitance.h"
 #include "support/Painter.h"
@@ -15,7 +16,7 @@
 namespace OpenMagnetics {
 
 // Debug flag for thermal model - set to true for verbose output
-constexpr bool THERMAL_DEBUG = true;
+constexpr bool THERMAL_DEBUG = false;
 
 // Contact threshold: surfaces must be within this distance to conduct
 constexpr double CONTACT_THRESHOLD_FACTOR = 0.25;  // wireDiameter / 4
@@ -339,7 +340,6 @@ double Temperature::calculate_temperature_from_core_thermal_resistance(double th
 
 ThermalResult Temperature::calculateTemperatures() {
     if (THERMAL_DEBUG) {
-        std::cout << "Temperature::calculateTemperatures() started" << std::endl;
     }
     
     // Step 1: Extract wire properties from coil
@@ -363,7 +363,6 @@ ThermalResult Temperature::calculateTemperatures() {
     }
     
     if (THERMAL_DEBUG) {
-        std::cout << "Temperature::calculateTemperatures() completed" << std::endl;
     }
     
     return result;
@@ -478,11 +477,9 @@ void Temperature::createThermalNodes() {
         try {
             _magnetic.get_mutable_coil().wind();
             if (THERMAL_DEBUG) {
-                std::cout << "Coil wound successfully for thermal analysis" << std::endl;
             }
         } catch (const std::exception& e) {
             if (THERMAL_DEBUG) {
-                std::cout << "Coil winding failed: " << e.what() << std::endl;
             }
         }
     }
@@ -507,7 +504,6 @@ void Temperature::createThermalNodes() {
     _nodes.push_back(ambientNode);
     
     if (THERMAL_DEBUG) {
-        std::cout << "Created " << _nodes.size() << " thermal nodes (including ambient)" << std::endl;
     }
 }
 
@@ -728,6 +724,21 @@ void Temperature::createConcentricCoreNodes() {
         return count;
     };
     
+
+    // =========================================================================
+    // Volume-proportional loss distribution (replaces hardcoded 40/20/10/10)
+    // =========================================================================
+    auto corePiece = CorePiece::factory(core.resolve_shape());
+    auto lossFractions = corePiece->calculate_core_loss_fractions();
+
+    double centralColumnLosses = _config.coreLosses * lossFractions.centralColumn;
+    double lateralColumnLosses = _config.coreLosses * lossFractions.lateralColumn;
+    double topYokeLosses       = _config.coreLosses * lossFractions.topYoke;
+    double bottomYokeLosses    = _config.coreLosses * lossFractions.bottomYoke;
+
+    // Core loss distribution calculated
+    // =========================================================================
+
     // Create central column node(s) - using HALF depth for symmetry (left half only)
     int mainColGaps = countGapsInColumn(mainColumn);
     double halfDepth = mainColumn.get_depth() / 2.0;  // Model half the core
@@ -737,7 +748,7 @@ void Temperature::createConcentricCoreNodes() {
     node.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;
     node.name = "Core_Column_0";
     node.temperature = _config.ambientTemperature;
-    node.powerDissipation = _config.coreLosses * 0.4;  // 40% of core losses
+    node.powerDissipation = centralColumnLosses; // Volume-proportional
     node.physicalCoordinates = {0, 0, 0};
     node.initializeConcentricCoreQuadrants(mainColumn.get_width(), 
                                             mainColumn.get_height(), halfDepth, coreK);
@@ -749,7 +760,7 @@ void Temperature::createConcentricCoreNodes() {
     topYoke.part = ThermalNodePartType::CORE_TOP_YOKE;
     topYoke.name = "Core_Top_Yoke";
     topYoke.temperature = _config.ambientTemperature;
-    topYoke.powerDissipation = _config.coreLosses * 0.1;  // 10% of core losses
+    topYoke.powerDissipation = topYokeLosses; // Volume-proportional
     topYoke.physicalCoordinates = {coreWidth / 4, coreHeight / 2 - mainColumn.get_width()/4, 0};
     topYoke.initializeConcentricCoreQuadrants(coreWidth / 2, mainColumn.get_width()/2, coreDepth / 2, coreK);
     _nodes.push_back(topYoke);
@@ -760,7 +771,7 @@ void Temperature::createConcentricCoreNodes() {
     bottomYoke.part = ThermalNodePartType::CORE_BOTTOM_YOKE;
     bottomYoke.name = "Core_Bottom_Yoke";
     bottomYoke.temperature = _config.ambientTemperature;
-    bottomYoke.powerDissipation = _config.coreLosses * 0.1;  // 10% of core losses
+    bottomYoke.powerDissipation = bottomYokeLosses; // Volume-proportional
     bottomYoke.physicalCoordinates = {coreWidth / 4, -coreHeight / 2 + mainColumn.get_width()/4, 0};
     bottomYoke.initializeConcentricCoreQuadrants(coreWidth / 2, mainColumn.get_width()/2, coreDepth / 2, coreK);
     _nodes.push_back(bottomYoke);
@@ -768,7 +779,7 @@ void Temperature::createConcentricCoreNodes() {
     // Create lateral column node (RIGHT side only for symmetry - half core model)
     if (columns.size() > 1) {
         int latColGaps = countGapsInColumn(rightColumn);
-        double halfDepth = rightColumn.get_depth() / 2.0;  // Model half the core
+        double latHalfDepth = rightColumn.get_depth() / 2.0; // Model half the core
         
         double offset = coreWidth / 2 - rightColumn.get_width() / 2;
         
@@ -777,10 +788,9 @@ void Temperature::createConcentricCoreNodes() {
         rightNode.part = ThermalNodePartType::CORE_LATERAL_COLUMN;
         rightNode.name = "Core_Column_1";
         rightNode.temperature = _config.ambientTemperature;
-        rightNode.powerDissipation = _config.coreLosses * 0.2;  // 20% of core losses
+        rightNode.powerDissipation = lateralColumnLosses; // Volume-proportional
         rightNode.physicalCoordinates = {offset, 0, 0};
-        rightNode.initializeConcentricCoreQuadrants(rightColumn.get_width(), 
-                                                     rightColumn.get_height(), halfDepth, coreK);
+        rightNode.initializeConcentricCoreQuadrants(rightColumn.get_width(), rightColumn.get_height(), latHalfDepth, coreK);
         _nodes.push_back(rightNode);
     }
 }
@@ -975,7 +985,6 @@ void Temperature::createInsulationLayerNodes() {
     // Check if we have layers description
     if (!coil.get_layers_description()) {
         if (THERMAL_DEBUG) {
-            std::cout << "No layers description, skipping insulation layer nodes" << std::endl;
         }
         return;
     }
@@ -984,13 +993,11 @@ void Temperature::createInsulationLayerNodes() {
     auto insulationLayers = coil.get_layers_description_insulation();
     if (insulationLayers.empty()) {
         if (THERMAL_DEBUG) {
-            std::cout << "No insulation layers found" << std::endl;
         }
         return;
     }
     
     if (THERMAL_DEBUG) {
-        std::cout << "Found " << insulationLayers.size() << " insulation layers" << std::endl;
     }
     
     // Get core depth for insulation layer depth
@@ -1005,12 +1012,10 @@ void Temperature::createInsulationLayerNodes() {
     size_t createdCount = 0;
     
     if (THERMAL_DEBUG) {
-        std::cout << "Processing " << insulationLayers.size() << " insulation layers" << std::endl;
     }
     
     for (const auto& layer : insulationLayers) {
         if (THERMAL_DEBUG) {
-            std::cout << "Processing insulation layer " << layerIdx << std::endl;
         }
         // Skip layers without proper dimensions or coordinates
         if (layer.get_dimensions().size() < 2) {
@@ -1052,7 +1057,6 @@ void Temperature::createInsulationLayerNodes() {
                 layerWidth = 0.0001;
             }
             if (THERMAL_DEBUG) {
-                std::cout << "  Using default insulation thickness: " << layerWidth * 1000 << "mm" << std::endl;
             }
         }
         
@@ -1223,7 +1227,6 @@ void Temperature::createInsulationLayerNodes() {
     }
     
     if (THERMAL_DEBUG) {
-        std::cout << "Created " << createdCount << " insulation layer nodes" << std::endl;
     }
 }
 
@@ -1487,7 +1490,6 @@ void Temperature::createThermalResistances() {
     }
     
     if (THERMAL_DEBUG) {
-        std::cout << "Created " << _resistances.size() << " thermal resistances" << std::endl;
     }
 }
 
@@ -2870,7 +2872,6 @@ void Temperature::createTurnToInsulationConnections() {
         }
         
         if (THERMAL_DEBUG) {
-            std::cout << "Created " << connectionCount << " toroidal turn-to-insulation connections" << std::endl;
         }
     }
 }
@@ -3333,7 +3334,6 @@ void Temperature::createConvectionConnections() {
                         }
                         _resistances.push_back(r);
                     } else if (THERMAL_DEBUG) {
-                        std::cout << "    NOT CREATED: q==null or surfaceArea=0" << std::endl;
                     }
                 }
             }
@@ -3464,10 +3464,8 @@ void Temperature::createConvectionConnections() {
                     r.area = q->surfaceArea;  // Store area for forced convection calculation
                     _resistances.push_back(r);
                     if (THERMAL_DEBUG) {
-                        std::cout << "  Created outer convection for " << node.name << std::endl;
                     }
                 } else if (THERMAL_DEBUG) {
-                    std::cout << "  Skipped outer convection for " << node.name << " (no quadrant or zero area)" << std::endl;
                 }
             }
             
@@ -3487,10 +3485,8 @@ void Temperature::createConvectionConnections() {
                     r.area = q->surfaceArea;  // Store area for forced convection calculation
                     _resistances.push_back(r);
                     if (THERMAL_DEBUG) {
-                        std::cout << "  Created inner convection for " << node.name << std::endl;
                     }
                 } else if (THERMAL_DEBUG) {
-                    std::cout << "  Skipped inner convection for " << node.name << " (no quadrant or zero area)" << std::endl;
                 }
             }
         }
@@ -3785,7 +3781,6 @@ void Temperature::calculateSchematicScaling() {
     }
     
     if (THERMAL_DEBUG) {
-        std::cout << "calculateSchematicScaling: " << _nodes.size() << " nodes" << std::endl;
     }
     
     // Find bounding box of all physical coordinates
@@ -4081,7 +4076,6 @@ void Temperature::applyMasCooling(const MAS::Cooling& cooling) {
     auto type = CoolingUtils::detectCoolingType(cooling);
     
     if (THERMAL_DEBUG) {
-        std::cout << "Applying MAS cooling type: " << static_cast<int>(type) << std::endl;
     }
     
     switch (type) {
@@ -4111,7 +4105,6 @@ void Temperature::applyForcedConvection(const MAS::Cooling& cooling) {
     double velocity = cooling.get_velocity().value()[0]; // m/s
     
     if (THERMAL_DEBUG) {
-        std::cout << "Applying forced convection with velocity: " << velocity << " m/s" << std::endl;
     }
     
     for (auto& resistance : _resistances) {
@@ -4161,13 +4154,11 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
     
     if (topYokeIdx == static_cast<size_t>(-1)) {
         if (THERMAL_DEBUG) {
-            std::cout << "No top yoke found for heatsink mounting" << std::endl;
         }
         return;
     }
     
     if (THERMAL_DEBUG) {
-        std::cout << "Applying heatsink cooling to node: " << _nodes[topYokeIdx].name << std::endl;
     }
     
     // Create heatsink node
@@ -4236,7 +4227,6 @@ void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
     double coldPlateTemp = cooling.get_maximum_temperature().value();
     
     if (THERMAL_DEBUG) {
-        std::cout << "Applying cold plate cooling at temperature: " << coldPlateTemp << " °C" << std::endl;
     }
     
     // Find bottom surface nodes (core bottom or bobbin bottom for concentric, 
@@ -4268,7 +4258,6 @@ void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
     
     if (surfaceNodes.empty()) {
         if (THERMAL_DEBUG) {
-            std::cout << "No bottom surface nodes found for cold plate mounting" << std::endl;
         }
         return;
     }
