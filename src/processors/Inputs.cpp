@@ -168,8 +168,22 @@ bool is_instantaneously_conducting_power(OperatingPoint operatingPoint) {
         std::vector<double> voltageWaveform;
 
         if (excitation.get_current()->get_waveform()->get_data().size() != excitation.get_voltage()->get_waveform()->get_data().size()) {
-            auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency());
-            auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+            // Determine a common number of points for both waveforms to ensure they have the same size after resampling
+            size_t currentSize = excitation.get_current()->get_waveform()->get_data().size();
+            size_t voltageSize = excitation.get_voltage()->get_waveform()->get_data().size();
+            size_t numberPointsForSampling = settings.get_inputs_number_points_sampled_waveforms();
+            size_t maxSize = std::max(currentSize, voltageSize);
+            if (maxSize > numberPointsForSampling) {
+                // Check if maxSize is a power of 2
+                if (maxSize > 0 && ((maxSize & (maxSize - 1)) == 0)) {
+                    numberPointsForSampling = maxSize;
+                }
+                else {
+                    numberPointsForSampling = round_up_size_to_power_of_2(maxSize);
+                }
+            }
+            auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
+            auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
             currentWaveform = currentSampledWaveform.get_data();
             voltageWaveform = voltageSampledWaveform.get_data();
         }
@@ -1779,8 +1793,22 @@ bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
     std::vector<double> voltageWaveform;
 
     if (excitation.get_current()->get_waveform()->get_data().size() != excitation.get_voltage()->get_waveform()->get_data().size()) {
-        auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency());
-        auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+        // Determine a common number of points for both waveforms to ensure they have the same size after resampling
+        size_t currentSize = excitation.get_current()->get_waveform()->get_data().size();
+        size_t voltageSize = excitation.get_voltage()->get_waveform()->get_data().size();
+        size_t numberPointsForSampling = settings.get_inputs_number_points_sampled_waveforms();
+        size_t maxSize = std::max(currentSize, voltageSize);
+        if (maxSize > numberPointsForSampling) {
+            // Check if maxSize is a power of 2
+            if (maxSize > 0 && ((maxSize & (maxSize - 1)) == 0)) {
+                numberPointsForSampling = maxSize;
+            }
+            else {
+                numberPointsForSampling = round_up_size_to_power_of_2(maxSize);
+            }
+        }
+        auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
+        auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
         currentWaveform = currentSampledWaveform.get_data();
         voltageWaveform = voltageSampledWaveform.get_data();
     }
