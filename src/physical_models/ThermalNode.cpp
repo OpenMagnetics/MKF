@@ -343,14 +343,21 @@ void ThermalNetworkNode::initializeConcentricCoreQuadrants(double width, double 
     double nodeX = physicalCoordinates[0];
     double nodeY = physicalCoordinates[1];
     
-    // RIGHT limit (+X)
-    quadrants[0].limitCoordinates = {nodeX + width/2, nodeY, 0.0};
-    // LEFT limit (-X)
-    quadrants[1].limitCoordinates = {nodeX - width/2, nodeY, 0.0};
-    // TOP limit (+Y)
-    quadrants[2].limitCoordinates = {nodeX, nodeY + height/2, 0.0};
-    // BOTTOM limit (-Y)
-    quadrants[3].limitCoordinates = {nodeX, nodeY - height/2, 0.0};
+    // For toroidal insulation layers: limit coordinates should be angled based on node position
+    // Calculate angle from origin to node center
+    double nodeAngle = std::atan2(nodeY, nodeX);
+    double cosA = std::cos(nodeAngle);
+    double sinA = std::sin(nodeAngle);
+    
+    // width = radial thickness, height = arc length (tangential)
+    // RADIAL_OUTER: away from center (in direction of nodeAngle)
+    quadrants[0].limitCoordinates = {nodeX + cosA * width/2, nodeY + sinA * width/2, 0.0};
+    // RADIAL_INNER: toward center (opposite to nodeAngle)
+    quadrants[1].limitCoordinates = {nodeX - cosA * width/2, nodeY - sinA * width/2, 0.0};
+    // TANGENTIAL_LEFT: perpendicular, counterclockwise from radial (+90°)
+    quadrants[2].limitCoordinates = {nodeX - sinA * height/2, nodeY + cosA * height/2, 0.0};
+    // TANGENTIAL_RIGHT: perpendicular, clockwise from radial (-90°)
+    quadrants[3].limitCoordinates = {nodeX + sinA * height/2, nodeY - cosA * height/2, 0.0};
 }
 
 void ThermalNetworkNode::initializeInsulationLayerQuadrants(double width, double height, double depth,
@@ -402,14 +409,21 @@ void ThermalNetworkNode::initializeInsulationLayerQuadrants(double width, double
     double nodeX = physicalCoordinates[0];
     double nodeY = physicalCoordinates[1];
     
-    // RIGHT limit (+X)
-    quadrants[0].limitCoordinates = {nodeX + width/2, nodeY, 0.0};
-    // LEFT limit (-X)
-    quadrants[1].limitCoordinates = {nodeX - width/2, nodeY, 0.0};
-    // TOP limit (+Y)
-    quadrants[2].limitCoordinates = {nodeX, nodeY + height/2, 0.0};
-    // BOTTOM limit (-Y)
-    quadrants[3].limitCoordinates = {nodeX, nodeY - height/2, 0.0};
+    // For toroidal insulation layers: limit coordinates should be angled based on node position
+    // Calculate angle from origin to node center
+    double nodeAngle = std::atan2(nodeY, nodeX);
+    double cosA = std::cos(nodeAngle);
+    double sinA = std::sin(nodeAngle);
+    
+    // width = radial thickness, height = arc length (tangential)
+    // RADIAL_OUTER: away from center (in direction of nodeAngle)
+    quadrants[0].limitCoordinates = {nodeX + cosA * width/2, nodeY + sinA * width/2, 0.0};
+    // RADIAL_INNER: toward center (opposite to nodeAngle)
+    quadrants[1].limitCoordinates = {nodeX - cosA * width/2, nodeY - sinA * width/2, 0.0};
+    // TANGENTIAL_LEFT: perpendicular, counterclockwise from radial (+90 deg)
+    quadrants[2].limitCoordinates = {nodeX - sinA * height/2, nodeY + cosA * height/2, 0.0};
+    // TANGENTIAL_RIGHT: perpendicular, clockwise from radial (-90 deg)
+    quadrants[3].limitCoordinates = {nodeX + sinA * height/2, nodeY - cosA * height/2, 0.0};
 }
 
 // ============================================================================

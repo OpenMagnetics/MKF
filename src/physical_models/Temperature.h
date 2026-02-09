@@ -268,9 +268,9 @@ private:
         // For turns on a toroidal core, the gap is typically wireWidth/2 (half wire extends inward/outward from center)
         // Using wireWidth ensures we capture conduction across reasonable gaps including bobbin/padding
         if (_isRoundWire) {
-            return std::max(_wireWidth, _wireHeight) * 0.75;  // 75% of wire diameter
+            return std::max(_wireWidth, _wireHeight) * 0.25;  // 25% of wire diameter
         } else {
-            return std::min(_wireWidth, _wireHeight) * 0.75;  // 75% of wire thickness
+            return std::min(_wireWidth, _wireHeight) * 0.25;  // 25% of wire thickness
         }
     }
     

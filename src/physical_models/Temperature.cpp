@@ -15,7 +15,7 @@
 namespace OpenMagnetics {
 
 // Debug flag for thermal model - set to true for verbose output
-constexpr bool THERMAL_DEBUG = false;
+constexpr bool THERMAL_DEBUG = true;
 
 // Contact threshold: surfaces must be within this distance to conduct
 constexpr double CONTACT_THRESHOLD_FACTOR = 0.25;  // wireDiameter / 4
@@ -915,15 +915,6 @@ void Temperature::createBobbinNodes() {
 }
 
 void Temperature::createInsulationLayerNodes() {
-    // Skip insulation layers for toroidal cores - coordinate system is complex
-    // and requires proper handling of polar coordinates relative to section positions
-    if (_isToroidal) {
-        if (THERMAL_DEBUG) {
-            std::cout << "Skipping insulation layer nodes for toroidal core" << std::endl;
-        }
-        return;
-    }
-    
     auto coil = _magnetic.get_mutable_coil();
     
     // Check if we have layers description
@@ -957,7 +948,15 @@ void Temperature::createInsulationLayerNodes() {
     
     size_t layerIdx = 0;
     size_t createdCount = 0;
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Processing " << insulationLayers.size() << " insulation layers" << std::endl;
+    }
+    
     for (const auto& layer : insulationLayers) {
+        if (THERMAL_DEBUG) {
+            std::cout << "Processing insulation layer " << layerIdx << std::endl;
+        }
         // Skip layers without proper dimensions or coordinates
         if (layer.get_dimensions().size() < 2) {
             continue;
@@ -965,6 +964,12 @@ void Temperature::createInsulationLayerNodes() {
         if (layer.get_coordinates().size() < 2) {
             continue;
         }
+        
+        // Note: dimensions[1] is angular span, which can be in degrees or millidegrees depending on source
+        double angularSpan = layer.get_dimensions()[1];
+        // If it's > 1000, it's probably millidegrees (360000 = 360°), otherwise it's degrees (360 = 360°)
+        double angularSpanDegrees = (angularSpan > 1000.0) ? (angularSpan / 1000.0) : angularSpan;
+        bool isFullCircle = (angularSpanDegrees >= 359.0);
         
         // Get layer center coordinates
         double layerX = layer.get_coordinates()[0];
@@ -975,30 +980,25 @@ void Temperature::createInsulationLayerNodes() {
         double layerHeight = layer.get_dimensions()[1];  // Y dimension (span)
         double layerDepth = coreDepth / 2.0;  // Half depth for single side modeling
         
-        // Check coordinate system and convert if necessary
-        auto coordSystem = layer.get_coordinate_system();
-        if (coordSystem.has_value() && coordSystem.value() == MAS::CoordinateSystem::POLAR) {
-            // Polar coordinates: layerX = radius, layerY = angle in degrees
-            // Dimensions: width = radial thickness, height = angular span (in degrees * 1000)
-            double radius = layerX;
-            double angleDeg = layerY;
-            double angleRad = angleDeg * M_PI / 180.0;
-            
-            // Convert center position to Cartesian (relative to section center)
-            layerX = radius * std::cos(angleRad);
-            layerY = radius * std::sin(angleRad);
-            
-            // Convert dimensions: width is radial (already in meters), height is arc length
-            double radialThickness = layerWidth;  // Already in meters (radial direction)
-            double angularSpanDeg = layerHeight / 1000.0;  // Convert from millidegrees to degrees
-            double angularSpanRad = angularSpanDeg * M_PI / 180.0;
-            double arcLength = radius * angularSpanRad;  // Arc length = radius * angle
-            
-            // For insulation layers in polar coordinates:
-            // - layerWidth becomes the radial thickness
-            // - layerHeight becomes the arc length (circumferential span)
-            layerWidth = radialThickness;
-            layerHeight = arcLength;
+        // For concentric cores, if insulation layer has zero thickness, use a default
+        // based on typical inter-layer insulation or coil's insulation specification
+        if (!_isToroidal && layerWidth < 1e-9) {
+            // Try to get thickness from coil's insulation layer specification
+            try {
+                double specifiedThickness = coil.get_insulation_layer_thickness(layer);
+                if (specifiedThickness > 1e-9) {
+                    layerWidth = specifiedThickness;
+                } else {
+                    // Default: 0.1mm typical insulation thickness
+                    layerWidth = 0.0001;
+                }
+            } catch (...) {
+                // Default: 0.1mm typical insulation thickness
+                layerWidth = 0.0001;
+            }
+            if (THERMAL_DEBUG) {
+                std::cout << "  Using default insulation thickness: " << layerWidth * 1000 << "mm" << std::endl;
+            }
         }
         
         // Get layer thermal conductivity from material
@@ -1012,27 +1012,158 @@ void Temperature::createInsulationLayerNodes() {
             // Use default if material cannot be resolved
         }
         
-        // Create insulation layer node
-        ThermalNetworkNode insulationNode;
-        insulationNode.part = ThermalNodePartType::INSULATION_LAYER;
-        insulationNode.name = "L_" + std::to_string(layerIdx);
-        insulationNode.insulationLayerIndex = layerIdx;
-        insulationNode.temperature = _config.ambientTemperature;
-        insulationNode.powerDissipation = 0.0;  // No heat generation in insulation
-        insulationNode.physicalCoordinates = {layerX, layerY, 0};
+        // Check coordinate system
+        auto coordSystem = layer.get_coordinate_system();
+        bool isPolar = coordSystem.has_value() && 
+                       coordSystem.value() == MAS::CoordinateSystem::POLAR;
         
-        // Initialize quadrants for rectangular insulation layer
-        insulationNode.initializeInsulationLayerQuadrants(layerWidth, layerHeight, layerDepth, layerK);
-        
-        _nodes.push_back(insulationNode);
-        layerIdx++;
-        createdCount++;
-        
-        if (THERMAL_DEBUG) {
-            std::cout << "Created insulation layer node: " << insulationNode.name 
-                      << " at (" << layerX * 1000 << "mm, " << layerY * 1000 << "mm)"
-                      << " size (" << layerWidth * 1000 << "mm x " << layerHeight * 1000 << "mm)"
-                      << std::endl;
+        if (_isToroidal && isPolar) {
+            // For toroidal cores with polar coordinates, chunk the insulation layer
+            // into segments matching the core's angular segmentation
+            // Each segment gets INNER and OUTER nodes (like turns)
+            
+            // layerX = radial height (distance from winding window inner surface to layer center)
+            // layerY = angle in degrees (center angle of the layer)
+            // layerWidth = radial thickness  
+            // layerHeight = angular span in millidegrees
+            
+            double radialHeight = layerX;  // Distance from winding window inner surface to layer center
+            double centerAngleDeg = layerY;
+            double radialThickness = layerWidth;
+            double angularSpanDeg = layerHeight / 1000.0;  // Convert from millidegrees
+            
+            // Get core dimensions
+            auto coreDims = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+            double innerDiameter = coreDims["B"];  // Inner hole diameter
+            double outerDiameter = coreDims["A"];  // Outer core diameter
+            
+            // For insulation layers wrapping around the core:
+            // - Inner nodes: inside the hole, toward center (B/2 - radialHeight)
+            // - Outer nodes: outside the core, away from center (A/2 + radialHeight)
+            double innerSurfaceRadius = innerDiameter / 2.0 - radialHeight;
+            double outerSurfaceRadius = outerDiameter / 2.0 + radialHeight;
+            
+            // Use same number of segments as toroidal core
+            size_t numSegments = _config.toroidalSegments;
+            double angularStep = 2.0 * M_PI / numSegments;
+            
+            // Calculate which segments this insulation layer covers
+            double layerStartAngle = (centerAngleDeg - angularSpanDeg / 2.0) * M_PI / 180.0;
+            double layerEndAngle = (centerAngleDeg + angularSpanDeg / 2.0) * M_PI / 180.0;
+            
+            // Normalize angles to [0, 2π)
+            auto normalizeAngle = [](double a) {
+                while (a < 0) a += 2.0 * M_PI;
+                while (a >= 2.0 * M_PI) a -= 2.0 * M_PI;
+                return a;
+            };
+            layerStartAngle = normalizeAngle(layerStartAngle);
+            layerEndAngle = normalizeAngle(layerEndAngle);
+            
+            // Create INNER and OUTER nodes for each overlapping segment
+            for (size_t segIdx = 0; segIdx < numSegments; ++segIdx) {
+                double segAngle = segIdx * angularStep;
+                double segMidAngle = segAngle + angularStep / 2.0;
+                double segEnd = segAngle + angularStep;
+                
+                // Check overlap (full-circle layers overlap with all segments)
+                bool overlaps = isFullCircle;
+                if (!overlaps) {
+                    if (layerStartAngle <= layerEndAngle) {
+                        overlaps = (segAngle < layerEndAngle && segEnd > layerStartAngle);
+                    } else {
+                        overlaps = (segAngle < layerEndAngle || segEnd > layerStartAngle);
+                    }
+                }
+                
+                if (!overlaps) continue;
+                
+                // Calculate segment arc length (at average radius)
+                double avgRadius = (innerSurfaceRadius + outerSurfaceRadius) / 2.0;
+                double segmentArcLength = avgRadius * angularStep;
+                
+                // Create INNER node (at inner surface of insulation layer)
+                ThermalNetworkNode innerNode;
+                innerNode.part = ThermalNodePartType::INSULATION_LAYER;
+                innerNode.name = "IL_" + std::to_string(layerIdx) + "_" + std::to_string(segIdx) + "_i";
+                innerNode.insulationLayerIndex = layerIdx;
+                innerNode.temperature = _config.ambientTemperature;
+                innerNode.powerDissipation = 0.0;
+                innerNode.isInnerTurn = true;  // Mark as inner surface
+                
+                double innerX = innerSurfaceRadius * std::cos(segMidAngle);
+                double innerY = innerSurfaceRadius * std::sin(segMidAngle);
+                innerNode.physicalCoordinates = {innerX, innerY, 0};
+                innerNode.initializeInsulationLayerQuadrants(radialThickness, segmentArcLength, layerDepth, layerK);
+                
+                _nodes.push_back(innerNode);
+                createdCount++;
+                
+                // Create OUTER node (at outer surface of insulation layer)
+                ThermalNetworkNode outerNode;
+                outerNode.part = ThermalNodePartType::INSULATION_LAYER;
+                outerNode.name = "IL_" + std::to_string(layerIdx) + "_" + std::to_string(segIdx) + "_o";
+                outerNode.insulationLayerIndex = layerIdx;
+                outerNode.temperature = _config.ambientTemperature;
+                outerNode.powerDissipation = 0.0;
+                outerNode.isInnerTurn = false;  // Mark as outer surface
+                
+                double outerX = outerSurfaceRadius * std::cos(segMidAngle);
+                double outerY = outerSurfaceRadius * std::sin(segMidAngle);
+                outerNode.physicalCoordinates = {outerX, outerY, 0};
+                outerNode.initializeInsulationLayerQuadrants(radialThickness, segmentArcLength, layerDepth, layerK);
+                
+                _nodes.push_back(outerNode);
+                createdCount++;
+                
+                if (THERMAL_DEBUG) {
+                    std::cout << "Created insulation nodes: " << innerNode.name << " at radius=" 
+                              << innerSurfaceRadius * 1000 << "mm, " << outerNode.name << " at radius=" 
+                              << outerSurfaceRadius * 1000 << "mm" << std::endl;
+                }
+            }
+            layerIdx++;
+        } else {
+            // For concentric cores or Cartesian coordinates: single node
+            if (isPolar) {
+                // Convert polar to Cartesian
+                double radius = layerX;
+                double angleDeg = layerY;
+                double angleRad = angleDeg * M_PI / 180.0;
+                
+                layerX = radius * std::cos(angleRad);
+                layerY = radius * std::sin(angleRad);
+                
+                double radialThickness = layerWidth;
+                double angularSpanDeg = layerHeight / 1000.0;
+                double angularSpanRad = angularSpanDeg * M_PI / 180.0;
+                double arcLength = radius * angularSpanRad;
+                
+                layerWidth = radialThickness;
+                layerHeight = arcLength;
+            }
+            
+            // Create single insulation layer node
+            ThermalNetworkNode insulationNode;
+            insulationNode.part = ThermalNodePartType::INSULATION_LAYER;
+            insulationNode.name = "L_" + std::to_string(layerIdx);
+            insulationNode.insulationLayerIndex = layerIdx;
+            insulationNode.temperature = _config.ambientTemperature;
+            insulationNode.powerDissipation = 0.0;
+            insulationNode.physicalCoordinates = {layerX, layerY, 0};
+            
+            insulationNode.initializeInsulationLayerQuadrants(layerWidth, layerHeight, layerDepth, layerK);
+            
+            _nodes.push_back(insulationNode);
+            layerIdx++;
+            createdCount++;
+            
+            if (THERMAL_DEBUG) {
+                std::cout << "Created insulation layer node: " << insulationNode.name 
+                          << " at (" << layerX * 1000 << "mm, " << layerY * 1000 << "mm)"
+                          << " size (" << layerWidth * 1000 << "mm x " << layerHeight * 1000 << "mm)"
+                          << std::endl;
+            }
         }
     }
     
@@ -1063,6 +1194,17 @@ void Temperature::createTurnNodes() {
         defaultWireThermalCond = getWireThermalConductivity(wireOpt.value());
         defaultIsRoundWire = isRoundWire(wireOpt.value());
         defaultWireCoating = wireOpt.value().resolve_coating();
+    }
+    
+    // Pre-compute turn counts per winding to calculate turn index within winding
+    std::map<size_t, size_t> turnsPerWinding;
+    std::map<size_t, size_t> windingBaseIndex;  // Starting global index for each winding
+    for (size_t i = 0; i < turns->size(); ++i) {
+        size_t wIdx = coil.get_winding_index_by_name((*turns)[i].get_winding());
+        if (turnsPerWinding.count(wIdx) == 0) {
+            windingBaseIndex[wIdx] = i;  // First turn of this winding
+        }
+        turnsPerWinding[wIdx]++;
     }
     
     if (_isToroidal) {
@@ -1114,6 +1256,10 @@ void Temperature::createTurnNodes() {
             const auto& turn = (*turns)[t];
             double turnLoss = (t < turnLosses.size()) ? turnLosses[t] : 0.0;
             
+            // Calculate winding index and turn index within winding
+            size_t windingIdx = coil.get_winding_index_by_name(turn.get_winding());
+            size_t turnIdxInWinding = t - windingBaseIndex[windingIdx];
+            
             auto coords = turn.get_coordinates();
             double angle = 0;
             double turnCenterRadius = meanRadius;  // fallback
@@ -1143,8 +1289,14 @@ void Temperature::createTurnNodes() {
             ThermalNetworkNode innerNode;
             innerNode.part = ThermalNodePartType::TURN;
             innerNode.name = turn.get_name() + "_Inner";
+            
+            if (THERMAL_DEBUG && t < 3) {
+                std::cout << "Turn " << t << " coordinates: [" << coords[0] << ", " << coords[1] 
+                          << "], radius=" << turnCenterRadius*1000 << "mm" << std::endl;
+            }
             innerNode.temperature = _config.ambientTemperature;
-            innerNode.turnIndex = static_cast<int>(t);
+            innerNode.windingIndex = static_cast<int>(windingIdx);
+            innerNode.turnIndex = static_cast<int>(turnIdxInWinding);
             innerNode.isInnerTurn = true;
             
             // Use actual turn coordinates for inner surface
@@ -1178,13 +1330,19 @@ void Temperature::createTurnNodes() {
                 outerNode.name = turn.get_name() + "_Outer";
                 outerNode.temperature = _config.ambientTemperature;
                 outerNode.powerDissipation = turnLoss / 2.0;
-                outerNode.turnIndex = static_cast<int>(t);
+                outerNode.windingIndex = static_cast<int>(windingIdx);
+                outerNode.turnIndex = static_cast<int>(turnIdxInWinding);
                 outerNode.isInnerTurn = false;
                 
                 auto addCoords = turn.get_additional_coordinates().value()[0];
                 double outerSurfaceX = addCoords[0];
                 double outerSurfaceY = addCoords[1];
                 double outerSurfaceRadius = std::sqrt(outerSurfaceX*outerSurfaceX + outerSurfaceY*outerSurfaceY);
+                
+                if (THERMAL_DEBUG && t < 3) {
+                    std::cout << "Turn " << t << " additionalCoords: [" << outerSurfaceX << ", " << outerSurfaceY 
+                              << "], radius=" << outerSurfaceRadius*1000 << "mm" << std::endl;
+                }
                 
                 outerNode.physicalCoordinates = {outerSurfaceX, outerSurfaceY, 0};
                 
@@ -1200,12 +1358,17 @@ void Temperature::createTurnNodes() {
         for (size_t t = 0; t < turns->size(); ++t) {
             const auto& turn = (*turns)[t];
             
+            // Calculate winding index and turn index within winding
+            size_t windingIdx = coil.get_winding_index_by_name(turn.get_winding());
+            size_t turnIdxInWinding = t - windingBaseIndex[windingIdx];
+            
             ThermalNetworkNode node;
             node.part = ThermalNodePartType::TURN;
             node.name = turn.get_name();
             node.temperature = _config.ambientTemperature;
             node.powerDissipation = _config.windingLosses / turns->size();
-            node.turnIndex = static_cast<int>(t);
+            node.windingIndex = static_cast<int>(windingIdx);
+            node.turnIndex = static_cast<int>(turnIdxInWinding);
             
             auto coords = turn.get_coordinates();
             if (coords.size() >= 3) {
@@ -2281,152 +2444,373 @@ void Temperature::createTurnToInsulationConnections() {
     
     double minConductionDist = getMinimumDistanceForConduction();
     
-    // For each insulation layer, find adjacent turns on each face
-    for (size_t insulationIdx : insulationNodeIndices) {
-        const auto& insulationNode = _nodes[insulationIdx];
+    // Skip toroidal handling here - connections will be created after processing all insulation nodes
+    // This ensures each turn connects only to the closest angular chunk of each layer
+    if (!_isToroidal) {
+        // For concentric cores: iterate through turns and find closest insulation layer on each side
+        // This ensures turns connect to the correct insulation layer based on perpendicular distance
         
-        // Get insulation layer geometry
-        double insulationX = insulationNode.physicalCoordinates[0];
-        double insulationY = insulationNode.physicalCoordinates[1];
-        double insulationWidth = insulationNode.dimensions.width;
-        double insulationHeight = insulationNode.dimensions.height;
-        
-        // Get insulation material properties for resistance calculation
-        double insulationK = 0.2;  // Default
-        if (insulationNode.quadrants[0].thermalConductivity > 0) {
-            insulationK = insulationNode.quadrants[0].thermalConductivity;
-        }
-        
-        // Define the four faces of the insulation layer
-        struct FaceCheck {
-            ThermalNodeFace face;
-            double edgeX;  // X coordinate of the face edge
-            double edgeY;  // Y coordinate of the face edge
-            bool isVertical;  // true for LEFT/RIGHT faces, false for TOP/BOTTOM
-            int direction;  // +1 or -1 indicating outward normal direction
-        };
-        
-        std::vector<FaceCheck> faces = {
-            {ThermalNodeFace::RADIAL_OUTER,  insulationX + insulationWidth/2, insulationY, true, +1},   // RIGHT
-            {ThermalNodeFace::RADIAL_INNER,  insulationX - insulationWidth/2, insulationY, true, -1},   // LEFT
-            {ThermalNodeFace::TANGENTIAL_LEFT,  insulationX, insulationY + insulationHeight/2, false, +1}, // TOP
-            {ThermalNodeFace::TANGENTIAL_RIGHT, insulationX, insulationY - insulationHeight/2, false, -1}  // BOTTOM
-        };
-        
-        // Check each face for adjacent turns
-        // Connection threshold: surface-to-surface distance must be < 5% of turn diameter
-        for (const auto& face : faces) {
-            std::vector<std::pair<size_t, double>> adjacentTurns;  // (turnIdx, distance)
+        for (size_t turnIdx : turnNodeIndices) {
+            const auto& turnNode = _nodes[turnIdx];
+            double turnX = turnNode.physicalCoordinates[0];
+            double turnY = turnNode.physicalCoordinates[1];
+            double turnWidth = turnNode.dimensions.width;
+            double turnHeight = turnNode.dimensions.height;
+            double turnDiameter = std::max(turnWidth, turnHeight);
             
-            for (size_t turnIdx : turnNodeIndices) {
-                const auto& turnNode = _nodes[turnIdx];
-                double turnX = turnNode.physicalCoordinates[0];
-                double turnY = turnNode.physicalCoordinates[1];
-                double turnWidth = turnNode.dimensions.width;
-                double turnHeight = turnNode.dimensions.height;
+            // Connection threshold: 5% of turn diameter for surface-to-surface connection
+            double connectionThreshold = turnDiameter * 0.05;
+            
+            // Find closest insulation layer on LEFT and RIGHT sides of the turn
+            struct InsulationCandidate {
+                size_t insulationIdx;
+                double distance;  // Surface-to-surface distance
+                double insulationK;
+                double insulationWidth;
+                double insulationHeight;
+            };
+            
+            InsulationCandidate leftCandidate;
+            InsulationCandidate rightCandidate;
+            bool hasLeft = false;
+            bool hasRight = false;
+            
+            for (size_t insulationIdx : insulationNodeIndices) {
+                const auto& insulationNode = _nodes[insulationIdx];
+                double insulationX = insulationNode.physicalCoordinates[0];
+                double insulationY = insulationNode.physicalCoordinates[1];
+                double insulationW = insulationNode.dimensions.width;
+                double insulationH = insulationNode.dimensions.height;
                 
-                // Calculate turn "diameter" (max dimension for round, min for rectangular)
-                double turnDiameter = std::max(turnWidth, turnHeight);
-                // Threshold: 5% of turn diameter for surface-to-surface connection
-                double connectionThreshold = turnDiameter * 0.05;
+                // Get insulation thermal conductivity
+                double insulationK = 0.2;
+                if (insulationNode.quadrants[0].thermalConductivity > 0) {
+                    insulationK = insulationNode.quadrants[0].thermalConductivity;
+                }
                 
-                // Calculate distance from turn surface to insulation face
-                double dist;
-                if (face.isVertical) {
-                    // For vertical faces (LEFT/RIGHT), check X distance
-                    double turnEdgeX = (face.direction > 0) ? turnX - turnWidth/2 : turnX + turnWidth/2;
-                    dist = std::abs(face.edgeX - turnEdgeX);
-                    
-                    // Check if turn is within Y range of the face
-                    double yOverlap = std::min(
-                        std::abs(turnY - (insulationY + insulationHeight/2)),
-                        std::abs(turnY - (insulationY - insulationHeight/2))
-                    );
-                    
-                    // Connect only if surface distance < 5% of turn diameter
-                    if (dist < connectionThreshold && yOverlap < (insulationHeight/2 + turnHeight/2)) {
-                        adjacentTurns.push_back({turnIdx, dist});
+                // Calculate insulation layer edges
+                double insulationLeftEdge = insulationX - insulationW / 2.0;
+                double insulationRightEdge = insulationX + insulationW / 2.0;
+                double turnLeftEdge = turnX - turnWidth / 2.0;
+                double turnRightEdge = turnX + turnWidth / 2.0;
+                
+                // Check if turn is within the insulation layer's Y span
+                // For concentric cores, insulation layers span the full winding window height
+                double insulationBottom = insulationY - insulationH / 2.0;
+                double insulationTop = insulationY + insulationH / 2.0;
+                double turnBottom = turnY - turnHeight / 2.0;
+                double turnTop = turnY + turnHeight / 2.0;
+                bool yOverlaps = !(turnTop < insulationBottom || turnBottom > insulationTop);
+                if (!yOverlaps) continue;
+                
+                // Check if insulation is to the LEFT of the turn
+                // (insulation's RIGHT edge is close to turn's LEFT edge)
+                if (insulationRightEdge <= turnLeftEdge + connectionThreshold) {
+                    double dist = turnLeftEdge - insulationRightEdge;
+                    if (dist < connectionThreshold && (!hasLeft || dist < leftCandidate.distance)) {
+                        leftCandidate = {insulationIdx, dist, insulationK, insulationW, insulationH};
+                        hasLeft = true;
                     }
-                } else {
-                    // For horizontal faces (TOP/BOTTOM), check Y distance
-                    double turnEdgeY = (face.direction > 0) ? turnY - turnHeight/2 : turnY + turnHeight/2;
-                    dist = std::abs(face.edgeY - turnEdgeY);
-                    
-                    // Check if turn is within X range of the face
-                    double xOverlap = std::min(
-                        std::abs(turnX - (insulationX + insulationWidth/2)),
-                        std::abs(turnX - (insulationX - insulationWidth/2))
-                    );
-                    
-                    // Connect only if surface distance < 5% of turn diameter
-                    if (dist < connectionThreshold && xOverlap < (insulationWidth/2 + turnWidth/2)) {
-                        adjacentTurns.push_back({turnIdx, dist});
+                }
+                
+                // Check if insulation is to the RIGHT of the turn
+                // (insulation's LEFT edge is close to turn's RIGHT edge)
+                if (insulationLeftEdge >= turnRightEdge - connectionThreshold) {
+                    double dist = insulationLeftEdge - turnRightEdge;
+                    if (dist < connectionThreshold && (!hasRight || dist < rightCandidate.distance)) {
+                        rightCandidate = {insulationIdx, dist, insulationK, insulationW, insulationH};
+                        hasRight = true;
                     }
                 }
             }
             
-            // Create connections to all adjacent turns
-            for (const auto& [turnIdx, dist] : adjacentTurns) {
-                const auto& turnNode = _nodes[turnIdx];
-                double turnWidth = turnNode.dimensions.width;
-                double turnHeight = turnNode.dimensions.height;
+            // Create connection to LEFT insulation layer (connects to turn's LEFT face)
+            if (hasLeft) {
+                const auto& insNode = _nodes[leftCandidate.insulationIdx];
                 
                 ThermalResistanceElement r;
-                r.nodeFromId = insulationIdx;
-                r.quadrantFrom = face.face;
+                r.nodeFromId = leftCandidate.insulationIdx;
+                r.quadrantFrom = ThermalNodeFace::RADIAL_OUTER;  // Insulation's RIGHT face touches turn's LEFT
                 r.nodeToId = turnIdx;
-                
-                // Map insulation face to corresponding turn face
-                // Turn face should be opposite of insulation face (they touch)
-                switch (face.face) {
-                    case ThermalNodeFace::RADIAL_OUTER:
-                        r.quadrantTo = ThermalNodeFace::RADIAL_INNER;  // Turn's LEFT touches insulation's RIGHT
-                        break;
-                    case ThermalNodeFace::RADIAL_INNER:
-                        r.quadrantTo = ThermalNodeFace::RADIAL_OUTER;  // Turn's RIGHT touches insulation's LEFT
-                        break;
-                    case ThermalNodeFace::TANGENTIAL_LEFT:
-                        r.quadrantTo = ThermalNodeFace::TANGENTIAL_RIGHT;  // Turn's BOTTOM touches insulation's TOP
-                        break;
-                    case ThermalNodeFace::TANGENTIAL_RIGHT:
-                        r.quadrantTo = ThermalNodeFace::TANGENTIAL_LEFT;  // Turn's TOP touches insulation's BOTTOM
-                        break;
-                    default:
-                        r.quadrantTo = ThermalNodeFace::NONE;
-                        break;
-                }
-                
-                // For concentric cores, only allow connections to RADIAL faces of turns
-                // TANGENTIAL (top/bottom) faces should only connect to ambient via convection
-                if (!_isToroidal && 
-                    (r.quadrantTo == ThermalNodeFace::TANGENTIAL_LEFT || 
-                     r.quadrantTo == ThermalNodeFace::TANGENTIAL_RIGHT)) {
-                    continue;
-                }
-                
+                r.quadrantTo = ThermalNodeFace::RADIAL_INNER;    // Turn's LEFT face
                 r.type = HeatTransferType::CONDUCTION;
                 
-                // Calculate contact area using turn's actual dimensions
                 double contactArea = turnWidth * turnHeight * 0.5;
+                double conductionDistance = leftCandidate.insulationWidth / 2.0;
                 
-                // Resistance through insulation: R = thickness / (k * A)
-                // Use half the insulation thickness as the conduction path
-                double conductionDistance = insulationWidth / 2.0;
-                if (!face.isVertical) {
-                    conductionDistance = insulationHeight / 2.0;
+                r.resistance = ThermalResistance::calculateConductionResistance(
+                    conductionDistance, leftCandidate.insulationK, contactArea);
+                
+                _resistances.push_back(r);
+                
+                if (THERMAL_DEBUG) {
+                    std::cout << "Turn " << turnNode.name << " (winding=" << turnNode.windingIndex.value_or(-1) 
+                              << ") LEFT -> Insulation " << insNode.name 
+                              << " RIGHT (dist=" << leftCandidate.distance * 1000 << "mm, R=" 
+                              << r.resistance << " K/W)" << std::endl;
+                }
+            }
+            
+            // Create connection to RIGHT insulation layer (connects to turn's RIGHT face)
+            if (hasRight) {
+                const auto& insNode = _nodes[rightCandidate.insulationIdx];
+                
+                ThermalResistanceElement r;
+                r.nodeFromId = rightCandidate.insulationIdx;
+                r.quadrantFrom = ThermalNodeFace::RADIAL_INNER;  // Insulation's LEFT face touches turn's RIGHT
+                r.nodeToId = turnIdx;
+                r.quadrantTo = ThermalNodeFace::RADIAL_OUTER;    // Turn's RIGHT face
+                r.type = HeatTransferType::CONDUCTION;
+                
+                double contactArea = turnWidth * turnHeight * 0.5;
+                double conductionDistance = rightCandidate.insulationWidth / 2.0;
+                
+                r.resistance = ThermalResistance::calculateConductionResistance(
+                    conductionDistance, rightCandidate.insulationK, contactArea);
+                
+                _resistances.push_back(r);
+                
+                if (THERMAL_DEBUG) {
+                    std::cout << "Turn " << turnNode.name << " (winding=" << turnNode.windingIndex.value_or(-1) 
+                              << ") RIGHT -> Insulation " << insNode.name 
+                              << " LEFT (dist=" << rightCandidate.distance * 1000 << "mm, R=" 
+                              << r.resistance << " K/W)" << std::endl;
+                }
+            }
+        }
+    }
+    
+    // ============================================================================
+    // Toroidal Turn-to-Insulation Connections (Radial Proximity + Angular Matching)
+    // ============================================================================
+    // For each turn node:
+    // 1. Check both radial sides (inner and outer surface) against all insulation layers
+    // 2. If turn surface is close to layer surface (within 15% of wire radius), mark for connection
+    // 3. Find the closest insulation node by angle for each matching layer
+    // 4. Choose the quadrant combination (RI-RO or RO-RI) with closest limit coordinates
+    size_t connectionCount = 0;
+    if (_isToroidal && !insulationNodeIndices.empty()) {
+        // Get core dimensions for inner/outer region detection
+        auto core = _magnetic.get_core();
+        auto coreDims = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+        double windingWindowInnerRadius = coreDims["B"] / 2.0;
+        
+        // Group insulation nodes by layer index
+        std::map<int, std::vector<size_t>> insNodesByLayer;
+        for (size_t insIdx : insulationNodeIndices) {
+            int layerIdx = _nodes[insIdx].insulationLayerIndex.value_or(-1);
+            if (layerIdx >= 0) {
+                insNodesByLayer[layerIdx].push_back(insIdx);
+            }
+        }
+        
+        // Pre-calculate layer data for efficiency
+        // Each layer has both INNER and OUTER nodes - handle them separately
+        struct LayerData {
+            int layerIdx;
+            double layerRadius;      // Center radius from core center
+            double semiThickness;    // Half of radial thickness
+            bool isInner;            // true = inner side (inside core hole), false = outer side (outside core)
+        };
+        std::vector<LayerData> allLayers;
+        for (const auto& [layerIdx, layerInsIndices] : insNodesByLayer) {
+            if (layerInsIndices.empty()) continue;
+            
+            // Find one inner node and one outer node for this layer
+            const ThermalNetworkNode* innerNode = nullptr;
+            const ThermalNetworkNode* outerNode = nullptr;
+            
+            for (size_t insIdx : layerInsIndices) {
+                const auto& node = _nodes[insIdx];
+                if (node.isInnerTurn && !innerNode) {
+                    innerNode = &node;
+                } else if (!node.isInnerTurn && !outerNode) {
+                    outerNode = &node;
+                }
+                if (innerNode && outerNode) break;
+            }
+            
+            // Add inner side layer data
+            if (innerNode) {
+                double insX = innerNode->physicalCoordinates[0];
+                double insY = innerNode->physicalCoordinates[1];
+                double layerRadius = std::sqrt(insX*insX + insY*insY);
+                double semiThickness = innerNode->dimensions.width / 2.0;
+                allLayers.push_back({layerIdx, layerRadius, semiThickness, true});
+            }
+            
+            // Add outer side layer data
+            if (outerNode) {
+                double insX = outerNode->physicalCoordinates[0];
+                double insY = outerNode->physicalCoordinates[1];
+                double layerRadius = std::sqrt(insX*insX + insY*insY);
+                double semiThickness = outerNode->dimensions.width / 2.0;
+                allLayers.push_back({layerIdx, layerRadius, semiThickness, false});
+            }
+        }
+        
+        for (size_t turnIdx : turnNodeIndices) {
+            const auto& turnNode = _nodes[turnIdx];
+            double turnX = turnNode.physicalCoordinates[0];
+            double turnY = turnNode.physicalCoordinates[1];
+            double turnRadiusPos = std::sqrt(turnX*turnX + turnY*turnY);
+            double turnAngle = std::atan2(turnY, turnX);
+            
+            // Get turn physical dimensions
+            double turnDiameter = std::max(turnNode.dimensions.width, turnNode.dimensions.height);
+            double turnRadiusActual = turnDiameter / 2.0;  // Physical radius of the turn wire
+            double proximityThreshold = turnRadiusActual * 0.15;  // 15% of wire radius
+            
+            // Check inner/outer consistency
+            bool isTurnInner = turnNode.isInnerTurn;
+            
+            // Calculate turn's inner and outer surface radii
+            double turnSurfaceInnerRadius = turnRadiusPos - turnRadiusActual;
+            double turnSurfaceOuterRadius = turnRadiusPos + turnRadiusActual;
+            
+            // Find layers that are close on either radial side of the turn
+            std::vector<std::pair<int, double>> matchingLayers;  // (layerIdx, whichSide: -1=inner, +1=outer)
+            
+            for (const auto& layer : allLayers) {
+                // Skip layers on opposite side of core (inner vs outer)
+                if (layer.isInner != isTurnInner) continue;
+                
+                // Calculate layer's inner and outer surface radii
+                double layerSurfaceInnerRadius = layer.layerRadius - layer.semiThickness;
+                double layerSurfaceOuterRadius = layer.layerRadius + layer.semiThickness;
+                
+                // Check if turn's INNER surface is close to layer's OUTER surface
+                // (layer is closer to center than turn)
+                double gapInner = turnSurfaceInnerRadius - layerSurfaceOuterRadius;
+                if (std::abs(gapInner) < proximityThreshold) {
+                    matchingLayers.push_back({layer.layerIdx, -1.0});  // -1 = turn's inner side
+                }
+                
+                // Check if turn's OUTER surface is close to layer's INNER surface
+                // (layer is farther from center than turn)
+                double gapOuter = layerSurfaceInnerRadius - turnSurfaceOuterRadius;
+                if (std::abs(gapOuter) < proximityThreshold) {
+                    matchingLayers.push_back({layer.layerIdx, +1.0});  // +1 = turn's outer side
+                }
+            }
+            
+            // For each matching layer, find closest node by angle and create connection
+            for (const auto& [layerIdx, whichSide] : matchingLayers) {
+                const auto& layerInsIndices = insNodesByLayer[layerIdx];
+                
+                // Find closest insulation node in this layer by angular proximity
+                // Must match inner/outer side
+                size_t bestInsIdx = 0;
+                double bestAngleDiff = std::numeric_limits<double>::max();
+                bool foundNode = false;
+                
+                for (size_t insIdx : layerInsIndices) {
+                    const auto& insNode = _nodes[insIdx];
+                    
+                    // Skip nodes on opposite side (inner vs outer)
+                    if (insNode.isInnerTurn != isTurnInner) continue;
+                    
+                    double insX = insNode.physicalCoordinates[0];
+                    double insY = insNode.physicalCoordinates[1];
+                    double insAngle = std::atan2(insY, insX);
+                    
+                    double angleDiff = std::abs(insAngle - turnAngle);
+                    if (angleDiff > M_PI) angleDiff = 2.0 * M_PI - angleDiff;
+                    
+                    if (angleDiff < bestAngleDiff) {
+                        bestAngleDiff = angleDiff;
+                        bestInsIdx = insIdx;
+                        foundNode = true;
+                    }
+                }
+                
+                if (!foundNode) continue;
+                
+                const auto& insNode = _nodes[bestInsIdx];
+                
+                // Get quadrants for distance checking
+                auto* turnQInner = turnNode.getQuadrant(ThermalNodeFace::RADIAL_INNER);
+                auto* turnQOuter = turnNode.getQuadrant(ThermalNodeFace::RADIAL_OUTER);
+                auto* insQInner = insNode.getQuadrant(ThermalNodeFace::RADIAL_INNER);
+                auto* insQOuter = insNode.getQuadrant(ThermalNodeFace::RADIAL_OUTER);
+                
+                // Determine which quadrant combination to use based on whichSide and physical proximity
+                ThermalNodeFace bestTurnFace = ThermalNodeFace::NONE;
+                ThermalNodeFace bestInsFace = ThermalNodeFace::NONE;
+                double minQuadrantDistance = 1e9;
+                
+                if (whichSide < 0) {
+                    // Turn's INNER surface faces the layer
+                    // Valid combination: Turn RI <-> Insulation RO
+                    if (turnQInner && insQOuter) {
+                        double dx = turnQInner->limitCoordinates[0] - insQOuter->limitCoordinates[0];
+                        double dy = turnQInner->limitCoordinates[1] - insQOuter->limitCoordinates[1];
+                        minQuadrantDistance = std::sqrt(dx*dx + dy*dy);
+                        bestTurnFace = ThermalNodeFace::RADIAL_INNER;
+                        bestInsFace = ThermalNodeFace::RADIAL_OUTER;
+                    }
+                } else {
+                    // Turn's OUTER surface faces the layer
+                    // Valid combination: Turn RO <-> Insulation RI
+                    if (turnQOuter && insQInner) {
+                        double dx = turnQOuter->limitCoordinates[0] - insQInner->limitCoordinates[0];
+                        double dy = turnQOuter->limitCoordinates[1] - insQInner->limitCoordinates[1];
+                        minQuadrantDistance = std::sqrt(dx*dx + dy*dy);
+                        bestTurnFace = ThermalNodeFace::RADIAL_OUTER;
+                        bestInsFace = ThermalNodeFace::RADIAL_INNER;
+                    }
+                }
+                
+                // Only create connection if we found valid facing quadrants
+                if (bestTurnFace == ThermalNodeFace::NONE || bestInsFace == ThermalNodeFace::NONE) continue;
+                
+                // Create the thermal resistance connection
+                ThermalResistanceElement r;
+                r.nodeFromId = bestInsIdx;
+                r.quadrantFrom = bestInsFace;
+                r.nodeToId = turnIdx;
+                r.quadrantTo = bestTurnFace;
+                r.type = HeatTransferType::CONDUCTION;
+                
+                // Calculate contact area (minimum of the two quadrant surface areas)
+                auto* turnQ = turnNode.getQuadrant(bestTurnFace);
+                auto* insQ = insNode.getQuadrant(bestInsFace);
+                double contactArea = std::min(
+                    turnQ ? turnQ->surfaceArea : 0.0,
+                    insQ ? insQ->surfaceArea : 0.0
+                );
+                if (contactArea <= 0) {
+                    // Fallback: use turn cross-section area estimate
+                    contactArea = turnNode.dimensions.width * turnNode.dimensions.height * 0.5;
+                }
+                
+                // Conduction distance is the surface-to-surface distance
+                double conductionDistance = std::max(minQuadrantDistance, 1e-6);
+                
+                // Get insulation thermal conductivity
+                double insulationK = 0.2;  // Default
+                if (insNode.quadrants[0].thermalConductivity > 0) {
+                    insulationK = insNode.quadrants[0].thermalConductivity;
                 }
                 
                 r.resistance = ThermalResistance::calculateConductionResistance(
                     conductionDistance, insulationK, contactArea);
                 
                 _resistances.push_back(r);
+                connectionCount++;
                 
                 if (THERMAL_DEBUG) {
-                    std::cout << "Insulation " << insulationNode.name << " face=" << static_cast<int>(face.face) 
-                              << " -> Turn " << _nodes[turnIdx].name 
-                              << " R=" << r.resistance << " K/W" << std::endl;
+                    std::cout << "Toroidal: " << insNode.name << "[" << magic_enum::enum_name(bestInsFace) 
+                              << "] -> " << turnNode.name << "[" << magic_enum::enum_name(bestTurnFace)
+                              << "] side=" << (whichSide < 0 ? "inner" : "outer") 
+                              << ", angleDiff=" << bestAngleDiff * 180.0 / M_PI << "deg, R=" 
+                              << r.resistance << " K/W" << std::endl;
                 }
             }
+        }
+        
+        if (THERMAL_DEBUG) {
+            std::cout << "Created " << connectionCount << " toroidal turn-to-insulation connections" << std::endl;
         }
     }
 }
@@ -2635,6 +3019,7 @@ void Temperature::createTurnToSolidConnections() {
             }
         }
     }
+    
 }
 
 // ============================================================================
@@ -2678,6 +3063,12 @@ void Temperature::createConvectionConnections() {
     }
     
     if (_isToroidal) {
+        // Get core dimensions for radial height calculations
+        auto core = _magnetic.get_core();
+        auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+        double coreInnerR = dimensions["B"] / 2.0;
+        double coreOuterR = dimensions["A"] / 2.0;
+        
         // Build a map of which quadrants are already connected by conduction
         // Key: "nodeId_quadrantFace" -> true if connected
         std::set<std::string> connectedQuadrants;
@@ -2692,9 +3083,22 @@ void Temperature::createConvectionConnections() {
             }
         }
         
+        // Check if insulation layers exist in the model
+        bool hasInsulationLayers = false;
+        for (size_t i = 0; i < _nodes.size(); i++) {
+            if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) {
+                hasInsulationLayers = true;
+                break;
+            }
+        }
+        
         // For each turn node, check each quadrant for exposure to air
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::TURN) continue;
+            
+            // If insulation layers exist, turns should NOT have convection to ambient
+            // Only insulation layer nodes should have convection (on radial faces)
+            if (hasInsulationLayers) continue;
             
             const auto& node = _nodes[i];
             double nodeX = node.physicalCoordinates[0];
@@ -2804,6 +3208,49 @@ void Temperature::createConvectionConnections() {
                             }
                         }
                     }
+                    
+                    // Also check if tangential face is covered by an insulation layer
+                    // This happens when the turn is at the same radial position as an insulation layer
+                    if (isExposed) {
+                        for (size_t j = 0; j < _nodes.size(); j++) {
+                            if (_nodes[j].part != ThermalNodePartType::INSULATION_LAYER) continue;
+                            
+                            double insX = _nodes[j].physicalCoordinates[0];
+                            double insY = _nodes[j].physicalCoordinates[1];
+                            double insR = std::sqrt(insX*insX + insY*insY);
+                            double insAngle = std::atan2(insY, insX);
+                            
+                            // Check if insulation is at similar radial position (within wire width)
+                            // and in the same inner/outer region
+                            bool isInsInner = (insR < coreInnerR);
+                            if (node.isInnerTurn != isInsInner) continue;
+                            
+                            // Check if insulation is at similar radial position
+                            // Use full wire width as threshold to account for wire radius + insulation thickness
+                            double radialThreshold = nodeWidth;
+                            if (std::abs(insR - nodeR) < radialThreshold) {
+                                // Check angular proximity - is the insulation in the direction of this face?
+                                double angleDiff = insAngle - nodeAngle;
+                                while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
+                                while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
+                                
+                                bool isLeft = (face == ThermalNodeFace::TANGENTIAL_LEFT);
+                                double distAlongTangent = std::abs(angleDiff) * nodeR;
+                                
+                                // If insulation is in this tangential direction, block convection
+                                // TANGENTIAL_LEFT: insulation at larger angle (positive angleDiff)
+                                // TANGENTIAL_RIGHT: insulation at smaller angle (negative angleDiff)
+                                if (isLeft && angleDiff > 0 && distAlongTangent < maxConvectionDist) {
+                                    isExposed = false;
+                                    break;
+                                }
+                                if (!isLeft && angleDiff < 0 && distAlongTangent < maxConvectionDist) {
+                                    isExposed = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 // If exposed, connect to ambient
@@ -2832,11 +3279,8 @@ void Temperature::createConvectionConnections() {
         }
         
         // Core convection - connect exposed core quadrants
-        auto core = _magnetic.get_core();
-        auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
-        double coreInnerR = dimensions["B"] / 2.0;
-        double coreOuterR = dimensions["A"] / 2.0;
-        
+        // When insulation layers are present, core is covered by insulation and has no convection
+        if (!hasInsulationLayers) {
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::CORE_TOROIDAL_SEGMENT) continue;
             
@@ -2911,6 +3355,78 @@ void Temperature::createConvectionConnections() {
                         r.resistance = q->calculateConvectionResistance(h_conv);
                         _resistances.push_back(r);
                     }
+                }
+            }
+        }
+        }
+        
+        // Insulation layer convection - only the outermost insulation layer has convection to ambient
+        // Find the outermost insulation layer (highest layer index)
+        int maxLayerIdx = -1;
+        for (size_t i = 0; i < _nodes.size(); i++) {
+            if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) {
+                int layerIdx = _nodes[i].insulationLayerIndex.value_or(-1);
+                if (layerIdx > maxLayerIdx) {
+                    maxLayerIdx = layerIdx;
+                }
+            }
+        }
+        
+        // Only create convection for the outermost insulation layer
+        for (size_t i = 0; i < _nodes.size(); i++) {
+            if (_nodes[i].part != ThermalNodePartType::INSULATION_LAYER) continue;
+            
+            const auto& node = _nodes[i];
+            int layerIdx = node.insulationLayerIndex.value_or(-1);
+            
+            // Skip if not the outermost layer
+            if (layerIdx != maxLayerIdx) continue;
+            
+            // Determine if this is inner or outer insulation node by name
+            bool isOuterNode = (node.name.find("_o") != std::string::npos);
+            bool isInnerNode = (node.name.find("_i") != std::string::npos);
+            
+            // Outer nodes: connect RADIAL_OUTER face to ambient (exposed to air)
+            if (isOuterNode) {
+                auto* q = node.getQuadrant(ThermalNodeFace::RADIAL_OUTER);
+                if (q && q->surfaceArea > 0) {
+                    ThermalResistanceElement r;
+                    r.nodeFromId = i;
+                    r.quadrantFrom = ThermalNodeFace::RADIAL_OUTER;
+                    r.nodeToId = ambientIdx;
+                    r.quadrantTo = ThermalNodeFace::NONE;
+                    r.type = _config.includeForcedConvection ? 
+                             HeatTransferType::FORCED_CONVECTION : 
+                             HeatTransferType::NATURAL_CONVECTION;
+                    r.resistance = q->calculateConvectionResistance(h_conv);
+                    _resistances.push_back(r);
+                    if (THERMAL_DEBUG) {
+                        std::cout << "  Created outer convection for " << node.name << std::endl;
+                    }
+                } else if (THERMAL_DEBUG) {
+                    std::cout << "  Skipped outer convection for " << node.name << " (no quadrant or zero area)" << std::endl;
+                }
+            }
+            
+            // Inner nodes: connect RADIAL_INNER face to ambient (through core hole)
+            if (isInnerNode) {
+                auto* q = node.getQuadrant(ThermalNodeFace::RADIAL_INNER);
+                if (q && q->surfaceArea > 0) {
+                    ThermalResistanceElement r;
+                    r.nodeFromId = i;
+                    r.quadrantFrom = ThermalNodeFace::RADIAL_INNER;
+                    r.nodeToId = ambientIdx;
+                    r.quadrantTo = ThermalNodeFace::NONE;
+                    r.type = _config.includeForcedConvection ? 
+                             HeatTransferType::FORCED_CONVECTION : 
+                             HeatTransferType::NATURAL_CONVECTION;
+                    r.resistance = q->calculateConvectionResistance(h_conv);
+                    _resistances.push_back(r);
+                    if (THERMAL_DEBUG) {
+                        std::cout << "  Created inner convection for " << node.name << std::endl;
+                    }
+                } else if (THERMAL_DEBUG) {
+                    std::cout << "  Skipped inner convection for " << node.name << " (no quadrant or zero area)" << std::endl;
                 }
             }
         }
@@ -3207,11 +3723,16 @@ void Temperature::calculateSchematicScaling() {
     }
     
     // Find bounding box of all physical coordinates
+    // Skip insulation layer nodes to avoid excessive scaling from widely spaced layers
     double minX = 1e9, maxX = -1e9;
     double minY = 1e9, maxY = -1e9;
     
     for (const auto& node : _nodes) {
         if (node.physicalCoordinates.size() >= 2) {
+            // Skip insulation layer nodes for scaling calculation
+            if (node.part == ThermalNodePartType::INSULATION_LAYER) {
+                continue;
+            }
             minX = std::min(minX, node.physicalCoordinates[0]);
             maxX = std::max(maxX, node.physicalCoordinates[0]);
             minY = std::min(minY, node.physicalCoordinates[1]);
