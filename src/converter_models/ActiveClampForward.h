@@ -7,9 +7,9 @@
 #include "processors/NgspiceRunner.h"
 #include "converter_models/ForwardConverterUtils.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 
 class ActiveClampForward : public MAS::Forward, public Topology {
 private:
@@ -32,11 +32,11 @@ public:
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
-    double get_total_reflected_secondary_current(ForwardOperatingPoint forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio=1);
+    double get_total_reflected_secondary_current(const ForwardOperatingPoint& forwardOperatingPoint, const std::vector<double>& turnsRatios, double rippleRatio=1);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const ForwardOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio, size_t outputIndex);
     double get_maximum_duty_cycle();
 
@@ -73,8 +73,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedActiveClampForward() = default;
     ~AdvancedActiveClampForward() = default;
 

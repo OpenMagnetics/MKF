@@ -7,7 +7,7 @@
 
 namespace OpenMagnetics {
 
-    double TwoSwitchForward::get_total_reflected_secondary_current(ForwardOperatingPoint forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio) {
+    double TwoSwitchForward::get_total_reflected_secondary_current(const ForwardOperatingPoint& forwardOperatingPoint, const std::vector<double>& turnsRatios, double rippleRatio) {
         double totalReflectedSecondaryCurrent = 0;
 
         if (turnsRatios.size() != forwardOperatingPoint.get_output_currents().size()) {
@@ -38,7 +38,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint TwoSwitchForward::process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance) {
+    OperatingPoint TwoSwitchForward::process_operating_points_for_input_voltage(double inputVoltage, const ForwardOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -108,9 +108,6 @@ namespace OpenMagnetics {
         {
             Waveform currentWaveform;
             Waveform voltageWaveform;
-            Processed currentProcessed;
-            Processed voltageProcessed;
-
             // Current
             {
                 if (minimumPrimaryCurrent > 0) { // CCM
@@ -278,7 +275,7 @@ namespace OpenMagnetics {
         return minimumOutputInductance;
     }
 
-    std::vector<OperatingPoint> TwoSwitchForward::process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) {
+    std::vector<OperatingPoint> TwoSwitchForward::process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) {
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
@@ -287,9 +284,9 @@ namespace OpenMagnetics {
 
         std::vector<double> outputInductancePerSecondary;
 
-        for (size_t forwardOperatingPointIndex = 0; forwardOperatingPointIndex < get_operating_points().size(); ++forwardOperatingPointIndex) {
-            outputInductancePerSecondary.push_back(get_output_inductance(turnsRatios[forwardOperatingPointIndex], forwardOperatingPointIndex));
-        }
+    for (size_t secondaryIndex = 0; secondaryIndex < turnsRatios.size(); ++secondaryIndex) {
+        outputInductancePerSecondary.push_back(get_output_inductance(turnsRatios[secondaryIndex], secondaryIndex));
+    }
 
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
@@ -312,7 +309,7 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> TwoSwitchForward::process_operating_points(Magnetic magnetic) {
         TwoSwitchForward::run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(_magnetizingInductanceModel);;  // hardcoded
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
         
@@ -392,15 +389,8 @@ namespace OpenMagnetics {
         
         // Get input voltages
         std::vector<double> inputVoltages;
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-        }
+        std::vector<std::string> inputVoltagesNames_;
+    ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
         
         if (inputVoltageIndex >= inputVoltages.size()) {
             throw std::invalid_argument("inputVoltageIndex out of range");
@@ -544,18 +534,7 @@ namespace OpenMagnetics {
         
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
         
         size_t numSecondaries = turnsRatios.size();
         

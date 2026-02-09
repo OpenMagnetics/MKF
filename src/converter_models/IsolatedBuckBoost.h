@@ -6,9 +6,9 @@
 #include "converter_models/Topology.h"
 #include "processors/NgspiceRunner.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 
 
 class IsolatedBuckBoost : public MAS::IsolatedBuckBoost, public Topology {
@@ -32,10 +32,10 @@ public:
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckBoostOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
+    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, const IsolatedBuckBoostOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
 
     /**
@@ -84,8 +84,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedIsolatedBuckBoost() = default;
     ~AdvancedIsolatedBuckBoost() = default;
 

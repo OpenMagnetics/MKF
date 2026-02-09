@@ -6,14 +6,15 @@
 #include "converter_models/Topology.h"
 #include "processors/NgspiceRunner.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 
 
 class Buck : public MAS::Buck, public Topology {
 private:
-    int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
+    int numPeriodsToExtract = 5;
+    int numSteadyStatePeriods = 50;  // Number of periods to extract from simulation
 
 public:
     bool _assertErrors = false;
@@ -24,13 +25,16 @@ public:
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, BuckOperatingPoint outputOperatingPoint, double inductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const BuckOperatingPoint& outputOperatingPoint, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
@@ -77,8 +81,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedBuck() = default;
     ~AdvancedBuck() = default;
 

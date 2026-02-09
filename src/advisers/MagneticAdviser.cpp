@@ -105,8 +105,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     size_t requestedCores = expectedWoundCores;
     std::vector<std::string> evaluatedCores;
     size_t previouslyObtainedCores = SIZE_MAX;
-    while (coresWound < expectedWoundCores) {
-        requestedCores *= 10;
+    size_t whileIteration = 0;
+    const size_t maxWhileIterations = 2;  // Limit exponential growth
+    const size_t maxEvaluatedCores = 50;  // Performance limit: stop after evaluating this many cores
+    while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores) {
+        whileIteration++;
+        requestedCores += 20;  // Linear growth instead of exponential
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores);
 
         if (previouslyObtainedCores == masMagneticsWithCore.size()) {
@@ -122,10 +126,15 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 evaluatedCores.push_back(mas.get_magnetic().get_core().get_name().value());
             }
 
+            // Check performance limit
+            if (evaluatedCores.size() >= maxEvaluatedCores) {
+                logEntry("Reached maxEvaluatedCores limit (" + std::to_string(maxEvaluatedCores) + ")", "MagneticAdviser", 2);
+                break;
+            }
+
             logEntry("core: " + mas.get_magnetic().get_core().get_name().value(), "MagneticAdviser", 2);
             logEntry("Getting coil", "MagneticAdviser", 2);
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
-
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             if (masMagneticsWithCoreAndCoil.size() > 0) {
                 logEntry("Core wound!", "MagneticAdviser", 2);

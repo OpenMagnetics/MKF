@@ -9,7 +9,7 @@
 
 namespace OpenMagnetics {
 
-    double SingleSwitchForward::get_total_reflected_secondary_current(ForwardOperatingPoint forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio) {
+    double SingleSwitchForward::get_total_reflected_secondary_current(const ForwardOperatingPoint& forwardOperatingPoint, const std::vector<double>& turnsRatios, double rippleRatio) {
         double totalReflectedSecondaryCurrent = 0;
 
         if (turnsRatios.size() != forwardOperatingPoint.get_output_currents().size() + 1) {
@@ -40,7 +40,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint SingleSwitchForward::process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance) {
+    OperatingPoint SingleSwitchForward::process_operating_points_for_input_voltage(double inputVoltage, const ForwardOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -101,17 +101,17 @@ namespace OpenMagnetics {
         // Primary
         {
             double primaryCurrentPeakToPeak = maximumPrimaryCurrent - minimumPrimaryCurrent;
-            double primaryVoltavePeaktoPeak = 2 * inputVoltage;
+            double primaryVoltagePeaktoPeak = 2 * inputVoltage;
             auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, minimumPrimaryCurrent, deadTime);
-            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
         // Demagnetization winding
         {
-            double primaryVoltavePeaktoPeak = 2 * inputVoltage;
+            double primaryVoltagePeaktoPeak = 2 * inputVoltage;
             auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME, magnetizationCurrent, switchingFrequency, dutyCycle, minimumPrimaryCurrent, deadTime);
-            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Demagnetization winding");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
@@ -215,7 +215,7 @@ namespace OpenMagnetics {
         return minimumOutputInductance;
     }
 
-    std::vector<OperatingPoint> SingleSwitchForward::process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) {
+    std::vector<OperatingPoint> SingleSwitchForward::process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) {
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
@@ -223,9 +223,10 @@ namespace OpenMagnetics {
 
         std::vector<double> outputInductancePerSecondary;
 
-        for (size_t forwardOperatingPointIndex = 0; forwardOperatingPointIndex < get_operating_points().size(); ++forwardOperatingPointIndex) {
-            outputInductancePerSecondary.push_back(get_output_inductance(turnsRatios[forwardOperatingPointIndex + 1], forwardOperatingPointIndex));
-        }
+    // Iterate over secondaries (turnsRatios[0] is demagnetization winding)
+    for (size_t secondaryIndex = 0; secondaryIndex < turnsRatios.size() - 1; ++secondaryIndex) {
+        outputInductancePerSecondary.push_back(get_output_inductance(turnsRatios[secondaryIndex + 1], secondaryIndex));
+    }
 
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
@@ -248,7 +249,7 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> SingleSwitchForward::process_operating_points(Magnetic magnetic) {
         SingleSwitchForward::run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(_magnetizingInductanceModel);;  // hardcoded
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
         

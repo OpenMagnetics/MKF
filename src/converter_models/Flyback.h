@@ -6,9 +6,9 @@
 #include "converter_models/Topology.h"
 #include "processors/NgspiceRunner.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 
 class FlybackOperatingPoint : public MAS::FlybackOperatingPoint{
 public:
@@ -52,10 +52,10 @@ public:
 
     // According to Worked Example (7), pages 135-144 — Designing the Flyback Transformer of Switching Power Supplies A - Z (Second Edition) by Sanjaya Maniktala
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, OpenMagnetics::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<FlybackModes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, OpenMagnetics::FlybackOperatingPoint outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, std::optional<FlybackModes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
     
     /**
      * @brief Generate an ngspice circuit for this flyback converter
@@ -156,8 +156,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedFlyback() = default;
     ~AdvancedFlyback() = default;
 
