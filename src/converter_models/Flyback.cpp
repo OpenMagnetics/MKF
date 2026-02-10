@@ -946,7 +946,8 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> Flyback::process_operating_points(OpenMagnetics::Magnetic magnetic) {
         run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(_magnetizingInductanceModel);;  // hardcoded
+        auto& settings = Settings::GetInstance();
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(settings.get_reluctance_model());
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();

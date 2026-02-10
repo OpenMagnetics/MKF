@@ -16,7 +16,7 @@
 namespace OpenMagnetics {
 
 // Debug flag for thermal model - set to true for verbose output
-constexpr bool THERMAL_DEBUG = false;
+constexpr bool THERMAL_DEBUG = true;
 
 // Contact threshold: surfaces must be within this distance to conduct
 constexpr double CONTACT_THRESHOLD_FACTOR = 0.25;  // wireDiameter / 4
@@ -3498,15 +3498,24 @@ void Temperature::createConvectionConnections() {
         // of bottom-most turns, which connect to Tamb (convection).
         // Rule: at most ONE connection per quadrant.
         // ============================================================================
+        if (THERMAL_DEBUG) {
+            std::cout << "[PLANAR] Entering planar convection connections logic" << std::endl;
+        }
 
         // 1. Find FR4 insulation layer nodes
+        // For planar configurations, all insulation layers are PCB substrates (FR4)
         std::vector<size_t> fr4LayerIndices;
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) {
-                if (_nodes[i].name.find("FR4") != std::string::npos) {
-                    fr4LayerIndices.push_back(i);
+                fr4LayerIndices.push_back(i);
+                if (THERMAL_DEBUG) {
+                    std::cout << "[PLANAR] Found FR4 layer node: " << _nodes[i].name
+                              << " (idx=" << i << ")" << std::endl;
                 }
             }
+        }
+        if (THERMAL_DEBUG) {
+            std::cout << "[PLANAR] Total FR4 layer nodes found: " << fr4LayerIndices.size() << std::endl;
         }
 
         // 2. Find the Y-coordinates of the top-most and bottom-most turn layers
@@ -3520,109 +3529,191 @@ void Temperature::createConvectionConnections() {
                 if (y < minY) minY = y;
             }
         }
-1
+
         // Tolerance for grouping turns into the same vertical layer
         // Use half the wire height (or a small absolute value as fallback)
         double yTolerance = std::max(_wireHeight * 0.5, 1e-6);
 
-        // 3. For each turn, process each quadrant with at most one connection
+        // 3. For each turn, connect quadrants:
+        //    - Top quadrant of top-most turns → Ambient (convection)
+        //    - Bottom quadrant of bottom-most turns → Ambient (convection)
+        //    - All other quadrants → nearest FR4 quadrant (conduction)
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::TURN) continue;
 
-            double turnY = _nodes[i].physicalCoordinates[1];
-            bool isTopMostLayer = (std::abs(turnY - maxY) < yTolerance);
-            bool isBottomMostLayer = (std::abs(turnY - minY) < yTolerance);
+            double y = _nodes[i].physicalCoordinates[1];
+            bool isTopMostLayer = (std::abs(y - maxY) < yTolerance);
+            bool isBottomMostLayer = (std::abs(y - minY) < yTolerance);
 
             for (int qIdx = 0; qIdx < 4; ++qIdx) {
                 ThermalNodeFace face = _nodes[i].quadrants[qIdx].face;
                 if (face == ThermalNodeFace::NONE) continue;
 
-                // Check if this quadrant should connect to ambient instead of FR4
-                bool connectToAmbient = false;
+                auto* turnQuad = _nodes[i].getQuadrant(face);
+                if (!turnQuad || turnQuad->surfaceArea <= 0) continue;
 
-                // Top-most turns: their TOP quadrant (TANGENTIAL_LEFT, +Y) goes to Tamb
+                // Exception 1: Top quadrant of top-most turns connects to ambient
                 if (isTopMostLayer && face == ThermalNodeFace::TANGENTIAL_LEFT) {
-                    connectToAmbient = true;
-                }
-                // Bottom-most turns: their BOTTOM quadrant (TANGENTIAL_RIGHT, -Y) goes to Tamb
-                if (isBottomMostLayer && face == ThermalNodeFace::TANGENTIAL_RIGHT) {
-                    connectToAmbient = true;
+                    ThermalResistanceElement r;
+                    r.nodeFromId = i;
+                    r.quadrantFrom = face;
+                    r.nodeToId = ambientIdx;
+                    r.quadrantTo = ThermalNodeFace::NONE;
+                    r.type = _config.includeForcedConvection ?
+                        HeatTransferType::FORCED_CONVECTION :
+                        HeatTransferType::NATURAL_CONVECTION;
+                    r.resistance = turnQuad->calculateConvectionResistance(h_conv);
+                    r.area = turnQuad->surfaceArea;
+                    _resistances.push_back(r);
+
+                    if (THERMAL_DEBUG) {
+                        std::cout << "[PLANAR] Top quadrant of top-most turn to ambient: "
+                                  << _nodes[i].name << " quadrant " << static_cast<int>(face)
+                                  << " → Tamb (R=" << r.resistance << "K/W)"
+                                  << std::endl;
+                    }
+                    continue;  // Skip FR4 connection for this quadrant
                 }
 
-                if (connectToAmbient) {
-                    // Connect this quadrant to ambient via convection
-                    auto* q = _nodes[i].getQuadrant(face);
-                    if (q && q->surfaceArea > 0) {
-                        ThermalResistanceElement r;
-                        r.nodeFromId = i;
-                        r.quadrantFrom = face;
-                        r.nodeToId = ambientIdx;
-                        r.quadrantTo = ThermalNodeFace::NONE;
-                        r.type = _config.includeForcedConvection ?
-                            HeatTransferType::FORCED_CONVECTION :
-                            HeatTransferType::NATURAL_CONVECTION;
-                        r.resistance = q->calculateConvectionResistance(h_conv);
-                        r.area = q->surfaceArea;
-                        _resistances.push_back(r);
+                // Exception 2: Bottom quadrant of bottom-most turns connects to ambient
+                if (isBottomMostLayer && face == ThermalNodeFace::TANGENTIAL_RIGHT) {
+                    ThermalResistanceElement r;
+                    r.nodeFromId = i;
+                    r.quadrantFrom = face;
+                    r.nodeToId = ambientIdx;
+                    r.quadrantTo = ThermalNodeFace::NONE;
+                    r.type = _config.includeForcedConvection ?
+                        HeatTransferType::FORCED_CONVECTION :
+                        HeatTransferType::NATURAL_CONVECTION;
+                    r.resistance = turnQuad->calculateConvectionResistance(h_conv);
+                    r.area = turnQuad->surfaceArea;
+                    _resistances.push_back(r);
+
+                    if (THERMAL_DEBUG) {
+                        std::cout << "[PLANAR] Bottom quadrant of bottom-most turn to ambient: "
+                                  << _nodes[i].name << " quadrant " << static_cast<int>(face)
+                                  << " → Tamb (R=" << r.resistance << "K/W)"
+                                  << std::endl;
                     }
-                } else if (!fr4LayerIndices.empty()) {
-                    // Connect this quadrant to the closest FR4 layer quadrant via conduction
+                    continue;  // Skip FR4 connection for this quadrant
+                }
+
+                // Default: Connect this quadrant to the closest FR4 layer quadrant via conduction
+                if (!fr4LayerIndices.empty()) {
                     // No distance limit — find the nearest FR4 quadrant
                     size_t closestFr4Node = SIZE_MAX;
                     ThermalNodeFace closestFr4Quadrant = ThermalNodeFace::NONE;
                     double minDist = 1e9;
 
-                    auto* turnQuad = _nodes[i].getQuadrant(face);
-                    if (turnQuad && turnQuad->surfaceArea > 0) {
-                        // Get turn quadrant limit coordinates for distance calculation
-                        auto turnLimitCoords = turnQuad->limitCoordinates;
+                    // Get turn quadrant limit coordinates for distance calculation
+                    auto turnLimitCoords = turnQuad->limitCoordinates;
 
-                        // Search all FR4 nodes and their quadrants
-                        for (size_t fr4Idx : fr4LayerIndices) {
-                            const auto& fr4Node = _nodes[fr4Idx];
+                    // Search all FR4 nodes and their quadrants
+                    for (size_t fr4Idx : fr4LayerIndices) {
+                        const auto& fr4Node = _nodes[fr4Idx];
 
-                            // Check all 4 quadrants of this FR4 layer node
-                            for (int qIdx = 0; qIdx < 4; ++qIdx) {
-                                ThermalNodeFace fr4Face = fr4Node.quadrants[qIdx].face;
-                                if (fr4Face == ThermalNodeFace::NONE) continue;
+                        // Check all 4 quadrants of this FR4 layer node
+                        for (int qIdx = 0; qIdx < 4; ++qIdx) {
+                            ThermalNodeFace fr4Face = fr4Node.quadrants[qIdx].face;
+                            if (fr4Face == ThermalNodeFace::NONE) continue;
 
-                                auto* fr4Quad = fr4Node.getQuadrant(fr4Face);
-                                if (!fr4Quad || fr4Quad->surfaceArea <= 0) continue;
+                            auto* fr4Quad = fr4Node.getQuadrant(fr4Face);
+                            if (!fr4Quad || fr4Quad->surfaceArea <= 0) continue;
 
-                                // Calculate distance between turn quadrant and FR4 quadrant
-                                auto fr4LimitCoords = fr4Quad->limitCoordinates;
-                                double dx = turnLimitCoords[0] - fr4LimitCoords[0];
-                                double dy = turnLimitCoords[1] - fr4LimitCoords[1];
-                                double dz = turnLimitCoords[2] - fr4LimitCoords[2];
-                                double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+                            // Calculate distance between turn quadrant and FR4 quadrant
+                            auto fr4LimitCoords = fr4Quad->limitCoordinates;
+                            double dx = turnLimitCoords[0] - fr4LimitCoords[0];
+                            double dy = turnLimitCoords[1] - fr4LimitCoords[1];
+                            double dz = turnLimitCoords[2] - fr4LimitCoords[2];
+                            double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 
-                                if (dist < minDist) {
-                                    minDist = dist;
-                                    closestFr4Node = fr4Idx;
-                                    closestFr4Quadrant = fr4Face;
-                                }
+                            if (dist < minDist) {
+                                minDist = dist;
+                                closestFr4Node = fr4Idx;
+                                closestFr4Quadrant = fr4Face;
                             }
                         }
+                    }
 
-                        if (closestFr4Node != SIZE_MAX && closestFr4Quadrant != ThermalNodeFace::NONE) {
-                            ThermalResistanceElement r;
-                            r.nodeFromId = i;
-                            r.quadrantFrom = face;
-                            r.nodeToId = closestFr4Node;
-                            r.quadrantTo = closestFr4Quadrant;  // Connect to specific FR4 quadrant!
-                            r.type = HeatTransferType::CONDUCTION;
-                            double contactArea = turnQuad->surfaceArea;
-                            double thickness = std::max(minDist, 1e-6);
-                            double k = 0.2; // FR4 thermal conductivity W/(m·K)
-                            r.resistance = ThermalResistance::calculateConductionResistance(
-                                thickness, k, contactArea);
-                            r.area = contactArea;
-                            _resistances.push_back(r);
+                    if (closestFr4Node != SIZE_MAX && closestFr4Quadrant != ThermalNodeFace::NONE) {
+                        ThermalResistanceElement r;
+                        r.nodeFromId = i;
+                        r.quadrantFrom = face;
+                        r.nodeToId = closestFr4Node;
+                        r.quadrantTo = closestFr4Quadrant;  // Connect to specific FR4 quadrant!
+                        r.type = HeatTransferType::CONDUCTION;
+                        double contactArea = turnQuad->surfaceArea;
+                        double thickness = std::max(minDist, 1e-6);
+                        double k = 0.2; // FR4 thermal conductivity W/(m·K)
+                        r.resistance = ThermalResistance::calculateConductionResistance(
+                            thickness, k, contactArea);
+                        r.area = contactArea;
+                        _resistances.push_back(r);
+
+                        if (THERMAL_DEBUG) {
+                            std::cout << "[PLANAR] Created conduction connection: "
+                                      << _nodes[i].name << " quadrant " << static_cast<int>(face)
+                                      << " → " << _nodes[closestFr4Node].name << " quadrant "
+                                      << static_cast<int>(closestFr4Quadrant)
+                                      << " (dist=" << minDist*1000 << "mm, R=" << r.resistance << "K/W)"
+                                      << std::endl;
                         }
                     }
                 }
             } // end quadrant loop
         } // end turn loop
+
+        // 4. Connect FR4 insulation layer quadrants to ambient (for heat dissipation)
+        // The FR4 PCB substrate needs to dissipate heat through its top and bottom surfaces
+        for (size_t fr4Idx : fr4LayerIndices) {
+            const auto& fr4Node = _nodes[fr4Idx];
+
+            // Connect top surface (TANGENTIAL_LEFT) to ambient
+            auto* topQuad = fr4Node.getQuadrant(ThermalNodeFace::TANGENTIAL_LEFT);
+            if (topQuad && topQuad->surfaceArea > 0) {
+                ThermalResistanceElement r;
+                r.nodeFromId = fr4Idx;
+                r.quadrantFrom = ThermalNodeFace::TANGENTIAL_LEFT;
+                r.nodeToId = ambientIdx;
+                r.quadrantTo = ThermalNodeFace::NONE;
+                r.type = _config.includeForcedConvection ?
+                    HeatTransferType::FORCED_CONVECTION :
+                    HeatTransferType::NATURAL_CONVECTION;
+                r.resistance = topQuad->calculateConvectionResistance(h_conv);
+                r.area = topQuad->surfaceArea;
+                _resistances.push_back(r);
+
+                if (THERMAL_DEBUG) {
+                    std::cout << "[PLANAR] Created FR4 top surface to ambient: "
+                              << fr4Node.name << " quadrant " << static_cast<int>(ThermalNodeFace::TANGENTIAL_LEFT)
+                              << " → Tamb (R=" << r.resistance << "K/W)"
+                              << std::endl;
+                }
+            }
+
+            // Connect bottom surface (TANGENTIAL_RIGHT) to ambient
+            auto* bottomQuad = fr4Node.getQuadrant(ThermalNodeFace::TANGENTIAL_RIGHT);
+            if (bottomQuad && bottomQuad->surfaceArea > 0) {
+                ThermalResistanceElement r;
+                r.nodeFromId = fr4Idx;
+                r.quadrantFrom = ThermalNodeFace::TANGENTIAL_RIGHT;
+                r.nodeToId = ambientIdx;
+                r.quadrantTo = ThermalNodeFace::NONE;
+                r.type = _config.includeForcedConvection ?
+                    HeatTransferType::FORCED_CONVECTION :
+                    HeatTransferType::NATURAL_CONVECTION;
+                r.resistance = bottomQuad->calculateConvectionResistance(h_conv);
+                r.area = bottomQuad->surfaceArea;
+                _resistances.push_back(r);
+
+                if (THERMAL_DEBUG) {
+                    std::cout << "[PLANAR] Created FR4 bottom surface to ambient: "
+                              << fr4Node.name << " quadrant " << static_cast<int>(ThermalNodeFace::TANGENTIAL_RIGHT)
+                              << " → Tamb (R=" << r.resistance << "K/W)"
+                              << std::endl;
+                }
+            }
+        }
     } else {
         // Check if we have concentric core nodes
         bool hasConcentricCoreNodes = false;
@@ -4020,7 +4111,27 @@ ThermalResult Temperature::solveThermalCircuit() {
         result.totalThermalResistance = 0;
         return result;
     }
-    
+
+    if (THERMAL_DEBUG) {
+        std::cout << "[SOLVER] Total nodes in thermal network: " << n << std::endl;
+        std::cout << "[SOLVER] Total resistances: " << _resistances.size() << std::endl;
+
+        // Count connections per node
+        std::vector<int> connectionCount(n, 0);
+        for (const auto& r : _resistances) {
+            if (r.nodeFromId < n) connectionCount[r.nodeFromId]++;
+            if (r.nodeToId < n) connectionCount[r.nodeToId]++;
+        }
+
+        // Check for isolated nodes
+        for (size_t i = 0; i < n; ++i) {
+            if (connectionCount[i] == 0 && !_nodes[i].isAmbient()) {
+                std::cout << "[SOLVER] WARNING: Node " << i << " (" << _nodes[i].name
+                          << ") has no thermal connections!" << std::endl;
+            }
+        }
+    }
+
     // Find the ambient node (look for AMBIENT part type, not just last node)
     size_t ambientIdx = n - 1;  // Default to last node
     for (size_t i = 0; i < n; ++i) {
