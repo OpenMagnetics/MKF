@@ -408,6 +408,106 @@ TEST_CASE("Test leakage inductance consistency with standalone calculation", "[p
     settings.reset();
 }
 
+TEST_CASE("Test leakage inductance matrix for two windings", "[physical-model][inductance][leakage-inductance-matrix][smoke-test]") {
+    settings.reset();
+    clear_databases();
+
+    std::vector<int64_t> numberTurns({40, 20});
+    std::vector<int64_t> numberParallels({1, 1});
+    auto magnetic = create_two_winding_magnetic("ETD 39", "3C97", numberTurns, numberParallels);
+    double frequency = 100000;
+
+    Inductance inductance;
+    auto llkMatrix = inductance.calculate_leakage_inductance_matrix(magnetic, frequency);
+
+    CHECK(llkMatrix.get_frequency() == frequency);
+
+    auto& magnitude = llkMatrix.get_magnitude();
+    CHECK(magnitude.size() == 2);
+
+    auto windingName0 = magnetic.get_coil().get_functional_description()[0].get_name();
+    auto windingName1 = magnetic.get_coil().get_functional_description()[1].get_name();
+
+    // Diagonal must be 0 by definition
+    double L00 = magnitude.at(windingName0).at(windingName0).get_nominal().value();
+    double L11 = magnitude.at(windingName1).at(windingName1).get_nominal().value();
+    CHECK_THAT(L00, WithinAbs(0.0, 1e-18));
+    CHECK_THAT(L11, WithinAbs(0.0, 1e-18));
+
+    // Off-diagonal should match direct LeakageInductance calculation
+    LeakageInductance leakageModel;
+    double L01_direct = leakageModel.calculate_leakage_inductance(magnetic, frequency, 0, 1)
+                           .get_leakage_inductance_per_winding()[0].get_nominal().value();
+    double L10_direct = leakageModel.calculate_leakage_inductance(magnetic, frequency, 1, 0)
+                           .get_leakage_inductance_per_winding()[0].get_nominal().value();
+
+    double L01 = magnitude.at(windingName0).at(windingName1).get_nominal().value();
+    double L10 = magnitude.at(windingName1).at(windingName0).get_nominal().value();
+
+    CHECK_THAT(L01, WithinRel(L01_direct, 0.001));
+    CHECK_THAT(L10, WithinRel(L10_direct, 0.001));
+
+    // Because leakage is referred to the source winding, matrix is generally not symmetric
+    CHECK_FALSE(WithinRel(L01, 1e-12).match(L10));
+
+    settings.reset();
+}
+
+TEST_CASE("Test leakage inductance matrix for three windings", "[physical-model][inductance][leakage-inductance-matrix][multi-winding]") {
+    settings.reset();
+    clear_databases();
+
+    std::vector<int64_t> numberTurns({30, 15, 10});
+    std::vector<int64_t> numberParallels({1, 1, 1});
+    std::string shapeName = "PQ 35/35";
+
+    std::vector<OpenMagnetics::Wire> wires;
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 100));
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 100));
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 100));
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(shapeName, numberTurns, numberParallels, wires);
+
+    std::string coreMaterial = "3C97";
+    auto gapping = OpenMagnetics::Core::create_ground_gapping(2e-5, 3);
+    auto core = OpenMagnetics::Core::create_quick_core(shapeName, coreMaterial, gapping);
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    double frequency = 100000;
+
+    Inductance inductance;
+    auto llkMatrix = inductance.calculate_leakage_inductance_matrix(magnetic, frequency);
+
+    auto& magnitude = llkMatrix.get_magnitude();
+    CHECK(magnitude.size() == 3);
+
+    std::vector<std::string> windingNames;
+    for (size_t i = 0; i < 3; ++i) {
+        windingNames.push_back(magnetic.get_coil().get_functional_description()[i].get_name());
+    }
+
+    LeakageInductance leakageModel;
+
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            double lij = magnitude.at(windingNames[i]).at(windingNames[j]).get_nominal().value();
+            if (i == j) {
+                CHECK_THAT(lij, WithinAbs(0.0, 1e-18));
+            } else {
+                double lij_direct = leakageModel.calculate_leakage_inductance(magnetic, frequency, i, j)
+                                        .get_leakage_inductance_per_winding()[0].get_nominal().value();
+                CHECK_THAT(lij, WithinRel(lij_direct, 0.001));
+                CHECK(lij > 0.0);
+            }
+        }
+    }
+
+    settings.reset();
+}
+
 TEST_CASE("Test magnetizing inductance consistency with standalone calculation", "[physical-model][inductance][smoke-test]") {
     settings.reset();
     clear_databases();
