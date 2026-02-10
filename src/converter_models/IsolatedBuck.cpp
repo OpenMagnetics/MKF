@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include <cfloat>
 #include "support/Exceptions.h"
+#include "converter_models/ForwardConverterUtils.h"
 
 namespace OpenMagnetics {
 
@@ -23,7 +24,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint IsolatedBuck::processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance) {
+    OperatingPoint IsolatedBuck::processOperatingPointsForInputVoltage(double inputVoltage, const IsolatedBuckOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -50,9 +51,9 @@ namespace OpenMagnetics {
         auto primaryCurrentMinimum = primaryOutputCurrent - totalReflectedSecondaryCurrent * (2 * dutyCycle) / (1 - dutyCycle) - magnetizingCurrentRipple / 2;
         auto primaryCurrentPeakToPeak = primaryCurrentMaximum - primaryCurrentMinimum;
 
-        auto primaryVoltaveMaximum = inputVoltage - primaryOutputVoltage;
-        auto primaryVoltaveMinimum = -primaryOutputVoltage;
-        auto primaryVoltavePeaktoPeak = primaryVoltaveMaximum - primaryVoltaveMinimum;
+        auto primaryVoltageMaximum = inputVoltage - primaryOutputVoltage;
+        auto primaryVoltageMinimum = -primaryOutputVoltage;
+        auto primaryVoltagePeaktoPeak = primaryVoltageMaximum - primaryVoltageMinimum;
 
         // Primary
         {
@@ -60,7 +61,7 @@ namespace OpenMagnetics {
             Waveform voltageWaveform;
 
             currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryOutputCurrent, 0);
-            voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
+            voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
 
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
@@ -75,8 +76,8 @@ namespace OpenMagnetics {
             auto secondaryCurrentMaximum = (1 + dutyCycle) / (1 - dutyCycle) * secondaryOutputCurrent - secondaryOutputCurrent;
             auto secondaryCurrentMinimum = 0;
 
-            auto secondaryVoltaveMaximum = (inputVoltage - primaryOutputVoltage) / turnsRatios[secondaryIndex] - diodeVoltageDrop;
-            auto secondaryVoltaveMinimum = -primaryOutputVoltage / turnsRatios[secondaryIndex] + diodeVoltageDrop;
+            auto secondaryVoltageMaximum = (inputVoltage - primaryOutputVoltage) / turnsRatios[secondaryIndex] - diodeVoltageDrop;
+            auto secondaryVoltageMinimum = -primaryOutputVoltage / turnsRatios[secondaryIndex] + diodeVoltageDrop;
 
             // Current
             {
@@ -99,10 +100,10 @@ namespace OpenMagnetics {
             // Voltage
             {
                 std::vector<double> data = {
-                    secondaryVoltaveMinimum,
-                    secondaryVoltaveMinimum,
-                    secondaryVoltaveMaximum,
-                    secondaryVoltaveMaximum
+                    secondaryVoltageMinimum,
+                    secondaryVoltageMinimum,
+                    secondaryVoltageMaximum,
+                    secondaryVoltageMaximum
                 };
                 std::vector<double> time = {
                     0,
@@ -162,7 +163,7 @@ namespace OpenMagnetics {
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
 
         if (!get_current_ripple_ratio() && !get_maximum_switch_current()) {
-            throw std::invalid_argument("Missing both current ripple ratio and maximum swtich current");
+            throw std::invalid_argument("Missing both current ripple ratio and maximum switch current");
         }
 
         // Turns ratio calculation
@@ -236,23 +237,12 @@ namespace OpenMagnetics {
         return designRequirements;
     }
 
-    std::vector<OperatingPoint> IsolatedBuck::process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) {
+    std::vector<OperatingPoint> IsolatedBuck::process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) {
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
@@ -273,7 +263,7 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> IsolatedBuck::process_operating_points(Magnetic magnetic) {
         IsolatedBuck::run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(_magnetizingInductanceModel);;  // hardcoded
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
         
@@ -293,18 +283,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
 
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         DesignRequirements designRequirements;
 
@@ -341,5 +320,11 @@ namespace OpenMagnetics {
         }
 
         return inputs;
+    }
+
+    std::vector<OperatingPoint> IsolatedBuck::simulate_and_extract_topology_waveforms(const std::vector<double>& turnsRatios, double magnetizingInductance) {
+        // For Isolated Buck converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return process_operating_points(turnsRatios, magnetizingInductance);
     }
 } // namespace OpenMagnetics

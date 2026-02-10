@@ -1,9 +1,14 @@
 #include "converter_models/IsolatedBuckBoost.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "processors/CircuitSimulatorInterface.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include <sstream>
+#include <algorithm>
+#include <cctype>
 #include "support/Exceptions.h"
+#include "converter_models/ForwardConverterUtils.h"
 
 namespace OpenMagnetics {
 
@@ -23,7 +28,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint IsolatedBuckBoost::processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckBoostOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance) {
+    OperatingPoint IsolatedBuckBoost::processOperatingPointsForInputVoltage(double inputVoltage, const IsolatedBuckBoostOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -47,9 +52,9 @@ namespace OpenMagnetics {
 
         auto primaryCurrentPeakToPeak = (inputVoltage * primaryOutputVoltage) / (inputVoltage + primaryOutputVoltage) / (switchingFrequency * inductance);
 
-        auto primaryVoltaveMaximum = inputVoltage;
-        auto primaryVoltaveMinimum = primaryOutputVoltage - diodeVoltageDrop;
-        auto primaryVoltavePeaktoPeak = primaryVoltaveMaximum - primaryVoltaveMinimum;
+        auto primaryVoltageMaximum = inputVoltage;
+        auto primaryVoltageMinimum = primaryOutputVoltage - diodeVoltageDrop;
+        auto primaryVoltagePeaktoPeak = primaryVoltageMaximum - primaryVoltageMinimum;
 
         // Primary
         {
@@ -57,7 +62,7 @@ namespace OpenMagnetics {
             Waveform voltageWaveform;
 
             currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryOutputCurrent, 0);
-            voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
+            voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
 
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
@@ -73,12 +78,12 @@ namespace OpenMagnetics {
             auto secondaryCurrentMinimum = 0;
             auto secondaryCurrentPeakToPeak = secondaryCurrentMaximum - secondaryCurrentMinimum;
 
-            auto secondaryVoltaveMaximum = inputVoltage / turnsRatios[secondaryIndex] - diodeVoltageDrop;
-            auto secondaryVoltaveMinimum = (primaryOutputVoltage - diodeVoltageDrop) / turnsRatios[secondaryIndex] + diodeVoltageDrop;
-            auto secondaryVoltavePeaktoPeak = secondaryVoltaveMaximum - secondaryVoltaveMinimum;
+            auto secondaryVoltageMaximum = inputVoltage / turnsRatios[secondaryIndex] - diodeVoltageDrop;
+            auto secondaryVoltageMinimum = (primaryOutputVoltage - diodeVoltageDrop) / turnsRatios[secondaryIndex] + diodeVoltageDrop;
+            auto secondaryVoltagePeaktoPeak = secondaryVoltageMaximum - secondaryVoltageMinimum;
 
             currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, secondaryCurrentPeakToPeak, switchingFrequency, 1.0 - dutyCycle, secondaryOutputCurrent, 0, tOn);
-            voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, secondaryVoltavePeaktoPeak, switchingFrequency, 1.0 - dutyCycle, 0, 0, tOn);
+            voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, secondaryVoltagePeaktoPeak, switchingFrequency, 1.0 - dutyCycle, 0, 0, tOn);
 
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Secondary " + std::to_string(secondaryIndex));
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
@@ -132,7 +137,7 @@ namespace OpenMagnetics {
         }
 
         if (!get_current_ripple_ratio() && !get_maximum_switch_current()) {
-            throw std::invalid_argument("Missing both current ripple ratio and maximum swtich current");
+            throw std::invalid_argument("Missing both current ripple ratio and maximum switch current");
         }
 
         // Turns ratio calculation
@@ -208,23 +213,12 @@ namespace OpenMagnetics {
         return designRequirements;
     }
 
-    std::vector<OperatingPoint> IsolatedBuckBoost::process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) {
+    std::vector<OperatingPoint> IsolatedBuckBoost::process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) {
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
@@ -245,7 +239,7 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> IsolatedBuckBoost::process_operating_points(Magnetic magnetic) {
         IsolatedBuckBoost::run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(_magnetizingInductanceModel);;  // hardcoded
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
         
@@ -265,18 +259,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
 
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         DesignRequirements designRequirements;
 
@@ -313,5 +296,237 @@ namespace OpenMagnetics {
         }
 
         return inputs;
+    }
+
+    std::string IsolatedBuckBoost::generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex,
+        size_t operatingPointIndex) {
+        
+        // Get input voltages
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames_;
+    ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
+        
+        if (inputVoltageIndex >= inputVoltages.size()) {
+            throw std::invalid_argument("inputVoltageIndex out of range");
+        }
+        if (operatingPointIndex >= get_operating_points().size()) {
+            throw std::invalid_argument("operatingPointIndex out of range");
+        }
+        
+        double inputVoltage = inputVoltages[inputVoltageIndex];
+        auto opPoint = get_operating_points()[operatingPointIndex];
+        
+        double switchingFrequency = opPoint.get_switching_frequency();
+        double primaryOutputVoltage = opPoint.get_output_voltages()[0];
+        double primaryOutputCurrent = opPoint.get_output_currents()[0];
+        
+        double efficiency = 1;
+        if (get_efficiency()) {
+            efficiency = get_efficiency().value();
+        }
+        
+        double dutyCycle = calculate_duty_cycle(inputVoltage, primaryOutputVoltage, efficiency);
+        
+        size_t numSecondaries = turnsRatios.size();
+        
+        // Build netlist
+        std::ostringstream circuit;
+        double period = 1.0 / switchingFrequency;
+        double tOn = period * dutyCycle;
+        
+        // Simulation: run steady-state periods for settling, then extract the last N periods
+        int periodsToExtract = get_num_periods_to_extract();
+        int numSteadyStatePeriods = get_num_steady_state_periods();
+        const int numPeriodsTotal = numSteadyStatePeriods + periodsToExtract;  // Steady state + extraction
+        double simTime = numPeriodsTotal * period;
+        double startTime = numSteadyStatePeriods * period;  // Start extracting after steady state
+        double stepTime = period / 200;
+        
+        circuit << "* Isolated Buck-Boost Converter - Generated by OpenMagnetics\n";
+        circuit << "* Vin=" << inputVoltage << "V, Vout=" << primaryOutputVoltage << "V, f=" << (switchingFrequency/1e3) << "kHz, D=" << (dutyCycle*100) << " pct\n";
+        circuit << "* Lmag=" << (magnetizingInductance*1e6) << "uH, " << numSecondaries << " secondaries\n\n";
+        
+        // DC Input
+        circuit << "* DC Input\n";
+        circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
+        
+        // PWM Switch
+        circuit << "* PWM Switch\n";
+        circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
+        circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.01 ROFF=1e6\n";
+        circuit << "S1 vin_dc pri_p pwm_ctrl 0 SW1\n\n";
+        
+        // Primary current sense
+        circuit << "* Primary current sense\n";
+        circuit << "Vpri_sense pri_p pri_in 0\n\n";
+        
+        // Primary winding with output capacitor for primary voltage
+        // The primary output is taken from the same winding when switch is off
+        // Note: For buck-boost/flyback operation, when switch is ON current flows into pri_in.
+        // When switch turns OFF, pri_in goes negative (flyback) causing diode Dpri to conduct.
+        circuit << "* Coupled Inductor (Primary = buck-boost inductor)\n";
+        circuit << "Lpri pri_in 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
+        
+        // Secondary windings
+        // NOTE: Secondary inductors have terminals swapped (0 to sec_N_in) to create
+        // opposite dot polarity needed for flyback operation (same as Flyback converter).
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            double secondaryInductance = magnetizingInductance / (turnsRatios[secIdx] * turnsRatios[secIdx]);
+            circuit << "Lsec" << secIdx << " 0 sec" << secIdx << "_in " << std::scientific << secondaryInductance << std::fixed << "\n";
+        }
+        
+        // Couple primary to each secondary
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << "Kpri_sec" << secIdx << " Lpri Lsec" << secIdx << " 1\n";
+        }
+        // Couple secondaries to each other (for proper cross-regulation)
+        for (size_t i = 0; i < numSecondaries; ++i) {
+            for (size_t j = i + 1; j < numSecondaries; ++j) {
+                circuit << "Ksec" << i << "_" << j << " Lsec" << i << " Lsec" << j << " 1\n";
+            }
+        }
+        circuit << "\n";
+        
+        // Diode model - relaxed for convergence
+        circuit << "* Diode model\n";
+        circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n\n";
+        
+        // Primary output (buck-boost output from switch node through diode)
+        circuit << "* Primary Output Stage (Buck-Boost)\n";
+        circuit << "Dpri pri_in vpri_rect DIDEAL\n";
+        circuit << "Vpri_out_sense vpri_rect vpri_out 0\n";
+        double primaryLoadResistance = primaryOutputVoltage / primaryOutputCurrent;
+        circuit << "Cpri vpri_out 0 100u IC=" << primaryOutputVoltage << "\n";
+        circuit << "Rload_pri vpri_out 0 " << primaryLoadResistance << "\n\n";
+        
+        // Secondary output stages
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << "* Secondary " << secIdx << " output stage\n";
+            // Add small series resistance to break symmetry between identical secondaries
+            // This models real-world winding resistance and allows current sharing
+            circuit << "Rsec" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_node 0.01\n";
+            circuit << "Dsec" << secIdx << " sec" << secIdx << "_node sec" << secIdx << "_rect DIDEAL\n";
+            circuit << "Vsec_sense" << secIdx << " sec" << secIdx << "_rect vout" << secIdx << " 0\n";
+            
+            double outputVoltage = opPoint.get_output_voltages()[secIdx + 1];
+            double outputCurrent = opPoint.get_output_currents()[secIdx + 1];
+            double loadResistance = outputVoltage / outputCurrent;
+            circuit << "Cout" << secIdx << " vout" << secIdx << " 0 100u IC=" << outputVoltage << "\n";
+            circuit << "Rload" << secIdx << " vout" << secIdx << " 0 " << loadResistance << "\n\n";
+        }
+        
+        // Transient Analysis
+        circuit << "* Transient Analysis\n";
+        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
+        
+        // Save signals
+        circuit << "* Output signals\n";
+        circuit << ".save v(pri_in) i(Vpri_sense) v(vpri_out) i(Vpri_out_sense)";
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
+        }
+        circuit << "\n\n";
+        
+        // Options (matching Flyback for convergence)
+        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
+        circuit << ".ic v(vpri_out)=" << primaryOutputVoltage << "\n";
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << ".ic v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx + 1] << "\n";
+        }
+        circuit << "\n";
+        
+        circuit << ".end\n";
+        
+        return circuit.str();
+    }
+    
+    std::vector<OperatingPoint> IsolatedBuckBoost::simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) {
+        
+        std::vector<OperatingPoint> operatingPoints;
+        
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            throw std::runtime_error("ngspice is not available for simulation");
+        }
+        
+        // Get input voltages
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        
+        size_t numSecondaries = turnsRatios.size();
+        
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                auto ibbOpPoint = get_operating_points()[opIndex];
+                
+                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
+                
+                double switchingFrequency = ibbOpPoint.get_switching_frequency();
+                
+                SimulationConfig config;
+                config.frequency = switchingFrequency;
+                config.extractOnePeriod = true;
+                config.numberOfPeriods = 1;
+                config.keepTempFiles = false;
+                
+                auto simResult = runner.run_simulation(netlist, config);
+                
+                if (!simResult.success) {
+                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
+                }
+                
+                // Define waveform name mapping
+                NgspiceRunner::WaveformNameMapping waveformMapping;
+                
+                // Primary winding
+                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vpri_sense#branch"}});
+                
+                // Secondary windings
+                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+                    std::string voltageName = "sec" + std::to_string(secIdx) + "_in";
+                    std::string currentName = "vsec_sense" + std::to_string(secIdx) + "#branch";
+                    waveformMapping.push_back({{"voltage", voltageName}, {"current", currentName}});
+                }
+                
+                std::vector<std::string> windingNames;
+                windingNames.push_back("Primary");
+                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+                    windingNames.push_back("Secondary " + std::to_string(secIdx));
+                }
+                
+                std::vector<bool> flipCurrentSign(1 + numSecondaries, false);
+                
+                OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
+                    simResult,
+                    waveformMapping,
+                    switchingFrequency,
+                    windingNames,
+                    ibbOpPoint.get_ambient_temperature(),
+                    flipCurrentSign);
+                
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt. (simulated)";
+                if (get_operating_points().size() > 1) {
+                    name += " op. point " + std::to_string(opIndex);
+                }
+                operatingPoint.set_name(name);
+                operatingPoints.push_back(operatingPoint);
+            }
+        }
+        
+        return operatingPoints;
+    }
+    
+    std::vector<OperatingPoint> IsolatedBuckBoost::simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) {
+        // For Isolated Buck-Boost converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
     }
 } // namespace OpenMagnetics

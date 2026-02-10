@@ -6798,9 +6798,33 @@ std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType cor
 }
 
 
+/**
+ * @brief Get valid winding repetition patterns for a given configuration.
+ *
+ * For Common Mode Chokes (CMC) on toroidal cores, returns {2, 1} to enable
+ * bifilar (interleaved) winding which is essential for common-mode rejection.
+ * Bifilar winding ensures both windings have identical impedance characteristics.
+ *
+ * @param inputs Design inputs including sub-application type
+ * @param coreType Type of core being wound
+ * @return Vector of valid repetition counts to try
+ */
 std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
-    if (inputs.get_design_requirements().get_turns_ratios().size() == 0 || coreType == CoreType::TOROIDAL) {
-        return {1};  // hardcoded
+    // CMCs on toroids need bifilar winding for common-mode rejection
+    if (coreType == CoreType::TOROIDAL) {
+        if (inputs.get_design_requirements().get_sub_application() &&
+            inputs.get_design_requirements().get_sub_application().value() == SubApplication::COMMON_MODE_NOISE_FILTERING) {
+            // Bifilar (interleaved) winding is preferred for CMCs to ensure matched impedance
+            return {2, 1};
+        }
+        // Non-CMC toroids (inductors) don't need interleaving
+        if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
+            return {1};
+        }
+    }
+    
+    if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
+        return {1};
     }
     if (inputs.get_design_requirements().get_wiring_technology()) {
         if (inputs.get_design_requirements().get_wiring_technology().value() == WiringTechnology::PRINTED) {
@@ -6812,10 +6836,10 @@ std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
         }
     }
     if (inputs.get_design_requirements().get_leakage_inductance()) {
-        return {2, 1};  // hardcoded
+        return {2, 1};
     }
     else{
-        return {1, 2};  // hardcoded
+        return {1, 2};
     }
 }
 
