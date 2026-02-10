@@ -51,16 +51,36 @@ namespace {
             outFile.append("Test_IsolatedBuckBoost_Primary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_IsolatedBuckBoost_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
         {
@@ -68,16 +88,36 @@ namespace {
             outFile.append("Test_IsolatedBuckBoost_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_IsolatedBuckBoost_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding().size() == isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"].size());

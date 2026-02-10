@@ -53,32 +53,72 @@ namespace {
             outFile.append("Test_PushPull_CCM_First_Primary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_Second_Primary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_First_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_Second_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
         {
@@ -86,16 +126,36 @@ namespace {
             outFile.append("Test_PushPull_CCM_First_Auxiliary_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[4].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_Second_Auxiliary_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[5].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
 
@@ -104,48 +164,108 @@ namespace {
             outFile.append("Test_PushPull_CCM_First_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_Second_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_First_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_Second_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_First_Auxiliary_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[4].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_CCM_Second_Auxiliary_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[5].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
 
@@ -209,32 +329,72 @@ namespace {
             outFile.append("Test_PushPull_DCM_First_Primary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_DCM_Second_Primary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_DCM_First_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_DCM_Second_Secondary_Current.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
 
@@ -243,32 +403,72 @@ namespace {
             outFile.append("Test_PushPull_DCM_First_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_DCM_Second_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_DCM_First_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         {
             auto outFile = outputFilePath;
             outFile.append("Test_PushPull_DCM_Second_Secondary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[3].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
 
