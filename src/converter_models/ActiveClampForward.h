@@ -4,30 +4,64 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
+#include "converter_models/ForwardConverterUtils.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
-
+using namespace MAS;
 
 class ActiveClampForward : public MAS::Forward, public Topology {
+private:
+    int numPeriodsToExtract = 5;
+    int numSteadyStatePeriods = 5;
+    
 public:
     bool _assertErrors = false;
 
     ActiveClampForward(const json& j);
     ActiveClampForward() {
     };
+    
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
-    double get_total_reflected_secondary_current(ForwardOperatingPoint forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio=1);
+    double get_total_reflected_secondary_current(const ForwardOperatingPoint& forwardOperatingPoint, const std::vector<double>& turnsRatios, double rippleRatio=1);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const ForwardOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio, size_t outputIndex);
     double get_maximum_duty_cycle();
+
+    /**
+     * @brief Generate an ngspice circuit for this Active Clamp Forward converter
+     */
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the Active Clamp Forward converter and extract operating points
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
+    
+    /**
+     * @brief Simulate and extract topology-level waveforms for converter validation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
 
 };
 
@@ -39,8 +73,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedActiveClampForward() = default;
     ~AdvancedActiveClampForward() = default;
 

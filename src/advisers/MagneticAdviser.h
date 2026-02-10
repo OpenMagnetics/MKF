@@ -44,6 +44,37 @@ namespace OpenMagnetics {
  * - TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY,
  *   EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE
  *
+ * ## Common Mode Choke (CMC) Design
+ *
+ * For interference suppression applications with SubApplication::COMMON_MODE_NOISE_FILTERING,
+ * the adviser automatically configures for CMC optimization:
+ *
+ * **Core Selection:**
+ * - Restricts to toroidal cores (CoreShapeFamily::T) for optimal coupling
+ * - Prefers high-permeability materials (nanocrystalline, MnZn ferrite)
+ * - Evaluates cores based on impedance capability, not energy storage
+ *
+ * **Winding Configuration:**
+ * - Enables bifilar winding (repetitions = {2, 1}) for tight coupling
+ * - Both windings use IsolationSide::PRIMARY (same isolation level)
+ * - Turns ratio is always 1:1 for balanced common mode rejection
+ *
+ * **Key Filters for CMC:**
+ * - CORE_MINIMUM_IMPEDANCE: Ensures minimum impedance at specified frequencies
+ * - LEAKAGE_INDUCTANCE: Minimizes Lk/Lm ratio for high coupling coefficient (k ≈ 1)
+ * - Operating frequency must stay below SRF margin (default 25% of self-resonant frequency)
+ *
+ * **CMC Design Flow:**
+ * ```cpp
+ * Inputs inputs;
+ * inputs.get_mutable_design_requirements().set_application(Application::INTERFERENCE_SUPPRESSION);
+ * inputs.get_mutable_design_requirements().set_sub_application(SubApplication::COMMON_MODE_NOISE_FILTERING);
+ * inputs.get_mutable_design_requirements().set_minimum_impedance(impedanceRequirements);
+ * 
+ * MagneticAdviser adviser;
+ * auto results = adviser.get_advised_magnetic(inputs, 5);
+ * ```
+ *
  * ## Weight Guidelines
  *
  * | Application          | COST | LOSSES | DIMENSIONS |

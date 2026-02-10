@@ -233,6 +233,25 @@ class MagneticFilterMagnetizingInductance : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
+/**
+ * @class MagneticFilterLeakageInductance
+ * @brief Filter for evaluating and scoring magnetic designs based on leakage inductance.
+ *
+ * For Common Mode Chokes (CMCs), lower leakage inductance indicates tighter coupling
+ * between windings, which is essential for effective common-mode rejection.
+ * The coupling coefficient k = 1 - (Lk/Lm) should be close to 1.
+ *
+ * For transformers requiring low leakage (e.g., LLC resonant converters),
+ * this filter validates against the leakage_inductance design requirement.
+ *
+ * @note Returns leakage inductance in Henries. Lower values score better when inverted.
+ */
+class MagneticFilterLeakageInductance : public MagneticFilter {
+    public:
+        MagneticFilterLeakageInductance() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
 class MagneticFilterSkinLossesDensity : public MagneticFilter {
     public:
         MagneticFilterSkinLossesDensity() {};
