@@ -547,108 +547,11 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
     
-    std::vector<ForwardTopologyWaveforms> SingleSwitchForward::simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> SingleSwitchForward::simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance) {
-        
-        std::vector<ForwardTopologyWaveforms> topologyWaveforms;
-        
-        NgspiceRunner runner;
-        if (!runner.is_available()) {
-            throw std::runtime_error("ngspice is not available for simulation");
-        }
-        
-        // Collect input voltages to simulate
-        std::vector<double> inputVoltages;
-        std::vector<std::string> inputVoltagesNames;
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
-        
-        size_t numSecondaries = turnsRatios.size() - 1;
-        
-        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            double inputVoltage = inputVoltages[inputVoltageIndex];
-            
-            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
-                auto forwardOpPoint = get_operating_points()[opIndex];
-                
-                // Generate circuit
-                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
-                
-                double switchingFrequency = forwardOpPoint.get_switching_frequency();
-                double dutyCycle = get_maximum_duty_cycle();
-                
-                // Run simulation
-                SimulationConfig config;
-                config.frequency = switchingFrequency;
-                config.extractOnePeriod = true;
-                config.numberOfPeriods = 2; // Two periods for topology waveform visualization
-                config.keepTempFiles = false;
-                
-                auto simResult = runner.run_simulation(netlist, config);
-                
-                if (!simResult.success) {
-                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
-                }
-                
-                // Build name-to-index map for waveform lookup (case-insensitive)
-                std::map<std::string, size_t> nameToIndex;
-                for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-                    std::string lower = simResult.waveformNames[i];
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    nameToIndex[lower] = i;
-                }
-                
-                // Helper lambda to get waveform data by name
-                auto getWaveformData = [&](const std::string& name) -> std::vector<double> {
-                    std::string lower = name;
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    auto it = nameToIndex.find(lower);
-                    if (it != nameToIndex.end()) {
-                        return simResult.waveforms[it->second].get_data();
-                    }
-                    return {};
-                };
-                
-                // Extract topology waveforms
-                ForwardTopologyWaveforms waveforms;
-                waveforms.frequency = switchingFrequency;
-                waveforms.inputVoltageValue = inputVoltage;
-                waveforms.dutyCycle = dutyCycle;
-                
-                // Set output voltage values
-                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-                    waveforms.outputVoltageValues.push_back(forwardOpPoint.get_output_voltages()[secIdx]);
-                }
-                
-                // Set name
-                waveforms.operatingPointName = inputVoltagesNames[inputVoltageIndex] + " input";
-                if (get_operating_points().size() > 1) {
-                    waveforms.operatingPointName += " op. point " + std::to_string(opIndex);
-                }
-                
-                // Extract time vector
-                waveforms.time = getWaveformData("time");
-                
-                // Extract primary winding signals
-                waveforms.primaryVoltage = getWaveformData("pri_in");
-                waveforms.primaryCurrent = getWaveformData("vpri_sense#branch");
-                
-                // Extract demagnetization winding signals
-                waveforms.demagVoltage = getWaveformData("demag_in");
-                waveforms.demagCurrent = getWaveformData("vdemag_sense#branch");
-                
-                // Extract secondary signals
-                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-                    waveforms.secondaryWindingVoltages.push_back(getWaveformData("sec" + std::to_string(secIdx) + "_in"));
-                    waveforms.outputVoltages.push_back(getWaveformData("vout" + std::to_string(secIdx)));
-                    waveforms.secondaryCurrents.push_back(getWaveformData("vsec_sense" + std::to_string(secIdx) + "#branch"));
-                    waveforms.outputInductorCurrents.push_back(getWaveformData("vl_sense" + std::to_string(secIdx) + "#branch"));
-                }
-                
-                topologyWaveforms.push_back(waveforms);
-            }
-        }
-        
-        return topologyWaveforms;
+        // For Single Switch Forward converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
     }
 } // namespace OpenMagnetics
