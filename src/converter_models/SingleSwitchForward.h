@@ -4,30 +4,78 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
+#include "converter_models/ForwardConverterUtils.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
-
+using namespace MAS;
 
 class SingleSwitchForward : public MAS::Forward, public Topology {
+private:
+    int numPeriodsToExtract = 5;
+    int numSteadyStatePeriods = 5;
+    
 public:
     bool _assertErrors = false;
 
     SingleSwitchForward(const json& j);
     SingleSwitchForward() {
     };
+    
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
-    double get_total_reflected_secondary_current(ForwardOperatingPoint forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio=1);
+    double get_total_reflected_secondary_current(const ForwardOperatingPoint& forwardOperatingPoint, const std::vector<double>& turnsRatios, double rippleRatio=1);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const ForwardOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio, size_t outputIndex);
     double get_maximum_duty_cycle();
+
+    /**
+     * @brief Generate an ngspice circuit for this Single-Switch Forward converter
+     * 
+     * @param turnsRatios Turns ratios for demagnetization and secondary windings
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
+     * @param operatingPointIndex Which operating point to simulate
+     * @return SPICE netlist string
+     */
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the Single-Switch Forward converter and extract operating points
+     * 
+     * @param turnsRatios Turns ratios for each winding
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
+    
+    /**
+     * @brief Simulate the Single-Switch Forward converter and extract operating points
+     * 
+     * @param turnsRatios Turns ratios for each winding
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
 
 };
 
@@ -39,8 +87,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedSingleSwitchForward() = default;
     ~AdvancedSingleSwitchForward() = default;
 

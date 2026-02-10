@@ -69,12 +69,14 @@ class StrayCapacitanceKochModel : public StrayCapacitanceModel {
 class StrayCapacitance{
     private:
         std::shared_ptr<StrayCapacitanceModel> _model;
+        StrayCapacitanceModels _modelName;
         static double calculate_area_between_two_turns_using_diagonals(Turn firstTurn, Turn secondTurn);
         static double calculate_area_between_two_turns_using_vecticals_and_horizontals(Turn firstTurn, Turn secondTurn);
     public:
 
         StrayCapacitance(StrayCapacitanceModels strayCapacitanceModel = StrayCapacitanceModels::ALBACH){
             _model = StrayCapacitanceModel::factory(strayCapacitanceModel);
+            _modelName = strayCapacitanceModel;
         };
         virtual ~StrayCapacitance() = default;
 

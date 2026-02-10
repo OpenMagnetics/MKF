@@ -4,10 +4,11 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 
 class FlybackOperatingPoint : public MAS::FlybackOperatingPoint{
 public:
@@ -22,11 +23,19 @@ private:
     std::vector<OpenMagnetics::FlybackOperatingPoint> operatingPoints;
     std::optional<double> maximumDutyCycle = 0.5;
     double efficiency = 1;
+    int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
+    int numSteadyStatePeriods = 5;  // Number of steady-state cycles to skip
 
 public:
     const std::vector<OpenMagnetics::FlybackOperatingPoint> & get_operating_points() const { return operatingPoints; }
     std::vector<OpenMagnetics::FlybackOperatingPoint> & get_mutable_operating_points() { return operatingPoints; }
     void set_operating_points(const std::vector<OpenMagnetics::FlybackOperatingPoint> & value) { this->operatingPoints = value; }
+
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool _assertErrors = false;
 
@@ -35,16 +44,102 @@ public:
         maximumDrainSourceVoltage = 600;
         maximumDutyCycle = 0.5;
         efficiency = 1;
+        // Also set the parent's efficiency via setter (the local 'efficiency' shadows the parent's)
+        set_efficiency(1);
     };
 
     bool run_checks(bool assert = false) override;
 
     // According to Worked Example (7), pages 135-144 — Designing the Flyback Transformer of Switching Power Supplies A - Z (Second Edition) by Sanjaya Maniktala
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, OpenMagnetics::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<FlybackModes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, OpenMagnetics::FlybackOperatingPoint outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, std::optional<FlybackModes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
+    
+    /**
+     * @brief Generate an ngspice circuit for this flyback converter
+     * 
+     * Uses the calculated design parameters (turns ratio, inductance, duty cycle)
+     * to create a SPICE netlist that can be simulated.
+     * 
+     * @param turnsRatios Turns ratios for each secondary winding
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
+     * @param operatingPointIndex Which operating point to simulate
+     * @return SPICE netlist string
+     */
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the flyback converter and extract operating points from waveforms
+     * 
+     * This method extracts winding voltage/current waveforms suitable for magnetic
+     * component analysis (core losses, winding losses, etc.)
+     * 
+     * 1. Generates ngspice circuits for each input voltage / operating point combination
+     * 2. Runs ngspice simulations
+     * 3. Extracts waveforms and converts them to MAS::OperatingPoint format
+     * 
+     * @param turnsRatios Turns ratios for each secondary
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
+    
+    /**
+     * @brief Generate an ngspice circuit using a real Magnetic component model
+     * 
+     * Uses CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit to
+     * generate a realistic magnetic component with winding resistances, leakage
+     * inductance, and AC resistance modeling via ladder networks.
+     * 
+     * @param magnetic The Magnetic component to use in the simulation
+     * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
+     * @param operatingPointIndex Which operating point to simulate
+     * @return SPICE netlist string
+     */
+    std::string generate_ngspice_circuit_with_magnetic(
+        const Magnetic& magnetic,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the flyback converter using a real Magnetic component
+     * 
+     * This method uses the actual magnetic component model (with winding resistance,
+     * leakage inductance, coupling coefficient) instead of ideal coupled inductors.
+     * The magnetic model is generated using CircuitSimulatorExporterNgspiceModel.
+     * 
+     * @param magnetic The Magnetic component to simulate with
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_with_magnetic_and_extract_operating_points(
+        const Magnetic& magnetic);
+    
+    /**
+     * @brief Simulate and extract topology-level waveforms for converter validation
+     * 
+     * This method extracts all relevant converter signals (input/output voltages,
+     * switch node, currents) to validate that the simulation matches expected
+     * flyback converter behavior.
+     * 
+     * @param turnsRatios Turns ratios for each secondary
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @param numberOfPeriods Number of switching periods to simulate (default 2)
+     * @return Vector of OperatingPoints for each operating condition
+     */
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t numberOfPeriods = 2);
+    
     static double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop);
     static double get_total_input_power(double outputCurrent, double outputVoltage, double efficiency, double diodeVoltageDrop);
     static double get_total_input_current(std::vector<double> outputCurrents, double inputVoltage, std::vector<double> outputVoltages, double diodeVoltageDrop);
@@ -61,8 +156,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedFlyback() = default;
     ~AdvancedFlyback() = default;
 

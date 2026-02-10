@@ -305,6 +305,44 @@ class BasicPainter : public PainterInterface {
     }
     void paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension);
     void paint_circle(double xCoordinate, double yCoordinate, double radius);
+    
+    /**
+     * @brief Paint waveforms from an OperatingPoint
+     * 
+     * Extracts voltage and current waveforms from all windings in the operating point
+     * and renders them as SVG.
+     * 
+     * @param operatingPoint The operating point containing winding excitations
+     * @param title Optional title for the plot
+     * @param width SVG width in pixels
+     * @param height SVG height in pixels
+     * @return SVG string
+     */
+    std::string paint_operating_point_waveforms(
+        const OperatingPoint& operatingPoint,
+        const std::string& title = "Operating Point Waveforms",
+        double width = 1200,
+        double height = 800);
+    
+    /**
+     * @brief Paint a single waveform as SVG
+     * 
+     * @param waveform The waveform to plot
+     * @param name Name/label for the waveform
+     * @param color Line color (hex format, e.g., "#FF0000")
+     * @param xOffset X offset within the SVG
+     * @param yOffset Y offset within the SVG
+     * @param plotWidth Width of the plot area
+     * @param plotHeight Height of the plot area
+     */
+    void paint_waveform_svg(
+        const Waveform& waveform,
+        const std::string& name,
+        const std::string& color,
+        double xOffset,
+        double yOffset,
+        double plotWidth,
+        double plotHeight);
 };
 
 #ifdef ENABLE_MATPLOTPP

@@ -4,13 +4,17 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
-
+using namespace MAS;
 
 class Boost : public MAS::Boost, public Topology {
+private:
+    int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
+    int numSteadyStatePeriods = 50;
+
 public:
     bool _assertErrors = false;
 
@@ -18,16 +22,53 @@ public:
     Boost() {
     };
 
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
+
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, BoostOperatingPoint outputOperatingPoint, double inductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const BoostOperatingPoint& outputOperatingPoint, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
     double resolve_efficiency();
 
+    /**
+     * @brief Generate an ngspice circuit for this Boost converter
+     * 
+     * Uses the calculated design parameters (inductance, duty cycle)
+     * to create a SPICE netlist that can be simulated.
+     * 
+     * @param inductance Inductance in H
+     * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
+     * @param operatingPointIndex Which operating point to simulate
+     * @return SPICE netlist string
+     */
+    std::string generate_ngspice_circuit(
+        double inductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the Boost converter and extract operating points from waveforms
+     * 
+     * @param inductance Inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(double inductance);
+    
+    /**
+     * @brief Simulate the Boost converter and extract operating points from waveforms
+     * 
+     * @param inductance Inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(double inductance);
 };
 
 class AdvancedBoost : public Boost {
@@ -36,8 +77,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedBoost() = default;
     ~AdvancedBoost() = default;
 
