@@ -3520,7 +3520,7 @@ void Temperature::createConvectionConnections() {
                 if (y < minY) minY = y;
             }
         }
-
+1
         // Tolerance for grouping turns into the same vertical layer
         // Use half the wire height (or a small absolute value as fallback)
         double yTolerance = std::max(_wireHeight * 0.5, 1e-6);
@@ -3566,27 +3566,52 @@ void Temperature::createConvectionConnections() {
                         _resistances.push_back(r);
                     }
                 } else if (!fr4LayerIndices.empty()) {
-                    // Connect this quadrant to the closest FR4 layer via conduction
-                    // No distance limit — just find the nearest one
-                    size_t closestFr4 = SIZE_MAX;
+                    // Connect this quadrant to the closest FR4 layer quadrant via conduction
+                    // No distance limit — find the nearest FR4 quadrant
+                    size_t closestFr4Node = SIZE_MAX;
+                    ThermalNodeFace closestFr4Quadrant = ThermalNodeFace::NONE;
                     double minDist = 1e9;
-                    for (size_t fr4Idx : fr4LayerIndices) {
-                        double dist = calculateSurfaceDistance(_nodes[i], _nodes[fr4Idx]);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            closestFr4 = fr4Idx;
+
+                    auto* turnQuad = _nodes[i].getQuadrant(face);
+                    if (turnQuad && turnQuad->surfaceArea > 0) {
+                        // Get turn quadrant limit coordinates for distance calculation
+                        auto turnLimitCoords = turnQuad->limitCoordinates;
+
+                        // Search all FR4 nodes and their quadrants
+                        for (size_t fr4Idx : fr4LayerIndices) {
+                            const auto& fr4Node = _nodes[fr4Idx];
+
+                            // Check all 4 quadrants of this FR4 layer node
+                            for (int qIdx = 0; qIdx < 4; ++qIdx) {
+                                ThermalNodeFace fr4Face = fr4Node.quadrants[qIdx].face;
+                                if (fr4Face == ThermalNodeFace::NONE) continue;
+
+                                auto* fr4Quad = fr4Node.getQuadrant(fr4Face);
+                                if (!fr4Quad || fr4Quad->surfaceArea <= 0) continue;
+
+                                // Calculate distance between turn quadrant and FR4 quadrant
+                                auto fr4LimitCoords = fr4Quad->limitCoordinates;
+                                double dx = turnLimitCoords[0] - fr4LimitCoords[0];
+                                double dy = turnLimitCoords[1] - fr4LimitCoords[1];
+                                double dz = turnLimitCoords[2] - fr4LimitCoords[2];
+                                double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+                                if (dist < minDist) {
+                                    minDist = dist;
+                                    closestFr4Node = fr4Idx;
+                                    closestFr4Quadrant = fr4Face;
+                                }
+                            }
                         }
-                    }
-                    if (closestFr4 != SIZE_MAX) {
-                        auto* q = _nodes[i].getQuadrant(face);
-                        if (q && q->surfaceArea > 0) {
+
+                        if (closestFr4Node != SIZE_MAX && closestFr4Quadrant != ThermalNodeFace::NONE) {
                             ThermalResistanceElement r;
                             r.nodeFromId = i;
                             r.quadrantFrom = face;
-                            r.nodeToId = closestFr4;
-                            r.quadrantTo = ThermalNodeFace::NONE;
+                            r.nodeToId = closestFr4Node;
+                            r.quadrantTo = closestFr4Quadrant;  // Connect to specific FR4 quadrant!
                             r.type = HeatTransferType::CONDUCTION;
-                            double contactArea = q->surfaceArea;
+                            double contactArea = turnQuad->surfaceArea;
                             double thickness = std::max(minDist, 1e-6);
                             double k = 0.2; // FR4 thermal conductivity W/(m·K)
                             r.resistance = ThermalResistance::calculateConductionResistance(
