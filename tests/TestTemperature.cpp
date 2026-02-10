@@ -2688,6 +2688,62 @@ TEST_CASE("Temperature: Planar Transformer Complex", "[temperature][planar][tran
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
+TEST_CASE("Temperature: Concentric Litz and Foil", "[temperature][concentric][litz][foil]") {
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_litz_foil.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+
+    std::cout << "\n=== Concentric Litz and Foil ===" << std::endl;
+    if (magnetic.get_core().get_name()) {
+        std::cout << "Core: " << magnetic.get_core().get_name().value() << std::endl;
+    }
+    std::cout << "Number of windings: " << magnetic.get_coil().get_functional_description().size() << std::endl;
+    std::cout << "Note: This design includes both Litz and foil wires" << std::endl;
+
+    // Run magnetic simulation to get actual losses
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+
+    std::cout << "Core losses: " << losses.coreLosses << " W" << std::endl;
+    std::cout << "Winding losses: " << losses.windingLosses << " W" << std::endl;
+    std::cout << "Ambient temperature: " << losses.ambientTemperature << " °C" << std::endl;
+
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing from simulation results");
+    }
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = true;
+    config.schematicOutputPath = (getOutputDir() / "thermal_schematic_concentric_litz_foil.svg").string();
+
+    std::cout << "\nRunning thermal analysis..." << std::endl;
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+
+    std::cout << "\n=== Thermal Results ===" << std::endl;
+    std::cout << "Converged: " << (result.converged ? "YES" : "NO") << std::endl;
+    std::cout << "Maximum temperature: " << result.maximumTemperature << " °C" << std::endl;
+    std::cout << "Average core temperature: " << result.averageCoreTemperature << " °C" << std::endl;
+    std::cout << "Average coil temperature: " << result.averageCoilTemperature << " °C" << std::endl;
+    std::cout << "Total thermal resistance: " << result.totalThermalResistance << " K/W" << std::endl;
+
+    // Export temperature field visualization
+    exportTemperatureFieldSvg("concentric_litz_foil", magnetic, result.nodeTemperatures, config.ambientTemperature);
+
+    // Export thermal circuit schematic
+    exportThermalCircuitSchematic("concentric_litz_foil", temp);
+
+    std::cout << "Schematic saved to: " << config.schematicOutputPath << std::endl;
+
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+    REQUIRE(result.totalThermalResistance > 0.0);
+}
+
 TEST_CASE("Temperature: Concentric with Insulation Layers", "[temperature][rectangular-winding-window]") {
     // Load the test file with insulation layers
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" / "concentric_round_wire_insulation_layers.json";

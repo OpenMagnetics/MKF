@@ -2519,69 +2519,87 @@ void Temperature::createTurnToInsulationConnections() {
             double turnY = turnNode.physicalCoordinates[1];
             double turnWidth = turnNode.dimensions.width;
             double turnHeight = turnNode.dimensions.height;
-            double turnDiameter = std::max(turnWidth, turnHeight);
-            
-            // Connection threshold: 5% of turn diameter for surface-to-surface connection
-            double connectionThreshold = turnDiameter * 0.05;
-            
+            bool turnIsRound = (turnNode.crossSectionalShape == TurnCrossSectionalShape::ROUND);
+            double turnRadius = turnIsRound ? (turnWidth / 2.0) : 0.0;
+
+            // Connection threshold: For insulation connections, use generous distance
+            // Must be larger than convection blocking distance to ensure blocked faces have conduction path
+            double connectionThreshold = 10.0 * std::max(turnWidth, turnHeight);  // 10x turn size
+
             // Find closest insulation layer on LEFT and RIGHT sides of the turn
             struct InsulationCandidate {
-                size_t insulationIdx;
-                double distance;  // Surface-to-surface distance
-                double insulationK;
-                double insulationWidth;
-                double insulationHeight;
+                size_t insulationIdx = 0;
+                double distance = 0.0;  // Surface-to-surface distance
+                double insulationK = 0.2;
+                double insulationWidth = 0.0;
+                double insulationHeight = 0.0;
             };
-            
+
             InsulationCandidate leftCandidate;
             InsulationCandidate rightCandidate;
             bool hasLeft = false;
             bool hasRight = false;
-            
+
             for (size_t insulationIdx : insulationNodeIndices) {
                 const auto& insulationNode = _nodes[insulationIdx];
                 double insulationX = insulationNode.physicalCoordinates[0];
                 double insulationY = insulationNode.physicalCoordinates[1];
                 double insulationW = insulationNode.dimensions.width;
                 double insulationH = insulationNode.dimensions.height;
-                
+
                 // Get insulation thermal conductivity
                 double insulationK = 0.2;
                 if (insulationNode.quadrants[0].thermalConductivity > 0) {
                     insulationK = insulationNode.quadrants[0].thermalConductivity;
                 }
-                
-                // Calculate insulation layer edges
+
+                // Calculate insulation layer edges (insulation is always rectangular)
                 double insulationLeftEdge = insulationX - insulationW / 2.0;
                 double insulationRightEdge = insulationX + insulationW / 2.0;
-                double turnLeftEdge = turnX - turnWidth / 2.0;
-                double turnRightEdge = turnX + turnWidth / 2.0;
-                
-                // Check if turn is within the insulation layer's Y span
-                // For concentric cores, insulation layers span the full winding window height
+
+                // Check if turn is within the insulation layer's Y span (with tolerance)
                 double insulationBottom = insulationY - insulationH / 2.0;
                 double insulationTop = insulationY + insulationH / 2.0;
                 double turnBottom = turnY - turnHeight / 2.0;
                 double turnTop = turnY + turnHeight / 2.0;
-                bool yOverlaps = !(turnTop < insulationBottom || turnBottom > insulationTop);
+
+                // Use generous Y-overlap check: allow partial overlap or nearby turns
+                double yTolerance = std::max(turnHeight, insulationH);
+                bool yOverlaps = !(turnTop + yTolerance < insulationBottom || turnBottom - yTolerance > insulationTop);
                 if (!yOverlaps) continue;
-                
+
+                // Calculate perpendicular distance from turn to insulation surface
+                // For round turns: distance from center to nearest surface of rectangular insulation
+                // For rectangular turns: edge-to-edge distance
+
+                double distToLeft, distToRight;
+
+                if (turnIsRound) {
+                    // Round wire: calculate perpendicular distance from center to insulation surface
+                    // Distance to LEFT insulation (insulation's right surface)
+                    distToLeft = turnX - turnRadius - insulationRightEdge;
+                    // Distance to RIGHT insulation (insulation's left surface)
+                    distToRight = insulationLeftEdge - (turnX + turnRadius);
+                } else {
+                    // Rectangular wire: edge-to-edge distance
+                    double turnLeftEdge = turnX - turnWidth / 2.0;
+                    double turnRightEdge = turnX + turnWidth / 2.0;
+                    distToLeft = turnLeftEdge - insulationRightEdge;
+                    distToRight = insulationLeftEdge - turnRightEdge;
+                }
+
                 // Check if insulation is to the LEFT of the turn
-                // (insulation's RIGHT edge is close to turn's LEFT edge)
-                if (insulationRightEdge <= turnLeftEdge + connectionThreshold) {
-                    double dist = turnLeftEdge - insulationRightEdge;
-                    if (dist < connectionThreshold && (!hasLeft || dist < leftCandidate.distance)) {
-                        leftCandidate = {insulationIdx, dist, insulationK, insulationW, insulationH};
+                if (distToLeft >= -connectionThreshold && distToLeft <= connectionThreshold) {
+                    if (!hasLeft || std::abs(distToLeft) < std::abs(leftCandidate.distance)) {
+                        leftCandidate = {insulationIdx, distToLeft, insulationK, insulationW, insulationH};
                         hasLeft = true;
                     }
                 }
-                
+
                 // Check if insulation is to the RIGHT of the turn
-                // (insulation's LEFT edge is close to turn's RIGHT edge)
-                if (insulationLeftEdge >= turnRightEdge - connectionThreshold) {
-                    double dist = insulationLeftEdge - turnRightEdge;
-                    if (dist < connectionThreshold && (!hasRight || dist < rightCandidate.distance)) {
-                        rightCandidate = {insulationIdx, dist, insulationK, insulationW, insulationH};
+                if (distToRight >= -connectionThreshold && distToRight <= connectionThreshold) {
+                    if (!hasRight || std::abs(distToRight) < std::abs(rightCandidate.distance)) {
+                        rightCandidate = {insulationIdx, distToRight, insulationK, insulationW, insulationH};
                         hasRight = true;
                     }
                 }
