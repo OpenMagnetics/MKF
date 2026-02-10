@@ -2192,7 +2192,7 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                 auto coil = _magnetic.get_coil();
                 auto turnsDescription = coil.get_turns_description();
                 bool hasSolidInsulationBetween = false;
-                
+
                 if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
                     turn2Idx >= 0 && turn2Idx < static_cast<int>(turnsDescription->size())) {
                     try {
@@ -2206,10 +2206,65 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                         hasSolidInsulationBetween = false;
                     }
                 }
-                
+
+                // Also check geometrically if an insulation layer node is between these turns
+                // For toroidal cores: check if insulation layer is radially between the two turns
+                bool insulationNodeBetween = false;
+                for (size_t k = 0; k < _nodes.size(); k++) {
+                    if (_nodes[k].part != ThermalNodePartType::INSULATION_LAYER) continue;
+
+                    const auto& insulationNode = _nodes[k];
+                    double insX = insulationNode.physicalCoordinates[0];
+                    double insY = insulationNode.physicalCoordinates[1];
+
+                    // Calculate radial distance of insulation layer from core center
+                    double insRadius = std::sqrt(insX * insX + insY * insY);
+
+                    // Calculate radial distances of the two turns from core center
+                    double turn1X = node1.physicalCoordinates[0];
+                    double turn1Y = node1.physicalCoordinates[1];
+                    double turn2X = node2.physicalCoordinates[0];
+                    double turn2Y = node2.physicalCoordinates[1];
+                    double turn1Radius = std::sqrt(turn1X * turn1X + turn1Y * turn1Y);
+                    double turn2Radius = std::sqrt(turn2X * turn2X + turn2Y * turn2Y);
+
+                    // Calculate angular positions
+                    double turn1Angle = std::atan2(turn1Y, turn1X);
+                    double turn2Angle = std::atan2(turn2Y, turn2X);
+                    double insAngle = std::atan2(insY, insX);
+
+                    // Normalize angle differences to [-pi, pi]
+                    auto normalizeAngleDiff = [](double diff) {
+                        while (diff > std::numbers::pi) diff -= 2.0 * std::numbers::pi;
+                        while (diff < -std::numbers::pi) diff += 2.0 * std::numbers::pi;
+                        return diff;
+                    };
+
+                    double angleDiff1 = normalizeAngleDiff(insAngle - turn1Angle);
+                    double angleDiff2 = normalizeAngleDiff(insAngle - turn2Angle);
+
+                    // Check if insulation is angularly near both turns (within reasonable tolerance)
+                    double angularTolerance = 0.5;  // ~30 degrees in radians
+                    bool angularlyNearBoth = (std::abs(angleDiff1) < angularTolerance &&
+                                             std::abs(angleDiff2) < angularTolerance);
+
+                    // Check if insulation is radially between the two turns
+                    double minTurnRadius = std::min(turn1Radius, turn2Radius);
+                    double maxTurnRadius = std::max(turn1Radius, turn2Radius);
+                    double radiusTolerance = std::max(node1.dimensions.width, node1.dimensions.height);
+
+                    bool radiallyBetween = (insRadius > minTurnRadius - radiusTolerance) &&
+                                          (insRadius < maxTurnRadius + radiusTolerance);
+
+                    if (angularlyNearBoth && radiallyBetween) {
+                        insulationNodeBetween = true;
+                        break;
+                    }
+                }
+
                 // Only create direct turn-to-turn connection if there's NO solid insulation layer
                 // Solid insulation layers are now modeled as separate thermal nodes
-                if (!hasSolidInsulationBetween) {
+                if (!hasSolidInsulationBetween && !insulationNodeBetween) {
                     double baseResistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
                     
                     if (q1->coating.has_value()) {
