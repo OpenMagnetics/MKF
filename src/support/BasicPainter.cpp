@@ -3589,18 +3589,37 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
                     
                     if (isConcentricCore) {
                         // For concentric: use fixed horizontal/vertical offsets in SVG coordinates
-                        double radius = (nodeWidth + nodeHeight) / 4.0;  // Node radius in SVG coordinates
+                        // For rectangular wires (planar), use actual edge positions
+                        // For round wires, use radius
                         double offsetX = 0, offsetY = 0;
-                        switch (quadrant.face) {
-                            case ThermalNodeFace::RADIAL_INNER:   // Left (-X)
-                                offsetX = -radius; offsetY = 0; break;
-                            case ThermalNodeFace::RADIAL_OUTER:   // Right (+X)
-                                offsetX = radius; offsetY = 0; break;
-                            case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y in physics = -Y in SVG)
-                                offsetX = 0; offsetY = -radius; break;
-                            case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y in physics = +Y in SVG)
-                                offsetX = 0; offsetY = radius; break;
-                            default: break;
+
+                        if (node->crossSectionalShape == TurnCrossSectionalShape::RECTANGULAR) {
+                            // Rectangular wire: use actual dimensions (dots at edges)
+                            switch (quadrant.face) {
+                                case ThermalNodeFace::RADIAL_INNER:   // Left (-X)
+                                    offsetX = -nodeWidth / 2.0; offsetY = 0; break;
+                                case ThermalNodeFace::RADIAL_OUTER:   // Right (+X)
+                                    offsetX = nodeWidth / 2.0; offsetY = 0; break;
+                                case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y in physics = -Y in SVG)
+                                    offsetX = 0; offsetY = -nodeHeight / 2.0; break;
+                                case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y in physics = +Y in SVG)
+                                    offsetX = 0; offsetY = nodeHeight / 2.0; break;
+                                default: break;
+                            }
+                        } else {
+                            // Round wire: use averaged radius
+                            double radius = (nodeWidth + nodeHeight) / 4.0;
+                            switch (quadrant.face) {
+                                case ThermalNodeFace::RADIAL_INNER:   // Left (-X)
+                                    offsetX = -radius; offsetY = 0; break;
+                                case ThermalNodeFace::RADIAL_OUTER:   // Right (+X)
+                                    offsetX = radius; offsetY = 0; break;
+                                case ThermalNodeFace::TANGENTIAL_LEFT: // Top (+Y in physics = -Y in SVG)
+                                    offsetX = 0; offsetY = -radius; break;
+                                case ThermalNodeFace::TANGENTIAL_RIGHT: // Bottom (-Y in physics = +Y in SVG)
+                                    offsetX = 0; offsetY = radius; break;
+                                default: break;
+                            }
                         }
                         // Position directly in SVG coordinates (center is already scaled in x, y)
                         limitX = x + offsetX;
