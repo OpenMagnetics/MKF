@@ -65,7 +65,16 @@ option(HAVE_LAPACK "Use LAPACK" OFF)
 option(INCLUDE_PYMKF "Compile the Python interface" OFF)
 option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile high resolution maps for geoplots" OFF)
 option(ENABLE_NGSPICE "Enable ngspice integration for circuit simulation" OFF)
-option(ENABLE_MATPLOTPP "Enable matplotplusplus for AdvancedPainter" ON)
+option(ENABLE_MATPLOTPP "Enable matplotplusplus for AdvancedPainter" OFF)
+
+# If the Python interface is being built, disable matplotplusplus so PyMKF
+# is built without the matplotplusplus dependency.
+if(INCLUDE_PYMKF)
+    if(ENABLE_MATPLOTPP)
+        message(STATUS "Disabling matplotplusplus because PyMKF build requested.")
+    endif()
+    set(ENABLE_MATPLOTPP OFF CACHE BOOL "Enable matplotplusplus for AdvancedPainter" FORCE)
+endif()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "ngspice integration: ${ENABLE_NGSPICE}")
@@ -120,7 +129,25 @@ if(ENABLE_MATPLOTPP)
     endif()
     add_compile_definitions(ENABLE_MATPLOTPP)
 endif()
-    
+
+# Make profiling and ASan opt-in so users can build fast Release binaries by default
+option(ENABLE_PROFILING "Enable gprof profiling (-pg)" OFF)
+option(ENABLE_ASAN "Enable AddressSanitizer in Debug builds" OFF)
+
+if(ENABLE_PROFILING)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pg")
+endif()
+
+# Set flags for Debug builds to include AddressSanitizer and debug symbols (-g)
+# These are applied only when ENABLE_ASAN is enabled or when explicitly requested
+if(ENABLE_ASAN)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -fsanitize=address")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -fsanitize=address")
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address")
+endif()
+
 FetchContent_Declare(spline
     GIT_REPOSITORY https://github.com/AlfVII/spline.git)
 FetchContent_MakeAvailable(spline)

@@ -2416,8 +2416,18 @@ TEST_CASE("Test_Manufacturer_Magnetics", "[physical-model][core-losses]") {
     outFile.append("Test_Manufacturer_Magnetics.svg");
     std::filesystem::remove(outFile);
     Painter painter(outFile, false, true);
+    #ifdef ENABLE_MATPLOTPP
     painter.paint_waveform(magneticFluxDensity.get_waveform().value());
+    #else
+        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+    #endif
+
+    #ifdef ENABLE_MATPLOTPP
     painter.export_svg();
+    #else
+        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+    #endif
+
     REQUIRE(std::filesystem::exists(outFile));
 
 
