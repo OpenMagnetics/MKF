@@ -103,7 +103,7 @@ public:
      * @param magnetizingInductance The calculated inductance
      * @return Vector of operating points
      */
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
 
     /**
      * @brief Calculate the required inductance for CCM operation.
