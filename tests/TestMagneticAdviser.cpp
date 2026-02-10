@@ -101,8 +101,18 @@ namespace {
                     outFile.append("Test_MagneticAdviser_Filter_Sweep_Impedance_Over_Frequency_" + std::to_string(scoring) + ".svg");
                     std::filesystem::remove(outFile);
                     Painter painter(outFile, false, true);
+                    #ifdef ENABLE_MATPLOTPP
                     painter.paint_curve(impedanceSweep);
+                    #else
+                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                    #endif
+
+                    #ifdef ENABLE_MATPLOTPP
                     painter.export_svg();
+                    #else
+                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                    #endif
+
                 }
             }
         }
@@ -188,8 +198,18 @@ namespace {
                     outFile.append("Test_MagneticAdviser_Filter_Sweep_Impedance_Over_Frequency_" + std::to_string(scoring) + ".svg");
                     std::filesystem::remove(outFile);
                     Painter painter(outFile, false, true);
+                    #ifdef ENABLE_MATPLOTPP
                     painter.paint_curve(impedanceSweep);
+                    #else
+                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                    #endif
+
+                    #ifdef ENABLE_MATPLOTPP
                     painter.export_svg();
+                    #else
+                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                    #endif
+
                 }
             }
         }
@@ -258,7 +278,12 @@ namespace {
                     painter.paint_core(masMagnetic.get_mutable_magnetic());
                     painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                     painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                    #ifdef ENABLE_MATPLOTPP
                     painter.export_svg();
+                    #else
+                        INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                    #endif
+
                 }
             }
         }
@@ -313,7 +338,12 @@ namespace {
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
+                #else
+                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                #endif
+
             }
         }
         settings.reset();
@@ -388,7 +418,12 @@ namespace {
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
+                #else
+                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                #endif
+
             }
         }
     }
@@ -451,7 +486,12 @@ namespace {
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
+                #else
+                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                #endif
+
             }
         }
     }
@@ -492,7 +532,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -533,7 +578,12 @@ namespace {
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
+                #else
+                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                #endif
+
             }
         }
     }
@@ -676,7 +726,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -727,7 +782,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -778,7 +838,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -834,7 +899,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -867,7 +937,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -996,7 +1071,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1043,7 +1123,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1096,7 +1181,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1195,7 +1285,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1274,7 +1369,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1347,7 +1447,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1425,7 +1530,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1505,7 +1615,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1596,7 +1711,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1687,7 +1807,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1761,7 +1886,12 @@ namespace {
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 
@@ -1853,7 +1983,12 @@ namespace {
             painter.paint_core(masMagnetics[0].first.get_magnetic());
             painter.paint_bobbin(masMagnetics[0].first.get_magnetic());
             painter.paint_coil_turns(masMagnetics[0].first.get_magnetic());
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
             REQUIRE(std::filesystem::exists(outFile));
 
         }
@@ -1994,7 +2129,12 @@ namespace {
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
+                #else
+                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                #endif
+
             }
         }
     }
@@ -2125,7 +2265,12 @@ namespace {
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
+                #else
+                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                #endif
+
             }
         }
     }
@@ -2209,7 +2354,12 @@ namespace {
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
+                #else
+                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                #endif
+
             }
         }
     }
@@ -2478,7 +2628,12 @@ namespace {
                 painter.paint_core(mas.get_mutable_magnetic());
                 painter.paint_bobbin(mas.get_mutable_magnetic());
                 painter.paint_coil_turns(mas.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
                 painter.export_svg();
+                #else
+                    INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+                #endif
+
             }
         }
     }

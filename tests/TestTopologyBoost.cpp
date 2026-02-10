@@ -48,8 +48,18 @@ namespace {
             outFile.append("Test_Boost_Primary.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
         {
@@ -57,8 +67,18 @@ namespace {
             outFile.append("Test_Boost_Primary_Voltage.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
         {
@@ -66,8 +86,18 @@ namespace {
             outFile.append("Test_Boost_Primary_Maximum.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
         {
@@ -75,8 +105,18 @@ namespace {
             outFile.append("Test_Boost_Primary_Voltage_Maximum.svg");
             std::filesystem::remove(outFile);   
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
 
         REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError));

@@ -62,8 +62,18 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance][smoke-test]") {
         outFile.append("Test_Impedance_0.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_curve(impedanceSweep, true);
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
         REQUIRE(std::filesystem::exists(outFile));
 
     }
@@ -78,7 +88,12 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance][smoke-test]") {
         painter.paint_core(magnetic);
         // painter.paint_bobbin(magnetic);
         // painter.paint_coil_turns(magnetic);
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 
