@@ -9,12 +9,12 @@
 #include <fstream>
 #include <iostream>
 #include <numbers>
-#include <matplot/matplot.h>
 #include <streambuf>
 #include <vector>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 
+using OpenMagnetics::linspace;
 
 namespace OpenMagnetics {
 
@@ -128,8 +128,8 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
         double pixelXDimension = totalWidthInGrid / numberPointsX;
         double pixelYDimension = coreColumnHeight / numberPointsY;
         
-        bobbinPointsX = matplot::linspace(coreColumnWidth / 2 + pixelXDimension / 2, bobbinWidthStart + bobbinWidth - pixelXDimension / 2, numberPointsX);
-        bobbinPointsY = matplot::linspace(-coreColumnHeight / 2 + pixelYDimension / 2, coreColumnHeight / 2 - pixelYDimension / 2, numberPointsY);
+        bobbinPointsX = linspace(coreColumnWidth / 2 + pixelXDimension / 2, bobbinWidthStart + bobbinWidth - pixelXDimension / 2, numberPointsX);
+        bobbinPointsY = linspace(-coreColumnHeight / 2 + pixelYDimension / 2, coreColumnHeight / 2 - pixelYDimension / 2, numberPointsY);
 
         double dx = totalWidthInGrid / numberPointsX;
         double dy = coreColumnHeight / numberPointsY;
@@ -137,8 +137,8 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
     }
     else {
         auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
-        bobbinPointsX = matplot::linspace(-coreWidth / 2 * extraDimension, coreWidth / 2 * extraDimension, numberPointsX);
-        bobbinPointsY = matplot::linspace(-coreHeight / 2 * extraDimension, coreHeight / 2 * extraDimension, numberPointsY);
+        bobbinPointsX = linspace(-coreWidth / 2 * extraDimension, coreWidth / 2 * extraDimension, numberPointsX);
+        bobbinPointsY = linspace(-coreHeight / 2 * extraDimension, coreHeight / 2 * extraDimension, numberPointsY);
         double dx = coreWidth * extraDimension / numberPointsX;
         double dy = coreHeight * extraDimension / numberPointsY;
         dA = dx * dy;

@@ -107,7 +107,8 @@ enum class HeatTransferType {
     CONDUCTION,
     NATURAL_CONVECTION,
     FORCED_CONVECTION,
-    RADIATION
+    RADIATION,
+    HEATSINK_CONVECTION  // Connection through heatsink to ambient
 };
 
 /**
@@ -346,6 +347,9 @@ public:
     // True if this is an inner half of a toroidal turn
     bool isInnerTurn = false;
     
+    // NEW: Fixed temperature flag for cold plate / potting with fixed temperature
+    bool isFixedTemperature = false;
+    
     /**
      * @brief Default constructor
      */
@@ -353,7 +357,8 @@ public:
         : temperature(25.0), 
           powerDissipation(0.0),
           angle(0.0),
-          isInnerTurn(false) {}
+          isInnerTurn(false),
+          isFixedTemperature(false) {}
     
     /**
      * @brief Constructor with name and part
@@ -364,7 +369,8 @@ public:
           temperature(25.0),
           powerDissipation(0.0),
           angle(0.0),
-          isInnerTurn(false) {}
+          isInnerTurn(false),
+          isFixedTemperature(false) {}
     
     /**
      * @brief Check if this is an ambient node

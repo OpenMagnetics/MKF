@@ -146,6 +146,67 @@ enum class ThermalNodeType {
     AMBIENT
 };
 
+/**
+ * @brief Cooling types for thermal analysis
+ */
+enum class CoolingType {
+    NATURAL_CONVECTION,   // Default when no cooling specified
+    FORCED_CONVECTION,    // velocity is set
+    HEATSINK,             // thermal_resistance is set, no maximum_temperature
+    COLD_PLATE,           // maximum_temperature is set
+    UNKNOWN
+};
+
+/**
+ * @brief Utility class for cooling configuration
+ */
+class CoolingUtils {
+public:
+    /**
+     * @brief Detect cooling type from MAS::Cooling object
+     */
+    static CoolingType detectCoolingType(const MAS::Cooling& cooling);
+    
+    /**
+     * @brief Check if cooling is natural convection
+     */
+    static bool isNaturalConvection(const MAS::Cooling& cooling);
+    
+    /**
+     * @brief Check if cooling is forced convection
+     */
+    static bool isForcedConvection(const MAS::Cooling& cooling);
+    
+    /**
+     * @brief Check if cooling is heatsink
+     */
+    static bool isHeatsink(const MAS::Cooling& cooling);
+    
+    /**
+     * @brief Check if cooling is cold plate
+     */
+    static bool isColdPlate(const MAS::Cooling& cooling);
+    
+    /**
+     * @brief Calculate forced convection coefficient
+     */
+    static double calculateForcedConvectionCoefficient(
+        double surfaceTemp,
+        double ambientTemp,
+        double velocity,
+        double characteristicLength,
+        double fluidConductivity = 0.0261,  // W/m·K for air at 25°C
+        double kinematicViscosity = 15.7e-6,  // m²/s for air at 25°C
+        double prandtlNumber = 0.71);
+    
+    /**
+     * @brief Calculate mixed convection coefficient (natural + forced)
+     */
+    static double calculateMixedConvectionCoefficient(
+        double h_natural,
+        double h_forced);
+};
+
 struct ThermalNode {
     size_t id;
     ThermalNodeType type;
@@ -227,6 +288,14 @@ struct TemperatureConfig {
     // Output settings
     bool plotSchematic = true;          // Whether to generate schematic visualization
     std::string schematicOutputPath = "output/thermal_schematic.svg";
+    
+    // ===== NEW: MAS Cooling Configuration =====
+    // Optional MAS cooling object (from OperatingConditions)
+    std::optional<MAS::Cooling> masCooling;
+    
+    // Factory method to create config from MAS inputs
+    static TemperatureConfig fromMasOperatingConditions(
+        const MAS::OperatingConditions& conditions);
 };
 
 /**
@@ -260,6 +329,7 @@ private:
     double _wireHeight = 0.001;     // Wire height (axial dimension) in meters
     double _wireThermalCond = 385.0; // Copper thermal conductivity
     bool _isToroidal = false;
+    bool _isPlanar = false;         // True for planar windings (PCB traces)
     bool _isRoundWire = false;      // True for round wires and litz
     std::optional<InsulationWireCoating> _wireCoating;  // Wire coating for thermal calculations
     
@@ -557,6 +627,30 @@ private:
     ThermalResult solveThermalCircuit();
     
     bool hasBobbinNodes() const;
+    
+    // =========================================================================
+    // Cooling Application Methods
+    // =========================================================================
+    
+    /**
+     * @brief Apply MAS cooling configuration
+     */
+    void applyMasCooling(const MAS::Cooling& cooling);
+    
+    /**
+     * @brief Apply forced convection cooling
+     */
+    void applyForcedConvection(const MAS::Cooling& cooling);
+    
+    /**
+     * @brief Apply heatsink cooling (top mount for concentric cores)
+     */
+    void applyHeatsinkCooling(const MAS::Cooling& cooling);
+    
+    /**
+     * @brief Apply cold plate cooling (bottom mount)
+     */
+    void applyColdPlateCooling(const MAS::Cooling& cooling);
 };
 
 } // namespace OpenMagnetics

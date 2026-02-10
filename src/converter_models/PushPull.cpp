@@ -1,17 +1,16 @@
 #include "converter_models/PushPull.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "processors/CircuitSimulatorInterface.h"
 #include "support/Utils.h"
 #include <cfloat>
 #include <sstream>
-#include <algorithm>
-#include <map>
 #include "support/Exceptions.h"
-#include "processors/NgspiceRunner.h"
+#include "converter_models/ForwardConverterUtils.h"
 
 namespace OpenMagnetics {
 
-    double get_total_reflected_secondary_current(PushPullOperatingPoint pushPullOperatingPoint, std::vector<double> turnsRatios) {
+    double get_total_reflected_secondary_current(const PushPullOperatingPoint& pushPullOperatingPoint, const std::vector<double>& turnsRatios) {
         double totalReflectedSecondaryCurrent = 0;
         // Main secondary
         totalReflectedSecondaryCurrent += pushPullOperatingPoint.get_output_currents()[0] / turnsRatios[1];
@@ -22,7 +21,7 @@ namespace OpenMagnetics {
         return totalReflectedSecondaryCurrent;
     }
 
-    std::vector<double> convert_turns_ratios(std::vector<double> turnsRatios) {
+    std::vector<double> convert_turns_ratios(const std::vector<double>& turnsRatios) {
         std::vector<double> newTurnsRatios;
 
         // Second Primary
@@ -62,7 +61,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint PushPull::process_operating_points_for_input_voltage(double inputVoltage, PushPullOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double outputInductance) {
+    OperatingPoint PushPull::process_operating_points_for_input_voltage(double inputVoltage, const PushPullOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double outputInductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -114,9 +113,6 @@ namespace OpenMagnetics {
             {
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -170,9 +166,6 @@ namespace OpenMagnetics {
             {
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -230,9 +223,6 @@ namespace OpenMagnetics {
             {
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -294,9 +284,6 @@ namespace OpenMagnetics {
             {
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -375,9 +362,6 @@ namespace OpenMagnetics {
 
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -479,9 +463,6 @@ namespace OpenMagnetics {
             {
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -543,9 +524,6 @@ namespace OpenMagnetics {
             {
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -609,9 +587,6 @@ namespace OpenMagnetics {
             {
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -685,9 +660,6 @@ namespace OpenMagnetics {
             {
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -781,9 +753,6 @@ namespace OpenMagnetics {
 
                 Waveform currentWaveform;
                 Waveform voltageWaveform;
-                Processed currentProcessed;
-                Processed voltageProcessed;
-
                 // Current
                 {
                     std::vector<double> data = {
@@ -988,34 +957,40 @@ namespace OpenMagnetics {
     double PushPull::get_output_inductance(double mainSecondaryTurnsRatio) {
         double minimumOutputInductance = 0;
         auto dutyCycle = get_maximum_duty_cycle();
-        double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
+        
         for (auto outputOperatingPoint : get_operating_points()) {
             double mainOutputVoltage = outputOperatingPoint.get_output_voltages()[0];
+            double mainOutputCurrent = outputOperatingPoint.get_output_currents()[0];
             double switchingFrequency = outputOperatingPoint.get_switching_frequency();
-            auto tOn = dutyCycle / switchingFrequency;
-            auto outputInductance = (maximumInputVoltage / mainSecondaryTurnsRatio - get_diode_voltage_drop() - mainOutputVoltage) * tOn / get_current_ripple_ratio();
-            minimumOutputInductance = std::max(minimumOutputInductance, outputInductance);
+            
+            // In Push-Pull, output sees pulsating DC at 2x switching frequency
+            // During the off-time (1 - 2*D) portion, inductor discharges
+            // L = V * t / ΔI
+            // Where ΔI = ripple_ratio * I_out
+            double offTime = (1.0 - 2.0 * dutyCycle) / (2.0 * switchingFrequency);  // Half period off-time
+            double deltaI = get_current_ripple_ratio() * mainOutputCurrent;
+            
+            // Prevent division by zero if duty cycle is exactly 0.5
+            if (offTime > 0 && deltaI > 0) {
+                auto outputInductance = mainOutputVoltage * offTime / deltaI;
+                minimumOutputInductance = std::max(minimumOutputInductance, outputInductance);
+            }
         }
+        
+        // If calculation gives zero (e.g., D=0.5), use a reasonable default
+        if (minimumOutputInductance < 1e-9) {
+            minimumOutputInductance = 10e-6;  // 10 µH default
+        }
+        
         return minimumOutputInductance;
     }
 
-    std::vector<OperatingPoint> PushPull::process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) {
+    std::vector<OperatingPoint> PushPull::process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) {
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         auto minimumOutputInductance = get_output_inductance(turnsRatios[1]);
 
@@ -1056,7 +1031,7 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> PushPull::process_operating_points(Magnetic magnetic) {
         PushPull::run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(_magnetizingInductanceModel);;  // hardcoded
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
         
@@ -1083,18 +1058,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
 
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         DesignRequirements designRequirements;
 
@@ -1147,15 +1111,8 @@ namespace OpenMagnetics {
         
         // Get input voltages
         std::vector<double> inputVoltages;
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-        }
+        std::vector<std::string> inputVoltagesNames_;
+    ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
         
         if (inputVoltageIndex >= inputVoltages.size()) {
             throw std::invalid_argument("inputVoltageIndex out of range");
@@ -1169,98 +1126,104 @@ namespace OpenMagnetics {
         
         double switchingFrequency = opPoint.get_switching_frequency();
         double dutyCycle = get_maximum_duty_cycle();
-        
-        // turnsRatios[0] is the main secondary turns ratio
-        double secondaryTurnsRatio = turnsRatios[0];
-        double outputInductance = get_output_inductance(secondaryTurnsRatio);
-        
         double outputVoltage = opPoint.get_output_voltages()[0];
         double outputCurrent = opPoint.get_output_currents()[0];
-        double loadResistance = outputVoltage / outputCurrent;
+        
+        // turnsRatios[0] is second primary (always 1)
+        // turnsRatios[1] and turnsRatios[2] are the main secondary halves
+        // In push-pull, we use the secondary turns ratio for voltage transformation
+        double mainTurnsRatio = turnsRatios[1];
         
         // Build netlist
         std::ostringstream circuit;
         double period = 1.0 / switchingFrequency;
-        double halfPeriod = period / 2.0;
-        double tOn = halfPeriod * dutyCycle;
+        double tOn = period / 2 * dutyCycle;  // Each switch conducts for half period
         
-        // Simulation: run 10x the extraction periods for settling
+        // Simulation: run steady-state periods for settling, then extract the last N periods
         int periodsToExtract = get_num_periods_to_extract();
-        const int numPeriodsTotal = 10 * periodsToExtract;
+        int numSteadyStatePeriods = get_num_steady_state_periods();
+        const int numPeriodsTotal = numSteadyStatePeriods + periodsToExtract;  // Steady state + extraction
         double simTime = numPeriodsTotal * period;
-        double startTime = (numPeriodsTotal - periodsToExtract) * period;
-        double stepTime = period / 200;
+        double startTime = numSteadyStatePeriods * period;  // Start extracting after steady state
+        double stepTime = period / 400;  // 400 points per period for smooth waveforms
         
         circuit << "* Push-Pull Converter - Generated by OpenMagnetics\n";
-        circuit << "* Vin=" << inputVoltage << "V, f=" << (switchingFrequency/1e3) << "kHz, D=" << (dutyCycle*100) << " pct\n";
-        circuit << "* Lmag=" << (magnetizingInductance*1e6) << "uH, N=" << secondaryTurnsRatio << "\n\n";
+        circuit << "* Vin=" << inputVoltage << "V, Vout=" << outputVoltage << "V, f=" << (switchingFrequency/1e3) << "kHz\n";
+        circuit << "* Lmag=" << (magnetizingInductance*1e6) << "uH, N=" << mainTurnsRatio << "\n\n";
         
-        // DC Input
+        // DC Input (center tap)
         circuit << "* DC Input\n";
         circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
         
-        // PWM Switches - two switches alternating at half-period
-        circuit << "* PWM Switches - alternating\n";
-        circuit << "Vpwm1 pwm1_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
-        circuit << "Vpwm2 pwm2_ctrl 0 PULSE(0 5 " << halfPeriod << " 10n 10n " << tOn << " " << period << ")\n";
-        circuit << ".model SW1 SW VT=2.5 VH=0.5\n";
-        circuit << "S1 vin_dc pri1_p pwm1_ctrl 0 SW1\n";
-        circuit << "S2 vin_dc pri2_p pwm2_ctrl 0 SW1\n\n";
+        // PWM Switches - alternating conduction
+        circuit << "* PWM Switches (alternating)\n";
+        circuit << "Vpwm1 pwm_ctrl1 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
+        circuit << "Vpwm2 pwm_ctrl2 0 PULSE(0 5 " << (period/2) << " 10n 10n " << tOn << " " << period << ")\n";
+        circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.01\n\n";
         
-        // Primary current sense
-        circuit << "* Primary current sense\n";
-        circuit << "Vpri1_sense pri1_p pri1_in 0\n";
-        circuit << "Vpri2_sense pri2_p pri2_in 0\n\n";
+        // Push-Pull Transformer - Two independent forward converter halves
+        // Model as two separate forward converters operating alternately
+        // CRITICAL: In Push-Pull, when one primary half is energized, corresponding secondary produces positive voltage
+        circuit << "* Push-Pull as Two Independent Forward Converters\n";
         
-        // Push-Pull Transformer (center-tapped primary and secondary)
-        // Primary 1 and Primary 2 have same inductance, opposite polarity
-        // Secondary 1 and Secondary 2 have same inductance, opposite polarity
-        circuit << "* Push-Pull Transformer\n";
-        circuit << "Lpri1 pri1_in ct_pri " << std::scientific << magnetizingInductance << std::fixed << "\n";
-        circuit << "Lpri2 pri2_in ct_pri " << std::scientific << magnetizingInductance << std::fixed << "\n";
-        circuit << "Rct ct_pri 0 1m\n";  // Center tap connected to ground via small resistance
+        // Top half - operates when S1 is ON
+        circuit << "* Top Half\n";
+        circuit << "S1 vin_dc sw1_node pwm_ctrl1 0 SW1\n";
+        circuit << "Vpri_top_sense sw1_node pri_top 0\n";
+        circuit << "Lpri_top pri_top 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
         
-        double secondaryInductance = magnetizingInductance / (secondaryTurnsRatio * secondaryTurnsRatio);
-        circuit << "Lsec1 sec1_in ct_sec " << std::scientific << secondaryInductance << std::fixed << "\n";
-        circuit << "Lsec2 sec2_in ct_sec " << std::scientific << secondaryInductance << std::fixed << "\n";
-        circuit << "\n";
+        double secondaryInductance = magnetizingInductance / (mainTurnsRatio * mainTurnsRatio);
+        circuit << "Lsec_top 0 sec_top " << std::scientific << secondaryInductance << std::fixed << "\n";  // Reversed: ground to sec_top
+        circuit << "K_top Lpri_top Lsec_top 0.99\n";
         
-        // Coupling - all windings coupled
-        circuit << "* Transformer coupling\n";
-        circuit << "K12 Lpri1 Lpri2 1\n";
-        circuit << "Ks12 Lsec1 Lsec2 1\n";
-        circuit << "K1s1 Lpri1 Lsec1 1\n";
-        circuit << "K1s2 Lpri1 Lsec2 1\n";
-        circuit << "K2s1 Lpri2 Lsec1 1\n";
-        circuit << "K2s2 Lpri2 Lsec2 1\n\n";
+        // Snubber for top half (RCD snubber to clamp voltage spikes)
+        circuit << "Rsnub_top pri_top snub_top_c 10\n";
+        circuit << "Csnub_top snub_top_c 0 220p\n";
+        circuit << "Dsnub_top snub_top_c vin_dc DSNUB\n\n";
         
-        // Diode model
-        circuit << "* Diode model\n";
-        circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n\n";
+        // Bottom half - operates when S2 is ON
+        circuit << "* Bottom Half\n";
+        circuit << "S2 vin_dc sw2_node pwm_ctrl2 0 SW1\n";
+        circuit << "Vpri_bot_sense sw2_node pri_bot 0\n";
+        circuit << "Lpri_bot pri_bot 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
+        circuit << "Lsec_bot 0 sec_bot " << std::scientific << secondaryInductance << std::fixed << "\n";  // Reversed: ground to sec_bot
+        circuit << "K_bot Lpri_bot Lsec_bot 0.99\n";
         
-        // Output stage - full-wave rectifier with LC filter
-        circuit << "* Output stage - full-wave rectifier\n";
-        circuit << "D1 sec1_in rect_out DIDEAL\n";
-        circuit << "D2 sec2_in rect_out DIDEAL\n";
-        circuit << "Vsec_sense ct_sec sec_sense 0\n";
+        // Snubber for bottom half (RCD snubber to clamp voltage spikes)
+        circuit << "Rsnub_bot pri_bot snub_bot_c 10\n";
+        circuit << "Csnub_bot snub_bot_c 0 220p\n";
+        circuit << "Dsnub_bot snub_bot_c vin_dc DSNUB\n\n";
         
-        // LC filter
-        circuit << "Lout rect_out L_out " << std::scientific << outputInductance << std::fixed << "\n";
-        circuit << "VL_sense L_out vout 0\n";
+        // Output rectifiers and filter  
+        circuit << "* Output Rectifiers and Filter\n";
+        circuit << ".model DIDEAL D(IS=1e-14 RS=0.01 CJO=1e-12)\n";
+        circuit << ".model DSNUB D(IS=1e-14 RS=0.1 CJO=1e-11)\n";
+        
+        // Output rectifiers
+        circuit << "Dsec_top sec_top sec_rect DIDEAL\n";
+        circuit << "Dsec_bot sec_bot sec_rect DIDEAL\n";
+        
+        // Secondary current sense
+        circuit << "Vsec_sense sec_rect sec_l_in 0\n";
+        
+        // Output inductor and capacitor
+        double outputInductance = get_output_inductance(mainTurnsRatio);
+        double loadResistance = outputVoltage / outputCurrent;
+        circuit << "Lout sec_l_in vout " << std::scientific << outputInductance << std::fixed << "\n";
         circuit << "Cout vout 0 100u IC=" << outputVoltage << "\n";
         circuit << "Rload vout 0 " << loadResistance << "\n\n";
         
         // Transient Analysis
         circuit << "* Transient Analysis\n";
-        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
+        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << " UIC\n\n";  // Add UIC flag
         
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri1_in) v(pri2_in) v(sec1_in) v(sec2_in) v(vout)";
-        circuit << " i(Vpri1_sense) i(Vpri2_sense) i(Vsec_sense) i(VL_sense)\n\n";
+        circuit << ".save v(pri_top) v(pri_bot) i(Vpri_top_sense) i(Vpri_bot_sense)";
+        circuit << " v(sec_top) v(sec_bot) i(Vsec_sense) v(vout)\n\n";
         
-        // Options for convergence
-        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
+        // Options - tighter tolerances for cleaner waveforms
+        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 TRTOL=7 ITL1=500 ITL4=100\n";
         circuit << ".ic v(vout)=" << outputVoltage << "\n\n";
         
         circuit << ".end\n";
@@ -1282,33 +1245,20 @@ namespace OpenMagnetics {
         // Get input voltages
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
         
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
-                auto pushPullOpPoint = get_operating_points()[opIndex];
+                auto ppOpPoint = get_operating_points()[opIndex];
                 
-                // Generate circuit
                 std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
                 
-                double switchingFrequency = pushPullOpPoint.get_switching_frequency();
+                double switchingFrequency = ppOpPoint.get_switching_frequency();
                 
-                // Run simulation
                 SimulationConfig config;
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
-                config.numberOfPeriods = 1;  // Only one period for operating points
+                config.numberOfPeriods = 1;
                 config.keepTempFiles = false;
                 
                 auto simResult = runner.run_simulation(netlist, config);
@@ -1317,151 +1267,49 @@ namespace OpenMagnetics {
                     throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
                 }
                 
-                // Build waveform mapping for Push-Pull converter:
-                // Primary 1, Primary 2, Secondary 1, Secondary 2
+                // Define waveform name mapping for push-pull (4 windings)
                 NgspiceRunner::WaveformNameMapping waveformMapping;
                 
-                // Primary 1 winding
-                waveformMapping.push_back({{"voltage", "pri1_in"}, {"current", "vpri1_sense#branch"}});
+                // First primary (top)
+                waveformMapping.push_back({{"voltage", "pri_top"}, {"current", "vpri_top_sense#branch"}});
                 
-                // Primary 2 winding
-                waveformMapping.push_back({{"voltage", "pri2_in"}, {"current", "vpri2_sense#branch"}});
+                // Second primary (bottom)
+                waveformMapping.push_back({{"voltage", "pri_bot"}, {"current", "vpri_bot_sense#branch"}});
                 
-                // Secondary 1 winding
-                waveformMapping.push_back({{"voltage", "sec1_in"}, {"current", "vl_sense#branch"}});
+                // First secondary (top)
+                waveformMapping.push_back({{"voltage", "sec_top"}, {"current", "vsec_sense#branch"}});
                 
-                // Secondary 2 winding
-                waveformMapping.push_back({{"voltage", "sec2_in"}, {"current", "vl_sense#branch"}});
+                // Second secondary (bottom)
+                waveformMapping.push_back({{"voltage", "sec_bot"}, {"current", "vsec_sense#branch"}});
                 
-                std::vector<std::string> windingNames = {"Primary 1", "Primary 2", "Secondary 1", "Secondary 2"};
-                std::vector<bool> flipCurrentSign = {false, false, false, false};
+                std::vector<std::string> windingNames = {"First primary", "Second primary", "First secondary", "Second secondary"};
+                std::vector<bool> flipCurrentSign(4, false);
                 
                 OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
                     simResult,
                     waveformMapping,
                     switchingFrequency,
                     windingNames,
-                    pushPullOpPoint.get_ambient_temperature(),
+                    ppOpPoint.get_ambient_temperature(),
                     flipCurrentSign);
                 
-                // Set name
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt. (simulated)";
                 if (get_operating_points().size() > 1) {
                     name += " op. point " + std::to_string(opIndex);
                 }
                 operatingPoint.set_name(name);
-                
                 operatingPoints.push_back(operatingPoint);
             }
         }
         
         return operatingPoints;
     }
-
-    std::vector<PushPullTopologyWaveforms> PushPull::simulate_and_extract_topology_waveforms(
+    
+    std::vector<OperatingPoint> PushPull::simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance) {
-        
-        std::vector<PushPullTopologyWaveforms> topologyWaveforms;
-        
-        NgspiceRunner runner;
-        if (!runner.is_available()) {
-            throw std::runtime_error("ngspice is not available for simulation");
-        }
-        
-        // Collect input voltages to simulate
-        std::vector<double> inputVoltages;
-        std::vector<std::string> inputVoltagesNames;
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        
-        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            double inputVoltage = inputVoltages[inputVoltageIndex];
-            
-            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
-                auto pushPullOpPoint = get_operating_points()[opIndex];
-                
-                // Generate circuit
-                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
-                
-                double switchingFrequency = pushPullOpPoint.get_switching_frequency();
-                double dutyCycle = get_maximum_duty_cycle();
-                
-                // Run simulation
-                SimulationConfig config;
-                config.frequency = switchingFrequency;
-                config.extractOnePeriod = true;
-                config.numberOfPeriods = 2;  // Two periods for topology waveform visualization
-                config.keepTempFiles = false;
-                
-                auto simResult = runner.run_simulation(netlist, config);
-                
-                if (!simResult.success) {
-                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
-                }
-                
-                // Build name-to-index map for waveform lookup (case-insensitive)
-                std::map<std::string, size_t> nameToIndex;
-                for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-                    std::string lower = simResult.waveformNames[i];
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    nameToIndex[lower] = i;
-                }
-                
-                // Helper lambda to get waveform data by name
-                auto getWaveformData = [&](const std::string& name) -> std::vector<double> {
-                    std::string lower = name;
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    auto it = nameToIndex.find(lower);
-                    if (it != nameToIndex.end()) {
-                        return simResult.waveforms[it->second].get_data();
-                    }
-                    return {};
-                };
-                
-                // Extract topology waveforms
-                PushPullTopologyWaveforms waveforms;
-                waveforms.frequency = switchingFrequency;
-                waveforms.inputVoltageValue = inputVoltage;
-                waveforms.outputVoltageValue = pushPullOpPoint.get_output_voltages()[0];
-                waveforms.dutyCycle = dutyCycle;
-                
-                // Set name
-                waveforms.operatingPointName = inputVoltagesNames[inputVoltageIndex] + " input";
-                if (get_operating_points().size() > 1) {
-                    waveforms.operatingPointName += " op. point " + std::to_string(opIndex);
-                }
-                
-                // Extract time vector
-                waveforms.time = getWaveformData("time");
-                
-                // Extract primary winding signals
-                waveforms.primary1Voltage = getWaveformData("pri1_in");
-                waveforms.primary2Voltage = getWaveformData("pri2_in");
-                waveforms.primary1Current = getWaveformData("vpri1_sense#branch");
-                waveforms.primary2Current = getWaveformData("vpri2_sense#branch");
-                
-                // Extract secondary signals
-                waveforms.secondaryVoltage = getWaveformData("sec1_in");  // Use sec1 as reference
-                waveforms.secondaryCurrent = getWaveformData("vsec_sense#branch");
-                waveforms.outputVoltage = getWaveformData("vout");
-                waveforms.outputInductorCurrent = getWaveformData("vl_sense#branch");
-                
-                topologyWaveforms.push_back(waveforms);
-            }
-        }
-        
-        return topologyWaveforms;
+        // For Push-Pull converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
     }
-
 } // namespace OpenMagnetics

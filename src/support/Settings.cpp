@@ -15,7 +15,7 @@ namespace OpenMagnetics {
         _magneticFieldMirroringDimension = defaults.magneticFieldMirroringDimension;
         _harmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold;
         _coreLossesModelNames = {defaults.coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
-        
+
         // Initialize centralized model configuration from defaults
         _magneticFieldStrengthModel = defaults.magneticFieldStrengthModelDefault;
         _magneticFieldStrengthFringingEffectModel = defaults.magneticFieldStrengthFringingEffectModelDefault;
@@ -25,6 +25,7 @@ namespace OpenMagnetics {
         _windingSkinEffectLossesModel = WindingSkinEffectLossesModels::DOWELL;
         _windingProximityEffectLossesModel = WindingProximityEffectLossesModels::FERREIRA;
         _strayCapacitanceModel = StrayCapacitanceModels::ALBACH;
+        _coreAdviserMaximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
     }
 
 
@@ -99,7 +100,8 @@ namespace OpenMagnetics {
         _coreAdviserIncludeStacks = true;
         _coreAdviserIncludeDistributedGaps = true;
         _coreAdviserIncludeMargin = false;
-
+        _coreAdviserEnableIntermediatePruning = true;
+        _coreAdviserMaximumMagneticsAfterFiltering = Defaults().coreAdviserMaximumMagneticsAfterFiltering;
 
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
@@ -557,6 +559,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_adviser_include_margin(bool value) {
         _coreAdviserIncludeMargin = value;
+    }
+
+    bool Settings::get_core_adviser_enable_intermediate_pruning() const {
+        return _coreAdviserEnableIntermediatePruning;
+    }
+    void Settings::set_core_adviser_enable_intermediate_pruning(bool value) {
+        _coreAdviserEnableIntermediatePruning = value;
+    }
+
+    size_t Settings::get_core_adviser_maximum_magnetics_after_filtering() const {
+        return _coreAdviserMaximumMagneticsAfterFiltering;
+    }
+    void Settings::set_core_adviser_maximum_magnetics_after_filtering(size_t value) {
+        _coreAdviserMaximumMagneticsAfterFiltering = value;
     }
 
     bool Settings::get_wire_adviser_include_planar() const {

@@ -23,6 +23,7 @@
 #include <cmrc/cmrc.hpp>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
+#include "support/Settings.h"
 
 CMRC_DECLARE(data);
 
@@ -586,7 +587,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults){
     _weights = weights;
  
-    size_t maximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
+    size_t maximumMagneticsAfterFiltering = settings.get_core_adviser_maximum_magnetics_after_filtering();
     std::vector<std::pair<Magnetic, double>> magnetics;
 
     magnetics = create_magnetic_dataset(inputs, cores, false);
@@ -620,12 +621,12 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults) {
     auto magnetics = create_magnetic_dataset(inputs, shapes, false);
 
-    size_t maximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
+    size_t maximumMagneticsAfterFiltering = settings.get_core_adviser_maximum_magnetics_after_filtering();
     if (get_application() == Application::POWER) {
-        return filter_standard_cores_power_application(&magnetics, inputs, maximumMagneticsAfterFiltering, maximumNumberResults);
+        return filter_standard_cores_power_application(&magnetics, inputs, _weights, maximumMagneticsAfterFiltering, maximumNumberResults);
     }
     else {
-        return filter_standard_cores_interference_suppression_application(&magnetics, inputs, maximumMagneticsAfterFiltering, maximumNumberResults);
+        return filter_standard_cores_interference_suppression_application(&magnetics, inputs, _weights, maximumMagneticsAfterFiltering, maximumNumberResults);
     }
 }
 
@@ -1359,15 +1360,15 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     filterDimensions.set_filter_configuration(&_filterConfiguration);
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
-    magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+    magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);  // Fixed weight: pre-filtering criterion, not efficiency scoring
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Area Product filter.", "CoreAdviser");
 
-    if (magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
+    if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
         magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumMagneticsAfterFiltering));
         logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " after culling by the score on the first filter.", "CoreAdviser");
     }
 
-    magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+    magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);  // Fixed weight: pre-filtering criterion, not efficiency scoring
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Energy Stored filter.", "CoreAdviser");
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
@@ -1446,8 +1447,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Magnetizing Inductance.", "CoreAdviser");
 
-    // magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
-    // logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Core Losses filter.", "CoreAdviser");
+    magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Core Losses filter.", "CoreAdviser");
 
     if (magneticsWithScoring.size() == 0) {
         return {};
@@ -1474,7 +1475,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     return masWithScoring;
 }
 
-std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
+std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
     inputs = pre_process_inputs(inputs);
 
     MagneticCoreFilterAreaProduct filterAreaProduct(inputs);
@@ -1510,11 +1511,11 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
     bool usingPowderCores = should_include_powder(inputs);
-    if (usingPowderCores) {
+    if (settings.get_core_adviser_enable_intermediate_pruning() && usingPowderCores) {
         maximumMagneticsAfterFiltering /= 2;
     }
 
-    if (magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
+    if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
         magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumMagneticsAfterFiltering));
         logEntry("Reducing to " + std::to_string(magneticsWithScoring.size()) + " of ferrite material.", "CoreAdviser");
     }
@@ -1580,7 +1581,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     return masWithScoring;
 }
 
-std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
+std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
     inputs = pre_process_inputs(inputs);
 
     MagneticCoreFilterLosses filterLosses(inputs, _models);

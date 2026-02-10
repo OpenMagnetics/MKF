@@ -5,9 +5,9 @@
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 
 
 class IsolatedBuck : public MAS::IsolatedBuck, public Topology {
@@ -21,11 +21,12 @@ public:
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
+    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, const IsolatedBuckOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(const std::vector<double>& turnsRatios, double magnetizingInductance);
 
 };
 
@@ -36,8 +37,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedIsolatedBuck() = default;
     ~AdvancedIsolatedBuck() = default;
 

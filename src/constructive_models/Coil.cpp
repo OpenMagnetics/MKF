@@ -4807,9 +4807,7 @@ bool Coil::wind_toroidal_additional_turns() {
                         if (!areLayersTaped) {
 
                             // If the turn is not on the first layer of the section, we try to place it in a slot there
-                            // Use a small tolerance to account for floating point precision issues
-                            double turnInnerEdge = turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2;
-                            if (turnInnerEdge > 1e-9) {
+                            if (roundFloat(turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2, 9) > 0) {
                                 std::vector<double> newCoordinates = {additionalCoordinates[0], additionalCoordinates[1]};
                                 newCoordinates[0] = currentBaseRadialHeight;
                                 auto collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
@@ -4950,27 +4948,6 @@ bool Coil::wind_toroidal_additional_turns() {
                                                         newCoordinates = testCoords;
                                                         foundSlot = true;
                                                         break;
-                                                    }
-                                                }
-                                                
-                                                // If still not found, try with even smaller steps and offset starting positions
-                                                if (!foundSlot) {
-                                                    for (double offset = 0; offset < currentWireAngle; offset += scanStep) {
-                                                        for (double testAngle = sectionMinAngle + offset; testAngle <= sectionMaxAngle; testAngle += currentWireAngle) {
-                                                            // Normalize angle to avoid boundary issues
-                                                            double normalizedAngle = testAngle;
-                                                            while (normalizedAngle < 0) normalizedAngle += 360;
-                                                            while (normalizedAngle >= 360) normalizedAngle -= 360;
-                                                            
-                                                            std::vector<double> testCoords = {currentBaseRadialHeight, normalizedAngle};
-                                                            auto testCollisions = get_collision_distances(testCoords, placedTurnsCoordinates, wireHeight);
-                                                            if (testCollisions.size() == 0) {
-                                                                newCoordinates = testCoords;
-                                                                foundSlot = true;
-                                                                break;
-                                                            }
-                                                        }
-                                                        if (foundSlot) break;
                                                     }
                                                 }
                                             }
@@ -6059,11 +6036,6 @@ bool Coil::delimit_and_compact_round_window() {
             }
 
             double compactingShiftAngle = sections[sectionIndex].get_coordinates()[1] - currentCoilAngle;
-            
-            // Normalize the shift angle to handle 360-degree wrap-around for toroidal cores
-            // The shift should be the smallest angle that achieves the desired alignment
-            while (compactingShiftAngle > 180) compactingShiftAngle -= 360;
-            while (compactingShiftAngle < -180) compactingShiftAngle += 360;
 
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
                 if (sections[sectionIndex].get_type() == ElectricalType::INSULATION) {
@@ -6859,9 +6831,33 @@ std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType cor
 }
 
 
+/**
+ * @brief Get valid winding repetition patterns for a given configuration.
+ *
+ * For Common Mode Chokes (CMC) on toroidal cores, returns {2, 1} to enable
+ * bifilar (interleaved) winding which is essential for common-mode rejection.
+ * Bifilar winding ensures both windings have identical impedance characteristics.
+ *
+ * @param inputs Design inputs including sub-application type
+ * @param coreType Type of core being wound
+ * @return Vector of valid repetition counts to try
+ */
 std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
-    if (inputs.get_design_requirements().get_turns_ratios().size() == 0 || coreType == CoreType::TOROIDAL) {
-        return {1};  // hardcoded
+    // CMCs on toroids need bifilar winding for common-mode rejection
+    if (coreType == CoreType::TOROIDAL) {
+        if (inputs.get_design_requirements().get_sub_application() &&
+            inputs.get_design_requirements().get_sub_application().value() == SubApplication::COMMON_MODE_NOISE_FILTERING) {
+            // Bifilar (interleaved) winding is preferred for CMCs to ensure matched impedance
+            return {2, 1};
+        }
+        // Non-CMC toroids (inductors) don't need interleaving
+        if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
+            return {1};
+        }
+    }
+    
+    if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
+        return {1};
     }
     if (inputs.get_design_requirements().get_wiring_technology()) {
         if (inputs.get_design_requirements().get_wiring_technology().value() == WiringTechnology::PRINTED) {
@@ -6873,10 +6869,10 @@ std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
         }
     }
     if (inputs.get_design_requirements().get_leakage_inductance()) {
-        return {2, 1};  // hardcoded
+        return {2, 1};
     }
     else{
-        return {1, 2};  // hardcoded
+        return {1, 2};
     }
 }
 

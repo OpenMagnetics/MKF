@@ -3,6 +3,7 @@
 #include "converter_models/Flyback.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
+#include "processors/NgspiceRunner.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -12,6 +13,7 @@
 #include <magic_enum.hpp>
 #include <vector>
 #include <typeinfo>
+#include <numeric>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -970,117 +972,185 @@ namespace {
         REQUIRE(turnsRatio < 25);
     }
 
-    TEST_CASE("Test_Flyback_Ngspice_Simulation", "[converter-model][flyback-topology][ngspice]") {
-        json flybackInputsJson;
-        json inputVoltage;
-
-        inputVoltage["minimum"] = 110;
-        inputVoltage["maximum"] = 240;
-        flybackInputsJson["inputVoltage"] = inputVoltage;
-        flybackInputsJson["diodeVoltageDrop"] = 0.7;
-        flybackInputsJson["maximumDrainSourceVoltage"] = 350;
-        flybackInputsJson["currentRippleRatio"] = 0.3;
-        flybackInputsJson["efficiency"] = 0.9;
-        flybackInputsJson["operatingPoints"] = json::array();
-
-        {
-            json flybackOperatingPointJson;
-            flybackOperatingPointJson["outputVoltages"] = {12};
-            flybackOperatingPointJson["outputCurrents"] = {2};
-            flybackOperatingPointJson["switchingFrequency"] = 100000;
-            flybackOperatingPointJson["ambientTemperature"] = 25;
-            flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
-        }
-
-        OpenMagnetics::Flyback flyback(flybackInputsJson);
-        flyback._assertErrors = true;
+    TEST_CASE("Test_Flyback_Ngspice_Simulation_CCM", "[converter-model][flyback-topology][ngspice-simulation]") {
+        // Create a Flyback converter specification
+        OpenMagnetics::Flyback flyback;
         
-        // First process to get design requirements with inductance
-        auto inputs = flyback.process();
-        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+        // Input voltage: 48V nominal
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(48.0);
+        inputVoltage.set_minimum(42.0);
+        inputVoltage.set_maximum(54.0);
+        flyback.set_input_voltage(inputVoltage);
         
-        // Get turns ratios
+        // Diode voltage drop
+        flyback.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        flyback.set_efficiency(0.9);
+        
+        // Current ripple ratio for CCM
+        flyback.set_current_ripple_ratio(0.4);
+        
+        // Maximum duty cycle
+        flyback.set_maximum_duty_cycle(0.5);
+        
+        // Operating point: 12V @ 1A output, 100kHz
+        OpenMagnetics::FlybackOperatingPoint opPoint;
+        opPoint.set_output_voltages({12.0});
+        opPoint.set_output_currents({1.0});
+        opPoint.set_ambient_temperature(25.0);
+        opPoint.set_switching_frequency(100000.0);
+        flyback.set_operating_points({opPoint});
+        
+        // Process design requirements to get turns ratios and inductance
+        auto designReqs = flyback.process_design_requirements();
+        
         std::vector<double> turnsRatios;
-        for (const auto& tr : inputs.get_design_requirements().get_turns_ratios()) {
-            turnsRatios.push_back(OpenMagnetics::resolve_dimensional_values(tr));
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        INFO("Flyback CCM - Turns ratio: " << turnsRatios[0]);
+        INFO("Flyback CCM - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
+        auto operatingPoints = flyback.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        
+        // Verify we have excitations for primary + 1 secondary = 2 windings
+        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() == 2);
+        
+        // Get primary excitation
+        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExc.get_voltage().has_value());
+        REQUIRE(primaryExc.get_current().has_value());
+        
+        // Get secondary excitation
+        const auto& secondaryExc = operatingPoints[0].get_excitations_per_winding()[1];
+        REQUIRE(secondaryExc.get_voltage().has_value());
+        REQUIRE(secondaryExc.get_current().has_value());
+        
+        // Extract waveform data
+        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
+        auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
+        auto secVoltageData = secondaryExc.get_voltage()->get_waveform()->get_data();
+        auto secCurrentData = secondaryExc.get_current()->get_waveform()->get_data();
+        
+        // Calculate statistics
+        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
+        double priV_min = *std::min_element(priVoltageData.begin(), priVoltageData.end());
+        double priI_max = *std::max_element(priCurrentData.begin(), priCurrentData.end());
+        double priI_min = *std::min_element(priCurrentData.begin(), priCurrentData.end());
+        double secV_max = *std::max_element(secVoltageData.begin(), secVoltageData.end());
+        double secI_avg = std::accumulate(secCurrentData.begin(), secCurrentData.end(), 0.0) / secCurrentData.size();
+        
+        INFO("Primary voltage max: " << priV_max << " V");
+        INFO("Primary voltage min: " << priV_min << " V");
+        INFO("Primary current max: " << priI_max << " A");
+        INFO("Primary current min: " << priI_min << " A");
+        INFO("Secondary voltage max: " << secV_max << " V");
+        INFO("Secondary current avg: " << secI_avg << " A");
+        
+        // Validate primary voltage: should be close to input voltage during ON time
+        CHECK(priV_max > 40.0);  // Should be around 48V
+        CHECK(priV_max < 60.0);
+        
+        // Validate primary voltage goes negative during OFF time (reflected voltage)
+        CHECK(priV_min < -10.0);  // Reflected voltage
+        
+        // Validate secondary voltage is around output voltage + diode drop
+        CHECK(secV_max > 10.0);  // Should be around 12.5V
+        CHECK(secV_max < 20.0);
+        
+        // Validate secondary current average is close to output current
+        CHECK(secI_avg > 0.8);  // Should be around 1A
+        CHECK(secI_avg < 1.5);
+        
+        // In CCM, primary current should not go to zero
+        CHECK(priI_min > 0.0);
+        
+        INFO("Flyback CCM ngspice simulation test passed");
+    }
+
+    TEST_CASE("Test_Flyback_Ngspice_Simulation_DCM", "[converter-model][flyback-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
         }
         
-        // Now run the ngspice simulation
-        auto topologyWaveforms = flyback.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        // Create a Flyback converter specification for DCM
+        OpenMagnetics::Flyback flyback;
         
-        REQUIRE(topologyWaveforms.size() >= 1);
+        // Input voltage: 48V nominal
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(48.0);
+        inputVoltage.set_minimum(42.0);
+        inputVoltage.set_maximum(54.0);
+        flyback.set_input_voltage(inputVoltage);
         
-        for (size_t opIndex = 0; opIndex < topologyWaveforms.size(); opIndex++) {
-            auto& wf = topologyWaveforms[opIndex];
-            
-            // Check that time vector has reasonable values
-            REQUIRE(wf.time.size() > 0);
-            REQUIRE(wf.time[0] >= 0);
-            
-            // Check primary current waveform
-            REQUIRE(wf.primaryCurrent.size() == wf.time.size());
-            
-            // Check switch node voltage waveform
-            REQUIRE(wf.switchNodeVoltage.size() == wf.time.size());
-            
-            // Check output voltages (at least one secondary)
-            REQUIRE(wf.outputVoltages.size() >= 1);
-            REQUIRE(wf.outputVoltages[0].size() == wf.time.size());
-            
-            // Verify output voltage is close to expected
-            double avgOutputVoltage = 0;
-            for (double v : wf.outputVoltages[0]) {
-                avgOutputVoltage += v;
-            }
-            avgOutputVoltage /= wf.outputVoltages[0].size();
-            REQUIRE_THAT(avgOutputVoltage, Catch::Matchers::WithinAbs(12.0, 3.0));  // Within 3V of expected 12V output
-            
-            // Paint waveforms for visual inspection
-            {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Flyback_Ngspice_PrimaryCurrent_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform currentWaveform;
-                currentWaveform.set_time(wf.time);
-                currentWaveform.set_data(wf.primaryCurrent);
-                painter.paint_waveform(currentWaveform);
-                painter.export_svg();
-            }
-            {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Flyback_Ngspice_SwitchNodeVoltage_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform voltageWaveform;
-                voltageWaveform.set_time(wf.time);
-                voltageWaveform.set_data(wf.switchNodeVoltage);
-                painter.paint_waveform(voltageWaveform);
-                painter.export_svg();
-            }
-            {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Flyback_Ngspice_OutputVoltage_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform outputWaveform;
-                outputWaveform.set_time(wf.time);
-                outputWaveform.set_data(wf.outputVoltages[0]);
-                painter.paint_waveform(outputWaveform);
-                painter.export_svg();
-            }
-            if (wf.secondaryCurrents.size() > 0) {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Flyback_Ngspice_SecondaryCurrent_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform currentWaveform;
-                currentWaveform.set_time(wf.time);
-                currentWaveform.set_data(wf.secondaryCurrents[0]);
-                painter.paint_waveform(currentWaveform);
-                painter.export_svg();
-            }
+        // Diode voltage drop
+        flyback.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        flyback.set_efficiency(0.9);
+        
+        // Current ripple ratio > 1 forces DCM
+        flyback.set_current_ripple_ratio(2.0);
+        
+        // Maximum duty cycle
+        flyback.set_maximum_duty_cycle(0.45);
+        
+        // Operating point: 12V @ 0.5A output (light load), 100kHz
+        OpenMagnetics::FlybackOperatingPoint opPoint;
+        opPoint.set_output_voltages({12.0});
+        opPoint.set_output_currents({0.5});
+        opPoint.set_ambient_temperature(25.0);
+        opPoint.set_switching_frequency(100000.0);
+        flyback.set_operating_points({opPoint});
+        
+        // Process design requirements
+        auto designReqs = flyback.process_design_requirements();
+        
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
         }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        INFO("Flyback DCM - Turns ratio: " << turnsRatios[0]);
+        INFO("Flyback DCM - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
+        auto operatingPoints = flyback.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        
+        // Verify we have excitations
+        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() == 2);
+        
+        // Get primary excitation
+        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
+        auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
+        
+        // Calculate primary current statistics
+        double priI_max = *std::max_element(priCurrentData.begin(), priCurrentData.end());
+        double priI_min = *std::min_element(priCurrentData.begin(), priCurrentData.end());
+        
+        INFO("Primary current max: " << priI_max << " A");
+        INFO("Primary current min: " << priI_min << " A");
+        
+        // In DCM, primary current should touch or approach zero
+        CHECK(priI_min < 0.5);  // Should be near zero
+        
+        // Validate we have reasonable peak current
+        CHECK(priI_max > 0.1);
+        CHECK(priI_max < 5.0);
+        
+        INFO("Flyback DCM ngspice simulation test passed");
     }
 
 }  // namespace

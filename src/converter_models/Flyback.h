@@ -6,39 +6,9 @@
 #include "converter_models/Topology.h"
 #include "processors/NgspiceRunner.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
-
-/**
- * @brief Structure holding topology-level waveforms for converter validation
- * 
- * These waveforms are used to validate that the simulation matches expected
- * converter behavior, not for magnetic component analysis.
- */
-struct FlybackTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;           // v(vin_dc) - DC input voltage
-    std::vector<double> switchNodeVoltage;      // v(pri_in) - switch node / primary winding voltage
-    
-    // Output side signals (one per secondary winding)
-    std::vector<std::vector<double>> secondaryWindingVoltages; // v(sec_N_in) - secondary winding voltages
-    std::vector<std::vector<double>> outputVoltages;          // v(vout_N) - DC output voltages after rectifiers
-    
-    // Currents
-    std::vector<double> primaryCurrent;                       // i(vpri_sense) - primary winding current
-    std::vector<std::vector<double>> secondaryCurrents;       // i(vsec_sense_N) - secondary winding currents
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    std::vector<double> outputVoltageValues;  // One per secondary
-    double dutyCycle;
-};
+using namespace MAS;
 
 class FlybackOperatingPoint : public MAS::FlybackOperatingPoint{
 public:
@@ -54,6 +24,7 @@ private:
     std::optional<double> maximumDutyCycle = 0.5;
     double efficiency = 1;
     int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
+    int numSteadyStatePeriods = 5;  // Number of steady-state cycles to skip
 
 public:
     const std::vector<OpenMagnetics::FlybackOperatingPoint> & get_operating_points() const { return operatingPoints; }
@@ -62,6 +33,9 @@ public:
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool _assertErrors = false;
 
@@ -78,10 +52,10 @@ public:
 
     // According to Worked Example (7), pages 135-144 — Designing the Flyback Transformer of Switching Power Supplies A - Z (Second Edition) by Sanjaya Maniktala
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, OpenMagnetics::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<FlybackModes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, OpenMagnetics::FlybackOperatingPoint outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, std::optional<FlybackModes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
     
     /**
      * @brief Generate an ngspice circuit for this flyback converter
@@ -159,9 +133,9 @@ public:
      * @param turnsRatios Turns ratios for each secondary
      * @param magnetizingInductance Magnetizing inductance in H
      * @param numberOfPeriods Number of switching periods to simulate (default 2)
-     * @return Vector of FlybackTopologyWaveforms for each operating condition
+     * @return Vector of OperatingPoints for each operating condition
      */
-    std::vector<FlybackTopologyWaveforms> simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
         size_t numberOfPeriods = 2);
@@ -182,8 +156,6 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
-
     AdvancedFlyback() = default;
     ~AdvancedFlyback() = default;
 

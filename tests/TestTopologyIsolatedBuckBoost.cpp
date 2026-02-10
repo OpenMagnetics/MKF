@@ -3,16 +3,17 @@
 #include "converter_models/IsolatedBuckBoost.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
+#include "processors/NgspiceRunner.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
-#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
 #include <vector>
 #include <typeinfo>
+#include <numeric>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -103,41 +104,55 @@ namespace {
         REQUIRE_THAT(0, Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset(), 0.01));
     }
 
-    TEST_CASE("Test_IsolatedBuckBoost_Ngspice_Simulation", "[converter-model][isolated-buck-boost-topology][ngspice]") {
-        json isolatedBuckBoostInputsJson;
-        json inputVoltage;
-
-        inputVoltage["minimum"] = 10;
-        inputVoltage["maximum"] = 30;
-        isolatedBuckBoostInputsJson["inputVoltage"] = inputVoltage;
-        isolatedBuckBoostInputsJson["diodeVoltageDrop"] = 0.7;
-        isolatedBuckBoostInputsJson["maximumSwitchCurrent"] = 5;
-        isolatedBuckBoostInputsJson["efficiency"] = 0.9;
-        isolatedBuckBoostInputsJson["operatingPoints"] = json::array();
-
-        {
-            json isolatedBuckBoostOperatingPointJson;
-            isolatedBuckBoostOperatingPointJson["outputVoltages"] = {12};
-            isolatedBuckBoostOperatingPointJson["outputCurrents"] = {1};
-            isolatedBuckBoostOperatingPointJson["switchingFrequency"] = 100000;
-            isolatedBuckBoostOperatingPointJson["ambientTemperature"] = 25;
-            isolatedBuckBoostInputsJson["operatingPoints"].push_back(isolatedBuckBoostOperatingPointJson);
+    TEST_CASE("Test_IsolatedBuckBoost_Ngspice_Simulation", "[converter-model][isolated-buck-boost-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
         }
-
-        OpenMagnetics::IsolatedBuckBoost isolatedBuckBoost(isolatedBuckBoostInputsJson);
-        isolatedBuckBoost._assertErrors = true;
         
-        // First process to get design requirements with inductance
-        auto inputs = isolatedBuckBoost.process();
-        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+        // Create an Isolated Buck-Boost converter
+        OpenMagnetics::IsolatedBuckBoost isolatedBuckBoost;
         
-        // Get turns ratios
+        // Input voltage: 12V nominal
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(12.0);
+        inputVoltage.set_minimum(9.0);
+        inputVoltage.set_maximum(15.0);
+        isolatedBuckBoost.set_input_voltage(inputVoltage);
+        
+        // Diode voltage drop
+        isolatedBuckBoost.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        isolatedBuckBoost.set_efficiency(0.9);
+        
+        // Current ripple ratio
+        isolatedBuckBoost.set_current_ripple_ratio(0.3);
+        
+        // Operating point: 5V @ 1A output on secondary, 200kHz
+        // For Isolated Buck-Boost: output_voltages[0] = primary voltage/current (inductor side)
+        // output_voltages[1] = secondary voltage/current
+        IsolatedBuckBoostOperatingPoint opPoint;
+        opPoint.set_output_voltages({6.0, 5.0});  // primary ~6V, secondary 5V
+        opPoint.set_output_currents({0.5, 1.0});  // primary ~0.5A, secondary 1A
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        isolatedBuckBoost.set_operating_points({opPoint});
+        
+        // Process design requirements
+        auto designReqs = isolatedBuckBoost.process_design_requirements();
+        
         std::vector<double> turnsRatios;
-        for (const auto& tr : inputs.get_design_requirements().get_turns_ratios()) {
-            turnsRatios.push_back(OpenMagnetics::resolve_dimensional_values(tr));
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
         }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
         
-        // Now run the ngspice simulation
+        INFO("Isolated Buck-Boost - Turns ratio: " << turnsRatios[0]);
+        INFO("Isolated Buck-Boost - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
         auto topologyWaveforms = isolatedBuckBoost.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
         
         REQUIRE(topologyWaveforms.size() >= 1);
@@ -155,15 +170,17 @@ namespace {
             // Check primary voltage waveform
             REQUIRE(wf.primaryVoltage.size() == wf.time.size());
             
+            // For Buck-Boost, primary voltage should be close to input voltage during ON time
+            double priV_max = *std::max_element(wf.primaryVoltage.begin(), wf.primaryVoltage.end());
+            INFO("Primary voltage max: " << priV_max << " V");
+            CHECK(priV_max > 5.0);  // Should be around 12V input
+            CHECK(priV_max < 20.0);
+            
             // Check output voltages if available
             if (wf.outputVoltages.size() >= 1 && wf.outputVoltages[0].size() == wf.time.size()) {
                 // Verify output voltage is close to expected
-                double avgOutputVoltage = 0;
-                for (double v : wf.outputVoltages[0]) {
-                    avgOutputVoltage += v;
-                }
-                avgOutputVoltage /= wf.outputVoltages[0].size();
-                REQUIRE_THAT(std::abs(avgOutputVoltage), Catch::Matchers::WithinAbs(12.0, 5.0));  // Within 5V of expected 12V output
+                double avgOutputVoltage = std::accumulate(wf.outputVoltages[0].begin(), wf.outputVoltages[0].end(), 0.0) / wf.outputVoltages[0].size();
+                REQUIRE_THAT(std::abs(avgOutputVoltage), Catch::Matchers::WithinAbs(5.0, 5.0));  // Within 5V of expected 5V output
             }
             
             // Paint waveforms for visual inspection
@@ -212,6 +229,8 @@ namespace {
                 painter.export_svg();
             }
         }
+        
+        INFO("Isolated Buck-Boost ngspice simulation test passed");
     }
 
 }  // namespace

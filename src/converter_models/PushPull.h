@@ -10,41 +10,10 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-/**
- * @brief Structure holding topology-level waveforms for Push-Pull converter validation
- * 
- * These waveforms are used to validate that the simulation matches expected
- * converter behavior, not for magnetic component analysis.
- */
-struct PushPullTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;           // v(vin_dc) - DC input voltage
-    std::vector<double> primary1Voltage;        // v(pri1_in) - primary winding 1 voltage
-    std::vector<double> primary2Voltage;        // v(pri2_in) - primary winding 2 voltage
-    std::vector<double> primary1Current;        // i(vpri1_sense) - primary winding 1 current
-    std::vector<double> primary2Current;        // i(vpri2_sense) - primary winding 2 current
-    
-    // Output side signals
-    std::vector<double> secondaryVoltage;       // v(sec_in) - secondary winding voltage
-    std::vector<double> outputVoltage;          // v(vout) - DC output voltage after LC filter
-    std::vector<double> secondaryCurrent;       // i(vsec_sense) - secondary winding current
-    std::vector<double> outputInductorCurrent;  // i(vL_sense) - output inductor current
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    double outputVoltageValue;
-    double dutyCycle;
-};
-
-
 class PushPull : public MAS::PushPull, public Topology {
 private:
-    int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
+    int numPeriodsToExtract = 5;
+    int numSteadyStatePeriods = 5;
 
 public:
     bool _assertErrors = false;
@@ -52,28 +21,28 @@ public:
     PushPull(const json& j);
     PushPull() {
     };
-
+    
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool run_checks(bool assert = false) override;
 
     Inputs process();
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, PushPullOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double outputInductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const PushPullOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double outputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio);
     double get_maximum_duty_cycle();
-    
+
     /**
      * @brief Generate an ngspice circuit for this Push-Pull converter
      * 
-     * Creates a SPICE netlist for simulating the push-pull converter with
-     * center-tapped primary and secondary.
-     * 
-     * @param turnsRatios Vector of turns ratios
+     * @param turnsRatios Turns ratios for secondary windings
      * @param magnetizingInductance Magnetizing inductance in H
      * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
      * @param operatingPointIndex Which operating point to simulate
@@ -86,9 +55,9 @@ public:
         size_t operatingPointIndex = 0);
     
     /**
-     * @brief Simulate the Push-Pull converter and extract operating points from waveforms
+     * @brief Simulate the Push-Pull converter and extract operating points
      * 
-     * @param turnsRatios Vector of turns ratios
+     * @param turnsRatios Turns ratios for each winding
      * @param magnetizingInductance Magnetizing inductance in H
      * @return Vector of OperatingPoints extracted from simulation
      */
@@ -97,13 +66,13 @@ public:
         double magnetizingInductance);
     
     /**
-     * @brief Simulate and extract topology-level waveforms for converter validation
+     * @brief Simulate and extract operating points from topology waveforms
      * 
-     * @param turnsRatios Vector of turns ratios
+     * @param turnsRatios Turns ratios for each winding
      * @param magnetizingInductance Magnetizing inductance in H
-     * @return Vector of PushPullTopologyWaveforms for each operating condition
+     * @return Vector of OperatingPoints extracted from simulation
      */
-    std::vector<PushPullTopologyWaveforms> simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 

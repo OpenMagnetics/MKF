@@ -26,6 +26,20 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+inline std::vector<double> linspace(double start, double end, size_t num) {
+    std::vector<double> result;
+    if (num == 0) return result;
+    if (num == 1) {
+        result.push_back(start);
+        return result;
+    }
+    double step = (end - start) / (num - 1);
+    for (size_t i = 0; i < num; ++i) {
+        result.push_back(start + i * step);
+    }
+    return result;
+}
+
 inline const OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
 inline const OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 inline OpenMagnetics::Settings& settings = OpenMagnetics::Settings::GetInstance();
