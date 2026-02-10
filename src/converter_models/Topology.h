@@ -19,7 +19,7 @@ public:
 
     static OperatingPointExcitation complete_excitation(Waveform currentWaveform, Waveform voltageWaveform, double switchingFrequency, std::string name);
     virtual DesignRequirements process_design_requirements() = 0;
-    virtual std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) = 0;
+    virtual std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) = 0;
     virtual bool run_checks(bool assert = false);
     Inputs process();
 

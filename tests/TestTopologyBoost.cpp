@@ -3,6 +3,7 @@
 #include "converter_models/Boost.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
+#include "processors/NgspiceRunner.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -12,6 +13,7 @@
 #include <magic_enum.hpp>
 #include <vector>
 #include <typeinfo>
+#include <numeric>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -90,97 +92,83 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
     }
 
-    TEST_CASE("Test_Boost_Ngspice_Simulation", "[converter-model][boost-topology][ngspice]") {
-        json boostInputsJson;
-        json inputVoltage;
-
-        inputVoltage["minimum"] = 12;
-        inputVoltage["maximum"] = 24;
-        boostInputsJson["inputVoltage"] = inputVoltage;
-        boostInputsJson["diodeVoltageDrop"] = 0.7;
-        boostInputsJson["efficiency"] = 0.9;
-        boostInputsJson["maximumSwitchCurrent"] = 8;
-        boostInputsJson["operatingPoints"] = json::array();
-        {
-            json boostOperatingPointJson;
-            boostOperatingPointJson["outputVoltage"] = 48;
-            boostOperatingPointJson["outputCurrent"] = 1;
-            boostOperatingPointJson["switchingFrequency"] = 100000;
-            boostOperatingPointJson["ambientTemperature"] = 25;
-            boostInputsJson["operatingPoints"].push_back(boostOperatingPointJson);
+    TEST_CASE("Test_Boost_Ngspice_Simulation", "[converter-model][boost-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
         }
-
-        OpenMagnetics::Boost boost(boostInputsJson);
-        boost._assertErrors = true;
         
-        // First process to get design requirements with inductance
-        auto inputs = boost.process();
-        double inductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+        // Create a Boost converter specification
+        OpenMagnetics::Boost boost;
         
-        // Now run the ngspice simulation
-        auto topologyWaveforms = boost.simulate_and_extract_topology_waveforms(inductance);
+        // Input voltage: 12V nominal (9-15V range)
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(12.0);
+        inputVoltage.set_minimum(9.0);
+        inputVoltage.set_maximum(15.0);
+        boost.set_input_voltage(inputVoltage);
         
-        REQUIRE(topologyWaveforms.size() >= 1);
+        // Diode voltage drop
+        boost.set_diode_voltage_drop(0.5);
         
-        for (size_t opIndex = 0; opIndex < topologyWaveforms.size(); opIndex++) {
-            auto& wf = topologyWaveforms[opIndex];
-            
-            // Check that time vector has reasonable values
-            REQUIRE(wf.time.size() > 0);
-            REQUIRE(wf.time[0] >= 0);
-            
-            // Check inductor voltage waveform
-            REQUIRE(wf.inductorVoltage.size() == wf.time.size());
-            
-            // Check inductor current waveform
-            REQUIRE(wf.inductorCurrent.size() == wf.time.size());
-            
-            // Check output voltage waveform
-            REQUIRE(wf.outputVoltage.size() == wf.time.size());
-            
-            // Verify output voltage is close to expected
-            double avgOutputVoltage = 0;
-            for (double v : wf.outputVoltage) {
-                avgOutputVoltage += v;
-            }
-            avgOutputVoltage /= wf.outputVoltage.size();
-            REQUIRE_THAT(avgOutputVoltage, Catch::Matchers::WithinAbs(48.0, 10.0));  // Within 10V of expected 48V output (includes diode drop and ripple)
-            
-            // Paint waveforms for visual inspection
-            {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Boost_Ngspice_InductorCurrent_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform currentWaveform;
-                currentWaveform.set_time(wf.time);
-                currentWaveform.set_data(wf.inductorCurrent);
-                painter.paint_waveform(currentWaveform);
-                painter.export_svg();
-            }
-            {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Boost_Ngspice_InductorVoltage_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform voltageWaveform;
-                voltageWaveform.set_time(wf.time);
-                voltageWaveform.set_data(wf.inductorVoltage);
-                painter.paint_waveform(voltageWaveform);
-                painter.export_svg();
-            }
-            {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Boost_Ngspice_OutputVoltage_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform outputWaveform;
-                outputWaveform.set_time(wf.time);
-                outputWaveform.set_data(wf.outputVoltage);
-                painter.paint_waveform(outputWaveform);
-                painter.export_svg();
-            }
-        }
+        // Efficiency
+        boost.set_efficiency(0.92);
+        
+        // Operating point: 24V @ 1A output, 100kHz
+        BoostOperatingPoint opPoint;
+        opPoint.set_output_voltage(24.0);
+        opPoint.set_output_current(1.0);
+        opPoint.set_switching_frequency(100e3);
+        opPoint.set_ambient_temperature(25.0);
+        
+        boost.set_operating_points({opPoint});
+        boost.set_current_ripple_ratio(0.4);
+        
+        // Process design requirements to get inductance
+        auto designReqs = boost.process_design_requirements();
+        double inductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        INFO("Boost - Inductance: " << (inductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
+        auto operatingPoints = boost.simulate_and_extract_topology_waveforms(inductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        
+        // Verify we have excitations
+        REQUIRE(!operatingPoints[0].get_excitations_per_winding().empty());
+        
+        // Get primary (inductor) excitation
+        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExc.get_voltage().has_value());
+        REQUIRE(primaryExc.get_current().has_value());
+        
+        // Extract waveform data
+        auto voltageData = primaryExc.get_voltage()->get_waveform()->get_data();
+        auto currentData = primaryExc.get_current()->get_waveform()->get_data();
+        
+        // Calculate statistics
+        double v_max = *std::max_element(voltageData.begin(), voltageData.end());
+        double v_min = *std::min_element(voltageData.begin(), voltageData.end());
+        double i_avg = std::accumulate(currentData.begin(), currentData.end(), 0.0) / currentData.size();
+        
+        INFO("Inductor voltage max: " << v_max << " V");
+        INFO("Inductor voltage min: " << v_min << " V");
+        INFO("Inductor current avg: " << i_avg << " A");
+        
+        // For Boost, inductor voltage swings between Vin and (Vin - Vout)
+        // Vin = 12V, Vout = 24V, so voltage should be around 12V and -12V
+        CHECK(v_max > 10.0);  // Should be around 12V during switch ON
+        CHECK(v_max < 15.0);
+        
+        // Average inductor current should be higher than output current (boost ratio)
+        // Iin = Iout * Vout / Vin = 1A * 24V / 12V = 2A (ideal)
+        // Actual will be higher due to efficiency losses
+        CHECK(i_avg > 1.2);  // Allow for some variation in simulation
+        CHECK(i_avg < 3.0);
+        
+        INFO("Boost ngspice simulation test passed");
     }
 
 }  // namespace

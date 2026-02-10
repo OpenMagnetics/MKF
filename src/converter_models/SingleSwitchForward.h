@@ -5,79 +5,45 @@
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
 #include "processors/NgspiceRunner.h"
+#include "converter_models/ForwardConverterUtils.h"
 
 using namespace MAS;
 
 namespace OpenMagnetics {
 
-/**
- * @brief Structure holding topology-level waveforms for Forward converter validation
- * 
- * These waveforms are used to validate that the simulation matches expected
- * converter behavior, not for magnetic component analysis.
- */
-struct ForwardTopologyWaveforms {
-    // Time base
-    std::vector<double> time;
-    double frequency;
-    
-    // Input side signals
-    std::vector<double> inputVoltage;           // v(vin_dc) - DC input voltage
-    std::vector<double> primaryVoltage;         // v(pri_in) - primary winding voltage
-    
-    // Demagnetization winding
-    std::vector<double> demagVoltage;           // v(demag_in) - demagnetization winding voltage
-    std::vector<double> demagCurrent;           // i(vdemag_sense) - demagnetization winding current
-    
-    // Output side signals (one per secondary winding)
-    std::vector<std::vector<double>> secondaryWindingVoltages; // v(sec_N_in) - secondary winding voltages
-    std::vector<std::vector<double>> outputVoltages;          // v(vout_N) - DC output voltages after LC filter
-    
-    // Currents
-    std::vector<double> primaryCurrent;                       // i(vpri_sense) - primary winding current
-    std::vector<std::vector<double>> secondaryCurrents;       // i(vsec_sense_N) - secondary winding currents
-    std::vector<std::vector<double>> outputInductorCurrents;  // i(vL_sense_N) - output inductor currents
-    
-    // Metadata
-    std::string operatingPointName;
-    double inputVoltageValue;
-    std::vector<double> outputVoltageValues;  // One per secondary
-    double dutyCycle;
-};
-
-
 class SingleSwitchForward : public MAS::Forward, public Topology {
 private:
-    int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
-
+    int numPeriodsToExtract = 5;
+    int numSteadyStatePeriods = 5;
+    
 public:
     bool _assertErrors = false;
 
     SingleSwitchForward(const json& j);
     SingleSwitchForward() {
     };
-
+    
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
-    std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
+    std::vector<MAS::OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
+    std::vector<MAS::OperatingPoint> process_operating_points(Magnetic magnetic);
     double get_total_reflected_secondary_current(ForwardOperatingPoint forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio=1);
 
     OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio, size_t outputIndex);
     double get_maximum_duty_cycle();
-    
+
     /**
      * @brief Generate an ngspice circuit for this Single-Switch Forward converter
      * 
-     * Creates a SPICE netlist for simulating the forward converter with transformer,
-     * demagnetization winding, and output LC filter.
-     * 
-     * @param turnsRatios Vector of turns ratios [demag, sec0, sec1, ...]
+     * @param turnsRatios Turns ratios for demagnetization and secondary windings
      * @param magnetizingInductance Magnetizing inductance in H
      * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
      * @param operatingPointIndex Which operating point to simulate
@@ -90,9 +56,9 @@ public:
         size_t operatingPointIndex = 0);
     
     /**
-     * @brief Simulate the Forward converter and extract operating points from waveforms
+     * @brief Simulate the Single-Switch Forward converter and extract operating points
      * 
-     * @param turnsRatios Vector of turns ratios
+     * @param turnsRatios Turns ratios for each winding
      * @param magnetizingInductance Magnetizing inductance in H
      * @return Vector of OperatingPoints extracted from simulation
      */
@@ -101,13 +67,13 @@ public:
         double magnetizingInductance);
     
     /**
-     * @brief Simulate and extract topology-level waveforms for converter validation
+     * @brief Simulate the Single-Switch Forward converter and extract operating points
      * 
-     * @param turnsRatios Vector of turns ratios
+     * @param turnsRatios Turns ratios for each winding
      * @param magnetizingInductance Magnetizing inductance in H
-     * @return Vector of ForwardTopologyWaveforms for each operating condition
+     * @return Vector of OperatingPoints extracted from simulation
      */
-    std::vector<ForwardTopologyWaveforms> simulate_and_extract_topology_waveforms(
+    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 

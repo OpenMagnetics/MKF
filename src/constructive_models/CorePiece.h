@@ -18,6 +18,27 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
+
+/// Absolute volumes (m³) for each core part in the half-model.
+struct CorePartVolumes {
+    double centralColumn = 0.0;
+    double lateralColumn = 0.0;   // one lateral column (symmetry)
+    double topYoke        = 0.0;
+    double bottomYoke     = 0.0;
+
+    double total() const {
+        return centralColumn + lateralColumn + topYoke + bottomYoke;
+    }
+};
+
+/// Fractional loss distribution (sums to 1.0 for the modelled half-core).
+struct CoreLossFractions {
+    double centralColumn = 0.0;
+    double lateralColumn = 0.0;
+    double topYoke        = 0.0;
+    double bottomYoke     = 0.0;
+};
+
 class CorePiece {
   private:
     std::vector<ColumnElement> columns;
@@ -157,6 +178,49 @@ class CorePiece {
      * @return ColumnShape enum
      */
     ColumnShape get_column_shape(size_t columnIndex = 0);
+
+    // ========================================================================
+    // Volume-proportional core loss distribution
+    // ========================================================================
+
+    /**
+     * @brief Calculate the cross-sectional area of a column, respecting its shape.
+     *
+     * Prefers the pre-computed ColumnElement::get_area() when > 0.
+     * Falls back to a shape-aware formula (ROUND -> pi/4*w*d, OBLONG -> stadium,
+     * RECTANGULAR/IRREGULAR -> w*d).
+     *
+     * @param columnIndex Index of the column (0 = central)
+     * @return Cross-sectional area in m²
+     */
+    double calculate_column_cross_section(size_t columnIndex = 0);
+
+    /**
+     * @brief Compute half-model volumes (m³) for each core part.
+     *
+     * Uses a symmetry plane at the core centre (z = 0), so every
+     * part stores HALF the physical depth.
+     *
+     * Column volume  = cross-section area × height / 2.
+     * Yoke volume    = yokeWidth × yokeThickness × (coreDepth / 2),
+     * where yokeWidth and yokeThickness match the dimensions used by
+     * the thermal node initialisation in Temperature.cpp.
+     *
+     * @return CorePartVolumes with all fields populated
+     */
+    CorePartVolumes calculate_core_part_volumes();
+
+    /**
+     * @brief Normalise core part volumes into loss fractions that sum to 1.0.
+     *
+     * Assumes uniform volumetric loss density (valid for ungapped cores at
+     * moderate flux densities).  For gapped cores the central-column fraction
+     * may still be slightly overestimated, but the error is far smaller than
+     * the previous hardcoded 40/20/10/10 split.
+     *
+     * @return CoreLossFractions (all fields in [0, 1], sum ≈ 1.0)
+     */
+    CoreLossFractions calculate_core_loss_fractions();
 };
 
 void from_json(const json& j, OpenMagnetics::CorePiece& x);

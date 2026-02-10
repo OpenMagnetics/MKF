@@ -7,7 +7,7 @@
 
 namespace OpenMagnetics {
 
-    double ActiveClampForward::get_total_reflected_secondary_current(ForwardOperatingPoint forwardOperatingPoint, std::vector<double> turnsRatios, double rippleRatio) {
+    double ActiveClampForward::get_total_reflected_secondary_current(const ForwardOperatingPoint& forwardOperatingPoint, const std::vector<double>& turnsRatios, double rippleRatio) {
         double totalReflectedSecondaryCurrent = 0;
 
         if (turnsRatios.size() != forwardOperatingPoint.get_output_currents().size()) {
@@ -38,7 +38,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint ActiveClampForward::process_operating_points_for_input_voltage(double inputVoltage, ForwardOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double mainOutputInductance) {
+    OperatingPoint ActiveClampForward::process_operating_points_for_input_voltage(double inputVoltage, const ForwardOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -206,34 +206,7 @@ namespace OpenMagnetics {
     }
 
     bool ActiveClampForward::run_checks(bool assert) {
-        if (get_operating_points().size() == 0) {
-            if (!assert) {
-                return false;
-            }
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "At least one operating point is needed");
-        }
-        for (size_t forwardOperatingPointIndex = 0; forwardOperatingPointIndex < get_operating_points().size(); ++forwardOperatingPointIndex) {
-            if (get_operating_points()[forwardOperatingPointIndex].get_output_voltages().size() != get_operating_points()[0].get_output_voltages().size()) {
-                if (!assert) {
-                    return false;
-                }
-                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output voltages");
-            }
-            if (get_operating_points()[forwardOperatingPointIndex].get_output_currents().size() != get_operating_points()[0].get_output_currents().size()) {
-                if (!assert) {
-                    return false;
-                }
-                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Different operating points cannot have different number of output currents");
-            }
-        }
-        if (!get_input_voltage().get_nominal() && !get_input_voltage().get_maximum() && !get_input_voltage().get_minimum()) {
-            if (!assert) {
-                return false;
-            }
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "No input voltage introduced");
-        }
-
-        return true;
+        return ForwardConverterUtils::run_checks_common(this, assert);
     }
 
     DesignRequirements ActiveClampForward::process_design_requirements() {
@@ -285,12 +258,8 @@ namespace OpenMagnetics {
         DimensionWithTolerance inductanceWithTolerance;
         inductanceWithTolerance.set_minimum(roundFloat(minimumNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        std::vector<IsolationSide> isolationSides;
-        isolationSides.push_back(get_isolation_side_from_index(0)); // For primary
-        for (size_t windingIndex = 0; windingIndex < get_operating_points()[0].get_output_currents().size(); ++windingIndex) {
-            isolationSides.push_back(get_isolation_side_from_index(windingIndex + 1));
-        }
-        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_isolation_sides(
+            ForwardConverterUtils::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), false));
         designRequirements.set_topology(Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER);
         return designRequirements;
     }
@@ -309,29 +278,18 @@ namespace OpenMagnetics {
         return minimumOutputInductance;
     }
 
-    std::vector<OperatingPoint> ActiveClampForward::process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) {
+    std::vector<OperatingPoint> ActiveClampForward::process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) {
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         std::vector<double> outputInductancePerSecondary;
 
-        for (size_t forwardOperatingPointIndex = 0; forwardOperatingPointIndex < get_operating_points().size(); ++forwardOperatingPointIndex) {
-            outputInductancePerSecondary.push_back(get_output_inductance(turnsRatios[forwardOperatingPointIndex], forwardOperatingPointIndex));
-        }
+    for (size_t secondaryIndex = 0; secondaryIndex < turnsRatios.size(); ++secondaryIndex) {
+        outputInductancePerSecondary.push_back(get_output_inductance(turnsRatios[secondaryIndex], secondaryIndex));
+    }
 
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
@@ -354,7 +312,7 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> ActiveClampForward::process_operating_points(Magnetic magnetic) {
         ActiveClampForward::run_checks(_assertErrors);
 
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(_magnetizingInductanceModel);;  // hardcoded
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
         
@@ -389,18 +347,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
 
 
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         DesignRequirements designRequirements;
 
@@ -414,12 +361,8 @@ namespace OpenMagnetics {
         DimensionWithTolerance inductanceWithTolerance;
         inductanceWithTolerance.set_nominal(roundFloat(minimumNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        std::vector<IsolationSide> isolationSides;
-        isolationSides.push_back(get_isolation_side_from_index(0)); // For primary
-        for (size_t windingIndex = 0; windingIndex < get_operating_points()[0].get_output_currents().size(); ++windingIndex) {
-            isolationSides.push_back(get_isolation_side_from_index(windingIndex + 1));
-        }
-        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_isolation_sides(
+            ForwardConverterUtils::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), false));
         designRequirements.set_topology(Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER);
 
         inputs.set_design_requirements(designRequirements);
@@ -439,5 +382,237 @@ namespace OpenMagnetics {
         }
 
         return inputs;
+    }
+    
+    std::string ActiveClampForward::generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex,
+        size_t operatingPointIndex) {
+        
+        // Get input voltages
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames_;
+    ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
+        
+        if (inputVoltageIndex >= inputVoltages.size()) {
+            throw std::invalid_argument("inputVoltageIndex out of range");
+        }
+        if (operatingPointIndex >= get_operating_points().size()) {
+            throw std::invalid_argument("operatingPointIndex out of range");
+        }
+        
+        double inputVoltage = inputVoltages[inputVoltageIndex];
+        auto opPoint = get_operating_points()[operatingPointIndex];
+        
+        double switchingFrequency = opPoint.get_switching_frequency();
+        double dutyCycle = get_maximum_duty_cycle();
+        
+        size_t numSecondaries = turnsRatios.size();
+        
+        // Build netlist
+        std::ostringstream circuit;
+        double period = 1.0 / switchingFrequency;
+        double tOn = period * dutyCycle;
+        // Active clamp switch timing: overlap slightly with main switch for simulation stability
+        // Start 100ns before main switch turns off, end 100ns after main switch turns on next cycle
+        double overlapTime = 100e-9;  // 100ns overlap for smooth transitions
+        double clampDelay = tOn - overlapTime;  // Start slightly before main switch off
+        double clampOn = period - tOn + 2 * overlapTime;  // End slightly after main switch on
+        
+        // Simulation timing
+        int periodsToExtract = get_num_periods_to_extract();
+        int numSteadyStatePeriods = get_num_steady_state_periods();
+        const int numPeriodsTotal = numSteadyStatePeriods + periodsToExtract;  // Steady state + extraction
+        double simTime = numPeriodsTotal * period;
+        double startTime = numSteadyStatePeriods * period;  // Start extracting after steady state
+        double stepTime = period / 200;
+        
+        circuit << "* Active Clamp Forward Converter - Generated by OpenMagnetics\n";
+        circuit << "* Vin=" << inputVoltage << "V, f=" << (switchingFrequency/1e3) << "kHz, D=" << (dutyCycle*100) << " pct\n";
+        circuit << "* Lmag=" << (magnetizingInductance*1e6) << "uH, " << numSecondaries << " secondaries\n\n";
+        
+        // DC Input
+        circuit << "* DC Input\n";
+        circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
+        
+        // PWM Main Switch
+        circuit << "* PWM Main Switch\n";
+        circuit << "Vpwm pwm_ctrl 0 PULSE(0 5 0 10n 10n " << tOn << " " << period << ")\n";
+        circuit << ".model SW1 SW VT=2.5 VH=0.5\n";
+        circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n";
+        circuit << "S1 vin_dc sw_node pwm_ctrl 0 SW1\n\n";
+        
+        // Primary current sense
+        circuit << "* Primary current sense\n";
+        circuit << "Vpri_sense sw_node pri_in 0\n\n";
+        
+        // Transformer primary
+        circuit << "* Forward Transformer\n";
+        circuit << "Lpri pri_in 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
+        
+        // Secondary windings
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            double secondaryInductance = magnetizingInductance / (turnsRatios[secIdx] * turnsRatios[secIdx]);
+            circuit << "Lsec" << secIdx << " sec" << secIdx << "_in 0 " << std::scientific << secondaryInductance << std::fixed << "\n";
+        }
+        
+        // Couple all windings together using pairwise K statements
+        circuit << "* Coupling: All windings coupled pairwise\n";
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << "Kpri_sec" << secIdx << " Lpri Lsec" << secIdx << " 0.9999\n";
+        }
+        for (size_t i = 0; i < numSecondaries; ++i) {
+            for (size_t j = i + 1; j < numSecondaries; ++j) {
+                circuit << "Ksec" << i << "_sec" << j << " Lsec" << i << " Lsec" << j << " 0.9999\n";
+            }
+        }
+        circuit << "\n";
+        
+        // Active clamp circuit: auxiliary switch + clamp capacitor
+        // Clamp switch turns on during off-time of main switch
+        circuit << "* Active Clamp Circuit\n";
+        circuit << "Vpwm_clamp clamp_ctrl 0 PULSE(0 5 " << clampDelay << " 10n 10n " << clampOn << " " << period << ")\n";
+        circuit << "S_clamp clamp_cap sw_node clamp_ctrl 0 SW1\n";
+        // Clamp capacitor to ground (stores energy during reset)
+        double clampCapacitance = 10e-6;  // 10uF typical
+        double clampVoltage = inputVoltage * dutyCycle / (1 - dutyCycle);  // Steady-state clamp voltage
+        circuit << "Cclamp clamp_cap 0 " << std::scientific << clampCapacitance << std::fixed << " IC=" << clampVoltage << "\n";
+        // Small resistance for convergence
+        circuit << "Rclamp clamp_cap 0 1MEG\n\n";
+        
+        // Output stages for each secondary
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << "* Secondary " << secIdx << " output stage\n";
+            
+            // Forward rectifier
+            circuit << "Dfwd" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_rect DIDEAL\n";
+            
+            // Freewheeling diode
+            circuit << "Dfw" << secIdx << " 0 sec" << secIdx << "_rect DIDEAL\n";
+            
+            // Snubber resistors for convergence
+            circuit << "Rsnub_fwd" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_rect 1MEG\n";
+            circuit << "Rsnub_fw" << secIdx << " 0 sec" << secIdx << "_rect 1MEG\n";
+            
+            double outputVoltage = opPoint.get_output_voltages()[secIdx];
+            double outputCurrent = opPoint.get_output_currents()[secIdx];
+            double outputInductance = get_output_inductance(turnsRatios[secIdx], secIdx);
+            
+            circuit << "Vsec_sense" << secIdx << " sec" << secIdx << "_rect sec" << secIdx << "_l_in 0\n";
+            circuit << "Lout" << secIdx << " sec" << secIdx << "_l_in vout" << secIdx << " " << std::scientific << outputInductance << std::fixed << "\n";
+            
+            double loadResistance = outputVoltage / outputCurrent;
+            circuit << "Cout" << secIdx << " vout" << secIdx << " 0 100u IC=" << outputVoltage << "\n";
+            circuit << "Rload" << secIdx << " vout" << secIdx << " 0 " << loadResistance << "\n\n";
+        }
+        
+        // Transient Analysis
+        circuit << "* Transient Analysis\n";
+        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
+        
+        // Save signals
+        circuit << "* Output signals\n";
+        circuit << ".save v(pri_in) i(Vpri_sense)";
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
+        }
+        circuit << "\n\n";
+        
+        // Options
+        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << ".ic v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx] << "\n";
+        }
+        circuit << "\n";
+        
+        circuit << ".end\n";
+        
+        return circuit.str();
+    }
+    
+    std::vector<OperatingPoint> ActiveClampForward::simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) {
+        
+        std::vector<OperatingPoint> operatingPoints;
+        
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            throw std::runtime_error("ngspice is not available for simulation");
+        }
+        
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        
+        size_t numSecondaries = turnsRatios.size();
+        
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+                auto forwardOpPoint = get_operating_points()[opIndex];
+                
+                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
+                
+                double switchingFrequency = forwardOpPoint.get_switching_frequency();
+                
+                SimulationConfig config;
+                config.frequency = switchingFrequency;
+                config.extractOnePeriod = true;
+                config.numberOfPeriods = 1;
+                config.keepTempFiles = false;
+                
+                auto simResult = runner.run_simulation(netlist, config);
+                
+                if (!simResult.success) {
+                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
+                }
+                
+                NgspiceRunner::WaveformNameMapping waveformMapping;
+                
+                // Primary winding
+                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vpri_sense#branch"}});
+                
+                // Secondary windings
+                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+                    std::string voltageName = "sec" + std::to_string(secIdx) + "_in";
+                    std::string currentName = "vsec_sense" + std::to_string(secIdx) + "#branch";
+                    waveformMapping.push_back({{"voltage", voltageName}, {"current", currentName}});
+                }
+                
+                std::vector<std::string> windingNames;
+                windingNames.push_back("Primary");
+                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+                    windingNames.push_back("Secondary " + std::to_string(secIdx));
+                }
+                
+                std::vector<bool> flipCurrentSign(1 + numSecondaries, false);
+                
+                OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
+                    simResult,
+                    waveformMapping,
+                    switchingFrequency,
+                    windingNames,
+                    forwardOpPoint.get_ambient_temperature(),
+                    flipCurrentSign);
+                
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt. (simulated)";
+                if (get_operating_points().size() > 1) {
+                    name += " op. point " + std::to_string(opIndex);
+                }
+                operatingPoint.set_name(name);
+                operatingPoints.push_back(operatingPoint);
+            }
+        }
+        
+        return operatingPoints;
+    }
+    
+    std::vector<OperatingPoint> ActiveClampForward::simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) {
+        // For Active Clamp Forward converter, topology waveforms are the same as operating points
+        // The operating point already contains all winding voltages and currents
+        return simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
     }
 } // namespace OpenMagnetics

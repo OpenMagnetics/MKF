@@ -1990,6 +1990,138 @@ ColumnShape CorePiece::get_column_shape(size_t columnIndex) {
     return columns[columnIndex].get_shape();
 }
 
+
+// ============================================================================
+// Volume-Proportional Core Loss Distribution
+// ============================================================================
+
+double CorePiece::calculate_column_cross_section(size_t columnIndex) {
+    if (columnIndex >= columns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Column index out of range");
+    }
+
+    const auto& col = columns[columnIndex];
+
+    // Prefer the pre-computed area from the schema when available.
+    double area = col.get_area();
+    if (area > 0) return area;
+
+    double w = col.get_width();
+    double d = col.get_depth();
+
+    switch (col.get_shape()) {
+        case ColumnShape::ROUND:
+            return std::numbers::pi / 4.0 * w * d;
+
+        case ColumnShape::OBLONG: {
+            double r = std::min(w, d) / 2.0;
+            return w * d - (4.0 - std::numbers::pi) * r * r;
+        }
+
+        case ColumnShape::RECTANGULAR:
+        case ColumnShape::IRREGULAR:
+        default:
+            return w * d;
+    }
+}
+
+CorePartVolumes CorePiece::calculate_core_part_volumes() {
+    CorePartVolumes v;
+
+    if (columns.empty()) {
+        return v;
+    }
+
+    // =========================================================================
+    // FULL-CORE volumes.
+    //
+    // The thermal model meshes the RIGHT HALF of the core at HALF DEPTH.
+    // The depth symmetry (Z = 0 plane) means the meshed front-half
+    // thermally represents the FULL right half.  So this is a HALF model,
+    // not a quarter model.
+    //
+    // We return full-core volumes here; the caller (calculate_core_loss_fractions)
+    // applies the correct /2 factors to get the right-half fractions.
+    //
+    // The modeled right half contains:
+    //   - Half of the central column    (right portion)
+    //   - One lateral column            (the right one, 1 of 2)
+    //   - Right half of top yoke        (center to right edge)
+    //   - Right half of bottom yoke     (center to right edge)
+    //
+    // Total modeled = V_full / 2  -->  losses should sum to 50%.
+    // =========================================================================
+
+    // --- Central column (ONE, full depth, full cross-section) ---
+    double mainArea   = calculate_column_cross_section(0);
+    double mainHeight = columns[0].get_height();
+    v.centralColumn   = mainArea * mainHeight;
+
+    // --- Lateral columns: store ONE lateral's full volume ---
+    // The full core has TWO (left + right); we model only the right one.
+    if (columns.size() > 1) {
+        double latArea   = calculate_column_cross_section(1);
+        double latHeight = columns[1].get_height();
+        v.lateralColumn  = latArea * latHeight;
+    }
+
+    // --- Yokes (top / bottom, each spans full width x full depth) ---
+    // Yoke thickness matches Temperature.cpp: mainColumn.get_width() / 2
+    double yokeThickness = columns[0].get_width() / 2.0;
+    double yokeVolume    = width * yokeThickness * depth;
+
+    v.topYoke    = yokeVolume;
+    v.bottomYoke = yokeVolume;
+
+    return v;
+}
+
+CoreLossFractions CorePiece::calculate_core_loss_fractions() {
+    CoreLossFractions f;
+
+    CorePartVolumes v = calculate_core_part_volumes();
+
+    // Full-core total volume.
+    // lateralColumn = ONE lateral's volume; the full core has TWO.
+    double fullCoreVolume = v.centralColumn
+                          + 2.0 * v.lateralColumn
+                          + v.topYoke
+                          + v.bottomYoke;
+
+    if (fullCoreVolume < 1e-18) {
+        // Degenerate geometry guard
+        f.centralColumn = 0.4;
+        f.lateralColumn = 0.2;
+        f.topYoke       = 0.2;
+        f.bottomYoke    = 0.2;
+        return f;
+    }
+
+    // =========================================================================
+    // Half-model loss fractions.
+    //
+    // The thermal model meshes the RIGHT HALF of the core (one symmetry
+    // plane at Z = 0 for depth).  The modeled right half contains:
+    //
+    //   Central column:  half of the full column         -> V_central / 2
+    //   Right lateral:   one full lateral (of two total) -> V_one_lateral
+    //   Top yoke:        right half of full yoke         -> V_top_yoke / 2
+    //   Bottom yoke:     right half of full yoke         -> V_bot_yoke / 2
+    //
+    // Fraction of TOTAL losses for each modeled node:
+    //   f_part = V_modeled_part / V_full_core
+    //
+    // Sum of all fractions = V_modeled_total / V_full = 0.5  (half-model)
+    // =========================================================================
+
+    f.centralColumn = (v.centralColumn / 2.0) / fullCoreVolume;
+    f.lateralColumn =  v.lateralColumn        / fullCoreVolume;
+    f.topYoke       = (v.topYoke       / 2.0) / fullCoreVolume;
+    f.bottomYoke    = (v.bottomYoke    / 2.0) / fullCoreVolume;
+
+    return f;
+}
+
 inline void from_json(const json& j, CorePiece& x) {
     x.set_columns(j.at("columns").get<std::vector<ColumnElement>>());
     x.set_depth(j.at("depth").get<double>());

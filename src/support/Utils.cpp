@@ -46,9 +46,8 @@ static inline void strip_cr(std::string& s) {
 // Windows-1252 encodes µ as single byte 0xB5, while UTF-8 uses 0xC2 0xB5
 // This ensures consistent UTF-8 encoding across platforms
 static inline void normalize_micro_sign(std::string& s) {
-#ifdef _WIN32
     std::string result;
-    result.reserve(s.size() * 2);  // Reserve extra space for potential expansions
+    result.reserve(s.size() * 2); // Reserve extra space for potential expansions
     for (size_t i = 0; i < s.size(); ++i) {
         unsigned char c = static_cast<unsigned char>(s[i]);
         // Check for standalone 0xB5 (Windows-1252 micro sign) that's not already part of UTF-8 sequence
@@ -62,9 +61,6 @@ static inline void normalize_micro_sign(std::string& s) {
         result.push_back(s[i]);
     }
     s = std::move(result);
-#else
-    (void)s;  // Unused on non-Windows
-#endif
 }
 
 // Helper function to iterate over NDJSON (newline-delimited JSON) data and call a callback for each parsed JSON object

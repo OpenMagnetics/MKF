@@ -5,16 +5,17 @@
 #include "converter_models/ActiveClampForward.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
+#include "processors/NgspiceRunner.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
-#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
 #include <vector>
 #include <typeinfo>
+#include <numeric>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -523,117 +524,255 @@ namespace {
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
     }
 
-    TEST_CASE("Test_Forward_Ngspice_Simulation", "[converter-model][forward-topology][ngspice][!mayfail]") {
-        json forwardInputsJson;
-        json inputVoltage;
-
-        inputVoltage["minimum"] = 100;
-        inputVoltage["maximum"] = 190;
-        forwardInputsJson["inputVoltage"] = inputVoltage;
-        forwardInputsJson["diodeVoltageDrop"] = 0.5;
-        forwardInputsJson["efficiency"] = 0.9;
-        forwardInputsJson["maximumSwitchCurrent"] = 3;
-        forwardInputsJson["currentRippleRatio"] = 0.3;
-        forwardInputsJson["dutyCycle"] = 0.42;
-        forwardInputsJson["operatingPoints"] = json::array();
-
-        {
-            json ForwardOperatingPointJson;
-            ForwardOperatingPointJson["outputVoltages"] = {12};
-            ForwardOperatingPointJson["outputCurrents"] = {2};
-            ForwardOperatingPointJson["switchingFrequency"] = 100000;
-            ForwardOperatingPointJson["ambientTemperature"] = 25;
-            forwardInputsJson["operatingPoints"].push_back(ForwardOperatingPointJson);
+    TEST_CASE("Test_SingleSwitchForward_Ngspice_Simulation", "[converter-model][single-switch-forward-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
         }
-
-        OpenMagnetics::SingleSwitchForward forward(forwardInputsJson);
-        forward._assertErrors = true;
         
-        // First process to get design requirements with inductance
-        auto inputs = forward.process();
-        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+        // Create a Single Switch Forward converter specification
+        OpenMagnetics::SingleSwitchForward forward;
         
-        // Get turns ratios
+        // Input voltage
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(48.0);
+        inputVoltage.set_minimum(36.0);
+        inputVoltage.set_maximum(72.0);
+        forward.set_input_voltage(inputVoltage);
+        
+        // Diode voltage drop
+        forward.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        forward.set_efficiency(0.9);
+        
+        // Current ripple ratio
+        forward.set_current_ripple_ratio(0.3);
+        
+        // Duty cycle
+        forward.set_duty_cycle(0.4);
+        
+        // Operating point: 5V @ 5A output, 200kHz
+        ForwardOperatingPoint opPoint;
+        opPoint.set_output_voltages({5.0});
+        opPoint.set_output_currents({5.0});
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        forward.set_operating_points({opPoint});
+        
+        // Process design requirements
+        auto designReqs = forward.process_design_requirements();
+        
         std::vector<double> turnsRatios;
-        for (const auto& tr : inputs.get_design_requirements().get_turns_ratios()) {
-            turnsRatios.push_back(OpenMagnetics::resolve_dimensional_values(tr));
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        INFO("Single Switch Forward - Turns ratio: " << turnsRatios[0]);
+        INFO("Single Switch Forward - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
+        auto operatingPoints = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        
+        // Verify we have excitations
+        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() >= 2);
+        
+        // Get primary excitation
+        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExc.get_voltage().has_value());
+        REQUIRE(primaryExc.get_current().has_value());
+        
+        // Extract waveform data
+        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
+        auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
+        
+        // Calculate statistics
+        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
+        double priI_max = *std::max_element(priCurrentData.begin(), priCurrentData.end());
+        double priI_min = *std::min_element(priCurrentData.begin(), priCurrentData.end());
+        
+        INFO("Primary voltage max: " << priV_max << " V");
+        INFO("Primary current max: " << priI_max << " A");
+        INFO("Primary current min: " << priI_min << " A");
+        
+        // Validate primary voltage: should be close to input voltage during ON time
+        CHECK(priV_max > 30.0);  // Should be around 48V
+        CHECK(priV_max < 80.0);
+        
+        // In CCM, current should stay positive (allow for numerical noise)
+        CHECK(priI_min > -0.001);
+        
+        // Validate we have reasonable peak current
+        CHECK(priI_max > 0.5);
+        CHECK(priI_max < 10.0);
+        
+        INFO("Single Switch Forward ngspice simulation test passed");
+    }
+
+    TEST_CASE("Test_TwoSwitchForward_Ngspice_Simulation", "[converter-model][two-switch-forward-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
         }
         
-        // Now run the ngspice simulation
-        auto topologyWaveforms = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        // Create a Two Switch Forward converter specification
+        OpenMagnetics::TwoSwitchForward forward;
         
-        REQUIRE(topologyWaveforms.size() >= 1);
+        // Input voltage
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(48.0);
+        inputVoltage.set_minimum(36.0);
+        inputVoltage.set_maximum(72.0);
+        forward.set_input_voltage(inputVoltage);
         
-        for (size_t opIndex = 0; opIndex < topologyWaveforms.size(); opIndex++) {
-            auto& wf = topologyWaveforms[opIndex];
-            
-            // Check that time vector has reasonable values
-            REQUIRE(wf.time.size() > 0);
-            REQUIRE(wf.time[0] >= 0);
-            
-            // Check primary current waveform
-            REQUIRE(wf.primaryCurrent.size() == wf.time.size());
-            
-            // Check demagnetization current waveform
-            REQUIRE(wf.demagCurrent.size() == wf.time.size());
-            
-            // Check output voltages if available
-            if (wf.outputVoltages.size() >= 1 && wf.outputVoltages[0].size() == wf.time.size()) {
-                // Verify output voltage is close to expected
-                double avgOutputVoltage = 0;
-                for (double v : wf.outputVoltages[0]) {
-                    avgOutputVoltage += v;
-                }
-                avgOutputVoltage /= wf.outputVoltages[0].size();
-                REQUIRE_THAT(std::abs(avgOutputVoltage), Catch::Matchers::WithinAbs(12.0, 5.0));  // Within 5V of expected 12V output
-            }
-            
-            // Paint waveforms for visual inspection
-            {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Forward_Ngspice_PrimaryCurrent_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform currentWaveform;
-                currentWaveform.set_time(wf.time);
-                currentWaveform.set_data(wf.primaryCurrent);
-                painter.paint_waveform(currentWaveform);
-                painter.export_svg();
-            }
-            {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Forward_Ngspice_DemagCurrent_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform currentWaveform;
-                currentWaveform.set_time(wf.time);
-                currentWaveform.set_data(wf.demagCurrent);
-                painter.paint_waveform(currentWaveform);
-                painter.export_svg();
-            }
-            if (wf.outputVoltages.size() > 0 && wf.outputVoltages[0].size() > 0) {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Forward_Ngspice_OutputVoltage_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform outputWaveform;
-                outputWaveform.set_time(wf.time);
-                outputWaveform.set_data(wf.outputVoltages[0]);
-                painter.paint_waveform(outputWaveform);
-                painter.export_svg();
-            }
-            if (wf.outputInductorCurrents.size() > 0 && wf.outputInductorCurrents[0].size() > 0) {
-                auto outFile = outputFilePath;
-                outFile.append("Test_Forward_Ngspice_OutputInductorCurrent_OP" + std::to_string(opIndex) + ".svg");
-                std::filesystem::remove(outFile);
-                Painter painter(outFile, false, true);
-                Waveform currentWaveform;
-                currentWaveform.set_time(wf.time);
-                currentWaveform.set_data(wf.outputInductorCurrents[0]);
-                painter.paint_waveform(currentWaveform);
-                painter.export_svg();
-            }
+        // Diode voltage drop
+        forward.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        forward.set_efficiency(0.9);
+        
+        // Current ripple ratio
+        forward.set_current_ripple_ratio(0.3);
+        
+        // Duty cycle
+        forward.set_duty_cycle(0.4);
+        
+        // Operating point: 5V @ 5A output, 200kHz
+        ForwardOperatingPoint opPoint;
+        opPoint.set_output_voltages({5.0});
+        opPoint.set_output_currents({5.0});
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        forward.set_operating_points({opPoint});
+        
+        // Process design requirements
+        auto designReqs = forward.process_design_requirements();
+        
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
         }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        INFO("Two Switch Forward - Turns ratio: " << turnsRatios[0]);
+        INFO("Two Switch Forward - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
+        auto operatingPoints = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        
+        // Verify we have excitations
+        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() >= 2);
+        
+        // Get primary excitation
+        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExc.get_voltage().has_value());
+        REQUIRE(primaryExc.get_current().has_value());
+        
+        // Extract waveform data
+        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
+        
+        // Calculate statistics
+        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
+        
+        INFO("Primary voltage max: " << priV_max << " V");
+        
+        // Validate primary voltage: should be close to input voltage during ON time
+        CHECK(priV_max > 30.0);  // Should be around 48V
+        CHECK(priV_max < 80.0);
+        
+        INFO("Two Switch Forward ngspice simulation test passed");
+    }
+
+    TEST_CASE("Test_ActiveClampForward_Ngspice_Simulation", "[converter-model][active-clamp-forward-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+        
+        // Create an Active Clamp Forward converter specification
+        OpenMagnetics::ActiveClampForward forward;
+        
+        // Input voltage
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(48.0);
+        inputVoltage.set_minimum(36.0);
+        inputVoltage.set_maximum(72.0);
+        forward.set_input_voltage(inputVoltage);
+        
+        // Diode voltage drop
+        forward.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        forward.set_efficiency(0.9);
+        
+        // Current ripple ratio
+        forward.set_current_ripple_ratio(0.3);
+        
+        // Duty cycle
+        forward.set_duty_cycle(0.45);
+        
+        // Operating point: 5V @ 5A output, 200kHz
+        ForwardOperatingPoint opPoint;
+        opPoint.set_output_voltages({5.0});
+        opPoint.set_output_currents({5.0});
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        forward.set_operating_points({opPoint});
+        
+        // Process design requirements
+        auto designReqs = forward.process_design_requirements();
+        
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        INFO("Active Clamp Forward - Turns ratio: " << turnsRatios[0]);
+        INFO("Active Clamp Forward - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Run ngspice simulation
+        auto operatingPoints = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        
+        // Verify we have excitations
+        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() >= 2);
+        
+        // Get primary excitation
+        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExc.get_voltage().has_value());
+        REQUIRE(primaryExc.get_current().has_value());
+        
+        // Extract waveform data
+        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
+        auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
+        
+        // Calculate statistics
+        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
+        double priV_min = *std::min_element(priVoltageData.begin(), priVoltageData.end());
+        double priI_avg = std::accumulate(priCurrentData.begin(), priCurrentData.end(), 0.0) / priCurrentData.size();
+        
+        INFO("Primary voltage max: " << priV_max << " V");
+        INFO("Primary voltage min: " << priV_min << " V");
+        INFO("Primary current avg: " << priI_avg << " A");
+        
+        // Validate primary voltage: should be close to input voltage during ON time
+        CHECK(priV_max > 30.0);  // Should be around 48V
+        CHECK(priV_max < 80.0);
+        
+        // Active clamp should have negative voltage during reset
+        CHECK(priV_min < 0.0);
+        
+        INFO("Active Clamp Forward ngspice simulation test passed");
     }
 
 }  // namespace

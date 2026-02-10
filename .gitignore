@@ -126,7 +126,9 @@ website/package-lock.json
 *.csv
 *.Identifier
 
-
+# Ignore Doxygen generated docs and MkDocs site output
 docs/
-src/tools/
-tests/testData/
+docs/api/html/
+site/
+tests/testData
+src/tools
