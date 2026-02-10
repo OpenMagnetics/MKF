@@ -3500,6 +3500,12 @@ void Temperature::createConvectionConnections() {
         // ============================================================================
         if (THERMAL_DEBUG) {
             std::cout << "[PLANAR] Entering planar convection connections logic" << std::endl;
+            std::cout << "[PLANAR] Total nodes in network: " << _nodes.size() << std::endl;
+            std::cout << "[PLANAR] Node listing:" << std::endl;
+            for (size_t i = 0; i < _nodes.size(); i++) {
+                std::cout << "  [" << i << "] " << _nodes[i].name
+                          << " (type=" << static_cast<int>(_nodes[i].part) << ")" << std::endl;
+            }
         }
 
         // 1. Find FR4 insulation layer nodes
@@ -3518,32 +3524,95 @@ void Temperature::createConvectionConnections() {
             std::cout << "[PLANAR] Total FR4 layer nodes found: " << fr4LayerIndices.size() << std::endl;
         }
 
-        // 2. Find the Y-coordinates of the top-most and bottom-most turn layers
-        //    Use a tolerance to capture all turns at the same vertical level
-        double maxY = -1e9;
-        double minY = 1e9;
-        for (size_t i = 0; i < _nodes.size(); i++) {
-            if (_nodes[i].part == ThermalNodePartType::TURN) {
-                double y = _nodes[i].physicalCoordinates[1];
-                if (y > maxY) maxY = y;
-                if (y < minY) minY = y;
+        // 2. Helper lambda: Find turns at LOWEST Y-coordinate (top PCB layer)
+        //    Note: SVG Y-axis goes top-to-bottom, so lower Y = top of image
+        auto findTopLayerTurns = [&]() -> std::vector<size_t> {
+            std::vector<size_t> topTurns;
+            double minY = 1e9;
+
+            // First pass: find LOWEST Y-coordinate (top in SVG display)
+            for (size_t i = 0; i < _nodes.size(); i++) {
+                if (_nodes[i].part == ThermalNodePartType::TURN) {
+                    double y = _nodes[i].physicalCoordinates[1];
+                    if (y < minY) minY = y;
+                }
             }
-        }
 
-        // Tolerance for grouping turns into the same vertical layer
-        // Use half the wire height (or a small absolute value as fallback)
-        double yTolerance = std::max(_wireHeight * 0.5, 1e-6);
+            // Second pass: collect all turns at this Y-coordinate (within tolerance)
+            double yTolerance = 1e-5;  // Very small tolerance to detect distinct layers
+            for (size_t i = 0; i < _nodes.size(); i++) {
+                if (_nodes[i].part == ThermalNodePartType::TURN) {
+                    double y = _nodes[i].physicalCoordinates[1];
+                    if (std::abs(y - minY) < yTolerance) {
+                        topTurns.push_back(i);
+                    }
+                }
+            }
 
-        // 3. For each turn, connect quadrants:
-        //    - Top quadrant of top-most turns → Ambient (convection)
-        //    - Bottom quadrant of bottom-most turns → Ambient (convection)
+            if (THERMAL_DEBUG && !topTurns.empty()) {
+                std::cout << "[PLANAR] Top layer (minY=" << minY << "mm, top in SVG): ";
+                for (size_t idx : topTurns) {
+                    std::cout << _nodes[idx].name << " ";
+                }
+                std::cout << std::endl;
+            }
+
+            return topTurns;
+        };
+
+        // 3. Helper lambda: Find turns at HIGHEST Y-coordinate (bottom PCB layer)
+        //    Note: SVG Y-axis goes top-to-bottom, so higher Y = bottom of image
+        auto findBottomLayerTurns = [&]() -> std::vector<size_t> {
+            std::vector<size_t> bottomTurns;
+            double maxY = -1e9;
+
+            // First pass: find HIGHEST Y-coordinate (bottom in SVG display)
+            for (size_t i = 0; i < _nodes.size(); i++) {
+                if (_nodes[i].part == ThermalNodePartType::TURN) {
+                    double y = _nodes[i].physicalCoordinates[1];
+                    if (y > maxY) maxY = y;
+                }
+            }
+
+            // Second pass: collect all turns at this Y-coordinate (within tolerance)
+            double yTolerance = 1e-5;
+            for (size_t i = 0; i < _nodes.size(); i++) {
+                if (_nodes[i].part == ThermalNodePartType::TURN) {
+                    double y = _nodes[i].physicalCoordinates[1];
+                    if (std::abs(y - maxY) < yTolerance) {
+                        bottomTurns.push_back(i);
+                    }
+                }
+            }
+
+            if (THERMAL_DEBUG && !bottomTurns.empty()) {
+                std::cout << "[PLANAR] Bottom layer (maxY=" << maxY << "mm, bottom in SVG): ";
+                for (size_t idx : bottomTurns) {
+                    std::cout << _nodes[idx].name << " ";
+                }
+                std::cout << std::endl;
+            }
+
+            return bottomTurns;
+        };
+
+        // Get top and bottom layer turns
+        std::vector<size_t> topLayerTurnIndices = findTopLayerTurns();
+        std::vector<size_t> bottomLayerTurnIndices = findBottomLayerTurns();
+
+        // Create a set for fast lookup
+        std::set<size_t> topLayerSet(topLayerTurnIndices.begin(), topLayerTurnIndices.end());
+        std::set<size_t> bottomLayerSet(bottomLayerTurnIndices.begin(), bottomLayerTurnIndices.end());
+
+        // 4. For each turn, connect quadrants:
+        //    - Top quadrant (TANGENTIAL_LEFT) of top layer turns → Ambient (convection)
+        //    - Bottom quadrant (TANGENTIAL_RIGHT) of bottom layer turns → Ambient (convection)
         //    - All other quadrants → nearest FR4 quadrant (conduction)
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::TURN) continue;
 
-            double y = _nodes[i].physicalCoordinates[1];
-            bool isTopMostLayer = (std::abs(y - maxY) < yTolerance);
-            bool isBottomMostLayer = (std::abs(y - minY) < yTolerance);
+            bool isTopLayerTurn = topLayerSet.count(i) > 0;
+            bool isBottomLayerTurn = bottomLayerSet.count(i) > 0;
 
             for (int qIdx = 0; qIdx < 4; ++qIdx) {
                 ThermalNodeFace face = _nodes[i].quadrants[qIdx].face;
@@ -3552,8 +3621,8 @@ void Temperature::createConvectionConnections() {
                 auto* turnQuad = _nodes[i].getQuadrant(face);
                 if (!turnQuad || turnQuad->surfaceArea <= 0) continue;
 
-                // Exception 1: Top quadrant of top-most turns connects to ambient
-                if (isTopMostLayer && face == ThermalNodeFace::TANGENTIAL_LEFT) {
+                // Exception 1: Top quadrant of top layer turns connects to ambient
+                if (isTopLayerTurn && face == ThermalNodeFace::TANGENTIAL_LEFT) {
                     ThermalResistanceElement r;
                     r.nodeFromId = i;
                     r.quadrantFrom = face;
@@ -3575,8 +3644,8 @@ void Temperature::createConvectionConnections() {
                     continue;  // Skip FR4 connection for this quadrant
                 }
 
-                // Exception 2: Bottom quadrant of bottom-most turns connects to ambient
-                if (isBottomMostLayer && face == ThermalNodeFace::TANGENTIAL_RIGHT) {
+                // Exception 2: Bottom quadrant of bottom layer turns connects to ambient
+                if (isBottomLayerTurn && face == ThermalNodeFace::TANGENTIAL_RIGHT) {
                     ThermalResistanceElement r;
                     r.nodeFromId = i;
                     r.quadrantFrom = face;
@@ -3663,52 +3732,154 @@ void Temperature::createConvectionConnections() {
             } // end quadrant loop
         } // end turn loop
 
-        // 4. Connect FR4 insulation layer quadrants to ambient (for heat dissipation)
-        // The FR4 PCB substrate needs to dissipate heat through its top and bottom surfaces
+        // 5. Connect FR4 insulation layer quadrants to ambient (for heat dissipation)
+        // Only topmost and bottommost FR4 layers are exposed to ambient
+        // Surface area is reduced by copper coverage from top/bottom turns
+
+        // Find topmost and bottommost FR4 layers by Y-coordinate
+        double fr4MaxY = -1e9;
+        double fr4MinY = 1e9;
+        for (size_t fr4Idx : fr4LayerIndices) {
+            double fr4Y = _nodes[fr4Idx].physicalCoordinates[1];
+            if (fr4Y > fr4MaxY) fr4MaxY = fr4Y;
+            if (fr4Y < fr4MinY) fr4MinY = fr4Y;
+        }
+
+        // Calculate copper coverage area on top and bottom surfaces
+        // Top surface: covered by top layer turns
+        // Bottom surface: covered by bottom layer turns
+        double topCopperArea = 0.0;
+        double bottomCopperArea = 0.0;
+
+        for (size_t turnIdx : topLayerTurnIndices) {
+            // Top layer turns cover the FR4 bottom surface (they're on top, blocking bottom FR4 surface)
+            // Actually, in planar, top layer is at minY (top in SVG), so they sit on the topmost FR4
+            // The copper area is the turn's cross-sectional area in the XZ plane
+            if (_nodes[turnIdx].dimensions.width > 0 && _nodes[turnIdx].dimensions.height > 0) {
+                topCopperArea += _nodes[turnIdx].dimensions.width * _nodes[turnIdx].dimensions.height;
+            }
+        }
+
+        for (size_t turnIdx : bottomLayerTurnIndices) {
+            // Bottom layer turns cover the FR4 top surface
+            if (_nodes[turnIdx].dimensions.width > 0 && _nodes[turnIdx].dimensions.height > 0) {
+                bottomCopperArea += _nodes[turnIdx].dimensions.width * _nodes[turnIdx].dimensions.height;
+            }
+        }
+
+        if (THERMAL_DEBUG) {
+            std::cout << "[PLANAR] Copper coverage - Top layer: " << topCopperArea*1e6 << " mm², Bottom layer: "
+                      << bottomCopperArea*1e6 << " mm²" << std::endl;
+        }
+
+        double fr4Tolerance = 1e-5;  // Same small tolerance to detect distinct layers
         for (size_t fr4Idx : fr4LayerIndices) {
             const auto& fr4Node = _nodes[fr4Idx];
+            double fr4Y = fr4Node.physicalCoordinates[1];
 
-            // Connect top surface (TANGENTIAL_LEFT) to ambient
-            auto* topQuad = fr4Node.getQuadrant(ThermalNodeFace::TANGENTIAL_LEFT);
-            if (topQuad && topQuad->surfaceArea > 0) {
-                ThermalResistanceElement r;
-                r.nodeFromId = fr4Idx;
-                r.quadrantFrom = ThermalNodeFace::TANGENTIAL_LEFT;
-                r.nodeToId = ambientIdx;
-                r.quadrantTo = ThermalNodeFace::NONE;
-                r.type = _config.includeForcedConvection ?
-                    HeatTransferType::FORCED_CONVECTION :
-                    HeatTransferType::NATURAL_CONVECTION;
-                r.resistance = topQuad->calculateConvectionResistance(h_conv);
-                r.area = topQuad->surfaceArea;
-                _resistances.push_back(r);
+            bool isTopMostFR4 = (std::abs(fr4Y - fr4MaxY) < fr4Tolerance);
+            bool isBottomMostFR4 = (std::abs(fr4Y - fr4MinY) < fr4Tolerance);
 
-                if (THERMAL_DEBUG) {
-                    std::cout << "[PLANAR] Created FR4 top surface to ambient: "
-                              << fr4Node.name << " quadrant " << static_cast<int>(ThermalNodeFace::TANGENTIAL_LEFT)
-                              << " → Tamb (R=" << r.resistance << "K/W)"
-                              << std::endl;
+            // Connect top surface of topmost FR4 layer to ambient
+            // This surface is covered by bottom layer turns
+            if (isTopMostFR4) {
+                auto* topQuad = fr4Node.getQuadrant(ThermalNodeFace::TANGENTIAL_LEFT);
+                if (topQuad && topQuad->surfaceArea > 0) {
+                    // Calculate effective convection area (FR4 area - copper coverage)
+                    double effectiveArea = std::max(topQuad->surfaceArea - bottomCopperArea, topQuad->surfaceArea * 0.1);
+                    double areaProportion = effectiveArea / topQuad->surfaceArea;
+
+                    ThermalResistanceElement r;
+                    r.nodeFromId = fr4Idx;
+                    r.quadrantFrom = ThermalNodeFace::TANGENTIAL_LEFT;
+                    r.nodeToId = ambientIdx;
+                    r.quadrantTo = ThermalNodeFace::NONE;
+                    r.type = _config.includeForcedConvection ?
+                        HeatTransferType::FORCED_CONVECTION :
+                        HeatTransferType::NATURAL_CONVECTION;
+                    // Resistance scales inversely with area
+                    r.resistance = topQuad->calculateConvectionResistance(h_conv) / areaProportion;
+                    r.area = effectiveArea;
+                    _resistances.push_back(r);
+
+                    if (THERMAL_DEBUG) {
+                        std::cout << "[PLANAR] Created FR4 top surface to ambient (reduced by copper): "
+                                  << fr4Node.name << " quadrant " << static_cast<int>(ThermalNodeFace::TANGENTIAL_LEFT)
+                                  << " → Tamb (area=" << effectiveArea*1e6 << "mm², coverage=" << (1-areaProportion)*100
+                                  << "%, R=" << r.resistance << "K/W)"
+                                  << std::endl;
+                    }
                 }
             }
 
-            // Connect bottom surface (TANGENTIAL_RIGHT) to ambient
-            auto* bottomQuad = fr4Node.getQuadrant(ThermalNodeFace::TANGENTIAL_RIGHT);
-            if (bottomQuad && bottomQuad->surfaceArea > 0) {
+            // Connect bottom surface of bottommost FR4 layer to ambient
+            // This surface is covered by top layer turns (remember: minY = top in SVG = topmost turns)
+            if (isBottomMostFR4) {
+                auto* bottomQuad = fr4Node.getQuadrant(ThermalNodeFace::TANGENTIAL_RIGHT);
+                if (bottomQuad && bottomQuad->surfaceArea > 0) {
+                    // Calculate effective convection area (FR4 area - copper coverage)
+                    double effectiveArea = std::max(bottomQuad->surfaceArea - topCopperArea, bottomQuad->surfaceArea * 0.1);
+                    double areaProportion = effectiveArea / bottomQuad->surfaceArea;
+
+                    ThermalResistanceElement r;
+                    r.nodeFromId = fr4Idx;
+                    r.quadrantFrom = ThermalNodeFace::TANGENTIAL_RIGHT;
+                    r.nodeToId = ambientIdx;
+                    r.quadrantTo = ThermalNodeFace::NONE;
+                    r.type = _config.includeForcedConvection ?
+                        HeatTransferType::FORCED_CONVECTION :
+                        HeatTransferType::NATURAL_CONVECTION;
+                    // Resistance scales inversely with area
+                    r.resistance = bottomQuad->calculateConvectionResistance(h_conv) / areaProportion;
+                    r.area = effectiveArea;
+                    _resistances.push_back(r);
+
+                    if (THERMAL_DEBUG) {
+                        std::cout << "[PLANAR] Created FR4 bottom surface to ambient (reduced by copper): "
+                                  << fr4Node.name << " quadrant " << static_cast<int>(ThermalNodeFace::TANGENTIAL_RIGHT)
+                                  << " → Tamb (area=" << effectiveArea*1e6 << "mm², coverage=" << (1-areaProportion)*100
+                                  << "%, R=" << r.resistance << "K/W)"
+                                  << std::endl;
+                    }
+                }
+            }
+        }
+
+        // 6. Connect core nodes to ambient via convection
+        // In planar designs, core surfaces are exposed to air
+        for (size_t i = 0; i < _nodes.size(); i++) {
+            if (_nodes[i].part == ThermalNodePartType::AMBIENT) continue;
+
+            bool isCoreNode = (_nodes[i].part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
+                              _nodes[i].part == ThermalNodePartType::CORE_LATERAL_COLUMN ||
+                              _nodes[i].part == ThermalNodePartType::CORE_TOP_YOKE ||
+                              _nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE);
+
+            if (!isCoreNode) continue;
+
+            // Connect all core quadrants to ambient
+            for (int qIdx = 0; qIdx < 4; ++qIdx) {
+                ThermalNodeFace face = _nodes[i].quadrants[qIdx].face;
+                if (face == ThermalNodeFace::NONE) continue;
+
+                auto* coreQuad = _nodes[i].getQuadrant(face);
+                if (!coreQuad || coreQuad->surfaceArea <= 0) continue;
+
                 ThermalResistanceElement r;
-                r.nodeFromId = fr4Idx;
-                r.quadrantFrom = ThermalNodeFace::TANGENTIAL_RIGHT;
+                r.nodeFromId = i;
+                r.quadrantFrom = face;
                 r.nodeToId = ambientIdx;
                 r.quadrantTo = ThermalNodeFace::NONE;
                 r.type = _config.includeForcedConvection ?
                     HeatTransferType::FORCED_CONVECTION :
                     HeatTransferType::NATURAL_CONVECTION;
-                r.resistance = bottomQuad->calculateConvectionResistance(h_conv);
-                r.area = bottomQuad->surfaceArea;
+                r.resistance = coreQuad->calculateConvectionResistance(h_conv);
+                r.area = coreQuad->surfaceArea;
                 _resistances.push_back(r);
 
                 if (THERMAL_DEBUG) {
-                    std::cout << "[PLANAR] Created FR4 bottom surface to ambient: "
-                              << fr4Node.name << " quadrant " << static_cast<int>(ThermalNodeFace::TANGENTIAL_RIGHT)
+                    std::cout << "[PLANAR] Created core convection: "
+                              << _nodes[i].name << " quadrant " << static_cast<int>(face)
                               << " → Tamb (R=" << r.resistance << "K/W)"
                               << std::endl;
                 }
