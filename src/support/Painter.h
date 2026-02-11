@@ -464,15 +464,9 @@ class BasicPainter : public PainterInterface {
     void paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature=defaults.ambientTemperature) {
         throw std::runtime_error("Not implemented in basic painter");
     }
-    void paint_waveform(Waveform waveform) {
-        throw std::runtime_error("Not implemented in basic painter");
-    }
-    void paint_waveform(std::vector<double> waveform, std::optional<std::vector<double>> time = std::nullopt) {
-        throw std::runtime_error("Not implemented in basic painter");
-    }
-    void paint_curve(Curve2D curve2D, bool logScale = false) {
-        throw std::runtime_error("Not implemented in basic painter");
-    }
+    void paint_waveform(Waveform waveform);
+    void paint_waveform(std::vector<double> waveform, std::optional<std::vector<double>> time = std::nullopt);
+    void paint_curve(Curve2D curve2D, bool logScale = false);
     void paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension);
     void paint_circle(double xCoordinate, double yCoordinate, double radius);
     

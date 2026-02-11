@@ -3756,4 +3756,69 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     return export_svg();
 }
 
+void BasicPainter::paint_waveform(Waveform waveform) {
+    paint_waveform(waveform.get_data(), waveform.get_time());
+}
+
+void BasicPainter::paint_waveform(std::vector<double> data, std::optional<std::vector<double>> time) {
+    if (data.empty()) return;
+
+    std::vector<double> x;
+    if (time && !time->empty()) {
+        x = time.value();
+    } else {
+        x.resize(data.size());
+        for (size_t i = 0; i < data.size(); ++i) {
+            x[i] = static_cast<double>(i);
+        }
+    }
+
+    // Set image size if not set
+    if (_imageWidth == 0 || _imageHeight == 0) {
+        _imageWidth = 800;
+        _imageHeight = 600;
+        _root.set_attr("width", std::to_string(_imageWidth));
+        _root.set_attr("height", std::to_string(_imageHeight));
+        _root.set_attr("viewBox", "0 0 " + std::to_string(_imageWidth) + " " + std::to_string(_imageHeight));
+    }
+
+    double minX = *std::min_element(x.begin(), x.end());
+    double maxX = *std::max_element(x.begin(), x.end());
+    double minY = *std::min_element(data.begin(), data.end());
+    double maxY = *std::max_element(data.begin(), data.end());
+
+    double rangeX = maxX - minX;
+    double rangeY = maxY - minY;
+    if (rangeX <= 0) rangeX = 1;
+    if (rangeY <= 0) rangeY = 1;
+
+    // Add some padding
+    double padding = 0.1;
+    minY -= rangeY * padding;
+    maxY += rangeY * padding;
+    rangeY = maxY - minY;
+
+    std::stringstream path;
+    for (size_t i = 0; i < data.size(); ++i) {
+        double px = 50 + ((x[i] - minX) / rangeX) * (_imageWidth - 100);
+        double py = 50 + (1 - (data[i] - minY) / rangeY) * (_imageHeight - 100);
+        if (i == 0) {
+            path << "M " << px << " " << py;
+        } else {
+            path << " L " << px << " " << py;
+        }
+    }
+
+    auto* svgPath = _root.add_child<SVG::Path>();
+    svgPath->set_attr("d", path.str());
+    svgPath->set_attr("stroke", "blue");
+    svgPath->set_attr("fill", "none");
+    svgPath->set_attr("stroke-width", "2");
+}
+
+void BasicPainter::paint_curve(Curve2D curve2D, bool logScale) {
+    // For basic painter, ignore logScale and just plot
+    paint_waveform(curve2D.get_y_points(), std::make_optional(curve2D.get_x_points()));
+}
+
 } // namespace OpenMagnetics

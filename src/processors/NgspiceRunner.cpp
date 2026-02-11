@@ -396,6 +396,8 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
     
     // Print any captured output from ngspice (errors should appear here)
     if (!_capturedOutput.empty()) {
+        // Debug output captured from ngspice
+    }
     
     if (ret != 0) {
         result.success = false;

@@ -349,7 +349,7 @@ namespace OpenMagnetics {
         
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << "* Secondary " << secIdx << " output stage\n";
-            circuit << "Dout" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_p DIDEAL\n";
+            circuit << "Dout" << secIdx << " sec" << secIdx << "_p sec" << secIdx << "_in DIDEAL\n";
             circuit << "Vsec_sense" << secIdx << " sec" << secIdx << "_p vout" << secIdx << " 0\n";
             
             double loadResistance = opPoint.get_output_voltages()[secIdx] / opPoint.get_output_currents()[secIdx];
@@ -581,7 +581,7 @@ namespace OpenMagnetics {
         // Output stage for each secondary
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << "* Secondary " << secIdx << " output stage\n";
-            circuit << "Dout" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_p DIDEAL\n";
+            circuit << "Dout" << secIdx << " sec" << secIdx << "_p sec" << secIdx << "_in DIDEAL\n";
             circuit << "Vsec_sense" << secIdx << " sec" << secIdx << "_p vout" << secIdx << " 0\n";
             
             double loadResistance = opPoint.get_output_voltages()[secIdx] / opPoint.get_output_currents()[secIdx];

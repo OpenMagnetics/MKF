@@ -32,14 +32,14 @@ namespace {
         buckInputsJson["diodeVoltageDrop"] = 0.7;
         buckInputsJson["efficiency"] = 0.9;
         buckInputsJson["maximumSwitchCurrent"] = 8;
-        buckInputsJson["converterWaveforms"] = json::array();
+        buckInputsJson["operatingPoints"] = json::array();
         {
             json buckOperatingPointJson;
             buckOperatingPointJson["outputVoltage"] = 12;
             buckOperatingPointJson["outputCurrent"] = 3;
             buckOperatingPointJson["switchingFrequency"] = 100000;
             buckOperatingPointJson["ambientTemperature"] = 42;
-            buckInputsJson["converterWaveforms"].push_back(buckOperatingPointJson);
+            buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
         }
 
         OpenMagnetics::Buck buckInputs(buckInputsJson);
@@ -101,14 +101,14 @@ namespace {
         buckInputsJson["diodeVoltageDrop"] = 0.7;
         buckInputsJson["efficiency"] = 0.9;
         buckInputsJson["maximumSwitchCurrent"] = 8;
-        buckInputsJson["converterWaveforms"] = json::array();
+        buckInputsJson["operatingPoints"] = json::array();
         {
             json buckOperatingPointJson;
             buckOperatingPointJson["outputVoltage"] = 12;
             buckOperatingPointJson["outputCurrent"] = 3;
             buckOperatingPointJson["switchingFrequency"] = 100000;
             buckOperatingPointJson["ambientTemperature"] = 42;
-            buckInputsJson["converterWaveforms"].push_back(buckOperatingPointJson);
+            buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
         }
         OpenMagnetics::Buck buckInputs(buckInputsJson);
         buckInputs._assertErrors = true;
