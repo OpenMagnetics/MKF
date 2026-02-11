@@ -162,7 +162,7 @@ namespace {
     }
 
     TEST_CASE("Test_Buck_Web_0", "[converter-model][buck-topology][smoke-test]") {
-        json buckInputsJson = json::parse(R"({"inputVoltage":{"minimum":10,"maximum":12},"diodeVoltageDrop":0.7,"efficiency":0.85,"currentRippleRatio":0.4,"converterWaveforms":[{"outputVoltage":5,"outputCurrent":2,"switchingFrequency":100000,"ambientTemperature":25}]})");
+        json buckInputsJson = json::parse(R"({"inputVoltage":{"minimum":10,"maximum":12},"diodeVoltageDrop":0.7,"efficiency":0.85,"currentRippleRatio":0.4,"operatingPoints":[{"outputVoltage":5,"outputCurrent":2,"switchingFrequency":100000,"ambientTemperature":25}]})");
         OpenMagnetics::Buck buckInputs(buckInputsJson);
 
         auto inputs = buckInputs.process();

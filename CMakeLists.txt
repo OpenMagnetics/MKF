@@ -423,8 +423,6 @@ file(GLOB SOURCES
     "src/physical_models/*.cpp"
     "src/processors/*.cpp"
     "src/support/*.cpp")
-# Exclude files without headers
-list(FILTER SOURCES EXCLUDE REGEX ".*PowerFactorCorrection\\.cpp$")
 
 SET(LIBS levmar data::insulation_standards)
 
