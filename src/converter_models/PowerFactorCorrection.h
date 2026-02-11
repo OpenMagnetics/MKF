@@ -224,6 +224,7 @@ private:
     std::string _mode = "Continuous Conduction Mode";
     double _diodeVoltageDrop = 0.6;
     double _ambientTemperature = 25.0;
+    int _numberOfPeriods = 2;
 };
 
 } // namespace OpenMagnetics

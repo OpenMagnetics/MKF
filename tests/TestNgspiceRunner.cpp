@@ -576,36 +576,35 @@ TEST_CASE("Flyback topology waveform validation", "[ngspice-runner][flyback-topo
     REQUIRE(!op.get_input_current().get_data().empty());
     REQUIRE(!op.get_output_voltages().empty());
 
-    // Extract waveform data
-    auto priVoltageData = op.get_input_voltage().get_data();
-    auto priCurrentData = op.get_input_current().get_data();
-    auto secVoltageData = op.get_output_voltages()[0].get_data();
-    
+    // Extract converter I/O waveform data (topology level)
+    auto inputVoltageData = op.get_input_voltage().get_data();
+    auto inputCurrentData = op.get_input_current().get_data();
+    auto outputVoltageData = op.get_output_voltages()[0].get_data();
+    auto outputCurrentData = op.get_output_currents()[0].get_data();
+
     // Calculate waveform statistics
-    double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
-    double priV_min = *std::min_element(priVoltageData.begin(), priVoltageData.end());
-    double secV_max = *std::max_element(secVoltageData.begin(), secVoltageData.end());
-    double secV_min = *std::min_element(secVoltageData.begin(), secVoltageData.end());
-    
-    INFO("Primary voltage: min=" << priV_min << " max=" << priV_max);
-    INFO("Secondary voltage: min=" << secV_min << " max=" << secV_max);
-    INFO("Input voltage: " << inputVoltage.get_nominal().value());
-    
-    // Validate primary voltage behavior:
-    // During ON: V_pri should be close to Vin
+    double inputV_avg = std::accumulate(inputVoltageData.begin(), inputVoltageData.end(), 0.0) / inputVoltageData.size();
+    double inputI_avg = std::accumulate(inputCurrentData.begin(), inputCurrentData.end(), 0.0) / inputCurrentData.size();
+    double outputV_avg = std::accumulate(outputVoltageData.begin(), outputVoltageData.end(), 0.0) / outputVoltageData.size();
+    double outputI_avg = std::accumulate(outputCurrentData.begin(), outputCurrentData.end(), 0.0) / outputCurrentData.size();
+
+    INFO("Input voltage avg: " << inputV_avg << " V");
+    INFO("Input current avg: " << inputI_avg << " A");
+    INFO("Output voltage avg: " << outputV_avg << " V");
+    INFO("Output current avg: " << outputI_avg << " A");
+
+    // Validate converter-level behavior
     double inputVoltageValue = inputVoltage.get_nominal().value();
-    CHECK(priV_max > inputVoltageValue * 0.8);
-    CHECK(priV_max < inputVoltageValue * 1.2);
-    
-    // During OFF: V_pri should be negative (reflected voltage)
-    CHECK(priV_min < 0.0);
-    
-    // Validate secondary voltage behavior:
-    // During ON: V_sec should be negative (flyback action)
-    CHECK(secV_min < 0.0);
-    
-    // During OFF: V_sec should be positive (diode conducting)
-    CHECK(secV_max > 0.0);
+    CHECK(inputV_avg > inputVoltageValue * 0.8);
+    CHECK(inputV_avg < inputVoltageValue * 1.2);
+
+    // Output voltage should be close to 12V
+    CHECK(outputV_avg > 10.0);
+    CHECK(outputV_avg < 15.0);  // Allow some margin for simulation variations
+
+    // Output current should be close to 1A
+    CHECK(outputI_avg > 0.5);
+    CHECK(outputI_avg < 1.5);
     
     INFO("Topology waveform validation passed");
 }
@@ -1037,29 +1036,28 @@ TEST_CASE("Flyback multi-output converter simulation", "[ngspice-runner][flyback
         REQUIRE(topoOp.get_output_currents()[i].get_data().size() > 10);
     }
 
-    // Check secondary winding voltage characteristics
-    auto sec1VoltageData = topoOp.get_output_voltages()[0].get_data();
-    auto sec2VoltageData = topoOp.get_output_voltages()[1].get_data();
-    
-    // During switch-on: secondary voltages should be negative (flyback action)
-    double sec1_min = *std::min_element(sec1VoltageData.begin(), sec1VoltageData.end());
-    double sec2_min = *std::min_element(sec2VoltageData.begin(), sec2VoltageData.end());
-    
-    INFO("Secondary 1 voltage min: " << sec1_min);
-    INFO("Secondary 2 voltage min: " << sec2_min);
-    
-    CHECK(sec1_min < 0.0);  // Should go negative during primary ON
-    CHECK(sec2_min < 0.0);  // Should go negative during primary ON
-    
-    // During switch-off: secondary voltages should be positive (energy transfer)
-    double sec1_max = *std::max_element(sec1VoltageData.begin(), sec1VoltageData.end());
-    double sec2_max = *std::max_element(sec2VoltageData.begin(), sec2VoltageData.end());
-    
-    INFO("Secondary 1 voltage max: " << sec1_max);
-    INFO("Secondary 2 voltage max: " << sec2_max);
-    
-    CHECK(sec1_max > 0.0);  // Should go positive during primary OFF
-    CHECK(sec2_max > 0.0);  // Should go positive during primary OFF
+    // Check converter output voltages (topology level)
+    auto out1VoltageData = topoOp.get_output_voltages()[0].get_data();
+    auto out2VoltageData = topoOp.get_output_voltages()[1].get_data();
+    auto out1CurrentData = topoOp.get_output_currents()[0].get_data();
+    auto out2CurrentData = topoOp.get_output_currents()[1].get_data();
+
+    // Calculate average output voltages and currents
+    double out1V_avg = std::accumulate(out1VoltageData.begin(), out1VoltageData.end(), 0.0) / out1VoltageData.size();
+    double out2V_avg = std::accumulate(out2VoltageData.begin(), out2VoltageData.end(), 0.0) / out2VoltageData.size();
+    double out1I_avg = std::accumulate(out1CurrentData.begin(), out1CurrentData.end(), 0.0) / out1CurrentData.size();
+    double out2I_avg = std::accumulate(out2CurrentData.begin(), out2CurrentData.end(), 0.0) / out2CurrentData.size();
+
+    INFO("Output 1 voltage avg: " << out1V_avg << " V (expected 12V)");
+    INFO("Output 2 voltage avg: " << out2V_avg << " V (expected 5V)");
+    INFO("Output 1 current avg: " << out1I_avg << " A");
+    INFO("Output 2 current avg: " << out2I_avg << " A");
+
+    // Validate converter outputs
+    CHECK(out1V_avg > 10.0);  // Output 1 should be ~12V
+    CHECK(out1V_avg < 16.0);  // Allow margin for multi-output regulation
+    CHECK(out2V_avg > 4.0);   // Output 2 should be ~5V
+    CHECK(out2V_avg < 7.0);   // Allow margin for cross-regulation
     
     INFO("Multi-output flyback test passed");
 }
