@@ -32,14 +32,14 @@ namespace {
         boostInputsJson["diodeVoltageDrop"] = 0.7;
         boostInputsJson["efficiency"] = 1;
         boostInputsJson["maximumSwitchCurrent"] = 8;
-        boostInputsJson["converterWaveforms"] = json::array();
+        boostInputsJson["operatingPoints"] = json::array();
         {
             json boostOperatingPointJson;
             boostOperatingPointJson["outputVoltage"] = 50;
             boostOperatingPointJson["outputCurrent"] = 1;
             boostOperatingPointJson["switchingFrequency"] = 100000;
             boostOperatingPointJson["ambientTemperature"] = 42;
-            boostInputsJson["converterWaveforms"].push_back(boostOperatingPointJson);
+            boostInputsJson["operatingPoints"].push_back(boostOperatingPointJson);
         }
 
         OpenMagnetics::Boost boostInputs(boostInputsJson);
@@ -81,12 +81,12 @@ namespace {
             painter.export_svg();
         }
 
-        REQUIRE_THAT(double(boostInputsJson["converterWaveforms"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["converterWaveforms"][0]["outputVoltage"]) * maximumError));
+        REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError));
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
-        REQUIRE_THAT(double(boostInputsJson["converterWaveforms"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["converterWaveforms"][0]["outputVoltage"]) * maximumError));
+        REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError));
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR_WITH_DEADTIME);
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);

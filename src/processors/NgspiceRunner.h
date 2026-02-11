@@ -227,7 +227,7 @@ public:
         double frequency,
         const std::vector<std::string>& windingNames = {},
         double ambientTemperature = 25.0,
-        const std::vector<bool>& flipCurrentSign = {});
+        const std::vector<bool>& flipCurrentSign = {}); ;
         
     /**
      * @brief Generate a simple test circuit for a magnetic component
@@ -245,7 +245,7 @@ public:
         const Magnetic& magnetic,
         double frequency,
         double primaryVoltage,
-        const std::vector<double>& loadResistances);
+        const std::vector<double>& loadResistances); ;
 };
 
 } // namespace OpenMagnetics

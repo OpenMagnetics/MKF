@@ -2108,12 +2108,15 @@ namespace {
 
         #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        REQUIRE(std::filesystem::exists(outFile));
         #else
             INFO("matplotplusplus disabled — skipping AdvancedPainter call");
         #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
+
         settings.reset();
     }
 
@@ -2142,12 +2145,11 @@ namespace {
 
         #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        REQUIRE(std::filesystem::exists(outFile));
         #else
             INFO("matplotplusplus disabled — skipping AdvancedPainter call");
         #endif
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
 
@@ -2178,12 +2180,11 @@ namespace {
 
         #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        REQUIRE(std::filesystem::exists(outFile));
         #else
             INFO("matplotplusplus disabled — skipping AdvancedPainter call");
         #endif
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
     }
 
@@ -3912,6 +3913,9 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Planar", "[support][painter][magnetic-painter][rectangular-winding-window][smoke-test]") {
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping planar painter test");
+#endif
 
         settings.set_coil_wind_even_if_not_fit(false);
         settings.set_coil_try_rewind(false);
@@ -5093,6 +5097,9 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_RM_Core_Distributed_Gap_3", "[support][painter][magnetic-painter][pot-core][distributed-gap][smoke-test]") {
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping RM core painter test");
+#endif
         // Test case with RM core (pot-like shape) with 3 distributed gaps
         clear_databases();
         

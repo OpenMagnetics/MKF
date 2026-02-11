@@ -53,17 +53,9 @@ namespace {
         outFile.append("Test_Sweeper_Impedance_Over_Frequency_Many_Turns.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, true);
-        #ifdef ENABLE_MATPLOTPP
         painter.paint_curve(impedanceSweep, true);
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
 
