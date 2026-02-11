@@ -1020,24 +1020,15 @@ namespace {
         
         REQUIRE(!operatingPoints.empty());
         
-        // Verify we have excitations for primary + 1 secondary = 2 windings
-        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() == 2);
-        
-        // Get primary excitation
-        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
-        REQUIRE(primaryExc.get_voltage().has_value());
-        REQUIRE(primaryExc.get_current().has_value());
-        
-        // Get secondary excitation
-        const auto& secondaryExc = operatingPoints[0].get_excitations_per_winding()[1];
-        REQUIRE(secondaryExc.get_voltage().has_value());
-        REQUIRE(secondaryExc.get_current().has_value());
-        
+        // Verify we have waveform data for primary and 1 secondary output
+        REQUIRE(!operatingPoints[0].get_input_voltage().get_data().empty());
+        REQUIRE(operatingPoints[0].get_output_voltages().size() == 1);
+
         // Extract waveform data
-        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-        auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
-        auto secVoltageData = secondaryExc.get_voltage()->get_waveform()->get_data();
-        auto secCurrentData = secondaryExc.get_current()->get_waveform()->get_data();
+        auto priVoltageData = operatingPoints[0].get_input_voltage().get_data();
+        auto priCurrentData = operatingPoints[0].get_input_current().get_data();
+        auto secVoltageData = operatingPoints[0].get_output_voltages()[0].get_data();
+        auto secCurrentData = operatingPoints[0].get_output_currents()[0].get_data();
         
         // Calculate statistics
         double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());

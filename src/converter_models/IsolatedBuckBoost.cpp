@@ -1,5 +1,4 @@
 #include "converter_models/IsolatedBuckBoost.h"
-#include "converter_models/ForwardConverterUtils.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "processors/CircuitSimulatorInterface.h"
@@ -562,107 +561,72 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
     
-    std::vector<IsolatedBuckBoostTopologyWaveforms> IsolatedBuckBoost::simulate_and_extract_topology_waveforms(
-        const std::vector<double>& turnsRatios,
+    std::vector<ConverterWaveforms> IsolatedBuckBoost::simulate_and_extract_topology_waveforms(const std::vector<double>& turnsRatios,
         double magnetizingInductance) {
-        
-        std::vector<IsolatedBuckBoostTopologyWaveforms> topologyWaveforms;
-        
-        NgspiceRunner runner;
-        if (!runner.is_available()) {
-            throw std::runtime_error("ngspice is not available for simulation");
-        }
-        
-        // Collect input voltages to simulate
-        std::vector<double> inputVoltages;
-        std::vector<std::string> inputVoltagesNames;
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
-        
-        size_t numSecondaries = turnsRatios.size();
-        
-        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            double inputVoltage = inputVoltages[inputVoltageIndex];
-            
-            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
-                auto ibbOpPoint = get_operating_points()[opIndex];
-                
-                // Generate circuit
-                std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
-                
-                double switchingFrequency = ibbOpPoint.get_switching_frequency();
-                double efficiency = 1.0;
-                if (get_efficiency()) {
-                    efficiency = get_efficiency().value();
-                }
-                double dutyCycle = calculate_duty_cycle(inputVoltage, ibbOpPoint.get_output_voltages()[0], efficiency);
-                
-                // Run simulation
-                SimulationConfig config;
-                config.frequency = switchingFrequency;
-                config.extractOnePeriod = true;
-                config.numberOfPeriods = 2; // Two periods for topology waveform visualization
-                config.keepTempFiles = false;
-                
-                auto simResult = runner.run_simulation(netlist, config);
-                
-                if (!simResult.success) {
-                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
-                }
-                
-                // Build name-to-index map for waveform lookup (case-insensitive)
-                std::map<std::string, size_t> nameToIndex;
-                for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-                    std::string lower = simResult.waveformNames[i];
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    nameToIndex[lower] = i;
-                }
-                
-                // Helper lambda to get waveform data by name
-                auto getWaveformData = [&](const std::string& name) -> std::vector<double> {
-                    std::string lower = name;
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                    auto it = nameToIndex.find(lower);
-                    if (it != nameToIndex.end()) {
-                        return simResult.waveforms[it->second].get_data();
-                    }
-                    return {};
-                };
-                
-                // Extract topology waveforms
-                IsolatedBuckBoostTopologyWaveforms waveforms;
-                //waveforms.frequency = switchingFrequency;
-                waveforms.inputVoltageValue = inputVoltage;
-                waveforms.dutyCycle = dutyCycle;
-                
-                // Set output voltage values
-                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-                    waveforms.outputVoltageValues.push_back(ibbOpPoint.get_output_voltages()[secIdx]);
-                }
-                
-                // Set name
-                waveforms.operatingPointName = inputVoltagesNames[inputVoltageIndex] + " input";
-                if (get_operating_points().size() > 1) {
-                    waveforms.operatingPointName += " op. point " + std::to_string(opIndex);
-                }
-                
-                // Extract time vector
-                waveforms.time = getWaveformData("time");
-                
-                // Extract primary winding signals
-                waveforms.primaryVoltage = getWaveformData("pri_in");
-                waveforms.primaryCurrent = getWaveformData("vpri_sense#branch");
-                
-                // Extract secondary signals
-                for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-                    waveforms.secondaryWindingVoltages.push_back(getWaveformData("sec" + std::to_string(secIdx) + "_in"));
-                    waveforms.outputVoltages.push_back(getWaveformData("vout" + std::to_string(secIdx)));
-                    waveforms.secondaryCurrents.push_back(getWaveformData("vsec_sense" + std::to_string(secIdx) + "#branch"));
-                }
-                
-                topologyWaveforms.push_back(waveforms);
-            }
-        }
-        
-        return topologyWaveforms;
+    
+    std::vector<ConverterWaveforms> results;
+    
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        throw std::runtime_error("ngspice is not available for simulation");
     }
+    
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltagesNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+    
+    for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+        for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+            auto opPoint = get_operating_points()[opIndex];
+            
+            std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
+            double switchingFrequency = opPoint.get_switching_frequency();
+            
+            SimulationConfig config;
+            config.frequency = switchingFrequency;
+            config.extractOnePeriod = true;
+            config.numberOfPeriods = 2;
+            config.keepTempFiles = false;
+            
+            auto simResult = runner.run_simulation(netlist, config);
+            if (!simResult.success) {
+                throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
+            }
+            
+            std::map<std::string, size_t> nameToIndex;
+            for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+                std::string lower = simResult.waveformNames[i];
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                nameToIndex[lower] = i;
+            }
+            auto getWaveform = [&](const std::string& name) -> Waveform {
+                std::string lower = name;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                auto it = nameToIndex.find(lower);
+                if (it != nameToIndex.end()) return simResult.waveforms[it->second];
+                return Waveform();
+            };
+            
+            ConverterWaveforms wf;
+            wf.set_switching_frequency(switchingFrequency);
+            std::string name = inputVoltagesNames[inputVoltageIndex] + " input";
+            if (get_operating_points().size() > 1) {
+                name += " op. point " + std::to_string(opIndex);
+            }
+            wf.set_operating_point_name(name);
+            
+            wf.set_input_voltage(getWaveform("pri_in"));
+            wf.set_input_current(getWaveform("vpri_sense#branch"));
+            
+            for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
+                wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
+                wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense" + std::to_string(secIdx) + "#branch"));
+            }
+            
+            results.push_back(wf);
+        }
+    }
+    
+    return results;
+}
 } // namespace OpenMagnetics

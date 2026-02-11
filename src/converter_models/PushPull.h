@@ -72,7 +72,7 @@ public:
      * @param magnetizingInductance Magnetizing inductance in H
      * @return Vector of OperatingPoints extracted from simulation
      */
-    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 

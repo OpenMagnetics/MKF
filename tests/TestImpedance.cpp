@@ -70,11 +70,11 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance][smoke-test]") {
 
         #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
         #else
             INFO("matplotplusplus disabled — skipping AdvancedPainter call");
         #endif
 
-        REQUIRE(std::filesystem::exists(outFile));
 
     }
     {

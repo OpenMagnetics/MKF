@@ -208,7 +208,7 @@ void applySimulatedLosses(TemperatureConfig& config,
 // Unit Tests for Static Calculation Methods
 //=============================================================================
 
-TEST_CASE("Temperature: Conduction Resistance Calculation", "[temperature][conduction]") {
+TEST_CASE("Temperature: Conduction Resistance Calculation", "[temperature][conduction][smoke-test]") {
     // R = L / (k * A)
     // For a 10mm path through copper (k=385 W/m·K) with 1cm² area:
     // R = 0.01 / (385 * 0.0001) = 0.26 K/W
@@ -246,7 +246,7 @@ TEST_CASE("Temperature: Conduction Resistance Calculation", "[temperature][condu
     }
 }
 
-TEST_CASE("Temperature: Convection Resistance Calculation", "[temperature][convection]") {
+TEST_CASE("Temperature: Convection Resistance Calculation", "[temperature][convection][smoke-test]") {
     // R = 1 / (h * A)
     
     SECTION("Basic convection resistance") {
@@ -275,7 +275,7 @@ TEST_CASE("Temperature: Convection Resistance Calculation", "[temperature][conve
     }
 }
 
-TEST_CASE("Temperature: Natural Convection Coefficient", "[temperature][convection]") {
+TEST_CASE("Temperature: Natural Convection Coefficient", "[temperature][convection][smoke-test]") {
     // Natural convection h typically 5-25 W/(m²·K)
     
     SECTION("Vertical surface, moderate temperature difference") {
@@ -328,7 +328,7 @@ TEST_CASE("Temperature: Natural Convection Coefficient", "[temperature][convecti
     }
 }
 
-TEST_CASE("Temperature: Forced Convection Coefficient", "[temperature][convection]") {
+TEST_CASE("Temperature: Forced Convection Coefficient", "[temperature][convection][smoke-test]") {
     // Forced convection h typically 25-250+ W/(m²·K)
     
     SECTION("Low velocity air") {
@@ -366,7 +366,7 @@ TEST_CASE("Temperature: Forced Convection Coefficient", "[temperature][convectio
     }
 }
 
-TEST_CASE("Temperature: Radiation Coefficient", "[temperature][radiation]") {
+TEST_CASE("Temperature: Radiation Coefficient", "[temperature][radiation][smoke-test]") {
     // h_rad = ε * σ * (Ts² + Ta²) * (Ts + Ta)
     // At 100°C surface, 25°C ambient, ε=0.9: h_rad ≈ 7-8 W/(m²·K)
     
@@ -411,7 +411,7 @@ TEST_CASE("Temperature: Radiation Coefficient", "[temperature][radiation]") {
     }
 }
 
-TEST_CASE("Temperature: Material Thermal Conductivity", "[temperature]") {
+TEST_CASE("Temperature: Material Thermal Conductivity", "[temperature][smoke-test]") {
     SECTION("Known materials return correct values") {
         // Copper: MAS data interpolates to ~399 at 25°C
         REQUIRE_THAT(ThermalResistance::getMaterialThermalConductivity("copper"), 
@@ -439,7 +439,7 @@ TEST_CASE("Temperature: Material Thermal Conductivity", "[temperature]") {
     }
 }
 
-TEST_CASE("Temperature: Fluid Properties", "[temperature]") {
+TEST_CASE("Temperature: Fluid Properties", "[temperature][smoke-test]") {
     SECTION("Air properties at room temperature") {
         FluidProperties air = FluidProperties::getAirProperties(25.0);
         
@@ -475,7 +475,7 @@ TEST_CASE("Temperature: Fluid Properties", "[temperature]") {
 // Integration Tests with Magnetic Components (using new Temperature API)
 //=============================================================================
 
-TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[temperature][round-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -539,7 +539,7 @@ TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[temperature][round-windi
     
 }
 
-TEST_CASE("Temperature: Larger Toroidal Core Two Windings", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature: Larger Toroidal Core Two Windings", "[temperature][round-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns({20, 10});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "T 36/23/15";
@@ -590,7 +590,7 @@ TEST_CASE("Temperature: Larger Toroidal Core Two Windings", "[temperature][round
     
 }
 
-TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[temperature][round-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns({20, 10});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "T 36/23/15";
@@ -642,7 +642,7 @@ TEST_CASE("Temperature: T36 Two Windings Schematic Only", "[temperature][round-w
     
 }
 
-TEST_CASE("Temperature: T20 Two Windings Quadrant Visualization", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature: T20 Two Windings Quadrant Visualization", "[temperature][round-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns({5, 5});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "T 20/10/7";
@@ -689,7 +689,7 @@ TEST_CASE("Temperature: T20 Two Windings Quadrant Visualization", "[temperature]
     REQUIRE(temp.getResistances().size() > 0);
 }
 
-TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[temperature][round-winding-window][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -731,7 +731,7 @@ TEST_CASE("Temperature: Toroidal Quadrant Visualization", "[temperature][round-w
 // Additional Core Type Tests
 //=============================================================================
 
-TEST_CASE("Temperature: ETD Core", "[temperature]") {
+TEST_CASE("Temperature: ETD Core", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 39/20/13";
@@ -783,7 +783,7 @@ TEST_CASE("Temperature: ETD Core", "[temperature]") {
     REQUIRE(result.totalThermalResistance < 200.0);
 }
 
-TEST_CASE("Temperature: E Core", "[temperature]") {
+TEST_CASE("Temperature: E Core", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "E 42/21/15";
@@ -838,7 +838,7 @@ TEST_CASE("Temperature: E Core", "[temperature]") {
     REQUIRE(result.totalThermalResistance > 0.1);
 }
 
-TEST_CASE("Temperature: Multi-Winding", "[temperature]") {
+TEST_CASE("Temperature: Multi-Winding", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({20, 10, 15});
     std::vector<int64_t> numberParallels({1, 1, 1});
     std::string shapeName = "T 36/23/15";
@@ -879,7 +879,7 @@ TEST_CASE("Temperature: Multi-Winding", "[temperature]") {
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
 }
 
-TEST_CASE("Temperature: Ambient Temperature Effect", "[temperature]") {
+TEST_CASE("Temperature: Ambient Temperature Effect", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -932,7 +932,7 @@ TEST_CASE("Temperature: Ambient Temperature Effect", "[temperature]") {
                  Catch::Matchers::WithinRel(result1.totalThermalResistance, 0.1));
 }
 
-TEST_CASE("Temperature: Loss Variation", "[temperature]") {
+TEST_CASE("Temperature: Loss Variation", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -991,7 +991,7 @@ TEST_CASE("Temperature: Loss Variation", "[temperature]") {
     REQUIRE(deltaT2 > 5.0 * deltaT1);
 }
 
-TEST_CASE("Temperature: Radiation Effect", "[temperature]") {
+TEST_CASE("Temperature: Radiation Effect", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1045,7 +1045,7 @@ TEST_CASE("Temperature: Radiation Effect", "[temperature]") {
     REQUIRE(result2.totalThermalResistance <= result1.totalThermalResistance);
 }
 
-TEST_CASE("Temperature: Segment Count", "[temperature]") {
+TEST_CASE("Temperature: Segment Count", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1101,7 +1101,7 @@ TEST_CASE("Temperature: Segment Count", "[temperature]") {
                  Catch::Matchers::WithinRel(result1.totalThermalResistance, 0.15));
 }
 
-TEST_CASE("Temperature: Node Access", "[temperature]") {
+TEST_CASE("Temperature: Node Access", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1168,7 +1168,7 @@ TEST_CASE("Temperature: Node Access", "[temperature]") {
     }
 }
 
-TEST_CASE("Temperature: Bulk Resistance", "[temperature]") {
+TEST_CASE("Temperature: Bulk Resistance", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1220,7 +1220,7 @@ TEST_CASE("Temperature: Bulk Resistance", "[temperature]") {
     REQUIRE(result.totalThermalResistance < 150.0);  // Increased from 100 due to reduced convection
 }
 
-TEST_CASE("Temperature: Forced vs Natural Convection", "[temperature]") {
+TEST_CASE("Temperature: Forced vs Natural Convection", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 39/20/13";
@@ -1270,7 +1270,7 @@ TEST_CASE("Temperature: Forced vs Natural Convection", "[temperature]") {
     REQUIRE(forcedResult.totalThermalResistance < naturalResult.totalThermalResistance);
 }
 
-TEST_CASE("Temperature: Convergence Test", "[temperature]") {
+TEST_CASE("Temperature: Convergence Test", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 44/22/15";
@@ -1306,7 +1306,7 @@ TEST_CASE("Temperature: Convergence Test", "[temperature]") {
     REQUIRE(result.totalThermalResistance > 0.1);
 }
 
-TEST_CASE("Temperature: Very High Losses", "[temperature]") {
+TEST_CASE("Temperature: Very High Losses", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 29/16/10";
@@ -1341,7 +1341,7 @@ TEST_CASE("Temperature: Very High Losses", "[temperature]") {
     REQUIRE(result.maximumTemperature > 100.0);
 }
 
-TEST_CASE("Temperature: Very Small Core", "[temperature]") {
+TEST_CASE("Temperature: Very Small Core", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({5});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "E 13/7/4";
@@ -1376,7 +1376,7 @@ TEST_CASE("Temperature: Very Small Core", "[temperature]") {
     REQUIRE(result.totalThermalResistance > 10.0);
 }
 
-TEST_CASE("Temperature: Maniktala Formula Comparison", "[temperature]") {
+TEST_CASE("Temperature: Maniktala Formula Comparison", "[temperature][smoke-test]") {
     std::vector<std::tuple<std::string, double, double>> cores = {
         {"ETD 29/16/10", 5.47, 0.5},
         {"ETD 34/17/11", 7.64, 0.7},
@@ -1424,7 +1424,7 @@ TEST_CASE("Temperature: Maniktala Formula Comparison", "[temperature]") {
     }
 }
 
-TEST_CASE("Temperature: PQ Core", "[temperature]") {
+TEST_CASE("Temperature: PQ Core", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({18});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "PQ 26/25";
@@ -1460,7 +1460,7 @@ TEST_CASE("Temperature: PQ Core", "[temperature]") {
     REQUIRE(result.totalThermalResistance < 50.0);
 }
 
-TEST_CASE("Temperature: Four Winding Transformer", "[temperature]") {
+TEST_CASE("Temperature: Four Winding Transformer", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({24, 12, 8, 6});
     std::vector<int64_t> numberParallels({1, 1, 1, 1});
     std::string shapeName = "T 36/23/15";
@@ -1501,7 +1501,7 @@ TEST_CASE("Temperature: Four Winding Transformer", "[temperature]") {
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
 }
 
-TEST_CASE("Temperature: Zero Losses Baseline", "[temperature]") {
+TEST_CASE("Temperature: Zero Losses Baseline", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 49/25/16";
@@ -1537,7 +1537,7 @@ TEST_CASE("Temperature: Zero Losses Baseline", "[temperature]") {
                  Catch::Matchers::WithinAbs(config.ambientTemperature, 0.5));
 }
 
-TEST_CASE("Temperature: Linear Scaling Validation", "[temperature]") {
+TEST_CASE("Temperature: Linear Scaling Validation", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "ETD 49/25/16";
@@ -1609,7 +1609,7 @@ TEST_CASE("Temperature: Linear Scaling Validation", "[temperature]") {
     }
 }
 
-TEST_CASE("Temperature: U Core", "[temperature]") {
+TEST_CASE("Temperature: U Core", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "U 93/76/30";
@@ -1645,7 +1645,7 @@ TEST_CASE("Temperature: U Core", "[temperature]") {
     REQUIRE(result.totalThermalResistance > 0.1);
 }
 
-TEST_CASE("Temperature: RM Core", "[temperature]") {
+TEST_CASE("Temperature: RM Core", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({12});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "RM 8";
@@ -1686,7 +1686,7 @@ TEST_CASE("Temperature: RM Core", "[temperature]") {
 // Phase 2: Turn Node Tests
 // =============================================================================
 
-TEST_CASE("Temperature: Winding Losses Only", "[temperature]") {
+TEST_CASE("Temperature: Winding Losses Only", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1729,7 +1729,7 @@ TEST_CASE("Temperature: Winding Losses Only", "[temperature]") {
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Temperature at Point", "[temperature]") {
+TEST_CASE("Temperature: Temperature at Point", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({10});
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 20/10/7";
@@ -1784,7 +1784,7 @@ TEST_CASE("Temperature: Temperature at Point", "[temperature]") {
     }
 }
 
-TEST_CASE("Temperature: Per-Turn Temperature Model", "[temperature]") {
+TEST_CASE("Temperature: Per-Turn Temperature Model", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({20});  // More turns to see gradient
     std::vector<int64_t> numberParallels({1});
     std::string shapeName = "T 36/23/15";
@@ -1843,7 +1843,7 @@ TEST_CASE("Temperature: Per-Turn Temperature Model", "[temperature]") {
 // Planar Core Tests
 // =============================================================================
 
-TEST_CASE("Temperature: Planar Core ER", "[temperature][planar]") {
+TEST_CASE("Temperature: Planar Core ER", "[temperature][planar][smoke-test]") {
     std::vector<int64_t> numberTurns({8, 4});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "ER 28/14";  // Using a common ER size
@@ -1879,7 +1879,7 @@ TEST_CASE("Temperature: Planar Core ER", "[temperature][planar]") {
     REQUIRE(result.totalThermalResistance > 3.0);  // Lowered from 5.0 due to improved concentric core connections
 }
 
-TEST_CASE("Temperature: Planar Core Three Windings", "[temperature][planar]") {
+TEST_CASE("Temperature: Planar Core Three Windings", "[temperature][planar][smoke-test]") {
     std::vector<int64_t> numberTurns({12, 6, 4});
     std::vector<int64_t> numberParallels({1, 1, 1});
     std::string shapeName = "ER 28/14";
@@ -1919,7 +1919,7 @@ TEST_CASE("Temperature: Planar Core Three Windings", "[temperature][planar]") {
 // Paper Validation Tests
 // =============================================================================
 
-TEST_CASE("Temperature: Van den Bossche E42 Validation", "[temperature]") {
+TEST_CASE("Temperature: Van den Bossche E42 Validation", "[temperature][smoke-test]") {
     // Reference: Van den Bossche & Valchev - E42 core thermal resistance ~10-14 K/W
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
@@ -1990,7 +1990,7 @@ TEST_CASE("Temperature: Van den Bossche E42 Validation", "[temperature]") {
     }
 }
 
-TEST_CASE("Temperature: Power-Temperature Linearity", "[temperature]") {
+TEST_CASE("Temperature: Power-Temperature Linearity", "[temperature][smoke-test]") {
     // Reference: Dey et al. 2021 - Temperature rise scales linearly with power
     std::vector<int64_t> numberTurns({20});
     std::vector<int64_t> numberParallels({1});
@@ -2055,7 +2055,7 @@ TEST_CASE("Temperature: Power-Temperature Linearity", "[temperature]") {
     }
 }
 
-TEST_CASE("Temperature: Core Internal Gradient", "[temperature]") {
+TEST_CASE("Temperature: Core Internal Gradient", "[temperature][smoke-test]") {
     // Reference: Salinas thesis - ferrite conductivity gives small internal gradients
     std::vector<int64_t> numberTurns({15});
     std::vector<int64_t> numberParallels({1});
@@ -2113,7 +2113,7 @@ TEST_CASE("Temperature: Core Internal Gradient", "[temperature]") {
     REQUIRE(internalGradient < 1000.0);  // Accommodates half-core model with quadrant-specific convection
 }
 
-TEST_CASE("Temperature: Detailed Loss Distribution", "[temperature]") {
+TEST_CASE("Temperature: Detailed Loss Distribution", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({25, 12});
     std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "E 55/28/21";
@@ -2158,7 +2158,7 @@ TEST_CASE("Temperature: Detailed Loss Distribution", "[temperature]") {
     REQUIRE(turnNodeCount > 0);
 }
 
-TEST_CASE("Temperature: Three Winding Transformer", "[temperature]") {
+TEST_CASE("Temperature: Three Winding Transformer", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({15, 8, 5});
     std::vector<int64_t> numberParallels({1, 1, 1});
     std::string shapeName = "ETD 39";
@@ -2196,7 +2196,7 @@ TEST_CASE("Temperature: Three Winding Transformer", "[temperature]") {
     REQUIRE(result.totalThermalResistance < 100.0);
 }
 
-TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[temperature][round-winding-window][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "toroidal_inductor_rectangular_wires.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2264,7 +2264,7 @@ TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[temperature][rou
     }
 }
 
-TEST_CASE("Temperature Class: Toroidal Core T20", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature Class: Toroidal Core T20", "[temperature][round-winding-window][smoke-test]") {
     // Create toroidal magnetic using standard test utilities
     std::string shapeName = "T 20/10/7";
     
@@ -2328,7 +2328,7 @@ TEST_CASE("Temperature Class: Toroidal Core T20", "[temperature][round-winding-w
     
 }
 
-TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[temperature][round-winding-window][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "toroidal_inductor_round_wire_multilayer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2438,7 +2438,7 @@ TEST_CASE("Temperature: Toroidal Inductor Round Wire Multilayer", "[temperature]
     }
 }
 
-TEST_CASE("Temperature: Concentric Round Wire Spread Multilayer", "[temperature][rectangular-winding-window]") {
+TEST_CASE("Temperature: Concentric Round Wire Spread Multilayer", "[temperature][rectangular-winding-window][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_round_wire_spread_multilayer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2474,7 +2474,7 @@ TEST_CASE("Temperature: Concentric Round Wire Spread Multilayer", "[temperature]
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric Round Wire Centered Multilayer", "[temperature][rectangular-winding-window]") {
+TEST_CASE("Temperature: Concentric Round Wire Centered Multilayer", "[temperature][rectangular-winding-window][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_round_wire_centered_multilayer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2510,7 +2510,7 @@ TEST_CASE("Temperature: Concentric Round Wire Centered Multilayer", "[temperatur
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric Round Wire Full Layer", "[temperature][rectangular-winding-window]") {
+TEST_CASE("Temperature: Concentric Round Wire Full Layer", "[temperature][rectangular-winding-window][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_round_wire_full_layer.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2546,7 +2546,7 @@ TEST_CASE("Temperature: Concentric Round Wire Full Layer", "[temperature][rectan
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric Round Wire Simple", "[temperature][rectangular-winding-window]") {
+TEST_CASE("Temperature: Concentric Round Wire Simple", "[temperature][rectangular-winding-window][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_round_wire_simple.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2582,7 +2582,7 @@ TEST_CASE("Temperature: Concentric Round Wire Simple", "[temperature][rectangula
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric Planar Inductor", "[temperature][planar][concentric]") {
+TEST_CASE("Temperature: Concentric Planar Inductor", "[temperature][planar][concentric][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_planar.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -2617,7 +2617,7 @@ TEST_CASE("Temperature: Concentric Planar Inductor", "[temperature][planar][conc
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Planar Transformer Complex", "[temperature][planar][transformer]") {
+TEST_CASE("Temperature: Planar Transformer Complex", "[temperature][planar][transformer][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "planar_transformer_complex.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
 
@@ -2652,7 +2652,7 @@ TEST_CASE("Temperature: Planar Transformer Complex", "[temperature][planar][tran
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric Litz and Foil", "[temperature][concentric][litz][foil]") {
+TEST_CASE("Temperature: Concentric Litz and Foil", "[temperature][concentric][litz][foil][smoke-test]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_litz_foil.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
 
@@ -2687,7 +2687,7 @@ TEST_CASE("Temperature: Concentric Litz and Foil", "[temperature][concentric][li
     REQUIRE(result.totalThermalResistance > 0.0);
 }
 
-TEST_CASE("Temperature: Concentric with Insulation Layers", "[temperature][rectangular-winding-window]") {
+TEST_CASE("Temperature: Concentric with Insulation Layers", "[temperature][rectangular-winding-window][smoke-test]") {
     // Load the test file with insulation layers
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" / "concentric_round_wire_insulation_layers.json";
     
@@ -2754,7 +2754,7 @@ TEST_CASE("Temperature: Concentric with Insulation Layers", "[temperature][recta
     REQUIRE(insulationNodeCount > 0);  // Should have created insulation layer nodes
 }
 
-TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection", "[temperature][rectangular-winding-window][cooling]") {
+TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection", "[temperature][rectangular-winding-window][cooling][smoke-test]") {
     // Load the test file with insulation layers
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() / "testData" / "concentric_round_wire_insulation_layers.json";
     
@@ -2844,7 +2844,7 @@ TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection"
     REQUIRE(insulationNodeCount > 0);  // Should have created insulation layer nodes
 }
 
-TEST_CASE("Temperature: Toroidal with Insulation Layers", "[temperature][round-winding-window]") {
+TEST_CASE("Temperature: Toroidal with Insulation Layers", "[temperature][round-winding-window][smoke-test]") {
     // Load the toroidal inductor with insulation layers test data
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() 
         / "testData" / "toroidal_inductor_round_wire_multilayer_with_insulation.json";
@@ -2921,7 +2921,7 @@ TEST_CASE("Temperature: Toroidal with Insulation Layers", "[temperature][round-w
     REQUIRE(foundOuterLayer);
 }
 
-TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[temperature][rectangular-winding-window]") {
+TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[temperature][rectangular-winding-window][smoke-test]") {
     // Load the simple concentric insulation layers test data
     std::filesystem::path testFile = std::filesystem::path(__FILE__).parent_path() 
         / "testData" / "concentric_round_wire_insulation_layers_simple.json";
@@ -2994,7 +2994,7 @@ TEST_CASE("Temperature: Concentric Simple Insulation Layers Schematic", "[temper
 // Cooling Options Tests
 // ============================================================================
 
-TEST_CASE("Temperature: Forced Convection Cooling", "[temperature][cooling]") {
+TEST_CASE("Temperature: Forced Convection Cooling", "[temperature][cooling][smoke-test]") {
     // Use existing concentric test file
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(
         std::source_location::current(), "concentric_round_wire_simple.json");
@@ -3054,7 +3054,7 @@ TEST_CASE("Temperature: Forced Convection Cooling", "[temperature][cooling]") {
     REQUIRE(resultForced.converged);
 }
 
-TEST_CASE("Temperature: Heatsink Cooling", "[temperature][cooling]") {
+TEST_CASE("Temperature: Heatsink Cooling", "[temperature][cooling][smoke-test]") {
     // Use existing concentric test file (heatsink works best on concentric cores)
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(
         std::source_location::current(), "concentric_round_wire_simple.json");
@@ -3107,7 +3107,7 @@ TEST_CASE("Temperature: Heatsink Cooling", "[temperature][cooling]") {
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
 }
 
-TEST_CASE("Temperature: Cold Plate Cooling", "[temperature][cooling]") {
+TEST_CASE("Temperature: Cold Plate Cooling", "[temperature][cooling][smoke-test]") {
     // Use toroidal test file (cold plate works on both core types)
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(
         std::source_location::current(), "toroidal_inductor_round_wire_multilayer.json");
@@ -3166,7 +3166,7 @@ TEST_CASE("Temperature: Cold Plate Cooling", "[temperature][cooling]") {
     REQUIRE(result.converged);
 }
 
-TEST_CASE("Temperature: Cooling Utils Type Detection", "[temperature][cooling]") {
+TEST_CASE("Temperature: Cooling Utils Type Detection", "[temperature][cooling][smoke-test]") {
     using namespace OpenMagnetics;
     
     
