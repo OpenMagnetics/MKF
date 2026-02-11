@@ -72,7 +72,7 @@ public:
      * @param inductance Inductance in H
      * @return Vector of OperatingPoints extracted from simulation waveforms
      */
-    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(double inductance);
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(double inductance);
 };
 
 class AdvancedBuck : public Buck {

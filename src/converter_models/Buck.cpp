@@ -8,7 +8,6 @@
 #include <map>
 #include <sstream>
 #include "support/Exceptions.h"
-#include "converter_models/ForwardConverterUtils.h"
 
 namespace OpenMagnetics {
 
@@ -157,7 +156,7 @@ namespace OpenMagnetics {
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
@@ -199,7 +198,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
 
 
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         DesignRequirements designRequirements;
 
@@ -238,7 +237,7 @@ namespace OpenMagnetics {
         // Get input voltages
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames_;
-    ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
         
         if (inputVoltageIndex >= inputVoltages.size()) {
             throw std::invalid_argument("inputVoltageIndex out of range");
@@ -333,7 +332,7 @@ namespace OpenMagnetics {
         // Get input voltages
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
         
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             double inputVoltage = inputVoltages[inputVoltageIndex];
@@ -390,73 +389,70 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
 
-    std::vector<OperatingPoint> Buck::simulate_and_extract_topology_waveforms(double inductance) {
-        
-        std::vector<OperatingPoint> operatingPoints;
-        
-        NgspiceRunner runner;
-        if (!runner.is_available()) {
-            throw std::runtime_error("ngspice is not available for simulation");
-        }
-        
-        // Collect input voltages to simulate
-        std::vector<double> inputVoltages;
-        std::vector<std::string> inputVoltagesNames;
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
-        
-        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            double inputVoltage = inputVoltages[inputVoltageIndex];
-            
-            for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
-                auto buckOpPoint = get_operating_points()[opIndex];
-                
-                // Generate circuit
-                std::string netlist = generate_ngspice_circuit(inductance, inputVoltageIndex, opIndex);
-                
-                double switchingFrequency = buckOpPoint.get_switching_frequency();
-                
-                // Run simulation
-                SimulationConfig config;
-                config.frequency = switchingFrequency;
-                config.extractOnePeriod = true;
-                config.numberOfPeriods = 2;  // Two periods for topology waveform visualization
-                config.keepTempFiles = false;
-                
-                auto simResult = runner.run_simulation(netlist, config);
-                
-                if (!simResult.success) {
-                    throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
-                }
-                
-                // Buck has only one winding (the inductor)
-                // The inductor voltage is the difference between switch node and output
-                NgspiceRunner::WaveformNameMapping waveformMapping = {
-                    {{"voltage", "sw"}, {"current", "vl_sense#branch"}}
-                };
-                
-                std::vector<std::string> windingNames = {"Primary"};
-                std::vector<bool> flipCurrentSign = {false};
-                
-                OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
-                    simResult,
-                    waveformMapping,
-                    switchingFrequency,
-                    windingNames,
-                    buckOpPoint.get_ambient_temperature(),
-                    flipCurrentSign);
-                
-                // Set name
-                std::string name = inputVoltagesNames[inputVoltageIndex] + " input";
-                if (get_operating_points().size() > 1) {
-                    name += " op. point " + std::to_string(opIndex);
-                }
-                operatingPoint.set_name(name);
-                
-                operatingPoints.push_back(operatingPoint);
-            }
-        }
-        
-        return operatingPoints;
+    std::vector<ConverterWaveforms> Buck::simulate_and_extract_topology_waveforms(double inductance) {
+    
+    std::vector<ConverterWaveforms> results;
+    
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        throw std::runtime_error("ngspice is not available for simulation");
     }
+    
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltagesNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+    
+    for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+        for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+            auto opPoint = get_operating_points()[opIndex];
+            
+            std::string netlist = generate_ngspice_circuit(inductance, inputVoltageIndex, opIndex);
+            double switchingFrequency = opPoint.get_switching_frequency();
+            
+            SimulationConfig config;
+            config.frequency = switchingFrequency;
+            config.extractOnePeriod = true;
+            config.numberOfPeriods = 2;
+            config.keepTempFiles = false;
+            
+            auto simResult = runner.run_simulation(netlist, config);
+            if (!simResult.success) {
+                throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
+            }
+            
+            std::map<std::string, size_t> nameToIndex;
+            for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+                std::string lower = simResult.waveformNames[i];
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                nameToIndex[lower] = i;
+            }
+            auto getWaveform = [&](const std::string& name) -> Waveform {
+                std::string lower = name;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                auto it = nameToIndex.find(lower);
+                if (it != nameToIndex.end()) return simResult.waveforms[it->second];
+                return Waveform();
+            };
+            
+            ConverterWaveforms wf;
+            wf.set_switching_frequency(switchingFrequency);
+            std::string name = inputVoltagesNames[inputVoltageIndex] + " input";
+            if (get_operating_points().size() > 1) {
+                name += " op. point " + std::to_string(opIndex);
+            }
+            wf.set_operating_point_name(name);
+            
+            wf.set_input_voltage(getWaveform("sw"));
+            wf.set_input_current(getWaveform("vl_sense#branch"));
+            
+            wf.get_mutable_output_voltages().push_back(getWaveform("vout"));
+            wf.get_mutable_output_currents().push_back(getWaveform("vl_sense#branch"));
+            
+            results.push_back(wf);
+        }
+    }
+    
+    return results;
+}
 
 } // namespace OpenMagnetics

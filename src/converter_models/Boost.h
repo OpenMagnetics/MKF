@@ -58,7 +58,7 @@ public:
      * @brief Simulate the Boost converter and extract operating points from waveforms
      * 
      * @param inductance Inductance in H
-     * @return Vector of OperatingPoints extracted from simulation
+     * @return Vector of ConverterWaveforms extracted from simulation
      */
     std::vector<OperatingPoint> simulate_and_extract_operating_points(double inductance);
     
@@ -66,9 +66,9 @@ public:
      * @brief Simulate the Boost converter and extract operating points from waveforms
      * 
      * @param inductance Inductance in H
-     * @return Vector of OperatingPoints extracted from simulation
+     * @return Vector of ConverterWaveforms extracted from simulation
      */
-    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(double inductance);
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(double inductance);
 };
 
 class AdvancedBoost : public Boost {

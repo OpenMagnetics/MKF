@@ -5,7 +5,6 @@
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
 #include "processors/NgspiceRunner.h"
-#include "converter_models/ForwardConverterUtils.h"
 
 
 namespace OpenMagnetics {
@@ -59,7 +58,7 @@ public:
     /**
      * @brief Simulate and extract topology-level waveforms for converter validation
      */
-    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 

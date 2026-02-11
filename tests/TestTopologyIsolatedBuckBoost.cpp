@@ -153,33 +153,33 @@ namespace {
         INFO("Isolated Buck-Boost - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
         
         // Run ngspice simulation
-        auto topologyWaveforms = isolatedBuckBoost.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        auto converterWaveforms = isolatedBuckBoost.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
         
-        REQUIRE(topologyWaveforms.size() >= 1);
+        REQUIRE(converterWaveforms.size() >= 1);
         
-        for (size_t opIndex = 0; opIndex < topologyWaveforms.size(); opIndex++) {
-            auto& wf = topologyWaveforms[opIndex];
+        for (size_t opIndex = 0; opIndex < converterWaveforms.size(); opIndex++) {
+            auto& wf = converterWaveforms[opIndex];
             
             // Check that time vector has reasonable values
-            REQUIRE(wf.time.size() > 0);
-            REQUIRE(wf.time[0] >= 0);
+            REQUIRE(wf.get_input_voltage().get_data().size() > 0);
+            REQUIRE(wf.get_input_voltage().get_time().value()[0] >= 0);
             
             // Check primary current waveform
-            REQUIRE(wf.primaryCurrent.size() == wf.time.size());
+            REQUIRE(wf.get_input_current().get_data().size() == wf.get_input_voltage().get_data().size());
             
             // Check primary voltage waveform
-            REQUIRE(wf.primaryVoltage.size() == wf.time.size());
+            REQUIRE(wf.get_input_voltage().get_data().size() == wf.get_input_voltage().get_data().size());
             
             // For Buck-Boost, primary voltage should be close to input voltage during ON time
-            double priV_max = *std::max_element(wf.primaryVoltage.begin(), wf.primaryVoltage.end());
+            double priV_max = *std::max_element(wf.get_input_voltage().get_data().begin(), wf.get_input_voltage().get_data().end());
             INFO("Primary voltage max: " << priV_max << " V");
             CHECK(priV_max > 5.0);  // Should be around 12V input
             CHECK(priV_max < 20.0);
             
             // Check output voltages if available
-            if (wf.outputVoltages.size() >= 1 && wf.outputVoltages[0].size() == wf.time.size()) {
+            if (wf.get_output_voltages().size() >= 1 && wf.get_output_voltages()[0].get_data().size() == wf.get_input_voltage().get_data().size()) {
                 // Verify output voltage is close to expected
-                double avgOutputVoltage = std::accumulate(wf.outputVoltages[0].begin(), wf.outputVoltages[0].end(), 0.0) / wf.outputVoltages[0].size();
+                double avgOutputVoltage = std::accumulate(wf.get_output_voltages()[0].get_data().begin(), wf.get_output_voltages()[0].get_data().end(), 0.0) / wf.get_output_voltages()[0].get_data().size();
                 REQUIRE_THAT(std::abs(avgOutputVoltage), Catch::Matchers::WithinAbs(5.0, 5.0));  // Within 5V of expected 5V output
             }
             
@@ -189,10 +189,8 @@ namespace {
                 outFile.append("Test_IsolatedBuckBoost_Ngspice_PrimaryCurrent_OP" + std::to_string(opIndex) + ".svg");
                 std::filesystem::remove(outFile);
                 Painter painter(outFile, false, true);
-                Waveform currentWaveform;
-                currentWaveform.set_time(wf.time);
-                currentWaveform.set_data(wf.primaryCurrent);
-                painter.paint_waveform(currentWaveform);
+                auto priCurrentWaveform = wf.get_input_current();
+                painter.paint_waveform(priCurrentWaveform);
                 painter.export_svg();
             }
             {
@@ -200,32 +198,26 @@ namespace {
                 outFile.append("Test_IsolatedBuckBoost_Ngspice_PrimaryVoltage_OP" + std::to_string(opIndex) + ".svg");
                 std::filesystem::remove(outFile);
                 Painter painter(outFile, false, true);
-                Waveform voltageWaveform;
-                voltageWaveform.set_time(wf.time);
-                voltageWaveform.set_data(wf.primaryVoltage);
+                auto voltageWaveform = wf.get_input_voltage();
                 painter.paint_waveform(voltageWaveform);
                 painter.export_svg();
             }
-            if (wf.outputVoltages.size() > 0 && wf.outputVoltages[0].size() > 0) {
+            if (wf.get_output_voltages().size() > 0 && wf.get_output_voltages()[0].get_data().size() > 0) {
                 auto outFile = outputFilePath;
                 outFile.append("Test_IsolatedBuckBoost_Ngspice_OutputVoltage_OP" + std::to_string(opIndex) + ".svg");
                 std::filesystem::remove(outFile);
                 Painter painter(outFile, false, true);
-                Waveform outputWaveform;
-                outputWaveform.set_time(wf.time);
-                outputWaveform.set_data(wf.outputVoltages[0]);
+                auto outputWaveform = wf.get_output_voltages()[0];
                 painter.paint_waveform(outputWaveform);
                 painter.export_svg();
             }
-            if (wf.secondaryCurrents.size() > 0 && wf.secondaryCurrents[0].size() > 0) {
+            if (wf.get_output_currents().size() > 0 && wf.get_output_currents()[0].get_data().size() > 0) {
                 auto outFile = outputFilePath;
                 outFile.append("Test_IsolatedBuckBoost_Ngspice_SecondaryCurrent_OP" + std::to_string(opIndex) + ".svg");
                 std::filesystem::remove(outFile);
                 Painter painter(outFile, false, true);
-                Waveform currentWaveform;
-                currentWaveform.set_time(wf.time);
-                currentWaveform.set_data(wf.secondaryCurrents[0]);
-                painter.paint_waveform(currentWaveform);
+                auto secCurrentWaveform = wf.get_output_currents()[0];
+                painter.paint_waveform(secCurrentWaveform);
                 painter.export_svg();
             }
         }

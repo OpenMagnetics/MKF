@@ -4,7 +4,6 @@
 #include "support/Utils.h"
 #include <cfloat>
 #include "support/Exceptions.h"
-#include "converter_models/ForwardConverterUtils.h"
 
 namespace OpenMagnetics {
 
@@ -242,7 +241,7 @@ namespace OpenMagnetics {
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
@@ -284,7 +283,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
 
 
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         DesignRequirements designRequirements;
 
@@ -323,9 +322,37 @@ namespace OpenMagnetics {
         return inputs;
     }
 
-    std::vector<OperatingPoint> IsolatedBuck::simulate_and_extract_topology_waveforms(const std::vector<double>& turnsRatios, double magnetizingInductance) {
-        // For Isolated Buck converter, topology waveforms are the same as operating points
-        // The operating point already contains all winding voltages and currents
-        return process_operating_points(turnsRatios, magnetizingInductance);
+    std::vector<ConverterWaveforms> IsolatedBuck::simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) {
+    
+    auto operatingPoints = process_operating_points(turnsRatios, magnetizingInductance);
+    std::vector<ConverterWaveforms> results;
+    
+    for (auto& op : operatingPoints) {
+        ConverterWaveforms wf;
+        wf.set_switching_frequency(op.get_excitations_per_winding()[0].get_frequency());
+        if (op.get_name()) {
+            wf.set_operating_point_name(op.get_name().value());
+        }
+        auto& priExc = op.get_excitations_per_winding()[0];
+        if (priExc.get_voltage() && priExc.get_voltage()->get_waveform()) {
+            wf.set_input_voltage(priExc.get_voltage()->get_waveform().value());
+        }
+        if (priExc.get_current() && priExc.get_current()->get_waveform()) {
+            wf.set_input_current(priExc.get_current()->get_waveform().value());
+        }
+        for (size_t i = 1; i < op.get_excitations_per_winding().size(); ++i) {
+            auto& secExc = op.get_excitations_per_winding()[i];
+            if (secExc.get_voltage() && secExc.get_voltage()->get_waveform()) {
+                wf.get_mutable_output_voltages().push_back(secExc.get_voltage()->get_waveform().value());
+            }
+            if (secExc.get_current() && secExc.get_current()->get_waveform()) {
+                wf.get_mutable_output_currents().push_back(secExc.get_current()->get_waveform().value());
+            }
+        }
+        results.push_back(wf);
     }
+    return results;
+}
 } // namespace OpenMagnetics

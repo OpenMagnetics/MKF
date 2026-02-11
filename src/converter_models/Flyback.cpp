@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <map>
 #include "support/Exceptions.h"
-#include "converter_models/ForwardConverterUtils.h"
 
 namespace OpenMagnetics {
 
@@ -263,7 +262,7 @@ namespace OpenMagnetics {
         // Get input voltages
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames_;
-    ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
         
         if (inputVoltageIndex >= inputVoltages.size()) {
             throw std::invalid_argument("inputVoltageIndex out of range");
@@ -397,7 +396,7 @@ namespace OpenMagnetics {
         // Get input voltages
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
         
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             double inputVoltage = inputVoltages[inputVoltageIndex];
@@ -481,7 +480,7 @@ namespace OpenMagnetics {
         // Get input voltages
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames_;
-    ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames_);
         
         if (inputVoltageIndex >= inputVoltages.size()) {
             throw std::invalid_argument("inputVoltageIndex out of range");
@@ -648,7 +647,7 @@ namespace OpenMagnetics {
         // Get input voltages
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
         
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             double inputVoltage = inputVoltages[inputVoltageIndex];
@@ -721,14 +720,75 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
 
-    std::vector<OperatingPoint> Flyback::simulate_and_extract_topology_waveforms(
-        const std::vector<double>& turnsRatios,
+    std::vector<ConverterWaveforms> Flyback::simulate_and_extract_topology_waveforms(const std::vector<double>& turnsRatios,
         double magnetizingInductance,
         size_t numberOfPeriods) {
-        // For Flyback converter, topology waveforms are the same as operating points
-        // The operating point already contains all winding voltages and currents
-        return simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+    
+    std::vector<ConverterWaveforms> results;
+    
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        throw std::runtime_error("ngspice is not available for simulation");
     }
+    
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltagesNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+    
+    for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+        for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+            auto opPoint = get_operating_points()[opIndex];
+            
+            std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
+            double switchingFrequency = opPoint.get_switching_frequency().value();
+            
+            SimulationConfig config;
+            config.frequency = switchingFrequency;
+            config.extractOnePeriod = true;
+            config.numberOfPeriods = numberOfPeriods;
+            config.keepTempFiles = false;
+            
+            auto simResult = runner.run_simulation(netlist, config);
+            if (!simResult.success) {
+                throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
+            }
+            
+            std::map<std::string, size_t> nameToIndex;
+            for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+                std::string lower = simResult.waveformNames[i];
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                nameToIndex[lower] = i;
+            }
+            auto getWaveform = [&](const std::string& name) -> Waveform {
+                std::string lower = name;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                auto it = nameToIndex.find(lower);
+                if (it != nameToIndex.end()) return simResult.waveforms[it->second];
+                return Waveform();
+            };
+            
+            ConverterWaveforms wf;
+            wf.set_switching_frequency(switchingFrequency);
+            std::string name = inputVoltagesNames[inputVoltageIndex] + " input";
+            if (get_operating_points().size() > 1) {
+                name += " op. point " + std::to_string(opIndex);
+            }
+            wf.set_operating_point_name(name);
+            
+            wf.set_input_voltage(getWaveform("pri_in"));
+            wf.set_input_current(getWaveform("vpri_sense#branch"));
+            
+            for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
+                wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
+                wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense" + std::to_string(secIdx) + "#branch"));
+            }
+            
+            results.push_back(wf);
+        }
+    }
+    
+    return results;
+}
 
     double Flyback::get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop) {
         double totalPower = 0;
@@ -924,7 +984,7 @@ namespace OpenMagnetics {
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
@@ -968,7 +1028,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
 
 
-        ForwardConverterUtils::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
         DesignRequirements designRequirements;
         designRequirements.get_mutable_turns_ratios().clear();

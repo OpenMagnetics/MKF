@@ -135,7 +135,7 @@ public:
      * @param numberOfPeriods Number of switching periods to simulate (default 2)
      * @return Vector of OperatingPoints for each operating condition
      */
-    std::vector<OperatingPoint> simulate_and_extract_topology_waveforms(
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
         size_t numberOfPeriods = 2);

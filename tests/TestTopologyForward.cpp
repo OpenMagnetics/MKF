@@ -574,21 +574,22 @@ namespace {
         INFO("Single Switch Forward - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
         
         // Run ngspice simulation
-        auto operatingPoints = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        auto converterWaveforms = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
         
-        REQUIRE(!operatingPoints.empty());
+        REQUIRE(!converterWaveforms.empty());
         
         // Verify we have excitations
-        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() >= 2);
+        // ConverterWaveforms doesn't have excitations_per_winding - check input/output instead
+    REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
         
         // Get primary excitation
-        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
-        REQUIRE(primaryExc.get_voltage().has_value());
-        REQUIRE(primaryExc.get_current().has_value());
+        // Primary excitation data is now directly in ConverterWaveforms
+        // Voltage data is directly available in ConverterWaveforms
+        // Current data is directly available in ConverterWaveforms
         
         // Extract waveform data
-        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-        auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
+        auto priVoltageData = converterWaveforms[0].get_input_voltage().get_data();
+        auto priCurrentData = converterWaveforms[0].get_input_current().get_data();
         
         // Calculate statistics
         double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
@@ -663,20 +664,21 @@ namespace {
         INFO("Two Switch Forward - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
         
         // Run ngspice simulation
-        auto operatingPoints = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        auto converterWaveforms = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
         
-        REQUIRE(!operatingPoints.empty());
+        REQUIRE(!converterWaveforms.empty());
         
         // Verify we have excitations
-        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() >= 2);
+        // ConverterWaveforms doesn't have excitations_per_winding - check input/output instead
+    REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
         
         // Get primary excitation
-        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
-        REQUIRE(primaryExc.get_voltage().has_value());
-        REQUIRE(primaryExc.get_current().has_value());
+        // Primary excitation data is now directly in ConverterWaveforms
+        // Voltage data is directly available in ConverterWaveforms
+        // Current data is directly available in ConverterWaveforms
         
         // Extract waveform data
-        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
+        auto priVoltageData = converterWaveforms[0].get_input_voltage().get_data();
         
         // Calculate statistics
         double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
@@ -740,21 +742,22 @@ namespace {
         INFO("Active Clamp Forward - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
         
         // Run ngspice simulation
-        auto operatingPoints = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        auto converterWaveforms = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
         
-        REQUIRE(!operatingPoints.empty());
+        REQUIRE(!converterWaveforms.empty());
         
         // Verify we have excitations
-        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() >= 2);
+        // ConverterWaveforms doesn't have excitations_per_winding - check input/output instead
+    REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
         
         // Get primary excitation
-        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
-        REQUIRE(primaryExc.get_voltage().has_value());
-        REQUIRE(primaryExc.get_current().has_value());
+        // Primary excitation data is now directly in ConverterWaveforms
+        // Voltage data is directly available in ConverterWaveforms
+        // Current data is directly available in ConverterWaveforms
         
         // Extract waveform data
-        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-        auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
+        auto priVoltageData = converterWaveforms[0].get_input_voltage().get_data();
+        auto priCurrentData = converterWaveforms[0].get_input_current().get_data();
         
         // Calculate statistics
         double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());

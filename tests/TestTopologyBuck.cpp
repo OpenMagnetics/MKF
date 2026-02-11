@@ -32,14 +32,14 @@ namespace {
         buckInputsJson["diodeVoltageDrop"] = 0.7;
         buckInputsJson["efficiency"] = 0.9;
         buckInputsJson["maximumSwitchCurrent"] = 8;
-        buckInputsJson["operatingPoints"] = json::array();
+        buckInputsJson["converterWaveforms"] = json::array();
         {
             json buckOperatingPointJson;
             buckOperatingPointJson["outputVoltage"] = 12;
             buckOperatingPointJson["outputCurrent"] = 3;
             buckOperatingPointJson["switchingFrequency"] = 100000;
             buckOperatingPointJson["ambientTemperature"] = 42;
-            buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
+            buckInputsJson["converterWaveforms"].push_back(buckOperatingPointJson);
         }
 
         OpenMagnetics::Buck buckInputs(buckInputsJson);
@@ -101,14 +101,14 @@ namespace {
         buckInputsJson["diodeVoltageDrop"] = 0.7;
         buckInputsJson["efficiency"] = 0.9;
         buckInputsJson["maximumSwitchCurrent"] = 8;
-        buckInputsJson["operatingPoints"] = json::array();
+        buckInputsJson["converterWaveforms"] = json::array();
         {
             json buckOperatingPointJson;
             buckOperatingPointJson["outputVoltage"] = 12;
             buckOperatingPointJson["outputCurrent"] = 3;
             buckOperatingPointJson["switchingFrequency"] = 100000;
             buckOperatingPointJson["ambientTemperature"] = 42;
-            buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
+            buckInputsJson["converterWaveforms"].push_back(buckOperatingPointJson);
         }
         OpenMagnetics::Buck buckInputs(buckInputsJson);
         buckInputs._assertErrors = true;
@@ -158,11 +158,11 @@ namespace {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto operatingPoints = buckInputs.process_operating_points(magnetic);
+        auto converterWaveforms = buckInputs.process_operating_points(magnetic);
     }
 
     TEST_CASE("Test_Buck_Web_0", "[converter-model][buck-topology][smoke-test]") {
-        json buckInputsJson = json::parse(R"({"inputVoltage":{"minimum":10,"maximum":12},"diodeVoltageDrop":0.7,"efficiency":0.85,"currentRippleRatio":0.4,"operatingPoints":[{"outputVoltage":5,"outputCurrent":2,"switchingFrequency":100000,"ambientTemperature":25}]})");
+        json buckInputsJson = json::parse(R"({"inputVoltage":{"minimum":10,"maximum":12},"diodeVoltageDrop":0.7,"efficiency":0.85,"currentRippleRatio":0.4,"converterWaveforms":[{"outputVoltage":5,"outputCurrent":2,"switchingFrequency":100000,"ambientTemperature":25}]})");
         OpenMagnetics::Buck buckInputs(buckInputsJson);
 
         auto inputs = buckInputs.process();
@@ -253,21 +253,18 @@ namespace {
         INFO("Buck - Inductance: " << (inductance * 1e6) << " uH");
         
         // Run ngspice simulation
-        auto operatingPoints = buck.simulate_and_extract_topology_waveforms(inductance);
+        auto converterWaveforms = buck.simulate_and_extract_topology_waveforms(inductance);
         
-        REQUIRE(!operatingPoints.empty());
+        REQUIRE(!converterWaveforms.empty());
         
         // Verify we have excitations
-        REQUIRE(!operatingPoints[0].get_excitations_per_winding().empty());
+        REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
         
         // Get primary (inductor) excitation
-        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
-        REQUIRE(primaryExc.get_voltage().has_value());
-        REQUIRE(primaryExc.get_current().has_value());
-        
-        // Extract waveform data
-        auto voltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-        auto currentData = primaryExc.get_current()->get_waveform()->get_data();
+        // primary excitation replaced by ConverterWaveforms input signals
+// Extract waveform data
+        auto voltageData = converterWaveforms[0].get_input_voltage().get_data();
+        auto currentData = converterWaveforms[0].get_input_current().get_data();
         
         // Calculate statistics
         double v_max = *std::max_element(voltageData.begin(), voltageData.end());

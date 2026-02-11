@@ -24,7 +24,7 @@ using namespace OpenMagnetics;
 
 const auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
-TEST_CASE("NgspiceRunner availability check", "[ngspice-runner]") {
+TEST_CASE("NgspiceRunner availability check", "[ngspice-runner][smoke-test]") {
     NgspiceRunner runner;
     
     // Just check that the runner can be instantiated
@@ -32,7 +32,7 @@ TEST_CASE("NgspiceRunner availability check", "[ngspice-runner]") {
     REQUIRE_NOTHROW(runner.get_mode());
 }
 
-TEST_CASE("NgspiceRunner simple netlist parsing", "[ngspice-runner]") {
+TEST_CASE("NgspiceRunner simple netlist parsing", "[ngspice-runner][smoke-test]") {
     NgspiceRunner runner;
     
     // Skip if ngspice is not available
@@ -67,7 +67,7 @@ C1 out 0 1n
     }
 }
 
-TEST_CASE("SimulationResult structure", "[ngspice-runner]") {
+TEST_CASE("SimulationResult structure", "[ngspice-runner][smoke-test]") {
     SimulationResult result;
     
     // Default state
@@ -91,7 +91,7 @@ TEST_CASE("SimulationResult structure", "[ngspice-runner]") {
     REQUIRE(result.simulationTime == 1.5);
 }
 
-TEST_CASE("SimulationConfig defaults", "[ngspice-runner]") {
+TEST_CASE("SimulationConfig defaults", "[ngspice-runner][smoke-test]") {
     SimulationConfig config;
     
     REQUIRE(config.stopTime == 0.0);
@@ -104,7 +104,7 @@ TEST_CASE("SimulationConfig defaults", "[ngspice-runner]") {
     REQUIRE(config.timeout == 60.0);
 }
 
-TEST_CASE("NgspiceRunner simulate and export waveforms to SVG", "[ngspice-runner]") {
+TEST_CASE("NgspiceRunner simulate and export waveforms to SVG", "[ngspice-runner][smoke-test]") {
     NgspiceRunner runner;
     
     // Skip if ngspice is not available
@@ -194,7 +194,7 @@ Vsec_gnd sec_gnd 0 0
     }
 }
 
-TEST_CASE("BasicPainter paint_operating_point_waveforms with synthetic data", "[ngspice-runner]") {
+TEST_CASE("BasicPainter paint_operating_point_waveforms with synthetic data", "[ngspice-runner][smoke-test]") {
     // Test the waveform painting without running simulation
     BasicPainter painter;
     
@@ -296,7 +296,7 @@ TEST_CASE("BasicPainter paint_operating_point_waveforms with synthetic data", "[
     }
 }
 
-TEST_CASE("Flyback converter full flow: MAS::Flyback -> ngspice -> OperatingPoint", "[ngspice-runner][flyback-topology]") {
+TEST_CASE("Flyback converter full flow: MAS::Flyback -> ngspice -> OperatingPoint", "[ngspice-runner][flyback-topology][smoke-test]") {
     NgspiceRunner runner;
     
     // Skip if ngspice is not available
@@ -411,7 +411,7 @@ TEST_CASE("Flyback converter full flow: MAS::Flyback -> ngspice -> OperatingPoin
     }
 }
 
-TEST_CASE("Flyback DCM with MAS::Flyback model", "[ngspice-runner][flyback-topology]") {
+TEST_CASE("Flyback DCM with MAS::Flyback model", "[ngspice-runner][flyback-topology][smoke-test]") {
     NgspiceRunner runner;
     
     // Skip if ngspice is not available
@@ -525,7 +525,7 @@ TEST_CASE("Flyback DCM with MAS::Flyback model", "[ngspice-runner][flyback-topol
     }
 }
 
-TEST_CASE("Flyback topology waveform validation", "[ngspice-runner][flyback-topology]") {
+TEST_CASE("Flyback topology waveform validation", "[ngspice-runner][flyback-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -571,23 +571,15 @@ TEST_CASE("Flyback topology waveform validation", "[ngspice-runner][flyback-topo
     
     const auto& op = topologyWaveforms[0];
     
-    // Validate that we have excitations for all windings (primary + secondary)
-    REQUIRE(op.get_excitations_per_winding().size() >= 2);
-    
-    // Get primary excitation
-    const auto& primaryExc = op.get_excitations_per_winding()[0];
-    REQUIRE(primaryExc.get_voltage().has_value());
-    REQUIRE(primaryExc.get_current().has_value());
-    
-    // Get secondary excitation (first secondary)
-    const auto& secondaryExc = op.get_excitations_per_winding()[1];
-    REQUIRE(secondaryExc.get_voltage().has_value());
-    REQUIRE(secondaryExc.get_current().has_value());
-    
+    // Validate that we have waveform data for primary and at least one secondary
+    REQUIRE(!op.get_input_voltage().get_data().empty());
+    REQUIRE(!op.get_input_current().get_data().empty());
+    REQUIRE(!op.get_output_voltages().empty());
+
     // Extract waveform data
-    auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-    auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
-    auto secVoltageData = secondaryExc.get_voltage()->get_waveform()->get_data();
+    auto priVoltageData = op.get_input_voltage().get_data();
+    auto priCurrentData = op.get_input_current().get_data();
+    auto secVoltageData = op.get_output_voltages()[0].get_data();
     
     // Calculate waveform statistics
     double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
@@ -618,7 +610,7 @@ TEST_CASE("Flyback topology waveform validation", "[ngspice-runner][flyback-topo
     INFO("Topology waveform validation passed");
 }
 
-TEST_CASE("Flyback simulation with real Magnetic component", "[ngspice-runner][flyback-topology]") {
+TEST_CASE("Flyback simulation with real Magnetic component", "[ngspice-runner][flyback-topology][smoke-test]") {
     NgspiceRunner runner;
     
     // Skip if ngspice is not available
@@ -729,7 +721,7 @@ TEST_CASE("Flyback simulation with real Magnetic component", "[ngspice-runner][f
     INFO("Flyback simulation with real Magnetic component completed successfully");
 }
 
-TEST_CASE("Flyback ideal vs real magnetic comparison", "[ngspice-runner][flyback-topology]") {
+TEST_CASE("Flyback ideal vs real magnetic comparison", "[ngspice-runner][flyback-topology][smoke-test]") {
     NgspiceRunner runner;
     
     // Skip if ngspice is not available
@@ -839,7 +831,7 @@ TEST_CASE("Flyback ideal vs real magnetic comparison", "[ngspice-runner][flyback
     INFO("Comparison SVGs saved for visual inspection");
 }
 
-TEST_CASE("Flyback real magnetic with multiple input voltages", "[ngspice-runner][flyback-topology]") {
+TEST_CASE("Flyback real magnetic with multiple input voltages", "[ngspice-runner][flyback-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -928,7 +920,7 @@ TEST_CASE("Flyback real magnetic with multiple input voltages", "[ngspice-runner
     INFO("Multi-voltage test passed - all operating points simulated successfully");
 }
 
-TEST_CASE("Flyback multi-output converter simulation", "[ngspice-runner][flyback-topology]") {
+TEST_CASE("Flyback multi-output converter simulation", "[ngspice-runner][flyback-topology][smoke-test]") {
     // Test based on common multi-output flyback designs
     // Reference: Wikipedia - "The operation of storing energy in the transformer before 
     // transferring to the output allows the topology to easily generate multiple outputs"
@@ -1031,22 +1023,23 @@ TEST_CASE("Flyback multi-output converter simulation", "[ngspice-runner][flyback
     REQUIRE(!topologyWaveforms.empty());
     const auto& topoOp = topologyWaveforms[0];
     
-    // Verify we have excitations for all windings (primary + 2 secondaries = 3)
-    REQUIRE(topoOp.get_excitations_per_winding().size() == 3);
-    
-    // Check each winding has voltage and current waveforms
-    for (size_t i = 0; i < 3; ++i) {
-        const auto& exc = topoOp.get_excitations_per_winding()[i];
-        REQUIRE(exc.get_voltage().has_value());
-        REQUIRE(exc.get_current().has_value());
-        REQUIRE(exc.get_voltage()->get_waveform()->get_data().size() > 10);
-        REQUIRE(exc.get_current()->get_waveform()->get_data().size() > 10);
+    // Verify we have waveform data for primary and 2 secondaries
+    REQUIRE(!topoOp.get_input_voltage().get_data().empty());
+    REQUIRE(!topoOp.get_input_current().get_data().empty());
+    REQUIRE(topoOp.get_output_voltages().size() == 2);
+    REQUIRE(topoOp.get_output_currents().size() == 2);
+
+    // Check all waveforms have data
+    REQUIRE(topoOp.get_input_voltage().get_data().size() > 10);
+    REQUIRE(topoOp.get_input_current().get_data().size() > 10);
+    for (size_t i = 0; i < 2; ++i) {
+        REQUIRE(topoOp.get_output_voltages()[i].get_data().size() > 10);
+        REQUIRE(topoOp.get_output_currents()[i].get_data().size() > 10);
     }
-    
-    // Check secondary winding voltage characteristics from excitations
-    // Secondary 1 is at index 1, Secondary 2 is at index 2
-    auto sec1VoltageData = topoOp.get_excitations_per_winding()[1].get_voltage()->get_waveform()->get_data();
-    auto sec2VoltageData = topoOp.get_excitations_per_winding()[2].get_voltage()->get_waveform()->get_data();
+
+    // Check secondary winding voltage characteristics
+    auto sec1VoltageData = topoOp.get_output_voltages()[0].get_data();
+    auto sec2VoltageData = topoOp.get_output_voltages()[1].get_data();
     
     // During switch-on: secondary voltages should be negative (flyback action)
     double sec1_min = *std::min_element(sec1VoltageData.begin(), sec1VoltageData.end());
@@ -1071,7 +1064,7 @@ TEST_CASE("Flyback multi-output converter simulation", "[ngspice-runner][flyback
     INFO("Multi-output flyback test passed");
 }
 
-TEST_CASE("Buck converter simulation", "[ngspice-runner][buck-topology]") {
+TEST_CASE("Buck converter simulation", "[ngspice-runner][buck-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1132,25 +1125,22 @@ TEST_CASE("Buck converter simulation", "[ngspice-runner][buck-topology]") {
     
     const auto& op = topologyWaveforms[0];
     
-    // Validate that we have excitations
-    REQUIRE(!op.get_excitations_per_winding().empty());
-    
-    const auto& primaryExc = op.get_excitations_per_winding()[0];
-    REQUIRE(primaryExc.get_voltage().has_value());
-    REQUIRE(primaryExc.get_current().has_value());
-    
+    // Validate that we have waveform data
+    REQUIRE(!op.get_input_voltage().get_data().empty());
+    REQUIRE(!op.get_input_current().get_data().empty());
+
     // Extract waveform data
-    auto voltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-    auto currentData = primaryExc.get_current()->get_waveform()->get_data();
-    
+    auto voltageData = op.get_input_voltage().get_data();
+    auto currentData = op.get_input_current().get_data();
+
     // Calculate waveform statistics
     double v_max = *std::max_element(voltageData.begin(), voltageData.end());
     double v_min = *std::min_element(voltageData.begin(), voltageData.end());
     double i_avg = std::accumulate(currentData.begin(), currentData.end(), 0.0) / currentData.size();
-    
+
     INFO("Inductor voltage: min=" << v_min << " max=" << v_max);
     INFO("Inductor current avg: " << i_avg);
-    
+
     // For Buck, inductor voltage swings between (Vin - Vout) and -Vout
     CHECK(v_max > 0.0);  // Should be positive during switch ON
     CHECK(v_min < 0.0);  // Should be negative during switch OFF
@@ -1162,7 +1152,7 @@ TEST_CASE("Buck converter simulation", "[ngspice-runner][buck-topology]") {
     INFO("Buck converter simulation passed");
 }
 
-TEST_CASE("Boost converter simulation", "[ngspice-runner][boost-topology]") {
+TEST_CASE("Boost converter simulation", "[ngspice-runner][boost-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1223,25 +1213,22 @@ TEST_CASE("Boost converter simulation", "[ngspice-runner][boost-topology]") {
     
     const auto& op = topologyWaveforms[0];
     
-    // Validate that we have excitations
-    REQUIRE(!op.get_excitations_per_winding().empty());
-    
-    const auto& primaryExc = op.get_excitations_per_winding()[0];
-    REQUIRE(primaryExc.get_voltage().has_value());
-    REQUIRE(primaryExc.get_current().has_value());
-    
+    // Validate that we have waveform data
+    REQUIRE(!op.get_input_voltage().get_data().empty());
+    REQUIRE(!op.get_input_current().get_data().empty());
+
     // Extract waveform data
-    auto voltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-    auto currentData = primaryExc.get_current()->get_waveform()->get_data();
-    
+    auto voltageData = op.get_input_voltage().get_data();
+    auto currentData = op.get_input_current().get_data();
+
     // Calculate waveform statistics
     double v_max = *std::max_element(voltageData.begin(), voltageData.end());
     double v_min = *std::min_element(voltageData.begin(), voltageData.end());
     double i_avg = std::accumulate(currentData.begin(), currentData.end(), 0.0) / currentData.size();
-    
+
     INFO("Inductor voltage: min=" << v_min << " max=" << v_max);
     INFO("Inductor current avg: " << i_avg);
-    
+
     // For Boost, inductor voltage swings between Vin and (Vin - Vout)
     CHECK(v_max > 0.0);  // Should have positive voltage
     
@@ -1256,7 +1243,7 @@ TEST_CASE("Boost converter simulation", "[ngspice-runner][boost-topology]") {
 // because their header files are missing from the repository
 
 // Placeholder test to avoid empty test file
-TEST_CASE("Ngspice runner placeholder", "[ngspice-runner]") {
+TEST_CASE("Ngspice runner placeholder", "[ngspice-runner][smoke-test]") {
     REQUIRE(true);
 }
 
@@ -1265,7 +1252,7 @@ TEST_CASE("Ngspice runner placeholder", "[ngspice-runner]") {
 // Common Mode Choke (CMC) ngspice simulation tests
 // ==============================================================================
 
-TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc]") {
+TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc][smoke-test]") {
     // Create CMC topology
     CommonModeChoke cmc;
     
@@ -1308,7 +1295,7 @@ TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc]") {
     }
 }
 
-TEST_CASE("CommonModeChoke simulate and extract waveforms", "[ngspice-runner][cmc]") {
+TEST_CASE("CommonModeChoke simulate and extract waveforms", "[ngspice-runner][cmc][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1366,7 +1353,7 @@ TEST_CASE("CommonModeChoke simulate and extract waveforms", "[ngspice-runner][cm
     }
 }
 
-TEST_CASE("CommonModeChoke simulate and extract operating points", "[ngspice-runner][cmc]") {
+TEST_CASE("CommonModeChoke simulate and extract operating points", "[ngspice-runner][cmc][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1419,7 +1406,7 @@ TEST_CASE("CommonModeChoke simulate and extract operating points", "[ngspice-run
 // Differential Mode Choke (DMC) ngspice simulation tests
 // ==============================================================================
 
-TEST_CASE("DifferentialModeChoke generate ngspice circuit", "[ngspice-runner][dmc]") {
+TEST_CASE("DifferentialModeChoke generate ngspice circuit", "[ngspice-runner][dmc][smoke-test]") {
     DifferentialModeChoke dmc;
     
     // Setup typical DMC parameters
@@ -1454,7 +1441,7 @@ TEST_CASE("DifferentialModeChoke generate ngspice circuit", "[ngspice-runner][dm
     }
 }
 
-TEST_CASE("DifferentialModeChoke simulate and extract waveforms", "[ngspice-runner][dmc]") {
+TEST_CASE("DifferentialModeChoke simulate and extract waveforms", "[ngspice-runner][dmc][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1503,7 +1490,7 @@ TEST_CASE("DifferentialModeChoke simulate and extract waveforms", "[ngspice-runn
     }
 }
 
-TEST_CASE("DifferentialModeChoke simulate and extract operating points", "[ngspice-runner][dmc]") {
+TEST_CASE("DifferentialModeChoke simulate and extract operating points", "[ngspice-runner][dmc][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1542,7 +1529,7 @@ TEST_CASE("DifferentialModeChoke simulate and extract operating points", "[ngspi
 // Power Factor Correction (PFC) ngspice simulation tests
 // ==============================================================================
 
-TEST_CASE("PowerFactorCorrection generate ngspice circuit", "[ngspice-runner][pfc]") {
+TEST_CASE("PowerFactorCorrection generate ngspice circuit", "[ngspice-runner][pfc][smoke-test]") {
     PowerFactorCorrection pfc;
     
     // Setup typical PFC boost converter parameters
@@ -1584,7 +1571,7 @@ TEST_CASE("PowerFactorCorrection generate ngspice circuit", "[ngspice-runner][pf
     }
 }
 
-TEST_CASE("PowerFactorCorrection simulate and extract waveforms", "[ngspice-runner][pfc]") {
+TEST_CASE("PowerFactorCorrection simulate and extract waveforms", "[ngspice-runner][pfc][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1645,7 +1632,7 @@ TEST_CASE("PowerFactorCorrection simulate and extract waveforms", "[ngspice-runn
     }
 }
 
-TEST_CASE("PowerFactorCorrection simulate and extract operating points", "[ngspice-runner][pfc]") {
+TEST_CASE("PowerFactorCorrection simulate and extract operating points", "[ngspice-runner][pfc][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1699,7 +1686,7 @@ TEST_CASE("PowerFactorCorrection simulate and extract operating points", "[ngspi
 // SingleSwitchForward ngspice Tests
 // ============================================================================
 
-TEST_CASE("SingleSwitchForward ideal waveforms CCM", "[ngspice-runner][forward-topology]") {
+TEST_CASE("SingleSwitchForward ideal waveforms CCM", "[ngspice-runner][forward-topology][smoke-test]") {
     // Create a Single-Switch Forward converter specification
     OpenMagnetics::SingleSwitchForward forward;
     
@@ -1760,7 +1747,7 @@ TEST_CASE("SingleSwitchForward ideal waveforms CCM", "[ngspice-runner][forward-t
     }
 }
 
-TEST_CASE("SingleSwitchForward ngspice simulation CCM", "[ngspice-runner][forward-topology]") {
+TEST_CASE("SingleSwitchForward ngspice simulation CCM", "[ngspice-runner][forward-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1857,7 +1844,7 @@ TEST_CASE("SingleSwitchForward ngspice simulation CCM", "[ngspice-runner][forwar
     }
 }
 
-TEST_CASE("SingleSwitchForward topology waveforms", "[ngspice-runner][forward-topology]") {
+TEST_CASE("SingleSwitchForward topology waveforms", "[ngspice-runner][forward-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1928,7 +1915,7 @@ TEST_CASE("SingleSwitchForward topology waveforms", "[ngspice-runner][forward-to
 // PushPull ngspice Tests
 // ============================================================================
 
-TEST_CASE("PushPull ideal waveforms CCM", "[ngspice-runner][pushpull-topology]") {
+TEST_CASE("PushPull ideal waveforms CCM", "[ngspice-runner][pushpull-topology][smoke-test]") {
     // Create a Push-Pull converter specification
     OpenMagnetics::PushPull pushpull;
     
@@ -1977,7 +1964,7 @@ TEST_CASE("PushPull ideal waveforms CCM", "[ngspice-runner][pushpull-topology]")
     INFO("Got " << operatingPoints.size() << " operating points from ideal calculation");
 }
 
-TEST_CASE("PushPull ngspice simulation CCM", "[ngspice-runner][pushpull-topology]") {
+TEST_CASE("PushPull ngspice simulation CCM", "[ngspice-runner][pushpull-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2074,7 +2061,7 @@ TEST_CASE("PushPull ngspice simulation CCM", "[ngspice-runner][pushpull-topology
     }
 }
 
-TEST_CASE("PushPull topology waveforms", "[ngspice-runner][pushpull-topology]") {
+TEST_CASE("PushPull topology waveforms", "[ngspice-runner][pushpull-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2133,7 +2120,7 @@ TEST_CASE("PushPull topology waveforms", "[ngspice-runner][pushpull-topology]") 
     }
 }
 
-TEST_CASE("PushPull with frontend default values", "[ngspice-runner][pushpull-topology][.]") {
+TEST_CASE("PushPull with frontend default values", "[ngspice-runner][pushpull-topology][.][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2239,7 +2226,7 @@ TEST_CASE("PushPull with frontend default values", "[ngspice-runner][pushpull-to
     }
 }
 
-TEST_CASE("PushPull analytical vs simulated comparison", "[ngspice-runner][pushpull-topology][.]") {
+TEST_CASE("PushPull analytical vs simulated comparison", "[ngspice-runner][pushpull-topology][.][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2377,7 +2364,7 @@ TEST_CASE("PushPull analytical vs simulated comparison", "[ngspice-runner][pushp
 // IsolatedBuckBoost ngspice Tests
 // ============================================================================
 
-TEST_CASE("IsolatedBuckBoost ideal waveforms CCM", "[ngspice-runner][isobbst-topology]") {
+TEST_CASE("IsolatedBuckBoost ideal waveforms CCM", "[ngspice-runner][isobbst-topology][smoke-test]") {
     // Create an Isolated Buck-Boost converter specification
     OpenMagnetics::IsolatedBuckBoost isobbst;
     
@@ -2427,7 +2414,7 @@ TEST_CASE("IsolatedBuckBoost ideal waveforms CCM", "[ngspice-runner][isobbst-top
     INFO("Got " << operatingPoints.size() << " operating points from ideal calculation");
 }
 
-TEST_CASE("IsolatedBuckBoost ngspice simulation CCM", "[ngspice-runner][isobbst-topology]") {
+TEST_CASE("IsolatedBuckBoost ngspice simulation CCM", "[ngspice-runner][isobbst-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2525,7 +2512,7 @@ TEST_CASE("IsolatedBuckBoost ngspice simulation CCM", "[ngspice-runner][isobbst-
     }
 }
 
-TEST_CASE("IsolatedBuckBoost topology waveforms", "[ngspice-runner][isobbst-topology]") {
+TEST_CASE("IsolatedBuckBoost topology waveforms", "[ngspice-runner][isobbst-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2595,7 +2582,7 @@ TEST_CASE("IsolatedBuckBoost topology waveforms", "[ngspice-runner][isobbst-topo
     }
 }
 
-TEST_CASE("IsolatedBuckBoost frontend defaults", "[ngspice-runner][isobbst-topology][frontend]") {
+TEST_CASE("IsolatedBuckBoost frontend defaults", "[ngspice-runner][isobbst-topology][frontend][smoke-test]") {
     // Test using exact frontend default values from defaults.js
     NgspiceRunner runner;
     
@@ -2706,7 +2693,7 @@ TEST_CASE("IsolatedBuckBoost frontend defaults", "[ngspice-runner][isobbst-topol
 // TwoSwitchForward ngspice Tests
 // ============================================================================
 
-TEST_CASE("TwoSwitchForward ideal waveforms CCM", "[ngspice-runner][two-switch-forward-topology]") {
+TEST_CASE("TwoSwitchForward ideal waveforms CCM", "[ngspice-runner][two-switch-forward-topology][smoke-test]") {
     OpenMagnetics::TwoSwitchForward forward;
     
     DimensionWithTolerance inputVoltage;
@@ -2760,7 +2747,7 @@ TEST_CASE("TwoSwitchForward ideal waveforms CCM", "[ngspice-runner][two-switch-f
     }
 }
 
-TEST_CASE("TwoSwitchForward ngspice simulation CCM", "[ngspice-runner][two-switch-forward-topology]") {
+TEST_CASE("TwoSwitchForward ngspice simulation CCM", "[ngspice-runner][two-switch-forward-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2831,7 +2818,7 @@ TEST_CASE("TwoSwitchForward ngspice simulation CCM", "[ngspice-runner][two-switc
     }
 }
 
-TEST_CASE("TwoSwitchForward topology waveforms", "[ngspice-runner][two-switch-forward-topology]") {
+TEST_CASE("TwoSwitchForward topology waveforms", "[ngspice-runner][two-switch-forward-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2888,7 +2875,7 @@ TEST_CASE("TwoSwitchForward topology waveforms", "[ngspice-runner][two-switch-fo
     }
 }
 
-TEST_CASE("TwoSwitchForward ngspice convergence with typical values", "[ngspice-runner][two-switch-forward-topology][convergence]") {
+TEST_CASE("TwoSwitchForward ngspice convergence with typical values", "[ngspice-runner][two-switch-forward-topology][convergence][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2966,7 +2953,7 @@ TEST_CASE("TwoSwitchForward ngspice convergence with typical values", "[ngspice-
 // ActiveClampForward ngspice Tests
 // ============================================================================
 
-TEST_CASE("ActiveClampForward ideal waveforms CCM", "[ngspice-runner][active-clamp-forward-topology]") {
+TEST_CASE("ActiveClampForward ideal waveforms CCM", "[ngspice-runner][active-clamp-forward-topology][smoke-test]") {
     OpenMagnetics::ActiveClampForward forward;
     
     DimensionWithTolerance inputVoltage;
@@ -3020,7 +3007,7 @@ TEST_CASE("ActiveClampForward ideal waveforms CCM", "[ngspice-runner][active-cla
     }
 }
 
-TEST_CASE("ActiveClampForward ngspice simulation CCM", "[ngspice-runner][active-clamp-forward-topology]") {
+TEST_CASE("ActiveClampForward ngspice simulation CCM", "[ngspice-runner][active-clamp-forward-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -3091,7 +3078,7 @@ TEST_CASE("ActiveClampForward ngspice simulation CCM", "[ngspice-runner][active-
     }
 }
 
-TEST_CASE("ActiveClampForward topology waveforms", "[ngspice-runner][active-clamp-forward-topology]") {
+TEST_CASE("ActiveClampForward topology waveforms", "[ngspice-runner][active-clamp-forward-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {

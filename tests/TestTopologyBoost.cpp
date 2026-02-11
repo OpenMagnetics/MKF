@@ -32,14 +32,14 @@ namespace {
         boostInputsJson["diodeVoltageDrop"] = 0.7;
         boostInputsJson["efficiency"] = 1;
         boostInputsJson["maximumSwitchCurrent"] = 8;
-        boostInputsJson["operatingPoints"] = json::array();
+        boostInputsJson["converterWaveforms"] = json::array();
         {
             json boostOperatingPointJson;
             boostOperatingPointJson["outputVoltage"] = 50;
             boostOperatingPointJson["outputCurrent"] = 1;
             boostOperatingPointJson["switchingFrequency"] = 100000;
             boostOperatingPointJson["ambientTemperature"] = 42;
-            boostInputsJson["operatingPoints"].push_back(boostOperatingPointJson);
+            boostInputsJson["converterWaveforms"].push_back(boostOperatingPointJson);
         }
 
         OpenMagnetics::Boost boostInputs(boostInputsJson);
@@ -81,12 +81,12 @@ namespace {
             painter.export_svg();
         }
 
-        REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError));
+        REQUIRE_THAT(double(boostInputsJson["converterWaveforms"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["converterWaveforms"][0]["outputVoltage"]) * maximumError));
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
-        REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError));
+        REQUIRE_THAT(double(boostInputsJson["converterWaveforms"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["converterWaveforms"][0]["outputVoltage"]) * maximumError));
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR_WITH_DEADTIME);
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
@@ -132,21 +132,18 @@ namespace {
         INFO("Boost - Inductance: " << (inductance * 1e6) << " uH");
         
         // Run ngspice simulation
-        auto operatingPoints = boost.simulate_and_extract_topology_waveforms(inductance);
+        auto converterWaveforms = boost.simulate_and_extract_topology_waveforms(inductance);
         
-        REQUIRE(!operatingPoints.empty());
+        REQUIRE(!converterWaveforms.empty());
         
         // Verify we have excitations
-        REQUIRE(!operatingPoints[0].get_excitations_per_winding().empty());
+        REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
         
         // Get primary (inductor) excitation
-        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
-        REQUIRE(primaryExc.get_voltage().has_value());
-        REQUIRE(primaryExc.get_current().has_value());
-        
-        // Extract waveform data
-        auto voltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-        auto currentData = primaryExc.get_current()->get_waveform()->get_data();
+        // primary excitation replaced by ConverterWaveforms input signals
+// Extract waveform data
+        auto voltageData = converterWaveforms[0].get_input_voltage().get_data();
+        auto currentData = converterWaveforms[0].get_input_current().get_data();
         
         // Calculate statistics
         double v_max = *std::max_element(voltageData.begin(), voltageData.end());

@@ -252,17 +252,13 @@ namespace {
         
         REQUIRE(!operatingPoints.empty());
         
-        // Verify we have excitations
-        REQUIRE(!operatingPoints[0].get_excitations_per_winding().empty());
-        
-        // Get primary excitation
-        const auto& primaryExc = operatingPoints[0].get_excitations_per_winding()[0];
-        REQUIRE(primaryExc.get_voltage().has_value());
-        REQUIRE(primaryExc.get_current().has_value());
-        
+        // Verify we have waveform data
+        REQUIRE(!operatingPoints[0].get_input_voltage().get_data().empty());
+        REQUIRE(!operatingPoints[0].get_input_current().get_data().empty());
+
         // Extract waveform data
-        auto priVoltageData = primaryExc.get_voltage()->get_waveform()->get_data();
-        auto priCurrentData = primaryExc.get_current()->get_waveform()->get_data();
+        auto priVoltageData = operatingPoints[0].get_input_voltage().get_data();
+        auto priCurrentData = operatingPoints[0].get_input_current().get_data();
         
         // Calculate statistics
         double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
