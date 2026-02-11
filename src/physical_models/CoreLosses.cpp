@@ -1509,13 +1509,6 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
     }
 
     // auto closestBIndex = find_closest_index(upperMagneticFluxDensityWaveform, magneticFluxDensityAcPeak);
-    // std::cout << "************************************************" << std::endl;
-    // std::cout << "magneticFluxDensityAcPeak: " << magneticFluxDensityAcPeak << std::endl;
-    // std::cout << "closestBIndex: " << closestBIndex << std::endl;
-    // std::cout << "coerciveForce: " << coerciveForce << std::endl;
-    // std::cout << "magneticFieldStrengthPoints[closestBIndex]: " << magneticFieldStrengthPoints[closestBIndex] << std::endl;
-    // double calculatedHValue = sqrt((2 * a1 * coerciveForce + pow(coerciveForce, 2) * (b1 - b2)) / (b1 - b2));
-    // std::cout << "calculatedHValue: " << calculatedHValue << std::endl;
 
 
     std::vector<double> cutUpperMagneticFluxDensityWaveform;

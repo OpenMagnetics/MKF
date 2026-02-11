@@ -16,7 +16,7 @@
 namespace OpenMagnetics {
 
 // Debug flag for thermal model - set to true for verbose output
-constexpr bool THERMAL_DEBUG = true;
+constexpr bool THERMAL_DEBUG = false;
 
 // Contact threshold: surfaces must be within this distance to conduct
 constexpr double CONTACT_THRESHOLD_FACTOR = 0.25;  // wireDiameter / 4
