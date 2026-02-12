@@ -750,11 +750,13 @@ SimulationResult NgspiceRunner::parse_raw_file(const std::string& rawFilePath, c
         result.waveformNames.push_back(signalName);
     }
     
-    // Extract one period if requested
+    // Extract N periods if requested
     if (config.extractOnePeriod && config.frequency > 0 && result.waveforms.size() > 1) {
         CircuitSimulationReader reader;
+        // Use frequency / numberOfPeriods to extract N periods worth of data
+        double extractFrequency = config.frequency / std::max(size_t{1}, config.numberOfPeriods);
         for (size_t i = 1; i < result.waveforms.size(); ++i) {
-            result.waveforms[i] = reader.get_one_period(result.waveforms[i], config.frequency, true);
+            result.waveforms[i] = reader.get_one_period(result.waveforms[i], extractFrequency, true);
         }
         // Update the time waveform at index 0 to match the extracted period
         if (result.waveforms[1].get_time()) {

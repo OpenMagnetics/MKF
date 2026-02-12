@@ -511,11 +511,11 @@ namespace OpenMagnetics {
                 SimulationConfig config;
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
-                config.numberOfPeriods = 1;
+                config.numberOfPeriods = get_num_periods_to_extract();
                 config.keepTempFiles = false;
-                
+
                 auto simResult = runner.run_simulation(netlist, config);
-                
+
                 if (!simResult.success) {
                     throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
                 }
@@ -585,7 +585,7 @@ namespace OpenMagnetics {
             SimulationConfig config;
             config.frequency = switchingFrequency;
             config.extractOnePeriod = true;
-            config.numberOfPeriods = 2;
+            config.numberOfPeriods = get_num_periods_to_extract();
             config.keepTempFiles = false;
             
             auto simResult = runner.run_simulation(netlist, config);

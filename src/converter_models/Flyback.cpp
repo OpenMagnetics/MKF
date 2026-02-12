@@ -415,9 +415,9 @@ namespace OpenMagnetics {
                 SimulationConfig config;
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
-                config.numberOfPeriods = 1;  // Only one period for operating points
+                config.numberOfPeriods = get_num_periods_to_extract();
                 config.keepTempFiles = false;
-                
+
                 auto simResult = runner.run_simulation(netlist, config);
                 
                 if (!simResult.success) {
@@ -666,38 +666,38 @@ namespace OpenMagnetics {
                 SimulationConfig config;
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
-                config.numberOfPeriods = 1;  // Only one period for operating points
+                config.numberOfPeriods = get_num_periods_to_extract();
                 config.keepTempFiles = false;
-                
+
                 auto simResult = runner.run_simulation(netlist, config);
-                
+
                 if (!simResult.success) {
                     throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
                 }
-                
+
                 // Define waveform name mapping for flyback circuit with multiple secondaries
                 // ngspice .save outputs voltage nodes as just the node name (e.g., "pri_in")
                 // and branch currents as "vsourcename#branch" (e.g., "vpri_sense#branch")
                 NgspiceRunner::WaveformNameMapping waveformMapping;
-                
+
                 // Primary winding
                 waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vpri_sense#branch"}});
-                
+
                 // Secondary windings (one per turns ratio)
                 for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
                     std::string voltageName = "sec" + std::to_string(secIdx) + "_in";
                     std::string currentName = "vsec_sense" + std::to_string(secIdx) + "#branch";
                     waveformMapping.push_back({{"voltage", voltageName}, {"current", currentName}});
                 }
-                
+
                 std::vector<std::string> windingNames;
                 windingNames.push_back("Primary");
                 for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
                     windingNames.push_back("Secondary " + std::to_string(secIdx));
                 }
-                
+
                 std::vector<bool> flipCurrentSign(1 + turnsRatios.size(), false);
-                
+
                 OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
                     simResult,
                     waveformMapping,
@@ -705,14 +705,14 @@ namespace OpenMagnetics {
                     windingNames,
                     flybackOpPoint.get_ambient_temperature(),
                     flipCurrentSign);
-                
+
                 // Set name
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt. (simulated with " + magnetic.get_reference() + ")";
                 if (get_operating_points().size() > 1) {
                     name += " op. point " + std::to_string(opIndex);
                 }
                 operatingPoint.set_name(name);
-                
+
                 operatingPoints.push_back(operatingPoint);
             }
         }
