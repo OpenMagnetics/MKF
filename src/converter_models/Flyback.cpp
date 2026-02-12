@@ -327,7 +327,7 @@ namespace OpenMagnetics {
         
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             double secondaryInductance = magnetizingInductance / (turnsRatios[secIdx] * turnsRatios[secIdx]);
-            circuit << "Lsec" << secIdx << " sec" << secIdx << "_in 0 " << std::scientific << secondaryInductance << std::fixed << "\n";
+            circuit << "Lsec" << secIdx << " 0 sec" << secIdx << "_in " << std::scientific << secondaryInductance << std::fixed << "\n";
         }
         
         // ngspice requires separate K statements for each inductor pair
