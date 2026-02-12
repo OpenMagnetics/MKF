@@ -678,3 +678,336 @@ TEST_CASE("Calculate capacitance of a simple planar tranformer with imperfect ov
         painter.export_svg();
     }
 }
+
+
+// ============================================================================
+// LITZ WIRE STRAY CAPACITANCE TESTS
+// ============================================================================
+
+TEST_CASE("Calculate capacitance of litz winding with 8 turns", "[physical-model][stray-capacitance][litz][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {8, 8};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string coreShapeName = "RM 10/I";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    // Create a litz wire: 50 strands x 0.1mm, Grade 1
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 50);
+    wires.push_back(litzWire);
+    wires.push_back(litzWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_mutable_magnitude().size() == 2);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            // Diagonal positive, off-diagonal negative
+            if (firstKey == secondKey) {
+                CHECK(capacitance > 0);
+            } else {
+                CHECK(capacitance < 0);
+            }
+            CHECK(std::abs(capacitance) < 1e-9); // Sanity: sub-nF range
+        }
+    }
+}
+
+TEST_CASE("Calculate capacitance of single litz winding with 8 turns", "[physical-model][stray-capacitance][litz][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {8};
+    std::vector<int64_t> numberParallels = {1};
+    std::string coreShapeName = "RM 10/I";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    // Create litz wire: 100 strands x 0.08mm, Grade 1
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.00008, 100);
+    wires.push_back(litzWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_magnitude().size() == 1);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            CHECK(capacitance > 0);
+            CHECK(capacitance < 100e-12); // Reasonable upper bound for this geometry
+        }
+    }
+}
+
+TEST_CASE("Litz capacitance with Koch model", "[physical-model][stray-capacitance][litz][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {8};
+    std::vector<int64_t> numberParallels = {1};
+    std::string coreShapeName = "RM 10/I";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 50);
+    wires.push_back(litzWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    // Test that Koch model also works with litz
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::KOCH);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_magnitude().size() == 1);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            CHECK(capacitance > 0);
+        }
+    }
+}
+
+TEST_CASE("Litz capacitance with Massarini model", "[physical-model][stray-capacitance][litz][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {8};
+    std::vector<int64_t> numberParallels = {1};
+    std::string coreShapeName = "RM 10/I";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 50);
+    wires.push_back(litzWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::MASSARINI);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_magnitude().size() == 1);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            CHECK(capacitance > 0);
+        }
+    }
+}
+
+TEST_CASE("Litz capacitance with Duerdoth model", "[physical-model][stray-capacitance][litz][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {8};
+    std::vector<int64_t> numberParallels = {1};
+    std::string coreShapeName = "RM 10/I";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 50);
+    wires.push_back(litzWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::DUERDOTH);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_magnitude().size() == 1);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            CHECK(capacitance > 0);
+        }
+    }
+}
+
+// ============================================================================
+// FOIL WIRE STRAY CAPACITANCE TESTS
+// ============================================================================
+
+TEST_CASE("Calculate capacitance of foil windings with 4 turns", "[physical-model][stray-capacitance][foil][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {4, 4};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string coreShapeName = "PQ 32/20";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    // Create a foil wire using the rectangular helper, then override type to FOIL
+    auto foilWire = OpenMagnetics::Wire::create_quick_rectangular_wire(0.010, 0.0002);
+    foilWire.set_type(WireType::FOIL);
+    wires.push_back(foilWire);
+    wires.push_back(foilWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_mutable_magnitude().size() == 2);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            if (firstKey == secondKey) {
+                CHECK(capacitance > 0);
+            } else {
+                CHECK(capacitance < 0);
+            }
+        }
+    }
+}
+
+TEST_CASE("Calculate capacitance of single foil winding with 4 turns", "[physical-model][stray-capacitance][foil][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {4};
+    std::vector<int64_t> numberParallels = {1};
+    std::string coreShapeName = "PQ 32/20";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    auto foilWire = OpenMagnetics::Wire::create_quick_rectangular_wire(0.008, 0.0003);
+    foilWire.set_type(WireType::FOIL);
+    wires.push_back(foilWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_magnitude().size() == 1);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            CHECK(capacitance > 0);
+            CHECK(capacitance < 1e-9); // Sanity upper bound
+        }
+    }
+}
+
+TEST_CASE("Calculate capacitance of rectangular windings with 4 turns", "[physical-model][stray-capacitance][rectangular][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {4, 4};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string coreShapeName = "PQ 32/20";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    auto rectWire = OpenMagnetics::Wire::create_quick_rectangular_wire(0.005, 0.001);
+    wires.push_back(rectWire);
+    wires.push_back(rectWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_mutable_magnitude().size() == 2);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            if (firstKey == secondKey) {
+                CHECK(capacitance > 0);
+            } else {
+                CHECK(capacitance < 0);
+            }
+        }
+    }
+}
+
+// ============================================================================
+// MIXED WIRE TYPE TESTS (ROUND + LITZ)
+// ============================================================================
+
+TEST_CASE("Calculate capacitance between round and litz windings", "[physical-model][stray-capacitance][mixed][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {8, 8};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string coreShapeName = "RM 10/I";
+    std::vector<OpenMagnetics::Wire> wires;
+    
+    auto roundWire = find_wire_by_name("Round 1.00 - Grade 1");
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 50);
+    wires.push_back(roundWire);
+    wires.push_back(litzWire);
+
+    auto coil = OpenMagnetics::Coil::create_quick_coil(coreShapeName, numberTurns, numberParallels, wires);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+
+    // Should not throw - mixed round+litz both go through the round-like path
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix().value();
+    CHECK(maxwellCapacitanceMatrix[0].get_mutable_magnitude().size() == 2);
+
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            if (firstKey == secondKey) {
+                CHECK(capacitance > 0);
+            } else {
+                CHECK(capacitance < 0);
+            }
+        }
+    }
+}
+
+
+// =================== Added Litz/Foil Tests ===================
+
+TEST_CASE("Litz winding stray capacitance smoke test", "[stray-capacitance][litz]") {
+    settings.reset();
+
+    // Create two identical litz wires and a simple coil
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 50);
+    std::vector<int64_t> numberTurns = {8, 8};
+    std::vector<int64_t> numberParallels = {1, 1};
+    auto coil = OpenMagnetics::Coil::create_quick_coil("RM 10/I", numberTurns, numberParallels, {litzWire, litzWire});
+
+    StrayCapacitance strayCap(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+    auto out = strayCap.calculate_capacitance(coil);
+    REQUIRE(out.get_maxwell_capacitance_matrix());
+}
+
+TEST_CASE("Foil winding stray capacitance smoke test", "[stray-capacitance][foil]") {
+    settings.reset();
+
+    auto foilWire = OpenMagnetics::Wire::create_quick_rectangular_wire(0.008, 0.0003);
+    foilWire.set_type(WireType::FOIL);
+    std::vector<int64_t> numberTurns = {4,4};
+    std::vector<int64_t> numberParallels = {1,1};
+    auto coil = OpenMagnetics::Coil::create_quick_coil("PQ 32/20", numberTurns, numberParallels, {foilWire, foilWire});
+
+    StrayCapacitance strayCap(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+    auto out = strayCap.calculate_capacitance(coil);
+    REQUIRE(out.get_maxwell_capacitance_matrix());
+}
+
+TEST_CASE("Mixed round + litz capacitance smoke test", "[stray-capacitance][mixed]") {
+    settings.reset();
+
+    auto roundWire = OpenMagnetics::find_wire_by_name("Round 1.00 - Grade 1");
+    auto litzWire = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 50);
+    std::vector<int64_t> numberTurns = {8,8};
+    std::vector<int64_t> numberParallels = {1,1};
+    auto coil = OpenMagnetics::Coil::create_quick_coil("RM 10/I", numberTurns, numberParallels, {roundWire, litzWire});
+
+    StrayCapacitance strayCap(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+    auto out = strayCap.calculate_capacitance(coil);
+    REQUIRE(out.get_maxwell_capacitance_matrix());
+}

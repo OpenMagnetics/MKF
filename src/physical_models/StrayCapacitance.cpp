@@ -486,12 +486,55 @@ double get_effective_relative_permittivity(double firstThickness, double firstRe
     return firstRelativePermittivity * secondRelativePermittivity * (firstThickness + secondThickness) / (firstThickness * secondRelativePermittivity + secondThickness * firstRelativePermittivity);
 }
 
+/**
+ * @brief Returns the effective relative permittivity of a wire's insulation coating.
+ *
+ * For ROUND wires: Uses empirical formula from Albach Chapter 3.
+ * For LITZ wires: Uses serving material permittivity (fallback to strand enamel formula).
+ * For FOIL/RECTANGULAR: Uses coating material permittivity (fallback to typical film value).
+ * For PLANAR: Returns typical FR4 permittivity.
+ *
+ * @param wire The wire to get the insulation permittivity for
+ * @return Effective relative permittivity of the wire insulation
+ */
 double get_wire_insulation_relative_permittivity(Wire wire) {
-    if (wire.get_type() != WireType::ROUND) {
-        throw NotImplementedException("Other wires not implemented yet, check Albach's book");
+    if (wire.get_type() == WireType::ROUND) {
+        // Empirical formula for enamelled round wire coating permittivity
+        // Based on Albach, "Induktivitaeten in der Leistungselektronik", Chapter 3
+        auto conductingRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        return 2.5 + 0.7 / sqrt(2 * conductingRadius * 1000);
     }
-    auto conductingRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
-    return 2.5 + 0.7 / sqrt(2 * conductingRadius * 1000);
+    else if (wire.get_type() == WireType::LITZ) {
+        // For litz wire, the relevant insulation for turn-to-turn capacitance is the serving
+        // (outer insulation of the bundle). Use the serving material's permittivity if available,
+        // otherwise fall back to the strand enamel empirical formula.
+        // Reference: Albach "Induktivitaeten in der Leistungselektronik", Chapter 3
+        // Reference: Biela/Kolar "Using Transformer Parasitics for Resonant Converters"
+        try {
+            return wire.get_coating_relative_permittivity();
+        }
+        catch (...) {
+            // Fallback: use strand enamel empirical formula with strand radius
+            auto strand = wire.resolve_strand();
+            auto strandConductingRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
+            return 2.5 + 0.7 / sqrt(2 * strandConductingRadius * 1000);
+        }
+    }
+    else if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::RECTANGULAR) {
+        // For foil and rectangular wires, use the coating material's permittivity.
+        // These wires normally use parallel plate model, but permittivity may still be needed
+        // for mixed-type turn pairs.
+        try {
+            return wire.get_coating_relative_permittivity();
+        }
+        catch (...) {
+            return 3.5; // Default: typical polyester/polyimide film
+        }
+    }
+    else {
+        // PLANAR or unknown: FR4 or similar substrate material
+        return 4.5;
+    }
 }
 
 
@@ -514,8 +557,18 @@ std::shared_ptr<StrayCapacitanceModel> StrayCapacitanceModel::factory(StrayCapac
 }
 
 std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
-    if (firstWire.get_type() != WireType::ROUND || secondWire.get_type() != WireType::ROUND) {
-        throw NotImplementedException("Other wires not implemented yet, check Albach's book");
+    // Accept ROUND and LITZ wire types. For LITZ, we treat the bundle as an equivalent
+    // round conductor with the outer bundle diameter as the "conducting" surface and
+    // the serving/insulation as the "coating".
+    // Reference: Albach "Induktivitaeten in der Leistungselektronik", Chapter 3
+    // Reference: Biela/Kolar "Using Transformer Parasitics for Resonant Converters"
+    
+    auto isRoundLike = [](WireType type) {
+        return type == WireType::ROUND || type == WireType::LITZ;
+    };
+    
+    if (!isRoundLike(firstWire.get_type()) || !isRoundLike(secondWire.get_type())) {
+        throw NotImplementedException("preprocess_data_for_round_wires only supports ROUND and LITZ wires, got: " + std::string(magic_enum::enum_name(firstWire.get_type())) + " and " + std::string(magic_enum::enum_name(secondWire.get_type())));
     }
 
     InsulationMaterial insulationMaterial = find_insulation_material_by_name(Defaults().defaultInsulationMaterial);
@@ -524,14 +577,90 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
     auto relativePermittivityWireCoatingSecondWire = get_wire_insulation_relative_permittivity(secondWire);
     auto relativePermittivityWireCoating = (relativePermittivityWireCoatingFirstWire + relativePermittivityWireCoatingSecondWire) / 2;
 
-    auto wireCoatingThicknessFirstWire = firstWire.get_coating_thickness();
-    auto wireCoatingThicknessSecondWire = secondWire.get_coating_thickness();
+    // For LITZ: The "conducting diameter" for capacitance purposes is the bare bundle diameter
+    //           (without serving). The bare bundle surface acts as the effective conductor
+    //           boundary for inter-turn capacitance. We must compute this correctly using
+    //           get_outer_diameter_bare_litz() rather than relying on get_coating_thickness()
+    //           which includes strand packing space and gives incorrect results.
+    // For ROUND: The conducting diameter is simply the bare wire diameter.
+    double conductingDiameterFirstWire;
+    double conductingDiameterSecondWire;
+    double outerDiameterFirstWire;
+    double outerDiameterSecondWire;
+    double wireCoatingThicknessFirstWire;
+    double wireCoatingThicknessSecondWire;
+    
+    if (firstWire.get_type() == WireType::LITZ) {
+        // Overall outer diameter (includes serving/insulation)
+        outerDiameterFirstWire = firstWire.calculate_outer_diameter();
+        
+        // Compute bare bundle diameter directly from strand geometry
+        // This is the effective "conductor surface" for capacitance
+        auto strand = firstWire.resolve_strand();
+        auto strandCoating = Wire::resolve_coating(strand);
+        auto standard = WireStandard::IEC_60317;
+        if (firstWire.get_standard()) {
+            standard = firstWire.get_standard().value();
+        }
+        int grade = 1;
+        if (strandCoating && strandCoating->get_grade()) {
+            grade = strandCoating->get_grade().value();
+        }
+        int64_t numConductors = firstWire.get_number_conductors().value();
+        double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
+        
+        double bareBundleDiameter = Wire::get_outer_diameter_bare_litz(
+            strandConductingDiameter, numConductors, grade, standard);
+        
+        // The "conducting diameter" for capacitance is the bare bundle surface
+        conductingDiameterFirstWire = bareBundleDiameter;
+        
+        // The "coating thickness" is only the serving/outer insulation
+        wireCoatingThicknessFirstWire = (outerDiameterFirstWire - bareBundleDiameter) / 2;
+        if (wireCoatingThicknessFirstWire < 0) {
+            wireCoatingThicknessFirstWire = 0;
+        }
+    } else {
+        // ROUND wire
+        conductingDiameterFirstWire = firstWire.get_maximum_conducting_width();
+        outerDiameterFirstWire = firstWire.get_maximum_outer_width();
+        wireCoatingThicknessFirstWire = firstWire.get_coating_thickness();
+    }
+    
+    if (secondWire.get_type() == WireType::LITZ) {
+        outerDiameterSecondWire = secondWire.calculate_outer_diameter();
+        
+        auto strand = secondWire.resolve_strand();
+        auto strandCoating = Wire::resolve_coating(strand);
+        auto standard = WireStandard::IEC_60317;
+        if (secondWire.get_standard()) {
+            standard = secondWire.get_standard().value();
+        }
+        int grade = 1;
+        if (strandCoating && strandCoating->get_grade()) {
+            grade = strandCoating->get_grade().value();
+        }
+        int64_t numConductors = secondWire.get_number_conductors().value();
+        double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
+        
+        double bareBundleDiameter = Wire::get_outer_diameter_bare_litz(
+            strandConductingDiameter, numConductors, grade, standard);
+        
+        conductingDiameterSecondWire = bareBundleDiameter;
+        
+        wireCoatingThicknessSecondWire = (outerDiameterSecondWire - bareBundleDiameter) / 2;
+        if (wireCoatingThicknessSecondWire < 0) {
+            wireCoatingThicknessSecondWire = 0;
+        }
+    } else {
+        // ROUND wire
+        conductingDiameterSecondWire = secondWire.get_maximum_conducting_width();
+        outerDiameterSecondWire = secondWire.get_maximum_outer_width();
+        wireCoatingThicknessSecondWire = secondWire.get_coating_thickness();
+    }
+    
+    // Now average the coating thickness (after per-wire computation)
     auto wireCoatingThickness = (wireCoatingThicknessFirstWire + wireCoatingThicknessSecondWire) / 2;
-
-    auto conductingDiameterFirstWire = firstWire.get_maximum_conducting_width();
-    auto conductingDiameterSecondWire = secondWire.get_maximum_conducting_width();
-    auto outerDiameterFirstWire = firstWire.get_maximum_outer_width();
-    auto outerDiameterSecondWire = secondWire.get_maximum_outer_width();
     auto conductingRadius = (conductingDiameterFirstWire + conductingDiameterSecondWire) / 2;
 
     double distanceBetweenTurns = hypot(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0], firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1]);
@@ -541,7 +670,7 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
     std::vector<double> distancesThroughLayers;
     std::vector<double> relativePermittivityLayers;
     double effectiveRelativePermittivityLayers = 1;
-            
+    
     if (coil) {
         std::vector<Layer> insulationLayersInBetween = StrayCapacitance::get_insulation_layers_between_two_turns(firstTurn, secondTurn, coil.value());
 
@@ -934,7 +1063,15 @@ double StrayCapacitanceParallelPlateModel::calculate_static_capacitance_between_
 }
 
 double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
-    if (firstWire.get_type() == WireType::PLANAR && secondWire.get_type() == WireType::PLANAR) {
+    auto isFlatWire = [](WireType type) {
+        return type == WireType::PLANAR || type == WireType::FOIL || type == WireType::RECTANGULAR;
+    };
+    auto isRoundLike = [](WireType type) {
+        return type == WireType::ROUND || type == WireType::LITZ;
+    };
+
+    if (isFlatWire(firstWire.get_type()) && isFlatWire(secondWire.get_type())) {
+        // Both wires are flat: use parallel plate model
         StrayCapacitanceParallelPlateModel model;
         auto aux = model.preprocess_data_for_planar_wires(firstTurn, firstWire, secondTurn, secondWire);
         double averageTurnLength = aux[0];
@@ -944,8 +1081,8 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
         double capacitance = model.calculate_static_capacitance_between_two_turns(overlappingDimension, averageTurnLength, distanceThroughLayers, relativePermittivityInsulationLayers);
         return capacitance;
     }
-    else {
-
+    else if (isRoundLike(firstWire.get_type()) && isRoundLike(secondWire.get_type())) {
+        // Both wires are round-like (ROUND or LITZ): use cylindrical wire model
         auto aux = _model->preprocess_data_for_round_wires(firstTurn, firstWire, secondTurn, secondWire, coil);
         double wireCoatingThickness = aux[0];
         double averageTurnLength = aux[1];
@@ -955,11 +1092,22 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
         double relativePermittivityWireCoating = aux[5];
         double relativePermittivityInsulationLayers = aux[6];
         double capacitance = _model->calculate_static_capacitance_between_two_turns(wireCoatingThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, relativePermittivityWireCoating, relativePermittivityInsulationLayers);
-
         return capacitance;
-
+    }
+    else {
+        // Mixed types (e.g., ROUND next to FOIL, LITZ next to RECTANGULAR)
+        // Use parallel plate model as a conservative approximation
+        StrayCapacitanceParallelPlateModel model;
+        auto aux = model.preprocess_data_for_planar_wires(firstTurn, firstWire, secondTurn, secondWire);
+        double averageTurnLength = aux[0];
+        double overlappingDimension = aux[1];
+        double distanceThroughLayers = aux[2];
+        double relativePermittivityInsulationLayers = aux[3];
+        double capacitance = model.calculate_static_capacitance_between_two_turns(overlappingDimension, averageTurnLength, distanceThroughLayers, relativePermittivityInsulationLayers);
+        return capacitance;
     }
 }
+
 
 double StrayCapacitance::calculate_energy_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, double voltageDrop, std::optional<Coil> coil) {
     double capacitance = calculate_static_capacitance_between_two_turns(firstTurn, firstWire, secondTurn, secondWire, coil);
