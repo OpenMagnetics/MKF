@@ -384,7 +384,9 @@ namespace OpenMagnetics {
         circuit << "Lpri pri_in 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
         
         // Demagnetization winding (same turns as primary for single-switch forward = 1:1)
-        circuit << "Ldemag demag_in 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
+        // CRITICAL: Terminals reversed to create opposite dot polarity for proper demagnetization
+        // When switch turns off, primary voltage goes negative, demag voltage goes positive
+        circuit << "Ldemag 0 demag_in " << std::scientific << magnetizingInductance << std::fixed << "\n";
         
         // Secondary windings
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
@@ -428,15 +430,19 @@ namespace OpenMagnetics {
             circuit << "Rsnub_fwd" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_rect 1MEG\n";
             circuit << "Rsnub_fw" << secIdx << " 0 sec" << secIdx << "_rect 1MEG\n";
             
-            // Output inductor (LC filter)
+            // Output inductor (LC filter) with ESR for damping
             double outputVoltage = opPoint.get_output_voltages()[secIdx];
             double outputCurrent = opPoint.get_output_currents()[secIdx];
             double outputInductance = get_output_inductance(turnsRatios[secIdx + 1], secIdx);
             
             circuit << "Vsec_sense" << secIdx << " sec" << secIdx << "_rect sec" << secIdx << "_l_in 0\n";
-            circuit << "Lout" << secIdx << " sec" << secIdx << "_l_in vout" << secIdx << " " << std::scientific << outputInductance << std::fixed << "\n";
+            // Add series resistance to output inductor (10mΩ) for damping
+            circuit << "Rlout" << secIdx << " sec" << secIdx << "_l_in lout" << secIdx << " 0.01\n";
+            circuit << "Lout" << secIdx << " lout" << secIdx << " vout_c" << secIdx << " " << std::scientific << outputInductance << std::fixed << "\n";
             
             double loadResistance = outputVoltage / outputCurrent;
+            // Add ESR to output capacitor (100mΩ) for damping
+            circuit << "Rcout" << secIdx << " vout_c" << secIdx << " vout" << secIdx << " 0.1\n";
             circuit << "Cout" << secIdx << " vout" << secIdx << " 0 100u IC=" << outputVoltage << "\n";
             circuit << "Rload" << secIdx << " vout" << secIdx << " 0 " << loadResistance << "\n\n";
         }
@@ -493,11 +499,11 @@ namespace OpenMagnetics {
                 SimulationConfig config;
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
-                config.numberOfPeriods = 1;
+                config.numberOfPeriods = get_num_periods_to_extract();
                 config.keepTempFiles = false;
-                
+
                 auto simResult = runner.run_simulation(netlist, config);
-                
+
                 if (!simResult.success) {
                     throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
                 }
@@ -571,9 +577,9 @@ namespace OpenMagnetics {
             SimulationConfig config;
             config.frequency = switchingFrequency;
             config.extractOnePeriod = true;
-            config.numberOfPeriods = 2;
+            config.numberOfPeriods = get_num_periods_to_extract();
             config.keepTempFiles = false;
-            
+
             auto simResult = runner.run_simulation(netlist, config);
             if (!simResult.success) {
                 throw std::runtime_error("Simulation failed: " + simResult.errorMessage);

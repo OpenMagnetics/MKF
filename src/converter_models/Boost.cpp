@@ -357,7 +357,7 @@ namespace OpenMagnetics {
                 SimulationConfig config;
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
-                config.numberOfPeriods = 1;  // Only one period for operating points
+                config.numberOfPeriods = get_num_periods_to_extract();
                 config.keepTempFiles = false;
                 
                 auto simResult = runner.run_simulation(netlist, config);
@@ -420,7 +420,7 @@ std::vector<ConverterWaveforms> Boost::simulate_and_extract_topology_waveforms(d
             SimulationConfig config;
             config.frequency = switchingFrequency;
             config.extractOnePeriod = true;
-            config.numberOfPeriods = 2;
+            config.numberOfPeriods = get_num_periods_to_extract();
             config.keepTempFiles = false;
             
             auto simResult = runner.run_simulation(netlist, config);

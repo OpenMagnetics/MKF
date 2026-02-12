@@ -367,6 +367,288 @@ namespace {
         INFO("Push-Pull ngspice simulation test passed");
     }
 
+    TEST_CASE("Test_PushPull_Waveform_Polarity", "[converter-model][push-pull-topology][ngspice-simulation][smoke-test]") {
+        // Verify Push-Pull converter has correct waveform polarity:
+        // - Primary voltage (v(pri_top)) should alternate between positive (during ON) and negative (during opposite switch ON)
+        // - Output voltage should be stable around target value
+        // In Push-Pull, alternating switches drive the center-tapped primary
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+
+        OpenMagnetics::PushPull pushpull;
+
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(24.0);
+        inputVoltage.set_minimum(18.0);
+        inputVoltage.set_maximum(32.0);
+        pushpull.set_input_voltage(inputVoltage);
+
+        pushpull.set_diode_voltage_drop(0.5);
+        pushpull.set_efficiency(0.85);
+        pushpull.set_current_ripple_ratio(0.3);
+
+        PushPullOperatingPoint opPoint;
+        opPoint.set_output_voltages({48.0});
+        opPoint.set_output_currents({2.0});
+        opPoint.set_switching_frequency(100e3);
+        opPoint.set_ambient_temperature(25.0);
+        pushpull.set_operating_points({opPoint});
+
+        auto designReqs = pushpull.process_design_requirements();
+
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        INFO("Turns ratios count: " << turnsRatios.size());
+        INFO("Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+
+        // Run simulation and extract operating points (winding-level waveforms)
+        auto operatingPoints = pushpull.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+        REQUIRE(!operatingPoints.empty());
+        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() >= 2);
+
+        auto& primaryExcitation = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExcitation.get_voltage().has_value());
+        REQUIRE(primaryExcitation.get_voltage()->get_waveform().has_value());
+
+        auto primaryVoltageData = primaryExcitation.get_voltage()->get_waveform()->get_data();
+
+        double priV_max = *std::max_element(primaryVoltageData.begin(), primaryVoltageData.end());
+        double priV_min = *std::min_element(primaryVoltageData.begin(), primaryVoltageData.end());
+
+        INFO("Primary voltage max: " << priV_max << " V, min: " << priV_min << " V");
+
+        // Push-Pull primary: voltage should be positive during one half and negative during the other
+        // v(pri_top) sees +Vin during S1 ON, and goes negative when S2 ON (via magnetic coupling)
+        CHECK(priV_max > 15.0);   // Should be around Vin during S1 ON
+        CHECK(priV_min < -5.0);   // Should go negative during S2 ON
+
+        // Also verify converter-level waveforms
+        auto converterWaveforms = pushpull.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        REQUIRE(!converterWaveforms.empty());
+
+        auto& cwf = converterWaveforms[0];
+        auto cwfInputVoltage = cwf.get_input_voltage().get_data();
+        REQUIRE(!cwfInputVoltage.empty());
+
+        double cwfV_max = *std::max_element(cwfInputVoltage.begin(), cwfInputVoltage.end());
+        double cwfV_min = *std::min_element(cwfInputVoltage.begin(), cwfInputVoltage.end());
+
+        INFO("Converter input voltage (pri_top) max: " << cwfV_max << " V, min: " << cwfV_min << " V");
+        CHECK(cwfV_max > 15.0);
+        CHECK(cwfV_min < -5.0);
+
+        // Output voltage should be around 48V (stable)
+        REQUIRE(!cwf.get_output_voltages().empty());
+        auto outputVoltageData = cwf.get_output_voltages()[0].get_data();
+        if (!outputVoltageData.empty()) {
+            double outV_avg = std::accumulate(outputVoltageData.begin(), outputVoltageData.end(), 0.0) / outputVoltageData.size();
+            INFO("Output voltage average: " << outV_avg << " V");
+            CHECK(outV_avg > 38.0);
+            CHECK(outV_avg < 55.0);
+        }
+    }
+
+    TEST_CASE("Test_PushPull_NumPeriods_SimulatedOperatingPoints", "[converter-model][push-pull-topology][num-periods][ngspice-simulation][smoke-test]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+
+        OpenMagnetics::PushPull pushpull;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(24.0);
+        pushpull.set_input_voltage(inputVoltage);
+        pushpull.set_diode_voltage_drop(0.5);
+        pushpull.set_efficiency(0.85);
+        pushpull.set_current_ripple_ratio(0.3);
+
+        PushPullOperatingPoint opPoint;
+        opPoint.set_output_voltages({48.0});
+        opPoint.set_output_currents({2.0});
+        opPoint.set_switching_frequency(100e3);
+        opPoint.set_ambient_temperature(25.0);
+        pushpull.set_operating_points({opPoint});
+
+        auto designReqs = pushpull.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        // Simulate with 1 period
+        pushpull.set_num_periods_to_extract(1);
+        auto ops1 = pushpull.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+        REQUIRE(!ops1.empty());
+        auto voltageWf1 = ops1[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value();
+
+        // Simulate with 3 periods
+        pushpull.set_num_periods_to_extract(3);
+        auto ops3 = pushpull.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+        REQUIRE(!ops3.empty());
+        auto voltageWf3 = ops3[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value();
+
+        INFO("1-period waveform data size: " << voltageWf1.get_data().size());
+        INFO("3-period waveform data size: " << voltageWf3.get_data().size());
+
+        CHECK(voltageWf3.get_data().size() > voltageWf1.get_data().size());
+    }
+
+    TEST_CASE("Test_PushPull_NumPeriods_ConverterWaveforms", "[converter-model][push-pull-topology][num-periods][ngspice-simulation][smoke-test]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+
+        OpenMagnetics::PushPull pushpull;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(24.0);
+        pushpull.set_input_voltage(inputVoltage);
+        pushpull.set_diode_voltage_drop(0.5);
+        pushpull.set_efficiency(0.85);
+        pushpull.set_current_ripple_ratio(0.3);
+
+        PushPullOperatingPoint opPoint;
+        opPoint.set_output_voltages({48.0});
+        opPoint.set_output_currents({2.0});
+        opPoint.set_switching_frequency(100e3);
+        opPoint.set_ambient_temperature(25.0);
+        pushpull.set_operating_points({opPoint});
+
+        auto designReqs = pushpull.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        // Simulate with 1 period
+        pushpull.set_num_periods_to_extract(1);
+        auto waveforms1 = pushpull.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        REQUIRE(!waveforms1.empty());
+        auto inputV1 = waveforms1[0].get_input_voltage().get_data();
+
+        // Simulate with 3 periods
+        pushpull.set_num_periods_to_extract(3);
+        auto waveforms3 = pushpull.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        REQUIRE(!waveforms3.empty());
+        auto inputV3 = waveforms3[0].get_input_voltage().get_data();
+
+        INFO("1-period converter waveform data size: " << inputV1.size());
+        INFO("3-period converter waveform data size: " << inputV3.size());
+
+        CHECK(inputV3.size() > inputV1.size());
+    }
+
+    TEST_CASE("Test_PushPull_Debug_Circuit", "[converter-model][push-pull-topology][ngspice-simulation][debug]") {
+        // Debug test: use frontend defaults and print circuit + waveform analysis
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+
+        // Test with min/max voltage range to see dead-time freewheeling at max Vin
+        OpenMagnetics::PushPull pushpull;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_minimum(20.0);
+        inputVoltage.set_maximum(30.0);
+        pushpull.set_input_voltage(inputVoltage);
+
+        pushpull.set_diode_voltage_drop(0.7);
+        pushpull.set_efficiency(0.9);
+        pushpull.set_current_ripple_ratio(0.3);
+        pushpull.set_maximum_switch_current(1.0);
+
+        PushPullOperatingPoint opPoint;
+        opPoint.set_output_voltages({48.0});
+        opPoint.set_output_currents({0.7});
+        opPoint.set_switching_frequency(100000.0);
+        opPoint.set_ambient_temperature(25.0);
+        pushpull.set_operating_points({opPoint});
+
+        auto designReqs = pushpull.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        std::cout << "\n=== PUSH-PULL DEBUG ===" << std::endl;
+        std::cout << "Turns ratios: ";
+        for (auto tr : turnsRatios) std::cout << tr << " ";
+        std::cout << std::endl;
+        std::cout << "Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH" << std::endl;
+        std::cout << "Duty cycle: " << pushpull.get_maximum_duty_cycle() << std::endl;
+
+        // Generate and print the circuit
+        std::string circuit = pushpull.generate_ngspice_circuit(turnsRatios, magnetizingInductance, 0, 0);
+        std::cout << "\n=== GENERATED CIRCUIT ===" << std::endl;
+        std::cout << circuit << std::endl;
+
+        // Run simulation - analyze ALL operating points (different input voltages)
+        pushpull.set_num_periods_to_extract(1);
+        auto operatingPoints = pushpull.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+        REQUIRE(!operatingPoints.empty());
+
+        std::cout << "\nNumber of operating points: " << operatingPoints.size() << std::endl;
+
+        // Print waveform data for EACH operating point
+        for (size_t opIdx = 0; opIdx < operatingPoints.size(); ++opIdx) {
+            auto& ops = operatingPoints[opIdx];
+            std::cout << "\n=== OPERATING POINT " << opIdx << ": " << ops.get_name().value_or("unnamed") << " ===" << std::endl;
+            for (size_t w = 0; w < ops.get_excitations_per_winding().size(); ++w) {
+                auto& exc = ops.get_excitations_per_winding()[w];
+                std::string windingName = exc.get_name().value_or("Winding " + std::to_string(w));
+                if (exc.get_current().has_value() && exc.get_current()->get_waveform().has_value()) {
+                    auto& iData = exc.get_current()->get_waveform()->get_data();
+                    double iMax = *std::max_element(iData.begin(), iData.end());
+                    double iMin = *std::min_element(iData.begin(), iData.end());
+                    double iAvg = std::accumulate(iData.begin(), iData.end(), 0.0) / iData.size();
+                    double iRms = 0;
+                    for (auto v : iData) iRms += v * v;
+                    iRms = std::sqrt(iRms / iData.size());
+                    std::cout << "  " << windingName << " I: min=" << iMin << " max=" << iMax << " avg=" << iAvg << " rms=" << iRms << " pts=" << iData.size() << std::endl;
+                    // Print 20 evenly-spaced current samples for ONE period
+                    size_t iStep = iData.size() / 20;
+                    if (iStep < 1) iStep = 1;
+                    std::cout << "    I samples: ";
+                    for (size_t i = 0; i < iData.size(); i += iStep) {
+                        std::cout << std::fixed << std::setprecision(4) << iData[i] << " ";
+                    }
+                    std::cout << std::endl;
+                }
+            }
+        }
+
+        // Also get converter waveforms for first operating point
+        auto cwfs = pushpull.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        REQUIRE(!cwfs.empty());
+        auto& cwf = cwfs[0];
+
+        std::cout << "\n=== CONVERTER WAVEFORMS ===" << std::endl;
+        auto outV = cwf.get_output_voltages()[0].get_data();
+        double outVAvg = std::accumulate(outV.begin(), outV.end(), 0.0) / outV.size();
+        double outVMax = *std::max_element(outV.begin(), outV.end());
+        double outVMin = *std::min_element(outV.begin(), outV.end());
+        std::cout << "Output V: min=" << outVMin << " max=" << outVMax << " avg=" << outVAvg << std::endl;
+        std::cout << "Expected: " << 48.0 << "V" << std::endl;
+
+        // Print expected analytical values
+        std::cout << "\n=== EXPECTED ANALYTICAL VALUES ===" << std::endl;
+        std::cout << "Turns ratio N (Ns/Np): " << turnsRatios[1] << std::endl;
+        std::cout << "Expected primary I avg (reflected load): " << (0.7 / turnsRatios[1]) << " A" << std::endl;
+        std::cout << "Peak magnetizing current at Vin_min: " << (20.0 * 4.9e-6 / magnetizingInductance) << " A" << std::endl;
+        std::cout << "Expected secondary I avg: 0.7 A" << std::endl;
+
+        CHECK(true);  // Always pass - this is a debug test
+    }
+
 // End of SUITE
 
 }  // namespace

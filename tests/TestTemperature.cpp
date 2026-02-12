@@ -20,7 +20,7 @@ using namespace OpenMagnetics;
 
 // Helper function to get the output directory path
 std::filesystem::path getOutputDir() {
-    return "/home/alf/OpenMagnetics/MKF2/output";
+    return std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
 }
 
 // Helper function to export temperature field SVG
@@ -3213,6 +3213,47 @@ TEST_CASE("Temperature: Cooling Utils Type Detection", "[temperature][cooling][s
     double h_mixed = CoolingUtils::calculateMixedConvectionCoefficient(10.0, 50.0);
     REQUIRE(h_mixed > 50.0);  // Should be close to forced value
     REQUIRE(h_mixed < 51.0);  // But natural should add a small amount
+}
+
+TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-test]") {
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "220kW_trafo.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+
+    // Run magnetic simulation to get actual losses
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing from simulation results");
+    }
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = true;
+    config.schematicOutputPath = (getOutputDir() / "thermal_schematic_220kW_transformer.svg").string();
+
+    // Add forced convection at 4 m/s
+    MAS::Cooling forcedCooling;
+    forcedCooling.set_temperature(losses.ambientTemperature);
+    forcedCooling.set_velocity(std::vector<double>{4.0, 0.0, 0.0});  // 4 m/s airflow
+    config.masCooling = forcedCooling;
+
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+
+    // Export temperature field visualization
+    exportTemperatureFieldSvg("220kW_transformer", magnetic, result.nodeTemperatures, config.ambientTemperature);
+
+    // Export thermal circuit schematic
+    exportThermalCircuitSchematic("220kW_transformer", temp);
+
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+    REQUIRE(result.totalThermalResistance > 0.0);
 }
 
 } // namespace

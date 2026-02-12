@@ -13,7 +13,7 @@ namespace OpenMagnetics {
 class PushPull : public MAS::PushPull, public Topology {
 private:
     int numPeriodsToExtract = 5;
-    int numSteadyStatePeriods = 5;
+    int numSteadyStatePeriods = 500;
 
 public:
     bool _assertErrors = false;

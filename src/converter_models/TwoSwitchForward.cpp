@@ -439,7 +439,7 @@ namespace OpenMagnetics {
         // High-side switch S1 with clamping diode D1
         circuit << "* High-side switch S1 and clamp diode D1\n";
         circuit << "S1 vin_dc sw1_out pwm_ctrl 0 SW1\n";
-        circuit << "D1 sw1_out vin_dc DIDEAL\n\n";
+        circuit << "D1 0 sw1_out DIDEAL\n\n";
         
         // Primary current sense
         circuit << "* Primary current sense\n";
@@ -470,7 +470,7 @@ namespace OpenMagnetics {
         // Low-side switch S2 with clamping diode D2
         circuit << "* Low-side switch S2 and clamp diode D2\n";
         circuit << "S2 pri_gnd 0 pwm_ctrl 0 SW1\n";
-        circuit << "D2 0 pri_gnd DIDEAL\n\n";
+        circuit << "D2 pri_gnd vin_dc DIDEAL\n\n";
         
         // Output stages for each secondary
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
@@ -550,11 +550,11 @@ namespace OpenMagnetics {
                 SimulationConfig config;
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
-                config.numberOfPeriods = 1;
+                config.numberOfPeriods = get_num_periods_to_extract();
                 config.keepTempFiles = false;
-                
+
                 auto simResult = runner.run_simulation(netlist, config);
-                
+
                 if (!simResult.success) {
                     throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
                 }
@@ -623,9 +623,9 @@ namespace OpenMagnetics {
             SimulationConfig config;
             config.frequency = switchingFrequency;
             config.extractOnePeriod = true;
-            config.numberOfPeriods = 2;
+            config.numberOfPeriods = get_num_periods_to_extract();
             config.keepTempFiles = false;
-            
+
             auto simResult = runner.run_simulation(netlist, config);
             if (!simResult.success) {
                 throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
