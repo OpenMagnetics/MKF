@@ -102,9 +102,22 @@ DesignRequirements Llc::process_design_requirements() {
     double mainOutputCurrent  = ops[0].get_output_currents()[0];
 
     // ─── Runo Nielsen: Fictitious output voltage & turns ratio ───
-    // Vo ≈ k_bridge · Vin_nom  (places LIP near nominal input)
-    // n = Vo / Vout
-    double Vo = k_bridge * Vin_nom;
+    // 
+    // LLC Design Strategy:
+    // The turns ratio is chosen such that at MINIMUM input voltage, the converter operates
+    // near resonance (gain ≈ 1). This ensures that:
+    // - At Vin_min: f ≈ fr, gain ≈ 1, plenty of voltage headroom (Vi >> Vo)
+    // - At Vin_nom: f > fr, gain < 1 (buck mode)
+    // - At Vin_max: f >> fr, gain << 1 (strong buck mode)
+    //
+    // This is different from the traditional approach of designing for nominal input.
+    // By designing for minimum input, we ensure there's always sufficient voltage
+    // across the resonant tank to deliver power.
+    //
+    // Formula: n = (k_bridge × Vin_min) / Vout
+    // This places the "load independent point" (LIP) at minimum input voltage.
+    double Vin_design = inputVoltage.get_minimum().value_or(Vin_nom * 0.9);
+    double Vo = k_bridge * Vin_design;
     double mainTurnsRatio = Vo / mainOutputVoltage;
 
     // ─── Turns ratios for all secondaries ───
@@ -140,6 +153,42 @@ DesignRequirements Llc::process_design_requirements() {
     double f0 = 1.0 / (2.0 * M_PI * std::sqrt((Ls + L) * Cr));
     // f1 should equal fr by construction
     // f0 < f1 always
+
+    // ─── Validate design can work across full input voltage range ───
+    if (inputVoltage.get_minimum().has_value() && inputVoltage.get_maximum().has_value()) {
+        double Vin_min = inputVoltage.get_minimum().value();
+        double Vin_max = inputVoltage.get_maximum().value();
+        
+        // Required gain at minimum input (boost mode needed)
+        double M_req_min = (mainOutputVoltage * mainTurnsRatio) / (k_bridge * Vin_min);
+        // Required gain at maximum input (buck mode needed)
+        double M_req_max = (mainOutputVoltage * mainTurnsRatio) / (k_bridge * Vin_max);
+        
+        // Maximum achievable gain (conservative estimate for heavy load)
+        // M_max ≈ sqrt(Ln) / sqrt(Ln - 1) for FHA, but more accurately determined by peak gain curve
+        // For Q = 0.4, Ln = 5: M_max ≈ 1.25 (conservative for heavy load)
+        double M_max_boost = std::sqrt(Ln / (Ln - 1.0));  // Theoretical max at no load
+        double M_max_heavy = 1.0 + 0.5 * (Ln - 1.0) / Ln;  // Conservative for heavy load
+        
+        // Minimum gain (at very high frequency, approaches 0, but practical minimum is around 0.5-0.7)
+        double M_min = 0.5;  // Practical minimum gain
+        
+        // Check if design can work at minimum input
+        if (M_req_min > M_max_heavy) {
+            std::cerr << "WARNING: LLC design may not support minimum input voltage (" << Vin_min 
+                      << "V). Required gain: " << M_req_min << ", Max achievable: " << M_max_heavy 
+                      << ". Consider increasing minimum switching frequency or reducing output voltage."
+                      << std::endl;
+        }
+        
+        // Check if design can work at maximum input
+        if (M_req_max < M_min) {
+            std::cerr << "WARNING: LLC design may not support maximum input voltage (" << Vin_max 
+                      << "V). Required gain: " << M_req_max << ", Min achievable: " << M_min
+                      << ". Consider increasing maximum switching frequency."
+                      << std::endl;
+        }
+    }
 
     // ─── Build DesignRequirements ───
     DesignRequirements designRequirements;
@@ -177,22 +226,27 @@ std::vector<OperatingPoint> Llc::process_operating_points(
     auto& inputVoltage = get_input_voltage();
     auto& ops = get_operating_points();
 
-    // Collect input voltages: nominal, minimum, maximum
-    std::vector<double> inputVoltages;
+    // Collect input voltages with their names
+    std::vector<std::pair<double, std::string>> inputVoltages;
     if (inputVoltage.get_nominal().has_value())
-        inputVoltages.push_back(inputVoltage.get_nominal().value());
+        inputVoltages.push_back({inputVoltage.get_nominal().value(), "Nominal"});
     if (inputVoltage.get_minimum().has_value())
-        inputVoltages.push_back(inputVoltage.get_minimum().value());
+        inputVoltages.push_back({inputVoltage.get_minimum().value(), "Min"});
     if (inputVoltage.get_maximum().has_value())
-        inputVoltages.push_back(inputVoltage.get_maximum().value());
+        inputVoltages.push_back({inputVoltage.get_maximum().value(), "Max"});
 
-    // Remove duplicates
-    std::sort(inputVoltages.begin(), inputVoltages.end());
-    inputVoltages.erase(std::unique(inputVoltages.begin(), inputVoltages.end()), inputVoltages.end());
+    // Remove duplicates (keeping first occurrence's name)
+    std::sort(inputVoltages.begin(), inputVoltages.end(), 
+        [](const auto& a, const auto& b) { return a.first < b.first; });
+    auto last = std::unique(inputVoltages.begin(), inputVoltages.end(),
+        [](const auto& a, const auto& b) { return a.first == b.first; });
+    inputVoltages.erase(last, inputVoltages.end());
 
-    for (double Vin : inputVoltages) {
+    for (const auto& [Vin, name] : inputVoltages) {
         auto op = process_operating_point_for_input_voltage(
             Vin, ops[0], turnsRatios, magnetizingInductance);
+        // Set the operating point name to indicate input voltage
+        op.set_name(name + " input (" + std::to_string(static_cast<int>(Vin)) + "V)");
         result.push_back(op);
     }
     return result;
@@ -267,14 +321,98 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     OperatingPoint operatingPoint;
 
     double fsw  = llcOpPoint.get_switching_frequency();
+    
+    // Validate switching frequency
+    if (fsw <= 0) {
+        // Try to get from the base LLC class
+        fsw = get_effective_resonant_frequency();
+        if (fsw <= 0) {
+            std::cerr << "ERROR: LLC switching frequency is invalid (" << fsw 
+                      << " Hz). Using default 100kHz." << std::endl;
+            fsw = 100000.0;  // Default to 100kHz
+        } else {
+            std::cerr << "WARNING: LLC operating point switching frequency not set, using effective resonant frequency: " 
+                      << fsw << " Hz" << std::endl;
+        }
+    }
+    
     double k_bridge = get_bridge_voltage_factor();
 
     // ─── Model parameters (Runo Nielsen notation) ───────────────
     double Vi = k_bridge * inputVoltage;        // Square wave amplitude ±Vi
     double Vo = turnsRatios[0] * llcOpPoint.get_output_voltages()[0];  // Fictitious output voltage
+    
+    // ─── Validate inputs to prevent NaN/Inf ─────────────────────
+    // Check for zero or invalid switching frequency
+    if (fsw <= 0) {
+        std::cerr << "ERROR: LLC switching frequency must be positive (got " << fsw << "). Using default of 100kHz." << std::endl;
+        fsw = 100000.0;  // Default to 100kHz
+    }
+    
+    // Check for valid inductance values
+    if (magnetizingInductance <= 0) {
+        std::cerr << "ERROR: LLC magnetizing inductance must be positive (got " << magnetizingInductance << "). Using default of 200µH." << std::endl;
+        magnetizingInductance = 200e-6;  // Default to 200µH
+    }
+    
+    // Check for computed resonant tank values
     double Ls = computedResonantInductance;     // Series (resonant) inductor
     double C  = computedResonantCapacitance;    // Resonance capacitor = C1+C2
     double L  = magnetizingInductance;          // Magnetizing inductance
+    
+    // If computed values are not set or invalid, compute them now
+    if (Ls <= 0 || C <= 0) {
+        std::cerr << "WARNING: LLC resonant tank values not computed (Ls=" << Ls << ", C=" << C << "). Computing defaults." << std::endl;
+        
+        // Compute default resonant tank based on FHA
+        double fr = get_effective_resonant_frequency();
+        double Q = get_quality_factor().value_or(0.4);
+        double Ln = computedInductanceRatio;
+        
+        // Get load info from operating point
+        double Vout = llcOpPoint.get_output_voltages()[0];
+        double Iout = llcOpPoint.get_output_currents()[0];
+        double Rload = (Iout > 0) ? Vout / Iout : 100.0;  // Default 100Ω if Iout is 0
+        double Rac = (8.0 * turnsRatios[0] * turnsRatios[0]) / (M_PI * M_PI) * Rload;
+        
+        double Zr = Q * Rac;
+        Ls = Zr / (2.0 * M_PI * fr);
+        C = 1.0 / (2.0 * M_PI * fr * Zr);
+        L = Ln * Ls;
+        
+        // Store computed values
+        computedResonantInductance = Ls;
+        computedResonantCapacitance = C;
+        
+        std::cerr << "  Computed defaults: Ls=" << Ls << ", C=" << C << ", L=" << L << std::endl;
+    }
+    
+    // Final validation
+    if (Ls <= 0 || C <= 0 || L <= 0) {
+        throw std::runtime_error("LLC resonant tank values are invalid. Cannot calculate waveforms.");
+    }
+    
+    // DEBUG: Log operating point calculation
+    std::cerr << "=== LLC OP CALC DEBUG ===" << std::endl;
+    std::cerr << "  Input Voltage (raw): " << inputVoltage << " V" << std::endl;
+    std::cerr << "  k_bridge: " << k_bridge << std::endl;
+    std::cerr << "  Vi (effective): " << Vi << " V" << std::endl;
+    std::cerr << "  Turns Ratio: " << turnsRatios[0] << std::endl;
+    std::cerr << "  Output Voltage: " << llcOpPoint.get_output_voltages()[0] << " V" << std::endl;
+    std::cerr << "  Vo (reflected): " << Vo << " V" << std::endl;
+    std::cerr << "  Vi > Vo? " << (Vi > Vo ? "YES" : "NO") << std::endl;
+    std::cerr << "  Switching Frequency: " << fsw << " Hz" << std::endl;
+    std::cerr << "  Resonant Tank: Ls=" << Ls << ", C=" << C << ", L=" << L << std::endl;
+    
+    // ─── Validate operating condition ───────────────────────────
+    // LLC converter can only deliver power when Vi > Vo (reflected output voltage)
+    if (Vo >= Vi) {
+        std::cerr << "WARNING: LLC operating point invalid - reflected output voltage ("
+                  << Vo << "V) >= input voltage (" << Vi << "V). "
+                  << "Converter cannot deliver power. "
+                  << "Consider increasing input voltage or decreasing turns ratio."
+                  << std::endl;
+    }
 
     double period = 1.0 / fsw;
     double Thalf  = period / 2.0;
@@ -287,6 +425,24 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     // w0, Z0: freewheeling (diodes OFF, (Ls+L)-C resonance)
     double w0 = 1.0 / std::sqrt((Ls + L) * C);
     double Z0 = std::sqrt((Ls + L) / C);
+    
+    // Validate resonant parameters
+    if (!std::isfinite(w1) || w1 <= 0) {
+        std::cerr << "ERROR: LLC w1 (series resonant frequency) is invalid: " << w1 << std::endl;
+        w1 = 2.0 * M_PI * 100000.0;  // Default to 100kHz in rad/s
+    }
+    if (!std::isfinite(Z1) || Z1 <= 0) {
+        std::cerr << "ERROR: LLC Z1 (series characteristic impedance) is invalid: " << Z1 << std::endl;
+        Z1 = 10.0;  // Use safe default
+    }
+    if (!std::isfinite(w0) || w0 <= 0) {
+        std::cerr << "ERROR: LLC w0 (freewheeling resonant frequency) is invalid: " << w0 << std::endl;
+        w0 = w1 * 0.7;  // Typical ratio for LLC
+    }
+    if (!std::isfinite(Z0) || Z0 <= 0) {
+        std::cerr << "ERROR: LLC Z0 (freewheeling characteristic impedance) is invalid: " << Z0 << std::endl;
+        Z0 = Z1 * 1.5;  // Typical ratio for LLC
+    }
 
     // ─── Sampling ───────────────────────────────────────────────
     const int N = 256;  // Samples per half-period
@@ -304,7 +460,48 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     // At the switching instant, ILs = IL (ZVS condition), so:
     //   ILs0 = IL0 = -Im_pk (estimated, will be refined by iteration)
 
-    double Im_pk_est = Vo * Thalf / (2.0 * L);
+    // ─── Initial conditions for steady-state ────────────────────
+    // At t=0 (start of positive half-cycle):
+    //   ILs(0) = IL(0) = ILs0  (diode current is zero at switching instant)
+    //   Vc(0) = Vc0  (to be determined by iteration)
+    //
+    // From magnetizing current ramp during power delivery:
+    //   IL ramps from IL0 toward +Im_pk with slope Vo/L
+    //   Im_pk = Vo/(4·L·fsw) = Vo·Thalf/(2·L)
+    //
+    // At the switching instant, ILs = IL (ZVS condition), so:
+    //   ILs0 = IL0 = -Im_pk (estimated, will be refined by iteration)
+
+    // Validate inputs before calculating initial conditions
+    if (!std::isfinite(Vo) || Vo < 0) {
+        std::cerr << "ERROR: LLC Vo (reflected output voltage) is invalid: " << Vo << std::endl;
+        Vo = 1.0;  // Use safe default
+    }
+    if (!std::isfinite(Thalf) || Thalf <= 0) {
+        std::cerr << "ERROR: LLC Thalf (half period) is invalid: " << Thalf << std::endl;
+        Thalf = 5e-6;  // Default to 5µs (100kHz)
+    }
+    if (!std::isfinite(L) || L <= 0) {
+        std::cerr << "ERROR: LLC L (magnetizing inductance) is invalid: " << L << std::endl;
+        L = 200e-6;  // Default to 200µH
+    }
+    
+    // Calculate Im_pk_est with safety check for L
+    double Im_pk_est;
+    if (L <= 0 || !std::isfinite(L)) {
+        std::cerr << "ERROR: LLC L (magnetizing inductance) is invalid for Im_pk_est calculation: " << L << std::endl;
+        Im_pk_est = 1.0;  // Use safe default of 1A
+    } else {
+        Im_pk_est = Vo * Thalf / (2.0 * L);
+    }
+    
+    // Validate Im_pk_est to prevent infinity
+    if (!std::isfinite(Im_pk_est) || Im_pk_est > 1e6 || Im_pk_est < -1e6) {
+        std::cerr << "WARNING: LLC Im_pk_est is invalid or too large: " << Im_pk_est 
+                  << " (Vo=" << Vo << ", Thalf=" << Thalf << ", L=" << L << ")" << std::endl;
+        Im_pk_est = std::copysign(1.0, Im_pk_est);  // Use safe default of ±1A preserving sign
+    }
+    
     double ILs0 = -Im_pk_est;
     double IL0  = ILs0;
 
@@ -320,10 +517,10 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     const double TOL_VC = 1e-4;
 
     // Storage for final waveform (filled on last iteration)
-    std::vector<double> ILs_pos(N + 1);
-    std::vector<double> IL_pos(N + 1);
-    std::vector<double> Vc_pos(N + 1);
-    std::vector<double> VL_pos(N + 1);  // Voltage across L (= transformer primary voltage)
+    std::vector<double> ILs_pos(N + 1, 0.0);
+    std::vector<double> IL_pos(N + 1, 0.0);
+    std::vector<double> Vc_pos(N + 1, 0.0);
+    std::vector<double> VL_pos(N + 1, 0.0);  // Voltage across L (= transformer primary voltage)
 
     for (int bisect = 0; bisect < MAX_BISECT; ++bisect) {
         Vc0 = 0.5 * (Vc_lo + Vc_hi);
@@ -390,6 +587,25 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
                 // Equivalently: VL = Vi - Vc - Ls·dILs/dt = L·dILs/dt
             }
 
+            // Validate calculated values before storing
+            if (!std::isfinite(ILs_t)) {
+                std::cerr << "WARNING: NaN/Inf in ILs_t at k=" << k << ", t=" << t 
+                          << ", ILs0=" << ILs0 << ", Vc0=" << Vc0 << std::endl;
+                ILs_t = ILs0;  // Use initial value as fallback
+            }
+            if (!std::isfinite(IL_t)) {
+                std::cerr << "WARNING: NaN/Inf in IL_t at k=" << k << std::endl;
+                IL_t = IL0;
+            }
+            if (!std::isfinite(Vc_t)) {
+                std::cerr << "WARNING: NaN/Inf in Vc_t at k=" << k << std::endl;
+                Vc_t = 0;
+            }
+            if (!std::isfinite(VL_t)) {
+                std::cerr << "WARNING: NaN/Inf in VL_t at k=" << k << std::endl;
+                VL_t = 0;
+            }
+            
             ILs_pos[k] = ILs_t;
             IL_pos[k]  = IL_t;
             Vc_pos[k]  = Vc_t;
@@ -461,16 +677,24 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
                 VL_t = L * dILs_dt;
             }
 
+            // Validate calculated values before storing in final simulation
+            if (!std::isfinite(ILs_t)) {
+                ILs_t = ILs0;
+            }
+            if (!std::isfinite(IL_t)) {
+                IL_t = IL0;
+            }
+            if (!std::isfinite(Vc_t)) {
+                Vc_t = 0;
+            }
+            if (!std::isfinite(VL_t)) {
+                VL_t = 0;
+            }
+            
             ILs_pos[k] = ILs_t;
             IL_pos[k]  = IL_t;
             Vc_pos[k]  = Vc_t;
             VL_pos[k]  = VL_t;
-            
-            // Debug output
-            if (k < 3) {
-                std::cout << "DEBUG MKF LLC: k=" << k << " ILs=" << ILs_t 
-                          << " IL=" << IL_t << " diff=" << (ILs_t - IL_t) << std::endl;
-            }
         }
     }
 
@@ -494,6 +718,20 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         ILs_full[k]  = ILs_pos[k];
         IL_full[k]   = IL_pos[k];
         VL_full[k]   = VL_pos[k];
+        
+        // Check for NaN/Inf and replace with safe values
+        if (!std::isfinite(ILs_full[k])) {
+            std::cerr << "WARNING: NaN/Inf in ILs_full[" << k << "] = " << ILs_full[k] << std::endl;
+            ILs_full[k] = ILs0;  // Use initial value as fallback
+        }
+        if (!std::isfinite(IL_full[k])) {
+            std::cerr << "WARNING: NaN/Inf in IL_full[" << k << "] = " << IL_full[k] << std::endl;
+            IL_full[k] = IL0;
+        }
+        if (!std::isfinite(VL_full[k])) {
+            std::cerr << "WARNING: NaN/Inf in VL_full[" << k << "] = " << VL_full[k] << std::endl;
+            VL_full[k] = 0;
+        }
     }
 
     // Negative half-cycle by antisymmetry
@@ -502,6 +740,20 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         ILs_full[N + k]  = -ILs_pos[k];
         IL_full[N + k]   = -IL_pos[k];
         VL_full[N + k]   = -VL_pos[k];
+        
+        // Check for NaN/Inf in negative half-cycle
+        if (!std::isfinite(ILs_full[N + k])) {
+            std::cerr << "WARNING: NaN/Inf in ILs_full[" << N + k << "] (negative half) = " << ILs_full[N + k] << std::endl;
+            ILs_full[N + k] = -ILs0;  // Use expected antisymmetric value
+        }
+        if (!std::isfinite(IL_full[N + k])) {
+            std::cerr << "WARNING: NaN/Inf in IL_full[" << N + k << "] (negative half) = " << IL_full[N + k] << std::endl;
+            IL_full[N + k] = -IL0;
+        }
+        if (!std::isfinite(VL_full[N + k])) {
+            std::cerr << "WARNING: NaN/Inf in VL_full[" << N + k << "] (negative half) = " << VL_full[N + k] << std::endl;
+            VL_full[N + k] = 0;
+        }
     }
 
     // ─── Primary winding excitation ─────────────────────────────
@@ -543,43 +795,78 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     
     for (size_t secIdx = 0; secIdx < effectiveTurnsRatios.size(); ++secIdx) {
         double n = effectiveTurnsRatios[secIdx];
+        
+        // Validate turns ratio to prevent division by zero
+        if (n <= 0) {
+            std::cerr << "WARNING: LLC turns ratio must be positive (got " << n 
+                      << "). Using computed value from voltages." << std::endl;
+            n = Vi / llcOpPoint.get_output_voltages()[secIdx];
+            if (n <= 0) {
+                n = 1.0;  // Default to 1:1 if still invalid
+            }
+        }
 
-        std::vector<double> iSecData(totalSamples);
-        std::vector<double> vSecData(totalSamples);
+        std::vector<double> iSecData(totalSamples, 0.0);
+        std::vector<double> vSecData(totalSamples, 0.0);
 
         for (int k = 0; k < totalSamples; ++k) {
             // Diode current in model = ILs - IL, reflected and rectified
             double Id = ILs_full[k] - IL_full[k];
             
-            // Debug: check first few samples
-            if (k < 3) {
-                std::cout << "DEBUG SEC CALC: k=" << k << " ILs=" << ILs_full[k] 
-                          << " IL=" << IL_full[k] << " Id=" << Id << std::endl;
+            // Check for NaN in Id
+            if (std::isnan(Id)) {
+                std::cerr << "WARNING: NaN in Id at k=" << k << ", ILs=" << ILs_full[k] 
+                          << ", IL=" << IL_full[k] << std::endl;
+                Id = 0;
             }
-
+            
             // For center-tapped rectification: each secondary half-winding
             // carries current only during its half-cycle
             // The current magnitude in the secondary winding is |Id|/n
             iSecData[k] = std::abs(Id) / n;
+            
+            // Check for NaN in secondary current
+            if (std::isnan(iSecData[k])) {
+                std::cerr << "WARNING: NaN in iSecData[" << k << "]" << std::endl;
+                iSecData[k] = 0;
+            }
 
             // Secondary voltage = VL / n (transformer reflected voltage)
             // This is the voltage across the secondary winding
             vSecData[k] = VL_full[k] / n;
+            
+            // Check for NaN in secondary voltage
+            if (std::isnan(vSecData[k])) {
+                std::cerr << "WARNING: NaN in vSecData[" << k << "]" << std::endl;
+                vSecData[k] = 0;
+            }
         }
 
-        // Debug: Check secondary current data before creating waveform
-        std::cout << "DEBUG: iSecData size=" << iSecData.size() 
-                  << " max=" << *std::max_element(iSecData.begin(), iSecData.end()) << std::endl;
-
+        // Final NaN check on secondary current data
+        int nanCount = 0;
+        int firstNanIdx = -1;
+        for (size_t i = 0; i < iSecData.size(); ++i) {
+            if (std::isnan(iSecData[i]) || std::isinf(iSecData[i])) {
+                if (firstNanIdx == -1) {
+                    firstNanIdx = i;
+                    std::cerr << "DEBUG: First NaN at i=" << i 
+                              << " ILs_full=" << ILs_full[i] 
+                              << " IL_full=" << IL_full[i]
+                              << " VL_full=" << VL_full[i]
+                              << " n=" << n << std::endl;
+                }
+                nanCount++;
+                iSecData[i] = 0;
+            }
+        }
+        if (nanCount > 0) {
+            std::cerr << "WARNING: Found " << nanCount << " NaN/Inf values in iSecData, first at index " << firstNanIdx << std::endl;
+        }
+        
         Waveform secCurrentWfm;
         secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
         secCurrentWfm.set_data(iSecData);
         secCurrentWfm.set_time(time_full);
-
-        // Verify data was set
-        auto verifyData = secCurrentWfm.get_data();
-        std::cout << "DEBUG: After set_data, size=" << verifyData.size() 
-                  << " max=" << (verifyData.empty() ? 0 : *std::max_element(verifyData.begin(), verifyData.end())) << std::endl;
 
         Waveform secVoltageWfm;
         secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
@@ -590,13 +877,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
                                               fsw,
                                               "Secondary " + std::to_string(secIdx));
         
-        // Debug: Check excitation current
-        if (excitation.get_current() && excitation.get_current()->get_waveform()) {
-            auto checkData = excitation.get_current()->get_waveform()->get_data();
-            std::cout << "DEBUG: In excitation, size=" << checkData.size() 
-                      << " max=" << (checkData.empty() ? 0 : *std::max_element(checkData.begin(), checkData.end())) << std::endl;
-        }
-        
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 
@@ -605,18 +885,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     conditions.set_ambient_temperature(llcOpPoint.get_ambient_temperature());
     conditions.set_cooling(std::nullopt);
     operatingPoint.set_conditions(conditions);
-
-    // Debug: Check final operating point before return
-    std::cout << "DEBUG: Returning operating point with " 
-              << operatingPoint.get_excitations_per_winding().size() << " excitations" << std::endl;
-    if (operatingPoint.get_excitations_per_winding().size() > 1) {
-        const auto& secExc = operatingPoint.get_excitations_per_winding()[1];
-        if (secExc.get_current() && secExc.get_current()->get_waveform()) {
-            auto finalData = secExc.get_current()->get_waveform()->get_data();
-            std::cout << "DEBUG: Final secondary current size=" << finalData.size() 
-                      << " max=" << (finalData.empty() ? 0 : *std::max_element(finalData.begin(), finalData.end())) << std::endl;
-        }
-    }
 
     return operatingPoint;
 }

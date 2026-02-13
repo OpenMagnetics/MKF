@@ -283,7 +283,8 @@ namespace TestWindingLossesRound {
 
         std::vector<std::pair<MagneticFieldStrengthFringingEffectModels, std::string>> fringingModels = {
             {MagneticFieldStrengthFringingEffectModels::ALBACH, "ALBACH"},
-            {MagneticFieldStrengthFringingEffectModels::ROSHEN, "ROSHEN"}
+            {MagneticFieldStrengthFringingEffectModels::ROSHEN, "ROSHEN"},
+            {MagneticFieldStrengthFringingEffectModels::SULLIVAN, "SULLIVAN"}
         };
 
         for (auto& [fieldModel, fieldModelName] : fieldModels) {
@@ -677,7 +678,8 @@ namespace TestWindingLossesPlanar {
 
         std::vector<std::pair<MagneticFieldStrengthFringingEffectModels, std::string>> fringingModels = {
             {MagneticFieldStrengthFringingEffectModels::ALBACH, "ALBACH"},
-            {MagneticFieldStrengthFringingEffectModels::ROSHEN, "ROSHEN"}
+            {MagneticFieldStrengthFringingEffectModels::ROSHEN, "ROSHEN"},
+            {MagneticFieldStrengthFringingEffectModels::SULLIVAN, "SULLIVAN"}
         };
 
         for (auto& [fieldModel, fieldModelName] : fieldModels) {
@@ -1278,7 +1280,8 @@ namespace TestWindingLossesModelComparison {
 
         std::vector<std::pair<MagneticFieldStrengthFringingEffectModels, std::string>> fringingModels = {
             {MagneticFieldStrengthFringingEffectModels::ALBACH, "ALBACH"},
-            {MagneticFieldStrengthFringingEffectModels::ROSHEN, "ROSHEN"}
+            {MagneticFieldStrengthFringingEffectModels::ROSHEN, "ROSHEN"},
+            {MagneticFieldStrengthFringingEffectModels::SULLIVAN, "SULLIVAN"}
         };
 
         // Structure for tracking results

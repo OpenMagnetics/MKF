@@ -132,6 +132,73 @@ class MagneticFieldStrengthAlbachModel : public MagneticFieldStrengthFringingEff
         FieldPoint get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap);
 };
 
+// ============================================================================
+// SULLIVAN Fringing Field Model (2D Image Method / Biot-Savart)
+// ============================================================================
+/**
+ * @brief Fringing field model based on the method of images (Biot-Savart approach)
+ *
+ * Based on the "shapeopt" MATLAB tool by C.R. Sullivan et al. at Dartmouth College.
+ * Reference: http://thayer.dartmouth.edu/inductor
+ *
+ * Key publications:
+ * - J. Hu, C.R. Sullivan, "Optimization of shapes for round-wire high-frequency
+ *   gapped-inductor windings", IEEE IAS Annual Meeting, 1998
+ * - C.R. Sullivan, "Optimal Choice for Number of Strands in a Litz-Wire
+ *   Transformer Winding", IEEE Trans. Power Electron., 14(2), March 1999
+ *
+ * This model uses the 2D method of images to compute fringing magnetic field
+ * strength (H) from an air gap. The gap MMF is modeled as distributed current
+ * filaments across the gap width. Each filament is placed at the gap position
+ * along with its image (reflected about the centerpost face), and these pairs
+ * are replicated across image units of the winding window to enforce boundary
+ * conditions imposed by the high-permeability core walls.
+ *
+ * The field is computed via 2D Biot-Savart superposition:
+ *   B = (mu_0 * I) / (2*pi) * sum_images( (R - R_source) / |R - R_source|^2 )
+ * converted to H = B / mu_0
+ *
+ * Unlike Roshen (closed-form) or Albach (equivalent current loop), this model
+ * captures the effect of multiple reflections from all core walls, making it
+ * more accurate for narrow winding windows or points close to core walls.
+ */
+class MagneticFieldStrengthSullivanModel : public MagneticFieldStrengthFringingEffectModel {
+ public:
+    std::string methodName = "Sullivan";
+
+    /**
+     * @brief Compute fringing H-field at an arbitrary point due to one gap
+     *
+     * Uses 2D Biot-Savart with method of images. The gap is subdivided into
+     * _gapDivisions filaments, each replicated across (2*_imageUnitsX+1) x
+     * (2*_imageUnitsY+1) image cells.
+     *
+     * @param gap                      CoreGap with coordinates, length, section_dimensions
+     * @param magneticFieldStrengthGap Peak H in the gap (A/m), i.e. B_gap / mu_0
+     * @param inducedFieldPoint        Point where the field is evaluated
+     * @return ComplexFieldPoint with real = Hx (radial), imaginary = Hy (axial)
+     */
+    ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point(
+        CoreGap gap, double magneticFieldStrengthGap, FieldPoint inducedFieldPoint);
+
+    /**
+     * @brief Not used - Sullivan computes field directly, not via equivalent point
+     */
+    FieldPoint get_equivalent_inducing_point_for_gap(
+        [[maybe_unused]] CoreGap gap, [[maybe_unused]] double magneticFieldStrengthGap) {
+        throw std::runtime_error("Sullivan fringing model computes field directly, not via equivalent point");
+    }
+
+ private:
+    /// Number of subdivisions of the gap length (higher = more accurate, slower)
+    int _gapDivisions = 10;
+    /// Number of image unit repetitions in the X direction (perpendicular to gap)
+    int _imageUnitsX = 2;
+    /// Number of image unit repetitions in the Y direction (parallel to gap)
+    int _imageUnitsY = 2;
+};
+
+
 
 // ============================================================================
 // ALBACH H-Field Model (Air Coil / Biot-Savart approach)

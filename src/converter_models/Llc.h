@@ -158,9 +158,15 @@ inline void from_json(const json& j, AdvancedLlc& x) {
     x.set_quality_factor(get_stack_optional<double>(j, "qualityFactor"));
     x.set_resonant_frequency(get_stack_optional<double>(j, "resonantFrequency"));
 
-    // AdvancedLlc extra fields
-    x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
-    x.set_desired_magnetizing_inductance(j.at("desiredMagnetizingInductance").get<double>());
+    // AdvancedLlc extra fields - use get_stack_optional or check if keys exist
+    auto desiredTurnsRatios = get_stack_optional<std::vector<double>>(j, "desiredTurnsRatios");
+    if (desiredTurnsRatios.has_value()) {
+        x.set_desired_turns_ratios(desiredTurnsRatios.value());
+    }
+    auto desiredMagnetizingInductance = get_stack_optional<double>(j, "desiredMagnetizingInductance");
+    if (desiredMagnetizingInductance.has_value()) {
+        x.set_desired_magnetizing_inductance(desiredMagnetizingInductance.value());
+    }
     x.set_desired_resonant_inductance(get_stack_optional<double>(j, "desiredResonantInductance"));
     x.set_desired_resonant_capacitance(get_stack_optional<double>(j, "desiredResonantCapacitance"));
 }

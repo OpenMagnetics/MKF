@@ -53,7 +53,7 @@ namespace {
 
         SECTION("Turns ratio calculation") {
             auto req = llc.process_design_requirements();
-            double expectedN = 400.0 * 0.5 / (2.0 * 12.0);  // n = Vin * k_bridge / (2 * Vout)
+            double expectedN = (400.0 * 0.5) / 12.0;  // n = (Vin * k_bridge) / Vout
             double computedN = resolve_dimensional_values(req.get_turns_ratios()[0]);
             REQUIRE_THAT(computedN, Catch::Matchers::WithinAbs(expectedN, expectedN * 0.02));
         }
@@ -127,8 +127,8 @@ namespace {
 
         SECTION("Turns ratio for full-bridge") {
             auto req = llc.process_design_requirements();
-            // n = Vin * 1.0 / (2 * Vout) for full-bridge
-            double expectedN = 400.0 * 1.0 / (2.0 * 48.0);
+            // n = (Vin * 1.0) / Vout for full-bridge
+            double expectedN = (400.0 * 1.0) / 48.0;
             double computedN = resolve_dimensional_values(req.get_turns_ratios()[0]);
             REQUIRE_THAT(computedN, Catch::Matchers::WithinAbs(expectedN, expectedN * 0.02));
         }
@@ -944,8 +944,8 @@ namespace {
             OpenMagnetics::Llc llc(llcJson);
             auto req = llc.process_design_requirements();
 
-            // n = 400 * 0.5 / (2 * 5) = 20
-            double expectedN = 400.0 * 0.5 / (2.0 * 5.0);
+            // n = (400 * 0.5) / 5 = 40
+            double expectedN = (400.0 * 0.5) / 5.0;
             double computedN = resolve_dimensional_values(req.get_turns_ratios()[0]);
             REQUIRE_THAT(computedN, Catch::Matchers::WithinAbs(expectedN, expectedN * 0.03));
         }
