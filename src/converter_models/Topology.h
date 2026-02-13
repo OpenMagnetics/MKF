@@ -160,4 +160,49 @@ public:
 
 };
 
+inline void to_json(json& j, const ConverterWaveforms& cw) {
+    j["switchingFrequency"] = cw.get_switching_frequency();
+    j["operatingPointName"] = cw.get_operating_point_name();
+    
+    auto inputVoltageWf = cw.get_input_voltage();
+    if (!inputVoltageWf.get_data().empty()) {
+        j["inputVoltage"] = json();
+        j["inputVoltage"]["data"] = inputVoltageWf.get_data();
+        if (inputVoltageWf.get_time()) {
+            j["inputVoltage"]["time"] = inputVoltageWf.get_time().value();
+        }
+    }
+    
+    auto inputCurrentWf = cw.get_input_current();
+    if (!inputCurrentWf.get_data().empty()) {
+        j["inputCurrent"] = json();
+        j["inputCurrent"]["data"] = inputCurrentWf.get_data();
+        if (inputCurrentWf.get_time()) {
+            j["inputCurrent"]["time"] = inputCurrentWf.get_time().value();
+        }
+    }
+    
+    auto outputVoltages = cw.get_output_voltages();
+    j["outputVoltages"] = json::array();
+    for (const auto& wf : outputVoltages) {
+        json wfJson;
+        wfJson["data"] = wf.get_data();
+        if (wf.get_time()) {
+            wfJson["time"] = wf.get_time().value();
+        }
+        j["outputVoltages"].push_back(wfJson);
+    }
+    
+    auto outputCurrents = cw.get_output_currents();
+    j["outputCurrents"] = json::array();
+    for (const auto& wf : outputCurrents) {
+        json wfJson;
+        wfJson["data"] = wf.get_data();
+        if (wf.get_time()) {
+            wfJson["time"] = wf.get_time().value();
+        }
+        j["outputCurrents"].push_back(wfJson);
+    }
+}
+
 } // namespace OpenMagnetics
