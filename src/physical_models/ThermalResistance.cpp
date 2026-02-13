@@ -6,6 +6,8 @@
 #include <cmath>
 
 namespace OpenMagnetics {
+using namespace ThermalDefaults; // IMP-2
+
 
 std::shared_ptr<CoreThermalResistanceModel> CoreThermalResistanceModel::factory(CoreThermalResistanceModels modelName) {
     if (modelName == CoreThermalResistanceModels::MANIKTALA) {
@@ -119,7 +121,7 @@ double ThermalResistance::calculateForcedConvectionCoefficient(
     double h = Nu * air.thermalConductivity / characteristicLength;
     
     // Typical range for forced convection: 25-250 W/(m²·K)
-    return std::max(h, 10.0);
+    return std::max(h, kConvection_MinForcedH); // IMP-7
 }
 
 double ThermalResistance::calculateRadiationCoefficient(
@@ -148,7 +150,7 @@ double ThermalResistance::getMaterialThermalConductivity(const std::string& mate
         auto wireMaterial = find_wire_material_by_name(lowerName);
         // Use the interpolation function at room temperature (25°C)
         return getWireMaterialThermalConductivity(wireMaterial, 25.0);
-    } catch (...) {
+    } catch (const std::exception& /* e */) { // IMP-8
         // Not a wire material, continue
     }
     
@@ -159,7 +161,7 @@ double ThermalResistance::getMaterialThermalConductivity(const std::string& mate
         if (thermalCond) {
             return *thermalCond;
         }
-    } catch (...) {
+    } catch (const std::exception& /* e */) { // IMP-8
         // Not an insulation material, continue
     }
     
@@ -173,7 +175,7 @@ double ThermalResistance::getMaterialThermalConductivity(const std::string& mate
                 return *nominal;
             }
         }
-    } catch (...) {
+    } catch (const std::exception& /* e */) { // IMP-8
         // Not a core material, continue
     }
     

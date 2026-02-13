@@ -81,6 +81,12 @@ using namespace MAS;  // For TurnCrossSectionalShape, InsulationWireCoating, etc
 
 namespace OpenMagnetics {
 
+// IMP-9: Bounds-checked coordinate access (inside namespace to be visible to members)
+inline double safeCoord(const std::vector<double>& coords, size_t idx, double def = 0.0) {
+    return idx < coords.size() ? coords[idx] : def;
+}
+
+
 /**
  * @brief Types of heat transfer mechanisms
  * 

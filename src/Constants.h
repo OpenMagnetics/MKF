@@ -75,6 +75,39 @@ struct Constants {
     const double foilToSectionMargin = 0.05;
     const double planarToSectionMargin = 0.05;
 };
+
+// ============================================================================
+// IMP-2: Thermal analysis named constants (replaces magic numbers)
+// ============================================================================
+namespace ThermalDefaults {
+    // Wire defaults
+    constexpr double kWire_DefaultWidth = 0.001;           // [m] 1mm
+    constexpr double kWire_DefaultHeight = 0.001;          // [m] 1mm
+    constexpr double kWire_CopperThermalConductivity = 385.0;  // [W/(m·K)]
+    constexpr double kWire_DefaultEnamelThickness = 0.00005;   // [m] 50µm
+    constexpr double kWire_DefaultEnamelConductivity = 0.2;    // [W/(m·K)]
+    
+    // Insulation & Bobbin
+    constexpr double kBobbin_ThermalConductivity = 0.2;    // [W/(m·K)] nylon/PBT
+    constexpr double kInsulation_DefaultConductivity = 0.2;// [W/(m·K)] polyimide
+    constexpr double kInsulation_DefaultThickness = 0.0001;// [m] 0.1mm
+    
+    // Core
+    constexpr double kCore_FerriteThermalConductivity = 4.0;   // [W/(m·K)] 3C90/3C95
+    
+    // Convection & Radiation
+    constexpr double kConvection_DefaultEmissivity = 0.9;      // [-] dark/matte
+    constexpr double kConvection_InitialDeltaT = 30.0;         // [°C] initial estimate
+    constexpr double kConvection_MinNaturalH = 2.0;            // [W/(m²·K)] IMP-7
+    constexpr double kConvection_MinForcedH = 10.0;            // [W/(m²·K)]
+    
+    // TIM
+    constexpr double kTIM_DefaultResistance = 0.5;             // [K/W]
+    
+    // Solver
+    constexpr double kSolver_MinConductance = 1e-9;            // [W/K]
+} // namespace ThermalDefaults
+
 } // namespace OpenMagnetics
 
 #endif
