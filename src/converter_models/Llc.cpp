@@ -1057,9 +1057,74 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {
-    // Placeholder: run NgSpice and extract topology-level waveforms
-    std::vector<ConverterWaveforms> result;
-    return result;
+    std::vector<ConverterWaveforms> results;
+    
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        throw std::runtime_error("ngspice is not available for simulation");
+    }
+    
+    auto ops = get_operating_points();
+    
+    for (size_t opIndex = 0; opIndex < ops.size(); ++opIndex) {
+        auto& op = ops[opIndex];
+        
+        std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, 0, opIndex);
+        double switchingFrequency = op.get_switching_frequency();
+        
+        SimulationConfig config;
+        config.frequency = switchingFrequency;
+        config.extractOnePeriod = true;
+        config.numberOfPeriods = get_num_periods_to_extract();
+        config.keepTempFiles = false;
+        
+        auto simResult = runner.run_simulation(netlist, config);
+        if (!simResult.success) {
+            throw std::runtime_error("LLC simulation failed: " + simResult.errorMessage);
+        }
+        
+        std::map<std::string, size_t> nameToIndex;
+        for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+            std::string lower = simResult.waveformNames[i];
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            nameToIndex[lower] = i;
+        }
+        auto getWaveform = [&](const std::string& name) -> Waveform {
+            std::string lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            auto it = nameToIndex.find(lower);
+            if (it != nameToIndex.end()) return simResult.waveforms[it->second];
+            return Waveform();
+        };
+        
+        ConverterWaveforms wf;
+        wf.set_switching_frequency(switchingFrequency);
+        std::string name = "LLC op. point " + std::to_string(opIndex);
+        wf.set_operating_point_name(name);
+        
+        // Primary side: input voltage is the switched bridge voltage
+        wf.set_input_voltage(getWaveform("v(vpri_sense)"));
+        // Primary current through the resonant tank
+        wf.set_input_current(getWaveform("i(vpri_sense)"));
+        
+        // Output: rectified voltage and current
+        if (!turnsRatios.empty()) {
+            wf.get_mutable_output_voltages().push_back(getWaveform("v(out_pos)"));
+            // Output current through load
+            Waveform outputCurrent;
+            auto vout = getWaveform("v(out_pos)");
+            if (!vout.get_data().empty()) {
+                auto vinData = vout.get_data();
+                double Rload = vinData.empty() ? 1.0 : 1.0; // Will compute from V/I
+                auto iout = getWaveform("i(vout_sense)");
+                wf.get_mutable_output_currents().push_back(iout);
+            }
+        }
+        
+        results.push_back(wf);
+    }
+    
+    return results;
 }
 
 

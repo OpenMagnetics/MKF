@@ -384,7 +384,8 @@ namespace OpenMagnetics {
     
     std::vector<OperatingPoint> Flyback::simulate_and_extract_operating_points(
         const std::vector<double>& turnsRatios,
-        double magnetizingInductance) {
+        double magnetizingInductance,
+        size_t numberOfPeriods) {
         
         std::vector<OperatingPoint> operatingPoints;
         
@@ -392,6 +393,13 @@ namespace OpenMagnetics {
         if (!runner.is_available()) {
             throw std::runtime_error("ngspice is not available for simulation");
         }
+        
+        // If numberOfPeriods is specified, use it; otherwise use the member variable
+        int numPeriods = (numberOfPeriods > 0) ? static_cast<int>(numberOfPeriods) : get_num_periods_to_extract();
+        
+        // Save original value and set the requested number of periods
+        int originalNumPeriodsToExtract = get_num_periods_to_extract();
+        set_num_periods_to_extract(numPeriods);
         
         // Get input voltages
         std::vector<double> inputVoltages;
@@ -465,6 +473,9 @@ namespace OpenMagnetics {
                 operatingPoints.push_back(operatingPoint);
             }
         }
+        
+        // Restore original value
+        set_num_periods_to_extract(originalNumPeriodsToExtract);
         
         return operatingPoints;
     }
@@ -731,6 +742,10 @@ namespace OpenMagnetics {
         throw std::runtime_error("ngspice is not available for simulation");
     }
     
+    // Save original value and set the requested number of periods
+    int originalNumPeriodsToExtract = get_num_periods_to_extract();
+    set_num_periods_to_extract(static_cast<int>(numberOfPeriods));
+    
     std::vector<double> inputVoltages;
     std::vector<std::string> inputVoltagesNames;
     collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
@@ -786,6 +801,9 @@ namespace OpenMagnetics {
             results.push_back(wf);
         }
     }
+    
+    // Restore original value
+    set_num_periods_to_extract(originalNumPeriodsToExtract);
     
     return results;
 }

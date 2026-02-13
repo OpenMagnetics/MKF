@@ -91,7 +91,8 @@ public:
      */
     std::vector<OperatingPoint> simulate_and_extract_operating_points(
         const std::vector<double>& turnsRatios,
-        double magnetizingInductance);
+        double magnetizingInductance,
+        size_t numberOfPeriods = 0);
     
     /**
      * @brief Generate an ngspice circuit using a real Magnetic component model

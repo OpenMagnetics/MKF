@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.18.0)
+cmake_minimum_required(VERSION 3.18.0)
 
 if (POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
@@ -520,6 +520,10 @@ if(INCLUDE_MKF_TESTS)
     # Exclude standalone test files with their own main() (not Catch2 tests)
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestAlbach2DFull\\.cpp$")
     list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestAlbach2DSimple\\.cpp$")
+    # Exclude old LLC test files - merged into TestTopologyLlc.cpp
+    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestLlcClasses\\.cpp$")
+    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestLlcNaNDebug\\.cpp$")
+    list(FILTER ALL_TEST_SOURCES EXCLUDE REGEX "TestLlcWizard\\.cpp$")
     
     add_executable(MKF_tests ${ALL_TEST_SOURCES} "tests/TestingUtils.cpp")
     target_link_libraries(MKF_tests PRIVATE Catch2::Catch2WithMain)
