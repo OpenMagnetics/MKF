@@ -274,4 +274,191 @@ namespace {
         INFO("Isolated Buck ngspice simulation test passed");
     }
 
+    TEST_CASE("Test_IsolatedBuck_Ngspice_TwoSecondaries_Validation", "[converter-model][isolated-buck-topology][ngspice-simulation]") {
+        // Check if ngspice is available
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+        
+        // Create an Isolated Buck (Flybuck) converter with TWO secondaries
+        // First secondary: non-isolated buck output
+        // Second secondary: isolated flyback output
+        OpenMagnetics::IsolatedBuck isolatedBuck;
+        
+        // Input voltage: 48V nominal
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(48.0);
+        isolatedBuck.set_input_voltage(inputVoltage);
+        
+        // Diode voltage drop
+        isolatedBuck.set_diode_voltage_drop(0.5);
+        
+        // Efficiency
+        isolatedBuck.set_efficiency(0.9);
+        
+        // Current ripple ratio
+        isolatedBuck.set_current_ripple_ratio(0.3);
+        
+        // Operating point with TWO outputs:
+        // output_voltages[0] = primary (non-isolated buck) output voltage
+        // output_voltages[1] = secondary 1 (non-isolated, tied to primary ground) voltage  
+        // output_voltages[2] = secondary 2 (isolated) voltage
+        // output_currents[0] = primary output current
+        // output_currents[1] = secondary 1 current
+        // output_currents[2] = secondary 2 current
+        IsolatedBuckOperatingPoint opPoint;
+        double expectedPriVoltage = 5.0;    // Non-isolated buck output: 5V
+        double expectedSec1Voltage = 5.0;   // Secondary 1: 5V (tied to same ground)
+        double expectedSec2Voltage = 12.0;  // Secondary 2 (isolated): 12V
+        double expectedPriCurrent = 1.0;    // Primary output current: 1A
+        double expectedSec1Current = 2.0;   // Secondary 1 current: 2A
+        double expectedSec2Current = 0.5;   // Secondary 2 current: 0.5A
+        
+        opPoint.set_output_voltages({expectedPriVoltage, expectedSec1Voltage, expectedSec2Voltage});
+        opPoint.set_output_currents({expectedPriCurrent, expectedSec1Current, expectedSec2Current});
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        isolatedBuck.set_operating_points({opPoint});
+        
+        // Process design requirements
+        auto designReqs = isolatedBuck.process_design_requirements();
+        
+        std::vector<double> turnsRatios;
+        // Debug: Check what's in designReqs
+        REQUIRE(designReqs.get_turns_ratios().size() == 2);
+        for (size_t i = 0; i < designReqs.get_turns_ratios().size(); ++i) {
+            const auto& tr = designReqs.get_turns_ratios()[i];
+            // Try to get the value - should have nominal set
+            double val = 1.0;
+            if (tr.get_nominal()) {
+                val = tr.get_nominal().value();
+            } else if (tr.get_minimum()) {
+                val = tr.get_minimum().value();
+            }
+            turnsRatios.push_back(val);
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+        
+        // Verify turns ratios were extracted correctly
+        REQUIRE(turnsRatios.size() == 2);
+        
+        INFO("Flybuck Two Secondaries Test");
+        INFO("Turns ratios: TR[0]=" << turnsRatios[0] << ", TR[1]=" << turnsRatios[1]);
+        INFO("Input voltage: 48V");
+        INFO("Expected outputs:");
+        INFO("  Primary (non-isolated): " << expectedPriVoltage << "V @ " << expectedPriCurrent << "A");
+        INFO("  Secondary 1 (non-isolated): " << expectedSec1Voltage << "V @ " << expectedSec1Current << "A");
+        INFO("  Secondary 2 (isolated): " << expectedSec2Voltage << "V @ " << expectedSec2Current << "A");
+        INFO("Number of turns ratios from designReqs: " << designReqs.get_turns_ratios().size());
+        INFO("Turns ratios:");
+        for (size_t i = 0; i < turnsRatios.size(); ++i) {
+            INFO("  Secondary " << (i+1) << ": " << turnsRatios[i]);
+        }
+        INFO("Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+        
+        // Ensure we have turns ratios for the secondaries
+        REQUIRE(turnsRatios.size() == 2);  // We expect 2 secondaries
+        
+        // Run ngspice simulation to extract operating points
+        auto operatingPoints = isolatedBuck.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!operatingPoints.empty());
+        REQUIRE(operatingPoints[0].get_excitations_per_winding().size() == 3);  // Primary + 2 secondaries
+        
+        // Helper lambda to get average and RMS from waveform
+        auto getWaveformStats = [](const Waveform& wf) -> std::pair<double, double> {
+            const auto& data = wf.get_data();
+            if (data.empty()) return {0.0, 0.0};
+            
+            double avg = std::accumulate(data.begin(), data.end(), 0.0) / data.size();
+            double sumSq = 0.0;
+            for (double v : data) {
+                sumSq += v * v;
+            }
+            double rms = std::sqrt(sumSq / data.size());
+            return {avg, rms};
+        };
+        
+        // Validate primary winding (non-isolated buck output)
+        // Winding 0: Primary - voltage should be switching waveform at pri_in node
+        const auto& primaryExcitation = operatingPoints[0].get_excitations_per_winding()[0];
+        REQUIRE(primaryExcitation.get_voltage().has_value());
+        REQUIRE(primaryExcitation.get_current().has_value());
+        
+        auto [priVoltageAvg, priVoltageRms] = getWaveformStats(primaryExcitation.get_voltage()->get_waveform().value());
+        auto [priCurrentAvg, priCurrentRms] = getWaveformStats(primaryExcitation.get_current()->get_waveform().value());
+        
+        INFO("Primary Winding (Winding 0):");
+        INFO("  Voltage - Avg: " << priVoltageAvg << " V, RMS: " << priVoltageRms << " V");
+        INFO("  Current - Avg: " << priCurrentAvg << " A, RMS: " << priCurrentRms << " A");
+        
+        // Primary current should not be thousands of amps (the bug we're fixing)
+        CHECK(std::abs(priCurrentAvg) < 100.0);
+        CHECK(std::abs(priCurrentRms) < 1000.0);
+        
+        // Primary current should be in reasonable range (couple of amps for this converter)
+        CHECK(std::abs(priCurrentAvg) < 50.0);
+        CHECK(std::abs(priCurrentRms) < 100.0);
+        
+        // Validate secondary 1 (non-isolated)
+        const auto& sec1Excitation = operatingPoints[0].get_excitations_per_winding()[1];
+        REQUIRE(sec1Excitation.get_voltage().has_value());
+        REQUIRE(sec1Excitation.get_current().has_value());
+        
+        auto [sec1VoltageAvg, sec1VoltageRms] = getWaveformStats(sec1Excitation.get_voltage()->get_waveform().value());
+        auto [sec1CurrentAvg, sec1CurrentRms] = getWaveformStats(sec1Excitation.get_current()->get_waveform().value());
+        
+        INFO("Secondary 1 (Winding 1 - non-isolated):");
+        INFO("  Voltage - Avg: " << sec1VoltageAvg << " V, RMS: " << sec1VoltageRms << " V");
+        INFO("  Current - Avg: " << sec1CurrentAvg << " A, RMS: " << sec1CurrentRms << " A");
+        
+        // Secondary 1 current should not be thousands of amps
+        CHECK(std::abs(sec1CurrentAvg) < 100.0);
+        CHECK(std::abs(sec1CurrentRms) < 1000.0);
+        
+        // Validate secondary 2 (isolated)
+        const auto& sec2Excitation = operatingPoints[0].get_excitations_per_winding()[2];
+        REQUIRE(sec2Excitation.get_voltage().has_value());
+        REQUIRE(sec2Excitation.get_current().has_value());
+        
+        auto [sec2VoltageAvg, sec2VoltageRms] = getWaveformStats(sec2Excitation.get_voltage()->get_waveform().value());
+        auto [sec2CurrentAvg, sec2CurrentRms] = getWaveformStats(sec2Excitation.get_current()->get_waveform().value());
+        
+        INFO("Secondary 2 (Winding 2 - isolated):");
+        INFO("  Voltage - Avg: " << sec2VoltageAvg << " V, RMS: " << sec2VoltageRms << " V");
+        INFO("  Current - Avg: " << sec2CurrentAvg << " A, RMS: " << sec2CurrentRms << " A");
+        
+        // Secondary 2 current should not be thousands of amps
+        CHECK(std::abs(sec2CurrentAvg) < 100.0);
+        CHECK(std::abs(sec2CurrentRms) < 1000.0);
+        
+        // Validate secondary voltages are approximately correct (within 20% of expected)
+        // Primary output (non-isolated buck): ~5V
+        CHECK(std::abs(priVoltageAvg - expectedPriVoltage) < expectedPriVoltage * 0.2);
+        // Secondary 1: ~5V
+        CHECK(std::abs(sec1VoltageAvg - expectedSec1Voltage) < expectedSec1Voltage * 0.2);
+        // Secondary 2 (isolated): ~12V
+        CHECK(std::abs(sec2VoltageAvg - expectedSec2Voltage) < expectedSec2Voltage * 0.2);
+        
+        // Now run topology waveforms simulation for additional validation
+        auto topologyWaveforms = isolatedBuck.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!topologyWaveforms.empty());
+        
+        // Validate topology waveforms were extracted (input/output signals)
+        REQUIRE(!topologyWaveforms[0].get_input_voltage().get_data().empty());
+        REQUIRE(!topologyWaveforms[0].get_input_current().get_data().empty());
+        
+        // The key validation: currents should be in reasonable range (not thousands of amps)
+        // This was the main bug we fixed
+        auto inputCurrentData = topologyWaveforms[0].get_input_current().get_data();
+        double inputI_avg = std::accumulate(inputCurrentData.begin(), inputCurrentData.end(), 0.0) / inputCurrentData.size();
+        INFO("Input current average: " << inputI_avg << " A");
+        CHECK(std::abs(inputI_avg) < 50.0);  // Should be in single-digit or low tens of amps
+        CHECK(std::abs(inputI_avg) < 1000.0);  // Definitely not thousands of amps
+        
+        INFO("Flybuck Two Secondaries ngspice simulation test completed successfully");
+    }
+
 }  // namespace

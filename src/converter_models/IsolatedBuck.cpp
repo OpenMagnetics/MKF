@@ -430,49 +430,57 @@ namespace OpenMagnetics {
         circuit << ".model SW2 SW VT=2.5 VH=0.5 RON=0.01 ROFF=1e6\n";
         circuit << "S2 sw_node 0 pwm_inv 0 SW2\n\n";
 
-        // Primary current sense
-        circuit << "* Primary current sense\n";
-        circuit << "Vpri_sense sw_node pri_p 0\n\n";
-
         // Coupled inductor (Primary = buck inductor)
+        // Using proper buck topology: series inductor with parallel DC path resistor
         circuit << "* Coupled Inductor (Primary = Buck Inductor)\n";
-        circuit << "Lpri pri_p pri_out " << std::scientific << magnetizingInductance << std::fixed << "\n";
+        
+        // Primary current sense - measure current entering the inductor
+        circuit << "* Primary current sense\n";
+        circuit << "Vpri_sense sw_node pri_in 0\n";
+        
+        // Primary inductor: from switch node to output (series inductor like buck converter)
+        // This is the proper topology - inductor in series with output, not to ground
+        circuit << "Lpri pri_in vpri_out " << std::scientific << magnetizingInductance << std::fixed << "\n\n";
 
         // Secondary windings
+        // For flyback action, secondary windings referenced to ground
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             double secondaryInductance = magnetizingInductance / (turnsRatios[secIdx] * turnsRatios[secIdx]);
-            circuit << "Lsec" << secIdx << " sec" << secIdx << "_in 0 " << std::scientific << secondaryInductance << std::fixed << "\n";
+            // Secondary winding: ground to sec_in
+            circuit << "Lsec" << secIdx << " 0 sec" << secIdx << "_in " << std::scientific << secondaryInductance << std::fixed << "\n";
         }
 
-        // Couple primary to each secondary
+        // Couple primary to each secondary with high coupling
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-            circuit << "Kpri_sec" << secIdx << " Lpri Lsec" << secIdx << " 1\n";
+            circuit << "Kpri_sec" << secIdx << " Lpri Lsec" << secIdx << " 0.99\n";
         }
-        // Couple secondaries to each other (for proper cross-regulation)
+        // Couple secondaries to each other
         for (size_t i = 0; i < numSecondaries; ++i) {
             for (size_t j = i + 1; j < numSecondaries; ++j) {
-                circuit << "Ksec" << i << "_" << j << " Lsec" << i << " Lsec" << j << " 1\n";
+                circuit << "Ksec" << i << "_" << j << " Lsec" << i << " Lsec" << j << " 0.99\n";
             }
         }
         circuit << "\n";
 
         // Diode model
         circuit << "* Diode model\n";
-        circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n\n";
+        circuit << ".model DIDEAL D(IS=1e-14 RS=0.01 N=1.0)\n\n";
 
-        // Primary output (buck output)
-        circuit << "* Primary Output Stage (Buck)\n";
-        circuit << "* Primary output is directly from the inductor\n";
-        circuit << "Vpri_out_sense pri_out vpri_out 0\n";
+        // Primary output (buck output) - directly from inductor output
+        // In this topology, vpri_out is the output node (after the inductor)
+        circuit << "* Primary Output Stage (Buck - non-isolated)\n";
         double primaryLoadResistance = primaryOutputVoltage / primaryOutputCurrent;
         circuit << "Cpri vpri_out 0 100u IC=" << primaryOutputVoltage << "\n";
         circuit << "Rload_pri vpri_out 0 " << primaryLoadResistance << "\n\n";
 
-        // Secondary output stages
+        // Secondary output stages (isolated outputs)
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-            circuit << "* Secondary " << secIdx << " output stage\n";
-            // Secondary diode conducts when switch is OFF (flyback action)
-            circuit << "Dsec" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_rect DIDEAL\n";
+            circuit << "* Secondary " << secIdx << " output stage (isolated)\n";
+            // Add series resistance between winding and diode (models winding resistance)
+            circuit << "Rsec" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_node 0.01\n";
+            // Secondary rectifier: diode from secondary winding node to rectified node
+            // Anode at secX_node (winding side), cathode at secX_rect (output side)
+            circuit << "Dsec" << secIdx << " sec" << secIdx << "_node sec" << secIdx << "_rect DIDEAL\n";
             circuit << "Vsec_sense" << secIdx << " sec" << secIdx << "_rect vout" << secIdx << " 0\n";
 
             double outputVoltage = opPoint.get_output_voltages()[secIdx + 1];
@@ -482,15 +490,23 @@ namespace OpenMagnetics {
             circuit << "Rload" << secIdx << " vout" << secIdx << " 0 " << loadResistance << "\n\n";
         }
 
-        // Transient Analysis
+        // Transient Analysis with UIC (Use Initial Conditions)
+        // UIC skips the DC operating point calculation and uses the specified initial conditions
+        // This is necessary for circuits with inductors that don't have DC paths to ground
         circuit << "* Transient Analysis\n";
-        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
+        circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << " UIC\n\n";
 
         // Save signals
+        // For Flybuck topology:
+        // - pri_in: inductor input (after current sense)
+        // - vpri_out: primary output (inductor output / non-isolated output)
+        // - voutX: secondary outputs (isolated outputs)
+        // - secX_in: secondary winding inputs
+        // - secX_rect: secondary rectified node (before output cap)
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_p) i(Vpri_sense) v(vpri_out)";
+        circuit << ".save v(sw_node) v(pri_in) v(vpri_out) i(Vpri_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-            circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
+            circuit << " v(sec" << secIdx << "_in) v(sec" << secIdx << "_rect) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
         circuit << "\n\n";
 
@@ -559,12 +575,14 @@ namespace OpenMagnetics {
                 // Define waveform name mapping
                 NgspiceRunner::WaveformNameMapping waveformMapping;
                 
-                // Primary winding - voltage across primary inductor input, current through sense resistor
-                waveformMapping.push_back({{"voltage", "pri_p"}, {"current", "vpri_sense#branch"}});
+                // Primary winding - voltage at inductor node (switching node), current through sense resistor
+                // For Flybuck: pri_in is the inductor/switching node
+                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vpri_sense#branch"}});
                 
                 // Secondary windings
                 for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-                    std::string voltageName = "vout" + std::to_string(secIdx);
+                    // Use secX_rect for secondary voltage (rectified node before output cap)
+                    std::string voltageName = "sec" + std::to_string(secIdx) + "_rect";
                     std::string currentName = "vsec_sense" + std::to_string(secIdx) + "#branch";
                     waveformMapping.push_back({{"voltage", voltageName}, {"current", currentName}});
                 }
