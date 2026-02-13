@@ -6,90 +6,91 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
 
 enum class MagneticFieldStrengthModels : int {
-    BINNS_LAWRENSON,
-    LAMMERANER,
-    DOWELL,
-    WANG,
-    ALBACH
+ BINNS_LAWRENSON,
+ LAMMERANER,
+ DOWELL,
+ WANG,
+ ALBACH
 };
 
 enum class MagneticFieldStrengthFringingEffectModels : int {
-    ROSHEN,
-    ALBACH
+ ROSHEN,
+ ALBACH,
+ SULLIVAN
 };
 
 
 enum class ReluctanceModels : int {
-    ZHANG,
-    PARTRIDGE,
-    EFFECTIVE_AREA,
-    EFFECTIVE_LENGTH,
-    MUEHLETHALER,
-    STENGLEIN,
-    BALAKRISHNAN,
-    CLASSIC
+ ZHANG,
+ PARTRIDGE,
+ EFFECTIVE_AREA,
+ EFFECTIVE_LENGTH,
+ MUEHLETHALER,
+ STENGLEIN,
+ BALAKRISHNAN,
+ CLASSIC
 };
 
 
 enum class CoreLossesModels : int {
-    PROPRIETARY,
-    STEINMETZ,
-    IGSE,
-    BARG,
-    ROSHEN,
-    ALBACH,
-    NSE,
-    MSE,
-    LOSS_FACTOR
+ PROPRIETARY,
+ STEINMETZ,
+ IGSE,
+ BARG,
+ ROSHEN,
+ ALBACH,
+ NSE,
+ MSE,
+ LOSS_FACTOR
 };
 
 
 enum class CoreThermalResistanceModels : int {
-    MANIKTALA,
-    DIXON
+ MANIKTALA,
+ DIXON
 };
 
 
 enum class CoreTemperatureModels : int {
-    KAZIMIERCZUK,
-    MANIKTALA,
-    TDK,
-    DIXON,
-    AMIDON
+ KAZIMIERCZUK,
+ MANIKTALA,
+ TDK,
+ DIXON,
+ AMIDON
 };
 
 
 enum class WindingSkinEffectLossesModels : int {
-    DOWELL,
-    WOJDA,
-    ALBACH,
-    PAYNE,
-    LOTFI,
-    KAZIMIERCZUK,
-    KUTKUT,
-    FERREIRA,
-    DIMITRAKAKIS,
-    WANG,
-    HOLGUIN,
-    PERRY
+ DOWELL,
+ WOJDA,
+ ALBACH,
+ PAYNE,
+ LOTFI,
+ KAZIMIERCZUK,
+ KUTKUT,
+ FERREIRA,
+ DIMITRAKAKIS,
+ WANG,
+ HOLGUIN,
+ PERRY
 };
 
 
 enum class WindingProximityEffectLossesModels : int {
-    ROSSMANITH,
-    WANG,
-    FERREIRA,
-    LAMMERANER,
-    ALBACH,
-    DOWELL
+ ROSSMANITH,
+ WANG,
+ FERREIRA,
+ LAMMERANER,
+ ALBACH,
+ DOWELL
 };
 
 
 enum class StrayCapacitanceModels : int {
-    KOCH,
-    ALBACH,
-    DUERDOTH,
-    MASSARINI
+ KOCH,
+ ALBACH,
+ DUERDOTH,
+ MASSARINI
 };
 
 } // namespace OpenMagnetics

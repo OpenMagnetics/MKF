@@ -1293,4 +1293,87 @@ namespace {
         CHECK(inputV3.size() > inputV1.size());
     }
 
+    TEST_CASE("Test_Flyback_NumPeriods_WaveformValidation", "[converter-model][flyback-topology][num-periods][ngspice-simulation]") {
+        // Verify that numberOfPeriods parameter produces correct waveform time spans
+        // and that magnetic/converter waveforms have matching periods
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+
+        OpenMagnetics::Flyback flyback;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(48.0);
+        flyback.set_input_voltage(inputVoltage);
+        flyback.set_diode_voltage_drop(0.5);
+        flyback.set_efficiency(0.9);
+        flyback.set_current_ripple_ratio(0.3);
+        flyback.set_maximum_duty_cycle(0.5);
+
+        OpenMagnetics::FlybackOperatingPoint opPoint;
+        opPoint.set_output_voltages({12.0});
+        opPoint.set_output_currents({2.0});
+        opPoint.set_switching_frequency(100000);
+        opPoint.set_ambient_temperature(25.0);
+        flyback.set_operating_points({opPoint});
+
+        auto designReqs = flyback.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        // Test with 1, 2, and 5 periods
+        for (size_t numPeriods : {1, 2, 5}) {
+            auto waveforms = flyback.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance, numPeriods);
+            REQUIRE(!waveforms.empty());
+            
+            // Get the time data from input voltage waveform
+            auto timeData = waveforms[0].get_input_voltage().get_time().value();
+            auto voltageData = waveforms[0].get_input_voltage().get_data();
+            
+            // Calculate the period from the switching frequency
+            double period = 1.0 / 100000.0;  // 10 microseconds
+            
+            // Calculate actual time span
+            double timeSpan = timeData.back() - timeData.front();
+            
+            // The time span should be approximately numPeriods * period
+            // Allow 20% tolerance for edge detection and sampling variations
+            double expectedSpan = numPeriods * period;
+            double tolerance = 0.2 * expectedSpan;
+            
+            INFO("Testing " << numPeriods << " periods:");
+            INFO("  Expected time span: " << expectedSpan << " s");
+            INFO("  Actual time span: " << timeSpan << " s");
+            INFO("  Waveform data points: " << voltageData.size());
+            
+            CHECK(timeSpan >= expectedSpan - tolerance);
+            CHECK(timeSpan <= expectedSpan + tolerance);
+        }
+
+        // Test that magnetic and converter waveforms have same number of periods
+        flyback.set_num_periods_to_extract(3);  // Request 3 periods
+        
+        auto converterWaveforms = flyback.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance, 3);
+        auto operatingPoints = flyback.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+        
+        REQUIRE(!converterWaveforms.empty());
+        REQUIRE(!operatingPoints.empty());
+        
+        // Get time spans
+        double converterTimeSpan = converterWaveforms[0].get_input_voltage().get_time().value().back() -
+                                   converterWaveforms[0].get_input_voltage().get_time().value().front();
+        
+        double magneticTimeSpan = operatingPoints[0].get_excitations_per_winding()[0].get_voltage().value().get_waveform().value().get_time().value().back() -
+                                  operatingPoints[0].get_excitations_per_winding()[0].get_voltage().value().get_waveform().value().get_time().value().front();
+        
+        INFO("Converter waveform time span: " << converterTimeSpan << " s");
+        INFO("Magnetic waveform time span: " << magneticTimeSpan << " s");
+        
+        // Both should be approximately the same (3 periods)
+        CHECK(std::abs(converterTimeSpan - magneticTimeSpan) < 0.1 * converterTimeSpan);
+    }
+
 }  // namespace

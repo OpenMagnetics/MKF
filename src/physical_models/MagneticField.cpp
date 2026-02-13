@@ -147,8 +147,11 @@ std::shared_ptr<MagneticFieldStrengthFringingEffectModel> MagneticField::factory
     else if (modelName == MagneticFieldStrengthFringingEffectModels::ROSHEN) {
         return std::make_shared<MagneticFieldStrengthRoshenModel>();
     }
+    else if (modelName == MagneticFieldStrengthFringingEffectModels::SULLIVAN) {
+        return std::make_shared<MagneticFieldStrengthSullivanModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown Magnetic Field Strength Fringing Effect model, available options are: {ALBACH, ROSHEN}");
+        throw ModelNotAvailableException("Unknown Magnetic Field Strength Fringing Effect model, available options are: {ALBACH, ROSHEN, SULLIVAN}");
 }
 
 std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory() {
@@ -1196,6 +1199,189 @@ void MagneticFieldStrengthAlbach2DModel::setupFromMagnetic(
         }
         _turns.push_back(albachTurn);
     }
+}
+
+
+
+// ============================================================================
+// MagneticFieldStrengthSullivanModel Implementation
+// (2D Image Method / Biot-Savart for gap fringing field)
+// ============================================================================
+//
+// THEORY (from Sullivan's shapeopt MATLAB code):
+// -------
+// The air gap is modeled as a set of current filaments distributed along the
+// gap length. For each filament at position R_gap:
+//   - A "cross" current (+I_per_div, into page) is placed at the gap face
+//   - A "dot" current (-I_per_div, out of page) is placed at the mirror
+//     position (reflected about x=0 for center gaps)
+//
+// The winding window (width bw, height hw) is the fundamental unit cell.
+// Image copies are tiled in both x and y:
+//   x: at x_center + n * 2*hw,  n in [-imageUnitsX, +imageUnitsX]
+//   y: at y_center + m * bw,    m in [-imageUnitsY, +imageUnitsY]
+//
+// Total field at point P is superposition of all image contributions:
+//   B(P) = sum (mu_0*I)/(2*pi) * (P - R_fil) / |P - R_fil|^2
+// Then H = B / mu_0
+//
+// A 0.9 attenuation factor is applied (same as Roshen) to account for
+// the fraction of MMF that produces external fringing field.
+//
+// MAPPING FROM MATLAB CODE:
+// -------------------------
+// In the original shapeopt code (function Bfinite):
+//   - pvec(1:2) = unit_of_X, unit_of_Y  -> _imageUnitsX, _imageUnitsY
+//   - pvec(3:4) = bw, hw                -> estimated from gap geometry
+//   - pvec(7:8) = gw, gap_div           -> gap.get_length(), _gapDivisions
+//   - pvec(9)   = I_per_gap_div         -> I_total / _gapDivisions
+//   - pvec(10)  = Rgbase(k)             -> filament position (complex)
+//   - const1 = u0*(j)*I/(2*pi)          -> Biot-Savart coefficient
+//   - R1_1/R1_2: cross/dot current pair
+//   - center_matrix: image unit centers
+//
+
+ComplexFieldPoint MagneticFieldStrengthSullivanModel::get_magnetic_field_strength_between_gap_and_point(
+    CoreGap gap, double magneticFieldStrengthGap, FieldPoint inducedFieldPoint) {
+
+    if (!gap.get_section_dimensions()) {
+        throw GapException("Gap is missing section dimensions");
+    }
+    if (!gap.get_coordinates()) {
+        throw GapException("Gap is missing coordinates");
+    }
+
+    // ---- Extract gap geometry ----
+    double gapLength = gap.get_length();
+    double gapX = gap.get_coordinates().value()[0];
+    double gapY = gap.get_coordinates().value()[1];
+    double columnWidth = gap.get_section_dimensions().value()[0];
+
+    // ---- Estimate winding window dimensions ----
+    // bw: window breadth in y-direction (along the gap), approx = column width
+    // hw: window height in x-direction (perpendicular to gap)
+    // For center gap (gapX=0): hw ~ columnWidth (the window extends from
+    //   the centerpost edge outward)
+    // For lateral gap: hw ~ 2*|gapX|
+    double bw = columnWidth;
+    double hw;
+    if (std::abs(gapX) > 1e-10) {
+        hw = 2.0 * std::abs(gapX);
+    } else {
+        hw = columnWidth;
+    }
+
+    // ---- Compute total gap current (Ampere's law: NI = H_gap * gapLength) ----
+    double I_total = magneticFieldStrengthGap * gapLength;
+    double I_per_div = I_total / _gapDivisions;
+
+    // ---- Empirical attenuation (consistent with Roshen) ----
+    double attenuationFactor = 0.9;
+
+    // ---- Gap filament spacing ----
+    double gapGrid = gapLength / _gapDivisions;
+
+    // ---- Point of interest ----
+    double xP = inducedFieldPoint.get_point()[0];
+    double yP = inducedFieldPoint.get_point()[1];
+
+    // Accumulate B field components
+    double Bx_total = 0.0;
+    double By_total = 0.0;
+
+    double u0 = Constants().vacuumPermeability;
+
+    // ---- For each gap filament ----
+    for (int gapIdx = 0; gapIdx < _gapDivisions; ++gapIdx) {
+        // Y-position of this filament relative to gap center
+        double filY;
+        if (_gapDivisions == 1) {
+            filY = 0.0;
+        } else {
+            filY = -(gapLength - gapGrid) / 2.0 + gapIdx * gapGrid;
+        }
+
+        // Absolute position of the "cross" current (into page)
+        // For center-leg gap (gapX~0): place at the centerpost edge
+        double crossX, crossY;
+        if (std::abs(gapX) < 1e-10) {
+            crossX = 0.0;
+            crossY = gapY + filY;
+        } else {
+            crossX = gapX;
+            crossY = gapY + filY;
+        }
+
+        // Mirror image "dot" current (out of page): reflected about x=0
+        double dotX = -crossX;
+        double dotY = crossY;
+
+        // ---- Sum over all image units ----
+        // This is the core of the method of images from Sullivan's code:
+        // center_matrix = ones(size(y_temp))' * x_temp + j*y_temp' * ones(size(x_temp))
+        // where x_temp = 2*hw * linspace(-unit_of_X, unit_of_X, ...)
+        //       y_temp = bw  * linspace(-unit_of_Y, unit_of_Y, ...)
+        for (int nx = -_imageUnitsX; nx <= _imageUnitsX; ++nx) {
+            for (int ny = -_imageUnitsY; ny <= _imageUnitsY; ++ny) {
+                double unitCenterX = nx * 2.0 * hw;
+                double unitCenterY = ny * bw;
+
+                // "Cross" current position in this image unit
+                double srcCrossX = crossX + unitCenterX;
+                double srcCrossY = crossY + unitCenterY;
+
+                // "Dot" current position in this image unit
+                double srcDotX = dotX + unitCenterX;
+                double srcDotY = dotY + unitCenterY;
+
+                // Biot-Savart for "cross" current (INTO page, +z direction)
+                // B_x = +(mu_0*I)/(2*pi) * dy/r^2
+                // B_y = -(mu_0*I)/(2*pi) * dx/r^2
+                {
+                    double dx = xP - srcCrossX;
+                    double dy = yP - srcCrossY;
+                    double r2 = dx * dx + dy * dy;
+                    // Avoid division by zero (same approach as MATLAB code:
+                    // Rp_abs = ((Rp_abs == 0) + Rp_abs); )
+                    if (r2 < 1e-30) r2 = 1.0;
+
+                    double coeff = u0 * I_per_div / (2.0 * std::numbers::pi * r2);
+                    Bx_total += coeff * dy;
+                    By_total -= coeff * dx;
+                }
+
+                // Biot-Savart for "dot" current (OUT OF page, -z direction)
+                // Opposite sign current
+                {
+                    double dx = xP - srcDotX;
+                    double dy = yP - srcDotY;
+                    double r2 = dx * dx + dy * dy;
+                    if (r2 < 1e-30) r2 = 1.0;
+
+                    double coeff = u0 * (-I_per_div) / (2.0 * std::numbers::pi * r2);
+                    Bx_total += coeff * dy;
+                    By_total -= coeff * dx;
+                }
+            }
+        }
+    }
+
+    // Convert B to H: H = B / mu_0
+    double Hx = attenuationFactor * Bx_total / u0;
+    double Hy = attenuationFactor * By_total / u0;
+
+    if (std::isnan(Hx) || std::isnan(Hy)) {
+        throw NaNResultException("NaN found in Sullivan's fringing field model");
+    }
+
+    ComplexFieldPoint complexFieldPoint;
+    complexFieldPoint.set_real(Hx);
+    complexFieldPoint.set_imaginary(Hy);
+    complexFieldPoint.set_point(inducedFieldPoint.get_point());
+    if (inducedFieldPoint.get_turn_index()) {
+        complexFieldPoint.set_turn_index(inducedFieldPoint.get_turn_index().value());
+    }
+    return complexFieldPoint;
 }
 
 
