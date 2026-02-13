@@ -122,11 +122,72 @@
 #include <vector>
 #include <memory>
 #include <map>
+#include <set>
 
 using json = nlohmann::json;
 using namespace MAS;
 
 namespace OpenMagnetics {
+
+// ============================================================================
+// IMP-1: SimpleMatrix — dense matrix solver for thermal circuit
+// For networks >100 nodes, consider sparse solver (Eigen::SparseLU)
+// ============================================================================
+class SimpleMatrix {
+private:
+    std::vector<std::vector<double>> data;
+    size_t rows_, cols_;
+public:
+    SimpleMatrix() : rows_(0), cols_(0) {}
+    SimpleMatrix(size_t rows, size_t cols, double val = 0.0) 
+        : data(rows, std::vector<double>(cols, val)), rows_(rows), cols_(cols) {}
+    size_t rows() const { return rows_; }
+    size_t cols() const { return cols_; }
+    double& operator()(size_t i, size_t j) { return data[i][j]; }
+    const double& operator()(size_t i, size_t j) const { return data[i][j]; }
+    void setZero() { for (auto& row : data) std::fill(row.begin(), row.end(), 0.0); }
+    void setRowZero(size_t row) { std::fill(data[row].begin(), data[row].end(), 0.0); }
+    void setColZero(size_t col) { for (size_t i = 0; i < rows_; ++i) data[i][col] = 0.0; }
+
+    // IMP-10: Non-throwing solve with success flag
+    static std::vector<double> solve(SimpleMatrix A, std::vector<double> b, bool& success) {
+        success = true;
+        size_t n = A.rows();
+        if (n == 0 || b.size() != n) { success = false; return std::vector<double>(n, 0.0); }
+        std::vector<std::vector<double>> aug(n, std::vector<double>(n + 1));
+        for (size_t i = 0; i < n; ++i) {
+            for (size_t j = 0; j < n; ++j) aug[i][j] = A(i, j);
+            aug[i][n] = b[i];
+        }
+        for (size_t col = 0; col < n; ++col) {
+            size_t maxRow = col;
+            double maxVal = std::abs(aug[col][col]);
+            for (size_t row = col + 1; row < n; ++row) {
+                if (std::abs(aug[row][col]) > maxVal) { maxVal = std::abs(aug[row][col]); maxRow = row; }
+            }
+            if (maxRow != col) std::swap(aug[col], aug[maxRow]);
+            if (std::abs(aug[col][col]) < 1e-15) { success = false; return std::vector<double>(n, 0.0); }
+            for (size_t row = col + 1; row < n; ++row) {
+                double factor = aug[row][col] / aug[col][col];
+                for (size_t j = col; j <= n; ++j) aug[row][j] -= factor * aug[col][j];
+            }
+        }
+        std::vector<double> x(n);
+        for (int i = static_cast<int>(n) - 1; i >= 0; --i) {
+            x[i] = aug[i][n];
+            for (size_t j = i + 1; j < n; ++j) x[i] -= aug[i][j] * x[j];
+            x[i] /= aug[i][i];
+        }
+        return x;
+    }
+    // Legacy throwing overload
+    static std::vector<double> solve(SimpleMatrix A, std::vector<double> b) {
+        bool s; auto r = solve(std::move(A), std::move(b), s);
+        if (!s) throw std::runtime_error("Matrix is singular or nearly singular");
+        return r;
+    }
+};
+
 
 // Old thermal types for compatibility with BasicPainter
 enum class ThermalNodeType {
@@ -207,7 +268,8 @@ public:
         double h_forced);
 };
 
-struct ThermalNode {
+// IMP-14: Deprecated — use ThermalNetworkNode
+struct [[deprecated("Use ThermalNetworkNode instead")]] ThermalNode {
     size_t id;
     ThermalNodeType type;
     std::string name;
@@ -279,7 +341,7 @@ struct TemperatureConfig {
     bool includeForcedConvection = false;
     double airVelocity = 0.0;           // Air velocity for forced convection (m/s)
     bool includeRadiation = true;
-    double surfaceEmissivity = 0.9;
+    double surfaceEmissivity = ThermalDefaults::kConvection_DefaultEmissivity; // IMP-2
     
     // Model resolution
     bool nodePerCoilLayer = false;      // Create separate nodes for coil layers
@@ -555,6 +617,16 @@ private:
      * Creates connections when turns are close to bobbin walls
      */
     void createTurnToBobbinConnections();
+
+    /**
+     * @brief Get set of quadrants that are already connected by conduction
+     * 
+     * Builds a set of (nodeId, face) pairs from existing resistance connections
+     * to prevent multiple connections on the same quadrant.
+     * 
+     * @return Set of pairs (nodeId, face) representing used quadrants
+     */
+    std::set<std::pair<size_t, ThermalNodeFace>> getConnectedQuadrants() const;
     
     /**
      * @brief Create turn-to-core conduction resistances based on distance
@@ -593,6 +665,9 @@ private:
      * Creates convection connections for exposed quadrants
      */
     void createConvectionConnections();
+    void createToroidalConvectionConnections(size_t ambientIdx, double h_conv);
+    void createPlanarConvectionConnections(size_t ambientIdx, double h_conv);
+    void createConcentricConvectionConnections(size_t ambientIdx, double h_conv);
     
     // =========================================================================
     // Helper Methods
@@ -622,6 +697,7 @@ private:
      */
     double calculateContactArea(const ThermalNodeQuadrant& q1, const ThermalNodeQuadrant& q2) const;
     
+    void recalculateConvectionResistances(const std::vector<double>& temperatures); // IMP-5
     void calculateSchematicScaling();
     void plotSchematic();
     ThermalResult solveThermalCircuit();

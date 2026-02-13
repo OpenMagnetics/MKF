@@ -144,8 +144,9 @@ void ThermalNetworkNode::initializeToroidalQuadrants(double wireWidth, double wi
     double tangentialFaceArea = wireWidth * lengthTangential;
     
     // Get node position for limit coordinate calculations
-    double nodeX = physicalCoordinates.size() >= 1 ? physicalCoordinates[0] : 0.0;
-    double nodeY = physicalCoordinates.size() >= 2 ? physicalCoordinates[1] : 0.0;
+    // IMP-9
+    double nodeX = safeCoord(physicalCoordinates, 0);
+    double nodeY = safeCoord(physicalCoordinates, 1);
     double nodeAngle = std::atan2(nodeY, nodeX);
     
     // Quadrant 0: RADIAL_INNER (facing toward center) - shorter length
@@ -262,8 +263,9 @@ void ThermalNetworkNode::initializeConcentricTurnQuadrants(double wireWidth, dou
     double topBottomArea = wireWidth * turnLength; // TOP/BOTTOM faces: width * length
     
     // Get node center position
-    double nodeX = physicalCoordinates.size() >= 1 ? physicalCoordinates[0] : 0.0;
-    double nodeY = physicalCoordinates.size() >= 2 ? physicalCoordinates[1] : 0.0;
+    // IMP-9
+    double nodeX = safeCoord(physicalCoordinates, 0);
+    double nodeY = safeCoord(physicalCoordinates, 1);
     
     // LEFT face (-X direction) - toward center/bobbin
     quadrants[0].face = ThermalNodeFace::RADIAL_INNER;
@@ -340,8 +342,9 @@ void ThermalNetworkNode::initializeConcentricCoreQuadrants(double width, double 
     quadrants[3].thermalConductivity = thermalCond;
     
     // Set limit coordinates for each quadrant (relative to node center)
-    double nodeX = physicalCoordinates[0];
-    double nodeY = physicalCoordinates[1];
+    // IMP-9
+    double nodeX = safeCoord(physicalCoordinates, 0);
+    double nodeY = safeCoord(physicalCoordinates, 1);
     
     // For toroidal insulation layers: limit coordinates should be angled based on node position
     // Calculate angle from origin to node center
@@ -406,8 +409,9 @@ void ThermalNetworkNode::initializeInsulationLayerQuadrants(double width, double
     quadrants[3].thermalConductivity = thermalCond;
     
     // Set limit coordinates for each quadrant (relative to node center)
-    double nodeX = physicalCoordinates[0];
-    double nodeY = physicalCoordinates[1];
+    // IMP-9
+    double nodeX = safeCoord(physicalCoordinates, 0);
+    double nodeY = safeCoord(physicalCoordinates, 1);
     
     // For toroidal insulation layers: limit coordinates should be angled based on node position
     // Calculate angle from origin to node center

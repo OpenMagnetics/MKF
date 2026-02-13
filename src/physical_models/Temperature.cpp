@@ -14,6 +14,8 @@
 #include <stdexcept>
 
 namespace OpenMagnetics {
+using namespace ThermalDefaults; // IMP-2
+
 
 // Debug flag for thermal model - set to true for verbose output
 constexpr bool THERMAL_DEBUG = false;
@@ -25,198 +27,7 @@ constexpr double CONTACT_THRESHOLD_FACTOR = 0.25;  // wireDiameter / 4
 // Wire Property Helper Functions (extract properties from Wire object locally)
 // ============================================================================
 
-/**
- * @brief Extract wire dimensions from Wire object
- * @return Pair of {width, height} in meters
- */
-static std::pair<double, double> getWireDimensions(const Wire& wire) {
-    double width = 0.001;   // Default 1mm
-    double height = 0.001;  // Default 1mm
-    
-    bool isRound = (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ);
-    
-    // Get wire dimensions
-    if (wire.get_conducting_diameter()) {
-        auto condDiam = wire.get_conducting_diameter().value();
-        if (condDiam.get_nominal()) {
-            width = condDiam.get_nominal().value();
-            height = width;  // Round wire
-        }
-    }
-    
-    if (wire.get_outer_diameter()) {
-        auto outerDiam = wire.get_outer_diameter().value();
-        if (outerDiam.get_nominal()) {
-            double outer = outerDiam.get_nominal().value();
-            if (!isRound) {
-                width = outer;  // For rectangular, width = radial
-            }
-        }
-    }
-    
-    // For rectangular wires, dimensions are estimated from conducting diameter
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
-        if (wire.get_outer_diameter()) {
-            auto outerDiam = wire.get_outer_diameter().value();
-            if (outerDiam.get_nominal()) {
-                width = outerDiam.get_nominal().value();
-                height = width * 0.5;  // Assume 2:1 aspect ratio
-            }
-        }
-    }
-    
-    return {width, height};
-}
-
-/**
- * @brief Check if wire is round (including litz)
- */
-static bool isRoundWire(const Wire& wire) {
-    return (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ);
-}
-
-/**
- * @brief Get wire thermal conductivity from Wire object
- */
-static double getWireThermalConductivity(const Wire& wire) {
-    double thermalCond = 385.0;  // Default copper
-    
-    if (wire.get_material()) {
-        auto materialVariant = wire.get_material().value();
-        if (std::holds_alternative<std::string>(materialVariant)) {
-            std::string materialName = std::get<std::string>(materialVariant);
-            try {
-                auto wireMaterial = find_wire_material_by_name(materialName);
-                auto tc = wireMaterial.get_thermal_conductivity();
-                if (tc && !tc->empty()) {
-                    thermalCond = (*tc)[0].get_value();
-                }
-            } catch (...) {
-                thermalCond = 385.0;
-            }
-        }
-    }
-    
-    return thermalCond;
-}
-
-/**
- * @brief Calculate minimum distance for conduction detection
- */
-static double getMinimumConductionDistance(double wireWidth, double wireHeight, bool round) {
-    if (round) {
-        return std::max(wireWidth, wireHeight) * 0.75;  // 75% of wire diameter
-    } else {
-        return std::min(wireWidth, wireHeight) * 0.75;  // 75% of wire thickness
-    }
-}
-
-/**
- * @brief Calculate maximum distance for convection detection
- */
-static double getMaximumConvectionDistance(double wireWidth, double wireHeight, bool round) {
-    if (round) {
-        return std::max(wireWidth, wireHeight);  // wire diameter
-    } else {
-        return std::min(wireWidth, wireHeight);  // min(width, height)
-    }
-}
-
-/**
- * @brief Simple matrix class for thermal circuit solver
- */
-class SimpleMatrix {
-private:
-    std::vector<std::vector<double>> data;
-    size_t rows_, cols_;
-    
-public:
-    SimpleMatrix() : rows_(0), cols_(0) {}
-    SimpleMatrix(size_t rows, size_t cols, double val = 0.0) 
-        : data(rows, std::vector<double>(cols, val)), rows_(rows), cols_(cols) {}
-    
-    size_t rows() const { return rows_; }
-    size_t cols() const { return cols_; }
-    
-    double& operator()(size_t i, size_t j) { return data[i][j]; }
-    const double& operator()(size_t i, size_t j) const { return data[i][j]; }
-    
-    void setZero() {
-        for (auto& row : data) {
-            std::fill(row.begin(), row.end(), 0.0);
-        }
-    }
-    
-    void setRowZero(size_t row) {
-        std::fill(data[row].begin(), data[row].end(), 0.0);
-    }
-    
-    void setColZero(size_t col) {
-        for (size_t i = 0; i < rows_; ++i) {
-            data[i][col] = 0.0;
-        }
-    }
-    
-    // Solve Ax = b using Gauss-Jordan elimination with partial pivoting
-    static std::vector<double> solve(SimpleMatrix A, std::vector<double> b) {
-        size_t n = A.rows();
-        if (n == 0 || b.size() != n) {
-            throw std::invalid_argument("Matrix dimensions mismatch");
-        }
-        
-        // Create augmented matrix [A|b]
-        std::vector<std::vector<double>> aug(n, std::vector<double>(n + 1));
-        for (size_t i = 0; i < n; ++i) {
-            for (size_t j = 0; j < n; ++j) {
-                aug[i][j] = A(i, j);
-            }
-            aug[i][n] = b[i];
-        }
-        
-        // Forward elimination with partial pivoting
-        for (size_t col = 0; col < n; ++col) {
-            // Find pivot
-            size_t maxRow = col;
-            double maxVal = std::abs(aug[col][col]);
-            for (size_t row = col + 1; row < n; ++row) {
-                if (std::abs(aug[row][col]) > maxVal) {
-                    maxVal = std::abs(aug[row][col]);
-                    maxRow = row;
-                }
-            }
-            
-            // Swap rows
-            if (maxRow != col) {
-                std::swap(aug[col], aug[maxRow]);
-            }
-            
-            // Check for singular matrix
-            if (std::abs(aug[col][col]) < 1e-15) {
-                throw std::runtime_error("Matrix is singular or nearly singular");
-            }
-            
-            // Eliminate column entries below pivot
-            for (size_t row = col + 1; row < n; ++row) {
-                double factor = aug[row][col] / aug[col][col];
-                for (size_t j = col; j <= n; ++j) {
-                    aug[row][j] -= factor * aug[col][j];
-                }
-            }
-        }
-        
-        // Back substitution
-        std::vector<double> x(n);
-        for (int i = static_cast<int>(n) - 1; i >= 0; --i) {
-            x[i] = aug[i][n];
-            for (size_t j = i + 1; j < n; ++j) {
-                x[i] -= aug[i][j] * x[j];
-            }
-            x[i] /= aug[i][i];
-        }
-        
-        return x;
-    }
-};
+// IMP-1: SimpleMatrix moved to Temperature.h
 
 // ============================================================================
 // CoolingUtils Implementation
@@ -430,8 +241,8 @@ void Temperature::extractWireProperties() {
                 if (thermalCond && !thermalCond->empty()) {
                     _wireThermalCond = (*thermalCond)[0].get_value();
                 }
-            } catch (...) {
-                _wireThermalCond = 385.0;
+            } catch (const std::exception& /* e */) { // IMP-8
+                _wireThermalCond = kWire_CopperThermalConductivity;
             }
         }
     }
@@ -1053,7 +864,7 @@ void Temperature::createInsulationLayerNodes() {
                     // Default: 0.1mm typical insulation thickness
                     layerWidth = 0.0001;
                 }
-            } catch (...) {
+            } catch (const std::exception& /* e */) { // IMP-8
                 // Default: 0.1mm typical insulation thickness
                 layerWidth = 0.0001;
             }
@@ -1068,7 +879,7 @@ void Temperature::createInsulationLayerNodes() {
             if (insulationMaterial.get_thermal_conductivity()) {
                 layerK = insulationMaterial.get_thermal_conductivity().value();
             }
-        } catch (...) {
+        } catch (const std::exception& /* e */) { // IMP-8
             // Use default if material cannot be resolved
         }
         
@@ -1247,11 +1058,11 @@ void Temperature::createTurnNodes() {
     bool defaultIsRoundWire = false;    std::optional<InsulationWireCoating> defaultWireCoating;
     
     if (wireOpt) {
-        auto [w, h] = getWireDimensions(wireOpt.value());
-        defaultWireWidth = w;
-        defaultWireHeight = h;
-        defaultWireThermalCond = getWireThermalConductivity(wireOpt.value());
-        defaultIsRoundWire = isRoundWire(wireOpt.value());
+        // IMP-3: Use cached member variables
+        defaultWireWidth = _wireWidth;
+        defaultWireHeight = _wireHeight;
+        defaultWireThermalCond = _wireThermalCond;
+        defaultIsRoundWire = _isRoundWire;
         defaultWireCoating = wireOpt.value().resolve_coating();
     }
     
@@ -2002,7 +1813,7 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                         auto& turn2 = (*turnsDescription)[turn2Idx];
                         auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
                         hasSolidInsulationBetween = !layersBetween.empty();
-                    } catch (...) {
+                    } catch (const std::exception& /* e */) { // IMP-8
                         // If we can't determine insulation layers (e.g., missing layer description),
                         // assume no solid insulation and create direct connection
                         hasSolidInsulationBetween = false;
@@ -2200,7 +2011,7 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                         auto& turn2 = (*turnsDescription)[turn2Idx];
                         auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
                         hasSolidInsulationBetween = !layersBetween.empty();
-                    } catch (...) {
+                    } catch (const std::exception& /* e */) { // IMP-8
                         // If we can't determine insulation layers (e.g., missing layer description),
                         // assume no solid insulation and create direct connection
                         hasSolidInsulationBetween = false;
@@ -2405,6 +2216,20 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
     }
 }
 
+std::set<std::pair<size_t, ThermalNodeFace>> Temperature::getConnectedQuadrants() const {
+    std::set<std::pair<size_t, ThermalNodeFace>> connectedQuadrants;
+    
+    for (const auto& res : _resistances) {
+        if (res.type == HeatTransferType::CONDUCTION) {
+            // Add both from and to quadrants
+            connectedQuadrants.insert({res.nodeFromId, res.quadrantFrom});
+            connectedQuadrants.insert({res.nodeToId, res.quadrantTo});
+        }
+    }
+    
+    return connectedQuadrants;
+}
+
 void Temperature::createTurnToBobbinConnections() {
     // Find bobbin nodes
     std::vector<size_t> bobbinNodeIndices;
@@ -2426,6 +2251,9 @@ void Temperature::createTurnToBobbinConnections() {
     
     double minConductionDist = getMinimumDistanceForConduction();
     
+    // Get already-connected quadrants to prevent multiple connections on same face
+    auto connectedQuadrants = getConnectedQuadrants();
+    
     // For each turn, create conduction connections for ALL quadrants touching any bobbin
     for (size_t turnIdx : turnNodeIndices) {
         auto& turnNode = _nodes[turnIdx];
@@ -2438,6 +2266,9 @@ void Temperature::createTurnToBobbinConnections() {
         
         for (const auto& quadrant : turnNode.quadrants) {
             if (quadrant.face == ThermalNodeFace::NONE) continue;
+            
+            // Skip if this quadrant is already connected to something else
+            if (connectedQuadrants.count({turnIdx, quadrant.face})) continue;
             
             // For concentric turns, calculate limit position based on horizontal/vertical offset
             // (not angled like toroidal turns) - use turn node's stored dimensions
@@ -2561,7 +2392,10 @@ void Temperature::createTurnToInsulationConnections() {
     }
     
     double minConductionDist = getMinimumDistanceForConduction();
-    
+
+    // Get already-connected quadrants to prevent multiple connections on same face
+    auto connectedQuadrants = getConnectedQuadrants();
+
     // Skip toroidal handling here - connections will be created after processing all insulation nodes
     // This ensures each turn connects only to the closest angular chunk of each layer
     if (!_isToroidal) {
@@ -2661,7 +2495,8 @@ void Temperature::createTurnToInsulationConnections() {
             }
             
             // Create connection to LEFT insulation layer (connects to turn's LEFT face)
-            if (hasLeft) {
+            // Skip if turn's LEFT face is already connected
+            if (hasLeft && !connectedQuadrants.count({turnIdx, ThermalNodeFace::RADIAL_INNER})) {
                 const auto& insNode = _nodes[leftCandidate.insulationIdx];
                 
                 ThermalResistanceElement r;
@@ -2688,7 +2523,8 @@ void Temperature::createTurnToInsulationConnections() {
             }
             
             // Create connection to RIGHT insulation layer (connects to turn's RIGHT face)
-            if (hasRight) {
+            // Skip if turn's RIGHT face is already connected
+            if (hasRight && !connectedQuadrants.count({turnIdx, ThermalNodeFace::RADIAL_OUTER})) {
                 const auto& insNode = _nodes[rightCandidate.insulationIdx];
                 
                 ThermalResistanceElement r;
@@ -3165,22 +3001,16 @@ void Temperature::createConvectionConnections() {
     size_t ambientIdx = _nodes.size() - 1;
     
     // Extract wire properties locally for convection calculations
-    auto wireOpt = extractWire();
-    double wireWidth = 0.001;  // Default 1mm
-    double wireHeight = 0.001;
-    bool isRound = false;
-    if (wireOpt) {
-        auto [w, h] = getWireDimensions(wireOpt.value());
-        wireWidth = w;
-        wireHeight = h;
-        isRound = isRoundWire(wireOpt.value());
-    }
+    // IMP-3: Use cached member variables
+    double wireWidth = _wireWidth;
+    double wireHeight = _wireHeight;
+    bool isRound = _isRoundWire;
     
-    double maxConvectionDist = getMaximumConvectionDistance(wireWidth, wireHeight, isRound);
-    double minConductionDist = getMinimumConductionDistance(wireWidth, wireHeight, isRound);
+    double maxConvectionDist = getMaximumDistanceForConvection();
+    double minConductionDist = getMinimumDistanceForConduction();
     
     // Get convection coefficient
-    double surfaceTemp = _config.ambientTemperature + 30.0;
+    double surfaceTemp = _config.ambientTemperature + kConvection_InitialDeltaT;
     double h_conv;
     
     if (_config.includeForcedConvection) {
@@ -3197,37 +3027,41 @@ void Temperature::createConvectionConnections() {
         h_conv += h_rad;
     }
     
+    // IMP-4: Dispatch to geometry-specific method
     if (_isToroidal) {
-        // Get core dimensions for radial height calculations
-        auto core = _magnetic.get_core();
-        auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
-        double coreInnerR = dimensions["B"] / 2.0;
-        double coreOuterR = dimensions["A"] / 2.0;
-        
-        // Build a map of which quadrants are already connected by conduction
-        // Key: "nodeId_quadrantFace" -> true if connected
-        std::set<std::string> connectedQuadrants;
-        for (const auto& res : _resistances) {
-            if (res.type == HeatTransferType::CONDUCTION) {
-                std::string key1 = std::to_string(res.nodeFromId) + "_" + 
-                                   std::string(magic_enum::enum_name(res.quadrantFrom));
-                std::string key2 = std::to_string(res.nodeToId) + "_" + 
-                                   std::string(magic_enum::enum_name(res.quadrantTo));
-                connectedQuadrants.insert(key1);
-                connectedQuadrants.insert(key2);
-            }
+        createToroidalConvectionConnections(ambientIdx, h_conv);
+    } else if (_isPlanar) {
+        createPlanarConvectionConnections(ambientIdx, h_conv);
+    } else {
+        createConcentricConvectionConnections(ambientIdx, h_conv);
+    }
+}
+
+// IMP-4: Toroidal convection connections
+void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double h_conv) {
+    // IMP-4: Local variables (from original preamble)
+    double maxConvectionDist = getMaximumDistanceForConvection();
+    double minConductionDist = getMinimumDistanceForConduction();
+
+    auto core = _magnetic.get_core();
+    auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+    double coreInnerR = dimensions["B"] / 2.0;
+    double coreOuterR = dimensions["A"] / 2.0;
+
+    std::set<std::string> connectedQuadrants;
+    for (const auto& res : _resistances) {
+        if (res.type == HeatTransferType::CONDUCTION) {
+            connectedQuadrants.insert(std::to_string(res.nodeFromId) + "_" + std::string(magic_enum::enum_name(res.quadrantFrom)));
+            connectedQuadrants.insert(std::to_string(res.nodeToId) + "_" + std::string(magic_enum::enum_name(res.quadrantTo)));
         }
-        
-        // Check if insulation layers exist in the model
-        bool hasInsulationLayers = false;
-        for (size_t i = 0; i < _nodes.size(); i++) {
-            if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) {
-                hasInsulationLayers = true;
-                break;
-            }
-        }
-        
-        // For each turn node, check each quadrant for exposure to air
+    }
+
+    bool hasInsulationLayers = false;
+    for (size_t i = 0; i < _nodes.size(); i++) {
+        if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) { hasInsulationLayers = true; break; }
+    }
+
+    // For each turn node, check each quadrant for exposure to air
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::TURN) continue;
             
@@ -3564,7 +3398,10 @@ void Temperature::createConvectionConnections() {
                 }
             }
         }
-    } else if (_isPlanar) {
+}
+
+// IMP-4: Planar convection connections
+void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_conv) {
         // ============================================================================
         // Planar case: Turn quadrants connect to closest FR4 layer (conduction),
         // except top-most quadrants of top-most turns and bottom-most quadrants
@@ -3958,7 +3795,19 @@ void Temperature::createConvectionConnections() {
                 }
             }
         }
-    } else {
+}
+
+// IMP-4: Concentric convection connections
+void Temperature::createConcentricConvectionConnections(size_t ambientIdx, double h_conv) {
+    // IMP-4: Local variables
+    std::set<std::string> connectedQuadrants;
+    for (const auto& res : _resistances) {
+        if (res.type == HeatTransferType::CONDUCTION) {
+            connectedQuadrants.insert(std::to_string(res.nodeFromId) + "_" + std::string(magic_enum::enum_name(res.quadrantFrom)));
+            connectedQuadrants.insert(std::to_string(res.nodeToId) + "_" + std::string(magic_enum::enum_name(res.quadrantTo)));
+        }
+    }
+
         // Check if we have concentric core nodes
         bool hasConcentricCoreNodes = false;
         for (const auto& node : _nodes) {
@@ -4141,7 +3990,6 @@ void Temperature::createConvectionConnections() {
                 _resistances.push_back(r);
             }
         }
-    }
 }
 
 // ============================================================================
@@ -4228,7 +4076,7 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
         }
         
         return totalLayerResistance;
-    } catch (...) {
+    } catch (const std::exception& /* e */) { // IMP-8
         return 0.001;
     }
 }
@@ -4346,6 +4194,31 @@ void Temperature::plotSchematic() {
 // Solver
 // ============================================================================
 
+
+// IMP-5: Recalculate temperature-dependent convection/radiation resistances
+void Temperature::recalculateConvectionResistances(const std::vector<double>& temperatures) {
+    for (auto& res : _resistances) {
+        if (res.nodeFromId >= temperatures.size()) continue;
+        double surfaceTemp = temperatures[res.nodeFromId];
+        double ambientTemp = _config.ambientTemperature;
+        if (res.type == HeatTransferType::NATURAL_CONVECTION && res.area > 0) {
+            double charLength = std::sqrt(std::max(res.area, 1e-9));
+            double h_new = ThermalResistance::calculateNaturalConvectionCoefficient(
+                surfaceTemp, ambientTemp, charLength, SurfaceOrientation::VERTICAL);
+            if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
+        } else if (res.type == HeatTransferType::FORCED_CONVECTION && res.area > 0) {
+            double charLength = std::sqrt(std::max(res.area, 1e-9));
+            double h_new = ThermalResistance::calculateForcedConvectionCoefficient(
+                _config.airVelocity, charLength, surfaceTemp);
+            if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
+        } else if (res.type == HeatTransferType::RADIATION && res.area > 0) {
+            double h_rad = ThermalResistance::calculateRadiationCoefficient(
+                surfaceTemp, ambientTemp, _config.surfaceEmissivity);
+            if (h_rad > 0) res.resistance = 1.0 / (h_rad * res.area);
+        }
+    }
+}
+
 ThermalResult Temperature::solveThermalCircuit() {
     size_t n = _nodes.size();
     if (n == 0) {
@@ -4397,6 +4270,9 @@ ThermalResult Temperature::solveThermalCircuit() {
     std::vector<double> oldTemperatures = temperatures;
     
     while (iteration < _config.maxIterations && !converged) {
+        // IMP-5
+        if (iteration > 0) { recalculateConvectionResistances(temperatures); }
+
         SimpleMatrix G(n, n, 0.0);
         
         for (const auto& res : _resistances) {
@@ -4428,7 +4304,21 @@ ThermalResult Temperature::solveThermalCircuit() {
         }
         
         try {
-            temperatures = SimpleMatrix::solve(G, powerInputs);
+            // IMP-10: Non-throwing solve
+            bool solveSuccess = true;
+            temperatures = SimpleMatrix::solve(G, powerInputs, solveSuccess);
+            if (!solveSuccess) {
+                ThermalResult failResult;
+                failResult.converged = false;
+                failResult.methodUsed = "Quadrant-based Thermal Equivalent Circuit (SINGULAR)";
+                failResult.maximumTemperature = _config.ambientTemperature;
+                failResult.averageCoreTemperature = _config.ambientTemperature;
+                failResult.averageCoilTemperature = _config.ambientTemperature;
+                failResult.totalThermalResistance = 0;
+                failResult.iterationsToConverge = iteration;
+                failResult.thermalResistances = _resistances;
+                return failResult;
+            }
         } catch (const std::exception& e) {
             if (THERMAL_DEBUG) {
                 std::cerr << "Solver error: " << e.what() << std::endl;
