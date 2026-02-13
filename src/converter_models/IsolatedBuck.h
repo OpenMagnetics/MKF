@@ -4,6 +4,7 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
 
 
 namespace OpenMagnetics {
@@ -11,12 +12,22 @@ using namespace MAS;
 
 
 class IsolatedBuck : public MAS::IsolatedBuck, public Topology {
+private:
+    int numPeriodsToExtract = 5;
+    int numSteadyStatePeriods = 5;
+
 public:
     bool _assertErrors = false;
 
     IsolatedBuck(const json& j);
     IsolatedBuck() {
     };
+
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
     bool run_checks(bool assert = false) override;
 
@@ -26,7 +37,43 @@ public:
 
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, const IsolatedBuckOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
-    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(const std::vector<double>& turnsRatios, double magnetizingInductance);
+
+    /**
+     * @brief Generate an ngspice circuit for this Isolated Buck (Flybuck) converter
+     * 
+     * @param turnsRatios Turns ratios for secondary windings
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
+     * @param operatingPointIndex Which operating point to simulate
+     * @return SPICE netlist string
+     */
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the Isolated Buck converter and extract operating points
+     * 
+     * @param turnsRatios Turns ratios for each winding
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
+    
+    /**
+     * @brief Simulate and extract topology-level waveforms for converter validation
+     * 
+     * @param turnsRatios Turns ratios for each winding
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
 
 };
 

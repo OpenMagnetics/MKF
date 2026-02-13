@@ -132,3 +132,5 @@ docs/api/html/
 site/
 tests/testData
 src/tools
+
+output/

@@ -1041,8 +1041,8 @@ TEST_CASE("Temperature: Radiation Effect", "[temperature][smoke-test]") {
     
     REQUIRE(result1.converged);
     REQUIRE(result2.converged);
-    REQUIRE(result2.maximumTemperature <= result1.maximumTemperature * 1.001);
-    REQUIRE(result2.totalThermalResistance <= result1.totalThermalResistance * 1.001);
+    REQUIRE(result2.maximumTemperature <= result1.maximumTemperature);
+    REQUIRE(result2.totalThermalResistance <= result1.totalThermalResistance);
 }
 
 TEST_CASE("Temperature: Segment Count", "[temperature][smoke-test]") {
@@ -1419,7 +1419,7 @@ TEST_CASE("Temperature: Maniktala Formula Comparison", "[temperature][smoke-test
             REQUIRE(result.converged);
             
             double error = std::abs(result.totalThermalResistance - Rth_maniktala) / Rth_maniktala;
-            REQUIRE(error < 3.5);
+            REQUIRE(error < 3.0);
         }
     }
 }
@@ -1601,10 +1601,10 @@ TEST_CASE("Temperature: Linear Scaling Validation", "[temperature][smoke-test]")
         avgRth /= rthValues.size();
         
         
-        // Allow 50% deviation in Rth (core losses don't scale linearly with current)
+        // Allow 30% deviation in Rth (core losses don't scale linearly with current)
         for (double r : rthValues) {
             double deviation = std::abs(r - avgRth) / avgRth;
-            REQUIRE(deviation < 0.50);
+            REQUIRE(deviation < 0.30);
         }
     }
 }
@@ -1986,7 +1986,7 @@ TEST_CASE("Temperature: Van den Bossche E42 Validation", "[temperature][smoke-te
         // Reference paper reports Rth ≈ 10-14 K/W
         // Allow broader range since model uses actual operating conditions
         REQUIRE(rth > 1.0);
-        REQUIRE(rth < 100.0);
+        REQUIRE(rth < 50.0);
     }
 }
 
@@ -2047,11 +2047,11 @@ TEST_CASE("Temperature: Power-Temperature Linearity", "[temperature][smoke-test]
     avgRth /= thermalResistances.size();
     
     
-    // All thermal resistances should be within 50% of average
+    // All thermal resistances should be within 30% of average
     // (allowing for temperature-dependent convection and non-linear core losses)
     for (double rth : thermalResistances) {
         double deviation = std::abs(rth - avgRth) / avgRth;
-        REQUIRE(deviation < 0.50);
+        REQUIRE(deviation < 0.25);
     }
 }
 
@@ -2193,7 +2193,7 @@ TEST_CASE("Temperature: Three Winding Transformer", "[temperature][smoke-test]")
     REQUIRE(result.maximumTemperature > config.ambientTemperature);
     // Thermal resistance varies with actual operating conditions
     REQUIRE(result.totalThermalResistance > 1.0);
-    REQUIRE(result.totalThermalResistance < 120.0);
+    REQUIRE(result.totalThermalResistance < 100.0);
 }
 
 TEST_CASE("Temperature: Toroidal Inductor Rectangular Wires", "[temperature][round-winding-window][smoke-test]") {
@@ -2828,13 +2828,9 @@ TEST_CASE("Temperature: Concentric with Insulation Layers and Forced Convection"
         }
     }
     
-    // Verify forced convection provides better cooling (or at least check both converged)
-    // Note: After thermal model improvements, both should give reasonable results
-    REQUIRE(resultForced.converged);
-    REQUIRE(resultNatural.converged);
-    // Forced convection should generally be better, but allow some tolerance
-    // REQUIRE(resultForced.maximumTemperature < resultNatural.maximumTemperature);
-    // REQUIRE(resultForced.totalThermalResistance < resultNatural.totalThermalResistance);
+    // Verify forced convection provides better cooling
+    REQUIRE(resultForced.maximumTemperature < resultNatural.maximumTemperature);
+    REQUIRE(resultForced.totalThermalResistance < resultNatural.totalThermalResistance);
     
     // Export temperature field visualization
     exportTemperatureFieldSvg("concentric_insulation_forced_convection", magnetic, resultForced.nodeTemperatures, configForced.ambientTemperature);
