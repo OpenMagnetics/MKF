@@ -70,11 +70,13 @@ public:
      * 
      * @param turnsRatios Turns ratios for each winding
      * @param magnetizingInductance Magnetizing inductance in H
-     * @return Vector of OperatingPoints extracted from simulation
+     * @param numberOfPeriods Number of switching periods to simulate (default 2)
+     * @return Vector of ConverterWaveforms extracted from simulation
      */
     std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
-        double magnetizingInductance);
+        double magnetizingInductance,
+        size_t numberOfPeriods = 2);
 
 };
 

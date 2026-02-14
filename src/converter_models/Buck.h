@@ -70,9 +70,12 @@ public:
      * objects for further processing.
      * 
      * @param inductance Inductance in H
+     * @param numberOfPeriods Number of switching periods to simulate (default 2)
      * @return Vector of OperatingPoints extracted from simulation waveforms
      */
-    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(double inductance);
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
+        double inductance,
+        size_t numberOfPeriods = 2);
 };
 
 class AdvancedBuck : public Buck {

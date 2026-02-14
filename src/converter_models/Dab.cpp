@@ -682,11 +682,80 @@ std::vector<OperatingPoint> Dab::simulate_and_extract_operating_points(
 
 std::vector<ConverterWaveforms> Dab::simulate_and_extract_topology_waveforms(
     const std::vector<double>& turnsRatios,
-    double magnetizingInductance)
+    double magnetizingInductance,
+    size_t numberOfPeriods)
 {
-    // Placeholder: run NgSpice and extract topology-level waveforms
-    std::vector<ConverterWaveforms> result;
-    return result;
+    std::vector<ConverterWaveforms> results;
+    
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        throw std::runtime_error("ngspice is not available for simulation");
+    }
+    
+    // Save original value and set the requested number of periods
+    int originalNumPeriodsToExtract = get_num_periods_to_extract();
+    set_num_periods_to_extract(static_cast<int>(numberOfPeriods));
+    
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltagesNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+    
+    for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+        for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+            auto opPoint = get_operating_points()[opIndex];
+            
+            std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
+            double switchingFrequency = opPoint.get_switching_frequency();
+            
+            SimulationConfig config;
+            config.frequency = switchingFrequency;
+            config.extractOnePeriod = true;
+            config.numberOfPeriods = numberOfPeriods;
+            config.keepTempFiles = false;
+            
+            auto simResult = runner.run_simulation(netlist, config);
+            if (!simResult.success) {
+                throw std::runtime_error("DAB simulation failed: " + simResult.errorMessage);
+            }
+            
+            std::map<std::string, size_t> nameToIndex;
+            for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+                std::string lower = simResult.waveformNames[i];
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                nameToIndex[lower] = i;
+            }
+            auto getWaveform = [&](const std::string& name) -> Waveform {
+                std::string lower = name;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                auto it = nameToIndex.find(lower);
+                if (it != nameToIndex.end()) return simResult.waveforms[it->second];
+                return Waveform();
+            };
+            
+            ConverterWaveforms wf;
+            wf.set_switching_frequency(switchingFrequency);
+            std::string name = inputVoltagesNames[inputVoltageIndex] + " input";
+            if (get_operating_points().size() > 1) {
+                name += " op. point " + std::to_string(opIndex);
+            }
+            wf.set_operating_point_name(name);
+            
+            wf.set_input_voltage(getWaveform("v(pri_out)"));
+            wf.set_input_current(getWaveform("i(vpri_sense)"));
+            
+            if (!turnsRatios.empty()) {
+                wf.get_mutable_output_voltages().push_back(getWaveform("v(trafo_sec_a)"));
+                wf.get_mutable_output_currents().push_back(getWaveform("i(vdc2)"));
+            }
+            
+            results.push_back(wf);
+        }
+    }
+    
+    // Restore original value
+    set_num_periods_to_extract(originalNumPeriodsToExtract);
+    
+    return results;
 }
 
 

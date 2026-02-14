@@ -222,6 +222,8 @@ inline bool operator==(Inputs lhs, Inputs rhs) {
                    lhs.get_operating_points().size() == rhs.get_operating_points().size();
 
     if (isEqual) {
+        // FIXED: BUG-09 — Check sizes match
+        if (lhs.get_design_requirements().get_turns_ratios().size() != rhs.get_design_requirements().get_turns_ratios().size()) return false;
         for (size_t i = 0; i < lhs.get_design_requirements().get_turns_ratios().size(); ++i) {
             isEqual &= resolve_dimensional_values(lhs.get_design_requirements().get_turns_ratios()[i]) == resolve_dimensional_values(rhs.get_design_requirements().get_turns_ratios()[i]);
         }

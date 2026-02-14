@@ -324,7 +324,12 @@ namespace OpenMagnetics {
 
     std::vector<ConverterWaveforms> IsolatedBuck::simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
-        double magnetizingInductance) {
+        double magnetizingInductance,
+        size_t numberOfPeriods) {
+
+    // Save original value and set the requested number of periods
+    int originalNumPeriodsToExtract = get_num_periods_to_extract();
+    set_num_periods_to_extract(static_cast<int>(numberOfPeriods));
 
     auto operatingPoints = process_operating_points(turnsRatios, magnetizingInductance);
     std::vector<ConverterWaveforms> results;
@@ -353,6 +358,10 @@ namespace OpenMagnetics {
         }
         results.push_back(wf);
     }
+
+    // Restore original value
+    set_num_periods_to_extract(originalNumPeriodsToExtract);
+
     return results;
 }
 

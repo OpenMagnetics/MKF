@@ -66,9 +66,12 @@ public:
      * @brief Simulate the Boost converter and extract operating points from waveforms
      * 
      * @param inductance Inductance in H
+     * @param numberOfPeriods Number of switching periods to simulate (default 2)
      * @return Vector of ConverterWaveforms extracted from simulation
      */
-    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(double inductance);
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
+        double inductance,
+        size_t numberOfPeriods = 2);
 };
 
 class AdvancedBoost : public Boost {

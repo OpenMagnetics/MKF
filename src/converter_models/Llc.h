@@ -104,7 +104,8 @@ public:
 
     std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,
-        double magnetizingInductance);
+        double magnetizingInductance,
+        size_t numberOfPeriods = 2);
 };
 
 
