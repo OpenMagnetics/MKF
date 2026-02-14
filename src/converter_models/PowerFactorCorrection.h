@@ -133,6 +133,15 @@ public:
      */
     double calculate_peak_current(double vinPeak, double inductance);
 
+    /**
+     * @brief Determine the actual operating mode based on inductance value.
+     *
+     * @param inductance The inductance value to evaluate
+     * @return String indicating the actual mode: "Continuous Conduction Mode",
+     *         "Critical Conduction Mode", or "Discontinuous Conduction Mode"
+     */
+    std::string determine_actual_mode(double inductance);
+
     // Accessors for PFC parameters
     void set_input_voltage(DimensionWithTolerance value) { _inputVoltage = value; }
     DimensionWithTolerance get_input_voltage() const { return _inputVoltage; }
