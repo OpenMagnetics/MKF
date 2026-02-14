@@ -351,6 +351,17 @@ struct TemperatureConfig {
     bool plotSchematic = true;          // Whether to generate schematic visualization
     std::string schematicOutputPath = "output/thermal_schematic.svg";
     
+    // =========================================================================
+    // IMP-NEW-03: Configurable minimum natural convection coefficient
+    // =========================================================================
+    double minimumNaturalConvectionH = 2.0;  // W/(m2 K), was 5.0
+    
+    // =========================================================================
+    // IMP-NEW-05: Configurable turn-to-bobbin interface conductivity
+    // =========================================================================
+    // WHY: k_air=0.025 is too conservative when turn rests on bobbin.
+    double turnToBobbinInterfaceConductivity = 0.1;  // W/(m K)
+    
     // ===== NEW: MAS Cooling Configuration =====
     // Optional MAS cooling object (from OperatingConditions)
     std::optional<MAS::Cooling> masCooling;
@@ -394,6 +405,19 @@ private:
     bool _isPlanar = false;         // True for planar windings (PCB traces)
     bool _isRoundWire = false;      // True for round wires and litz
     std::optional<InsulationWireCoating> _wireCoating;  // Wire coating for thermal calculations
+    
+    // =========================================================================
+    // IMP-NEW-06: Per-winding wire properties for multi-winding transformers
+    // =========================================================================
+    struct WindingWireProperties {
+        double wireWidth = 0.001;
+        double wireHeight = 0.001;
+        double wireThermalCond = 385.0;
+        bool isRoundWire = false;
+        bool isPlanar = false;
+        std::optional<InsulationWireCoating> wireCoating;
+    };
+    std::map<size_t, WindingWireProperties> _perWindingWireProps;
     
     double getMinimumDistanceForConduction() const {
         // Threshold for conduction: accounts for actual gap between surfaces
@@ -696,6 +720,27 @@ private:
      * @brief Calculate contact area between two quadrants
      */
     double calculateContactArea(const ThermalNodeQuadrant& q1, const ThermalNodeQuadrant& q2) const;
+    
+    // IMP-NEW-11: Common turn-pair geometry evaluation helper
+    struct TurnPairGeometry {
+        double centerDistance = 0.0;
+        double surfaceDistance = 0.0;
+        double thresholdDistance = 0.0;
+        bool shouldConnect = false;
+    };
+    TurnPairGeometry evaluateTurnPairDistance(
+        const ThermalNetworkNode& n1, const ThermalNetworkNode& n2) const {
+        TurnPairGeometry g;
+        double dx = n1.physicalCoordinates[0] - n2.physicalCoordinates[0];
+        double dy = n1.physicalCoordinates[1] - n2.physicalCoordinates[1];
+        g.centerDistance = std::sqrt(dx*dx + dy*dy);
+        double ext1 = std::min(n1.dimensions.width, n1.dimensions.height) / 2.0;
+        double ext2 = std::min(n2.dimensions.width, n2.dimensions.height) / 2.0;
+        g.thresholdDistance = std::min(ext1, ext2) * 0.5;
+        g.surfaceDistance = (g.centerDistance < 1e-9) ? 0.0 : g.centerDistance - ext1 - ext2;
+        g.shouldConnect = (g.surfaceDistance <= g.thresholdDistance);
+        return g;
+    }
     
     void recalculateConvectionResistances(const std::vector<double>& temperatures); // IMP-5
     void calculateSchematicScaling();

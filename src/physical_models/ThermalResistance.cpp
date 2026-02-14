@@ -88,8 +88,11 @@ double ThermalResistance::calculateNaturalConvectionCoefficient(
     // Heat transfer coefficient: h = Nu * k / L
     double h = Nu * air.thermalConductivity / characteristicLength;
     
-    // Typical range for natural convection: 5-25 W/(m²·K)
-    return std::max(h, 5.0);  // Minimum practical value
+    // IMP-NEW-03: Lowered minimum from 5.0 to 2.0 W/(m2 K)
+    // WHY: For small dT or small components, real h can be < 5.
+    //      Clamping at 5.0 overestimates cooling -> under-predicts temperatures.
+    // PREVIOUS: return std::max(h, 5.0);
+    return std::max(h, 2.0); // Lowered minimum practical value
 }
 
 double ThermalResistance::calculateForcedConvectionCoefficient(
@@ -138,6 +141,14 @@ double ThermalResistance::calculateRadiationCoefficient(
     double h_rad = emissivity * constants.stefanBoltzmannConstant * (Ts*Ts + Ta*Ta) * (Ts + Ta);
     
     return h_rad;
+}
+
+// IMP-NEW-08: View-factor-aware radiation coefficient
+double ThermalResistance::calculateRadiationCoefficientWithViewFactor(
+    double surfaceTemperature, double ambientTemperature,
+    double emissivity, double viewFactor) {
+    double h_rad = calculateRadiationCoefficient(surfaceTemperature, ambientTemperature, emissivity);
+    return h_rad * std::clamp(viewFactor, 0.0, 1.0);
 }
 
 double ThermalResistance::getMaterialThermalConductivity(const std::string& materialName) {

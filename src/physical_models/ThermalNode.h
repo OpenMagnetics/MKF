@@ -356,6 +356,10 @@ public:
     // NEW: Fixed temperature flag for cold plate / potting with fixed temperature
     bool isFixedTemperature = false;
     
+    // IMP-NEW-10: Thermal capacitance for future transient support
+    // C_th = rho * c_p * V [J/K]. Not used by steady-state solver.
+    double thermalCapacitance = 0.0;
+    
     /**
      * @brief Default constructor
      */

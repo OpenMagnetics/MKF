@@ -44,8 +44,11 @@ struct FluidProperties {
         // Thermal conductivity (linear approximation)
         air.thermalConductivity = 0.0241 + 7.5e-5 * temperature;
         
-        // Prandtl number (relatively constant for air)
-        air.prandtlNumber = 0.71;
+        // IMP-NEW-02: Temperature-dependent Prandtl number
+        // Pr varies from ~0.715 (0C) to ~0.700 (200C) per Incropera Table A.4
+        // PREVIOUS: air.prandtlNumber = 0.71;
+        air.prandtlNumber = 0.7150 - 7.5e-5 * temperature;
+        air.prandtlNumber = std::clamp(air.prandtlNumber, 0.680, 0.720);
         
         // Thermal expansion coefficient (ideal gas)
         air.thermalExpansionCoefficient = 1.0 / T;
@@ -144,6 +147,28 @@ public:
      * @brief Get thermal conductivity from insulation material
      */
     static double getInsulationMaterialThermalConductivity(const InsulationMaterial& material);
+    
+    // IMP-NEW-07: Proper characteristic length for convection
+    static double calculateCharacteristicLength(
+        double surfaceArea, double height, double width, SurfaceOrientation orientation) {
+        switch (orientation) {
+            case SurfaceOrientation::VERTICAL: return std::max(height, 1e-4);
+            case SurfaceOrientation::HORIZONTAL_TOP:
+            case SurfaceOrientation::HORIZONTAL_BOTTOM: {
+                if (width > 0 && surfaceArea > 0) {
+                    double depth = surfaceArea / std::max(width, 1e-6);
+                    return std::max(surfaceArea / (2.0*(width+depth)), 1e-4);
+                }
+                return std::max(std::sqrt(std::max(surfaceArea,1e-12))/4.0, 1e-4);
+            }
+            default: return std::max(height, 1e-4);
+        }
+    }
+    
+    // IMP-NEW-08: View-factor-aware radiation coefficient
+    static double calculateRadiationCoefficientWithViewFactor(
+        double surfaceTemperature, double ambientTemperature,
+        double emissivity, double viewFactor);
 };
 
 class CoreThermalResistanceModel {
