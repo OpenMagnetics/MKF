@@ -389,7 +389,7 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
 
-    std::vector<ConverterWaveforms> Buck::simulate_and_extract_topology_waveforms(double inductance) {
+    std::vector<ConverterWaveforms> Buck::simulate_and_extract_topology_waveforms(double inductance, size_t numberOfPeriods) {
     
     std::vector<ConverterWaveforms> results;
     
@@ -397,6 +397,10 @@ namespace OpenMagnetics {
     if (!runner.is_available()) {
         throw std::runtime_error("ngspice is not available for simulation");
     }
+    
+    // Save original value and set the requested number of periods
+    int originalNumPeriodsToExtract = get_num_periods_to_extract();
+    set_num_periods_to_extract(static_cast<int>(numberOfPeriods));
     
     std::vector<double> inputVoltages;
     std::vector<std::string> inputVoltagesNames;
@@ -412,7 +416,7 @@ namespace OpenMagnetics {
             SimulationConfig config;
             config.frequency = switchingFrequency;
             config.extractOnePeriod = true;
-            config.numberOfPeriods = get_num_periods_to_extract();
+            config.numberOfPeriods = numberOfPeriods;
             config.keepTempFiles = false;
             
             auto simResult = runner.run_simulation(netlist, config);
@@ -451,6 +455,9 @@ namespace OpenMagnetics {
             results.push_back(wf);
         }
     }
+    
+    // Restore original value
+    set_num_periods_to_extract(originalNumPeriodsToExtract);
     
     return results;
 }

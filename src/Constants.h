@@ -108,6 +108,20 @@ namespace ThermalDefaults {
     constexpr double kSolver_MinConductance = 1e-9;            // [W/K]
 } // namespace ThermalDefaults
 
+
+// Input processing constants
+namespace InputConstants {
+    constexpr double kPowerConductionThreshold = 0.01;
+    constexpr double kVoltageCloseToZeroThreshold = 0.05;
+    constexpr double kZeroCrossingPointRatio = 0.02;
+    constexpr double kNonConductingPointRatio = 0.1;
+    constexpr double kSlopeComparisonThreshold = 0.01;
+    constexpr double kSinusoidalFitErrorThreshold = 0.05;
+    constexpr double kDutyCycleLowerBound = 0.03;
+    constexpr double kDutyCycleUpperBound = 0.97;
+    constexpr double kDutyCycleOnThreshold = 0.05;
+}
+
 } // namespace OpenMagnetics
 
 #endif
