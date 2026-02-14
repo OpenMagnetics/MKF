@@ -5,7 +5,7 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/WindingProximityEffectLosses.h"
 
-using namespace MAS;
+using namespace MAS; // QUAL-001 TODO: qualify types and remove
 
 namespace OpenMagnetics {
 

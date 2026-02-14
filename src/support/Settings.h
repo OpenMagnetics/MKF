@@ -380,4 +380,32 @@ class Settings
 
 
     };
+
+
+// ARCH-002: RAII guard for exception-safe Settings mutations
+template<typename T>
+class SettingsGuard {
+public:
+    using GetterFn = T (Settings::*)() const;
+    using SetterFn = void (Settings::*)(T);
+    
+    SettingsGuard(Settings& settings, GetterFn getter, SetterFn setter, T newValue)
+        : _settings(settings), _setter(setter) {
+        _previousValue = (settings.*getter)();
+        (settings.*setter)(newValue);
+    }
+    
+    ~SettingsGuard() {
+        (_settings.*_setter)(_previousValue);
+    }
+    
+    SettingsGuard(const SettingsGuard&) = delete;
+    SettingsGuard& operator=(const SettingsGuard&) = delete;
+
+private:
+    Settings& _settings;
+    SetterFn _setter;
+    T _previousValue;
+};
+
 } // namespace OpenMagnetics

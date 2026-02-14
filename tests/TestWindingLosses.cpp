@@ -189,9 +189,9 @@ namespace TestWindingLossesRound {
              {600000, 0.0048621}, {700000, 0.0051882}, {800000, 0.0054789}, {900000, 0.0057414}, {1000000, 0.0059805}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
         // SKIP: Model shows ~118% error at 3MHz. High frequency proximity effect needs improvement.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal.json", 22,
@@ -202,9 +202,9 @@ namespace TestWindingLossesRound {
              {3000000, 0.34496}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
         // SKIP: Model shows ~101% error at 20kHz due to fringing effect overestimation.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing.json", 22,
             {{1, 167.89}, {10000, 169.24}, {20000, 174.77}, {30000, 183.33}, {40000, 194.12},
@@ -213,9 +213,9 @@ namespace TestWindingLossesRound {
              {600000, 649.64}, {700000, 699.9}, {800000, 746.3}, {900000, 789.66}, {1000000, 830.49}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
         // SKIP: Model shows ~56% error at higher frequencies with distant fringing.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Worst error in this one - use 40% tolerance
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far.json", 22,
@@ -320,9 +320,9 @@ namespace TestWindingLossesRound {
              {600000, 0.1411}, {700000, 0.14206}, {800000, 0.14314}, {900000, 0.14437}, {1000000, 0.14572}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
         // SKIP: Model shows ~41% error. Non-interleaved winding model needs calibration.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2.json", 22,
@@ -398,23 +398,23 @@ namespace TestWindingLossesRectangular {
             WindingLossesTestHelpers::maximumError, false);  // includeFringing = false
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangle-winding-window][!mayfail]") {
         // SKIP: Model shows ~229% error. Rectangular wire losses severely underestimated.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngappedConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window][!mayfail]") {
         // SKIP: Model shows ~220% error. Rectangular wire losses severely underestimated.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window][!mayfail]") {
         // SKIP: Model shows ~220% error. Rectangular wire with gap losses underestimated.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createFiveTurnsRectangularGapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
@@ -429,20 +429,20 @@ namespace TestWindingLossesRectangular {
 namespace TestWindingLossesFoil {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.3;
-    TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
+    TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window][!mayfail]") {
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createOneTurnFoilSinusoidalConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
+    TEST_CASE("Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window][!mayfail]") {
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createTenTurnsFoilSinusoidalConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window]") {
-        SKIP("Test currently failing - needs investigation");
+    TEST_CASE("Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window][!mayfail]") {
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createTenShortTurnsFoilConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
@@ -588,9 +588,9 @@ namespace TestWindingLossesPlanar {
             maximumError, false);  // includeFringing = false
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing", "[physical-model][winding-losses][planar][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing", "[physical-model][winding-losses][planar][smoke-test][!mayfail]") {
         // SKIP: Model shows ~187% error (model overestimates). Planar with fringing needs calibration.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Not sure about that many losses due to fringing losses in a small piece
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json", 22,
@@ -602,9 +602,9 @@ namespace TestWindingLossesPlanar {
             maximumError, true);  // includeFringing = true
     }
 
-    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar]") {
+    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar][!mayfail]") {
         // SKIP: Model shows ~58% error. Multi-turn planar without fringing overestimated.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 22,
             {{1, 5.8488}, {10000, 13.251}, {20000, 15.197}, {30000, 16.110}, {40000, 16.717},
@@ -614,9 +614,9 @@ namespace TestWindingLossesPlanar {
             maximumError, true);  // includeFringing = true (default in original)
     }
 
-    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar]") {
+    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar][!mayfail]") {
         // SKIP: Model shows ~138% error. Planar with close fringing severely overestimated.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json", 22,
             {{1, 5.53}, {10000, 117.63}, {20000, 167.38}, {30000, 200.47}, {40000, 224.01},
@@ -626,9 +626,9 @@ namespace TestWindingLossesPlanar {
             maximumError, true);  // includeFringing = true
     }
 
-    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][planar]") {
+    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][planar][!mayfail]") {
         // SKIP: Model shows ~160% error. Planar with far fringing severely overestimated.
-        SKIP("Model error exceeds 25% tolerance");
+        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json", 22,
             {{1, 5.8408}, {10000, 78.113}, {20000, 105.33}, {30000, 122.53}, {40000, 134.58},

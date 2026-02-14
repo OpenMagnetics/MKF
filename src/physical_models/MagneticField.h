@@ -18,7 +18,7 @@
 #include <vector>
 #include "support/Exceptions.h"
 
-using namespace MAS;
+using namespace MAS; // QUAL-001 TODO: qualify types and remove
 
 namespace OpenMagnetics {
 

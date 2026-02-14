@@ -17,7 +17,7 @@
 #include <streambuf>
 #include <vector>
 
-using namespace MAS;
+using namespace MAS; // QUAL-001 TODO: qualify types and remove
 
 namespace OpenMagnetics {
 

@@ -231,17 +231,15 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
         totalNumberPhysicalTurns += winding.get_number_turns() * winding.get_number_parallels();
     }
 
-    auto previoustHarmonicAmplitudeThreshold = settings.get_harmonic_amplitude_threshold();
-    if (settings.get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
-        settings.set_harmonic_amplitude_threshold(settings.get_harmonic_amplitude_threshold() * 2);
-    }
+    // ARCH-002: RAII guard for harmonic threshold quick mode
+    bool useQuickMode = settings.get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold;
+    double thresholdToUse = useQuickMode ? settings.get_harmonic_amplitude_threshold() * 2 : settings.get_harmonic_amplitude_threshold();
+    SettingsGuard<double> harmonicGuard(settings,
+        &Settings::get_harmonic_amplitude_threshold,
+        &Settings::set_harmonic_amplitude_threshold, thresholdToUse);
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
 
     windingLossesOutput = WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput, _models.proximityEffectModel);
-
-    if (settings.get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
-        settings.set_harmonic_amplitude_threshold(previoustHarmonicAmplitudeThreshold);
-    }
     windingLossesOutput = combine_turn_losses(windingLossesOutput, magnetic.get_coil());
 
     return windingLossesOutput;
@@ -256,8 +254,10 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
 
     auto& settings = OpenMagnetics::Settings::GetInstance();
-    auto previousSetting = settings.get_magnetic_field_include_fringing();
-    settings.set_magnetic_field_include_fringing(false);
+    // ARCH-002: RAII guard for exception safety
+    SettingsGuard<bool> fringingGuard(settings,
+        &Settings::get_magnetic_field_include_fringing,
+        &Settings::set_magnetic_field_include_fringing, false);
 
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
@@ -287,7 +287,7 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
         currentMask[i] = virtualCurrent * sqrt(2);
         
         auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
-        double totalLosses = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
+        double totalLosses = WindingLosses(_models).calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
         // R_ii = P / I^2
         double effectiveResistance = totalLosses / pow(virtualCurrent, 2);
@@ -318,7 +318,7 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
             currentMask[j] = I_j * sqrt(2);
             
             auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
-            double totalLosses = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
+            double totalLosses = WindingLosses(_models).calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
             // P_total = R_ii * I_i^2 + R_jj * I_j^2 + 2 * R_ij * I_i * I_j
             // Solving for R_ij:
@@ -338,7 +338,7 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
     }
 
     scalarMatrixAtFrequency.set_magnitude(resistanceMagnitude);
-    settings.set_magnetic_field_include_fringing(previousSetting);
+    // ARCH-002: fringingGuard destructor restores previous setting
     return scalarMatrixAtFrequency;
 }
 
