@@ -34,15 +34,20 @@ double ThermalNodeQuadrant::calculateConductionResistance(const ThermalNodeQuadr
         return 1e9;  // Very high resistance for no contact
     }
     
-    // For conduction between two materials in series:
-    // R_total = R1 + R2 = L1/(k1*A) + L2/(k2*A)
-    // We use average length and minimum conductivity (conservative)
-    double avgLength = (this->length + other.length) / 2.0;
-    double minK = std::min(this->thermalConductivity, other.thermalConductivity);
-    
-    // For wire-to-wire: the contact is through insulation layers
-    // We use the insulation resistance calculation instead
-    return ThermalResistance::calculateConductionResistance(avgLength, minK, contactArea);
+    // =========================================================================
+    // IMP-NEW-01: Proper series conduction resistance R = R1 + R2
+    // =========================================================================
+    // WHAT: Calculate individual resistances for each material in series.
+    // WHY:  Previous code used avgLength and min(k1,k2) which artificially
+    //       increases resistance when materials differ significantly.
+    //       Correct: R_total = L1/(k1*A) + L2/(k2*A)
+    // PREVIOUS: avgLength/(minK*A) approximation
+    // =========================================================================
+    double R1 = ThermalResistance::calculateConductionResistance(
+        this->length, this->thermalConductivity, contactArea);
+    double R2 = ThermalResistance::calculateConductionResistance(
+        other.length, other.thermalConductivity, contactArea);
+    return R1 + R2;
 }
 
 double ThermalNodeQuadrant::calculateConvectionResistance(double heatTransferCoefficient) const {

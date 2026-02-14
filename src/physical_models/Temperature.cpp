@@ -250,6 +250,24 @@ void Temperature::extractWireProperties() {
     // Get wire coating for thermal calculations
     _wireCoating = wire.resolve_coating();
     
+    // =========================================================================
+    // IMP-NEW-06: Populate per-winding wire properties
+    // =========================================================================
+    for (size_t wIdx = 0; wIdx < windings.size(); ++wIdx) {
+        WindingWireProperties wProps;
+        auto wv = windings[wIdx].get_wire();
+        if (std::holds_alternative<Wire>(wv)) {
+            auto w = std::get<Wire>(wv);
+            wProps.isRoundWire = (w.get_type() == WireType::ROUND || w.get_type() == WireType::LITZ);
+            wProps.isPlanar = (w.get_type() == WireType::PLANAR || w.get_type() == WireType::FOIL);
+            wProps.wireWidth = _wireWidth;
+            wProps.wireHeight = _wireHeight;
+            wProps.wireThermalCond = _wireThermalCond;
+            wProps.wireCoating = w.resolve_coating();
+            _perWindingWireProps[wIdx] = wProps;
+        }
+    }
+    
     if (THERMAL_DEBUG) {
         std::cout << "Wire properties: width=" << _wireWidth * 1000 << "mm, height=" << _wireHeight * 1000 
                   << "mm, k=" << _wireThermalCond << " W/(m·K), round=" << _isRoundWire 
@@ -551,6 +569,16 @@ void Temperature::createConcentricCoreNodes() {
     // Core loss distribution calculated
     // =========================================================================
 
+    // =========================================================================
+    // IMP-NEW-12: HALF-CORE SYMMETRY MODEL DOCUMENTATION
+    // =========================================================================
+    // This model uses HALF the core depth for concentric cores (left-right symmetry).
+    // - Node volumes are halved -> power dissipation per node is correct (same W/m3)
+    // - Surface areas are halved -> convection area represents one half only
+    // - totalThermalResistance from solver = R_half_core
+    // - Since two halves dissipate in parallel: R_total_real ~ R_solver / 2
+    // TODO: Apply symmetry factor x2 to convection areas or x0.5 to final R_th
+    // =========================================================================
     // Create central column node(s) - using HALF depth for symmetry (left half only)
     int mainColGaps = countGapsInColumn(mainColumn);
     double halfDepth = mainColumn.get_depth() / 2.0;  // Model half the core
@@ -2352,8 +2380,9 @@ void Temperature::createTurnToBobbinConnections() {
                     double contactArea = q ? q->surfaceArea * 0.5 : (turnWidth * turnHeight * 0.25);
                     double distance = std::max(dist, 1e-6);
                     
-                    double k_air = 0.025;  // W/m·K
-                    r.resistance = distance / (k_air * contactArea);
+                    // IMP-NEW-05: Configurable interface conductivity (was k_air=0.025)
+                    double k_interface = _config.turnToBobbinInterfaceConductivity;
+                    r.resistance = distance / (k_interface * contactArea);
                     
                     _resistances.push_back(r);
                     connectedPairs.insert({quadrant.face, bobbinIdx});
@@ -4204,7 +4233,10 @@ void Temperature::recalculateConvectionResistances(const std::vector<double>& te
         if (res.type == HeatTransferType::NATURAL_CONVECTION && res.area > 0) {
             double charLength = std::sqrt(std::max(res.area, 1e-9));
             double h_new = ThermalResistance::calculateNaturalConvectionCoefficient(
-                surfaceTemp, ambientTemp, charLength, SurfaceOrientation::VERTICAL);
+                // IMP-NEW-04: Use stored orientation instead of always VERTICAL
+                // WHY: Horizontal surfaces have very different h values.
+                // PREVIOUS: SurfaceOrientation::VERTICAL (hardcoded)
+                surfaceTemp, ambientTemp, charLength, res.orientation);
             if (h_new > 0) res.resistance = 1.0 / (h_new * res.area);
         } else if (res.type == HeatTransferType::FORCED_CONVECTION && res.area > 0) {
             double charLength = std::sqrt(std::max(res.area, 1e-9));
