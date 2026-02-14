@@ -1233,10 +1233,16 @@ namespace OpenMagnetics {
         circuit << "Lsec_bot 0 sec_bot " << std::scientific << secondaryInductance << std::fixed << "\n\n";
 
         // =====================================================================
-        // Transformer Coupling - single K statement, all 4 windings
+        // Transformer Coupling - pairwise K statements (ngspice 42 compatible)
         // =====================================================================
-        circuit << "* Transformer Coupling (all windings on single core)\n";
-        circuit << "K1 Lpri_top Lpri_bot Lsec_top Lsec_bot 0.9999\n\n";
+        circuit << "* Transformer Coupling (pairwise for ngspice compatibility)\n";
+        // All windings are on the same core, so couple them all together
+        circuit << "K1 Lpri_top Lpri_bot 0.9999\n";
+        circuit << "K2 Lpri_top Lsec_top 0.9999\n";
+        circuit << "K3 Lpri_top Lsec_bot 0.9999\n";
+        circuit << "K4 Lpri_bot Lsec_top 0.9999\n";
+        circuit << "K5 Lpri_bot Lsec_bot 0.9999\n";
+        circuit << "K6 Lsec_top Lsec_bot 0.9999\n\n";
 
         // Convergence helpers (high impedance, negligible effect)
         circuit << "* Convergence helpers\n";

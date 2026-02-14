@@ -643,7 +643,9 @@ namespace OpenMagnetics {
 
         // Secondary node_d = sec_trafo_n
         circuit << "* Secondary bridge reference\n";
-        circuit << "Vd_ref sec_trafo_n node_d 0\n\n";
+        circuit << "Vd_ref sec_trafo_n node_d 0\n";
+        // Add high-value resistor to provide DC path for convergence
+        circuit << "Rdc_sec sec_trafo_n 0 1G\n\n";
 
         // Secondary full bridge rectifier (diodes for simplicity)
         // In forward mode: Ds1,Ds4 conduct first half; Ds2,Ds3 conduct second half
