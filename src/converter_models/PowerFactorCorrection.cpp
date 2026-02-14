@@ -166,6 +166,23 @@ namespace OpenMagnetics {
         return iAvg + deltaI / 2;
     }
 
+    std::string PowerFactorCorrection::determine_actual_mode(double inductance) {
+        // Calculate the critical inductance for CrCM (boundary between CCM and DCM)
+        // At CrCM, the current just reaches zero at the end of each switching cycle
+        double L_critical = calculate_inductance_crcm();
+
+        // Add tolerance for floating point comparison (5% margin)
+        const double tolerance = 0.05;
+
+        if (inductance > L_critical * (1.0 + tolerance)) {
+            return "Continuous Conduction Mode";
+        } else if (inductance < L_critical * (1.0 - tolerance)) {
+            return "Discontinuous Conduction Mode";
+        } else {
+            return "Critical Conduction Mode";
+        }
+    }
+
     DesignRequirements PowerFactorCorrection::process_design_requirements() {
         DesignRequirements designRequirements;
 
