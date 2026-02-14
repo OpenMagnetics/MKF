@@ -790,14 +790,12 @@ namespace {
         std::vector<double> turnsRatios = {params.turnsRatio};
 
         // Simulate with 1 period
-        cllc.set_num_periods_to_extract(1);
-        auto wf1 = cllc.simulate_and_extract_topology_waveforms(turnsRatios, params.magnetizingInductance);
+        auto wf1 = cllc.simulate_and_extract_topology_waveforms(turnsRatios, params.magnetizingInductance, 1);
         REQUIRE(!wf1.empty());
         auto inputV1 = wf1[0].get_input_voltage().get_data();
 
         // Simulate with 3 periods
-        cllc.set_num_periods_to_extract(3);
-        auto wf3 = cllc.simulate_and_extract_topology_waveforms(turnsRatios, params.magnetizingInductance);
+        auto wf3 = cllc.simulate_and_extract_topology_waveforms(turnsRatios, params.magnetizingInductance, 3);
         REQUIRE(!wf3.empty());
         auto inputV3 = wf3[0].get_input_voltage().get_data();
 

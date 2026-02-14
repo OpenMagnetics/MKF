@@ -962,14 +962,12 @@ namespace {
         double magnetizingInductance = designReqs.get_magnetizing_inductance().get_minimum().value();
 
         // Simulate with 1 period
-        forward.set_num_periods_to_extract(1);
-        auto waveforms1 = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        auto waveforms1 = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance, 1);
         REQUIRE(!waveforms1.empty());
         auto inputV1 = waveforms1[0].get_input_voltage().get_data();
 
         // Simulate with 3 periods
-        forward.set_num_periods_to_extract(3);
-        auto waveforms3 = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
+        auto waveforms3 = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance, 3);
         REQUIRE(!waveforms3.empty());
         auto inputV3 = waveforms3[0].get_input_voltage().get_data();
 
