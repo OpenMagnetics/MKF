@@ -7,8 +7,8 @@
 #include "physical_models/WindingLosses.h"
 #include "TestingUtils.h"
 
-using namespace MAS;
-using namespace OpenMagnetics;
+using namespace MAS; // QUAL-001 TODO: qualify types and remove
+using namespace OpenMagnetics; // QUAL-001 TODO: qualify types and remove
 
 namespace WindingLossesTestData {
 

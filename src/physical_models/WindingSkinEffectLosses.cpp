@@ -3,6 +3,7 @@
 #include "Defaults.h"
 
 #include <cmath>
+#include <limits>
 #include <complex>
 #include <filesystem>
 #include <fstream>
@@ -14,6 +15,20 @@
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
+
+
+// PERF-003: Cached ResistivityModel to avoid repeated factory() calls
+inline std::shared_ptr<ResistivityModel>& get_cached_resistivity_model() {
+    static std::shared_ptr<ResistivityModel> m = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    return m;
+}
+// PERF-002: Composite hash to avoid collisions when wire has no name
+inline std::size_t hash_combine_wire(int64_t n, double w, double h) {
+    std::size_t seed = std::hash<int64_t>{}(n);
+    seed ^= std::hash<double>{}(w) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= std::hash<double>{}(h) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+}
 
 std::shared_ptr<WindingSkinEffectLossesModel>  WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels modelName){
     if (modelName == WindingSkinEffectLossesModels::WOJDA) {
@@ -76,9 +91,13 @@ double WindingSkinEffectLosses::calculate_skin_depth(WireMaterialDataOrNameUnion
     else if (std::holds_alternative<std::string>(material)) {
         wireMaterial = OpenMagnetics::find_wire_material_by_name(std::get<std::string>(material));
     }
-    auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
+        // BUG-001 FIX: Guard against f<=0
+    if (frequency <= 0) {
+        return std::numeric_limits<double>::max();
+    }
     double skinDepth = sqrt(resistivity / (std::numbers::pi * frequency * constants.vacuumPermeability * wireMaterial.get_permeability()));
     return skinDepth;
 };
@@ -174,7 +193,7 @@ std::optional<double> WindingSkinEffectLossesModel::try_get_skin_factor(Wire wir
     }
     std::size_t hash;
     if (!wire.get_name()) {
-        hash = std::hash<double>{}(wire.get_number_conductors().value() * wire.get_maximum_outer_width() * wire.get_maximum_outer_height() );
+        hash = hash_combine_wire(wire.get_number_conductors().value(), wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
     }
     else {
         hash = std::hash<std::string>{}(wire.get_name().value());
@@ -198,7 +217,7 @@ void WindingSkinEffectLossesModel::set_skin_factor(Wire wire,  double frequency,
     }
     std::size_t hash;
     if (!wire.get_name()) {
-        hash = std::hash<double>{}(wire.get_number_conductors().value() * wire.get_maximum_outer_width() * wire.get_maximum_outer_height() );
+        hash = hash_combine_wire(wire.get_number_conductors().value(), wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
     }
     else {
         hash = std::hash<std::string>{}(wire.get_name().value());
@@ -597,7 +616,7 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[may
     }
 
     double c = sqrt(pow(b, 2) - pow(a, 2));
-    auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
     double acResistance = resistivity / (pow(std::numbers::pi, 2) * skinDepth * b) * comp_ellint_1(c / b) * (1 - exp(-2 * a / skinDepth));
@@ -658,7 +677,7 @@ double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(Wire wire, doub
     else {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
-    auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
     double fl = 3.22 * resistivity / (8 * Constants().vacuumPermeability * bPrima * aPrima);

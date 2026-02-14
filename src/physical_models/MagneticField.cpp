@@ -710,7 +710,7 @@ ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_be
             }
         }
         else {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wang Magnetic Field model must be used woth his CoilMesher model");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wang Magnetic Field model must be used with his CoilMesher model");
         }
     }
 
@@ -1054,7 +1054,9 @@ std::pair<double, double> MagneticFieldStrengthAlbach2DModel::calculateMagneticF
             // Rectangular conductor: use filamentary subdivision
             double width = turn.width;
             double height = turn.height;
-            int numR = 3, numZ = 3;
+            // PERF-001: Adaptive subdivision (3-8) based on dim/skinDepth
+            int numR = std::max(3, std::min(8, static_cast<int>(std::ceil(width / turn.skinDepth))));
+            int numZ = std::max(3, std::min(8, static_cast<int>(std::ceil(height / turn.skinDepth))));
             double dI = I / (numR * numZ);
             
             for (int ir = 0; ir < numR; ++ir) {

@@ -17,6 +17,20 @@
 
 namespace OpenMagnetics {
 
+
+// PERF-003: Cached ResistivityModel to avoid repeated factory() calls
+inline std::shared_ptr<ResistivityModel>& get_cached_resistivity_model() {
+    static std::shared_ptr<ResistivityModel> m = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    return m;
+}
+// PERF-002: Composite hash to avoid collisions when wire has no name
+inline std::size_t hash_combine_wire(int64_t n, double w, double h) {
+    std::size_t seed = std::hash<int64_t>{}(n);
+    seed ^= std::hash<double>{}(w) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= std::hash<double>{}(h) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+}
+
 std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels modelName){
     if (modelName == WindingProximityEffectLossesModels::ROSSMANITH) {
         return std::make_shared<WindingProximityEffectLossesRossmanithModel>();
@@ -68,7 +82,7 @@ std::optional<double> WindingProximityEffectLossesModel::try_get_proximity_facto
     }
     std::size_t hash;
     if (!wire.get_name()) {
-        hash = std::hash<double>{}(wire.get_number_conductors().value() * wire.get_maximum_outer_width() * wire.get_maximum_outer_height() );
+        hash = hash_combine_wire(wire.get_number_conductors().value(), wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
     }
     else {
         hash = std::hash<std::string>{}(wire.get_name().value());
@@ -91,7 +105,7 @@ void WindingProximityEffectLossesModel::set_proximity_factor(Wire wire,  double 
     }
     std::size_t hash;
     if (!wire.get_name()) {
-        hash = std::hash<double>{}(wire.get_number_conductors().value() * wire.get_maximum_outer_width() * wire.get_maximum_outer_height() );
+        hash = hash_combine_wire(wire.get_number_conductors().value(), wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
     }
     else {
         hash = std::hash<std::string>{}(wire.get_name().value());
@@ -262,15 +276,16 @@ double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(Wire w
         set_proximity_factor(wire, frequency, temperature, proximityFactor);
     }
 
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
-    double He = 0;
+    // BUG-002 FIX: Use RMS of |H|
+    double He2_sum = 0;
     for (auto& datum : data) {
-        He += sqrt(pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2));
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
-    He /= data.size();
-    double turnLosses = resistivity * pow(He, 2) * proximityFactor;
+    double He2_rms = He2_sum / data.size();
+    double turnLosses = resistivity * He2_rms * proximityFactor;
 
     turnLosses *= wire.get_number_conductors().value();
 
@@ -309,7 +324,7 @@ double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(Wire w
  * @return Proximity effect losses for this turn [W]
  */
 double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double c = 0;
@@ -369,8 +384,9 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     turnLosses += c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
     turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
 
-    // For the H field not planned for in Wang's model, we use Ferreira's
-    if (nonPlanarHe != 0) {
+    // BUG-003 FIX: Normalize nonPlanarHe by data.size()
+    if (nonPlanarHe != 0 && !data.empty()) {
+        nonPlanarHe /= data.size();
         double proximityFactor = WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(wire, frequency, temperature);
         turnLosses += proximityFactor * pow(nonPlanarHe, 2);
     }
@@ -410,7 +426,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
  */
 double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
     double factor;
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
 
@@ -530,7 +546,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
  * @return Proximity effect losses for this turn [W]
  */
 double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double d = 0;
@@ -553,13 +569,13 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
     std::complex<double> alpha(1, 1);
     alpha /= skinDepth;
 
-    double He = 0;
-
+    // BUG-002 FIX: Use RMS of |H|
+    double He2_sum = 0;
     for (auto& datum : data) {
-        He += hypot(datum.get_real(), datum.get_imaginary());
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
-    He /= data.size();
-    double turnLosses = c * resistivity * pow(He, 2) * (alpha * d * tanh(alpha * d / 2.0)).real();
+    double He2_rms = He2_sum / data.size();
+    double turnLosses = c * resistivity * He2_rms * (alpha * d * tanh(alpha * d / 2.0)).real();
 
     turnLosses *= wire.get_number_conductors().value();
 
@@ -620,7 +636,7 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
     factor = 2.0 * std::numbers::pi * resistivity * pow((wireConductingDimension / 2) / skinDepth, 4) / 4;
@@ -640,16 +656,14 @@ double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(Wire w
         set_proximity_factor(wire, frequency, temperature, proximityFactor);
     }
 
-    double Hx = 0;
-    double Hy = 0;
+    // BUG-004 FIX: Use mean of |H|^2 instead of averaging components separately
+    double He2_sum = 0;
     for (auto& datum : data) {
-        Hx += datum.get_real();
-        Hy += datum.get_imaginary();
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
-    Hx /= data.size();
-    Hy /= data.size();
+    double He2_mean = He2_sum / data.size();
 
-    double turnLosses = (pow(Hx, 2) + pow(Hy, 2)) * proximityFactor;
+    double turnLosses = He2_mean * proximityFactor;
     turnLosses *= wire.get_number_conductors().value();
 
     if (std::isnan(turnLosses)) {
