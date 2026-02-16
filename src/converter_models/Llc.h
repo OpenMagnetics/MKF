@@ -1,4 +1,5 @@
 #pragma once
+// Version: 3.1
 #include "Constants.h"
 #include <MAS.hpp>
 #include "processors/Inputs.h"
@@ -20,32 +21,32 @@ using namespace MAS;
  * and standard LLC design methodology (TI SLUA119, ST AN2450, Infineon AN 2012-09).
  *
  * Key design flow (Runo Nielsen / TDA):
- * 1. Fictitious output voltage: Vo ≈ ½·Vin_nom (HB) or Vo ≈ Vin_nom (FB)
+ * 1. Fictitious output voltage: Vo Vin_nom (HB) or Vo Vin_nom (FB)
  * 2. Turns ratio: n = Vo / Vout
  * 3. Rac = (8 * n^2) / pi^2 * Rload (FHA-referred AC load resistance)
  * 4. Characteristic impedance: Zr = Q * Rac
  * 5. Resonant components: Ls = Zr / (2*pi*fr), C = 1 / (2*pi*fr*Zr)
  * 6. Magnetizing inductance: L = Ln * Ls (Ln = inductance ratio)
  * 7. Two resonant frequencies:
- *      w1 = 1/sqrt(Ls*C)    — power delivery (diodes ON)
- *      w0 = 1/sqrt((Ls+L)*C) — freewheeling (diodes OFF)
+ *     w1 = 1/sqrt(Ls*C)       power delivery (diodes ON)
+ *     w0 = 1/sqrt((Ls+L)*C)   freewheeling (diodes OFF)
  * 8. LIP frequency: f1 = w1/(2*pi)
  *
  * Waveform generation uses piecewise time-domain solution:
  *   Phase A (power delivery): sinusoidal at w1 + linear magnetizing ramp
  *   Phase B (freewheeling):   sinusoidal at w0, IL = ILs
- *   Steady-state via bisection on Vc0 (capacitor start voltage)
+ *   Steady-state via 2D iteration on Vc0 and ILs0 (capacitor & current start values)
  */
 class Llc : public MAS::LlcResonant, public Topology {
 private:
     int numPeriodsToExtract = 5;
-    int numSteadyStatePeriods = 5;
+    int numSteadyStatePeriods = 3;
 
     // Computed resonant-tank values (filled by process_design_requirements)
-    double computedResonantInductance = 0;   // Ls
-    double computedResonantCapacitance = 0;  // C = C1+C2
-    double computedInductanceRatio = 5;      // Ln = L / Ls
-    double computedDeadTime = 200e-9;        // Default 200 ns dead time
+    double computedResonantInductance = 0;    // Ls
+    double computedResonantCapacitance = 0;   // C = C1+C2
+    double computedInductanceRatio = 5;       // Ln = L / Ls
+    double computedDeadTime = 1000e-9;        // Default 1 µs dead time (ZVS-safe)
 
 public:
     bool _assertErrors = false;
@@ -53,20 +54,25 @@ public:
     Llc(const json& j);
     Llc() {};
 
-    // Simulation tuning 
+    // Simulation tuning ──────────────────────────────────────
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
-    // Computed resonant-tank accessors 
+    // Computed resonant-tank accessors ────────────────────────
     double get_computed_resonant_inductance() const { return computedResonantInductance; }
     double get_computed_resonant_capacitance() const { return computedResonantCapacitance; }
     double get_computed_inductance_ratio() const { return computedInductanceRatio; }
     double get_computed_dead_time() const { return computedDeadTime; }
     void set_computed_inductance_ratio(double value) { this->computedInductanceRatio = value; }
+    void set_computed_dead_time(double value) { this->computedDeadTime = value; }
 
-    // Topology interface 
+    // User-settable inductance ratio (Ln = Lm / Ls)
+    // Returns user value if set, otherwise falls back to computedInductanceRatio (default 5)
+    double get_inductance_ratio() const;
+
+    // Topology interface ─────────────────────────────────────
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
@@ -84,14 +90,14 @@ public:
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
-    // Helper: bridge voltage factor 
+    // Helper: bridge voltage factor ──────────────────────────
     /** Returns 0.5 for half-bridge, 1.0 for full-bridge */
     double get_bridge_voltage_factor() const;
 
     /** Returns the resonant frequency (user-provided or geometric mean of fsw range) */
     double get_effective_resonant_frequency() const;
 
-    // SPICE simulation 
+    // SPICE simulation ───────────────────────────────────────
     std::string generate_ngspice_circuit(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
@@ -109,9 +115,9 @@ public:
 };
 
 
-// 
+// ─────────────────────────────────────────────────────────────
 // AdvancedLlc: user supplies desired turns ratios & inductances directly
-// 
+// ─────────────────────────────────────────────────────────────
 class AdvancedLlc : public Llc {
 private:
     std::vector<double> desiredTurnsRatios;
@@ -141,9 +147,9 @@ public:
 };
 
 
-// 
+// ─────────────────────────────────────────────────────────────
 // JSON serialization
-// 
+// ─────────────────────────────────────────────────────────────
 void from_json(const json& j, AdvancedLlc& x);
 void to_json(json& j, const AdvancedLlc& x);
 
