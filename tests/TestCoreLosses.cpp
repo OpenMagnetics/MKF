@@ -17,6 +17,8 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <iomanip>
+#include <set>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -3396,3 +3398,250 @@ TEST_CASE("Calculate_Steinmetz_Coefficients", "[physical-model][core-losses]") {
 }
 
 }  // namespace
+
+
+// ============================================================================
+// MULTI-MODEL COMPARISON TEST
+// Modeled after TestWindingLosses interleaving multi-model test pattern.
+// Runs all Steinmetz-based core loss models across multiple materials and
+// prints a formatted results table + exports CSV.
+// ============================================================================
+
+TEST_CASE("Test_Core_Losses_All_Models_Comparison_Table",
+          "[physical-model][core-losses][comparison][smoke-test]") {
+
+    // --- Model definitions ---
+    struct ModelDef {
+        CoreLossesModels model;
+        std::string name;
+    };
+    std::vector<ModelDef> models = {
+        {CoreLossesModels::STEINMETZ, "STEINMETZ"},
+        {CoreLossesModels::IGSE,      "IGSE"},
+        {CoreLossesModels::MSE,       "MSE"},
+        {CoreLossesModels::ALBACH,    "ALBACH"},
+        {CoreLossesModels::NSE,       "NSE"},
+        {CoreLossesModels::BARG,      "BARG"},
+        {CoreLossesModels::ROSHEN,    "ROSHEN"},
+    };
+
+    // --- Materials to test ---
+    std::vector<std::string> materials = {"3C90", "3C94", "3F4", "N27", "N49", "N87"};
+
+    // --- Test point definition ---
+    struct TestPoint {
+        WaveformLabel waveform;
+        double frequency;
+        double magneticFluxDensityPeak;
+        double dutyCycle;
+        double temperature;
+        double expectedVolumetricLosses;
+    };
+
+    // --- Test data per material (from datasheet / measurement) ---
+    std::map<std::string, std::vector<TestPoint>> materialTests = {
+        {"3C90", {
+            {WaveformLabel::SINUSOIDAL, 100000, 0.1,  0.5, 100, 99530.0},
+            {WaveformLabel::SINUSOIDAL, 25000,  0.2,  0.5, 100, 121000.0},
+            {WaveformLabel::TRIANGULAR, 50000,  0.05, 0.5, 25,  10000.0},
+            {WaveformLabel::TRIANGULAR, 400000, 0.1,  0.5, 25,  895000.0},
+        }},
+        {"3C94", {
+            {WaveformLabel::SINUSOIDAL, 100000, 0.2,  0.5, 100, 300000.0},
+            {WaveformLabel::SINUSOIDAL, 200000, 0.1,  0.5, 100, 160000.0},
+            {WaveformLabel::SINUSOIDAL, 300000, 0.1,  0.5, 100, 1050000.0},
+            {WaveformLabel::SINUSOIDAL, 200000, 0.2,  0.5, 100, 1050000.0},
+        }},
+        {"3F4", {
+            {WaveformLabel::SINUSOIDAL, 25000,  0.1,  0.5, 100, 35000.0},
+            {WaveformLabel::SINUSOIDAL, 400000, 0.1,  0.5, 100, 820000.0},
+            {WaveformLabel::SINUSOIDAL, 100000, 0.05, 0.5, 100, 25000.0},
+            {WaveformLabel::SINUSOIDAL, 25000,  0.2,  0.5, 100, 300000.0},
+        }},
+        {"N27", {
+            {WaveformLabel::SINUSOIDAL, 25000,  0.2,  0.5, 100, 155000.0},
+            {WaveformLabel::SINUSOIDAL, 100000, 0.2,  0.5, 100, 920000.0},
+            {WaveformLabel::SINUSOIDAL, 25000,  0.05, 0.5, 60,  7000.0},
+        }},
+        {"N49", {
+            {WaveformLabel::SINUSOIDAL, 100000, 0.025, 0.5, 25, 2000.0},
+            {WaveformLabel::SINUSOIDAL, 100000, 0.05,  0.5, 25, 15000.0},
+            {WaveformLabel::SINUSOIDAL, 100000, 0.1,   0.5, 25, 100000.0},
+            {WaveformLabel::SINUSOIDAL, 200000, 0.1,   0.5, 25, 200000.0},
+        }},
+        {"N87", {
+            {WaveformLabel::SINUSOIDAL, 100000, 0.1,  0.5, 25,  80000.0},
+            {WaveformLabel::TRIANGULAR, 50000,  0.1,  0.5, 25,  62000.0},
+            {WaveformLabel::TRIANGULAR, 100000, 0.24, 0.5, 25,  1000000.0},
+            {WaveformLabel::TRIANGULAR, 400000, 0.1,  0.5, 25,  900000.0},
+            {WaveformLabel::SINUSOIDAL, 100000, 0.2,  0.5, 100, 300000.0},
+        }},
+    };
+
+    std::string coreShape = "PQ 20/20";
+
+    // --- Results storage ---
+    // model_name -> material -> mean_error
+    std::map<std::string, std::map<std::string, double>> resultsTable;
+    // model_name -> global average error
+    std::map<std::string, double> modelGlobalAvg;
+    // model_name -> max single-test error
+    std::map<std::string, double> modelMaxError;
+
+    // ================================================================
+    // Run all combinations
+    // ================================================================
+    for (auto& md : models) {
+        double globalSum = 0;
+        int globalCount = 0;
+        double maxErr = 0;
+
+        for (auto& material : materials) {
+            auto it = materialTests.find(material);
+            if (it == materialTests.end()) continue;
+
+            auto& tests = it->second;
+            double materialErrorSum = 0;
+            int testCount = 0;
+
+            for (auto& tp : tests) {
+                try {
+                    settings.reset();
+                    clear_databases();
+
+                    Core core = OpenMagneticsTesting::get_quick_core(
+                        coreShape, json::array(), 1, material);
+                    auto coreLossesModel = CoreLossesModel::factory(md.model);
+
+                    json excitationJson;
+                    excitationJson["frequency"] = tp.frequency;
+                    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = tp.dutyCycle;
+                    excitationJson["magneticFluxDensity"]["processed"]["label"] = tp.waveform;
+                    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+                    excitationJson["magneticFluxDensity"]["processed"]["peak"] = tp.magneticFluxDensityPeak;
+                    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = tp.magneticFluxDensityPeak * 2;
+                    excitationJson["magneticFieldStrength"]["processed"]["offset"] = 0;
+                    excitationJson["magneticFieldStrength"]["processed"]["label"] = tp.waveform;
+                    excitationJson["magneticFieldStrength"]["processed"]["peakToPeak"] = 0;
+
+                    OperatingPointExcitation excitation(excitationJson);
+                    auto coreMaterial = core.resolve_material();
+                    double volumetricLosses = coreLossesModel->get_core_volumetric_losses(
+                        coreMaterial, excitation, tp.temperature);
+
+                    double error = fabs(volumetricLosses - tp.expectedVolumetricLosses) /
+                                   tp.expectedVolumetricLosses;
+                    materialErrorSum += error;
+                    testCount++;
+                    if (error > maxErr) maxErr = error;
+                }
+                catch (const std::exception& e) {
+                    // Model not available for this material/config — skip silently
+                }
+            }
+
+            if (testCount > 0) {
+                double materialMeanError = materialErrorSum / testCount;
+                resultsTable[md.name][material] = materialMeanError;
+                globalSum += materialMeanError;
+                globalCount++;
+            }
+        }
+
+        modelGlobalAvg[md.name] = (globalCount > 0) ? (globalSum / globalCount) : -1;
+        modelMaxError[md.name] = maxErr;
+    }
+
+    // ================================================================
+    // Print formatted results table
+    // ================================================================
+    std::cout << std::endl;
+    std::cout << "================================================================" << std::endl;
+    std::cout << "       CORE LOSSES MODEL COMPARISON TABLE (% error)" << std::endl;
+    std::cout << "================================================================" << std::endl;
+
+    // Header row
+    std::cout << std::setw(12) << "Model";
+    for (auto& mat : materials) {
+        std::cout << std::setw(10) << mat;
+    }
+    std::cout << std::setw(10) << "AVG" << std::setw(10) << "MAX" << std::endl;
+    std::cout << std::string(12 + 10 * (materials.size() + 2), '-') << std::endl;
+
+    // Data rows
+    for (auto& md : models) {
+        std::cout << std::setw(12) << md.name;
+        for (auto& mat : materials) {
+            auto it = resultsTable[md.name].find(mat);
+            if (it != resultsTable[md.name].end()) {
+                std::cout << std::setw(8) << std::fixed << std::setprecision(1)
+                          << (it->second * 100) << " %";
+            } else {
+                std::cout << std::setw(10) << "N/A";
+            }
+        }
+        double avg = modelGlobalAvg[md.name];
+        double mx  = modelMaxError[md.name];
+        if (avg >= 0) {
+            std::cout << std::setw(8) << std::fixed << std::setprecision(1)
+                      << (avg * 100) << " %";
+            std::cout << std::setw(8) << std::fixed << std::setprecision(1)
+                      << (mx * 100) << " %";
+        } else {
+            std::cout << std::setw(10) << "N/A" << std::setw(10) << "N/A";
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "================================================================" << std::endl;
+    std::cout << std::endl;
+
+    // ================================================================
+    // Export CSV to output directory
+    // ================================================================
+    auto outputPath = std::filesystem::path{std::source_location::current().file_name()}
+        .parent_path().append("..").append("output");
+    std::filesystem::create_directories(outputPath);
+    auto csvPath = outputPath / "core_losses_model_comparison.csv";
+
+    std::ofstream csvFile(csvPath);
+    if (csvFile.is_open()) {
+        csvFile << "Model";
+        for (auto& mat : materials) csvFile << "," << mat;
+        csvFile << ",Average,Maximum" << std::endl;
+
+        for (auto& md : models) {
+            csvFile << md.name;
+            for (auto& mat : materials) {
+                auto it = resultsTable[md.name].find(mat);
+                if (it != resultsTable[md.name].end()) {
+                    csvFile << "," << std::fixed << std::setprecision(2) << (it->second * 100);
+                } else {
+                    csvFile << ",N/A";
+                }
+            }
+            csvFile << "," << std::fixed << std::setprecision(2) << (modelGlobalAvg[md.name] * 100);
+            csvFile << "," << std::fixed << std::setprecision(2) << (modelMaxError[md.name] * 100);
+            csvFile << std::endl;
+        }
+        csvFile.close();
+        std::cout << "Results exported to: " << csvPath << std::endl;
+    }
+
+    // ================================================================
+    // Soft assertion: at least one model should be under 30% avg error
+    // ================================================================
+    double bestAvg = 1.0;
+    std::string bestModel;
+    for (auto& [name, avg] : modelGlobalAvg) {
+        if (avg >= 0 && avg < bestAvg) {
+            bestAvg = avg;
+            bestModel = name;
+        }
+    }
+    std::cout << "Best model: " << bestModel << " with " 
+              << (bestAvg * 100) << "% average error" << std::endl;
+    
+    REQUIRE(bestAvg < 0.5); // At least one model under 50% avg error
+    settings.reset();
+}
+

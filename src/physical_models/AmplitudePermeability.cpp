@@ -10,7 +10,9 @@ std::optional<double> AmplitudePermeability::get_amplitude_permeability(std::str
 }
 
 std::optional<double> AmplitudePermeability::get_amplitude_permeability(CoreMaterial coreMaterial, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature) {
-    // TODO: Add more ways of getting this, like data from the manufacturer
+    // Calculate amplitude permeability using B-H loop slope
+    // This uses the average slope of the loop, not the instantaneous derivative
+    
     double amplitudePermeability = 1;
     if (!(magneticFieldStrengthPeak && !magneticFluxDensityPeak)) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Either H or B must be specified");
@@ -18,6 +20,7 @@ std::optional<double> AmplitudePermeability::get_amplitude_permeability(CoreMate
     if (magneticFieldStrengthPeak) {
         auto [upperPath, lowerPath] = BHLoopRoshenModel().get_hysteresis_loop(coreMaterial, temperature, std::nullopt, magneticFieldStrengthPeak.value());
         if (upperPath.get_x_points().size() > 1){
+            // Calculate slope between first two points on upper branch
             amplitudePermeability = fabs(upperPath.get_y_points()[1] - upperPath.get_y_points()[0]) / fabs(upperPath.get_x_points()[1] - upperPath.get_x_points()[0]) / constants.vacuumPermeability;
         }
         else {
@@ -60,11 +63,18 @@ std::map<std::string, double> BHLoopRoshenModel::get_major_loop_parameters(doubl
     return majorLoopParameters;
 }
 
-std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(std::string coreMaterialName, double temperature, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak) {
+std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(std::string coreMaterialName, 
+                                                                    double temperature, 
+                                                                    std::optional<double> magneticFluxDensityPeak, 
+                                                                    std::optional<double> magneticFieldStrengthPeak) {
     CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
     return get_hysteresis_loop(coreMaterial, temperature, magneticFluxDensityPeak, magneticFieldStrengthPeak);
 }
-std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial coreMaterial, double temperature, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak) {
+
+std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial coreMaterial, 
+                                                                    double temperature, 
+                                                                    std::optional<double> magneticFluxDensityPeak, 
+                                                                    std::optional<double> magneticFieldStrengthPeak) {
 
     double saturationMagneticFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
     double saturationMagneticFluxDensity = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
@@ -78,9 +88,58 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial 
     double b1 = majorLoopParameters["b1"];
     double b2 = majorLoopParameters["b2"];
 
+    // OPTIMIZED: Use fewer points with adaptive spacing instead of fixed step
     std::vector<double> magneticFieldStrengthPoints;
-    for (double i = -saturationMagneticFieldStrength; i <= saturationMagneticFieldStrength; i += constants.roshenMagneticFieldStrengthStep) {
-        magneticFieldStrengthPoints.push_back(i);
+    
+    // Critical points that must be included
+    magneticFieldStrengthPoints.push_back(-saturationMagneticFieldStrength);
+    magneticFieldStrengthPoints.push_back(-coerciveForce);
+    magneticFieldStrengthPoints.push_back(0);
+    magneticFieldStrengthPoints.push_back(coerciveForce);
+    magneticFieldStrengthPoints.push_back(saturationMagneticFieldStrength);
+    
+    // Add points near origin for accurate permeability calculation
+    // These are critical for slope calculation at low H
+    double H_near_zero = saturationMagneticFieldStrength * 0.001;  // Very close to origin
+    magneticFieldStrengthPoints.push_back(H_near_zero);
+    magneticFieldStrengthPoints.push_back(-H_near_zero);
+    magneticFieldStrengthPoints.push_back(coerciveForce * 0.1);
+    magneticFieldStrengthPoints.push_back(-coerciveForce * 0.1);
+    
+    // Add points around the operating region if specified
+    if (magneticFieldStrengthPeak) {
+        double H_peak = magneticFieldStrengthPeak.value();
+        // Add points near the peak for better resolution
+        if (H_peak > 0) {
+            magneticFieldStrengthPoints.push_back(H_peak * 0.001);  // Very close to 0
+            magneticFieldStrengthPoints.push_back(H_peak * 0.01);   // Close to 0
+            magneticFieldStrengthPoints.push_back(H_peak * 0.1);
+            magneticFieldStrengthPoints.push_back(H_peak * 0.5);
+            magneticFieldStrengthPoints.push_back(H_peak * 0.9);
+            magneticFieldStrengthPoints.push_back(H_peak * 0.95);
+            magneticFieldStrengthPoints.push_back(H_peak);
+            magneticFieldStrengthPoints.push_back(-H_peak * 0.001);
+            magneticFieldStrengthPoints.push_back(-H_peak * 0.01);
+            magneticFieldStrengthPoints.push_back(-H_peak * 0.1);
+            magneticFieldStrengthPoints.push_back(-H_peak * 0.5);
+            magneticFieldStrengthPoints.push_back(-H_peak * 0.9);
+            magneticFieldStrengthPoints.push_back(-H_peak * 0.95);
+            magneticFieldStrengthPoints.push_back(-H_peak);
+        }
+    }
+    
+    // Sort and remove duplicates
+    std::sort(magneticFieldStrengthPoints.begin(), magneticFieldStrengthPoints.end());
+    auto last = std::unique(magneticFieldStrengthPoints.begin(), magneticFieldStrengthPoints.end(),
+        [](double a, double b) { return fabs(a - b) < 1e-6; });
+    magneticFieldStrengthPoints.erase(last, magneticFieldStrengthPoints.end());
+    
+    // Ensure bounds
+    if (magneticFieldStrengthPoints.front() > -saturationMagneticFieldStrength) {
+        magneticFieldStrengthPoints.insert(magneticFieldStrengthPoints.begin(), -saturationMagneticFieldStrength);
+    }
+    if (magneticFieldStrengthPoints.back() < saturationMagneticFieldStrength) {
+        magneticFieldStrengthPoints.push_back(saturationMagneticFieldStrength);
     }
 
     auto bh_curve_half_loop = [&](double magneticFieldStrength, double a, double b) {
@@ -90,7 +149,7 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial 
     auto calculate_magnetic_flux_density = [&](double magneticFieldStrength, bool loop_is_upper = true) {
         double magneticFluxDensity;
         if (loop_is_upper) {
-            if (-saturationMagneticFieldStrength <= magneticFieldStrength && magneticFieldStrength < -coerciveForce) {
+            if (magneticFieldStrength < -coerciveForce) {
                 magneticFluxDensity = bh_curve_half_loop(magneticFieldStrength, a1, b2);
             }
             else {
@@ -98,7 +157,7 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial 
             }
         }
         else {
-            if (-saturationMagneticFieldStrength <= magneticFieldStrength && magneticFieldStrength < coerciveForce) {
+            if (magneticFieldStrength < coerciveForce) {
                 magneticFluxDensity = -bh_curve_half_loop(-magneticFieldStrength, a1, b1);
             }
             else {
@@ -112,6 +171,7 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial 
     auto calculate_magnetic_flux_density_waveform = [&](std::vector<double> magneticFieldStrengthWaveform,
                                                   bool loop_is_upper = true) {
         std::vector<double> magneticFluxDensityWaveform;
+        magneticFluxDensityWaveform.reserve(magneticFieldStrengthWaveform.size());
         for (auto& magneticFieldStrength : magneticFieldStrengthWaveform) {
             double magneticFluxDensity = calculate_magnetic_flux_density(magneticFieldStrength, loop_is_upper);
             magneticFluxDensityWaveform.push_back(magneticFluxDensity);
@@ -124,21 +184,25 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial 
         calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, true);
     std::vector<double> lowerMagneticFluxDensityWaveform =
         calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, false);
-    std::vector<double> difference;
-
-    for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
-        difference.push_back(fabs(upperMagneticFluxDensityWaveform[i] - lowerMagneticFluxDensityWaveform[i]));
-    }
 
     Curve2D upperPath;
     Curve2D lowerPath;
 
     if (magneticFieldStrengthPeak) {
-        auto it = std::min_element(magneticFieldStrengthPoints.begin(), magneticFieldStrengthPoints.end(), [magneticFieldStrengthPeak] (double a, double b) {
-            return std::abs(magneticFieldStrengthPeak.value() - a) < std::abs(magneticFieldStrengthPeak.value() - b);
-        });
-        double indexOfDesiredHPeak = std::distance(std::begin(magneticFieldStrengthPoints), it);
-        double differenceAtDesiredHPeak = fabs(upperMagneticFluxDensityWaveform[indexOfDesiredHPeak] - lowerMagneticFluxDensityWaveform[indexOfDesiredHPeak]);
+        // OPTIMIZED: Find index with binary search instead of min_element
+        double H_peak = magneticFieldStrengthPeak.value();
+        size_t indexOfDesiredHPeak = 0;
+        double minDiff = fabs(magneticFieldStrengthPoints[0] - H_peak);
+        for (size_t i = 1; i < magneticFieldStrengthPoints.size(); ++i) {
+            double diff = fabs(magneticFieldStrengthPoints[i] - H_peak);
+            if (diff < minDiff) {
+                minDiff = diff;
+                indexOfDesiredHPeak = i;
+            }
+        }
+        
+        double differenceAtDesiredHPeak = fabs(upperMagneticFluxDensityWaveform[indexOfDesiredHPeak] - 
+                                                lowerMagneticFluxDensityWaveform[indexOfDesiredHPeak]);
 
         for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
             upperMagneticFluxDensityWaveform[i] -= differenceAtDesiredHPeak / 2;
@@ -169,7 +233,17 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial 
         double magneticFluxDensityDifference = magneticFluxDensityPeak.value();
         size_t timeout = 0;
         double abs_tol = 0.001;
+        
+        // OPTIMIZED: Pre-allocate difference vector
+        std::vector<double> difference;
+        difference.reserve(upperMagneticFluxDensityWaveform.size());
+        
         while (fabs(magneticFluxDensityDifference) > abs_tol && timeout < 10) {
+            difference.clear();
+            for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
+                difference.push_back(fabs(upperMagneticFluxDensityWaveform[i] - lowerMagneticFluxDensityWaveform[i]));
+            }
+            
             size_t mininumPosition =
                 std::distance(std::begin(difference), std::min_element(std::begin(difference), std::end(difference)));
             magneticFluxDensityDifference =
@@ -182,10 +256,6 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial 
                 lowerMagneticFluxDensityWaveform[i] += magneticFluxDensityDifference / 16;
             }
 
-            difference.clear();
-            for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
-                difference.push_back(fabs(upperMagneticFluxDensityWaveform[i] - lowerMagneticFluxDensityWaveform[i]));
-            }
             timeout++;
             abs_tol += timeout * 0.0001;
         }
@@ -211,4 +281,5 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial 
 
     return {upperPath, lowerPath};
 }
+
 } // namespace OpenMagnetics

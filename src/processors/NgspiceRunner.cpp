@@ -1,5 +1,6 @@
 #include "processors/NgspiceRunner.h"
 #include "processors/CircuitSimulatorInterface.h"
+#include "processors/Inputs.h"
 #include "support/Exceptions.h"
 #include "Defaults.h"
 
@@ -924,6 +925,9 @@ OperatingPoint NgspiceRunner::extract_operating_point(
             if (indexIt != nameToIndex.end()) {
                 SignalDescriptor voltage;
                 voltage.set_waveform(result.waveforms[indexIt->second]);
+                // Calculate processed data for voltage
+                auto voltageProcessed = Inputs::calculate_processed_data(result.waveforms[indexIt->second], frequency, true);
+                voltage.set_processed(voltageProcessed);
                 excitation.set_voltage(voltage);
             }
         }
@@ -949,6 +953,9 @@ OperatingPoint NgspiceRunner::extract_operating_point(
                 
                 SignalDescriptor current;
                 current.set_waveform(currentWaveform);
+                // Calculate processed data for current
+                auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, frequency, true);
+                current.set_processed(currentProcessed);
                 excitation.set_current(current);
             }
         }

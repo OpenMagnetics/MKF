@@ -173,6 +173,9 @@ public:
     void set_ambient_temperature(double value) { _ambientTemperature = value; }
     double get_ambient_temperature() const { return _ambientTemperature; }
 
+    void set_num_periods_to_extract(int value) { _numberOfPeriods = value; }
+    int get_num_periods_to_extract() const { return _numberOfPeriods; }
+
     /**
      * @brief Generate SPICE netlist for PFC boost converter simulation.
      * 

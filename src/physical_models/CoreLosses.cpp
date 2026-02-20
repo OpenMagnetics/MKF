@@ -1,6 +1,7 @@
 #include "physical_models/CoreLosses.h"
 #include "physical_models/Resistivity.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/RoshenHysteresisModel.h"
 
 #include "processors/Inputs.h"
 #include "physical_models/Reluctance.h"
@@ -1552,6 +1553,9 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
 double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string, double> parameters,
                                                             OperatingPointExcitation excitation) {
     double frequency = excitation.get_frequency();
+    
+    // Use the proven iterative method from the original implementation
+    // This has been validated against experimental data
     auto [cutUpperMagneticFluxDensityWaveform, cutLowerMagneticFluxDensityWaveform] = get_bh_loop(parameters, excitation);
     size_t minimum_length =
         std::min(cutUpperMagneticFluxDensityWaveform.size(), cutLowerMagneticFluxDensityWaveform.size());

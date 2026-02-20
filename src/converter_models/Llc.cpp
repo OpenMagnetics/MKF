@@ -699,14 +699,16 @@ std::string Llc::generate_ngspice_circuit(
                 << std::scientific << deadTime << " " << deadTime << " "
                 << tOn << " " << period << std::fixed << ")\n";
         circuit << "Vpri_sense bridge_a lr_in 0\n";
-        circuit << "Vbus_gnd bridge_b 0 0\n\n";
+        circuit << "Vbus_gnd bridge_b 0 0\n";
+        circuit << "Vin_sense bridge_a_in bridge_a 0\n\n";
     } else {
         circuit << "Vbridge sw_node mid_point PULSE("
                 << -(inputVoltage / 2.0) << " " << (inputVoltage / 2.0) << " 0 "
                 << std::scientific << deadTime << " " << deadTime << " "
                 << tOn << " " << period << std::fixed << ")\n";
         circuit << "Vmid mid_point 0 0\n";
-        circuit << "Vpri_sense sw_node lr_in 0\n\n";
+        circuit << "Vpri_sense sw_node lr_in 0\n";
+        circuit << "Vin_sense sw_node_in sw_node 0\n\n";
     }
 
     if (integratedLs) {
@@ -752,8 +754,13 @@ std::string Llc::generate_ngspice_circuit(
     circuit << ".options METHOD=GEAR TRTOL=7\n\n";
     circuit << ".tran " << std::scientific << maxStep << " " << simTime
             << " " << startTime << " " << maxStep << " UIC\n\n";
-    circuit << ".save v(pri_top) v(pri_bot) v(sec_top) v(sec_bot) v(vout_pos) v(vout_neg) v(vout_cap)";
-    circuit << " i(Vpri_sense) i(Vsec_sense)\n\n.end\n";
+    // Add DC bus voltage to save (converter input, before the bridge)
+    if (isFullBridge) {
+        circuit << ".save v(bridge_a) v(bridge_b) v(pri_top) v(pri_bot) v(sec_top) v(sec_bot) v(vout_pos) v(vout_neg) v(vout_cap)";
+    } else {
+        circuit << ".save v(sw_node) v(mid_point) v(pri_top) v(pri_bot) v(sec_top) v(sec_bot) v(vout_pos) v(vout_neg) v(vout_cap)";
+    }
+    circuit << " i(Vin_sense) i(Vpri_sense) i(Vsec_sense)\n\n.end\n";
 
     return circuit.str();
 }
@@ -843,7 +850,9 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
             throw std::runtime_error("LLC simulation failed: " + simResult.errorMessage);
 
         std::map<std::string, size_t> nameToIndex;
+        std::cout << "[LLC DEBUG] Available waveforms:" << std::endl;
         for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+            std::cout << "  - " << simResult.waveformNames[i] << std::endl;
             std::string lower = simResult.waveformNames[i];
             std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             nameToIndex[lower] = i;
@@ -855,11 +864,56 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
             return (it != nameToIndex.end()) ? simResult.waveforms[it->second] : Waveform();
         };
 
+        // Determine bridge type to know which DC bus nodes to use
+        bool isFullBridge = (get_bridge_type().has_value() &&
+                             get_bridge_type().value() == LlcBridgeType::FULL_BRIDGE);
+
         ConverterWaveforms wf;
         wf.set_switching_frequency(switchingFrequency);
         wf.set_operating_point_name("LLC op. point " + std::to_string(opIdx));
-        wf.set_input_voltage(getWf("pri_top"));
-        wf.set_input_current(getWf("vpri_sense#branch"));
+
+        // Use DC bus voltage (before bridge) not transformer primary (after bridge)
+        // For full-bridge: bridge_a is the positive rail, bridge_b is ground
+        // For half-bridge: sw_node is the switched node, mid_point is ground
+        Waveform vbus = isFullBridge ? getWf("bridge_a") : getWf("sw_node");
+        Waveform vgnd = isFullBridge ? getWf("bridge_b") : getWf("mid_point");
+
+        // Calculate DC bus voltage (differential)
+        if (!vbus.get_data().empty() && !vgnd.get_data().empty()) {
+            auto vbusData = vbus.get_data();
+            auto vgndData = vgnd.get_data();
+            std::vector<double> vdiff; vdiff.reserve(vbusData.size());
+            for (size_t i = 0; i < vbusData.size() && i < vgndData.size(); ++i)
+                vdiff.push_back(vbusData[i] - vgndData[i]);
+            Waveform vinWf = vbus; vinWf.set_data(vdiff);
+            wf.set_input_voltage(vinWf);
+        }
+
+        // Get input current - use Vpri_sense current (resonant tank current) as proxy for input current
+        // The DC input current is the rectified version of this, but this gives us the actual current waveform
+        Waveform iin = getWf("vpri_sense#branch");
+        std::cout << "[LLC DEBUG] Looking for input current 'vpri_sense#branch', found data size: " << iin.get_data().size() << std::endl;
+        if (iin.get_data().empty()) {
+            // Fallback to vin_sense if available
+            iin = getWf("vin_sense#branch");
+            std::cout << "[LLC DEBUG] Fallback to 'vin_sense#branch', found data size: " << iin.get_data().size() << std::endl;
+        }
+        wf.set_input_current(iin);
+        std::cout << "[LLC DEBUG] Set input current with data size: " << wf.get_input_current().get_data().size() << std::endl;
+        if (!iin.get_data().empty()) {
+            // Check if data is all zeros
+            bool allZero = true;
+            for (size_t i = 0; i < std::min(size_t(10), iin.get_data().size()); ++i) {
+                if (std::abs(iin.get_data()[i]) > 1e-12) {
+                    allZero = false;
+                    break;
+                }
+            }
+            std::cout << "[LLC DEBUG] Input current first 10 values all zero: " << (allZero ? "YES" : "NO") << std::endl;
+            if (!allZero) {
+                std::cout << "[LLC DEBUG] Sample input current values: " << iin.get_data()[0] << ", " << iin.get_data()[50] << ", " << iin.get_data()[100] << std::endl;
+            }
+        }
 
         if (!turnsRatios.empty()) {
             auto vp = getWf("vout_pos"); auto vn = getWf("vout_neg");

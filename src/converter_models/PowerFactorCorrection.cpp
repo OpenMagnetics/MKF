@@ -338,27 +338,28 @@ namespace OpenMagnetics {
             }
         }
 
-        // For magnetic design, extract the LAST LINE PERIOD (one full AC cycle)
-        // This contains all the switching cycles within one line frequency period
+        // Extract the requested number of line periods from the end
+        // This contains all the switching cycles within the line frequency periods
         int pointsPerLinePeriod = static_cast<int>(std::round(mainsPeriod / dt));
-        int lastPeriodStartIndex = totalPoints - pointsPerLinePeriod;
-        if (lastPeriodStartIndex < 0) lastPeriodStartIndex = 0;
+        int pointsToExtract = pointsPerLinePeriod * actualPeriods;
+        int startIndex = totalPoints - pointsToExtract;
+        if (startIndex < 0) startIndex = 0;
         
-        // Extract one line period of data from the end
-        std::vector<double> linePeriodCurrent;
-        std::vector<double> linePeriodVoltage;
-        std::vector<double> linePeriodTime;
+        // Extract multiple line periods of data from the end
+        std::vector<double> extractedCurrent;
+        std::vector<double> extractedVoltage;
+        std::vector<double> extractedTime;
         
-        for (int i = 0; i < pointsPerLinePeriod && (lastPeriodStartIndex + i) < totalPoints; ++i) {
-            linePeriodCurrent.push_back(currentData[lastPeriodStartIndex + i]);
-            linePeriodVoltage.push_back(voltageData[lastPeriodStartIndex + i]);
-            linePeriodTime.push_back(timeData[lastPeriodStartIndex + i] - timeData[lastPeriodStartIndex]);  // Start from 0
+        for (int i = 0; i < pointsToExtract && (startIndex + i) < totalPoints; ++i) {
+            extractedCurrent.push_back(currentData[startIndex + i]);
+            extractedVoltage.push_back(voltageData[startIndex + i]);
+            extractedTime.push_back(timeData[startIndex + i] - timeData[startIndex]);  // Start from 0
         }
         
-        // Create current waveform (one line period for magnetic tool)
+        // Create current waveform (multiple line periods)
         Waveform currentWaveform;
-        currentWaveform.set_data(linePeriodCurrent);
-        currentWaveform.set_time(linePeriodTime);
+        currentWaveform.set_data(extractedCurrent);
+        currentWaveform.set_time(extractedTime);
 
         SignalDescriptor current;
         current.set_waveform(currentWaveform);
@@ -366,10 +367,10 @@ namespace OpenMagnetics {
         current.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, _lineFrequency));
         current.set_processed(Inputs::calculate_processed_data(currentWaveform, _lineFrequency, true));
 
-        // Create voltage waveform (one line period)
+        // Create voltage waveform (multiple line periods)
         Waveform voltageWaveform;
-        voltageWaveform.set_data(linePeriodVoltage);
-        voltageWaveform.set_time(linePeriodTime);
+        voltageWaveform.set_data(extractedVoltage);
+        voltageWaveform.set_time(extractedTime);
 
         SignalDescriptor voltage;
         voltage.set_waveform(voltageWaveform);
@@ -377,7 +378,7 @@ namespace OpenMagnetics {
         voltage.set_harmonics(Inputs::calculate_harmonics_data(sampledVoltageWaveform, _lineFrequency));
         voltage.set_processed(Inputs::calculate_processed_data(voltageWaveform, _lineFrequency, true));
 
-        // Create operating point with one line period
+        // Create operating point with multiple line periods
         OperatingPointExcitation excitation;
         excitation.set_current(current);
         excitation.set_frequency(_lineFrequency);
@@ -386,7 +387,7 @@ namespace OpenMagnetics {
         OperatingPoint operatingPoint;
         operatingPoint.set_excitations_per_winding({excitation});
         operatingPoint.get_mutable_conditions().set_ambient_temperature(_ambientTemperature);
-        operatingPoint.set_name("PFC_Line_Period");
+        operatingPoint.set_name("PFC_Line_Period_" + std::to_string(actualPeriods) + "_Periods");
 
         operatingPoints.push_back(operatingPoint);
 
@@ -565,8 +566,9 @@ namespace OpenMagnetics {
                                                                                                double dcResistance) {
         std::vector<OperatingPoint> operatingPoints;
         
-        // Run simulation for one complete line cycle
-        PfcSimulationWaveforms waveforms = simulate_and_extract_waveforms(inductance, dcResistance, 1);
+        // Run simulation for the configured number of periods
+        int numPeriods = (_numberOfPeriods > 0) ? _numberOfPeriods : 2;
+        PfcSimulationWaveforms waveforms = simulate_and_extract_waveforms(inductance, dcResistance, numPeriods);
         
         // If simulation didn't return valid waveform data, fall back to analytical operating points
         if (waveforms.inductorCurrent.empty() || waveforms.time.empty()) {

@@ -1,6 +1,7 @@
 #include "support/Utils.h"
 #include "Defaults.h"
 #include "processors/CircuitSimulatorInterface.h"
+#include "processors/Inputs.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -1770,18 +1771,27 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
+                // Calculate processed data for current
+                auto currentProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
+                current.set_processed(currentProcessed);
                 excitation.set_current(current);
             }
             if (column.windingIndex == windingIndex && column.type == DataType::MAGNETIZING_CURRENT) {
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
+                // Calculate processed data for magnetizing current
+                auto currentProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
+                current.set_processed(currentProcessed);
                 excitation.set_magnetizing_current(current);
             }
             if (column.windingIndex == windingIndex && column.type == DataType::VOLTAGE) {
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor voltage;
                 voltage.set_waveform(waveform);
+                // Calculate processed data for voltage
+                auto voltageProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
+                voltage.set_processed(voltageProcessed);
                 excitation.set_voltage(voltage);
             }
         }

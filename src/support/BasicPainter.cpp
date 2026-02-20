@@ -1235,8 +1235,26 @@ std::string BasicPainter::get_color(double minimumValue, double maximumValue, st
     // Calculate interpolation factor (0.0 at minimumValue, 1.0 at maximumValue)
     double t = (value - minimumValue) / (maximumValue - minimumValue);
     
+    // Convert hex colors to RGB
+    uint32_t minColor = hex_to_uint(minimumColor);
+    uint32_t maxColor = hex_to_uint(maximumColor);
+    
+    // Extract RGB components
+    uint8_t minR = (minColor >> 16) & 0xFF;
+    uint8_t minG = (minColor >> 8) & 0xFF;
+    uint8_t minB = minColor & 0xFF;
+    
+    uint8_t maxR = (maxColor >> 16) & 0xFF;
+    uint8_t maxG = (maxColor >> 8) & 0xFF;
+    uint8_t maxB = maxColor & 0xFF;
+    
     // Linearly interpolate each channel
-    uint32_t result = get_uint_color_from_ratio(t);
+    uint8_t r = static_cast<uint8_t>(minR + t * (maxR - minR));
+    uint8_t g = static_cast<uint8_t>(minG + t * (maxG - minG));
+    uint8_t b = static_cast<uint8_t>(minB + t * (maxB - minB));
+    
+    // Combine into final color
+    uint32_t result = (r << 16) + (g << 8) + b;
     
     // Convert back to hex string
     return uint_to_hex(result, "#");
