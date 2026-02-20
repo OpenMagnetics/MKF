@@ -993,6 +993,9 @@ namespace {
 
     TEST_CASE("Test_Painter_Toroid_Round_Wires", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
+#endif
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({100, 5});
@@ -1077,6 +1080,9 @@ namespace {
 
     TEST_CASE("Test_Painter_Toroid_Quiver_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
+#endif
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1131,6 +1137,9 @@ namespace {
 
     TEST_CASE("Test_Painter_Toroid_Quiver_One_Turn_Rectangular_Inner", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
+#endif
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1185,6 +1194,9 @@ namespace {
 
     TEST_CASE("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Inner", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
+#endif
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1239,6 +1251,9 @@ namespace {
 
     TEST_CASE("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Spread", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
+#endif
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1293,6 +1308,9 @@ namespace {
 
     TEST_CASE("Test_Painter_Toroid_Quiver_Two_Turn_Rectangular", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
+#endif
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1347,6 +1365,9 @@ namespace {
 
     TEST_CASE("Test_Painter_Toroid_Rectangular_Wires", "[support][painter][magnetic-field-painter][round-winding-window]") {
         clear_databases();
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
+#endif
 
         double temperature = 20;
         std::vector<int64_t> numberTurns = {11, 90};
@@ -4032,6 +4053,9 @@ namespace {
 
     TEST_CASE("Test_Field_Painter_Web_1", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
         clear_databases();
+#ifndef ENABLE_MATPLOTPP
+        SKIP("matplotplusplus disabled — skipping magnetic field painter test");
+#endif
 
         auto outFile = outputFilePath;
         outFile.append("Test_Field_Painter_Web_1.svg");
