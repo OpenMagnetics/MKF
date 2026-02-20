@@ -1,7 +1,6 @@
 #include "physical_models/CoreLosses.h"
 #include "physical_models/Resistivity.h"
 #include "physical_models/InitialPermeability.h"
-#include "physical_models/RoshenHysteresisModel.h"
 
 #include "processors/Inputs.h"
 #include "physical_models/Reluctance.h"
@@ -2096,6 +2095,735 @@ SignalDescriptor CoreLossesModel::_get_magnetic_flux_density_from_core_losses(Co
         }
     }
     return magneticFluxDensityMinimumError;
+}
+
+// ============================================================================
+// Roshen Hysteresis Model Implementation
+// ============================================================================
+
+// Initialize static cache members
+std::map<BHLoopCacheKey, BHLoop> RoshenHysteresisModel::_loopCache;
+std::map<std::string, RoshenParameters> RoshenHysteresisModel::_paramsCache;
+
+// ============================================================================
+// BHLoop Implementation
+// ============================================================================
+
+double BHLoop::calculate_area() const {
+    if (upperH.empty() || lowerH.empty() || upperH.size() != lowerH.size()) {
+        return 0.0;
+    }
+    
+    // Hysteresis loop area: Area = ∫ (B_upper(H) - B_lower(H)) dH
+    // This is the standard approach: sum of vertical strips
+    double area = 0.0;
+    size_t minLength = std::min(upperH.size(), lowerH.size());
+    
+    // Use constant step size from constants.roshenMagneticFieldStrengthStep
+    // which is used when generating H points
+    double dH = constants.roshenMagneticFieldStrengthStep;
+    
+    for (size_t i = 0; i < minLength; ++i) {
+        // Area of strip = |B_upper - B_lower| * dH
+        area += std::fabs(upperB[i] - lowerB[i]) * dH;
+    }
+    
+    return area;
+}
+
+double BHLoop::get_b_for_h(double H, bool upperBranch) const {
+    const auto& hVec = upperBranch ? upperH : lowerH;
+    const auto& bVec = upperBranch ? upperB : lowerB;
+    
+    if (hVec.empty()) return 0.0;
+    
+    // Find the interval containing H
+    for (size_t i = 0; i < hVec.size() - 1; ++i) {
+        if ((H >= hVec[i] && H <= hVec[i + 1]) || (H <= hVec[i] && H >= hVec[i + 1])) {
+            // Linear interpolation
+            double t = (H - hVec[i]) / (hVec[i + 1] - hVec[i]);
+            return bVec[i] + t * (bVec[i + 1] - bVec[i]);
+        }
+    }
+    
+    // H outside range - extrapolate using closest point
+    return (H < hVec.front()) ? bVec.front() : bVec.back();
+}
+
+// ============================================================================
+// RoshenParameters Implementation
+// ============================================================================
+
+RoshenParameters RoshenParameters::from_material(const CoreMaterial& material, double temperature) {
+    RoshenParameters params;
+    
+    params.coerciveForce = Core::get_coercive_force(material, temperature);
+    params.remanence = Core::get_remanence(material, temperature);
+    params.saturationMagneticFluxDensity = Core::get_magnetic_flux_density_saturation(material, temperature, false);
+    params.saturationMagneticFieldStrength = Core::get_magnetic_field_strength_saturation(material, temperature);
+    
+    // Calculate Roshen coefficients a1, b1, b2
+    // From Roshen paper: B = (H + Hc) / (a + b|H + Hc|)
+    double Hc = params.coerciveForce;
+    double H0 = params.saturationMagneticFieldStrength;
+    double B0 = params.saturationMagneticFluxDensity;
+    double B1 = params.remanence;
+    double H2 = -H0;
+    double B2 = -B0;
+    
+    // b1 = (H0/B0 + Hc/B0 - H1/B1 - Hc/B1) / (H0 - H1)
+    // Where H1 = 0 (remanence point)
+    params.b1 = (H0 / B0 + Hc / B0 - 0 / B1 - Hc / B1) / (H0 - 0);
+    
+    // a1 = (Hc - B1 * b1 * Hc) / B1
+    params.a1 = (Hc - B1 * params.b1 * 0) / B1;  // H1 = 0
+    
+    // b2 = (H2 + Hc - B2 * a1) / (B2 * |H2 + Hc|)
+    params.b2 = (H2 + Hc - B2 * params.a1) / (B2 * std::fabs(H2 + Hc));
+    
+    return params;
+}
+
+void RoshenParameters::apply_temperature_correction(double temperature) {
+    // Apply temperature correction based on Bertotti's model
+    // Hc(T) = Hc(T_ref) * (1 - alpha_Hc * (T - T_ref))
+    // Br(T) = Br(T_ref) * (1 - alpha_Br * (T - T_ref))
+    
+    double dT = temperature - T_ref;
+    
+    // Store original values
+    double Hc_original = coerciveForce;
+    double Br_original = remanence;
+    
+    // Apply corrections
+    coerciveForce = Hc_original * (1.0 - alpha_Hc * dT);
+    remanence = Br_original * (1.0 - alpha_Br * dT);
+    
+    // Recalculate coefficients with corrected values
+    double Hc = coerciveForce;
+    double H0 = saturationMagneticFieldStrength;
+    double B0 = saturationMagneticFluxDensity;
+    double B1 = remanence;
+    double H2 = -H0;
+    double B2 = -B0;
+    
+    // Recalculate b1, a1, b2
+    if (B1 > 1e-12 && H0 > 1e-12) {
+        b1 = (H0 / B0 + Hc / B0 - Hc / B1) / H0;
+        a1 = Hc / B1;
+        b2 = (H2 + Hc - B2 * a1) / (B2 * std::fabs(H2 + Hc));
+    }
+}
+
+double RoshenParameters::calculate_fitting_error(const std::vector<std::pair<double, double>>& measuredPoints) const {
+    double totalError = 0.0;
+    
+    auto calculate_b_model = [&](double H, bool upperBranch) -> double {
+        if (upperBranch) {
+            if (H < -coerciveForce) {
+                return (H + coerciveForce) / (a1 + b2 * std::fabs(H + coerciveForce));
+            } else {
+                return (H + coerciveForce) / (a1 + b1 * std::fabs(H + coerciveForce));
+            }
+        } else {
+            if (H < coerciveForce) {
+                return -(H + coerciveForce) / (a1 + b1 * std::fabs(H + coerciveForce));
+            } else {
+                return -(H + coerciveForce) / (a1 + b2 * std::fabs(H + coerciveForce));
+            }
+        }
+    };
+    
+    for (const auto& [H_meas, B_meas] : measuredPoints) {
+        // Determine if point is on upper or lower branch
+        bool upperBranch = (H_meas >= -coerciveForce);
+        double B_calc = calculate_b_model(H_meas, upperBranch);
+        totalError += std::pow(B_calc - B_meas, 2);
+    }
+    
+    return totalError;
+}
+
+// ============================================================================
+// RoshenHysteresisModel Implementation
+// ============================================================================
+
+void RoshenHysteresisModel::clear_cache() {
+    _loopCache.clear();
+    _paramsCache.clear();
+}
+
+RoshenParameters RoshenHysteresisModel::get_cached_parameters(const CoreMaterial& material, double temperature) {
+    // Create cache key based on material name and temperature (rounded to avoid floating-point issues)
+    std::string key = material.get_name() + "_" + std::to_string(static_cast<int>(temperature * 100));
+    
+    auto it = _paramsCache.find(key);
+    if (it != _paramsCache.end()) {
+        return it->second;
+    }
+    
+    // Calculate and cache
+    RoshenParameters params = RoshenParameters::from_material(material, temperature);
+    
+    // Manage cache size
+    if (_paramsCache.size() >= MAX_CACHE_SIZE) {
+        _paramsCache.erase(_paramsCache.begin());  // Remove oldest entry
+    }
+    
+    _paramsCache[key] = params;
+    return params;
+}
+
+std::vector<double> RoshenHysteresisModel::generate_h_points(double Hs, double step) const {
+    std::vector<double> points;
+    
+    // Use default step if not specified
+    if (step <= 0) {
+        step = constants.roshenMagneticFieldStrengthStep;
+    }
+    
+    // Generate from -Hs to +Hs
+    for (double H = -Hs; H <= Hs; H += step) {
+        points.push_back(H);
+    }
+    
+    // Ensure we include exactly +Hs
+    if (points.empty() || points.back() < Hs - 1e-10) {
+        points.push_back(Hs);
+    }
+    
+    return points;
+}
+
+double RoshenHysteresisModel::calculate_b(double H, double coerciveForce, double a, double b, bool upperBranch) const {
+    if (upperBranch) {
+        if (H < -coerciveForce) {
+            return bh_curve_half_loop(H, coerciveForce, a, b);
+        } else {
+            return bh_curve_half_loop(H, coerciveForce, a, b);
+        }
+    } else {
+        if (H < coerciveForce) {
+            return -bh_curve_half_loop(-H, coerciveForce, a, b);
+        } else {
+            return -bh_curve_half_loop(-H, coerciveForce, a, b);
+        }
+    }
+}
+
+BHLoop RoshenHysteresisModel::calculate_major_loop(const RoshenParameters& params, double temperature, double stepSize) {
+    BHLoop loop;
+    loop.coerciveForce = params.coerciveForce;
+    loop.remanence = params.remanence;
+    loop.saturationB = params.saturationMagneticFluxDensity;
+    loop.saturationH = params.saturationMagneticFieldStrength;
+    
+    // Generate H points
+    auto hPoints = generate_h_points(params.saturationMagneticFieldStrength, stepSize);
+    
+    loop.upperH = hPoints;
+    loop.lowerH = hPoints;
+    loop.upperB.reserve(hPoints.size());
+    loop.lowerB.reserve(hPoints.size());
+    
+    // Calculate upper branch (increasing H)
+    for (double H : hPoints) {
+        double B;
+        if (H < -params.coerciveForce) {
+            B = bh_curve_half_loop(H, params.coerciveForce, params.a1, params.b2);
+        } else {
+            B = bh_curve_half_loop(H, params.coerciveForce, params.a1, params.b1);
+        }
+        loop.upperB.push_back(B);
+    }
+    
+    // Calculate lower branch (decreasing H)
+    for (double H : hPoints) {
+        double B;
+        if (H < params.coerciveForce) {
+            B = -bh_curve_half_loop(-H, params.coerciveForce, params.a1, params.b1);
+        } else {
+            B = -bh_curve_half_loop(-H, params.coerciveForce, params.a1, params.b2);
+        }
+        loop.lowerB.push_back(B);
+    }
+    
+    // Calculate loop area
+    loop.area = loop.calculate_area();
+    
+    return loop;
+}
+
+BHLoop RoshenHysteresisModel::scale_to_minor_loop_analytical(const BHLoop& majorLoop, 
+                                                            const RoshenParameters& params,
+                                                            double targetBpeak) {
+    BHLoop minorLoop;
+    minorLoop.coerciveForce = params.coerciveForce;
+    minorLoop.remanence = params.remanence * (targetBpeak / params.saturationMagneticFluxDensity);
+    minorLoop.saturationB = targetBpeak;
+    minorLoop.saturationH = params.saturationMagneticFieldStrength;  // Will be adjusted
+    
+    // Calculate scale factor
+    double scaleFactor = targetBpeak / params.saturationMagneticFluxDensity;
+    
+    // Apply non-linear correction for low-flux operation (Rayleigh region)
+    if (scaleFactor < 0.3) {
+        // In Rayleigh region, permeability is lower, so we need less shearing
+        // Correction factor from empirical data
+        double rayleighCorrection = 1.0 + 0.5 * (0.3 - scaleFactor);
+        scaleFactor *= rayleighCorrection;
+    }
+    
+    // Scale B values
+    minorLoop.upperH = majorLoop.upperH;
+    minorLoop.lowerH = majorLoop.lowerH;
+    minorLoop.upperB.reserve(majorLoop.upperB.size());
+    minorLoop.lowerB.reserve(majorLoop.lowerB.size());
+    
+    // Analytical scaling: B_minor = B_major * scale_factor
+    // But we need to maintain proper loop shape near origin
+    for (size_t i = 0; i < majorLoop.upperB.size(); ++i) {
+        double B_major = majorLoop.upperB[i];
+        double B_minor = B_major * scaleFactor;
+        
+        // Ensure we don't exceed target peak
+        if (std::fabs(B_minor) > targetBpeak) {
+            B_minor = std::copysign(targetBpeak, B_minor);
+        }
+        
+        minorLoop.upperB.push_back(B_minor);
+    }
+    
+    for (size_t i = 0; i < majorLoop.lowerB.size(); ++i) {
+        double B_major = majorLoop.lowerB[i];
+        double B_minor = B_major * scaleFactor;
+        
+        if (std::fabs(B_minor) > targetBpeak) {
+            B_minor = std::copysign(targetBpeak, B_minor);
+        }
+        
+        minorLoop.lowerB.push_back(B_minor);
+    }
+    
+    // Trim points outside the minor loop range
+    std::vector<double> trimmedUpperH, trimmedUpperB, trimmedLowerH, trimmedLowerB;
+    
+    for (size_t i = 0; i < minorLoop.upperB.size(); ++i) {
+        if (std::fabs(minorLoop.upperB[i]) <= targetBpeak) {
+            trimmedUpperH.push_back(minorLoop.upperH[i]);
+            trimmedUpperB.push_back(minorLoop.upperB[i]);
+        }
+    }
+    
+    for (size_t i = 0; i < minorLoop.lowerB.size(); ++i) {
+        if (std::fabs(minorLoop.lowerB[i]) <= targetBpeak) {
+            trimmedLowerH.push_back(minorLoop.lowerH[i]);
+            trimmedLowerB.push_back(minorLoop.lowerB[i]);
+        }
+    }
+    
+    minorLoop.upperH = std::move(trimmedUpperH);
+    minorLoop.upperB = std::move(trimmedUpperB);
+    minorLoop.lowerH = std::move(trimmedLowerH);
+    minorLoop.lowerB = std::move(trimmedLowerB);
+    
+    // Recalculate area
+    minorLoop.area = minorLoop.calculate_area();
+    
+    return minorLoop;
+}
+
+BHLoop RoshenHysteresisModel::get_minor_loop(const CoreMaterial& material, 
+                                            double temperature,
+                                            double targetBpeak,
+                                            bool useCache) {
+    // Check cache
+    if (useCache) {
+        BHLoopCacheKey key{material.get_name(), temperature, targetBpeak};
+        auto it = _loopCache.find(key);
+        if (it != _loopCache.end()) {
+            return it->second;
+        }
+    }
+    
+    // Get parameters
+    RoshenParameters params = get_cached_parameters(material, temperature);
+    
+    // Calculate major loop first
+    BHLoop majorLoop = calculate_major_loop(params, temperature);
+    
+    // Scale to minor loop
+    BHLoop minorLoop = scale_to_minor_loop_analytical(majorLoop, params, targetBpeak);
+    
+    // Cache result
+    if (useCache) {
+        BHLoopCacheKey key{material.get_name(), temperature, targetBpeak};
+        
+        // Manage cache size
+        if (_loopCache.size() >= MAX_CACHE_SIZE) {
+            _loopCache.erase(_loopCache.begin());
+        }
+        
+        _loopCache[key] = minorLoop;
+    }
+    
+    return minorLoop;
+}
+
+double RoshenHysteresisModel::calculate_loss_with_subloops(const std::vector<double>& H_wavefield,
+                                                          const std::vector<double>& B_wavefield,
+                                                          double frequency) {
+    if (H_wavefield.size() < 2 || H_wavefield.size() != B_wavefield.size()) {
+        return 0.0;
+    }
+    
+    // Detect turning points (local minima/maxima in H)
+    struct TurningPoint {
+        size_t index;
+        double H;
+        double B;
+        bool isMaximum;
+    };
+    
+    std::vector<TurningPoint> turningPoints;
+    
+    for (size_t i = 1; i < H_wavefield.size() - 1; ++i) {
+        double dH_prev = H_wavefield[i] - H_wavefield[i - 1];
+        double dH_next = H_wavefield[i + 1] - H_wavefield[i];
+        
+        if (dH_prev > 0 && dH_next < 0) {
+            // Local maximum
+            turningPoints.push_back({i, H_wavefield[i], B_wavefield[i], true});
+        } else if (dH_prev < 0 && dH_next > 0) {
+            // Local minimum
+            turningPoints.push_back({i, H_wavefield[i], B_wavefield[i], false});
+        }
+    }
+    
+    if (turningPoints.size() < 2) {
+        // No sub-loops detected - calculate single loop area
+        double area = 0.0;
+        for (size_t i = 0; i < H_wavefield.size() - 1; ++i) {
+            area += (H_wavefield[i + 1] - H_wavefield[i]) * (B_wavefield[i] + B_wavefield[i + 1]) / 2.0;
+        }
+        return std::fabs(area) * frequency;
+    }
+    
+    // Calculate area of each sub-loop
+    double totalArea = 0.0;
+    
+    for (size_t i = 0; i < turningPoints.size() - 1; ++i) {
+        const auto& tp1 = turningPoints[i];
+        const auto& tp2 = turningPoints[i + 1];
+        
+        // Extract segment between turning points
+        size_t startIdx = tp1.index;
+        size_t endIdx = tp2.index;
+        
+        if (endIdx <= startIdx) continue;
+        
+        // Calculate area of this segment using trapezoidal integration
+        double segmentArea = 0.0;
+        for (size_t j = startIdx; j < endIdx; ++j) {
+            segmentArea += (H_wavefield[j + 1] - H_wavefield[j]) * 
+                          (B_wavefield[j] + B_wavefield[j + 1]) / 2.0;
+        }
+        
+        totalArea += std::fabs(segmentArea);
+    }
+    
+    // Scale by frequency
+    return totalArea * frequency;
+}
+
+BHLoop RoshenHysteresisModel::apply_dc_bias(const BHLoop& originalLoop, double B_dc, const RoshenParameters& params) {
+    BHLoop biasedLoop = originalLoop;
+    
+    // DC bias shifts the loop along B axis
+    // Shift all B values by B_dc
+    for (auto& B : biasedLoop.upperB) {
+        B += B_dc;
+    }
+    for (auto& B : biasedLoop.lowerB) {
+        B += B_dc;
+    }
+    
+    // Adjust remanence
+    biasedLoop.remanence += B_dc;
+    
+    // Recalculate area (should be approximately the same)
+    biasedLoop.area = biasedLoop.calculate_area();
+    
+    return biasedLoop;
+}
+
+BHLoop RoshenHysteresisModel::apply_air_gap_shear(const BHLoop& originalLoop,
+                                                 double gapLength,
+                                                 double coreLength,
+                                                 double effectivePermeability) {
+    if (gapLength <= 0 || coreLength <= 0) {
+        return originalLoop;
+    }
+    
+    BHLoop shearedLoop = originalLoop;
+    
+    // Calculate shearing coefficient
+    // N = l_gap / (l_gap + μ_r * l_core) ≈ l_gap / (μ_r * l_core) for small gaps
+    double reluctance_ratio = gapLength / (gapLength + effectivePermeability * coreLength);
+    
+    // Apply shearing: H_sheared = H + N * M = H + N * B / μ₀
+    double mu0 = constants.vacuumPermeability;
+    
+    for (size_t i = 0; i < shearedLoop.upperH.size(); ++i) {
+        double M = shearedLoop.upperB[i] / mu0;
+        shearedLoop.upperH[i] += reluctance_ratio * M;
+    }
+    
+    for (size_t i = 0; i < shearedLoop.lowerH.size(); ++i) {
+        double M = shearedLoop.lowerB[i] / mu0;
+        shearedLoop.lowerH[i] += reluctance_ratio * M;
+    }
+    
+    // Recalculate area
+    shearedLoop.area = shearedLoop.calculate_area();
+    
+    return shearedLoop;
+}
+
+std::pair<std::vector<double>, std::vector<double>> RoshenHysteresisModel::get_hysteresis_loop(
+    const CoreMaterial& material,
+    double temperature,
+    std::optional<double> magneticFluxDensityPeak,
+    std::optional<double> magneticFieldStrengthPeak) {
+    
+    // Get parameters
+    RoshenParameters params = get_cached_parameters(material, temperature);
+    
+    // Determine target B peak
+    double targetBpeak;
+    if (magneticFluxDensityPeak) {
+        targetBpeak = magneticFluxDensityPeak.value();
+    } else if (magneticFieldStrengthPeak) {
+        // Calculate B from H using major loop
+        BHLoop majorLoop = calculate_major_loop(params, temperature);
+        // Find B corresponding to target H
+        targetBpeak = majorLoop.get_b_for_h(magneticFieldStrengthPeak.value(), true);
+    } else {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Either B or H peak must be specified");
+    }
+    
+    // Get minor loop
+    BHLoop loop = get_minor_loop(material, temperature, targetBpeak);
+    
+    return {loop.upperB, loop.lowerB};
+}
+
+std::optional<double> RoshenHysteresisModel::get_amplitude_permeability(
+    const CoreMaterial& material,
+    double temperature,
+    std::optional<double> magneticFluxDensityPeak,
+    std::optional<double> magneticFieldStrengthPeak) {
+    
+    // Get parameters
+    RoshenParameters params = get_cached_parameters(material, temperature);
+    
+    double targetBpeak;
+    if (magneticFluxDensityPeak) {
+        targetBpeak = magneticFluxDensityPeak.value();
+    } else if (magneticFieldStrengthPeak) {
+        // Need to calculate this iteratively or use major loop approximation
+        BHLoop majorLoop = calculate_major_loop(params, temperature);
+        targetBpeak = majorLoop.get_b_for_h(magneticFieldStrengthPeak.value(), true);
+    } else {
+        return std::nullopt;
+    }
+    
+    // Get minor loop
+    BHLoop loop = get_minor_loop(material, temperature, targetBpeak);
+    
+    if (loop.upperH.size() < 2) {
+        return std::nullopt;
+    }
+    
+    // Calculate permeability from slope at origin or first segment
+    double dB = std::fabs(loop.upperB[1] - loop.upperB[0]);
+    double dH = std::fabs(loop.upperH[1] - loop.upperH[0]);
+    
+    if (dH < 1e-12) {
+        return std::nullopt;
+    }
+    
+    double permeability = (dB / dH) / constants.vacuumPermeability;
+    
+    return permeability;
+}
+
+// ============================================================================
+// Improved Methods
+// ============================================================================
+
+RoshenParameters RoshenHysteresisModel::fit_parameters_to_data(
+    const std::vector<std::pair<double, double>>& measuredPoints,
+    const RoshenParameters& initialParams) {
+    
+    // Simple gradient descent optimization
+    // For production, consider using levmar library if available
+    RoshenParameters bestParams = initialParams;
+    double bestError = initialParams.calculate_fitting_error(measuredPoints);
+    
+    // Learning rates for each parameter
+    const double lr_a1 = 1e-6;
+    const double lr_b1 = 1e-8;
+    const double lr_b2 = 1e-8;
+    const int maxIterations = 100;
+    const double convergenceThreshold = 1e-8;
+    
+    for (int iter = 0; iter < maxIterations; ++iter) {
+        // Calculate numerical gradients
+        double delta = 1e-8;
+        
+        RoshenParameters p_plus = bestParams;
+        p_plus.a1 += delta;
+        double error_a1_plus = p_plus.calculate_fitting_error(measuredPoints);
+        double grad_a1 = (error_a1_plus - bestError) / delta;
+        
+        p_plus = bestParams;
+        p_plus.b1 += delta;
+        double error_b1_plus = p_plus.calculate_fitting_error(measuredPoints);
+        double grad_b1 = (error_b1_plus - bestError) / delta;
+        
+        p_plus = bestParams;
+        p_plus.b2 += delta;
+        double error_b2_plus = p_plus.calculate_fitting_error(measuredPoints);
+        double grad_b2 = (error_b2_plus - bestError) / delta;
+        
+        // Update parameters
+        bestParams.a1 -= lr_a1 * grad_a1;
+        bestParams.b1 -= lr_b1 * grad_b1;
+        bestParams.b2 -= lr_b2 * grad_b2;
+        
+        // Ensure parameters remain positive
+        bestParams.a1 = std::max(bestParams.a1, 1e-12);
+        bestParams.b1 = std::max(bestParams.b1, 1e-12);
+        bestParams.b2 = std::max(bestParams.b2, 1e-12);
+        
+        // Calculate new error
+        double newError = bestParams.calculate_fitting_error(measuredPoints);
+        
+        // Check convergence
+        if (std::fabs(newError - bestError) < convergenceThreshold) {
+            break;
+        }
+        
+        bestError = newError;
+    }
+    
+    return bestParams;
+}
+
+double RoshenHysteresisModel::calculate_loop_area_adaptive(const BHLoop& loop, double tolerance) const {
+    if (loop.upperH.empty() || loop.lowerH.empty()) {
+        return 0.0;
+    }
+    
+    // Adaptive Simpson integration
+    // More accurate in regions of high curvature (near coercive points)
+    
+    auto simpson_rule = [](const std::vector<double>& H, const std::vector<double>& B_upper, 
+                           const std::vector<double>& B_lower, size_t start, size_t end) -> double {
+        if (end <= start + 1) return 0.0;
+        
+        double h = H[end] - H[start];
+        if (std::fabs(h) < 1e-12) return 0.0;
+        
+        // Find midpoint index
+        size_t mid = (start + end) / 2;
+        
+        double f_start = std::fabs(B_upper[start] - B_lower[start]);
+        double f_mid = std::fabs(B_upper[mid] - B_lower[mid]);
+        double f_end = std::fabs(B_upper[end] - B_lower[end]);
+        
+        return (h / 6.0) * (f_start + 4 * f_mid + f_end);
+    };
+    
+    // Recursive adaptive integration
+    std::function<double(size_t, size_t, double)> adaptive_integrate;
+    adaptive_integrate = [&](size_t start, size_t end, double tol) -> double {
+        if (end <= start + 1) return 0.0;
+        
+        size_t mid = (start + end) / 2;
+        
+        double whole = simpson_rule(loop.upperH, loop.upperB, loop.lowerB, start, end);
+        double left = simpson_rule(loop.upperH, loop.upperB, loop.lowerB, start, mid);
+        double right = simpson_rule(loop.upperH, loop.upperB, loop.lowerB, mid, end);
+        
+        double error = std::fabs(left + right - whole);
+        
+        if (error <= 15 * tol || end <= start + 2) {
+            return left + right + (left + right - whole) / 15.0;
+        }
+        
+        return adaptive_integrate(start, mid, tol / 2.0) + 
+               adaptive_integrate(mid, end, tol / 2.0);
+    };
+    
+    return adaptive_integrate(0, loop.upperH.size() - 1, tolerance);
+}
+
+RoshenParameters RoshenHysteresisModel::get_temperature_corrected_parameters(
+    const CoreMaterial& material, 
+    double temperature) {
+    
+    // Get base parameters
+    RoshenParameters params = get_cached_parameters(material, temperature);
+    
+    // Apply temperature correction
+    params.apply_temperature_correction(temperature);
+    
+    return params;
+}
+
+double RoshenHysteresisModel::calculate_hysteresis_losses_improved(
+    Core core,
+    OperatingPointExcitation excitation,
+    double temperature) {
+    
+    // Use temperature-corrected parameters
+    auto material = core.resolve_material();
+    RoshenParameters params = get_temperature_corrected_parameters(material, temperature);
+    
+    // Extract target B peak from excitation
+    double targetBpeak = 0.0;
+    if (excitation.get_magnetic_flux_density()) {
+        auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+        if (magneticFluxDensity.get_processed()) {
+            double peak = 0.0;
+            if (magneticFluxDensity.get_processed()->get_peak()) {
+                peak = magneticFluxDensity.get_processed()->get_peak().value();
+            }
+            double offset = magneticFluxDensity.get_processed()->get_offset();
+            targetBpeak = peak - offset;
+        }
+    }
+    
+    if (targetBpeak <= 0) {
+        return 0.0;
+    }
+    
+    // Calculate major loop
+    BHLoop majorLoop = calculate_major_loop(params, temperature);
+    
+    // Scale to minor loop
+    BHLoop minorLoop = scale_to_minor_loop_analytical(majorLoop, params, targetBpeak);
+    
+    // Calculate area using adaptive integration
+    double area = calculate_loop_area_adaptive(minorLoop);
+    
+    // Calculate hysteresis loss
+    double frequency = excitation.get_frequency();
+    double hysteresisLossesDensity = area * frequency;
+    
+    return hysteresisLossesDensity;
 }
 
 } // namespace OpenMagnetics
