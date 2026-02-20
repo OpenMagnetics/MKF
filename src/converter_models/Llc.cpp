@@ -159,10 +159,21 @@ DesignRequirements Llc::process_design_requirements() {
     double Vo = k_bridge * Vin_nom;
     double mainTurnsRatio = Vo / mainOutputVoltage;
 
+    // For center-tapped secondaries: each output needs TWO windings (each half of the center tap)
+    // turnsRatios[0] = primary
+    // turnsRatios[1] = secondary 1, half 1
+    // turnsRatios[2] = secondary 1, half 2 (center-tapped with turnsRatios[1])
+    // turnsRatios[3] = secondary 2, half 1 (if multiple outputs)
+    // turnsRatios[4] = secondary 2, half 2
+    // etc.
     std::vector<double> turnsRatios;
-    turnsRatios.push_back(mainTurnsRatio);
-    for (size_t i = 1; i < ops[0].get_output_voltages().size(); i++)
-        turnsRatios.push_back(Vo / ops[0].get_output_voltages()[i]);
+    turnsRatios.push_back(mainTurnsRatio);  // Primary
+    // Add two entries for each output (center-tapped secondary halves)
+    for (size_t i = 0; i < ops[0].get_output_voltages().size(); i++) {
+        double secTurnsRatio = Vo / ops[0].get_output_voltages()[i];
+        turnsRatios.push_back(secTurnsRatio);  // First half
+        turnsRatios.push_back(secTurnsRatio);  // Second half (center-tapped)
+    }
 
     double Rload = mainOutputVoltage / mainOutputCurrent;
     double Rac = (8.0 * mainTurnsRatio * mainTurnsRatio) / (M_PI * M_PI) * Rload;
@@ -231,6 +242,20 @@ DesignRequirements Llc::process_design_requirements() {
         leakageReqs.push_back(lrTol);
         designRequirements.set_leakage_inductance(leakageReqs);
     }
+
+    // Set isolation sides for center-tapped secondaries
+    // Primary: index 0
+    // Each secondary output: 2 windings (center-tapped pair) with same isolation side
+    std::vector<IsolationSide> isolationSides;
+    isolationSides.push_back(get_isolation_side_from_index(0));  // Primary
+    for (size_t i = 0; i < ops[0].get_output_voltages().size(); i++) {
+        // Both halves of center-tapped secondary have same isolation side
+        isolationSides.push_back(get_isolation_side_from_index(i + 1));
+        isolationSides.push_back(get_isolation_side_from_index(i + 1));
+    }
+    designRequirements.set_isolation_sides(isolationSides);
+    designRequirements.set_topology(Topologies::LLC_RESONANT_CONVERTER);
+
     return designRequirements;
 }
 
@@ -720,8 +745,9 @@ std::string Llc::generate_ngspice_circuit(
         circuit << "Cr lr_in pri_top " << std::scientific << Cr << "\n\n";
         circuit << "* Transformer: Lpri=Lm+Ls=" << (Lpri_total*1e6) << "uH, k=" << k_int << "\n";
         circuit << "Lpri pri_top pri_bot " << std::scientific << Lpri_total << "\n";
-        circuit << "Lsec1 sec_top sec_ct " << std::scientific << Lsec_half << "\n";
-        circuit << "Lsec2 sec_ct sec_bot " << std::scientific << Lsec_half << "\n";
+        // Secondary windings with sense nodes for current measurement
+        circuit << "Lsec1 sec_top_sec sec_ct " << std::scientific << Lsec_half << "\n";
+        circuit << "Lsec2 sec_ct sec_bot_sec " << std::scientific << Lsec_half << "\n";
         circuit << "K1 Lpri Lsec1 Lsec2 " << k_int << "\n\n";
     } else {
         double Lsec_half = L / (n * n);
@@ -730,8 +756,9 @@ std::string Llc::generate_ngspice_circuit(
         circuit << "Lr cr_ls pri_top " << std::scientific << Ls << "\n\n";
         circuit << "* Transformer (k=0.999)\n";
         circuit << "Lpri pri_top pri_bot " << std::scientific << L << "\n";
-        circuit << "Lsec1 sec_top sec_ct " << std::scientific << Lsec_half << "\n";
-        circuit << "Lsec2 sec_ct sec_bot " << std::scientific << Lsec_half << "\n";
+        // Secondary windings with sense nodes for current measurement
+        circuit << "Lsec1 sec_top_sec sec_ct " << std::scientific << Lsec_half << "\n";
+        circuit << "Lsec2 sec_ct sec_bot_sec " << std::scientific << Lsec_half << "\n";
         circuit << "K1 Lpri Lsec1 Lsec2 0.999\n\n";
     }
 
@@ -743,6 +770,9 @@ std::string Llc::generate_ngspice_circuit(
     circuit << "D2 sec_bot vout_pos DRECT\n";
     circuit << "Rsn1 sec_top vout_pos 100\nCsn1 sec_top vout_pos 100p\n";
     circuit << "Rsn2 sec_bot vout_pos 100\nCsn2 sec_bot vout_pos 100p\n";
+    // Current sense elements for individual secondary windings (for accurate winding loss calculation)
+    circuit << "Vsec1_sense sec_top_sec sec_top 0\n";
+    circuit << "Vsec2_sense sec_bot_sec sec_bot 0\n";
     circuit << "Vsec_sense sec_ct vout_neg 0\nVgnd vout_neg 0 0\n\n";
 
     circuit << "Resr vout_pos vout_cap 0.05\n";
@@ -760,7 +790,8 @@ std::string Llc::generate_ngspice_circuit(
     } else {
         circuit << ".save v(sw_node) v(mid_point) v(pri_top) v(pri_bot) v(sec_top) v(sec_bot) v(vout_pos) v(vout_neg) v(vout_cap)";
     }
-    circuit << " i(Vin_sense) i(Vpri_sense) i(Vsec_sense)\n\n.end\n";
+    // Save currents: input, primary (resonant tank), secondary windings (for winding loss), and output (rectified)
+    circuit << " i(Vin_sense) i(Vpri_sense) i(Vsec1_sense) i(Vsec2_sense) i(Vsec_sense)\n\n.end\n";
 
     return circuit.str();
 }
@@ -805,9 +836,25 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
 
             NgspiceRunner::WaveformNameMapping waveformMapping;
             waveformMapping.push_back({{"voltage", "pri_top"}, {"current", "vpri_sense#branch"}});
-            waveformMapping.push_back({{"voltage", "sec_top"}, {"current", "vsec_sense#branch"}});
-            std::vector<std::string> windingNames = {"Primary", "Secondary"};
-            std::vector<bool> flipCurrentSign = {false, true};
+            
+            // Map individual secondary winding currents for center-tapped secondaries
+            // Each output has 2 windings (center-tapped halves)
+            std::vector<std::string> windingNames = {"Primary"};
+            std::vector<bool> flipCurrentSign = {false};
+            
+            // Add entries for each output's center-tapped secondary halves
+            size_t numOutputs = ops[opIdx].get_output_voltages().size();
+            for (size_t outIdx = 0; outIdx < numOutputs; outIdx++) {
+                // First half of center-tapped secondary
+                waveformMapping.push_back({{"voltage", "sec_top"}, {"current", "vsec1_sense#branch"}});
+                windingNames.push_back("Secondary " + std::to_string(outIdx + 1) + " Half 1");
+                flipCurrentSign.push_back(true);
+                
+                // Second half of center-tapped secondary
+                waveformMapping.push_back({{"voltage", "sec_bot"}, {"current", "vsec2_sense#branch"}});
+                windingNames.push_back("Secondary " + std::to_string(outIdx + 1) + " Half 2");
+                flipCurrentSign.push_back(true);
+            }
 
             OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
                 simResult, waveformMapping, switchingFrequency, windingNames,
@@ -925,9 +972,20 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
                 Waveform voutWf = vp; voutWf.set_data(vd);
                 wf.get_mutable_output_voltages().push_back(voutWf);
             }
+            // Extract individual secondary winding currents for winding loss calculation
+            auto isec1 = getWf("vsec1_sense#branch");
+            auto isec2 = getWf("vsec2_sense#branch");
+            if (!isec1.get_data().empty())
+                wf.get_mutable_output_currents().push_back(isec1);
+            if (!isec2.get_data().empty())
+                wf.get_mutable_output_currents().push_back(isec2);
+            
+            // Also keep the rectified output current for reference
             auto iout = getWf("vsec_sense#branch");
-            if (!iout.get_data().empty())
+            if (!iout.get_data().empty()) {
+                // Store as last element to distinguish from winding currents
                 wf.get_mutable_output_currents().push_back(iout);
+            }
         }
         results.push_back(wf);
     }
