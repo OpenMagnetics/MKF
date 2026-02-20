@@ -963,6 +963,7 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
         }
 
         if (!turnsRatios.empty()) {
+            // Output voltage: rectified voltage across output capacitor
             auto vp = getWf("vout_pos"); auto vn = getWf("vout_neg");
             if (!vp.get_data().empty() && !vn.get_data().empty()) {
                 auto vpd = vp.get_data(); auto vnd = vn.get_data();
@@ -972,18 +973,11 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
                 Waveform voutWf = vp; voutWf.set_data(vd);
                 wf.get_mutable_output_voltages().push_back(voutWf);
             }
-            // Extract individual secondary winding currents for winding loss calculation
-            auto isec1 = getWf("vsec1_sense#branch");
-            auto isec2 = getWf("vsec2_sense#branch");
-            if (!isec1.get_data().empty())
-                wf.get_mutable_output_currents().push_back(isec1);
-            if (!isec2.get_data().empty())
-                wf.get_mutable_output_currents().push_back(isec2);
             
-            // Also keep the rectified output current for reference
+            // Output current: rectified current flowing to the load (from center tap)
+            // This is the actual output current after rectification, not individual winding currents
             auto iout = getWf("vsec_sense#branch");
             if (!iout.get_data().empty()) {
-                // Store as last element to distinguish from winding currents
                 wf.get_mutable_output_currents().push_back(iout);
             }
         }
