@@ -39,6 +39,7 @@ namespace {
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 7.0;
         llcJson["integratedResonantInductor"] = false;
         llcJson["operatingPoints"] = json::array();
 
@@ -250,10 +251,11 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Full Bridge";
+        llcJson["bridgeType"] = "Half Bridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
-        llcJson["qualityFactor"] = 0.35;
+        llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 7.0;
         llcJson["integratedResonantInductor"] = false;
         llcJson["operatingPoints"] = json::array();
 
