@@ -106,6 +106,49 @@ namespace {
             double Lr = llc.get_computed_resonant_inductance();
             REQUIRE_THAT(leakageTarget, Catch::Matchers::WithinAbs(Lr, Lr * 0.01));
         }
+
+        SECTION("Center-tapped secondary turns ratios") {
+            auto req = llc.process_design_requirements();
+            // For center-tapped secondaries: 1 primary + 2 halves per output
+            // With 1 output: 1 primary + 2 secondary halves = 3 turns ratios
+            auto turnsRatios = req.get_turns_ratios();
+            REQUIRE(turnsRatios.size() == 3);
+            
+            // First is primary
+            // Second and third should be equal (center-tapped halves)
+            double sec1 = resolve_dimensional_values(turnsRatios[1]);
+            double sec2 = resolve_dimensional_values(turnsRatios[2]);
+            REQUIRE_THAT(sec1, Catch::Matchers::WithinAbs(sec2, 0.01));
+        }
+
+        SECTION("Analytical waveforms have excitation names") {
+            auto req = llc.process_design_requirements();
+            std::vector<double> turnsRatios;
+            for (auto& tr : req.get_turns_ratios()) {
+                turnsRatios.push_back(resolve_dimensional_values(tr));
+            }
+            double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+            
+            auto ops = llc.process_operating_points(turnsRatios, Lm);
+            REQUIRE(ops.size() > 0);
+            
+            for (const auto& op : ops) {
+                auto excitations = op.get_excitations_per_winding();
+                // Should have: 1 primary + 2 secondary halves = 3 excitations
+                REQUIRE(excitations.size() == 3);
+                
+                // Check that all excitations have names
+                for (const auto& exc : excitations) {
+                    REQUIRE(exc.get_name().has_value());
+                    REQUIRE(!exc.get_name().value().empty());
+                }
+                
+                // Verify specific names
+                CHECK(excitations[0].get_name().value() == "Primary");
+                CHECK(excitations[1].get_name().value().find("Secondary") != std::string::npos);
+                CHECK(excitations[2].get_name().value().find("Secondary") != std::string::npos);
+            }
+        }
     }
 
     TEST_CASE("Test_Llc_Analytical_Waveforms_NonZero", "[converter-model][llc-topology][analytical-waveforms]") {
@@ -1663,9 +1706,10 @@ namespace {
         llcJson["inputVoltage"] = inputVoltage;
         llcJson["bridgeType"] = "Half Bridge";
         llcJson["minSwitchingFrequency"] = 80000;
-        llcJson["maxSwitchingFrequency"] = 120000;
+        llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
-        llcJson["integratedResonantInductor"] = true;
+        llcJson["inductanceRatio"] = 7.0;
+        llcJson["integratedResonantInductor"] = false;
         llcJson["operatingPoints"] = json::array();
 
         {
