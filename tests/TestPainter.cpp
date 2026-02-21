@@ -1023,38 +1023,152 @@ namespace {
             REQUIRE(std::filesystem::exists(outFile));
             
             // Check if mas has outputs with winding losses (outputs are on Mas, not Magnetic)
+            std::cout << "\n=== Checking PRE-CALCULATED losses from MAS file ===" << std::endl;
             if (mas.get_outputs().size() > 0) {
                 auto outputs = mas.get_outputs()[0];
                 if (outputs.get_winding_losses().has_value()) {
                     auto windingLosses = outputs.get_winding_losses().value();
+                    
+                    std::cout << "Pre-calculated total winding losses: " << windingLosses.get_winding_losses() << std::endl;
                     
                     if (windingLosses.get_winding_losses_per_turn().has_value()) {
                         auto lossesPerTurn = windingLosses.get_winding_losses_per_turn().value();
                         
                         bool foundNaN = false;
                         std::vector<std::string> nanTurnNames;
+                        int nanCount = 0;
                         
-                        for (size_t i = 0; i < lossesPerTurn.size(); ++i) {
+                        for (size_t i = 0; i < lossesPerTurn.size() && i < 10; ++i) {
                             double totalLoss = WindingLosses::get_total_winding_losses(lossesPerTurn[i]);
+                            std::string turnName = lossesPerTurn[i].get_name().value_or("Turn_" + std::to_string(i));
                             
+                            std::cout << "  " << turnName << ": " << totalLoss;
                             if (std::isnan(totalLoss)) {
+                                std::cout << " [NaN]";
                                 foundNaN = true;
-                                std::string turnName = lossesPerTurn[i].get_name().value_or("Turn_" + std::to_string(i));
                                 nanTurnNames.push_back(turnName);
-                            }
-                        }
-                        
-                        if (foundNaN) {
-                            std::cout << "NaN values found in turns: ";
-                            for (const auto& name : nanTurnNames) {
-                                std::cout << name << " ";
+                                nanCount++;
+                                
+                                // Debug: Check which component is NaN
+                                if (lossesPerTurn[i].get_skin_effect_losses()) {
+                                    auto skinLosses = lossesPerTurn[i].get_skin_effect_losses()->get_losses_per_harmonic();
+                                    std::cout << "\n    Skin effect (" << skinLosses.size() << " harmonics):";
+                                    for (size_t h = 0; h < skinLosses.size(); ++h) {
+                                        std::cout << " " << skinLosses[h];
+                                        if (std::isnan(skinLosses[h])) {
+                                            std::cout << "[NaN-h" << h << "]";
+                                        }
+                                    }
+                                }
                             }
                             std::cout << std::endl;
+                        }
+                        
+                        std::cout << "\nPre-calculated: Found " << nanCount << " turns with NaN" << std::endl;
+                        
+                        // Now re-calculate losses to compare
+                        std::cout << "\n=== Re-calculating losses from magnetic and inputs ===" << std::endl;
+                        WindingLosses recalc;
+                        auto op = inputs.get_operating_point(0);
+                        double temp = op.get_conditions().get_ambient_temperature();
+                        auto newLosses = recalc.calculate_losses(magnetic, op, temp);
+                        
+                        std::cout << "Re-calculated total winding losses: " << newLosses.get_winding_losses() << std::endl;
+                        
+                        if (newLosses.get_winding_losses_per_turn().has_value()) {
+                            auto newLossesPerTurn = newLosses.get_winding_losses_per_turn().value();
+                            int newNanCount = 0;
+                            
+                            for (size_t i = 0; i < newLossesPerTurn.size() && i < 10; ++i) {
+                                double totalLoss = WindingLosses::get_total_winding_losses(newLossesPerTurn[i]);
+                                if (std::isnan(totalLoss)) {
+                                    newNanCount++;
+                                }
+                            }
+                            std::cout << "Re-calculated: Found " << newNanCount << " turns with NaN" << std::endl;
                         }
                         
                         CHECK_FALSE(foundNaN);
                     }
                 }
+            }
+        }
+        
+        SECTION("Debug loss values") {
+            // Calculate losses to see what values we get
+            WindingLosses windingLossesCalc;
+            
+            std::cout << "\n=== DEBUG: Current waveform harmonics ===" << std::endl;
+            auto excitation = inputs.get_operating_point(0).get_excitations_per_winding()[0];
+            if (excitation.get_current()->get_harmonics()) {
+                auto harmonics = excitation.get_current()->get_harmonics().value();
+                std::cout << "Number of harmonics: " << harmonics.get_amplitudes().size() << std::endl;
+                for (size_t i = 0; i < harmonics.get_amplitudes().size(); ++i) {
+                    std::cout << "  Harmonic " << i << ": freq=" << harmonics.get_frequencies()[i] 
+                              << ", amp=" << harmonics.get_amplitudes()[i];
+                    if (std::isnan(harmonics.get_amplitudes()[i])) {
+                        std::cout << " [NaN]";
+                    }
+                    std::cout << std::endl;
+                }
+            }
+            
+            auto losses = windingLossesCalc.calculate_losses(magnetic, inputs.get_operating_point(0), 
+                                                           inputs.get_operating_point(0).get_conditions().get_ambient_temperature());
+            
+            std::cout << "\n=== DEBUG: Calculated winding losses ===" << std::endl;
+            std::cout << "Total winding losses: " << losses.get_winding_losses() << std::endl;
+            
+            if (losses.get_winding_losses_per_turn().has_value()) {
+                auto lossesPerTurn = losses.get_winding_losses_per_turn().value();
+                
+                std::cout << "\nLosses per turn (" << lossesPerTurn.size() << " turns):" << std::endl;
+                int zeroCount = 0;
+                int nanCount = 0;
+                int negativeCount = 0;
+                int validCount = 0;
+                
+                for (size_t i = 0; i < lossesPerTurn.size() && i < 10; ++i) {  // Limit to first 10
+                    double totalLoss = WindingLosses::get_total_winding_losses(lossesPerTurn[i]);
+                    std::string turnName = lossesPerTurn[i].get_name().value_or("Turn_" + std::to_string(i));
+                    
+                    std::cout << "  " << turnName << ": " << totalLoss;
+                    
+                    if (std::isnan(totalLoss)) {
+                        std::cout << " [NaN]";
+                        nanCount++;
+                    } else if (totalLoss < 0) {
+                        std::cout << " [NEGATIVE]";
+                        negativeCount++;
+                    } else if (totalLoss == 0) {
+                        std::cout << " [ZERO]";
+                        zeroCount++;
+                    } else {
+                        std::cout << " [VALID]";
+                        validCount++;
+                    }
+                    std::cout << std::endl;
+                    
+                    // Check individual loss components
+                    if (lossesPerTurn[i].get_ohmic_losses()) {
+                        std::cout << "    Ohmic: " << lossesPerTurn[i].get_ohmic_losses()->get_losses() << std::endl;
+                    }
+                    if (lossesPerTurn[i].get_skin_effect_losses()) {
+                        auto skin = lossesPerTurn[i].get_skin_effect_losses()->get_losses_per_harmonic();
+                        std::cout << "    Skin effect (" << skin.size() << " harmonics):";
+                        for (auto s : skin) std::cout << " " << s;
+                        std::cout << std::endl;
+                    }
+                    if (lossesPerTurn[i].get_proximity_effect_losses()) {
+                        auto prox = lossesPerTurn[i].get_proximity_effect_losses()->get_losses_per_harmonic();
+                        std::cout << "    Proximity effect (" << prox.size() << " harmonics):";
+                        for (auto p : prox) std::cout << " " << p;
+                        std::cout << std::endl;
+                    }
+                }
+                
+                std::cout << "\nSummary: " << validCount << " valid, " << zeroCount << " zero, " 
+                          << negativeCount << " negative, " << nanCount << " NaN" << std::endl;
             }
         }
         settings.reset();
