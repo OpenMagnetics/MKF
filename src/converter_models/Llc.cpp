@@ -159,13 +159,12 @@ DesignRequirements Llc::process_design_requirements() {
     double Vo = k_bridge * Vin_nom;
     double mainTurnsRatio = Vo / mainOutputVoltage;
 
-    // For center-tapped secondaries: each output has ONE turns ratio
-    // but TWO windings (center-tapped halves) in the Coil functional description
-    // turnsRatios[0] = primary
-    // turnsRatios[1] = secondary 1 (center-tapped, will create 2 windings)
-    // turnsRatios[2] = secondary 2 (if multiple outputs)
+    // turnsRatios contains SECONDARY turns ratios only (referenced to primary)
+    // Primary is implicit (ratio = 1) and not included
+    // For center-tapped secondaries: 1 turns ratio per output
+    // turnsRatios[0] = secondary 1 turns ratio
+    // turnsRatios[1] = secondary 2 turns ratio (if multiple outputs)
     std::vector<double> turnsRatios;
-    turnsRatios.push_back(mainTurnsRatio);  // Primary
     // Add one entry per output (the turns ratio for the center-tapped secondary)
     for (size_t i = 0; i < ops[0].get_output_voltages().size(); i++) {
         double secTurnsRatio = Vo / ops[0].get_output_voltages()[i];
@@ -617,21 +616,19 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     }
 
     // --- Secondary excitation ---
-    // For center-tapped secondaries: each output has 1 turns ratio but 2 windings
-    // turnsRatios[0] = primary
-    // turnsRatios[1] = secondary output 0 (creates 2 excitations: half 1 and half 2)
-    // turnsRatios[2] = secondary output 1 (creates 2 excitations: half 1 and half 2)
+    // turnsRatios contains SECONDARY turns ratios only (referenced to primary)
+    // turnsRatios[0] = secondary output 0 (creates 2 excitations: half 1 and half 2)
+    // turnsRatios[1] = secondary output 1 (creates 2 excitations: half 1 and half 2)
     // Create individual excitations for each center-tapped secondary half
     std::vector<double> effectiveTurnsRatios = turnsRatios;
     if (effectiveTurnsRatios.empty()) {
         effectiveTurnsRatios.push_back(Vi / llcOpPoint.get_output_voltages()[0]);
     }
 
-    // Process each output (skip index 0 which is primary)
-    // Each output creates 2 excitations for its center-tapped halves
-    for (size_t secIdx = 1; secIdx < effectiveTurnsRatios.size(); ++secIdx) {
+    // Process each output (each creates 2 excitations for center-tapped halves)
+    for (size_t secIdx = 0; secIdx < effectiveTurnsRatios.size(); ++secIdx) {
         double n = effectiveTurnsRatios[secIdx];
-        size_t outputIdx = secIdx - 1;  // 0, 1, 2... for each output
+        size_t outputIdx = secIdx;  // 0, 1, 2... for each output
         if (n <= 0) { 
             n = Vi / llcOpPoint.get_output_voltages()[outputIdx]; 
             if (n <= 0) n = 1.0; 

@@ -110,16 +110,14 @@ namespace {
 
         SECTION("Center-tapped secondary turns ratios") {
             auto req = llc.process_design_requirements();
-            // For center-tapped secondaries: 1 primary turns ratio + 1 per output
-            // With 1 output: 1 primary + 1 secondary = 2 turns ratios
+            // turnsRatios contains SECONDARY turns ratios only (referenced to primary)
+            // For center-tapped secondaries: 1 turns ratio per output (not per half)
+            // With 1 output: turnsRatios.size() = 1
             auto turnsRatios = req.get_turns_ratios();
-            REQUIRE(turnsRatios.size() == 2);
+            REQUIRE(turnsRatios.size() == 1);
             
-            // First is primary
-            // Second is the single turns ratio for the center-tapped secondary output
-            double primaryRatio = resolve_dimensional_values(turnsRatios[0]);
-            double secondaryRatio = resolve_dimensional_values(turnsRatios[1]);
-            CHECK(primaryRatio > 0);
+            // turnsRatios[0] is the secondary turns ratio (N_sec/N_pri)
+            double secondaryRatio = resolve_dimensional_values(turnsRatios[0]);
             CHECK(secondaryRatio > 0);
         }
 
