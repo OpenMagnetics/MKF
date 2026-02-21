@@ -1011,10 +1011,12 @@ namespace {
 
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
-            painter.paint_coil_turns(magnetic);
+            // NOTE: Don't call paint_coil_turns here because paint_wire_losses
+            // will draw the turns with loss colors. Calling paint_coil_turns first
+            // would draw copper-colored turns that cover the loss colors.
             
-            // This should paint the wire losses - if there are NaN values, 
-            // the turns might appear black
+            // This paints the wire losses - turns are drawn with colors from 
+            // blue (low loss) to red (high loss)
             painter.paint_wire_losses(magnetic, std::nullopt, inputs.get_operating_point(0));
             
             painter.export_svg();
@@ -1092,6 +1094,17 @@ namespace {
                     }
                 }
             }
+            
+            // Check turn names in coil vs losses
+            std::cout << "\n=== Checking turn name matching ===" << std::endl;
+            if (magnetic.get_coil().get_turns_description()) {
+                auto turns = magnetic.get_coil().get_turns_description().value();
+                std::cout << "Total turns in coil: " << turns.size() << std::endl;
+                std::cout << "First 10 turn names in coil:" << std::endl;
+                for (size_t i = 0; i < turns.size() && i < 10; ++i) {
+                    std::cout << "  Turn " << i << ": " << turns[i].get_name() << std::endl;
+                }
+            }
         }
         
         SECTION("Debug loss values") {
@@ -1128,7 +1141,8 @@ namespace {
                 int negativeCount = 0;
                 int validCount = 0;
                 
-                for (size_t i = 0; i < lossesPerTurn.size() && i < 10; ++i) {  // Limit to first 10
+                // Show ALL turns, not just first 10
+                for (size_t i = 0; i < lossesPerTurn.size(); ++i) {
                     double totalLoss = WindingLosses::get_total_winding_losses(lossesPerTurn[i]);
                     std::string turnName = lossesPerTurn[i].get_name().value_or("Turn_" + std::to_string(i));
                     
