@@ -1454,6 +1454,11 @@ double bessel_y1_fast(double x) {
 }
 
 std::complex<double> modified_bessel_first_kind(double order, std::complex<double> z) {
+    // Check for invalid input
+    if (!std::isfinite(z.real()) || !std::isfinite(z.imag())) {
+        return std::complex<double>(0.0, 0.0);
+    }
+    
     std::complex<double> sum = 0;
     std::complex<double> inc = 0;
     std::complex<double> aux = 0.25 * pow(z, 2);
@@ -1465,13 +1470,34 @@ std::complex<double> modified_bessel_first_kind(double order, std::complex<doubl
             break;
         }
         inc = pow(aux, k) / divider;
+        // Check if increment is valid
+        if (!std::isfinite(inc.real()) || !std::isfinite(inc.imag())) {
+            break;
+        }
         sum += inc;
         if (std::abs(inc) < std::abs(sum) * 0.0001){
             break;
         }
     }
 
-    auto bessel = sum * pow(0.5 * z, order);
+    // Check if sum is valid before final multiplication
+    if (!std::isfinite(sum.real()) || !std::isfinite(sum.imag())) {
+        return std::complex<double>(0.0, 0.0);
+    }
+    
+    auto scale = pow(0.5 * z, order);
+    // Check if scale factor is valid
+    if (!std::isfinite(scale.real()) || !std::isfinite(scale.imag())) {
+        return std::complex<double>(0.0, 0.0);
+    }
+    
+    auto bessel = sum * scale;
+    
+    // Final NaN check
+    if (!std::isfinite(bessel.real()) || !std::isfinite(bessel.imag())) {
+        return std::complex<double>(0.0, 0.0);
+    }
+    
     return bessel;
 }
 
