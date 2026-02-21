@@ -1657,3 +1657,98 @@ namespace TestWindingLossesModelComparison {
         settings.reset();
     }
 }
+
+// Test to diagnose NaN values in winding losses per turn
+TEST_CASE("Test_WindingLosses_NaN_Detection", "[winding-losses][nan-detection][diagnostic]") {
+    // Load the problematic magnetic from test data
+    auto jsonFilePath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_nan_losses_per_turn.json");
+    
+    REQUIRE(std::filesystem::exists(jsonFilePath));
+    
+    // Use the mas_loader function to load the MAS file
+    auto mas = OpenMagneticsTesting::mas_loader(jsonFilePath);
+    auto magnetic = mas.get_magnetic();
+    auto inputs = mas.get_inputs();
+    
+    auto operatingPoint = inputs.get_operating_point(0);
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+    
+    // Calculate winding losses
+    WindingLosses windingLosses;
+    auto losses = windingLosses.calculate_losses(magnetic, operatingPoint, temperature);
+    
+    // Check if winding losses per turn exist
+    REQUIRE(losses.get_winding_losses_per_turn().has_value());
+    
+    auto lossesPerTurn = losses.get_winding_losses_per_turn().value();
+    
+    SECTION("Check for NaN values in losses per turn") {
+        bool foundNaN = false;
+        std::vector<std::string> nanTurnNames;
+        
+        for (size_t i = 0; i < lossesPerTurn.size(); ++i) {
+            double totalLoss = WindingLosses::get_total_winding_losses(lossesPerTurn[i]);
+            
+            if (std::isnan(totalLoss)) {
+                foundNaN = true;
+                std::string turnName = lossesPerTurn[i].get_name().value_or("Turn_" + std::to_string(i));
+                nanTurnNames.push_back(turnName);
+                
+                // Debug output
+                std::cout << "NaN detected in turn: " << turnName << std::endl;
+                
+                if (lossesPerTurn[i].get_ohmic_losses()) {
+                    std::cout << "  Ohmic losses: " << lossesPerTurn[i].get_ohmic_losses()->get_losses() << std::endl;
+                } else {
+                    std::cout << "  Ohmic losses: not set" << std::endl;
+                }
+                
+                if (lossesPerTurn[i].get_skin_effect_losses()) {
+                    auto skinLosses = lossesPerTurn[i].get_skin_effect_losses()->get_losses_per_harmonic();
+                    std::cout << "  Skin effect losses per harmonic: ";
+                    for (auto l : skinLosses) std::cout << l << " ";
+                    std::cout << std::endl;
+                } else {
+                    std::cout << "  Skin effect losses: not set" << std::endl;
+                }
+                
+                if (lossesPerTurn[i].get_proximity_effect_losses()) {
+                    auto proxLosses = lossesPerTurn[i].get_proximity_effect_losses()->get_losses_per_harmonic();
+                    std::cout << "  Proximity effect losses per harmonic: ";
+                    for (auto l : proxLosses) std::cout << l << " ";
+                    std::cout << std::endl;
+                } else {
+                    std::cout << "  Proximity effect losses: not set" << std::endl;
+                }
+            }
+            
+            // Also check for zero or negative values which can cause issues with log scale
+            if (totalLoss <= 0 && !std::isnan(totalLoss)) {
+                std::cout << "Warning: Turn " << i << " has non-positive loss: " << totalLoss << std::endl;
+            }
+        }
+        
+        if (foundNaN) {
+            std::cout << "\nTotal turns with NaN: " << nanTurnNames.size() << "/" << lossesPerTurn.size() << std::endl;
+        }
+        
+        CHECK_FALSE(foundNaN);
+    }
+    
+    SECTION("Check that total winding losses is valid") {
+        double totalLosses = losses.get_winding_losses();
+        REQUIRE_FALSE(std::isnan(totalLosses));
+        REQUIRE_FALSE(std::isinf(totalLosses));
+        REQUIRE(totalLosses >= 0);
+    }
+    
+    SECTION("Check ohmic losses per turn are valid") {
+        for (size_t i = 0; i < lossesPerTurn.size(); ++i) {
+            if (lossesPerTurn[i].get_ohmic_losses()) {
+                double ohmicLoss = lossesPerTurn[i].get_ohmic_losses()->get_losses();
+                CHECK_FALSE(std::isnan(ohmicLoss));
+                CHECK_FALSE(std::isinf(ohmicLoss));
+            }
+        }
+    }
+}

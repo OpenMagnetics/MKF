@@ -1599,6 +1599,8 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
     std::vector<OperatingPointExcitation> newExcitationsPerWinding;
     for (auto excitation : operatingPoint.get_excitations_per_winding()) {
         OperatingPointExcitation newExcitation;
+        // Copy the name from the original excitation
+        newExcitation.set_name(excitation.get_name());
         // Current
         if (allExcitationsHaveCurrent) {
             auto current = excitation.get_current().value();
