@@ -1,6 +1,7 @@
 #include "support/Painter.h"
 #include "json.hpp"
 #include "TestingUtils.h"
+#include "physical_models/WindingLosses.h"
 #include <source_location>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -987,6 +988,74 @@ namespace {
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
+        }
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Coil_Wire_Losses_NaN_MAS", "[support][painter][wire-losses-painter][nan-detection][diagnostic]") {
+        // Load the problematic MAS file that has NaN values in winding losses
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_nan_losses_per_turn.json");
+        
+        // Use mas_loader to load the MAS file
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+
+        SECTION("Paint wire losses and check for NaN values") {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Wire_Losses_NaN_MAS.svg");
+            std::filesystem::remove(outFile);
+            
+            // Use Painter wrapper - it will use BasicPainter when matplotplusplus is disabled
+            Painter painter(outFile);
+
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            
+            // This should paint the wire losses - if there are NaN values, 
+            // the turns might appear black
+            painter.paint_wire_losses(magnetic, std::nullopt, inputs.get_operating_point(0));
+            
+            painter.export_svg();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            REQUIRE(std::filesystem::exists(outFile));
+            
+            // Check if mas has outputs with winding losses (outputs are on Mas, not Magnetic)
+            if (mas.get_outputs().size() > 0) {
+                auto outputs = mas.get_outputs()[0];
+                if (outputs.get_winding_losses().has_value()) {
+                    auto windingLosses = outputs.get_winding_losses().value();
+                    
+                    if (windingLosses.get_winding_losses_per_turn().has_value()) {
+                        auto lossesPerTurn = windingLosses.get_winding_losses_per_turn().value();
+                        
+                        bool foundNaN = false;
+                        std::vector<std::string> nanTurnNames;
+                        
+                        for (size_t i = 0; i < lossesPerTurn.size(); ++i) {
+                            double totalLoss = WindingLosses::get_total_winding_losses(lossesPerTurn[i]);
+                            
+                            if (std::isnan(totalLoss)) {
+                                foundNaN = true;
+                                std::string turnName = lossesPerTurn[i].get_name().value_or("Turn_" + std::to_string(i));
+                                nanTurnNames.push_back(turnName);
+                            }
+                        }
+                        
+                        if (foundNaN) {
+                            std::cout << "NaN values found in turns: ";
+                            for (const auto& name : nanTurnNames) {
+                                std::cout << name << " ";
+                            }
+                            std::cout << std::endl;
+                        }
+                        
+                        CHECK_FALSE(foundNaN);
+                    }
+                }
+            }
         }
         settings.reset();
     }
