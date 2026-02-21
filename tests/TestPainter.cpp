@@ -1021,10 +1021,100 @@ namespace {
             
             painter.export_svg();
 
+            std::cout << "\n=== Checking turns in coil ===" << std::endl;
+            if (magnetic.get_coil().get_turns_description()) {
+                auto turns = magnetic.get_coil().get_turns_description().value();
+                std::cout << "Total turns in coil: " << turns.size() << std::endl;
+                
+                int primaryCount = 0;
+                int secondaryCount = 0;
+                int validShape = 0;
+                int invalidShape = 0;
+                int hasCoords = 0;
+                int noCoords = 0;
+                int hasDims = 0;
+                int noDims = 0;
+                
+                for (size_t i = 0; i < turns.size(); ++i) {
+                    std::string name = turns[i].get_name();
+                    if (name.find("Primary") != std::string::npos) {
+                        primaryCount++;
+                        // Check shape
+                        if (turns[i].get_cross_sectional_shape().has_value()) {
+                            validShape++;
+                        } else {
+                            invalidShape++;
+                        }
+                        // Check coordinates
+                        if (turns[i].get_coordinates().size() >= 2) {
+                            hasCoords++;
+                        } else {
+                            noCoords++;
+                        }
+                        // Check dimensions
+                        if (turns[i].get_dimensions().has_value() && turns[i].get_dimensions().value().size() > 0) {
+                            hasDims++;
+                        } else {
+                            noDims++;
+                        }
+                    } else if (name.find("Secondary") != std::string::npos) {
+                        secondaryCount++;
+                    }
+                }
+                std::cout << "Primary turns: " << primaryCount << std::endl;
+                std::cout << "  Valid shape: " << validShape << std::endl;
+                std::cout << "  Has coordinates: " << hasCoords << std::endl;
+                std::cout << "  Has dimensions: " << hasDims << std::endl;
+                std::cout << "Secondary turns: " << secondaryCount << std::endl;
+            }
+
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
             
             // Check if mas has outputs with winding losses (outputs are on Mas, not Magnetic)
+            std::cout << "\n=== Checking turn name matching between coil and losses ===" << std::endl;
+            // Check if turn names in coil match turn names in losses
+            if (magnetic.get_coil().get_turns_description() && mas.get_outputs().size() > 0) {
+                auto turns = magnetic.get_coil().get_turns_description().value();
+                auto outputs = mas.get_outputs()[0];
+                
+                if (outputs.get_winding_losses().has_value() && outputs.get_winding_losses()->get_winding_losses_per_turn().has_value()) {
+                    auto lossesPerTurn = outputs.get_winding_losses()->get_winding_losses_per_turn().value();
+                    
+                    std::map<std::string, bool> lossNames;
+                    for (const auto& loss : lossesPerTurn) {
+                        if (loss.get_name().has_value()) {
+                            lossNames[loss.get_name().value()] = true;
+                        }
+                    }
+                    
+                    int matched = 0;
+                    int notMatched = 0;
+                    std::vector<std::string> unmatchedNames;
+                    
+                    for (size_t i = 0; i < turns.size() && i < 10; ++i) {
+                        std::string turnName = turns[i].get_name();
+                        bool found = lossNames.find(turnName) != lossNames.end();
+                        if (found) {
+                            matched++;
+                        } else {
+                            notMatched++;
+                            if (unmatchedNames.size() < 5) {
+                                unmatchedNames.push_back(turnName);
+                            }
+                        }
+                    }
+                    
+                    std::cout << "Turn name matching (first 10): " << matched << " matched, " << notMatched << " not matched" << std::endl;
+                    if (!unmatchedNames.empty()) {
+                        std::cout << "Unmatched turn names:" << std::endl;
+                        for (const auto& name : unmatchedNames) {
+                            std::cout << "  " << name << std::endl;
+                        }
+                    }
+                }
+            }
+            
             std::cout << "\n=== Checking PRE-CALCULATED losses from MAS file ===" << std::endl;
             if (mas.get_outputs().size() > 0) {
                 auto outputs = mas.get_outputs()[0];

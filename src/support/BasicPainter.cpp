@@ -1468,14 +1468,19 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     std::map<std::string, double> lossesPerTurnByName;
     if (outputs && outputs->get_winding_losses() && outputs->get_winding_losses()->get_winding_losses_per_turn()) {
         auto windingLossesPerTurn = outputs->get_winding_losses()->get_winding_losses_per_turn().value();
+        std::cerr << "[paint_wire_losses] Found " << windingLossesPerTurn.size() << " turns with losses" << std::endl;
         for (auto windingLossesthisTurn : windingLossesPerTurn) {
             double totalLoss = WindingLosses::get_total_winding_losses(windingLossesthisTurn);
             if (windingLossesthisTurn.get_name().has_value()) {
-                lossesPerTurnByName[windingLossesthisTurn.get_name().value()] = totalLoss;
+                std::string name = windingLossesthisTurn.get_name().value();
+                lossesPerTurnByName[name] = totalLoss;
+                std::cerr << "[paint_wire_losses] Loss entry: '" << name << "' = " << totalLoss << " W" << std::endl;
             }
             modules.push_back(totalLoss);
             modulesToSort.push_back(totalLoss);
         }
+    } else {
+        std::cerr << "[paint_wire_losses] WARNING: No winding losses data available!" << std::endl;
     }
 
     std::sort(modulesToSort.begin(), modulesToSort.end());
@@ -1510,44 +1515,53 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     }
 
     auto turns = coil.get_turns_description().value();
+    std::cerr << "[paint_wire_losses] Total turns in description: " << turns.size() << std::endl;
     auto shapes = _root.add_child<SVG::Group>();
 
     for (size_t i = 0; i < turns.size(); ++i){
         std::string turnName = turns[i].get_name();
         
         // Look up loss value by turn name, fallback to index-based if not found
-        double lossValue;
+        double lossValue = 0;
+        bool hasValidLoss = false;
         auto it = lossesPerTurnByName.find(turnName);
         if (it != lossesPerTurnByName.end()) {
             lossValue = it->second;
+            hasValidLoss = std::isfinite(lossValue) && lossValue >= 0;
+            std::cerr << "[paint_wire_losses] Turn " << i << " ('" << turnName << "'): matched by name, loss=" << lossValue << ", valid=" << hasValidLoss << std::endl;
         } else if (i < modules.size()) {
             lossValue = modules[i];
+            hasValidLoss = std::isfinite(lossValue) && lossValue >= 0;
+            std::cerr << "[paint_wire_losses] Turn " << i << " ('" << turnName << "'): matched by index, loss=" << lossValue << ", valid=" << hasValidLoss << std::endl;
         } else {
-            continue;  // Skip if no loss data available for this turn
+            std::cerr << "[paint_wire_losses] Turn " << i << " ('" << turnName << "'): no loss data, using default copper color" << std::endl;
         }
 
-        // Skip turns with NaN or invalid loss values
-        if (!std::isfinite(lossValue) || lossValue < 0) {
-            continue;
-        }
-
-        double value;
-        if (logarithmicScale) {
-            // For log scale, handle zero or negative values
-            if (lossValue <= 0) {
-                value = minimumModule;  // Use minimum value for zero/negative losses
+        std::string color;
+        std::string label;
+        
+        if (hasValidLoss) {
+            // Calculate color based on loss value
+            double value;
+            if (logarithmicScale) {
+                if (lossValue <= 0) {
+                    value = minimumModule;
+                } else {
+                    value = log10(lossValue);
+                }
             } else {
-                value = log10(lossValue);
+                value = lossValue;
             }
+            color = get_color(minimumModule, maximumModule, windingLossesMinimumColor, windingLossesMaximumColor, value);
+            
+            std::stringstream stream;
+            stream << std::scientific << std::setprecision(2) << lossValue;
+            label = stream.str() + " W";
+        } else {
+            // Use default copper color for turns with invalid/NaN losses
+            color = "#cd7f32";  // Copper color
+            label = turnName;   // Use turn name as label since no loss data
         }
-        else {
-            value = lossValue;
-        }
-        auto color = get_color(minimumModule, maximumModule, windingLossesMinimumColor, windingLossesMaximumColor, value);
-
-        std::stringstream stream;
-        stream << std::scientific << std::setprecision(2) << lossValue;
-        std::string label = stream.str() + " W";
 
         if (turns[i].get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
             double xCoordinate = turns[i].get_coordinates()[0];
