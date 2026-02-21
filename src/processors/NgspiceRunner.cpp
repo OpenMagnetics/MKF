@@ -924,9 +924,11 @@ OperatingPoint NgspiceRunner::extract_operating_point(
             auto indexIt = nameToIndex.find(voltageNameLower);
             if (indexIt != nameToIndex.end()) {
                 SignalDescriptor voltage;
-                voltage.set_waveform(result.waveforms[indexIt->second]);
+                Waveform voltageWaveform = result.waveforms[indexIt->second];
+                voltageWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
+                voltage.set_waveform(voltageWaveform);
                 // Calculate processed data for voltage
-                auto voltageProcessed = Inputs::calculate_processed_data(result.waveforms[indexIt->second], frequency, true);
+                auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, frequency, true);
                 voltage.set_processed(voltageProcessed);
                 excitation.set_voltage(voltage);
             }
@@ -952,6 +954,7 @@ OperatingPoint NgspiceRunner::extract_operating_point(
                 }
                 
                 SignalDescriptor current;
+                currentWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
                 current.set_waveform(currentWaveform);
                 // Calculate processed data for current
                 auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, frequency, true);
