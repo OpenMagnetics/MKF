@@ -110,16 +110,17 @@ namespace {
 
         SECTION("Center-tapped secondary turns ratios") {
             auto req = llc.process_design_requirements();
-            // For center-tapped secondaries: 1 primary + 2 halves per output
-            // With 1 output: 1 primary + 2 secondary halves = 3 turns ratios
+            // For center-tapped secondaries: 1 primary turns ratio + 1 per output
+            // With 1 output: 1 primary + 1 secondary = 2 turns ratios
             auto turnsRatios = req.get_turns_ratios();
-            REQUIRE(turnsRatios.size() == 3);
+            REQUIRE(turnsRatios.size() == 2);
             
             // First is primary
-            // Second and third should be equal (center-tapped halves)
-            double sec1 = resolve_dimensional_values(turnsRatios[1]);
-            double sec2 = resolve_dimensional_values(turnsRatios[2]);
-            REQUIRE_THAT(sec1, Catch::Matchers::WithinAbs(sec2, 0.01));
+            // Second is the single turns ratio for the center-tapped secondary output
+            double primaryRatio = resolve_dimensional_values(turnsRatios[0]);
+            double secondaryRatio = resolve_dimensional_values(turnsRatios[1]);
+            CHECK(primaryRatio > 0);
+            CHECK(secondaryRatio > 0);
         }
 
         SECTION("Analytical waveforms have excitation names") {

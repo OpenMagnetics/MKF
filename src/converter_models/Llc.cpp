@@ -159,20 +159,17 @@ DesignRequirements Llc::process_design_requirements() {
     double Vo = k_bridge * Vin_nom;
     double mainTurnsRatio = Vo / mainOutputVoltage;
 
-    // For center-tapped secondaries: each output needs TWO windings (each half of the center tap)
+    // For center-tapped secondaries: each output has ONE turns ratio
+    // but TWO windings (center-tapped halves) in the Coil functional description
     // turnsRatios[0] = primary
-    // turnsRatios[1] = secondary 1, half 1
-    // turnsRatios[2] = secondary 1, half 2 (center-tapped with turnsRatios[1])
-    // turnsRatios[3] = secondary 2, half 1 (if multiple outputs)
-    // turnsRatios[4] = secondary 2, half 2
-    // etc.
+    // turnsRatios[1] = secondary 1 (center-tapped, will create 2 windings)
+    // turnsRatios[2] = secondary 2 (if multiple outputs)
     std::vector<double> turnsRatios;
     turnsRatios.push_back(mainTurnsRatio);  // Primary
-    // Add two entries for each output (center-tapped secondary halves)
+    // Add one entry per output (the turns ratio for the center-tapped secondary)
     for (size_t i = 0; i < ops[0].get_output_voltages().size(); i++) {
         double secTurnsRatio = Vo / ops[0].get_output_voltages()[i];
-        turnsRatios.push_back(secTurnsRatio);  // First half
-        turnsRatios.push_back(secTurnsRatio);  // Second half (center-tapped)
+        turnsRatios.push_back(secTurnsRatio);  // Secondary output i
     }
 
     double Rload = mainOutputVoltage / mainOutputCurrent;
@@ -620,61 +617,63 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     }
 
     // --- Secondary excitation ---
-    // For center-tapped secondaries: each output has 2 windings
+    // For center-tapped secondaries: each output has 1 turns ratio but 2 windings
     // turnsRatios[0] = primary
-    // turnsRatios[1,2] = output 1 center-tapped halves
-    // turnsRatios[3,4] = output 2 center-tapped halves (if multiple outputs)
-    // Create individual excitations for each center-tapped secondary half (like magnetic waveforms)
+    // turnsRatios[1] = secondary output 0 (creates 2 excitations: half 1 and half 2)
+    // turnsRatios[2] = secondary output 1 (creates 2 excitations: half 1 and half 2)
+    // Create individual excitations for each center-tapped secondary half
     std::vector<double> effectiveTurnsRatios = turnsRatios;
     if (effectiveTurnsRatios.empty()) {
         effectiveTurnsRatios.push_back(Vi / llcOpPoint.get_output_voltages()[0]);
     }
 
-    // Process all secondary windings (skip index 0 which is primary)
+    // Process each output (skip index 0 which is primary)
+    // Each output creates 2 excitations for its center-tapped halves
     for (size_t secIdx = 1; secIdx < effectiveTurnsRatios.size(); ++secIdx) {
         double n = effectiveTurnsRatios[secIdx];
-        // Determine which output this winding belongs to and whether it's half 1 or 2
-        size_t outputIdx = (secIdx - 1) / 2;  // 0, 0, 1, 1, 2, 2... for each output
-        size_t halfIdx = (secIdx - 1) % 2;    // 0 or 1 for first/second half
+        size_t outputIdx = secIdx - 1;  // 0, 1, 2... for each output
         if (n <= 0) { 
             n = Vi / llcOpPoint.get_output_voltages()[outputIdx]; 
             if (n <= 0) n = 1.0; 
         }
 
-        std::vector<double> iSecData(totalSamples, 0.0);
-        std::vector<double> vSecData(totalSamples, 0.0);
+        // Create 2 excitations for this output's center-tapped halves
+        for (size_t halfIdx = 0; halfIdx < 2; ++halfIdx) {
+            std::vector<double> iSecData(totalSamples, 0.0);
+            std::vector<double> vSecData(totalSamples, 0.0);
 
-        for (int k = 0; k < totalSamples; ++k) {
-            double Id = ILs_full[k] - IL_full[k];
-            if (!std::isfinite(Id)) Id = 0;
-            // AC secondary current (not rectified) - each half conducts during its half-cycle
-            // First half (halfIdx=0): conducts during positive half-cycle
-            // Second half (halfIdx=1): conducts during negative half-cycle
-            if (halfIdx == 0) {
-                // First half of center-tapped secondary
-                iSecData[k] = (Id > 0) ? Id / n : 0;
-            } else {
-                // Second half of center-tapped secondary
-                iSecData[k] = (Id < 0) ? -Id / n : 0;
+            for (int k = 0; k < totalSamples; ++k) {
+                double Id = ILs_full[k] - IL_full[k];
+                if (!std::isfinite(Id)) Id = 0;
+                // AC secondary current (not rectified) - each half conducts during its half-cycle
+                // First half (halfIdx=0): conducts during positive half-cycle
+                // Second half (halfIdx=1): conducts during negative half-cycle
+                if (halfIdx == 0) {
+                    // First half of center-tapped secondary
+                    iSecData[k] = (Id > 0) ? Id / n : 0;
+                } else {
+                    // Second half of center-tapped secondary
+                    iSecData[k] = (Id < 0) ? -Id / n : 0;
+                }
+                vSecData[k] = VLm_full[k] / n;
+                if (!std::isfinite(iSecData[k])) iSecData[k] = 0;
+                if (!std::isfinite(vSecData[k])) vSecData[k] = 0;
             }
-            vSecData[k] = VLm_full[k] / n;
-            if (!std::isfinite(iSecData[k])) iSecData[k] = 0;
-            if (!std::isfinite(vSecData[k])) vSecData[k] = 0;
+
+            Waveform secCurrentWfm;
+            secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secCurrentWfm.set_data(iSecData);
+            secCurrentWfm.set_time(time_full);
+
+            Waveform secVoltageWfm;
+            secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secVoltageWfm.set_data(vSecData);
+            secVoltageWfm.set_time(time_full);
+
+            std::string windingName = "Secondary " + std::to_string(outputIdx) + " Half " + std::to_string(halfIdx + 1);
+            auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
-
-        Waveform secCurrentWfm;
-        secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
-        secCurrentWfm.set_data(iSecData);
-        secCurrentWfm.set_time(time_full);
-
-        Waveform secVoltageWfm;
-        secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
-        secVoltageWfm.set_data(vSecData);
-        secVoltageWfm.set_time(time_full);
-
-        std::string windingName = "Secondary " + std::to_string(outputIdx) + " Half " + std::to_string(halfIdx + 1);
-        auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
-        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 
     OperatingConditions conditions;
