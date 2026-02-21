@@ -620,15 +620,26 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     }
 
     // --- Secondary excitation ---
-    // Secondary always sees VLm/n (leakage doesn't couple to secondary)
+    // For center-tapped secondaries: each output has 2 windings
+    // turnsRatios[0] = primary
+    // turnsRatios[1,2] = output 1 center-tapped halves
+    // turnsRatios[3,4] = output 2 center-tapped halves (if multiple outputs)
+    // Create individual excitations for each center-tapped secondary half (like magnetic waveforms)
     std::vector<double> effectiveTurnsRatios = turnsRatios;
     if (effectiveTurnsRatios.empty()) {
         effectiveTurnsRatios.push_back(Vi / llcOpPoint.get_output_voltages()[0]);
     }
 
-    for (size_t secIdx = 0; secIdx < effectiveTurnsRatios.size(); ++secIdx) {
+    // Process all secondary windings (skip index 0 which is primary)
+    for (size_t secIdx = 1; secIdx < effectiveTurnsRatios.size(); ++secIdx) {
         double n = effectiveTurnsRatios[secIdx];
-        if (n <= 0) { n = Vi / llcOpPoint.get_output_voltages()[secIdx]; if (n <= 0) n = 1.0; }
+        // Determine which output this winding belongs to and whether it's half 1 or 2
+        size_t outputIdx = (secIdx - 1) / 2;  // 0, 0, 1, 1, 2, 2... for each output
+        size_t halfIdx = (secIdx - 1) % 2;    // 0 or 1 for first/second half
+        if (n <= 0) { 
+            n = Vi / llcOpPoint.get_output_voltages()[outputIdx]; 
+            if (n <= 0) n = 1.0; 
+        }
 
         std::vector<double> iSecData(totalSamples, 0.0);
         std::vector<double> vSecData(totalSamples, 0.0);
@@ -636,7 +647,16 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         for (int k = 0; k < totalSamples; ++k) {
             double Id = ILs_full[k] - IL_full[k];
             if (!std::isfinite(Id)) Id = 0;
-            iSecData[k] = std::abs(Id) / n;
+            // AC secondary current (not rectified) - each half conducts during its half-cycle
+            // First half (halfIdx=0): conducts during positive half-cycle
+            // Second half (halfIdx=1): conducts during negative half-cycle
+            if (halfIdx == 0) {
+                // First half of center-tapped secondary
+                iSecData[k] = (Id > 0) ? Id / n : 0;
+            } else {
+                // Second half of center-tapped secondary
+                iSecData[k] = (Id < 0) ? -Id / n : 0;
+            }
             vSecData[k] = VLm_full[k] / n;
             if (!std::isfinite(iSecData[k])) iSecData[k] = 0;
             if (!std::isfinite(vSecData[k])) vSecData[k] = 0;
@@ -652,8 +672,8 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         secVoltageWfm.set_data(vSecData);
         secVoltageWfm.set_time(time_full);
 
-        auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm,
-                                              fsw, "Secondary " + std::to_string(secIdx));
+        std::string windingName = "Secondary " + std::to_string(outputIdx) + " Half " + std::to_string(halfIdx + 1);
+        auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 
