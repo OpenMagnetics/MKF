@@ -1,6 +1,7 @@
 #include "physical_models/WindingLosses.h"
 #include "support/Painter.h"
 #include <cfloat>
+#include <cmath>
 #include <map>
 #include <algorithm>
 #include <sstream>
@@ -1229,6 +1230,11 @@ void BasicPainter::paint_coil_turns(Magnetic magnetic) {
 }
 
 std::string BasicPainter::get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value) {
+    // Handle NaN or invalid values - return minimum color as fallback
+    if (!std::isfinite(value)) {
+        return minimumColor;
+    }
+    
     // Clamp the value
     value = clamp(value, minimumValue, maximumValue);
     
@@ -1520,9 +1526,19 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
             continue;  // Skip if no loss data available for this turn
         }
 
+        // Skip turns with NaN or invalid loss values
+        if (!std::isfinite(lossValue) || lossValue < 0) {
+            continue;
+        }
+
         double value;
         if (logarithmicScale) {
-            value = log10(lossValue);
+            // For log scale, handle zero or negative values
+            if (lossValue <= 0) {
+                value = minimumModule;  // Use minimum value for zero/negative losses
+            } else {
+                value = log10(lossValue);
+            }
         }
         else {
             value = lossValue;
