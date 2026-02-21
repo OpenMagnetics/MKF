@@ -226,6 +226,7 @@ DesignRequirements Llc::process_design_requirements() {
         DimensionWithTolerance nTol;
         nTol.set_nominal(roundFloat(n, 2));
         designRequirements.get_mutable_turns_ratios().push_back(nTol);
+        designRequirements.get_mutable_turns_ratios().push_back(nTol); // Second centered tapped secondary
     }
     DimensionWithTolerance inductanceWithTolerance;
     inductanceWithTolerance.set_nominal(roundFloat(L, 10));
@@ -625,8 +626,11 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         effectiveTurnsRatios.push_back(Vi / llcOpPoint.get_output_voltages()[0]);
     }
 
-    // Process each output (each creates 2 excitations for center-tapped halves)
-    for (size_t secIdx = 0; secIdx < effectiveTurnsRatios.size(); ++secIdx) {
+    // For center-tapped LLC, only use the first turns ratio
+    // (both halves of the center-tapped secondary winding share the same turns ratio)
+    // This creates 2 excitations total (half 1 and half 2), not 4
+    size_t numTurnsRatiosToUse = std::min(size_t(1), effectiveTurnsRatios.size());
+    for (size_t secIdx = 0; secIdx < numTurnsRatiosToUse; ++secIdx) {
         double n = effectiveTurnsRatios[secIdx];
         size_t outputIdx = secIdx;  // 0, 1, 2... for each output
         if (n <= 0) { 
