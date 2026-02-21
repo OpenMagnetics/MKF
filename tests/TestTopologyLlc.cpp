@@ -60,10 +60,10 @@ namespace {
 
         SECTION("Turns ratio calculation") {
             auto req = llc.process_design_requirements();
-            // Formula: n = (Vin_min * k_bridge) / Vout
-            // For half-bridge with Vin_min=370V, k_bridge=0.5, Vout=12V:
-            // n = (370 * 0.5) / 12 = 15.42
-            double expectedN = 370.0 * 0.5 / 12.0;
+            // Formula: n = (Vin_nom * k_bridge) / Vout
+            // For half-bridge with Vin_nom=400V, k_bridge=0.5, Vout=12V:
+            // n = (400 * 0.5) / 12 = 16.67
+            double expectedN = 400.0 * 0.5 / 12.0;
             double computedN = resolve_dimensional_values(req.get_turns_ratios()[0]);
             REQUIRE_THAT(computedN, Catch::Matchers::WithinAbs(expectedN, expectedN * 0.05));
         }
