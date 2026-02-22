@@ -34,6 +34,7 @@ class Settings
         size_t _coilMaximumLayersPlanar = 4;
 
         bool _useOnlyCoresInStock = true;
+        bool _usePowderCores = true;
 
         size_t _painterNumberPointsX = 25;
         size_t _painterNumberPointsY = 50;
@@ -110,6 +111,8 @@ class Settings
         WindingProximityEffectLossesModels _windingProximityEffectLossesModel;
         StrayCapacitanceModels _strayCapacitanceModel;
 
+        bool _coilEnableUserWindingLossesModels = false;
+
         bool _verbose = false;
 
         std::string _preferredCoreMaterialFerriteManufacturer = "Fair-Rite";
@@ -178,6 +181,9 @@ class Settings
 
         bool get_use_only_cores_in_stock() const;
         void set_use_only_cores_in_stock(bool value);
+
+        bool get_use_powder_cores() const;
+        void set_use_powder_cores(bool value);
 
         size_t get_painter_number_points_x() const;
         void set_painter_number_points_x(size_t value);
@@ -377,6 +383,9 @@ class Settings
 
         StrayCapacitanceModels get_stray_capacitance_model() const;
         void set_stray_capacitance_model(StrayCapacitanceModels value);
+
+        bool get_coil_enable_user_winding_losses_models() const;
+        void set_coil_enable_user_winding_losses_models(bool value);
 
 
     };

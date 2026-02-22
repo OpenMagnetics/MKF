@@ -359,7 +359,9 @@ inline void to_json(json & j, const WindingSkinEffectLossesModels & x) {
         case WindingSkinEffectLossesModels::ALBACH: j = "Albach"; break;
         case WindingSkinEffectLossesModels::PAYNE: j = "Payne"; break;
         case WindingSkinEffectLossesModels::LOTFI: j = "Lotfi"; break;
+        case WindingSkinEffectLossesModels::XI_NAN: j = "XiNan"; break;
         case WindingSkinEffectLossesModels::KAZIMIERCZUK: j = "Kazimierczuk"; break;
+        case WindingSkinEffectLossesModels::MUEHLETHALER: j = "Muehlethaler"; break;
         case WindingSkinEffectLossesModels::KUTKUT: j = "Kutkut"; break;
         case WindingSkinEffectLossesModels::FERREIRA: j = "Ferreira"; break;
         case WindingSkinEffectLossesModels::DIMITRAKAKIS: j = "Dimitrakakis"; break;
@@ -376,7 +378,9 @@ inline void from_json(const json & j, WindingSkinEffectLossesModels & x) {
     else if (j == "Albach" || j == "albach" || j == "ALBACH") x = WindingSkinEffectLossesModels::ALBACH;
     else if (j == "Payne" || j == "payne" || j == "PAYNE") x = WindingSkinEffectLossesModels::PAYNE;
     else if (j == "Lotfi" || j == "lotfi" || j == "LOTFI") x = WindingSkinEffectLossesModels::LOTFI;
+    else if (j == "XiNan" || j == "xi_nan" || j == "XI_NAN") x = WindingSkinEffectLossesModels::XI_NAN;
     else if (j == "Kazimierczuk" || j == "kazimierczuk" || j == "KAZIMIERCZUK") x = WindingSkinEffectLossesModels::KAZIMIERCZUK;
+    else if (j == "Muehlethaler" || j == "muehlethaler" || j == "MUEHLETHALER") x = WindingSkinEffectLossesModels::MUEHLETHALER;
     else if (j == "Kutkut" || j == "kutkut" || j == "KUTKUT") x = WindingSkinEffectLossesModels::KUTKUT;
     else if (j == "Ferreira" || j == "ferreira" || j == "FERREIRA") x = WindingSkinEffectLossesModels::FERREIRA;
     else if (j == "Dimitrakakis" || j == "dimitrakakis" || j == "DIMITRAKAKIS") x = WindingSkinEffectLossesModels::DIMITRAKAKIS;

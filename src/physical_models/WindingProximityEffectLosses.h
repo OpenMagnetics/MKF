@@ -87,4 +87,12 @@ class WindingProximityEffectLossesLammeranerModel : public WindingProximityEffec
     double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
+// Based on Effects of eddy currents in transformer windings by P. L. Dowell
+// https://ieeexplore.ieee.org/document/5247417
+class WindingProximityEffectLossesDowellModel : public WindingProximityEffectLossesModel {
+  public:
+    std::string methodName = "Dowell";
+    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+};
 } // namespace OpenMagnetics

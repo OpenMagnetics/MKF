@@ -11,6 +11,7 @@
 #include "support/Utils.h"
 
 #include <cmath>
+#include <magic_enum.hpp>
 
 // Some platforms (Emscripten, Apple libc++) don't have std::comp_ellint_1/2
 // Use custom implementations from Utils.h via namespace injection
@@ -246,6 +247,7 @@ double get_magnetic_field_strength_gap(OperatingPoint& operatingPoint, Magnetic 
 WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings.get_magnetic_field_include_fringing();
+
     CoilMesher coilMesher; 
     std::vector<Field> inducingFields;
     auto core = magnetic.get_core();

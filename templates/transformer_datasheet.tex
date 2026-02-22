@@ -1,0 +1,273 @@
+% OpenMagnetics Transformer Datasheet Template
+% =============================================
+% Professional transformer datasheet with emphasis on isolation and winding data
+% Suitable for power transformers, gate drive transformers, signal transformers
+
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{multirow}
+\usepackage{colortbl}
+
+\geometry{left=15mm, right=15mm, top=20mm, bottom=20mm}
+
+\definecolor{headerblue}{RGB}{0, 51, 102}
+\definecolor{lightgray}{RGB}{245, 245, 245}
+\definecolor{accentgreen}{RGB}{0, 128, 0}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{gray}{{{COMPANY_NAME}} - Transformer Datasheet}}
+\fancyhead[R]{\small\textcolor{gray}{{{PART_NUMBER}}}}
+\fancyfoot[C]{\small\thepage}
+\fancyfoot[R]{\small Rev. {{REVISION}}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\begin{document}
+
+% ============================================================================
+% HEADER
+% ============================================================================
+\noindent
+\begin{minipage}[t]{0.7\textwidth}
+    {\Huge\bfseries\textcolor{headerblue}{{{PART_NUMBER}}}} \\[4mm]
+    {\Large {{PART_DESCRIPTION}}} \\[2mm]
+    {\large\textcolor{gray}{Power Transformer}}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.25\textwidth}
+    \raggedleft
+    {\large\bfseries\textcolor{headerblue}{{{COMPANY_NAME}}}}
+\end{minipage}
+
+\vspace{3mm}
+\noindent\rule{\textwidth}{1.5pt}
+\vspace{5mm}
+
+% ============================================================================
+% KEY SPECIFICATIONS BOX
+% ============================================================================
+\noindent
+\colorbox{lightgray}{
+\begin{minipage}[t]{0.98\textwidth}
+\vspace{2mm}
+\centering
+{\large\bfseries Key Specifications}
+\vspace{2mm}
+
+\begin{tabular}{cccccc}
+\textbf{Turns Ratio} & \textbf{Pri. Inductance} & \textbf{Frequency} & \textbf{Core} & \textbf{Temp. Range} \\
+\midrule
+{{TURNS_RATIO}} & {{MAGNETIZING_INDUCTANCE}} & {{OPERATING_FREQUENCY_KHZ}} & {{CORE_SHAPE}} & -40 to +125$^\circ$C \\
+\end{tabular}
+\vspace{2mm}
+\end{minipage}
+}
+
+\vspace{8mm}
+
+% ============================================================================
+% MAIN CONTENT - TWO COLUMNS
+% ============================================================================
+\begin{minipage}[t]{0.48\textwidth}
+
+% ELECTRICAL CHARACTERISTICS
+\noindent{\large\bfseries\textcolor{headerblue}{Electrical Characteristics}}
+\vspace{2mm}
+
+\footnotesize
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\rowcolor{lightgray}
+\textbf{Parameter} & \textbf{Min} & \textbf{Typ} & \textbf{Max} & \textbf{Unit} \\
+\hline
+Primary Inductance & - & {{MAGNETIZING_INDUCTANCE_UH}} & - & $\mu$H \\
+\hline
+Leakage Inductance & - & {{LEAKAGE_INDUCTANCE_W1}} & - & $\mu$H \\
+\hline
+Turns Ratio (n:1) & - & {{TURNS_RATIO}} & - & - \\
+\hline
+Operating Frequency & - & {{OPERATING_FREQUENCY_KHZ}} & - & kHz \\
+\hline
+DCR Primary & - & - & - & m$\Omega$ \\
+\hline
+DCR Secondary & - & - & - & m$\Omega$ \\
+\hline
+\end{tabular}
+
+\vspace{5mm}
+
+% WINDING CONFIGURATION
+\noindent{\large\bfseries\textcolor{headerblue}{Winding Configuration}}
+\vspace{2mm}
+
+\footnotesize
+\begin{tabular}{|l|c|c|c|}
+\hline
+\rowcolor{lightgray}
+\textbf{Winding} & \textbf{Turns} & \textbf{Wire} & \textbf{Parallels} \\
+\hline
+Primary & {{NUMBER_TURNS_W1}} & {{WIRE_TYPE_W1}} & {{NUMBER_PARALLELS_W1}} \\
+\hline
+Secondary & {{NUMBER_TURNS_W2}} & {{WIRE_TYPE_W2}} & {{NUMBER_PARALLELS_W2}} \\
+\hline
+Auxiliary & {{NUMBER_TURNS_W3}} & {{WIRE_TYPE_W3}} & {{NUMBER_PARALLELS_W3}} \\
+\hline
+\end{tabular}
+
+\vspace{5mm}
+
+% ISOLATION & SAFETY
+\noindent{\large\bfseries\textcolor{headerblue}{Isolation \& Safety}}
+\vspace{2mm}
+
+\footnotesize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{lightgray}
+\textbf{Parameter} & \textbf{Specification} \\
+\hline
+Isolation Voltage & 1500 Vrms (1 min) \\
+\hline
+Creepage Distance & $\geq$ 4.0 mm \\
+\hline
+Clearance & $\geq$ 4.0 mm \\
+\hline
+Reinforced Insulation & Yes \\
+\hline
+Safety Standard & IEC 61558-2-16 \\
+\hline
+\end{tabular}
+
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48\textwidth}
+
+% CORE DATA
+\noindent{\large\bfseries\textcolor{headerblue}{Core Data}}
+\vspace{2mm}
+
+\footnotesize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{lightgray}
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Core Shape & {{CORE_SHAPE}} \\
+\hline
+Core Material & {{CORE_MATERIAL}} \\
+\hline
+Effective Area ($A_e$) & {{EFFECTIVE_AREA_MM2}} \\
+\hline
+Effective Length ($l_e$) & {{EFFECTIVE_LENGTH_MM}} \\
+\hline
+Effective Volume ($V_e$) & {{EFFECTIVE_VOLUME_MM3}} \\
+\hline
+Air Gap & {{GAP_LENGTH_MM}} \\
+\hline
+\end{tabular}
+
+\vspace{5mm}
+
+% PERFORMANCE @ OPERATING CONDITIONS
+\noindent{\large\bfseries\textcolor{headerblue}{Performance}}
+\vspace{2mm}
+
+Test conditions: {{OPERATING_FREQUENCY_KHZ}}, {{AMBIENT_TEMPERATURE}}
+
+\footnotesize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{lightgray}
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Core Losses & {{CORE_LOSSES}} \\
+\hline
+Winding Losses & {{WINDING_LOSSES}} \\
+\hline
+Total Losses & {{TOTAL_LOSSES}} \\
+\hline
+Peak Flux Density & {{PEAK_FLUX_DENSITY_MT}} \\
+\hline
+Temperature Rise & $\Delta T$ = {{MAX_TEMPERATURE}} \\
+\hline
+Efficiency & $>$ 98\% \\
+\hline
+\end{tabular}
+
+\vspace{5mm}
+
+% PIN ASSIGNMENT
+\noindent{\large\bfseries\textcolor{headerblue}{Pin Assignment}}
+\vspace{2mm}
+
+\footnotesize
+\begin{tabular}{|c|l||c|l|}
+\hline
+\rowcolor{lightgray}
+\textbf{Pin} & \textbf{Function} & \textbf{Pin} & \textbf{Function} \\
+\hline
+1 & Primary Start & 4 & Secondary Start \\
+\hline
+2 & Primary End & 5 & Secondary End \\
+\hline
+3 & Primary CT & 6 & Secondary CT \\
+\hline
+\end{tabular}
+
+\end{minipage}
+
+\vspace{10mm}
+
+% ============================================================================
+% SCHEMATIC AND DIMENSIONS
+% ============================================================================
+\noindent{\large\bfseries\textcolor{headerblue}{Schematic Diagram}}
+\vspace{3mm}
+
+\begin{center}
+\begin{minipage}{0.4\textwidth}
+\centering
+% Placeholder for schematic
+\fbox{\parbox{0.9\textwidth}{\centering\vspace{20mm}Transformer Schematic\\({{TURNS_RATIO}} ratio)\vspace{20mm}}}
+\end{minipage}
+\hspace{10mm}
+\begin{minipage}{0.4\textwidth}
+\centering
+% Placeholder for package
+\fbox{\parbox{0.9\textwidth}{\centering\vspace{20mm}Package Dimensions\\{{CORE_SHAPE}}\vspace{20mm}}}
+\end{minipage}
+\end{center}
+
+\vspace{8mm}
+
+% ============================================================================
+% NOTES
+% ============================================================================
+\noindent{\large\bfseries\textcolor{headerblue}{Application Notes}}
+\vspace{2mm}
+
+\footnotesize
+\begin{itemize}
+    \setlength{\itemsep}{1pt}
+    \item Primary inductance measured at 1 kHz, 0.1 Vrms
+    \item Leakage inductance measured with secondary shorted
+    \item All windings rated for continuous duty at maximum temperature
+    \item Derate power handling above 85$^\circ$C ambient
+\end{itemize}
+
+\vspace{5mm}
+\hrule
+\vspace{2mm}
+\footnotesize
+\textit{Specifications subject to change without notice. Contact {{COMPANY_NAME}} for custom requirements.}
+
+\end{document}

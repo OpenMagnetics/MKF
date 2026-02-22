@@ -56,7 +56,11 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
     Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
 
     auto modelOverride = settings.get_painter_magnetic_field_strength_model();
-    MagneticField magneticField(modelOverride.value_or(Defaults().magneticFieldStrengthModelDefault));
+    // Use painter override if set, otherwise use the simulation magnetic field strength model
+    auto magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
+    // Use the configured fringing effect model from settings
+    auto fringingEffectModel = settings.get_magnetic_field_strength_fringing_effect_model();
+    MagneticField magneticField(magneticFieldModel, fringingEffectModel);
     settings.set_magnetic_field_include_fringing(includeFringing);
     settings.set_magnetic_field_mirroring_dimension(mirroringDimension);
     ComplexField field;
@@ -126,7 +130,8 @@ Field PainterInterface::calculate_electric_field(OperatingPoint operatingPoint, 
     Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false).first;
     settings.set_coil_mesher_inside_turns_factor(oldCoilMesherInsideTurnsFactor);
 
-    StrayCapacitance strayCapacitance;
+    auto strayCapacitanceModel = settings.get_stray_capacitance_model();
+    StrayCapacitance strayCapacitance(strayCapacitanceModel);
     settings.set_magnetic_field_include_fringing(includeFringing);
     settings.set_magnetic_field_mirroring_dimension(mirroringDimension);
 

@@ -21,8 +21,6 @@ using namespace OpenMagnetics;
 namespace {
     auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}
         .parent_path().append("..").append("output");
-    double maximumError = 0.1;
-
 
     // =====================================================================
     // TEST 1: Basic Design - TI TIDA-010054 reference parameters
@@ -123,7 +121,6 @@ namespace {
             // At d=1: i1 = i2 = phi * Ibase
             // Ibase = V1/(2*pi*Fs*L) = 800/(2*pi*100e3*35e-6) = 36.4
             // i1 = i2 = 0.4 * 36.4 ≈ 14.6 A
-            double Ibase = V1 / (2.0 * M_PI * Fs * L);
             REQUIRE_THAT(i1, Catch::Matchers::WithinAbs(i2, std::abs(i2) * 0.05));
             CHECK(std::abs(i1) > 0);
             CHECK(std::abs(i2) > 0);
@@ -413,7 +410,7 @@ namespace {
             double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
 
             // N is designed for nominal V2=350V
-            double d = Dab::compute_voltage_ratio(800.0, 350.0, turnsRatios[0]);
+            // double d = Dab::compute_voltage_ratio(800.0, 350.0, turnsRatios[0]);
             // Since N = 800/350, d = N*350/800 = 1.0 (it's the same here since V2 changed)
             // Actually for step-down, we'd use N designed for 500V but output 350V
             // Let's check differently:

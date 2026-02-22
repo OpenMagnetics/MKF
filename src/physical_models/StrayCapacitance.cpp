@@ -483,6 +483,20 @@ StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(Coil coil, 
 }
 
 double get_effective_relative_permittivity(double firstThickness, double firstRelativePermittivity, double secondThickness, double secondRelativePermittivity) {
+    // Handle edge case where distances are DBL_MAX (turns overlapping)
+    // In this case, return the larger permittivity as a safe fallback
+    if (std::isinf(firstThickness) || std::isinf(secondThickness)) {
+        return std::max(firstRelativePermittivity, secondRelativePermittivity);
+    }
+    
+    // Handle edge case where one thickness is zero
+    if (firstThickness == 0) {
+        return secondRelativePermittivity;
+    }
+    if (secondThickness == 0) {
+        return firstRelativePermittivity;
+    }
+    
     return firstRelativePermittivity * secondRelativePermittivity * (firstThickness + secondThickness) / (firstThickness * secondRelativePermittivity + secondThickness * firstRelativePermittivity);
 }
 
@@ -950,6 +964,13 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
         effectiveRelativePermittivity = 1;
     }
 
+    // Handle edge case: when turns overlap (distance is DBL_MAX), return a large capacitance
+    if (std::isinf(distanceThroughLayersAndAir)) {
+        // When turns overlap or are extremely close, capacitance approaches infinity
+        // Return a very large value instead of trying to calculate
+        return 1e-6;  // 1 µF - effectively infinite for practical purposes
+    }
+
     // ζ: Modified insulation parameter using OUTER radius (r0 + δ)
     // This differs from Koch model which uses bare conductor radius
     double zeta = 1 - wireCoatingThickness / (relativePermittivityWireCoating * (conductingRadius + wireCoatingThickness));
@@ -1021,6 +1042,14 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
  */
 double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
+
+    // Handle edge case: when turns overlap (distance is DBL_MAX), return a large capacitance
+    double totalDistance = distanceThroughLayers + distanceThroughAir;
+    if (std::isinf(totalDistance)) {
+        // When turns overlap or are extremely close, capacitance approaches infinity
+        // Return a very large value instead of trying to calculate
+        return 1e-6;  // 1 µF - effectively infinite for practical purposes
+    }
 
     // α: Parameter accounting for insulation coating effect - Eq. (3)
     // α = 1 - δ/(εr * r0), where δ = coating thickness

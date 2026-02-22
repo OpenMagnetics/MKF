@@ -8,6 +8,7 @@
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
 #include "converter_models/IsolatedBuck.h"
+#include "converter_models/Flyback.h"
 #include "Definitions.h"
 #include <magic_enum.hpp>
 
@@ -2792,6 +2793,153 @@ namespace {
         }
 
         printElapsed("Test completed");
+    }
+
+    TEST_CASE("Test_MagneticAdviser_Flyback_Colin_Tuck_EE30_N87", "[adviser][magnetic-adviser][flyback][colin-tuck]") {
+        // Flyback transformer design request from Colin Tuck (Preston Consulting Ltd.)
+        // Specifications:
+        // - Primary inductance: ~400uH
+        // - Operating at 4.5uS on time
+        // - Peak primary current: 1.6A
+        // - Input: 150VDC rail
+        // - Output: 20.0 VDC at 1.5A average
+        // - Frequency: 100kHz
+        // - Secondary peak current: ~8-9A
+        // - Suggested core: EE30 with N87 material
+        
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+        settings.set_use_powder_cores(false);  // Disable powder cores - use only ferrite
+        
+        json flybackInputsJson;
+        json inputVoltage;
+        
+        // Input voltage: 150VDC (single value, so min=max=nominal)
+        inputVoltage["minimum"] = 150;
+        inputVoltage["maximum"] = 150;
+        flybackInputsJson["inputVoltage"] = inputVoltage;
+        flybackInputsJson["diodeVoltageDrop"] = 0.7;
+        
+        // Design parameters from specifications
+        // L = V * dt / di = 150V * 4.5us / 1.6A ≈ 421uH, using 400uH as requested
+        double desiredInductance = 400e-6;
+        flybackInputsJson["desiredInductance"] = desiredInductance;
+        
+        // Calculate turns ratio: Vout = Vin * (Ns/Np) * (D/(1-D))
+        // D = 4.5us / 10us = 0.45
+        // 20 = 150 * (Ns/Np) * (0.45/0.55)
+        // Np/Ns = 150 * 0.45 / (20 * 0.55) ≈ 6.14
+        double dutyCycle = 0.45;
+        double turnsRatio = (150.0 * dutyCycle) / (20.0 * (1.0 - dutyCycle));
+        flybackInputsJson["desiredTurnsRatios"] = {turnsRatio};
+        
+        // Duty cycle array: {{min_input_duty, max_input_duty}}
+        flybackInputsJson["desiredDutyCycle"] = {{dutyCycle, dutyCycle}};
+        flybackInputsJson["efficiency"] = 0.9;  // Reasonable assumption
+        flybackInputsJson["operatingPoints"] = json::array();
+        
+        // Operating point: 20V at 1.5A
+        {
+            json flybackOperatingPointJson;
+            flybackOperatingPointJson["outputVoltages"] = {20.0};
+            flybackOperatingPointJson["outputCurrents"] = {1.5};
+            flybackOperatingPointJson["switchingFrequency"] = 100000;
+            flybackOperatingPointJson["ambientTemperature"] = 25;
+            flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
+        }
+        
+        OpenMagnetics::AdvancedFlyback flybackInputs(flybackInputsJson);
+        flybackInputs._assertErrors = true;
+        
+        auto inputs = flybackInputs.process();
+        
+        // Verify the operating point was created correctly
+        REQUIRE(inputs.get_operating_points().size() > 0);
+        REQUIRE_THAT(inputs.get_design_requirements().get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(desiredInductance, desiredInductance * 0.1));
+        
+        // Set isolation sides for safety
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        
+        // Set topology
+        inputs.get_mutable_design_requirements().set_topology(MAS::Topologies::FLYBACK_CONVERTER);
+        
+        // Configure to use EE30 core with N87 material if available
+        // First, let's see what the adviser comes up with without restrictions
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        
+        std::cout << "\n=== Colin Tuck Flyback Design Challenge ===" << std::endl;
+        std::cout << "Input: 150VDC" << std::endl;
+        std::cout << "Output: 20V @ 1.5A (30W)" << std::endl;
+        std::cout << "Frequency: 100kHz" << std::endl;
+        std::cout << "Magnetizing Inductance: " << desiredInductance * 1e6 << " uH" << std::endl;
+        std::cout << "Turns Ratio (Np:Ns): " << turnsRatio << std::endl;
+        std::cout << "Duty Cycle: " << dutyCycle << std::endl;
+        std::cout << "\nSearching for lowest loss design..." << std::endl;
+        
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
+        
+        REQUIRE(masMagnetics.size() > 0);
+        
+        std::cout << "\nTop 5 lowest loss designs:" << std::endl;
+        int rank = 1;
+        for (auto [masMagnetic, scoring] : masMagnetics) {
+            auto& core = masMagnetic.get_mutable_magnetic().get_core();
+            auto& coil = masMagnetic.get_mutable_magnetic().get_coil();
+            
+            std::cout << "\n" << rank << ". Score: " << scoring << std::endl;
+            std::cout << "   Core: " << core.get_name().value_or("Unknown");
+            // Core material is a variant type - simplified output
+            std::cout << std::endl;
+            
+            // Print turns from functional description
+            auto& funcDesc = coil.get_functional_description();
+            if (!funcDesc.empty()) {
+                std::cout << "   Primary Turns: " << funcDesc[0].get_number_turns() << std::endl;
+                if (funcDesc.size() > 1) {
+                    std::cout << "   Secondary Turns: " << funcDesc[1].get_number_turns() << std::endl;
+                }
+            }
+            
+            // Export results for analysis
+            auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
+            
+            // Save MAS file
+            {
+                auto outFile = outputFilePath;
+                std::string filename = "Test_Colin_Tuck_Flyback_Rank" + std::to_string(rank) + ".mas.json";
+                outFile.append(filename);
+                to_file(outFile, masMagnetic);
+            }
+            
+            // Generate visualization
+            if (plot) {
+                auto outFile = outputFilePath;
+                std::string filename = "Test_Colin_Tuck_Flyback_Rank" + std::to_string(rank) + ".svg";
+                outFile.append(filename);
+                Painter painter(outFile, true);
+                
+                settings.set_painter_mode(PainterModes::CONTOUR);
+                settings.set_painter_logarithmic_scale(true);
+                settings.set_painter_include_fringing(true);
+                painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
+                painter.paint_core(masMagnetic.get_mutable_magnetic());
+                painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                #ifdef ENABLE_MATPLOTPP
+                painter.export_svg();
+                #endif
+            }
+            
+            OpenMagneticsTesting::check_turns_description(coil);
+            rank++;
+        }
+        
+        std::cout << "\n=== Design Challenge Complete ===" << std::endl;
+        std::cout << "Compare results with Preston Consulting's design!" << std::endl;
     }
 
 }  // namespace

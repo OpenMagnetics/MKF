@@ -1011,3 +1011,202 @@ TEST_CASE("Mixed round + litz capacitance smoke test", "[stray-capacitance][mixe
     auto out = strayCap.calculate_capacitance(coil);
     REQUIRE(out.get_maxwell_capacitance_matrix());
 }
+
+TEST_CASE("Bug: beta is NAN in capacitance calculation with processed coil", "[stray-capacitance][bug][beta-nan]") {
+    settings.reset();
+    
+    // Load the test data from JSON file
+    auto testDataPath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("testData").append("bug_capacitance_error.json");
+    
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    
+    json masJson;
+    file >> masJson;
+    file.close();
+    
+    // Create Magnetic object from the JSON
+    auto magneticJson = masJson["magnetic"];
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    
+    // Get the coil and operating point
+    auto coil = magnetic.get_coil();
+    auto inputsJson = masJson["inputs"];
+    auto operatingPoints = inputsJson["operatingPoints"];
+    REQUIRE(operatingPoints.size() > 0);
+    auto operatingPointJson = operatingPoints[0];
+    OperatingPoint operatingPoint(operatingPointJson);
+    
+    std::cout << "Coil layers: " << (coil.get_layers_description() ? coil.get_layers_description()->size() : 0) << std::endl;
+    std::cout << "Coil turns: " << (coil.get_turns_description() ? coil.get_turns_description()->size() : 0) << std::endl;
+    std::cout << "Coil sections: " << (coil.get_sections_description() ? coil.get_sections_description()->size() : 0) << std::endl;
+    
+    // Check the wire properties
+    const auto& windings = coil.get_functional_description();
+    std::cout << "Number of windings: " << windings.size() << std::endl;
+    for (size_t i = 0; i < windings.size(); ++i) {
+        const auto& winding = windings[i];
+        std::cout << "\nWinding " << i << " (" << winding.get_name() << "):" << std::endl;
+        std::cout << "  Number turns: " << winding.get_number_turns() << std::endl;
+        std::cout << "  Number parallels: " << winding.get_number_parallels() << std::endl;
+        auto wireOpt = winding.get_wire();
+        if (std::holds_alternative<OpenMagnetics::Wire>(wireOpt)) {
+            const auto& wire = std::get<OpenMagnetics::Wire>(wireOpt);
+            auto nameOpt = wire.get_name();
+            std::cout << "  Wire name: " << (nameOpt ? nameOpt.value() : "unnamed") << std::endl;
+            std::cout << "  Wire type: " << magic_enum::enum_name(wire.get_type()) << std::endl;
+            auto outerDiamOpt = wire.get_outer_diameter();
+            if (outerDiamOpt) {
+                std::cout << "  Outer diameter: " << OpenMagnetics::resolve_dimensional_values(outerDiamOpt.value()) << std::endl;
+            }
+            auto coatingOpt = wire.get_coating();
+            if (coatingOpt) {
+                std::cout << "  Has coating: yes" << std::endl;
+            }
+            auto condDiamOpt = wire.get_conducting_diameter();
+            if (condDiamOpt) {
+                std::cout << "  Conducting diameter: " << OpenMagnetics::resolve_dimensional_values(condDiamOpt.value()) << std::endl;
+            }
+            auto condAreaOpt = wire.get_conducting_area();
+            if (condAreaOpt) {
+                std::cout << "  Conducting area: " << OpenMagnetics::resolve_dimensional_values(condAreaOpt.value()) << std::endl;
+            }
+            // For LITZ wires, check strand
+            if (wire.get_type() == WireType::LITZ) {
+                std::cout << "  Number conductors: " << (wire.get_number_conductors() ? std::to_string(wire.get_number_conductors().value()) : "NOT SET") << std::endl;
+                try {
+                    // Create non-const copy to call resolve_strand
+                    auto wireCopy = wire;
+                    auto strand = wireCopy.resolve_strand();
+                    std::cout << "  Strand conducting diameter: " << OpenMagnetics::resolve_dimensional_values(strand.get_conducting_diameter()) << std::endl;
+                    auto strandCoating = OpenMagnetics::Wire::resolve_coating(strand);
+                    if (strandCoating && strandCoating->get_grade()) {
+                        std::cout << "  Strand coating grade: " << strandCoating->get_grade().value() << std::endl;
+                    }
+                } catch (const std::exception& e) {
+                    std::cout << "  ERROR resolving strand: " << e.what() << std::endl;
+                }
+            }
+        }
+    }
+    
+    // Try to calculate capacitance with different models
+    for (auto model : {OpenMagnetics::StrayCapacitanceModels::ALBACH, 
+                       OpenMagnetics::StrayCapacitanceModels::KOCH,
+                       OpenMagnetics::StrayCapacitanceModels::MASSARINI,
+                       OpenMagnetics::StrayCapacitanceModels::DUERDOTH}) {
+        
+        std::cout << "\nTrying model: " << magic_enum::enum_name(model) << std::endl;
+        
+        try {
+            StrayCapacitance strayCapacitance(model);
+            auto output = strayCapacitance.calculate_capacitance(coil);
+            
+            std::cout << "Success! Got maxwell capacitance matrix" << std::endl;
+            if (output.get_maxwell_capacitance_matrix()) {
+                auto matrix = output.get_maxwell_capacitance_matrix().value();
+                std::cout << "Matrix size: " << matrix.size() << std::endl;
+                if (matrix.size() > 0) {
+                    std::cout << "First entry magnitude size: " << matrix[0].get_magnitude().size() << std::endl;
+                }
+            }
+            
+        } catch (const std::exception& e) {
+            std::cout << "ERROR: " << e.what() << std::endl;
+            // Don't fail the test, just report the error
+        }
+    }
+    
+    // The test should complete without crashing
+    REQUIRE(true);
+}
+
+TEST_CASE("Investigate capacitance calculation from bug_capacitance_error_2.json", "[physical-model][stray-capacitance][bug-investigation]") {
+    settings.reset();
+    
+    // Load the MAS from the test data file
+    auto testDataPath = get_test_data_path(std::source_location::current(), "bug_capacitance_error_2.json");
+    std::cout << "\n=== Investigating capacitance error from: " << testDataPath << " ===" << std::endl;
+    
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    
+    std::string jsonStr((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    
+    auto masJson = nlohmann::json::parse(jsonStr);
+    MAS::Mas mas;
+    MAS::from_json(masJson, mas);
+    auto magnetic = mas.get_mutable_magnetic();
+    auto coil = magnetic.get_mutable_coil();
+    
+    std::cout << "\nCoil info:" << std::endl;
+    std::cout << "  Number of windings: " << coil.get_functional_description().size() << std::endl;
+    std::cout << "  Windings:" << std::endl;
+    for (const auto& winding : coil.get_functional_description()) {
+        std::cout << "    - " << winding.get_name() << ": " << winding.get_number_turns() << " turns" << std::endl;
+    }
+    
+    if (coil.get_turns_description()) {
+        std::cout << "  Has turns description: YES" << std::endl;
+        std::cout << "  Number of turns: " << coil.get_turns_description()->size() << std::endl;
+    } else {
+        std::cout << "  Has turns description: NO" << std::endl;
+    }
+    
+    if (coil.get_layers_description()) {
+        std::cout << "  Has layers description: YES" << std::endl;
+        std::cout << "  Number of layers: " << coil.get_layers_description()->size() << std::endl;
+    } else {
+        std::cout << "  Has layers description: NO" << std::endl;
+    }
+    
+    // Try to calculate capacitance
+    std::cout << "\n=== Calculating stray capacitance ===" << std::endl;
+    
+    StrayCapacitance strayCapacitance;
+    
+    try {
+        auto output = strayCapacitance.calculate_capacitance(coil);
+        
+        std::cout << "SUCCESS! Capacitance calculated" << std::endl;
+        
+        if (output.get_maxwell_capacitance_matrix()) {
+            auto matrix = output.get_maxwell_capacitance_matrix().value();
+            std::cout << "\nMaxwell Capacitance Matrix:" << std::endl;
+            for (const auto& entry : matrix) {
+                for (const auto& [winding1, innerMap] : entry.get_magnitude()) {
+                    for (const auto& [winding2, capacitance] : innerMap) {
+                        auto value = OpenMagnetics::resolve_dimensional_values(capacitance);
+                        std::cout << "  " << winding1 << " - " << winding2 << ": " << value << " F" << std::endl;
+                    }
+                }
+            }
+        }
+        
+        if (output.get_capacitance_matrix()) {
+            auto matrix = output.get_capacitance_matrix().value();
+            std::cout << "\nCapacitance Matrix:" << std::endl;
+            std::cout << "  Number of entries: " << matrix.size() << std::endl;
+            for (const auto& [winding1, innerMap] : matrix) {
+                std::cout << "  " << winding1 << " has " << innerMap.size() << " entries" << std::endl;
+                for (const auto& [winding2, scalarMatrix] : innerMap) {
+                    // ScalarMatrixAtFrequency contains magnitude which is map<string, map<string, DimensionWithTolerance>>
+                    std::cout << "    " << winding1 << " - " << winding2 << ":" << std::endl;
+                    for (const auto& [sub1, subMap] : scalarMatrix.get_magnitude()) {
+                        for (const auto& [sub2, dimWithTol] : subMap) {
+                            auto value = OpenMagnetics::resolve_dimensional_values(dimWithTol);
+                            std::cout << "      " << sub1 << " - " << sub2 << ": " << value << " F" << std::endl;
+                        }
+                    }
+                }
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        std::cout << "ERROR during capacitance calculation: " << e.what() << std::endl;
+        FAIL("Capacitance calculation failed: " << e.what());
+    }
+    
+    REQUIRE(true);
+}

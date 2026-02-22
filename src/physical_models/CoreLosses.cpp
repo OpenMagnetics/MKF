@@ -1412,13 +1412,93 @@ std::map<std::string, double> get_major_loop_parameters(double saturationMagneti
     return majorLoopParameters;
 }
 
+/**
+ * @brief Analytically computes the vertical offset (delta) for Roshen minor B-H loop.
+ * 
+ * For a minor hysteresis loop reaching ±B_peak, the upper and lower branches of the
+ * major loop must be shifted vertically to meet at the target flux density.
+ * 
+ * The crossing point (tip of the minor loop) occurs at H < -Hc where:
+ *   B_upper(H) + B_lower(H) = -2*B_peak
+ * 
+ * Using substitution u = -(H + Hc) > 0:
+ *   B_upper = -u / (a1 + b2*u)
+ *   B_lower = -(2*Hc + u) / (a1 + b1*(2*Hc + u))
+ * 
+ * Solving the quadratic equation gives:
+ *   u = (A + sqrt(D)) / C
+ * 
+ * Then delta = (B_upper - B_lower) / 2
+ * 
+ * This replaces the iterative approach with O(1) analytical computation.
+ * 
+ * @param Hc Coercive force [A/m]
+ * @param a1 Roshen parameter a1
+ * @param b1 Roshen parameter b1
+ * @param b2 Roshen parameter b2
+ * @param B_peak Target peak magnetic flux density [T]
+ * @return The vertical offset delta to apply to the B-H curves
+ */
+static double roshen_compute_analytical_delta(double Hc, double a1, double b1, double b2, double B_peak) {
+    // Coefficients for the quadratic solution
+    // A = 2*B_peak*Hc*b1*b2 + B_peak*a1*(b1 + b2) - Hc*(b1 + b2) - a1
+    double A = 2.0 * B_peak * Hc * b1 * b2 + B_peak * a1 * (b1 + b2) - Hc * (b1 + b2) - a1;
+    
+    // C = -2*B_peak*b1*b2 + b1 + b2
+    double C = -2.0 * B_peak * b1 * b2 + b1 + b2;
+    
+    // D (discriminant)
+    double D = 4.0 * B_peak * B_peak * Hc * Hc * b1 * b1 * b2 * b2
+             - 4.0 * B_peak * B_peak * Hc * a1 * b1 * b1 * b2
+             + 4.0 * B_peak * B_peak * Hc * a1 * b1 * b2 * b2
+             + B_peak * B_peak * a1 * a1 * b1 * b1
+             - 2.0 * B_peak * B_peak * a1 * a1 * b1 * b2
+             + B_peak * B_peak * a1 * a1 * b2 * b2
+             - 4.0 * B_peak * Hc * Hc * b1 * b1 * b2
+             - 4.0 * B_peak * Hc * Hc * b1 * b2 * b2
+             + 2.0 * B_peak * Hc * a1 * b1 * b1
+             - 2.0 * B_peak * Hc * a1 * b2 * b2
+             + Hc * Hc * b1 * b1
+             + 2.0 * Hc * Hc * b1 * b2
+             + Hc * Hc * b2 * b2
+             + a1 * a1;
+    
+    if (D < 0) {
+        // Fallback: no real solution, return 0 (will use unshifted curves)
+        return 0.0;
+    }
+    
+    double sqrt_D = std::sqrt(D);
+    
+    // u = (A + sqrt(D)) / C (taking the solution that gives u > 0)
+    double u = (A + sqrt_D) / C;
+    
+    if (u <= 0) {
+        // Try the other solution
+        u = (A - sqrt_D) / C;
+    }
+    
+    if (u <= 0) {
+        // Both solutions negative, fallback
+        return 0.0;
+    }
+    
+    // Compute B values at the crossing point
+    double B_upper = -u / (a1 + b2 * u);
+    double B_lower = -(2.0 * Hc + u) / (a1 + b1 * (2.0 * Hc + u));
+    
+    // delta = (B_upper - B_lower) / 2
+    double delta = (B_upper - B_lower) / 2.0;
+    
+    return delta;
+}
+
 std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_bh_loop(std::map<std::string, double> parameters,
                                                             OperatingPointExcitation excitation) {
     double saturationMagneticFieldStrength = parameters["saturationMagneticFieldStrength"];
     double saturationMagneticFluxDensity = parameters["saturationMagneticFluxDensity"];
     double coerciveForce = parameters["coerciveForce"];
     double remanence = parameters["remanence"];
-    // double frequency = excitation.get_frequency();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
                                        magneticFluxDensity.get_processed().value().get_offset();
@@ -1475,42 +1555,19 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
         calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, true);
     std::vector<double> lowerMagneticFluxDensityWaveform =
         calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, false);
-    std::vector<double> difference;
 
-    // _hysteresisMajorH = magneticFieldStrengthPoints;
-    // _hysteresisMajorLoopTop = upperMagneticFluxDensityWaveform;
-    // _hysteresisMajorLoopBottom = lowerMagneticFluxDensityWaveform;
+    // Compute the analytical vertical offset (delta) to create the minor loop at B_peak
+    double delta = roshen_compute_analytical_delta(coerciveForce, a1, b1, b2, magneticFluxDensityAcPeak);
+    
+    // Apply the offset: shift upper branch down, lower branch up
     for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
-        difference.push_back(fabs(upperMagneticFluxDensityWaveform[i] - lowerMagneticFluxDensityWaveform[i]));
+        upperMagneticFluxDensityWaveform[i] -= delta;
+    }
+    for (size_t i = 0; i < lowerMagneticFluxDensityWaveform.size(); i++) {
+        lowerMagneticFluxDensityWaveform[i] += delta;
     }
 
-    double magneticFluxDensityDifference = magneticFluxDensityAcPeak;
-    size_t timeout = 0;
-    double abs_tol = 0.001;
-    while (fabs(magneticFluxDensityDifference) > abs_tol && timeout < 10) {
-        size_t mininumPosition =
-            std::distance(std::begin(difference), std::min_element(std::begin(difference), std::end(difference)));
-        magneticFluxDensityDifference =
-            fabs(upperMagneticFluxDensityWaveform[mininumPosition]) - magneticFluxDensityAcPeak;
-
-        for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
-            upperMagneticFluxDensityWaveform[i] -= magneticFluxDensityDifference / 16;
-        }
-        for (size_t i = 0; i < lowerMagneticFluxDensityWaveform.size(); i++) {
-            lowerMagneticFluxDensityWaveform[i] += magneticFluxDensityDifference / 16;
-        }
-
-        difference.clear();
-        for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
-            difference.push_back(fabs(upperMagneticFluxDensityWaveform[i] - lowerMagneticFluxDensityWaveform[i]));
-        }
-        timeout++;
-        abs_tol += timeout * 0.0001;
-    }
-
-    // auto closestBIndex = find_closest_index(upperMagneticFluxDensityWaveform, magneticFluxDensityAcPeak);
-
-
+    // Cut to the target B range
     std::vector<double> cutUpperMagneticFluxDensityWaveform;
     std::vector<double> cutLowerMagneticFluxDensityWaveform;
     for (auto& elem : upperMagneticFluxDensityWaveform) {

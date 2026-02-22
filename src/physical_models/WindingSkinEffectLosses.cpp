@@ -3,6 +3,7 @@
 #include "constructive_models/Wire.h"
 #include "Defaults.h"
 
+#include <magic_enum.hpp>
 #include <cmath>
 #include <limits>
 #include <complex>
@@ -31,7 +32,7 @@ inline std::size_t hash_combine_wire(int64_t n, double w, double h) {
     return seed;
 }
 
-std::shared_ptr<WindingSkinEffectLossesModel>  WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels modelName){
+std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels modelName){
     if (modelName == WindingSkinEffectLossesModels::WOJDA) {
         return std::make_shared<WindingSkinEffectLossesWojdaModel>();
     }
@@ -50,19 +51,47 @@ std::shared_ptr<WindingSkinEffectLossesModel>  WindingSkinEffectLossesModel::fac
     else if (modelName == WindingSkinEffectLossesModels::KUTKUT) {
         return std::make_shared<WindingSkinEffectLossesKutkutModel>();
     }
+    else if (modelName == WindingSkinEffectLossesModels::DOWELL) {
+        return std::make_shared<WindingSkinEffectLossesDowellModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::PERRY) {
+        return std::make_shared<WindingSkinEffectLossesPerryModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::XI_NAN) {
+        return std::make_shared<WindingSkinEffectLossesNanModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::KAZIMIERCZUK) {
+        return std::make_shared<WindingSkinEffectLossesKazimierczukModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::DIMITRAKAKIS) {
+        return std::make_shared<WindingSkinEffectLossesDimitrakakisModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::MUEHLETHALER) {
+        return std::make_shared<WindingSkinEffectLossesMuehlethalerModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::WANG) {
+        return std::make_shared<WindingSkinEffectLossesWangModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::HOLGUIN) {
+        return std::make_shared<WindingSkinEffectLossesHolguinModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown wire skin effect losses mode, available options are: {DOWELL, WOJDA, ALBACH, PAYNE, NAN, VANDELAC_ZIOGAS, KAZIMIERCZUK, KUTKUT, FERREIRA, DIMITRAKAKIS, WANG, HOLGUIN, PERRY}");
+        throw ModelNotAvailableException("Unknown wire skin effect losses mode, available options are: {DOWELL, WOJDA, ALBACH, PAYNE, NAN, KAZIMIERCZUK, KUTKUT, FERREIRA, LOTFI, DIMITRAKAKIS, MUEHLETHALER, WANG, HOLGUIN, PERRY}");
 }
+
 
 std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model(WireType wireType, std::optional<WindingSkinEffectLossesModels> modelOverride) {
     // If an explicit model override is provided, use it
     if (modelOverride.has_value()) {
+        std::cerr << "[WindingSkinEffectLosses] Using model override: " << magic_enum::enum_name(modelOverride.value()) << std::endl;
         return WindingSkinEffectLossesModel::factory(modelOverride.value());
     }
 
     // Check if user has enabled manual model selection
     auto& settings = Settings::GetInstance();
-    if (settings.get_coil_enable_user_winding_losses_models()) {
+    bool userModelsEnabled = settings.get_coil_enable_user_winding_losses_models();
+
+    if (userModelsEnabled) {
         // Use the user's selected model from Settings
         auto userSelectedModel = settings.get_winding_skin_effect_losses_model();
         return WindingSkinEffectLossesModel::factory(userSelectedModel);
@@ -731,6 +760,394 @@ double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(Wire wire, doub
 //         auto skinDepth = calculate_skin_depth(material, frequency, temperature);
 //     }
 // }
+// ============================================================================
+// DOWELL MODEL — Implementation
+// Dowell 1966, Proc. IEE Vol. 113, No. 8
+// FR_skin = M' = ζ·(sinh 2ζ + sin 2ζ)/(cosh 2ζ − cos 2ζ),  ζ = h/δ
+// Round wire: h_eq = d·√(π/4)
+// ============================================================================
+double WindingSkinEffectLossesDowellModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double conductorHeight;
+
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        conductorHeight = std::min(resolve_dimensional_values(wire.get_conducting_width().value()),
+                                   resolve_dimensional_values(wire.get_conducting_height().value()));
+    }
+    else if (wire.get_type() == WireType::ROUND) {
+        // Dowell replaces round with equivalent square of same area: h = d·√(π/4)
+        conductorHeight = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        auto strand = Wire::resolve_strand(wire);
+        conductorHeight = resolve_dimensional_values(strand.get_conducting_diameter()) * sqrt(std::numbers::pi / 4.0);
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+    }
+
+    double zeta = conductorHeight / skinDepth;
+    if (zeta < 1e-10) return 1.0;
+
+    // Dowell Eq. (10), m=1: M' = ζ·(sinh 2ζ + sin 2ζ)/(cosh 2ζ − cos 2ζ)
+    return zeta * (sinh(2 * zeta) + sin(2 * zeta)) / (cosh(2 * zeta) - cos(2 * zeta));
+}
+
+double WindingSkinEffectLossesDowellModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]] double currentRms) {
+    double skinFactor;
+    auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
+    if (optionalSkinFactor) {
+        skinFactor = optionalSkinFactor.value();
+    } else {
+        skinFactor = calculate_skin_factor(wire, frequency, temperature);
+        set_skin_factor(wire, frequency, temperature, skinFactor);
+    }
+    return dcLossTurn * (skinFactor - 1);
+}
+
+
+// ============================================================================
+// PERRY MODEL — Implementation
+// Perry 1979, IEEE Trans. PAS Vol. PAS-98, No. 1, pp. 116-123
+// FR = Δ·(sinh 2Δ + sin 2Δ)/(cosh 2Δ − cos 2Δ),  Δ = T/δ  [Eq. 1 / 13a]
+// Multi-layer proximity F₂'(Δ) term (Eq. 12) NOT included here.
+// ============================================================================
+double WindingSkinEffectLossesPerryModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double conductorThickness;
+
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        conductorThickness = std::min(resolve_dimensional_values(wire.get_conducting_width().value()),
+                                       resolve_dimensional_values(wire.get_conducting_height().value()));
+    }
+    else if (wire.get_type() == WireType::ROUND) {
+        conductorThickness = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        auto strand = Wire::resolve_strand(wire);
+        conductorThickness = resolve_dimensional_values(strand.get_conducting_diameter()) * sqrt(std::numbers::pi / 4.0);
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+    }
+
+    double delta = conductorThickness / skinDepth;
+    if (delta < 1e-10) return 1.0;
+
+    // Perry Eq. (1) / (13a): FR = Δ·(sinh 2Δ + sin 2Δ)/(cosh 2Δ − cos 2Δ)
+    return delta * (sinh(2 * delta) + sin(2 * delta)) / (cosh(2 * delta) - cos(2 * delta));
+}
+
+double WindingSkinEffectLossesPerryModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]] double currentRms) {
+    double skinFactor;
+    auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
+    if (optionalSkinFactor) {
+        skinFactor = optionalSkinFactor.value();
+    } else {
+        skinFactor = calculate_skin_factor(wire, frequency, temperature);
+        set_skin_factor(wire, frequency, temperature, skinFactor);
+    }
+    return dcLossTurn * (skinFactor - 1);
+}
+
+
+// ============================================================================
+// DIMITRAKAKIS MODEL — Implementation
+// Dimitrakakis et al. 2007, EPE Conference
+// Skin (Eq. 5-6): FR_skin = Re[α·I₀(α)/I₁(α)]/2, α = (1+j)·r/δ
+// Proximity r_prox (Eq. 6, ber₂/bei₂ terms) → proximity model.
+// Rectangular fallback: Dowell 1D skin factor.
+// ============================================================================
+double WindingSkinEffectLossesDimitrakakisModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        double wireRadius;
+        if (wire.get_type() == WireType::LITZ) {
+            auto strand = Wire::resolve_strand(wire);
+            wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
+        } else {
+            wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        }
+        if (wireRadius / skinDepth < 1e-10) return 1.0;
+
+        // Exact Bessel: FR = Re[α·I₀(α)/I₁(α)] / 2,  α = (1+j)·r/δ
+        std::complex<double> alpha(1.0, 1.0);
+        alpha *= wireRadius / skinDepth;
+        return 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha))).real();
+    }
+    else {
+        // Rectangular/foil/planar: Dowell 1D fallback
+        double h = std::min(resolve_dimensional_values(wire.get_conducting_width().value()),
+                            resolve_dimensional_values(wire.get_conducting_height().value()));
+        double zeta = h / skinDepth;
+        if (zeta < 1e-10) return 1.0;
+        return zeta * (sinh(2 * zeta) + sin(2 * zeta)) / (cosh(2 * zeta) - cos(2 * zeta));
+    }
+}
+
+double WindingSkinEffectLossesDimitrakakisModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]] double currentRms) {
+    double skinFactor;
+    auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
+    if (optionalSkinFactor) {
+        skinFactor = optionalSkinFactor.value();
+    } else {
+        skinFactor = calculate_skin_factor(wire, frequency, temperature);
+        set_skin_factor(wire, frequency, temperature, skinFactor);
+    }
+    return dcLossTurn * (skinFactor - 1);
+}
+
+
+// ============================================================================
+// MUEHLETHALER MODEL — Implementation
+// Mühlethaler 2012, ETH Zurich DISS. ETH NO. 20217
+//
+// Round (Eq. 4.6-4.7, Appendix A.8.1):
+//   FR = Re[(1+j)·(r/δ)·I₀((1+j)r/δ)/I₁((1+j)r/δ)] / 2
+//
+// Foil (Eq. 4.20, Appendix A.7.1):
+//   FF = (Δ/4)·(sinh Δ + sin Δ)/(cosh Δ − cos Δ),  Δ = h/δ
+//
+// Proximity factors (Eq. 4.8-4.9) → proximity model.
+// ============================================================================
+double WindingSkinEffectLossesMuehlethalerModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        double wireRadius;
+        if (wire.get_type() == WireType::LITZ) {
+            auto strand = Wire::resolve_strand(wire);
+            wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
+        } else {
+            wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        }
+        if (wireRadius / skinDepth < 1e-10) return 1.0;
+
+        // Bessel form of Eq. (4.7): FR = Re[α·I₀(α)/I₁(α)] / 2
+        std::complex<double> alpha(1.0, 1.0);
+        alpha *= wireRadius / skinDepth;
+        return 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha))).real();
+    }
+    else {
+        // Foil/rectangular/planar: Eq. (4.20)
+        // FF = (Δ/4)·(sinh Δ + sin Δ)/(cosh Δ − cos Δ)
+        double h = std::min(resolve_dimensional_values(wire.get_conducting_width().value()),
+                            resolve_dimensional_values(wire.get_conducting_height().value()));
+        double delta = h / skinDepth;
+        if (delta < 1e-10) return 1.0;
+        return (delta / 4.0) * (sinh(delta) + sin(delta)) / (cosh(delta) - cos(delta));
+    }
+}
+
+double WindingSkinEffectLossesMuehlethalerModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]] double currentRms) {
+    double skinFactor;
+    auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
+    if (optionalSkinFactor) {
+        skinFactor = optionalSkinFactor.value();
+    } else {
+        skinFactor = calculate_skin_factor(wire, frequency, temperature);
+        set_skin_factor(wire, frequency, temperature, skinFactor);
+    }
+    return dcLossTurn * (skinFactor - 1);
+}
+
+
+// ============================================================================
+// NAN MODEL — Implementation
+// Nan & Sullivan 2003, IEEE PESC, pp. 853-860
+// FR = η·(sinh 2η + sin 2η)/(cosh 2η − cos 2η),  η = d_eq/(2δ)  [Eq. 2]
+// Proximity correction (Eq. 7, porosity-corrected) → proximity model.
+// ============================================================================
+double WindingSkinEffectLossesNanModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double conductorDimension;
+
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        conductorDimension = std::min(resolve_dimensional_values(wire.get_conducting_width().value()),
+                                       resolve_dimensional_values(wire.get_conducting_height().value()));
+    }
+    else if (wire.get_type() == WireType::ROUND) {
+        conductorDimension = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        auto strand = Wire::resolve_strand(wire);
+        conductorDimension = resolve_dimensional_values(strand.get_conducting_diameter()) * sqrt(std::numbers::pi / 4.0);
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+    }
+
+    // Nan's η = d_eq / (2δ)  — half-thickness convention
+    double eta = conductorDimension / (2.0 * skinDepth);
+    if (eta < 1e-10) return 1.0;
+
+    // Eq. (2): FR = η·(sinh 2η + sin 2η)/(cosh 2η − cos 2η)
+    return eta * (sinh(2 * eta) + sin(2 * eta)) / (cosh(2 * eta) - cos(2 * eta));
+}
+
+double WindingSkinEffectLossesNanModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]] double currentRms) {
+    double skinFactor;
+    auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
+    if (optionalSkinFactor) {
+        skinFactor = optionalSkinFactor.value();
+    } else {
+        skinFactor = calculate_skin_factor(wire, frequency, temperature);
+        set_skin_factor(wire, frequency, temperature, skinFactor);
+    }
+    return dcLossTurn * (skinFactor - 1);
+}
+
+
+// ============================================================================
+// KAZIMIERCZUK MODEL — Implementation
+// Whitman & Kazimierczuk 2019, IEEE TPEL, DOI: 10.1109/TPEL.2019.2904582
+// Base Dowell skin factor; cylindrical correction C_F requires winding radii.
+// TODO: apply C_F ≈ 1 + h²/(12·R_in·R_out) when radii are available.
+// ============================================================================
+double WindingSkinEffectLossesKazimierczukModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double conductorHeight;
+
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        conductorHeight = std::min(resolve_dimensional_values(wire.get_conducting_width().value()),
+                                   resolve_dimensional_values(wire.get_conducting_height().value()));
+    }
+    else if (wire.get_type() == WireType::ROUND) {
+        conductorHeight = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        auto strand = Wire::resolve_strand(wire);
+        conductorHeight = resolve_dimensional_values(strand.get_conducting_diameter()) * sqrt(std::numbers::pi / 4.0);
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+    }
+
+    double zeta = conductorHeight / skinDepth;
+    if (zeta < 1e-10) return 1.0;
+
+    // Base Dowell skin factor (cylindrical correction C_F needs R_in, R_out)
+    return zeta * (sinh(2 * zeta) + sin(2 * zeta)) / (cosh(2 * zeta) - cos(2 * zeta));
+}
+
+double WindingSkinEffectLossesKazimierczukModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]] double currentRms) {
+    double skinFactor;
+    auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
+    if (optionalSkinFactor) {
+        skinFactor = optionalSkinFactor.value();
+    } else {
+        skinFactor = calculate_skin_factor(wire, frequency, temperature);
+        set_skin_factor(wire, frequency, temperature, skinFactor);
+    }
+    return dcLossTurn * (skinFactor - 1);
+}
+
+
+// ============================================================================
+// WANG MODEL — Implementation
+// Wang et al. 2018, IEEE APEC, DOI: 10.1109/APEC.2018.8341586
+//
+// 2D model (Eq. 2-5), rectangular conductors:
+//   f(z) = z·(sinh 2z+sin 2z)/(cosh 2z−cos 2z)
+//   λ = 0.01·(c/h) + 0.66
+//   Hy/Hx = c·[1/(λh) + 1/(c−λh)] / π
+//   FR_2D = f(h/δ) + (Hy/Hx)²·(h/c)·f(c/δ)
+//
+// Round wire: Dowell 1D fallback.
+// ============================================================================
+double WindingSkinEffectLossesWangModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]] double currentRms) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        // Fallback to Dowell for round/litz
+        double d;
+        if (wire.get_type() == WireType::LITZ) {
+            auto strand = Wire::resolve_strand(wire);
+            d = resolve_dimensional_values(strand.get_conducting_diameter()) * sqrt(std::numbers::pi / 4.0);
+        } else {
+            d = resolve_dimensional_values(wire.get_conducting_diameter().value()) * sqrt(std::numbers::pi / 4.0);
+        }
+        double zeta = d / skinDepth;
+        if (zeta < 1e-10) return 0.0;
+        double skinFactor = zeta * (sinh(2 * zeta) + sin(2 * zeta)) / (cosh(2 * zeta) - cos(2 * zeta));
+        return dcLossTurn * (skinFactor - 1);
+    }
+
+    double c = resolve_dimensional_values(wire.get_conducting_width().value());
+    double h = resolve_dimensional_values(wire.get_conducting_height().value());
+    if (h > c) std::swap(c, h);
+
+    double k = c / h;
+    double lambda = 0.01 * k + 0.66;   // Eq. (5)
+
+    // 1D skin function
+    auto f = [](double z) -> double {
+        if (z < 1e-10) return 1.0;
+        return z * (sinh(2 * z) + sin(2 * z)) / (cosh(2 * z) - cos(2 * z));
+    };
+
+    double FR_x = f(h / skinDepth);
+    double FR_y = f(c / skinDepth);
+
+    double lambdaH = lambda * h;
+    double Hy_over_Hx = 0.0;
+    if (lambdaH > 0 && (c - lambdaH) > 0) {
+        Hy_over_Hx = c * (1.0 / lambdaH + 1.0 / (c - lambdaH)) / std::numbers::pi;
+    }
+
+    double factor_2D = FR_x + pow(Hy_over_Hx, 2) * (h / c) * FR_y;
+    double turnLosses = dcLossTurn * (factor_2D - 1);
+    return (turnLosses < 0) ? 0.0 : turnLosses;
+}
+
+
+// ============================================================================
+// HOLGUIN MODEL — Implementation
+// Holguin et al. 2014, IEEE APEC, pp. 2009-2014
+// FR = Re[(1+j)·(r₀/δ)·I₀((1+j)r₀/δ)/I₁((1+j)r₀/δ)] / 2  [from Lammeraner]
+// Gap-fringing proximity (Eq. 1-5) → proximity model.
+// Rectangular/foil fallback: Dowell 1D skin factor.
+// ============================================================================
+double WindingSkinEffectLossesHolguinModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        double wireRadius;
+        if (wire.get_type() == WireType::LITZ) {
+            auto strand = Wire::resolve_strand(wire);
+            wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
+        } else {
+            wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        }
+        if (wireRadius / skinDepth < 1e-10) return 1.0;
+
+        // Exact Bessel solution: FR = Re[α·I₀(α)/I₁(α)] / 2,  α = (1+j)·r₀/δ
+        std::complex<double> alpha(1.0, 1.0);
+        alpha *= wireRadius / skinDepth;
+        return 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha))).real();
+    }
+    else {
+        // Rectangular/foil: Dowell 1D skin factor
+        double h = std::min(resolve_dimensional_values(wire.get_conducting_width().value()),
+                            resolve_dimensional_values(wire.get_conducting_height().value()));
+        double zeta = h / skinDepth;
+        if (zeta < 1e-10) return 1.0;
+        return zeta * (sinh(2 * zeta) + sin(2 * zeta)) / (cosh(2 * zeta) - cos(2 * zeta));
+    }
+}
+
+double WindingSkinEffectLossesHolguinModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]] double currentRms) {
+    double skinFactor;
+    auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
+    if (optionalSkinFactor) {
+        skinFactor = optionalSkinFactor.value();
+    } else {
+        skinFactor = calculate_skin_factor(wire, frequency, temperature);
+        set_skin_factor(wire, frequency, temperature, skinFactor);
+    }
+    return dcLossTurn * (skinFactor - 1);
+}
 
 } // namespace OpenMagnetics
 

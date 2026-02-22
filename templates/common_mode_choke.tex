@@ -1,0 +1,392 @@
+% OpenMagnetics Common Mode Choke Datasheet Template
+% ==================================================
+% Focused on EMC/EMI filter applications with impedance characteristics
+% Highlights common mode rejection, insertion loss, and safety ratings
+
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{colortbl}
+\usepackage{multirow}
+
+\geometry{left=12mm, right=12mm, top=15mm, bottom=15mm}
+
+\definecolor{wurthred}{RGB}{180, 0, 30}
+\definecolor{lightred}{RGB}{255, 240, 240}
+\definecolor{darkgray}{RGB}{60, 60, 60}
+\definecolor{tableheader}{RGB}{220, 220, 220}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\bfseries Common Mode Choke}
+\fancyhead[C]{\small {{PART_NUMBER}}}
+\fancyhead[R]{\small\textcolor{wurthred}{{{COMPANY_NAME}}}}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{1pt}
+\renewcommand{\footrulewidth}{0.5pt}
+
+\begin{document}
+
+% ============================================================================
+% HEADER
+% ============================================================================
+\begin{center}
+\colorbox{wurthred}{
+\begin{minipage}{0.97\textwidth}
+\centering
+\color{white}
+\vspace{2mm}
+{\LARGE\bfseries Common Mode Choke / Line Filter}
+\vspace{2mm}
+\end{minipage}
+}
+\end{center}
+
+\vspace{2mm}
+
+\begin{center}
+{\Huge\bfseries {{PART_NUMBER}}}\\[2mm]
+{\large {{PART_DESCRIPTION}}}
+\end{center}
+
+\vspace{3mm}
+
+% ============================================================================
+% KEY SPECS HIGHLIGHT
+% ============================================================================
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\rowcolor{tableheader}
+\textbf{Impedance} & \textbf{Inductance} & \textbf{Rated Current} & \textbf{DCR} & \textbf{Core} & \textbf{Isolation} \\
+\textbf{@ 100 MHz} & \textbf{@ 10 kHz} & \textbf{(max)} & \textbf{(typ)} & \textbf{} & \textbf{Voltage} \\
+\hline
+{\large TBD $\Omega$} & {\large {{MAGNETIZING_INDUCTANCE_UH}}} & {\large TBD A} & {\large TBD m$\Omega$} & {\large {{CORE_SHAPE}}} & {\large TBD VAC} \\
+\hline
+\end{tabular}
+\end{center}
+
+\vspace{4mm}
+
+% ============================================================================
+% THREE COLUMN LAYOUT
+% ============================================================================
+\begin{minipage}[t]{0.32\textwidth}
+
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Features}}
+\vspace{1mm}
+{\footnotesize
+\begin{itemize}
+    \setlength{\itemsep}{0pt}
+    \setlength{\parskip}{0pt}
+    \item High common mode impedance
+    \item Low differential mode insertion loss
+    \item Excellent EMI suppression
+    \item Balanced winding construction
+    \item UL/cUL recognized
+    \item RoHS compliant
+\end{itemize}
+}
+
+\vspace{3mm}
+
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Applications}}
+\vspace{1mm}
+{\footnotesize
+\begin{itemize}
+    \setlength{\itemsep}{0pt}
+    \setlength{\parskip}{0pt}
+    \item AC/DC Power Supplies
+    \item Motor Drives (VFD)
+    \item Industrial Equipment
+    \item Medical Devices
+    \item Telecom/Data Centers
+    \item Solar/Wind Inverters
+    \item EV Charging Systems
+\end{itemize}
+}
+
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.32\textwidth}
+
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Electrical Specifications}}
+\vspace{1mm}
+
+{\scriptsize
+\begin{tabular}{|p{2.2cm}|c|c|}
+\hline
+\rowcolor{tableheader}
+\textbf{Parameter} & \textbf{Value} & \textbf{Unit} \\
+\hline
+Inductance & {{MAGNETIZING_INDUCTANCE_UH}} & $\mu$H \\
+\hline
+Tolerance & $\pm$25 & \% \\
+\hline
+Rated Current & TBD & A \\
+\hline
+Saturation Current & TBD & A \\
+\hline
+DCR (each winding) & TBD & m$\Omega$ \\
+\hline
+Leakage Inductance & TBD & $\mu$H \\
+\hline
+Test Frequency & 10 / 100 & kHz \\
+\hline
+\end{tabular}
+}
+
+\vspace{3mm}
+
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Core \& Winding}}
+\vspace{1mm}
+
+{\scriptsize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{tableheader}
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Core Type & {{CORE_SHAPE}} \\
+\hline
+Core Material & {{CORE_MATERIAL}} \\
+\hline
+Turns per Winding & {{NUMBER_TURNS_W1}} \\
+\hline
+Wire Type & {{WIRE_TYPE_W1}} \\
+\hline
+Winding Arrangement & Bifilar \\
+\hline
+\end{tabular}
+}
+
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.32\textwidth}
+
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Safety \& Compliance}}
+\vspace{1mm}
+
+{\scriptsize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{tableheader}
+\textbf{Parameter} & \textbf{Rating} \\
+\hline
+Dielectric Strength & TBD VAC \\
+\hline
+Insulation Class & Class B (130$^\circ$C) \\
+\hline
+Creepage Distance & TBD mm \\
+\hline
+Clearance Distance & TBD mm \\
+\hline
+CTI (min) & 175 \\
+\hline
+\end{tabular}
+}
+
+\vspace{2mm}
+
+{\scriptsize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{tableheader}
+\textbf{Agency} & \textbf{File No.} \\
+\hline
+UL/cUL & TBD \\
+\hline
+TÜV & TBD \\
+\hline
+CQC & TBD \\
+\hline
+\end{tabular}
+}
+
+\vspace{3mm}
+
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Environmental}}
+\vspace{1mm}
+
+{\scriptsize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{tableheader}
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Operating Temp & -40 to +125$^\circ$C \\
+\hline
+Storage Temp & -40 to +150$^\circ$C \\
+\hline
+Ambient Test & {{AMBIENT_TEMPERATURE}} \\
+\hline
+RoHS & Compliant \\
+\hline
+\end{tabular}
+}
+
+\end{minipage}
+
+\vspace{5mm}
+
+% ============================================================================
+% IMPEDANCE CHARACTERISTICS TABLE
+% ============================================================================
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Common Mode Impedance vs. Frequency}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|c|c|c|c|}
+\hline
+\rowcolor{tableheader}
+\textbf{Frequency} & 100 kHz & 1 MHz & 10 MHz & 25 MHz & 50 MHz & 100 MHz & 200 MHz & 500 MHz \\
+\hline
+\textbf{Impedance ($\Omega$)} & TBD & TBD & TBD & TBD & TBD & TBD & TBD & TBD \\
+\hline
+\end{tabular}
+\end{center}
+}
+
+\vspace{4mm}
+
+% ============================================================================
+% PERFORMANCE CURVES (Placeholders)
+% ============================================================================
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Performance Characteristics}}
+\vspace{2mm}
+
+\begin{center}
+\begin{minipage}{0.48\textwidth}
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{18mm}\footnotesize Common Mode Impedance\\vs. Frequency\vspace{18mm}}}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{18mm}\footnotesize Insertion Loss (S21)\\vs. Frequency\vspace{18mm}}}
+\end{minipage}
+\end{center}
+
+\vspace{4mm}
+
+% ============================================================================
+% SCHEMATIC & PINOUT
+% ============================================================================
+\begin{minipage}[t]{0.48\textwidth}
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Schematic Symbol}}
+\vspace{2mm}
+
+\begin{center}
+\fbox{\parbox{0.9\textwidth}{\centering\vspace{12mm}
+\footnotesize
+\begin{tabular}{ccc}
+1 $\bullet$ & --- Winding 1 --- & $\bullet$ 3 \\
+ & (coupled) & \\
+2 $\bullet$ & --- Winding 2 --- & $\bullet$ 4 \\
+\end{tabular}
+\vspace{12mm}}}
+\end{center}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48\textwidth}
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Pin Assignment}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{tabular}{|c|l|l|}
+\hline
+\rowcolor{tableheader}
+\textbf{Pin} & \textbf{Function} & \textbf{Description} \\
+\hline
+1 & Line In (L) & AC Line Input \\
+\hline
+2 & Neutral In (N) & AC Neutral Input \\
+\hline
+3 & Line Out (L') & AC Line Output \\
+\hline
+4 & Neutral Out (N') & AC Neutral Output \\
+\hline
+\end{tabular}
+}
+
+\vspace{3mm}
+{\scriptsize\textit{Note: Dot indicates start of winding (polarity mark)}}
+\end{minipage}
+
+\vspace{5mm}
+
+% ============================================================================
+% LOSS ANALYSIS
+% ============================================================================
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Loss Analysis @ {{OPERATING_FREQUENCY_KHZ}}}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{center}
+\begin{tabular}{|l|c|c|l|}
+\hline
+\rowcolor{tableheader}
+\textbf{Loss Component} & \textbf{Typical} & \textbf{Max} & \textbf{Notes} \\
+\hline
+Core Losses & {{CORE_LOSSES}} & TBD & At rated voltage/frequency \\
+\hline
+Winding Losses (total) & {{WINDING_LOSSES}} & TBD & Both windings combined \\
+\hline
+\textbf{Total Losses} & \textbf{{{TOTAL_LOSSES}}} & TBD & \\
+\hline
+\end{tabular}
+\end{center}
+}
+
+\vspace{4mm}
+
+% ============================================================================
+% APPLICATION CIRCUIT
+% ============================================================================
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Typical Application Circuit}}
+\vspace{2mm}
+
+\begin{center}
+\fbox{\parbox{0.9\textwidth}{\centering\vspace{10mm}
+{\footnotesize
+\texttt{AC Input --- [X-Cap] --- [CM Choke] --- [X-Cap] --- [Y-Cap to GND] --- Rectifier}
+}
+\vspace{2mm}
+
+{\scriptsize Complete EMI filter: X-capacitors for differential mode, CM choke + Y-capacitors for common mode noise}
+\vspace{8mm}}}
+\end{center}
+
+\vspace{3mm}
+
+% ============================================================================
+% ORDERING INFO
+% ============================================================================
+\noindent{\normalsize\bfseries\textcolor{wurthred}{Ordering Information}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{tabular}{|l|l|l|l|l|l|}
+\hline
+\rowcolor{tableheader}
+\textbf{Part Number} & \textbf{Inductance} & \textbf{Current} & \textbf{DCR} & \textbf{Impedance @100MHz} & \textbf{Package} \\
+\hline
+{{PART_NUMBER}} & {{MAGNETIZING_INDUCTANCE_UH}} & TBD A & TBD m$\Omega$ & TBD $\Omega$ & Through-Hole \\
+\hline
+\end{tabular}
+}
+
+\vspace{4mm}
+\hrule
+\vspace{2mm}
+{\footnotesize\textit{Specifications subject to change without notice. Contact {{COMPANY_NAME}} for custom designs and volume pricing.}}
+
+\end{document}

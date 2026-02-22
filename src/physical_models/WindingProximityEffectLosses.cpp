@@ -47,8 +47,11 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
     else if (modelName == WindingProximityEffectLossesModels::LAMMERANER) {
         return std::make_shared<WindingProximityEffectLossesLammeranerModel>();
     }
+    else if (modelName == WindingProximityEffectLossesModels::DOWELL) {
+        return std::make_shared<WindingProximityEffectLossesDowellModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER}");
+        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER, DOWELL}");
 }
 
 std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride) {
@@ -697,6 +700,147 @@ double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(Wire w
 
     if (std::isnan(turnLosses)) {
         throw NaNResultException("NaN found in Lammeraner's model for proximity effect losses");
+    }
+
+    return turnLosses;
+}
+
+
+/**
+ * @brief Calculates proximity factor using Dowell's analytical method for transformer windings.
+ * 
+ * Based on: "Effects of eddy currents in transformer windings" by P. L. Dowell
+ * Proceedings of the IEE, Vol. 113, No. 8, August 1966
+ * https://ieeexplore.ieee.org/document/5247417
+ * 
+ * Dowell's method models rectangular conductors in layered windings. The AC resistance
+ * ratio FR (Eq. 10) is decomposed into skin effect (M') and proximity effect (D') parts:
+ * 
+ *   FR = M' + (m² - 1)/3 · D'                                    (Eq. 10)
+ * 
+ * where the proximity contribution uses the D function:
+ * 
+ *   M = αh · coth(αh)                                             (Eq. 32)
+ *   D = 2αh · tanh(αh/2)                                          (Eq. 33)
+ * 
+ * with:
+ * - α = (1+j)/δ, the complex propagation constant
+ * - δ = skin depth = √(2ρ/(ωμ₀))
+ * - h = conductor height (dimension in the direction of field penetration)
+ * - M' and D' are the real parts of M and D, respectively
+ * 
+ * For round conductors, Dowell's approach replaces them with equivalent-area square
+ * conductors (Section 3, Fig. 3 of the paper), yielding h = d·√(π/4).
+ * 
+ * The proximity factor for a single conductor of width a and height h exposed to
+ * external field He gives losses per unit length:
+ * 
+ *   P_prox/l = (a · ρ / h) · He² · D'
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Proximity factor for loss calculation [Ω·m per (A/m)²]
+ */
+double WindingProximityEffectLossesDowellModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double factor;
+
+    double h = 0; // conductor height (dimension in direction of field penetration)
+    double a = 0; // conductor width (dimension perpendicular to field penetration)
+
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        if (!wire.get_conducting_width()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in wire");
+        }
+        if (!wire.get_conducting_height()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in wire");
+        }
+        a = resolve_dimensional_values(wire.get_conducting_width().value());
+        h = resolve_dimensional_values(wire.get_conducting_height().value());
+    }
+    else if (wire.get_type() == WireType::ROUND) {
+        // Dowell's approach: replace round conductor with equivalent square of same area
+        // (Section 3, Fig. 3 of the paper)
+        double d = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        a = d * sqrt(std::numbers::pi / 4.0);
+        h = a;
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        // Apply Dowell's round-to-square equivalence to each strand
+        auto strand = wire.resolve_strand();
+        double d = resolve_dimensional_values(strand.get_conducting_diameter());
+        a = d * sqrt(std::numbers::pi / 4.0);
+        h = a;
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+    }
+
+    // Dowell's complex propagation constant: α = (1+j)/δ  (derived from Eq. 27)
+    std::complex<double> alpha(1.0, 1.0);
+    alpha /= skinDepth;
+
+    // Compute D = 2αh·tanh(αh/2) from Dowell's Eq. 33
+    // D' = Re(D) is the proximity effect factor
+    std::complex<double> ah = alpha * h;
+    std::complex<double> D = 2.0 * ah * std::tanh(ah / 2.0);
+    double D_prime = D.real();
+
+    // Proximity factor: P_prox/l = factor · He²
+    // Derived from Dowell's leakage impedance (Eq. 8) for a single conductor
+    // of width a and height h exposed to external field He:
+    //   factor = a · ρ · D' / h
+    //
+    // Dimensional analysis: [m] · [Ω·m] · [1] / [m] = [Ω·m]
+    // Then: [Ω·m] · [A²/m²] = [W/m] ✓
+    factor = a * resistivity * D_prime / h;
+
+    if (std::isnan(factor)) {
+        throw NaNResultException("NaN found in Dowell's proximity factor");
+    }
+
+    return factor;
+}
+
+double WindingProximityEffectLossesDowellModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    double proximityFactor;
+    auto optionalproximityFactor = try_get_proximity_factor(wire, frequency, temperature);
+
+    if (optionalproximityFactor) {
+        proximityFactor = optionalproximityFactor.value();
+    }
+    else {
+        proximityFactor = calculate_proximity_factor(wire, frequency, temperature);
+        set_proximity_factor(wire, frequency, temperature, proximityFactor);
+    }
+
+    // Use RMS of |H|² (consistent with Rossmanith, Albach, and Lammeraner models)
+    double He2_sum = 0;
+    for (auto& datum : data) {
+        if (std::isnan(datum.get_real())) {
+            throw NaNResultException("NaN found in Dowell proximity losses calculation");
+        }
+        if (std::isnan(datum.get_imaginary())) {
+            throw NaNResultException("NaN found in Dowell proximity losses calculation");
+        }
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
+    }
+    double He2_rms = He2_sum / data.size();
+
+    double turnLosses = proximityFactor * He2_rms;
+
+    if (!wire.get_number_conductors()) {
+        wire.set_number_conductors(1);
+    }
+    turnLosses *= wire.get_number_conductors().value();
+
+    if (std::isnan(turnLosses)) {
+        throw NaNResultException("NaN found in Dowell's model for proximity effect losses: frequency=" +
+            std::to_string(frequency) + ", proximityFactor=" + std::to_string(proximityFactor) +
+            ", He2_rms=" + std::to_string(He2_rms));
     }
 
     return turnLosses;

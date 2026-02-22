@@ -1,0 +1,403 @@
+% OpenMagnetics Engineering Analysis Report Template
+% ==================================================
+% Detailed technical report for design review, verification, and documentation
+% Includes full simulation results, margin analysis, and design rationale
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{hyperref}
+
+\geometry{left=25mm, right=25mm, top=25mm, bottom=25mm}
+
+\definecolor{sectionblue}{RGB}{0, 60, 120}
+\definecolor{lightgray}{RGB}{245, 245, 245}
+\definecolor{successgreen}{RGB}{0, 128, 0}
+\definecolor{warningorange}{RGB}{255, 140, 0}
+\definecolor{failred}{RGB}{200, 0, 0}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=sectionblue,
+    filecolor=sectionblue,
+    urlcolor=sectionblue,
+}
+
+\titleformat{\section}{\Large\bfseries\color{sectionblue}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{sectionblue}}{\thesubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize OpenMagnetics Engineering Report}
+\fancyhead[R]{\footnotesize {{PART_NUMBER}}}
+\fancyfoot[L]{\footnotesize Confidential - {{COMPANY_NAME}}}
+\fancyfoot[C]{\thepage}
+\fancyfoot[R]{\footnotesize Rev. {{REVISION}} / \today}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\begin{document}
+
+% ============================================================================
+% TITLE PAGE
+% ============================================================================
+\begin{titlepage}
+\centering
+\vspace*{2cm}
+
+{\Huge\bfseries Magnetic Component\\Engineering Report}
+
+\vspace{1cm}
+
+{\LARGE {{PART_NUMBER}}}
+
+\vspace{0.5cm}
+
+{\Large {{PART_DESCRIPTION}}}
+
+\vspace{2cm}
+
+\begin{tabular}{ll}
+\textbf{Document Type:} & Design Analysis Report \\
+\textbf{Revision:} & {{REVISION}} \\
+\textbf{Date:} & \today \\
+\textbf{Author:} & OpenMagnetics \\
+\textbf{Status:} & For Review \\
+\end{tabular}
+
+\vspace{2cm}
+
+\hrule
+\vspace{0.5cm}
+{\large\textbf{{{COMPANY_NAME}}}}
+\vspace{0.5cm}
+\hrule
+
+\vfill
+
+{\footnotesize This document contains proprietary information. Distribution without authorization is prohibited.}
+\end{titlepage}
+
+% ============================================================================
+% TABLE OF CONTENTS
+% ============================================================================
+\tableofcontents
+\newpage
+
+% ============================================================================
+% EXECUTIVE SUMMARY
+% ============================================================================
+\section{Executive Summary}
+
+This engineering report documents the magnetic component design for \textbf{{{PART_NUMBER}}} ({{PART_DESCRIPTION}}). The design has been analyzed using OpenMagnetics simulation tools to verify performance under specified operating conditions.
+
+\subsection{Key Design Parameters}
+\begin{itemize}
+    \item \textbf{Topology:} Magnetic component for power conversion
+    \item \textbf{Inductance:} {{MAGNETIZING_INDUCTANCE_UH}}
+    \item \textbf{Operating Frequency:} {{OPERATING_FREQUENCY_KHZ}}
+    \item \textbf{Core:} {{CORE_SHAPE}} ({{CORE_MATERIAL}})
+    \item \textbf{Total Losses:} {{TOTAL_LOSSES}}
+    \item \textbf{Maximum Temperature:} {{MAX_TEMPERATURE}}
+\end{itemize}
+
+\subsection{Design Status}
+\begin{center}
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Criterion} & \textbf{Status} & \textbf{Notes} \\
+\hline
+Electrical Performance & \textcolor{successgreen}{PASS} & Meets inductance requirements \\
+\hline
+Thermal Performance & TBD & Verify with prototype \\
+\hline
+Saturation Margin & TBD & See Section \ref{sec:magnetic} \\
+\hline
+Efficiency & \textcolor{successgreen}{PASS} & Within budget \\
+\hline
+\end{tabular}
+\end{center}
+
+% ============================================================================
+% DESIGN REQUIREMENTS
+% ============================================================================
+\section{Design Requirements}
+
+\subsection{Electrical Requirements}
+\begin{longtable}{|p{5cm}|c|c|c|l|}
+\hline
+\textbf{Parameter} & \textbf{Min} & \textbf{Typ} & \textbf{Max} & \textbf{Unit} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Parameter} & \textbf{Min} & \textbf{Typ} & \textbf{Max} & \textbf{Unit} \\
+\hline
+\endhead
+Magnetizing Inductance & - & {{MAGNETIZING_INDUCTANCE_UH}} & - & $\mu$H \\
+\hline
+Leakage Inductance & - & {{LEAKAGE_INDUCTANCE_UH}} & - & $\mu$H \\
+\hline
+Primary RMS Voltage & - & {{VOLTAGE_RMS_W1}} & - & V \\
+\hline
+Primary RMS Current & - & {{CURRENT_RMS_W1}} & - & A \\
+\hline
+Operating Frequency & - & {{OPERATING_FREQUENCY_KHZ}} & - & kHz \\
+\hline
+Duty Cycle & - & {{DUTY_CYCLE}} & - & \% \\
+\hline
+\end{longtable}
+
+\subsection{Environmental Requirements}
+\begin{longtable}{|p{5cm}|c|c|c|l|}
+\hline
+\textbf{Parameter} & \textbf{Min} & \textbf{Typ} & \textbf{Max} & \textbf{Unit} \\
+\hline
+Ambient Temperature & -40 & {{AMBIENT_TEMPERATURE}} & 85 & $^\circ$C \\
+\hline
+Altitude & - & - & 3000 & m \\
+\hline
+Humidity (non-condensing) & - & - & 95 & \%RH \\
+\hline
+\end{longtable}
+
+% ============================================================================
+% CORE SELECTION ANALYSIS
+% ============================================================================
+\section{Core Selection Analysis}
+
+\subsection{Selected Core}
+\begin{longtable}{|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Core Shape & {{CORE_SHAPE}} \\
+\hline
+Core Material & {{CORE_MATERIAL}} \\
+\hline
+Number of Stacks & {{NUMBER_STACKS}} \\
+\hline
+Effective Area ($A_e$) & {{EFFECTIVE_AREA_MM2}} \\
+\hline
+Effective Length ($l_e$) & {{EFFECTIVE_LENGTH_MM}} \\
+\hline
+Effective Volume ($V_e$) & {{EFFECTIVE_VOLUME_MM3}} \\
+\hline
+Window Area ($A_w$) & {{WINDOW_AREA_MM2}} \\
+\hline
+\end{longtable}
+
+\subsection{Gap Configuration}
+\begin{longtable}{|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Gapping Type & {{GAP_TYPE}} \\
+\hline
+Number of Gaps & {{NUMBER_GAPS}} \\
+\hline
+Total Gap Length & {{GAP_LENGTH_MM}} \\
+\hline
+\end{longtable}
+
+\subsection{Material Properties}
+The selected core material ({{CORE_MATERIAL}}) has been chosen for:
+\begin{itemize}
+    \item Optimized losses at {{OPERATING_FREQUENCY_KHZ}} operating frequency
+    \item Adequate saturation margin for the application
+    \item Good thermal stability over operating temperature range
+\end{itemize}
+
+% ============================================================================
+% WINDING DESIGN
+% ============================================================================
+\section{Winding Design}
+
+\subsection{Winding Configuration}
+\begin{longtable}{|l|c|c|c|c|c|}
+\hline
+\textbf{Winding} & \textbf{Turns} & \textbf{Parallels} & \textbf{Wire Type} & \textbf{Size} & \textbf{Layers} \\
+\hline
+Primary (W1) & {{NUMBER_TURNS_W1}} & {{NUMBER_PARALLELS_W1}} & {{WIRE_TYPE_W1}} & {{WIRE_DIAMETER_W1}} & {{NUMBER_LAYERS_W1}} \\
+\hline
+Secondary (W2) & {{NUMBER_TURNS_W2}} & {{NUMBER_PARALLELS_W2}} & {{WIRE_TYPE_W2}} & {{WIRE_DIAMETER_W2}} & {{NUMBER_LAYERS_W2}} \\
+\hline
+\end{longtable}
+
+\subsection{Turns Ratio}
+\begin{equation}
+N_{ratio} = \frac{N_{pri}}{N_{sec}} = \frac{{{NUMBER_TURNS_W1}}}{{{NUMBER_TURNS_W2}}}
+\end{equation}
+
+\subsection{Window Utilization}
+Analysis of winding area usage and fill factor to ensure manufacturability.
+
+% ============================================================================
+% MAGNETIC ANALYSIS
+% ============================================================================
+\section{Magnetic Analysis}
+\label{sec:magnetic}
+
+\subsection{Flux Density Analysis}
+\begin{longtable}{|l|c|c|l|}
+\hline
+\textbf{Parameter} & \textbf{Calculated} & \textbf{Limit} & \textbf{Margin} \\
+\hline
+Peak Flux Density ($B_{pk}$) & {{PEAK_FLUX_DENSITY_MT}} & TBD mT & TBD\% \\
+\hline
+DC Bias Flux Density & TBD mT & TBD mT & TBD\% \\
+\hline
+AC Flux Swing ($\Delta B$) & TBD mT & - & - \\
+\hline
+\end{longtable}
+
+\subsection{Saturation Analysis}
+The core operates at {{PEAK_FLUX_DENSITY_MT}} peak flux density, providing margin against saturation under worst-case conditions including:
+\begin{itemize}
+    \item Maximum current overload
+    \item Elevated temperature (reduced $B_{sat}$)
+    \item Component tolerances
+\end{itemize}
+
+% ============================================================================
+% LOSS ANALYSIS
+% ============================================================================
+\section{Loss Analysis}
+
+\subsection{Power Loss Breakdown}
+\begin{longtable}{|l|c|c|}
+\hline
+\textbf{Loss Component} & \textbf{Value} & \textbf{Percentage} \\
+\hline
+Core Losses ($P_{core}$) & {{CORE_LOSSES}} & TBD\% \\
+\hline
+Winding Losses ($P_{cu}$) & {{WINDING_LOSSES}} & TBD\% \\
+\hline
+\textbf{Total Losses} & \textbf{{{TOTAL_LOSSES}}} & \textbf{100\%} \\
+\hline
+\end{longtable}
+
+\subsection{Core Loss Calculation}
+Core losses calculated using Steinmetz equation parameters for {{CORE_MATERIAL}} at:
+\begin{itemize}
+    \item Frequency: {{OPERATING_FREQUENCY_KHZ}}
+    \item Peak flux density: {{PEAK_FLUX_DENSITY_MT}}
+    \item Temperature: {{AMBIENT_TEMPERATURE}}
+\end{itemize}
+
+\subsection{Winding Loss Calculation}
+Winding losses include:
+\begin{itemize}
+    \item DC resistance losses
+    \item AC proximity effect losses
+    \item Skin effect losses
+\end{itemize}
+
+% ============================================================================
+% THERMAL ANALYSIS
+% ============================================================================
+\section{Thermal Analysis}
+
+\subsection{Temperature Rise Estimate}
+\begin{longtable}{|l|c|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Ambient Temperature & {{AMBIENT_TEMPERATURE}} \\
+\hline
+Total Power Dissipation & {{TOTAL_LOSSES}} \\
+\hline
+Estimated Hotspot Temperature & {{MAX_TEMPERATURE}} \\
+\hline
+Temperature Rise & TBD K \\
+\hline
+\end{longtable}
+
+\subsection{Thermal Model}
+The thermal analysis assumes natural convection cooling. For forced air or heatsink mounting, actual temperatures may be lower.
+
+% ============================================================================
+% SIMULATION RESULTS
+% ============================================================================
+\section{Simulation Results}
+
+\subsection{Waveform Analysis}
+Operating point excitation analysis at nominal conditions:
+\begin{itemize}
+    \item Peak current: {{CURRENT_PEAK_W1}}
+    \item RMS current: {{CURRENT_RMS_W1}}
+    \item Voltage waveform: {{WAVEFORM_LABEL}}
+\end{itemize}
+
+[Insert waveform plots here]
+
+\subsection{Model Validation}
+Simulation performed using OpenMagnetics with the following models:
+\begin{itemize}
+    \item Core loss model: Steinmetz/iGSE
+    \item Winding loss model: Dowell/Ferreira
+    \item Thermal model: Simplified lumped parameter
+\end{itemize}
+
+% ============================================================================
+% CONCLUSIONS
+% ============================================================================
+\section{Conclusions and Recommendations}
+
+\subsection{Design Summary}
+The {{PART_NUMBER}} magnetic component design meets the specified requirements with the following characteristics:
+\begin{itemize}
+    \item Magnetizing inductance: {{MAGNETIZING_INDUCTANCE_UH}} (target: TBD)
+    \item Total losses: {{TOTAL_LOSSES}} (budget: TBD)
+    \item Peak temperature: {{MAX_TEMPERATURE}} (limit: TBD)
+\end{itemize}
+
+\subsection{Recommendations}
+\begin{enumerate}
+    \item Build prototype for thermal validation
+    \item Perform EMI/EMC testing
+    \item Verify inductance over temperature range
+    \item Conduct accelerated life testing
+\end{enumerate}
+
+\subsection{Open Items}
+\begin{itemize}
+    \item Finalize wire insulation specification
+    \item Confirm mounting method
+    \item Complete safety certification requirements
+\end{itemize}
+
+% ============================================================================
+% APPENDIX
+% ============================================================================
+\appendix
+
+\section{Material Data Sheets}
+Reference material specifications for {{CORE_MATERIAL}}.
+
+\section{Manufacturing Notes}
+Special instructions for production:
+\begin{itemize}
+    \item Winding direction and termination
+    \item Impregnation requirements
+    \item Test specifications
+\end{itemize}
+
+\section{Revision History}
+\begin{longtable}{|c|c|l|l|}
+\hline
+\textbf{Rev} & \textbf{Date} & \textbf{Description} & \textbf{Author} \\
+\hline
+A & \today & Initial Release & OpenMagnetics \\
+\hline
+\end{longtable}
+
+\end{document}
