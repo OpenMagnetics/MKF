@@ -653,6 +653,21 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
     auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
+    // CRITICAL FIX: Lammeraner's formula is only valid for low frequencies where d/δ < 1
+    // (Lammeraner & Stafl, 1966; Kutkut 1998). At high frequencies where skin depth is 
+    // much smaller than conductor dimension, this formula overestimates losses by (d/δ)^4.
+    // For rectangular wires at 1MHz with d=0.9mm and δ=66μm, d/δ=13.6, leading to
+    // errors of ~34,000x (19,833,400% error observed in testing).
+    double normalizedDimension = wireConductingDimension / skinDepth;
+    
+    if (normalizedDimension > 1.0) {
+        // Model not valid at this frequency - d/δ must be < 1 for Lammeraner approximation
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, 
+            "Lammeraner proximity model is only valid for low frequencies where conductor_dimension/skin_depth < 1. "
+            "Current ratio is " + std::to_string(normalizedDimension) + 
+            ". Use a different proximity model (e.g., WANG or FERREIRA) for high frequencies.");
+    }
+
     factor = 2.0 * std::numbers::pi * resistivity * pow((wireConductingDimension / 2) / skinDepth, 4) / 4;
 
     return factor;

@@ -1752,3 +1752,397 @@ TEST_CASE("Test_WindingLosses_NaN_Detection", "[winding-losses][nan-detection][d
         }
     }
 }
+
+TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[physical-model][winding-losses][model-comparison][skin-proximity-comparison]") {
+    // Comprehensive comparison of ALL skin effect and proximity effect loss models
+    // Uses the best H-field model (ALBACH) and best fringing model (ALBACH) as determined
+    // from previous comprehensive testing
+    
+    std::cout << "\n======================================================================================" << std::endl;
+    std::cout << "COMPREHENSIVE SKIN & PROXIMITY EFFECT MODEL COMPARISON" << std::endl;
+    std::cout << "======================================================================================" << std::endl;
+    std::cout << "H-Field Model: ALBACH | Fringing Model: ALBACH" << std::endl;
+    std::cout << "======================================================================================\n" << std::endl;
+    
+    // Helper function to convert enum to string using JSON serialization
+    auto enumToString = [](auto enumValue) -> std::string {
+        nlohmann::json j;
+        to_json(j, enumValue);
+        return j.get<std::string>();
+    };
+    
+    // Define all skin effect models
+    std::vector<WindingSkinEffectLossesModels> skinModels = {
+        WindingSkinEffectLossesModels::DOWELL,
+        WindingSkinEffectLossesModels::WOJDA,
+        WindingSkinEffectLossesModels::ALBACH,
+        WindingSkinEffectLossesModels::PAYNE,
+        WindingSkinEffectLossesModels::LOTFI,
+        WindingSkinEffectLossesModels::KAZIMIERCZUK,
+        WindingSkinEffectLossesModels::KUTKUT,
+        WindingSkinEffectLossesModels::FERREIRA,
+        WindingSkinEffectLossesModels::DIMITRAKAKIS,
+        WindingSkinEffectLossesModels::WANG,
+        WindingSkinEffectLossesModels::HOLGUIN,
+        WindingSkinEffectLossesModels::PERRY
+    };
+    
+    // Define all proximity effect models
+    std::vector<WindingProximityEffectLossesModels> proximityModels = {
+        WindingProximityEffectLossesModels::ROSSMANITH,
+        WindingProximityEffectLossesModels::WANG,
+        WindingProximityEffectLossesModels::FERREIRA,
+        WindingProximityEffectLossesModels::LAMMERANER,
+        WindingProximityEffectLossesModels::ALBACH,
+        WindingProximityEffectLossesModels::DOWELL
+    };
+    
+    // Structure for tracking results
+    struct ModelResult {
+        std::string testName;
+        std::string wireType;
+        std::string skinModelName;
+        std::string proximityModelName;
+        std::string combinedModelName;
+        double frequency;
+        double expected;
+        double actual;
+        double errorPct;
+        bool crashed;
+    };
+    std::vector<ModelResult> allResults;
+    
+    // Get all test configurations from TestWindingLossesModelComparison namespace
+    auto testConfigs = TestWindingLossesModelComparison::getAllTestConfigs();
+    
+    // Helper lambda to run test with specific models
+    auto runTestWithModels = [&](const TestWindingLossesModelComparison::TestConfig& config, 
+                                  WindingSkinEffectLossesModels skinModel,
+                                  WindingProximityEffectLossesModels proximityModel,
+                                  const std::string& skinModelName,
+                                  const std::string& proximityModelName) {
+        // Create magnetic
+        OpenMagnetics::Magnetic magnetic;
+        try {
+            magnetic = config.createMagnetic();
+        } catch (const std::exception& e) {
+            return false;
+        }
+        
+        // Select test frequencies - use subset for efficiency
+        std::vector<std::pair<double, double>> testPoints;
+        if (config.expectedValues.size() > 4) {
+            std::vector<size_t> indices = {0, 
+                                          config.expectedValues.size() / 3,
+                                          2 * config.expectedValues.size() / 3,
+                                          config.expectedValues.size() - 1};
+            for (size_t idx : indices) {
+                if (idx < config.expectedValues.size()) {
+                    testPoints.push_back(config.expectedValues[idx]);
+                }
+            }
+        } else {
+            testPoints = config.expectedValues;
+        }
+        
+        for (const auto& [frequency, expectedValue] : testPoints) {
+            settings.reset();
+            clear_databases();
+            
+            // Set H-field and fringing models (best combination)
+            settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
+            settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ALBACH);
+            settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
+            settings.set_magnetic_field_include_fringing(config.includeFringing);
+            
+            // Enable user-defined winding losses models
+            settings.set_coil_enable_user_winding_losses_models(true);
+            settings.set_winding_skin_effect_losses_model(skinModel);
+            settings.set_winding_proximity_effect_losses_model(proximityModel);
+            
+            double actual = 0;
+            double errorPct = 0;
+            bool crashed = false;
+            
+            try {
+                auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+                    frequency, config.magnetizingInductance, config.temperature,
+                    config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+                
+                WindingLosses windingLosses;
+                auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature);
+                actual = ohmicLosses.get_winding_losses();
+                errorPct = 100.0 * std::abs(actual - expectedValue) / expectedValue;
+            } catch (const std::exception& e) {
+                crashed = true;
+            }
+            
+            // Record result
+            ModelResult result;
+            result.testName = config.name;
+            // Convert wire type enum to string using helper function
+            result.wireType = WindingLossesTestData::wireTypeToString(config.wireType);
+            result.skinModelName = skinModelName;
+            result.proximityModelName = proximityModelName;
+            result.combinedModelName = skinModelName + "+" + proximityModelName;
+            result.frequency = frequency;
+            result.expected = expectedValue;
+            result.actual = actual;
+            result.errorPct = errorPct;
+            result.crashed = crashed;
+            allResults.push_back(result);
+        }
+        
+        return true;
+    };
+    
+    // Run all combinations
+    int totalCombinations = skinModels.size() * proximityModels.size();
+    int currentCombination = 0;
+    
+    for (const auto& skinModel : skinModels) {
+        std::string skinModelName = enumToString(skinModel);
+        for (const auto& proximityModel : proximityModels) {
+            std::string proximityModelName = enumToString(proximityModel);
+            currentCombination++;
+            std::cout << "\n[" << currentCombination << "/" << totalCombinations << "] " 
+                      << skinModelName << " + " << proximityModelName << std::endl;
+            
+            for (const auto& [name, config] : testConfigs) {
+                runTestWithModels(config, skinModel, proximityModel, skinModelName, proximityModelName);
+            }
+        }
+    }
+    
+    // ==================================================================================
+    // PRINT SUMMARY BY MODEL COMBINATION
+    // ==================================================================================
+    std::cout << "\n======================================================================================" << std::endl;
+    std::cout << "SUMMARY BY SKIN + PROXIMITY MODEL COMBINATION" << std::endl;
+    std::cout << "======================================================================================\n" << std::endl;
+    
+    struct ModelStats {
+        double totalError = 0;
+        int validCount = 0;
+        int crashCount = 0;
+        double maxError = 0;
+        std::string maxErrorTest;
+    };
+    std::map<std::string, ModelStats> modelStats;
+    
+    for (const auto& r : allResults) {
+        auto& stats = modelStats[r.combinedModelName];
+        if (r.crashed) {
+            stats.crashCount++;
+        } else {
+            stats.totalError += r.errorPct;
+            stats.validCount++;
+            if (r.errorPct > stats.maxError) {
+                stats.maxError = r.errorPct;
+                stats.maxErrorTest = r.testName + "@" + std::to_string(static_cast<int>(r.frequency)) + "Hz";
+            }
+        }
+    }
+    
+    // Print header
+    std::cout << std::setw(30) << "Model Combination" << " | ";
+    std::cout << std::setw(10) << "Avg Error" << " | ";
+    std::cout << std::setw(10) << "Max Error" << " | ";
+    std::cout << std::setw(8) << "Tests" << " | ";
+    std::cout << std::setw(8) << "Crashes" << " | ";
+    std::cout << "Max Error Test" << std::endl;
+    std::cout << std::string(110, '-') << std::endl;
+    
+    // Sort by average error
+    std::vector<std::pair<std::string, ModelStats>> sortedStats(modelStats.begin(), modelStats.end());
+    std::sort(sortedStats.begin(), sortedStats.end(), [](const auto& a, const auto& b) {
+        double avgA = a.second.validCount > 0 ? a.second.totalError / a.second.validCount : 999999;
+        double avgB = b.second.validCount > 0 ? b.second.totalError / b.second.validCount : 999999;
+        return avgA < avgB;
+    });
+    
+    for (const auto& [modelName, stats] : sortedStats) {
+        double avgError = stats.validCount > 0 ? stats.totalError / stats.validCount : 0;
+        std::cout << std::setw(30) << modelName << " | ";
+        std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avgError << "%" << " | ";
+        std::cout << std::setw(8) << std::fixed << std::setprecision(1) << stats.maxError << "%" << " | ";
+        std::cout << std::setw(8) << stats.validCount << " | ";
+        std::cout << std::setw(8) << stats.crashCount << " | ";
+        std::cout << stats.maxErrorTest << std::endl;
+    }
+    
+    // ==================================================================================
+    // BREAKDOWN BY WIRE TYPE AND MODEL COMBINATION
+    // ==================================================================================
+    std::cout << "\n======================================================================================" << std::endl;
+    std::cout << "BREAKDOWN BY WIRE TYPE AND MODEL COMBINATION" << std::endl;
+    std::cout << "======================================================================================\n" << std::endl;
+    
+    // Helper to calculate std dev
+    auto calcStdDev = [](const std::vector<double>& values, double mean) -> double {
+        if (values.size() < 2) return 0.0;
+        double sumSq = 0.0;
+        for (double v : values) {
+            sumSq += (v - mean) * (v - mean);
+        }
+        return std::sqrt(sumSq / (values.size() - 1));
+    };
+    
+    // Collect all unique wire types and model combinations
+    std::set<std::string> allWireTypes;
+    std::set<std::string> allModelCombos;
+    for (const auto& r : allResults) {
+        allWireTypes.insert(r.wireType);
+        allModelCombos.insert(r.combinedModelName);
+    }
+    
+    // Stats per wire type and model
+    struct WireTypeModelStats {
+        std::vector<double> errors;
+        int crashCount = 0;
+        double maxError = 0;
+        std::string worstTest;
+    };
+    std::map<std::string, std::map<std::string, WireTypeModelStats>> wireTypeModelStats;
+    
+    for (const auto& r : allResults) {
+        auto& stats = wireTypeModelStats[r.wireType][r.combinedModelName];
+        if (r.crashed) {
+            stats.crashCount++;
+        } else {
+            stats.errors.push_back(r.errorPct);
+            if (r.errorPct > stats.maxError) {
+                stats.maxError = r.errorPct;
+                stats.worstTest = r.testName + "@" + std::to_string(static_cast<int>(r.frequency)) + "Hz";
+            }
+        }
+    }
+    
+    // Print one table per wire type
+    for (const auto& wireType : allWireTypes) {
+        std::cout << "\n--- " << wireType << " WIRE ---" << std::endl;
+        std::cout << std::setw(30) << "Model Combination" << " | ";
+        std::cout << std::setw(10) << "Avg Error" << " | ";
+        std::cout << std::setw(10) << "Std Dev" << " | ";
+        std::cout << std::setw(10) << "Max Error" << " | ";
+        std::cout << std::setw(6) << "N" << " | ";
+        std::cout << "Worst Test" << std::endl;
+        std::cout << std::string(100, '-') << std::endl;
+        
+        // Collect and sort results for this wire type
+        std::vector<std::tuple<std::string, double, double, double, int, int, std::string>> wireResults;
+        for (const auto& model : allModelCombos) {
+            auto it = wireTypeModelStats[wireType].find(model);
+            if (it != wireTypeModelStats[wireType].end() && !it->second.errors.empty()) {
+                const auto& stats = it->second;
+                double sum = 0;
+                for (double e : stats.errors) sum += e;
+                double avg = sum / stats.errors.size();
+                double stdDev = calcStdDev(stats.errors, avg);
+                wireResults.push_back({model, avg, stdDev, stats.maxError, 
+                                       static_cast<int>(stats.errors.size()), 
+                                       stats.crashCount, stats.worstTest});
+            }
+        }
+        
+        // Sort by average error
+        std::sort(wireResults.begin(), wireResults.end(), 
+            [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); });
+        
+        // Print top 10 for this wire type
+        int count = 0;
+        for (const auto& [model, avg, stdDev, maxErr, n, crashes, worst] : wireResults) {
+            if (count++ >= 10) break;  // Only show top 10
+            std::cout << std::setw(30) << model << " | ";
+            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avg << "%" << " | ";
+            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << stdDev << "%" << " | ";
+            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << maxErr << "%" << " | ";
+            std::cout << std::setw(4) << n;
+            if (crashes > 0) std::cout << " (" << crashes << " crashes)";
+            std::cout << " | " << worst << std::endl;
+        }
+        
+        // Show models with >1000% error (likely broken)
+        bool hasBroken = false;
+        for (const auto& [model, avg, stdDev, maxErr, n, crashes, worst] : wireResults) {
+            if (maxErr > 1000.0) {
+                if (!hasBroken) {
+                    std::cout << "\n*** BROKEN MODELS (>1000% max error) ***" << std::endl;
+                    hasBroken = true;
+                }
+                std::cout << std::setw(30) << model << " | ";
+                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avg << "%" << " | ";
+                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << stdDev << "%" << " | ";
+                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << maxErr << "%" << " | ";
+                std::cout << std::setw(4) << n << " | " << worst << std::endl;
+            }
+        }
+    }
+    
+    // ==================================================================================
+    // OVERALL RANKING
+    // ==================================================================================
+    std::cout << "\n======================================================================================" << std::endl;
+    std::cout << "OVERALL MODEL RANKING (Lower Error = Better)" << std::endl;
+    std::cout << "======================================================================================\n" << std::endl;
+    
+    std::map<std::string, std::vector<double>> modelErrors;
+    std::map<std::string, int> modelCrashes;
+    
+    for (const auto& r : allResults) {
+        if (!r.crashed) {
+            modelErrors[r.combinedModelName].push_back(r.errorPct);
+        } else {
+            modelCrashes[r.combinedModelName]++;
+        }
+    }
+    
+    std::vector<std::tuple<std::string, double, double, int, int>> overallRanking;
+    for (const auto& [model, errors] : modelErrors) {
+        if (!errors.empty()) {
+            double sum = 0;
+            for (double e : errors) sum += e;
+            double avg = sum / errors.size();
+            double stdDev = calcStdDev(errors, avg);
+            overallRanking.push_back({model, avg, stdDev, static_cast<int>(errors.size()), modelCrashes[model]});
+        }
+    }
+    
+    std::sort(overallRanking.begin(), overallRanking.end(),
+        [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); });
+    
+    std::cout << std::setw(4) << "Rank" << " | ";
+    std::cout << std::setw(30) << "Model Combination" << " | ";
+    std::cout << std::setw(12) << "Avg ± Std" << " | ";
+    std::cout << std::setw(8) << "Tests" << " | ";
+    std::cout << std::setw(8) << "Crashes" << std::endl;
+    std::cout << std::string(85, '-') << std::endl;
+    
+    int rank = 1;
+    for (const auto& [model, avg, stdDev, tests, crashes] : overallRanking) {
+        std::cout << std::setw(4) << rank++ << " | ";
+        std::cout << std::setw(30) << model << " | ";
+        std::cout << std::fixed << std::setprecision(1) << avg << " ± " << std::setw(5) << stdDev << "%" << " | ";
+        std::cout << std::setw(8) << tests << " | ";
+        std::cout << std::setw(8) << crashes << std::endl;
+    }
+    
+    // BEST MODEL RECOMMENDATION
+    if (!overallRanking.empty()) {
+        std::cout << "\n======================================================================================" << std::endl;
+        std::cout << "RECOMMENDATION" << std::endl;
+        std::cout << "======================================================================================" << std::endl;
+        auto [bestModel, bestAvg, bestStd, bestTests, bestCrashes] = overallRanking[0];
+        std::cout << "Best Skin + Proximity Model Combination: " << bestModel << std::endl;
+        std::cout << "Average Error: " << std::fixed << std::setprecision(1) << bestAvg << "%" << std::endl;
+        std::cout << "Standard Deviation: " << std::fixed << std::setprecision(1) << bestStd << "%" << std::endl;
+        std::cout << "Total Tests: " << bestTests << std::endl;
+        if (bestCrashes > 0) {
+            std::cout << "WARNING: " << bestCrashes << " crashes occurred" << std::endl;
+        }
+    }
+    
+    std::cout << "\n======================================================================================\n" << std::endl;
+    
+    settings.reset();
+}
