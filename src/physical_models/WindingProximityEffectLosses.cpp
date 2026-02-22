@@ -52,9 +52,20 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
 }
 
 std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+    // If an explicit model override is provided, use it
     if (modelOverride.has_value()) {
         return WindingProximityEffectLossesModel::factory(modelOverride.value());
     }
+
+    // Check if user has enabled manual model selection
+    auto& settings = Settings::GetInstance();
+    if (settings.get_coil_enable_user_winding_losses_models()) {
+        // Use the user's selected model from Settings
+        auto userSelectedModel = settings.get_winding_proximity_effect_losses_model();
+        return WindingProximityEffectLossesModel::factory(userSelectedModel);
+    }
+
+    // Otherwise, auto-select based on wire type (default behavior)
     switch(wireType) {
         case WireType::ROUND: {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);

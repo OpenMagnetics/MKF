@@ -59,8 +59,16 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model
     if (modelOverride.has_value()) {
         return WindingSkinEffectLossesModel::factory(modelOverride.value());
     }
-    
-    // Otherwise, auto-select based on wire type
+
+    // Check if user has enabled manual model selection
+    auto& settings = Settings::GetInstance();
+    if (settings.get_coil_enable_user_winding_losses_models()) {
+        // Use the user's selected model from Settings
+        auto userSelectedModel = settings.get_winding_skin_effect_losses_model();
+        return WindingSkinEffectLossesModel::factory(userSelectedModel);
+    }
+
+    // Otherwise, auto-select based on wire type (default behavior)
     switch(wireType) {
         case WireType::ROUND: {
             return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
