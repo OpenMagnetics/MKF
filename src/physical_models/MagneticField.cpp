@@ -413,9 +413,11 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 // Using BINNS_LAWRENSON to compute the field from the equivalent current loops
                 auto fringingFieldModel = factory(MagneticFieldStrengthModels::BINNS_LAWRENSON);
                 
-                // For ROSHEN fringing, we need the gap field strength
+                // For ROSHEN and SULLIVAN fringing, we need the gap field strength
+                // (both use direct gap-to-point calculation via get_magnetic_field_strength_between_gap_and_point)
                 double magneticFieldStrengthGap = 0;
-                if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN && includeFringing) {
+                if ((_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
+                     _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN) && includeFringing) {
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     if (frequency == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
                         magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
@@ -440,8 +442,9 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                                 complexFieldPoint.set_real(complexFieldPoint.get_real() + fringingContrib.get_real());
                                 complexFieldPoint.set_imaginary(complexFieldPoint.get_imaginary() + fringingContrib.get_imaginary());
                             }
-                        } else if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN) {
-                            // ROSHEN fringing: compute field directly from each gap
+                        } else if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
+                                   _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN) {
+                            // ROSHEN and SULLIVAN fringing: compute field directly from each gap
                             for (auto& gap : gapping) {
                                 if (gap.get_coordinates().value()[0] < 0) {
                                     continue;
@@ -468,9 +471,11 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             double totalInducedFieldX = 0;
             double totalInducedFieldY = 0;
 
-            // ROSHEN fringing is computed per-point in this loop (not via equivalent current loops)
-            // Skip if using ALBACH since ROSHEN fringing is already added in the ALBACH branch above
-            if (!isAlbach && _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN) {
+            // ROSHEN and SULLIVAN fringing are computed per-point in this loop (not via equivalent current loops)
+            // Skip if using ALBACH H-field model since fringing is already added in the ALBACH branch above
+            // ALBACH fringing model uses equivalent current loops which are added to inducingFields and processed below
+            if (!isAlbach && (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN ||
+                              _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::SULLIVAN)) {
                 // For the main harmonic we calculate the fringing effect for each gap
                 if (includeFringing && inducedFields[harmonicIndex].get_frequency() == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
                     if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
@@ -504,10 +509,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                         totalInducedFieldX += complexFieldPoint.get_real();
                         totalInducedFieldY += complexFieldPoint.get_imaginary();
                         if (std::isnan(complexFieldPoint.get_real())) {
-                            throw NaNResultException("NaN found in Roshen's fringing field");
+                            throw NaNResultException("NaN found in fringing field calculation");
                         }
                         if (std::isnan(complexFieldPoint.get_imaginary())) {
-                            throw NaNResultException("NaN found in Roshen's fringing field");
+                            throw NaNResultException("NaN found in fringing field calculation");
                         }
                     }
                 }
