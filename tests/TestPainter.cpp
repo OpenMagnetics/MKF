@@ -717,11 +717,7 @@ namespace {
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -770,11 +766,7 @@ namespace {
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -803,11 +795,7 @@ namespace {
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -861,11 +849,7 @@ namespace {
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -899,11 +883,7 @@ namespace {
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -949,11 +929,7 @@ namespace {
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.paint_wire_losses(magnetic, std::nullopt, inputs.get_operating_point(0));
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -980,11 +956,7 @@ namespace {
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.paint_wire_losses(magnetic, std::nullopt, inputs.get_operating_point(0));
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -1776,11 +1748,7 @@ namespace {
         // painter.paint_coil_sections(magnetic);
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -1811,11 +1779,7 @@ namespace {
 
         painter.paint_core(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -1849,11 +1813,7 @@ namespace {
             // painter.paint_coil_sections(magnetic);
             // painter.paint_coil_layers(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         {
@@ -1869,11 +1829,7 @@ namespace {
             // painter.paint_coil_sections(magnetic);
             painter.paint_coil_layers(magnetic);
             // painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -1890,11 +1846,7 @@ namespace {
 
             painter.paint_core(magnetic);
             painter.paint_coil_sections(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -1933,11 +1885,7 @@ namespace {
 
         painter.paint_core(magnetic);
         painter.paint_coil_sections(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -1975,11 +1923,7 @@ namespace {
 
         painter.paint_core(magnetic);
         painter.paint_coil_sections(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2002,11 +1946,7 @@ namespace {
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(std::filesystem::exists(outFile));
@@ -2027,11 +1967,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
 
         settings.reset();
@@ -2061,11 +1997,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
 
         settings.reset();
@@ -2088,11 +2020,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
 
         settings.reset();
@@ -2117,11 +2045,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
 
         settings.reset();
@@ -2142,11 +2066,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
 
         settings.reset();
@@ -2169,11 +2089,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
 
         settings.reset();
@@ -2192,11 +2108,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
 
         settings.reset();
@@ -2217,11 +2129,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
 
         settings.reset();
@@ -2248,11 +2156,7 @@ namespace {
         magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2281,11 +2185,7 @@ namespace {
 
         painter.paint_core(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2314,11 +2214,7 @@ namespace {
 
         painter.paint_core(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2347,11 +2243,7 @@ namespace {
 
         painter.paint_core(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2380,11 +2272,7 @@ namespace {
 
         painter.paint_core(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2520,11 +2408,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2555,11 +2439,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2595,11 +2475,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         // painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2630,11 +2506,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2665,11 +2537,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2700,11 +2568,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2742,11 +2606,7 @@ namespace {
             painter.paint_bobbin(magnetic);
             painter.paint_coil_sections(magnetic);
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2778,11 +2638,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_layers(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2813,11 +2669,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2848,11 +2700,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2886,11 +2734,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2924,11 +2768,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -2962,11 +2802,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3000,11 +2836,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3038,11 +2870,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_layers(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3076,11 +2904,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_layers(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3114,11 +2938,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3152,11 +2972,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3190,11 +3006,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3228,11 +3040,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3275,11 +3083,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3323,11 +3127,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3365,11 +3165,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3412,11 +3208,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3455,11 +3247,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3498,11 +3286,7 @@ namespace {
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3541,11 +3325,7 @@ namespace {
         painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3584,11 +3364,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3627,11 +3403,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3670,11 +3442,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3713,11 +3481,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3756,11 +3520,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3799,11 +3559,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3842,11 +3598,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3885,11 +3637,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3928,11 +3676,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -3971,11 +3715,7 @@ namespace {
         // painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -4017,11 +3757,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -4063,11 +3799,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -4105,11 +3837,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_layers(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -4147,11 +3875,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -4196,22 +3920,14 @@ namespace {
         try
         {
             painter.paint_coil_turns(magnetic);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(false);
         }
         catch (const std::exception &e)
         {
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             REQUIRE(true);
@@ -4328,11 +4044,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -4357,11 +4069,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -4382,11 +4090,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -4407,11 +4111,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -4429,11 +4129,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4451,11 +4147,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4473,11 +4165,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4495,11 +4183,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4517,11 +4201,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4539,11 +4219,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4561,11 +4237,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4583,11 +4255,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4605,11 +4273,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4632,11 +4296,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4654,11 +4314,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4676,11 +4332,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4698,11 +4350,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4722,11 +4370,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4746,11 +4390,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4770,11 +4410,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4794,11 +4430,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4824,11 +4456,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
 
@@ -4848,11 +4476,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4878,11 +4502,7 @@ namespace {
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4911,11 +4531,7 @@ namespace {
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4944,11 +4560,7 @@ namespace {
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -4977,11 +4589,7 @@ namespace {
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -5010,11 +4618,7 @@ namespace {
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -5040,11 +4644,7 @@ namespace {
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -5075,11 +4675,7 @@ namespace {
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -5105,11 +4701,7 @@ namespace {
                 INFO("matplotplusplus disabled — skipping AdvancedPainter call");
             #endif
 
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -5129,11 +4721,7 @@ namespace {
             std::filesystem::remove(outFile);
             Painter painter(outFile, false, false, true);
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();
@@ -5155,11 +4743,7 @@ namespace {
             Painter painter(outFile, false, false, true);
 
             painter.paint_wire(wire);
-            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
-            #else
-                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-            #endif
 
         }
         settings.reset();

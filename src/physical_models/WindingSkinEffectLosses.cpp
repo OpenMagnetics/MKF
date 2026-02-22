@@ -1,5 +1,6 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "constructive_models/Wire.h"
 #include "Defaults.h"
 
 #include <cmath>
@@ -120,12 +121,22 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 
     std::vector<std::pair<double, double>> lossesPerHarmonic;
 
-    for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex)
+    size_t numAmplitudes = harmonics.get_amplitudes().size();
+    size_t numFrequencies = harmonics.get_frequencies().size();
+    if (numAmplitudes != numFrequencies) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Harmonics amplitudes and frequencies size mismatch: " + std::to_string(numAmplitudes) + " vs " + std::to_string(numFrequencies));
+    }
+
+    for (size_t harmonicIndex = 1; harmonicIndex < numAmplitudes; ++harmonicIndex)
     {
         auto harmonicRmsCurrent = harmonics.get_amplitudes()[harmonicIndex] / sqrt(2);  // Because a harmonic is always sinusoidal
         auto harmonicFrequency = harmonics.get_frequencies()[harmonicIndex];
         auto harmonicRmsCurrentInTurn = harmonicRmsCurrent * currentDivider;
         auto dcLossPerMeterThisHarmonic = pow(harmonicRmsCurrentInTurn, 2) * dcResistancePerMeter;
+
+        if (std::isnan(harmonicFrequency) || harmonicFrequency <= 0) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Invalid frequency at harmonicIndex=" + std::to_string(harmonicIndex) + ": " + std::to_string(harmonicFrequency));
+        }
 
         auto turnLosses = model->calculate_turn_losses(wire, dcLossPerMeterThisHarmonic, harmonicFrequency, temperature, harmonicRmsCurrentInTurn);
         lossesPerHarmonic.push_back(std::pair<double, double>{turnLosses, harmonicFrequency});
@@ -174,8 +185,9 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
 
         for (auto& lossesPerMeter : lossesPerMeterPerHarmonic) {
             skinEffectLosses.get_mutable_harmonic_frequencies().push_back(lossesPerMeter.second);
-            skinEffectLosses.get_mutable_losses_per_harmonic().push_back(lossesPerMeter.first * wireLength);
-            totalSkinEffectLosses += lossesPerMeter.first * wireLength;
+            double turnLoss = lossesPerMeter.first * wireLength;
+            skinEffectLosses.get_mutable_losses_per_harmonic().push_back(turnLoss);
+            totalSkinEffectLosses += turnLoss;
         }
         windingLossesPerTurn[turnIndex].set_skin_effect_losses(skinEffectLosses);
 
@@ -183,6 +195,9 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     windingLossesOutput.set_winding_losses_per_turn(windingLossesPerTurn);
 
     windingLossesOutput.set_method_used("AnalyticalModels");
+    if (std::isnan(totalSkinEffectLosses)) {
+        throw NaNResultException("NaN found in total skin effect losses");
+    }
     windingLossesOutput.set_winding_losses(windingLossesOutput.get_winding_losses() + totalSkinEffectLosses);
     return windingLossesOutput;
 }
@@ -400,7 +415,11 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
     }
     else if (wire.get_type() == WireType::ROUND) {
         wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
-        wireOuterRadius = resolve_dimensional_values(wire.get_outer_diameter().value()) / 2;
+        if (!wire.get_outer_diameter()) {
+            wireOuterRadius = Wire::calculate_outer_diameter(wire, OpenMagnetics::DimensionalValues::NOMINAL) / 2;
+        } else {
+            wireOuterRadius = resolve_dimensional_values(wire.get_outer_diameter().value()) / 2;
+        }
     }
     else if (wire.get_type() == WireType::LITZ) {
         auto strand = Wire::resolve_strand(wire);
@@ -413,6 +432,13 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
 
     std::complex<double> alpha(1, 1);
     alpha *= wireRadius / skinDepth;
+    
+    if (std::isnan(skinDepth) || std::isnan(wireRadius) || std::isnan(wireOuterRadius)) {
+        throw NaNResultException("NaN in Albach model inputs: skinDepth=" + std::to_string(skinDepth) + 
+                                 ", wireRadius=" + std::to_string(wireRadius) + 
+                                 ", wireOuterRadius=" + std::to_string(wireOuterRadius));
+    }
+
     double factor = 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha) + wire.get_number_conductors().value() * (wire.get_number_conductors().value() - 1) * pow(wireRadius, 2) / pow(wireOuterRadius, 2) * modified_bessel_first_kind(1, alpha * wireRadius) / modified_bessel_first_kind(0, alpha * wireRadius))).real();
 
     return factor;

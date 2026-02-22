@@ -1608,15 +1608,29 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             Harmonics prunedHarmonics;
             prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[0]);
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
-            std::sort(currentHarmonicIndexesToMaintain.begin(), currentHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
-            for (auto harmonicIndex : currentHarmonicIndexesToMaintain) {
+            // Sort indexes and frequencies together to maintain alignment
+            {
+                std::vector<std::pair<size_t, double>> indexFreqPairs;
+                for (size_t i = 0; i < currentHarmonicIndexesToMaintain.size(); ++i) {
+                    indexFreqPairs.push_back({currentHarmonicIndexesToMaintain[i], currentHarmonicFrequenciesToMaintain[i]});
+                }
+                std::sort(indexFreqPairs.begin(), indexFreqPairs.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                currentHarmonicIndexesToMaintain.clear();
+                currentHarmonicFrequenciesToMaintain.clear();
+                for (const auto& pair : indexFreqPairs) {
+                    currentHarmonicIndexesToMaintain.push_back(pair.first);
+                    currentHarmonicFrequenciesToMaintain.push_back(pair.second);
+                }
+            }
+            for (size_t i = 0; i < currentHarmonicIndexesToMaintain.size(); ++i) {
+                auto harmonicIndex = currentHarmonicIndexesToMaintain[i];
                 if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
                     prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
                     prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
                 else {
                     prunedHarmonics.get_mutable_amplitudes().push_back(0);
-                    prunedHarmonics.get_mutable_frequencies().push_back(currentHarmonicFrequenciesToMaintain[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(currentHarmonicFrequenciesToMaintain[i]);
                 }
             }
             current.set_harmonics(prunedHarmonics);
@@ -1633,15 +1647,29 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             Harmonics prunedHarmonics;
             prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[0]);
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
-            std::sort(magnetizingCurrentHarmonicIndexesToMaintain.begin(), magnetizingCurrentHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
-            for (auto harmonicIndex : magnetizingCurrentHarmonicIndexesToMaintain) {
+            // Sort indexes and frequencies together to maintain alignment
+            {
+                std::vector<std::pair<size_t, double>> indexFreqPairs;
+                for (size_t i = 0; i < magnetizingCurrentHarmonicIndexesToMaintain.size(); ++i) {
+                    indexFreqPairs.push_back({magnetizingCurrentHarmonicIndexesToMaintain[i], magnetizingCurrentHarmonicFrequenciesToMaintain[i]});
+                }
+                std::sort(indexFreqPairs.begin(), indexFreqPairs.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                magnetizingCurrentHarmonicIndexesToMaintain.clear();
+                magnetizingCurrentHarmonicFrequenciesToMaintain.clear();
+                for (const auto& pair : indexFreqPairs) {
+                    magnetizingCurrentHarmonicIndexesToMaintain.push_back(pair.first);
+                    magnetizingCurrentHarmonicFrequenciesToMaintain.push_back(pair.second);
+                }
+            }
+            for (size_t i = 0; i < magnetizingCurrentHarmonicIndexesToMaintain.size(); ++i) {
+                auto harmonicIndex = magnetizingCurrentHarmonicIndexesToMaintain[i];
                 if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
                     prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
                     prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
                 else {
                     prunedHarmonics.get_mutable_amplitudes().push_back(0);
-                    prunedHarmonics.get_mutable_frequencies().push_back(magnetizingCurrentHarmonicFrequenciesToMaintain[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(magnetizingCurrentHarmonicFrequenciesToMaintain[i]);
                 }
             }
             magnetizingCurrent.set_harmonics(prunedHarmonics);
@@ -1659,15 +1687,29 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             Harmonics prunedHarmonics;
             prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[0]);
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
-            std::sort(voltageHarmonicIndexesToMaintain.begin(), voltageHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
-            for (auto harmonicIndex : voltageHarmonicIndexesToMaintain) {
+            // Sort indexes and frequencies together to maintain alignment
+            {
+                std::vector<std::pair<size_t, double>> indexFreqPairs;
+                for (size_t i = 0; i < voltageHarmonicIndexesToMaintain.size(); ++i) {
+                    indexFreqPairs.push_back({voltageHarmonicIndexesToMaintain[i], voltageHarmonicFrequenciesToMaintain[i]});
+                }
+                std::sort(indexFreqPairs.begin(), indexFreqPairs.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                voltageHarmonicIndexesToMaintain.clear();
+                voltageHarmonicFrequenciesToMaintain.clear();
+                for (const auto& pair : indexFreqPairs) {
+                    voltageHarmonicIndexesToMaintain.push_back(pair.first);
+                    voltageHarmonicFrequenciesToMaintain.push_back(pair.second);
+                }
+            }
+            for (size_t i = 0; i < voltageHarmonicIndexesToMaintain.size(); ++i) {
+                auto harmonicIndex = voltageHarmonicIndexesToMaintain[i];
                 if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
                     prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
                     prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
                 else {
                     prunedHarmonics.get_mutable_amplitudes().push_back(0);
-                    prunedHarmonics.get_mutable_frequencies().push_back(voltageHarmonicFrequenciesToMaintain[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(voltageHarmonicFrequenciesToMaintain[i]);
                 }
             }
             voltage.set_harmonics(prunedHarmonics);

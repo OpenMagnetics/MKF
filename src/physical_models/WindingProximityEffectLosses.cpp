@@ -201,6 +201,9 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
     windingLossesOutput.set_winding_losses_per_turn(windingLossesPerTurn);
 
     windingLossesOutput.set_method_used("AnalyticalModels");
+    if (std::isnan(totalProximityEffectLosses)) {
+        throw NaNResultException("NaN found in total proximity effect losses");
+    }
     windingLossesOutput.set_winding_losses(windingLossesOutput.get_winding_losses() + totalProximityEffectLosses);
     return windingLossesOutput;
 }

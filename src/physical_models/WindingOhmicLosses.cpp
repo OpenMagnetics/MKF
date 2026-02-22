@@ -99,10 +99,24 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
     std::vector<std::vector<double>> dcCurrentPerWindingPerParallel;
     std::vector<double> dcCurrentPerWinding;
     auto wirePerWinding = coil.get_wires();
+    
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         seriesResistancePerWindingPerParallel.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
         dcCurrentPerWindingPerParallel.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
-        dcCurrentPerWinding.push_back(operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value());
+        
+        if (windingIndex >= operatingPoint.get_excitations_per_winding().size()) {
+            dcCurrentPerWinding.push_back(0);
+            continue;
+        }
+        
+        auto& exc = operatingPoint.get_excitations_per_winding()[windingIndex];
+        if (!exc.get_current() || !exc.get_current()->get_processed()) {
+            dcCurrentPerWinding.push_back(0);
+            continue;
+        }
+        
+        double currentRms = exc.get_current()->get_processed()->get_rms().value();
+        dcCurrentPerWinding.push_back(currentRms);
     }
 
     std::vector<double> dcResistancePerTurn;
