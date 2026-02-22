@@ -28,7 +28,6 @@ namespace {
         outFile.append("Test_Painter_Contour_Many_Turns.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -37,11 +36,7 @@ namespace {
         painter.paint_core(magnetic);
         // painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -55,7 +50,6 @@ namespace {
         outFile.append("Test_Painter_Contour_Many_Turns_Logarithmic_Scale.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(true);
         settings.set_painter_include_fringing(true);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -64,11 +58,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -82,7 +72,6 @@ namespace {
         outFile.append("Test_Painter_Contour_Many_Turns_No_Fringing.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -91,11 +80,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -109,7 +94,6 @@ namespace {
         outFile.append("Test_Painter_Contour_Many_Turns_Limit_Scale.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_maximum_value_colorbar(25500);
@@ -118,11 +102,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -139,14 +119,9 @@ namespace {
         outFile.append("Test_Painter_Contour_One_Turn.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(true);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -333,7 +308,6 @@ namespace {
         outFile.append("Test_Painter_Contour_One_Turn_Rectangular.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -342,11 +316,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -400,7 +370,6 @@ namespace {
         outFile.append("Test_Painter_Contour_Many_Turns_Rectangular.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -409,11 +378,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -497,7 +462,6 @@ namespace {
         outFile.append("Test_Painter_Contour_One_Turn_Foil.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -506,11 +470,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -616,7 +576,6 @@ namespace {
         outFile.append("Test_Painter_Contour_Many_Turns_Foil.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -625,11 +584,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -675,7 +630,6 @@ namespace {
         outFile.append("Test_Painter_Text_Color.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(false);
         settings.set_painter_maximum_value_colorbar(std::nullopt);
@@ -685,11 +639,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -4785,7 +4735,6 @@ namespace {
         outFile.append("Test_Painter_Albach_2D_Field_With_Gap.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, false, false);  // Use BasicPainter
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);  // Enable fringing to show gap effects
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4795,11 +4744,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -4842,7 +4787,6 @@ namespace {
         outFile.append("Test_Painter_Albach_2D_Transformer_With_Gap.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, false, false);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4852,11 +4796,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -4919,7 +4859,6 @@ namespace {
         outFile.append("Test_Painter_Albach_2D_Planar_Transformer.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, false, false);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4928,11 +4867,7 @@ namespace {
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -4971,7 +4906,6 @@ namespace {
         outFile.append("Test_Painter_Albach_2D_RM_Core_Inductor.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, false, false);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -4981,11 +4915,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -5026,7 +4956,6 @@ namespace {
         outFile.append("Test_Painter_RM_Core_Distributed_Gap_3.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, false, false);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -5037,11 +4966,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -5081,7 +5006,6 @@ namespace {
         outFile.append("Test_Painter_RM_Core_Single_Gap_Single_Turn.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, false, false);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -5092,11 +5016,7 @@ namespace {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
 
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
@@ -5140,7 +5060,6 @@ namespace {
         outFile.append("Test_Painter_Albach_2D_Litz_Wire_Transformer.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, false, false);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -5150,11 +5069,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
@@ -5209,7 +5124,6 @@ namespace {
         outFile.append("Test_Painter_Albach_2D_Rectangular_Wire.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, false, false);
-        settings.set_painter_mode(PainterModes::CONTOUR);
         settings.set_painter_logarithmic_scale(false);
         settings.set_painter_include_fringing(true);
         settings.set_painter_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -5219,11 +5133,7 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
 
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
