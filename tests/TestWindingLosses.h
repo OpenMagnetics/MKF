@@ -1587,7 +1587,7 @@ namespace WindingLossesTestData {
         configs["One_Turn_Rectangular_Toroidal"] = createOneTurnRectangularToroidalConfig();
         configs["Ten_Turns_Rectangular_Toroidal"] = createTenTurnsRectangularToroidalConfig();
         
-        // Planar tests (require JSON files)
+        // Planar tests (require JSON files that don't exist)
         // configs["One_Turn_Planar_No_Fringing"] = createOneTurnPlanarNoFringingConfig();
         // configs["One_Turn_Planar_Fringing"] = createOneTurnPlanarFringingConfig();
         // configs["Sixteen_Turns_Planar_No_Fringing"] = createSixteenTurnsPlanarNoFringingConfig();

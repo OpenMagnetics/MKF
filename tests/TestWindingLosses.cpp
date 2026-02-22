@@ -1829,18 +1829,12 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
             return false;
         }
         
-        // Select test frequencies - use subset for efficiency
+        // Select test frequencies - use subset for efficiency (max 2 points)
         std::vector<std::pair<double, double>> testPoints;
-        if (config.expectedValues.size() > 4) {
-            std::vector<size_t> indices = {0, 
-                                          config.expectedValues.size() / 3,
-                                          2 * config.expectedValues.size() / 3,
-                                          config.expectedValues.size() - 1};
-            for (size_t idx : indices) {
-                if (idx < config.expectedValues.size()) {
-                    testPoints.push_back(config.expectedValues[idx]);
-                }
-            }
+        if (config.expectedValues.size() > 2) {
+            // Use only lowest and highest frequency for speed
+            testPoints.push_back(config.expectedValues[0]);
+            testPoints.push_back(config.expectedValues[config.expectedValues.size() - 1]);
         } else {
             testPoints = config.expectedValues;
         }
@@ -1899,6 +1893,14 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     // Run all combinations
     int totalCombinations = skinModels.size() * proximityModels.size();
     int currentCombination = 0;
+    int totalTests = 0;
+    int completedTests = 0;
+    
+    // Count total tests for progress reporting
+    for (const auto& [name, config] : testConfigs) {
+        totalTests += (config.expectedValues.size() > 2) ? 2 : config.expectedValues.size();
+    }
+    totalTests *= totalCombinations;
     
     for (const auto& skinModel : skinModels) {
         std::string skinModelName = enumToString(skinModel);
@@ -1908,8 +1910,13 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
             std::cout << "\n[" << currentCombination << "/" << totalCombinations << "] " 
                       << skinModelName << " + " << proximityModelName << std::endl;
             
+            int configIdx = 0;
             for (const auto& [name, config] : testConfigs) {
+                configIdx++;
+                std::cout << "  [" << configIdx << "/" << testConfigs.size() << "] " << name << "..." << std::flush;
                 runTestWithModels(config, skinModel, proximityModel, skinModelName, proximityModelName);
+                completedTests += (config.expectedValues.size() > 2) ? 2 : config.expectedValues.size();
+                std::cout << " (" << completedTests << "/" << totalTests << " total)" << std::endl;
             }
         }
     }

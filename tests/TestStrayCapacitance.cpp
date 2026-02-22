@@ -1210,3 +1210,85 @@ TEST_CASE("Investigate capacitance calculation from bug_capacitance_error_2.json
     
     REQUIRE(true);
 }
+
+
+TEST_CASE("Investigate negative C3 in bug_capacitance_error_3", "[physical-model][stray-capacitance][bug-investigation]") {
+    settings.reset();
+    
+    auto testDataPath = get_test_data_path(std::source_location::current(), "bug_capacitance_error_3.json");
+    std::cout << "\n=== Investigating negative C3 from: " << testDataPath << " ===" << std::endl;
+    
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    
+    std::string jsonStr((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    
+    auto masJson = nlohmann::json::parse(jsonStr);
+    MAS::Mas mas;
+    MAS::from_json(masJson, mas);
+    auto magnetic = mas.get_mutable_magnetic();
+    auto coil = magnetic.get_mutable_coil();
+    
+    std::cout << "\nCoil info:" << std::endl;
+    std::cout << "  Number of windings: " << coil.get_functional_description().size() << std::endl;
+    for (const auto& winding : coil.get_functional_description()) {
+        std::cout << "    - " << winding.get_name() << ": " << winding.get_number_turns() << " turns" << std::endl;
+    }
+    
+    StrayCapacitance strayCapacitance;
+    auto output = strayCapacitance.calculate_capacitance(coil);
+    
+    std::cout << "\n=== 3-Capacitor Model Analysis ===" << std::endl;
+    
+    if (output.get_capacitance_matrix()) {
+        auto matrix = output.get_capacitance_matrix().value();
+        
+        double C11 = 0, C22 = 0, C12 = 0;
+        std::string w1, w2;
+        
+        for (const auto& [winding1, innerMap] : matrix) {
+            for (const auto& [winding2, scalarMatrix] : innerMap) {
+                auto magnitude = scalarMatrix.get_magnitude();
+                double total = 0;
+                for (const auto& [k1, subMap] : magnitude) {
+                    for (const auto& [k2, dimWithTol] : subMap) {
+                        total += OpenMagnetics::resolve_dimensional_values(dimWithTol);
+                    }
+                }
+                
+                if (w1.empty()) w1 = winding1;
+                if (winding1 == w1 && winding2 == w1) C11 = total;
+                if (winding1 != w1 && winding2 != w1) {
+                    C22 = total;
+                    w2 = winding1;
+                }
+                if (winding1 == w1 && winding2 != w1) C12 = total;
+                
+                std::cout << "  " << winding1 << " - " << winding2 << ": " << total << " F" << std::endl;
+            }
+        }
+        
+        std::cout << "\n3-Capacitor Model:" << std::endl;
+        std::cout << "  C11 (" << w1 << " self): " << C11 << " F" << std::endl;
+        std::cout << "  C22 (" << w2 << " self): " << C22 << " F" << std::endl;
+        std::cout << "  C12 (mutual): " << C12 << " F" << std::endl;
+        
+        double C1 = C11 + C12;
+        double C2 = C22 + C12;
+        double C3 = -C12;
+        
+        std::cout << "\n  C1 = C11 + C12 = " << C1 << " F" << std::endl;
+        std::cout << "  C2 = C22 + C12 = " << C2 << " F" << std::endl;
+        std::cout << "  C3 = -C12 = " << C3 << " F" << std::endl;
+        
+        if (C3 < 0) {
+            std::cout << "\n*** C3 is NEGATIVE - This is PHYSICALLY CORRECT! ***" << std::endl;
+            std::cout << "The 3-capacitor model only works when |C12| < min(C11, C22)" << std::endl;
+            std::cout << "Here C12 > C11, so C3 = -C12 becomes negative." << std::endl;
+            std::cout << "The B-connected-to-D configuration is not physically realizable." << std::endl;
+        }
+    }
+    
+    REQUIRE(true);
+}

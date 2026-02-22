@@ -393,27 +393,38 @@ inline void from_json(const json & j, WindingSkinEffectLossesModels & x) {
 void from_json(const json & j, WindingProximityEffectLossesModels & x);
 void to_json(json & j, const WindingProximityEffectLossesModels & x);
 
+inline void from_json(const json & j, WindingProximityEffectLossesModels & x) {
+    if      (j == "Rossmanith" || j == "ROSSMANITH") x = WindingProximityEffectLossesModels::ROSSMANITH;
+    else if (j == "Wang"       || j == "WANG")       x = WindingProximityEffectLossesModels::WANG;
+    else if (j == "Ferreira"   || j == "FERREIRA")   x = WindingProximityEffectLossesModels::FERREIRA;
+    else if (j == "Lammeraner" || j == "LAMMERANER") x = WindingProximityEffectLossesModels::LAMMERANER;
+    else if (j == "Albach"     || j == "ALBACH")     x = WindingProximityEffectLossesModels::ALBACH;
+    else if (j == "Dowell"     || j == "DOWELL")     x = WindingProximityEffectLossesModels::DOWELL;
+    else if (j == "XiNan"  || j == "XI_NAN"  || j == "Nan")    x = WindingProximityEffectLossesModels::XI_NAN;
+    else if (j == "Wojda"      || j == "WOJDA")      x = WindingProximityEffectLossesModels::WOJDA;
+    else if (j == "Sullivan"   || j == "SULLIVAN")   x = WindingProximityEffectLossesModels::SULLIVAN;
+    else if (j == "Bartoli"    || j == "BARTOLI")    x = WindingProximityEffectLossesModels::BARTOLI;
+    else if (j == "Vandelac"   || j == "VANDELAC")   x = WindingProximityEffectLossesModels::VANDELAC;
+    else { throw std::runtime_error("Input JSON does not conform to WindingProximityEffectLossesModels schema: " + to_string(j)); }
+}
+
 inline void to_json(json & j, const WindingProximityEffectLossesModels & x) {
     switch (x) {
-        case WindingProximityEffectLossesModels::ROSSMANITH: j = "Rossmanith"; break;
-        case WindingProximityEffectLossesModels::WANG: j = "Wang"; break;
-        case WindingProximityEffectLossesModels::FERREIRA: j = "Ferreira"; break;
-        case WindingProximityEffectLossesModels::LAMMERANER: j = "Lammeraner"; break;
-        case WindingProximityEffectLossesModels::ALBACH: j = "Albach"; break;
-        case WindingProximityEffectLossesModels::DOWELL: j = "Dowell"; break;
-        default: throw std::runtime_error("Unexpected value in enumeration \"WindingProximityEffectLossesModels\": " + std::to_string(static_cast<int>(x)));
+    case WindingProximityEffectLossesModels::ROSSMANITH: j = "Rossmanith"; break;
+    case WindingProximityEffectLossesModels::WANG:       j = "Wang";       break;
+    case WindingProximityEffectLossesModels::FERREIRA:   j = "Ferreira";   break;
+    case WindingProximityEffectLossesModels::LAMMERANER: j = "Lammeraner"; break;
+    case WindingProximityEffectLossesModels::ALBACH:     j = "Albach";     break;
+    case WindingProximityEffectLossesModels::DOWELL:     j = "Dowell";     break;
+    case WindingProximityEffectLossesModels::XI_NAN:     j = "XiNan";      break;
+    case WindingProximityEffectLossesModels::WOJDA:      j = "Wojda";      break;
+    case WindingProximityEffectLossesModels::SULLIVAN:   j = "Sullivan";   break;
+    case WindingProximityEffectLossesModels::BARTOLI:    j = "Bartoli";    break;
+    case WindingProximityEffectLossesModels::VANDELAC:   j = "Vandelac";   break;
+    default: throw std::runtime_error("Unexpected value in enumeration \"WindingProximityEffectLossesModels\": " + std::to_string(static_cast<int>(x)));
     }
 }
 
-inline void from_json(const json & j, WindingProximityEffectLossesModels & x) {
-    if (j == "Rossmanith" || j == "rossmanith" || j == "ROSSMANITH") x = WindingProximityEffectLossesModels::ROSSMANITH;
-    else if (j == "Wang" || j == "wang" || j == "WANG") x = WindingProximityEffectLossesModels::WANG;
-    else if (j == "Ferreira" || j == "ferreira" || j == "FERREIRA") x = WindingProximityEffectLossesModels::FERREIRA;
-    else if (j == "Lammeraner" || j == "lammeraner" || j == "LAMMERANER") x = WindingProximityEffectLossesModels::LAMMERANER;
-    else if (j == "Albach" || j == "albach" || j == "ALBACH") x = WindingProximityEffectLossesModels::ALBACH;
-    else if (j == "Dowell" || j == "dowell" || j == "DOWELL") x = WindingProximityEffectLossesModels::DOWELL;
-    else { throw std::runtime_error("Input JSON does not conform to WindingProximityEffectLossesModels schema: " + to_string(j)); }
-}
 
 void from_json(const json & j, StrayCapacitanceModels & x);
 void to_json(json & j, const StrayCapacitanceModels & x);
