@@ -2281,14 +2281,10 @@ namespace {
 
         painter.paint_core(magnetic);
         painter.paint_coil_sections(magnetic);
-
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
         settings.reset();
     }
 
@@ -2316,14 +2312,10 @@ namespace {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
-
-        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         REQUIRE(std::filesystem::exists(outFile));
-        #else
-            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
-        #endif
         settings.reset();
     }
 
