@@ -5124,4 +5124,97 @@ namespace {
         settings.reset();
     }
 
+    TEST_CASE("Test_Electric_Field_Compare_Both_Methods", "[support][painter][electric-field-painter][comparison][benchmark]") {
+        std::vector<int64_t> numberTurns = {10, 10};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::Wire> wires;
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 3")});
+        wires.push_back({find_wire_by_name("Round 0.80 - Grade 3")});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        // === Test LEGACY method ===
+        {
+            auto startLegacy = std::chrono::high_resolution_clock::now();
+            
+            auto outFile = outputFilePath;
+            outFile.append("Test_Electric_Field_Compare_Both_Methods_Legacy.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+
+            settings.set_painter_number_points_x(50);
+            settings.set_painter_number_points_y(100);
+            settings.set_painter_include_fringing(false);
+            settings.set_painter_logarithmic_scale(false);
+            
+            // LEGACY method: Use VIRIDIS palette (Purple -> Blue -> Green -> Yellow)
+            painter.paint_electric_field(inputs.get_operating_point(0), magnetic, 1, std::nullopt, ElectricFieldVisualizationModel::LEGACY, ColorPalette::VIRIDIS);
+
+            painter.paint_core(magnetic);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+
+            auto endLegacy = std::chrono::high_resolution_clock::now();
+            auto durationLegacy = std::chrono::duration_cast<std::chrono::milliseconds>(endLegacy - startLegacy);
+            
+            std::cout << "\n=== Electric Field Visualization Benchmark ===" << std::endl;
+            std::cout << "LEGACY method: " << durationLegacy.count() << " ms" << std::endl;
+            
+            REQUIRE(std::filesystem::exists(outFile));
+        }
+        settings.reset();
+
+        // === Test SDF_PHYSICS method ===
+        {
+            auto startSdf = std::chrono::high_resolution_clock::now();
+            
+            auto outFile = outputFilePath;
+            outFile.append("Test_Electric_Field_Compare_Both_Methods_SDF_Physics.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+
+            settings.set_painter_number_points_x(50);
+            settings.set_painter_number_points_y(100);
+            settings.set_painter_include_fringing(false);
+            settings.set_painter_logarithmic_scale(false);
+            // settings.set_electric_field_output_unit(ElectricFieldOutputUnit::VOLTS_PER_METER);
+            
+            // SDF_PHYSICS method: Use PLASMA palette (Dark Purple -> Magenta -> Yellow/White)
+            painter.paint_electric_field(inputs.get_operating_point(0), magnetic, 1, std::nullopt, ElectricFieldVisualizationModel::SDF_PHYSICS, ColorPalette::PLASMA);
+
+            painter.paint_core(magnetic);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+
+            auto endSdf = std::chrono::high_resolution_clock::now();
+            auto durationSdf = std::chrono::duration_cast<std::chrono::milliseconds>(endSdf - startSdf);
+            
+            std::cout << "SDF_PHYSICS method: " << durationSdf.count() << " ms" << std::endl;
+            
+            REQUIRE(std::filesystem::exists(outFile));
+        }
+        settings.reset();
+    }
+
 }  // namespace

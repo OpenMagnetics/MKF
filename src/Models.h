@@ -100,4 +100,9 @@ enum class StrayCapacitanceModels : int {
     MASSARINI
 };
 
+enum class ElectricFieldOutputUnit : int {
+    JOULES_PER_CUBIC_METER,  // J/m³ - Energy density (natural output of SDF_PHYSICS)
+    VOLTS_PER_METER          // V/m - Electric field magnitude (requires conversion)
+};
+
 } // namespace OpenMagnetics

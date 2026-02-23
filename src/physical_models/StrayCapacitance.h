@@ -93,7 +93,21 @@ class StrayCapacitance{
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
         StrayCapacitanceOutput calculate_capacitance(Coil coil);
-        static ScalarMatrixAtFrequency calculate_capacitance_matrix_between_windings(double energy, double voltageDrop, double relativeTurnsRatio);
+    
+    // Bipolar coordinate system for round-round energy density computation
+    struct BipolarParams {
+        double focalHalfDistance;
+        double tau1;
+        double tau2;
+        double cosAngle;
+        double sinAngle;
+        double midX, midY;
+    };
+    static BipolarParams compute_bipolar_params(const Turn& t1, const Turn& t2);
+    static double bipolar_tau_at_point(double lx, double ly, double a);
+    static double bipolar_energy_density_at_point(double px, double py, const BipolarParams& params, double voltageDrop, double epsilonEff);
+
+    static ScalarMatrixAtFrequency calculate_capacitance_matrix_between_windings(double energy, double voltageDrop, double relativeTurnsRatio);
         static std::pair<SixCapacitorNetworkPerWinding, TripoleCapacitancePerWinding> calculate_capacitance_models_between_windings(double energy, double voltageDrop, double relativeTurnsRatio);
         static std::vector<ScalarMatrixAtFrequency> calculate_maxwell_capacitance_matrix(Coil coil, std::map<std::string, std::map<std::string, double>> capacitanceAmongWindings);
 

@@ -110,6 +110,7 @@ class Settings
         WindingSkinEffectLossesModels _windingSkinEffectLossesModel;
         WindingProximityEffectLossesModels _windingProximityEffectLossesModel;
         StrayCapacitanceModels _strayCapacitanceModel;
+        ElectricFieldOutputUnit _electricFieldOutputUnit;
 
         bool _coilEnableUserWindingLossesModels = false;
 
@@ -383,6 +384,9 @@ class Settings
 
         StrayCapacitanceModels get_stray_capacitance_model() const;
         void set_stray_capacitance_model(StrayCapacitanceModels value);
+
+        ElectricFieldOutputUnit get_electric_field_output_unit() const;
+        void set_electric_field_output_unit(ElectricFieldOutputUnit value);
 
         bool get_coil_enable_user_winding_losses_models() const;
         void set_coil_enable_user_winding_losses_models(bool value);

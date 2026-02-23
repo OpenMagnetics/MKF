@@ -25,6 +25,12 @@ enum class ColorPalette {
     GRAYSCALE       // Black to white
 };
 
+enum class ElectricFieldVisualizationModel {
+    LEGACY,       // Original convex-hull area + band-proportion approach
+    SDF_PHYSICS   // SDF Voronoi decomposition + bipolar/plate energy density
+};
+
+
 class PainterInterface {
  private:
  protected:
@@ -261,7 +267,23 @@ class PainterInterface {
     };
 
     ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1);
-    Field calculate_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1);
+    Field calculate_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1,
+                                   ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY);
+    Field calculate_electric_field_sdf(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1);
+
+    // SDF primitives for turn shapes
+    static double sdf_circle(double px, double py, double cx, double cy, double radius);
+    static double sdf_box(double px, double py, double cx, double cy, double halfW, double halfH);
+    static double sdf_oriented_box(double px, double py, double cx, double cy,
+                                   double halfW, double halfH, double angle);
+    static double sdf_turn(double px, double py, const Turn& turn);
+
+    // Energy density models per shape combination
+    static double energy_density_bipolar(double px, double py, const Turn& t1, const Turn& t2, double voltageDrop, double epsilonEff);
+    static double energy_density_parallel_plate(double px, double py, const Turn& t1, const Turn& t2, double voltageDrop, double epsilonEff);
+    static double energy_density_angled_plates(double px, double py, const Turn& t1, const Turn& t2, double voltageDrop, double epsilonEff);
+    static double energy_density_round_rect(double px, double py, const Turn& roundTurn, const Turn& rectTurn, double voltageDrop, double epsilonEff);
+    static double compute_energy_density_at_pixel(double px, double py, const Turn& t1, const Turn& t2, double voltageDrop, double epsilonEff);
 
     CoatingInfo process_coating(double insulationThickness, InsulationWireCoating coating) {
         InsulationWireCoatingType insulationWireCoatingType = coating.get_type().value();
@@ -331,7 +353,7 @@ class PainterInterface {
 
  public:
     virtual void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt) = 0;
-    virtual void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt) = 0;
+    virtual void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS) = 0;
     virtual void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature) = 0;
     virtual std::string export_svg() = 0;
     virtual void export_png() = 0;
@@ -340,7 +362,7 @@ class PainterInterface {
     virtual void paint_coil_sections(Magnetic magnetic) = 0;
     virtual void paint_coil_layers(Magnetic magnetic) = 0;
     virtual void paint_wire(Wire wire) = 0;
-    virtual void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false) = 0;
+    virtual void paint_coil_turns(Magnetic magnetic) = 0;
     virtual void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0) = 0;
     virtual void paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature=defaults.ambientTemperature) = 0;
     virtual void paint_waveform(Waveform waveform) = 0;
@@ -373,8 +395,8 @@ class BasicPainter : public PainterInterface {
     void paint_toroidal_coil_sections(Magnetic magnetic);
     void paint_two_piece_set_coil_layers(Magnetic magnetic);
     void paint_toroidal_coil_layers(Magnetic magnetic);
-    void paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
-    void paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
+    void paint_two_piece_set_coil_turns(Magnetic magnetic);
+    void paint_toroidal_coil_turns(Magnetic magnetic);
     void paint_two_piece_set_margin(Magnetic magnetic);
     void paint_toroidal_margin(Magnetic magnetic);
 
@@ -388,7 +410,7 @@ class BasicPainter : public PainterInterface {
     std::string get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value);
     void paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label);
     void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField);
-    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField);
+    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS);
     void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature);
 
  public:
@@ -428,7 +450,7 @@ class BasicPainter : public PainterInterface {
     void paint_coil_sections(Magnetic magnetic);
     void paint_coil_layers(Magnetic magnetic);
     void paint_wire(Wire wire);
-    void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
+    void paint_coil_turns(Magnetic magnetic);
     void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false, ColorPalette palette = ColorPalette::BLUE_TO_RED, double ambientTemperature = 25.0);
     
     /**
@@ -546,8 +568,8 @@ class AdvancedPainter : public PainterInterface {
     void paint_round_wire(double xCoordinate, double yCoordinate, Wire wire);
     void paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire);
     void paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle=0, std::vector<double> center=std::vector<double>{});
-    void paint_two_piece_set_winding_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
-    void paint_toroidal_winding_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
+    void paint_two_piece_set_winding_turns(Magnetic magnetic);
+    void paint_toroidal_winding_turns(Magnetic magnetic);
     void paint_two_piece_set_margin(Magnetic magnetic);
     void paint_toroidal_margin(Magnetic magnetic);
     void calculate_extra_margin_for_toroidal_cores(Magnetic magnetic);
@@ -581,7 +603,7 @@ class AdvancedPainter : public PainterInterface {
     virtual ~AdvancedPainter() = default;
 
     void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
-    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt) {
+    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS) {
         throw std::runtime_error("Not implemented");
     }
     void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature) {
@@ -600,7 +622,7 @@ class AdvancedPainter : public PainterInterface {
     void paint_coil_layers(Magnetic magnetic);
 
     void paint_wire(Wire wire);
-    void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
+    void paint_coil_turns(Magnetic magnetic);
     void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0);
     void paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature=defaults.ambientTemperature);
 
@@ -635,7 +657,7 @@ class Painter{
     virtual ~Painter() = default;
 
     void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
-    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt);
+    void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS);
     void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature);
     static double get_pixel_proportion_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
     static double get_pixel_area_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
@@ -653,7 +675,7 @@ class Painter{
     void paint_coil_layers(Magnetic magnetic);
 
     void paint_wire(Wire wire); 
-    void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
+    void paint_coil_turns(Magnetic magnetic);
     void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0);
     void paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature=defaults.ambientTemperature);
 

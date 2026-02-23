@@ -26,6 +26,7 @@ namespace OpenMagnetics {
         _windingSkinEffectLossesModel = WindingSkinEffectLossesModels::DOWELL;
         _windingProximityEffectLossesModel = WindingProximityEffectLossesModels::FERREIRA;
         _strayCapacitanceModel = StrayCapacitanceModels::ALBACH;
+        _electricFieldOutputUnit = ElectricFieldOutputUnit::JOULES_PER_CUBIC_METER;
         _coilEnableUserWindingLossesModels = false;
         _coreAdviserMaximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
     }
@@ -132,6 +133,7 @@ namespace OpenMagnetics {
         _windingSkinEffectLossesModel = WindingSkinEffectLossesModels::DOWELL;
         _windingProximityEffectLossesModel = WindingProximityEffectLossesModels::FERREIRA;
         _strayCapacitanceModel = StrayCapacitanceModels::ALBACH;
+        _electricFieldOutputUnit = ElectricFieldOutputUnit::JOULES_PER_CUBIC_METER;
 
         _coilEnableUserWindingLossesModels = false;
     }
@@ -732,6 +734,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_stray_capacitance_model(StrayCapacitanceModels value) {
         _strayCapacitanceModel = value;
+    }
+
+    ElectricFieldOutputUnit Settings::get_electric_field_output_unit() const {
+        return _electricFieldOutputUnit;
+    }
+    void Settings::set_electric_field_output_unit(ElectricFieldOutputUnit value) {
+        _electricFieldOutputUnit = value;
     }
 
     bool Settings::get_coil_enable_user_winding_losses_models() const {

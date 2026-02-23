@@ -21,8 +21,11 @@ std::vector<SVG::Point> scale_points(std::vector<SVG::Point> points, double imag
 }
 
 std::vector<double> BasicPainter::get_image_size(Magnetic magnetic) {
-    auto core = magnetic.get_core();
+    auto& core = magnetic.get_mutable_core();
 
+    if (!core.get_processed_description()) {
+        core.process_data();
+    }
     auto processedDescription = core.get_processed_description().value();
     auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
     
@@ -556,7 +559,7 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
-void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
+void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
     auto constants = Constants();
     Coil coil = magnetic.get_coil();
     auto wirePerWinding = coil.get_wires();
@@ -578,15 +581,12 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMa
     auto layers = coil.get_layers_description().value();
 
     if (coilType == WiringTechnology::WOUND) {
-        // Only paint insulation layers and margin if not skipped
-        if (!skipMarginAndLayers) {
-            for (size_t i = 0; i < layers.size(); ++i){
-                if (layers[i].get_type() == ElectricalType::INSULATION) {
-                    paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
-                }
+        for (size_t i = 0; i < layers.size(); ++i){
+            if (layers[i].get_type() == ElectricalType::INSULATION) {
+                paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
             }
-            paint_two_piece_set_margin(magnetic);
         }
+        paint_two_piece_set_margin(magnetic);
     }
     else if (coilType == WiringTechnology::PRINTED){
         std::string styleClass = "fr4";
@@ -646,7 +646,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMa
     }
 }
 
-void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
+void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
     Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
@@ -711,31 +711,28 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginA
         }
     }
 
-    // Only paint insulation layers and margin if not skipped
-    if (!skipMarginAndLayers) {
-        auto layers = winding.get_layers_description().value();
+    auto layers = winding.get_layers_description().value();
 
-        for (size_t i = 0; i < layers.size(); ++i){
-            if (layers[i].get_type() == ElectricalType::INSULATION) {
+    for (size_t i = 0; i < layers.size(); ++i){
+        if (layers[i].get_type() == ElectricalType::INSULATION) {
 
-                double strokeWidth = layers[i].get_dimensions()[0];
-                double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
-                double angleProportion = layers[i].get_dimensions()[1] / 360;
-                std::string termination = angleProportion < 1? "butt" : "round";
+            double strokeWidth = layers[i].get_dimensions()[0];
+            double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
+            double angleProportion = layers[i].get_dimensions()[1] / 360;
+            std::string termination = angleProportion < 1? "butt" : "round";
 
-                std::string cssClassName = generate_random_string();
-                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
+            std::string cssClassName = generate_random_string();
+            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
+            paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
+
+            if (layers[i].get_additional_coordinates()) {
+                circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
                 paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
-
-                if (layers[i].get_additional_coordinates()) {
-                    circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
-                    paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
-                }
             }
         }
-
-        paint_toroidal_margin(magnetic);
     }
+
+    paint_toroidal_margin(magnetic);
     // _root.autoscale();
 }
 
@@ -1220,17 +1217,17 @@ void BasicPainter::paint_coil_layers(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
+void BasicPainter::paint_coil_turns(Magnetic magnetic) {
     Core core = magnetic.get_core();
     CoreShape shape = core.resolve_shape();
     auto windingWindows = core.get_winding_windows();
     _imageHeight = core.get_processed_description()->get_height();
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
-            return paint_toroidal_coil_turns(magnetic, skipMarginAndLayers);
+            return paint_toroidal_coil_turns(magnetic);
             break;
         default:
-            return paint_two_piece_set_coil_turns(magnetic, skipMarginAndLayers);
+            return paint_two_piece_set_coil_turns(magnetic);
             break;
     }
 }
@@ -1360,7 +1357,7 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
     }
 }
 
-void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField) {
+void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField, ElectricFieldVisualizationModel model, ColorPalette colorPalette) {
     set_image_size(magnetic);
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
@@ -1369,29 +1366,56 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     // settings.set_painter_number_points_x(4);
     // settings.set_painter_number_points_y(4);
     bool logarithmicScale = settings.get_painter_logarithmic_scale();
+    
+    // Get output unit setting
+    ElectricFieldOutputUnit outputUnit = settings.get_electric_field_output_unit();
+    
+    // For SDF_PHYSICS model, determine if we need to convert from J/m³ to V/m
+    // SDF_PHYSICS naturally outputs energy density (J/m³)
+    // LEGACY outputs values that were labeled as V/m (though the physics may not be accurate)
+    bool needsConversion = (model == ElectricFieldVisualizationModel::SDF_PHYSICS && 
+                            outputUnit == ElectricFieldOutputUnit::VOLTS_PER_METER);
+    
+    // Vacuum permittivity for conversion: |E| = sqrt(2*u/ε₀)
+    constexpr double epsilon0 = 8.854187817e-12;  // F/m
 
     Field field;
     if (inputField) {
         field = inputField.value();
     }
     else {
-        field = calculate_electric_field(operatingPoint, magnetic, harmonicIndex);
+        field = calculate_electric_field(operatingPoint, magnetic, harmonicIndex, model);
     }
 
     auto [pixelXDimension, pixelYDimension] = Painter::get_pixel_dimensions(magnetic);
 
     for (size_t i = 0; i < field.get_data().size(); ++i) {
         auto datum = field.get_data()[i];
+        double rawValue = datum.get_value();
+        
+        // Convert from J/m³ to V/m if needed
+        if (needsConversion && rawValue > 0) {
+            rawValue = std::sqrt(2.0 * rawValue / epsilon0);
+        }
 
         double value;
         if (logarithmicScale) {
-            value = log10(fabs(datum.get_value()));
+            value = log10(fabs(rawValue));
         }
         else {
-            value = datum.get_value();
+            value = rawValue;
         }
-        modules.push_back(value);
+        // Only add finite values
+        if (std::isfinite(value)) {
+            modules.push_back(value);
+        }
     }
+    
+    // Handle empty or invalid data
+    if (modules.empty()) {
+        modules.push_back(0.0);
+    }
+    
     std::sort(modules.begin(), modules.end());
     size_t index05 = static_cast<size_t>(0.02 * (modules.size() - 1));
     size_t index95 = static_cast<size_t>(0.98 * (modules.size() - 1));
@@ -1420,34 +1444,59 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
 
     auto windingWindow = magnetic.get_mutable_core().get_winding_window();
 
-    if (windingWindow.get_width()) {
+    if (windingWindow.get_width() && windingWindow.get_coordinates() && windingWindow.get_height()) {
+        auto coords = windingWindow.get_coordinates().value();
+        if (coords.size() >= 2) {
+            std::string cssClassName = generate_random_string();
 
-        std::string cssClassName = generate_random_string();
+            auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, minimumModule);
+            color = std::regex_replace(std::string(color), std::regex("0x"), "#");
+            _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color);
 
-        auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, minimumModule);
-        color = std::regex_replace(std::string(color), std::regex("0x"), "#");
-        _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color);
-
-        paint_rectangle(windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2, windingWindow.get_coordinates().value()[1], windingWindow.get_width().value(), windingWindow.get_height().value(), cssClassName);
+            paint_rectangle(coords[0] + windingWindow.get_width().value() / 2, coords[1], windingWindow.get_width().value(), windingWindow.get_height().value(), cssClassName);
+        }
     }
     else {
         throw NotImplementedException("Not implemented yet");
     }
 
+    // Determine label based on model and output unit setting
+    std::string unitLabel;
+    if (model == ElectricFieldVisualizationModel::SDF_PHYSICS) {
+        if (outputUnit == ElectricFieldOutputUnit::VOLTS_PER_METER) {
+            unitLabel = " V/m";
+        } else {
+            unitLabel = " J/m^3";
+        }
+    } else {
+        // LEGACY model - keep original V/m label for backward compatibility
+        unitLabel = " V/m";
+    }
+
     for (auto datum : field.get_data()) {
+        double rawValue = datum.get_value();
+        
+        // Convert from J/m³ to V/m if needed
+        if (needsConversion && rawValue > 0) {
+            rawValue = std::sqrt(2.0 * rawValue / epsilon0);
+        }
+        
         double value;
         if (logarithmicScale) {
-            value = log10(fabs(datum.get_value()));
+            value = log10(fabs(rawValue));
         }
         else {
-            value = datum.get_value();
+            value = rawValue;
         }
         auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
 
         std::stringstream stream;
         stream << std::scientific << std::setprecision(1) << value;
-        std::string label = stream.str() + " V/m";
-        paint_field_point(datum.get_point()[0], datum.get_point()[1], pixelXDimension, pixelYDimension, color, label);
+        std::string label = stream.str() + unitLabel;
+        auto& point = datum.get_point();
+        if (point.size() >= 2) {
+            paint_field_point(point[0], point[1], pixelXDimension, pixelYDimension, color, label);
+        }
     }
 }
 

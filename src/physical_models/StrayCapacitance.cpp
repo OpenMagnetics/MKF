@@ -1574,4 +1574,82 @@ double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil) {
     return capacitance;
 }
 
+
+// ==================== Bipolar Coordinate System for Round-Round Pairs ====================
+
+StrayCapacitance::BipolarParams StrayCapacitance::compute_bipolar_params(const Turn& t1, const Turn& t2) {
+    BipolarParams params;
+    auto& coords1 = t1.get_coordinates();
+    auto& coords2 = t2.get_coordinates();
+    if (coords1.size() < 2 || coords2.size() < 2) {
+        params.focalHalfDistance = 0; params.tau1 = 0; params.tau2 = 0;
+        params.cosAngle = 1; params.sinAngle = 0;
+        params.midX = 0; params.midY = 0;
+        return params;
+    }
+    double cx1 = coords1[0], cy1 = coords1[1];
+    double cx2 = coords2[0], cy2 = coords2[1];
+    double dx = cx2 - cx1, dy = cy2 - cy1;
+    double c = hypot(dx, dy);
+    params.midX = (cx1 + cx2) / 2.0;
+    params.midY = (cy1 + cy2) / 2.0;
+    if (c < 1e-15) {
+        params.focalHalfDistance = 0; params.tau1 = 0; params.tau2 = 0;
+        params.cosAngle = 1; params.sinAngle = 0;
+        return params;
+    }
+    params.cosAngle = dx / c;
+    params.sinAngle = dy / c;
+    if (!t1.get_dimensions() || !t2.get_dimensions() ||
+        t1.get_dimensions().value().empty() || t2.get_dimensions().value().empty()) {
+        params.focalHalfDistance = 0; params.tau1 = 0; params.tau2 = 0;
+        return params;
+    }
+    double r1 = t1.get_dimensions().value()[0] / 2.0;
+    double r2 = t2.get_dimensions().value()[0] / 2.0;
+    double r1mr2 = r1 - r2, r1pr2 = r1 + r2, c2 = c * c;
+    double term1 = c2 - r1mr2 * r1mr2;
+    double term2 = c2 - r1pr2 * r1pr2;
+    double a2 = term1 * term2 / (4.0 * c2);
+    if (a2 <= 0) {
+        params.focalHalfDistance = 0; params.tau1 = 0; params.tau2 = 0;
+        return params;
+    }
+    params.focalHalfDistance = sqrt(a2);
+    double coshTau1 = std::max(1.0, (c2 + r1 * r1 - r2 * r2) / (2.0 * r1 * c));
+    double coshTau2 = std::max(1.0, (c2 + r2 * r2 - r1 * r1) / (2.0 * r2 * c));
+    params.tau1 = -acosh(coshTau1);
+    params.tau2 =  acosh(coshTau2);
+    return params;
+}
+
+double StrayCapacitance::bipolar_tau_at_point(double lx, double ly, double a) {
+    if (a < 1e-15) return 0;
+    double dPlus2  = (lx + a) * (lx + a) + ly * ly;
+    double dMinus2 = (lx - a) * (lx - a) + ly * ly;
+    if (dPlus2 < 1e-30 || dMinus2 < 1e-30) return 0;
+    return 0.5 * log(dPlus2 / dMinus2);
+}
+
+double StrayCapacitance::bipolar_energy_density_at_point(
+    double px, double py, const BipolarParams& params,
+    double voltageDrop, double epsilonEff)
+{
+    double a = params.focalHalfDistance;
+    if (a < 1e-15) return 0;
+    double tauDiff = params.tau2 - params.tau1;
+    if (fabs(tauDiff) < 1e-15) return 0;
+    double lx =  params.cosAngle * (px - params.midX) + params.sinAngle * (py - params.midY);
+    double ly = -params.sinAngle * (px - params.midX) + params.cosAngle * (py - params.midY);
+    double tau = bipolar_tau_at_point(lx, ly, a);
+    double denomSigma = lx * lx + ly * ly - a * a;
+    double sigma = atan2(2.0 * a * ly, denomSigma);
+    double hDenom = cosh(tau) - cos(sigma);
+    if (fabs(hDenom) < 1e-15) return 0;
+    double h = a / hDenom;
+    double gradV2 = (voltageDrop * voltageDrop) / (tauDiff * tauDiff * h * h);
+    return 0.5 * epsilonEff * gradV2;
+}
+
+
 } // namespace OpenMagnetics
