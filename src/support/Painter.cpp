@@ -228,8 +228,8 @@ void Painter::paint_coil_layers(Magnetic magnetic) {
     _painter->paint_coil_layers(magnetic);
 }
 
-void Painter::paint_coil_turns(Magnetic magnetic) {
-    _painter->paint_coil_turns(magnetic);
+void Painter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
+    _painter->paint_coil_turns(magnetic, skipMarginAndLayers);
 }
 
 void Painter::paint_wire(Wire wire) {

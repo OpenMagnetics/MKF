@@ -556,7 +556,7 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
-void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
+void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     auto constants = Constants();
     Coil coil = magnetic.get_coil();
     auto wirePerWinding = coil.get_wires();
@@ -578,12 +578,15 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
     auto layers = coil.get_layers_description().value();
 
     if (coilType == WiringTechnology::WOUND) {
-        for (size_t i = 0; i < layers.size(); ++i){
-            if (layers[i].get_type() == ElectricalType::INSULATION) {
-                paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+        // Only paint insulation layers and margin if not skipped
+        if (!skipMarginAndLayers) {
+            for (size_t i = 0; i < layers.size(); ++i){
+                if (layers[i].get_type() == ElectricalType::INSULATION) {
+                    paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+                }
             }
+            paint_two_piece_set_margin(magnetic);
         }
-        paint_two_piece_set_margin(magnetic);
     }
     else if (coilType == WiringTechnology::PRINTED){
         std::string styleClass = "fr4";
@@ -643,7 +646,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
+void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
@@ -708,28 +711,31 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
         }
     }
 
-    auto layers = winding.get_layers_description().value();
+    // Only paint insulation layers and margin if not skipped
+    if (!skipMarginAndLayers) {
+        auto layers = winding.get_layers_description().value();
 
-    for (size_t i = 0; i < layers.size(); ++i){
-        if (layers[i].get_type() == ElectricalType::INSULATION) {
+        for (size_t i = 0; i < layers.size(); ++i){
+            if (layers[i].get_type() == ElectricalType::INSULATION) {
 
-            double strokeWidth = layers[i].get_dimensions()[0];
-            double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
-            double angleProportion = layers[i].get_dimensions()[1] / 360;
-            std::string termination = angleProportion < 1? "butt" : "round";
+                double strokeWidth = layers[i].get_dimensions()[0];
+                double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
+                double angleProportion = layers[i].get_dimensions()[1] / 360;
+                std::string termination = angleProportion < 1? "butt" : "round";
 
-            std::string cssClassName = generate_random_string();
-            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
-            paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
-
-            if (layers[i].get_additional_coordinates()) {
-                circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
+                std::string cssClassName = generate_random_string();
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
                 paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
+
+                if (layers[i].get_additional_coordinates()) {
+                    circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
+                    paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
+                }
             }
         }
-    }
 
-    paint_toroidal_margin(magnetic);
+        paint_toroidal_margin(magnetic);
+    }
     // _root.autoscale();
 }
 
@@ -1214,17 +1220,17 @@ void BasicPainter::paint_coil_layers(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_coil_turns(Magnetic magnetic) {
+void BasicPainter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Core core = magnetic.get_core();
     CoreShape shape = core.resolve_shape();
     auto windingWindows = core.get_winding_windows();
     _imageHeight = core.get_processed_description()->get_height();
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
-            return paint_toroidal_coil_turns(magnetic);
+            return paint_toroidal_coil_turns(magnetic, skipMarginAndLayers);
             break;
         default:
-            return paint_two_piece_set_coil_turns(magnetic);
+            return paint_two_piece_set_coil_turns(magnetic, skipMarginAndLayers);
             break;
     }
 }

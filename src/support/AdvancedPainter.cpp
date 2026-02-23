@@ -405,16 +405,16 @@ void AdvancedPainter::paint_coil_layers(Magnetic magnetic) {
     }
 }
 
-void AdvancedPainter::paint_coil_turns(Magnetic magnetic) {
+void AdvancedPainter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Core core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
-            return paint_toroidal_winding_turns(magnetic);
+            return paint_toroidal_winding_turns(magnetic, skipMarginAndLayers);
             break;
         default:
-            return paint_two_piece_set_winding_turns(magnetic);
+            return paint_two_piece_set_winding_turns(magnetic, skipMarginAndLayers);
             break;
     }
 }
@@ -1622,7 +1622,7 @@ void AdvancedPainter::paint_wire_with_current_density(Wire wire, SignalDescripto
     }
 }
 
-void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
+void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
@@ -1697,36 +1697,39 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
         }
     }
 
-    auto layers = winding.get_layers_description().value();
+    // Only paint insulation layers and margin if not skipped
+    if (!skipMarginAndLayers) {
+        auto layers = winding.get_layers_description().value();
 
-    for (size_t i = 0; i < layers.size(); ++i){
-        if (layers[i].get_type() == ElectricalType::INSULATION) {
+        for (size_t i = 0; i < layers.size(); ++i){
+            if (layers[i].get_type() == ElectricalType::INSULATION) {
 
-            std::vector<std::vector<double>> layerPoints = {};
-            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
-            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
-            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
-            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
+                std::vector<std::vector<double>> layerPoints = {};
+                layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
+                layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
+                layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
+                layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
 
 
-            std::vector<double> x, y;
-            for (auto& point : layerPoints) {
-                x.push_back(point[0] + _offsetForColorBar);
-                y.push_back(point[1]);
-            }
-            if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings.get_painter_color_copper()));
-            }
-            else if (!_addProportionForColorBar) {
-                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings.get_painter_color_insulation()));
+                std::vector<double> x, y;
+                for (auto& point : layerPoints) {
+                    x.push_back(point[0] + _offsetForColorBar);
+                    y.push_back(point[1]);
+                }
+                if (layers[i].get_type() == ElectricalType::CONDUCTION) {
+                    matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings.get_painter_color_copper()));
+                }
+                else if (!_addProportionForColorBar) {
+                    matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings.get_painter_color_insulation()));
+                }
             }
         }
-    }
 
-    paint_two_piece_set_margin(magnetic);
+        paint_two_piece_set_margin(magnetic);
+    }
 }
 
-void AdvancedPainter::paint_toroidal_winding_turns(Magnetic magnetic) {
+void AdvancedPainter::paint_toroidal_winding_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
@@ -1794,39 +1797,42 @@ void AdvancedPainter::paint_toroidal_winding_turns(Magnetic magnetic) {
         }
     }
 
-    auto layers = winding.get_layers_description().value();
+    // Only paint insulation layers and margin if not skipped
+    if (!skipMarginAndLayers) {
+        auto layers = winding.get_layers_description().value();
 
-    for (size_t i = 0; i < layers.size(); ++i){
-        if (layers[i].get_type() == ElectricalType::INSULATION) {
+        for (size_t i = 0; i < layers.size(); ++i){
+            if (layers[i].get_type() == ElectricalType::INSULATION) {
 
-            double strokeWidth = layers[i].get_dimensions()[0];
-            double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
-            double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
+                double strokeWidth = layers[i].get_dimensions()[0];
+                double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
+                double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
-            auto currentMapIndex = uint_to_hex(_currentMapIndex);
-            auto key = key_to_rgb_color(_currentMapIndex);
-            increment_current_map_index();
+                auto currentMapIndex = uint_to_hex(_currentMapIndex);
+                auto key = key_to_rgb_color(_currentMapIndex);
+                increment_current_map_index();
 
-            double angleProportion = layers[i].get_dimensions()[1] / 360;
-            std::string termination = angleProportion < 1? "butt" : "round";
+                double angleProportion = layers[i].get_dimensions()[1] / 360;
+                std::string termination = angleProportion < 1? "butt" : "round";
 
-            matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
-                                            R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-            _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), nullptr, 16));
-
-            if (layers[i].get_additional_coordinates()) {
-                circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
                 matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                 _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                 _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), nullptr, 16));
+
+                if (layers[i].get_additional_coordinates()) {
+                    circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
+                    matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                    _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
+                                                    R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
+                    _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_insulation(), nullptr, 16));
+                }
+
             }
-
         }
-    }
 
-    paint_toroidal_margin(magnetic);
+        paint_toroidal_margin(magnetic);
+    }
 }
 
 void AdvancedPainter::paint_waveform(Waveform waveform) {
