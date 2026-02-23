@@ -1443,34 +1443,35 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     auto magneticFieldMaximumColor = settings.get_painter_color_magnetic_field_maximum();
 
     auto windingWindow = magnetic.get_mutable_core().get_winding_window();
+    auto core = magnetic.get_core();
+    auto family = core.get_shape_family();
 
-    if (windingWindow.get_width() && windingWindow.get_coordinates() && windingWindow.get_height()) {
-        auto coords = windingWindow.get_coordinates().value();
-        if (coords.size() >= 2) {
-            std::string cssClassName = generate_random_string();
+    // Paint winding window background for rectangular cores
+    // For toroidal cores, skip the winding window background painting
+    if (family != MAS::CoreShapeFamily::T) {
+        if (windingWindow.get_width() && windingWindow.get_coordinates() && windingWindow.get_height()) {
+            auto coords = windingWindow.get_coordinates().value();
+            if (coords.size() >= 2) {
+                std::string cssClassName = generate_random_string();
 
-            auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, minimumModule);
-            color = std::regex_replace(std::string(color), std::regex("0x"), "#");
-            _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color);
+                auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, minimumModule);
+                color = std::regex_replace(std::string(color), std::regex("0x"), "#");
+                _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color);
 
-            paint_rectangle(coords[0] + windingWindow.get_width().value() / 2, coords[1], windingWindow.get_width().value(), windingWindow.get_height().value(), cssClassName);
+                paint_rectangle(coords[0] + windingWindow.get_width().value() / 2, coords[1], windingWindow.get_width().value(), windingWindow.get_height().value(), cssClassName);
+            }
         }
     }
-    else {
-        throw NotImplementedException("Not implemented yet");
-    }
+    // For toroidal cores, we skip the winding window background painting
+    // The field points will still be painted below
 
-    // Determine label based on model and output unit setting
+    // Determine label based on output unit
+    // Both LEGACY and SDF_PHYSICS now output J/m³ (volumetric energy density)
     std::string unitLabel;
-    if (model == ElectricFieldVisualizationModel::SDF_PHYSICS) {
-        if (outputUnit == ElectricFieldOutputUnit::VOLTS_PER_METER) {
-            unitLabel = " V/m";
-        } else {
-            unitLabel = " J/m^3";
-        }
-    } else {
-        // LEGACY model - keep original V/m label for backward compatibility
+    if (outputUnit == ElectricFieldOutputUnit::VOLTS_PER_METER) {
         unitLabel = " V/m";
+    } else {
+        unitLabel = " J/m^3";
     }
 
     for (auto datum : field.get_data()) {
@@ -1624,6 +1625,40 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
                 std::string cssClassName = generate_random_string();
                 _root.style("." + cssClassName).set_attr("fill", color);
                 paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, cssClassName, shapes, 0, {0, 0}, label);
+            }
+        }
+
+        // Paint additional coordinates if present (e.g., outer half of toroidal turns)
+        if (turns[i].get_additional_coordinates()) {
+            auto additionalCoords = turns[i].get_additional_coordinates().value();
+            std::string additionalLabel = label + " (outer)";
+
+            for (size_t addIdx = 0; addIdx < additionalCoords.size(); ++addIdx) {
+                double xCoord = additionalCoords[addIdx][0];
+                double yCoord = additionalCoords[addIdx][1];
+
+                if (turns[i].get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+                    double diameter = turns[i].get_dimensions().value()[0];
+                    std::string cssClassName = generate_random_string();
+                    _root.style("." + cssClassName).set_attr("fill", color);
+                    paint_circle(xCoord, yCoord, diameter / 2, cssClassName, shapes, 360, 0, {0, 0}, additionalLabel);
+                } else {
+                    if (turns[i].get_dimensions().value()[0] && turns[i].get_dimensions().value()[1]) {
+                        double conductingWidth = turns[i].get_dimensions().value()[0];
+                        double conductingHeight = turns[i].get_dimensions().value()[1];
+
+                        // Get rotation angle if available (for rectangular wires in toroidal cores)
+                        double turnAngle = 0;
+                        std::vector<double> turnCenter = {xCoord, -yCoord};
+                        if (turns[i].get_rotation()) {
+                            turnAngle = turns[i].get_rotation().value();
+                        }
+
+                        std::string cssClassName = generate_random_string();
+                        _root.style("." + cssClassName).set_attr("fill", color);
+                        paint_rectangle(xCoord, yCoord, conductingWidth, conductingHeight, cssClassName, shapes, turnAngle, turnCenter, additionalLabel);
+                    }
+                }
             }
         }
     }

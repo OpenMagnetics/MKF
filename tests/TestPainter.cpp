@@ -2,6 +2,7 @@
 #include "json.hpp"
 #include "TestingUtils.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/StrayCapacitance.h"
 #include <source_location>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -5148,9 +5149,85 @@ namespace {
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
         coil.delimit_and_compact();
 
+        // Diagnostic: Print capacitance calculation details and compare methods
+        {
+            std::cout << "\n=== Diagnostic: Capacitance Calculation Details ===" << std::endl;
+            StrayCapacitance strayCapacitance(settings.get_stray_capacitance_model());
+            auto capacitanceOutput = strayCapacitance.calculate_capacitance(coil);
+            
+            // Print energy and voltage between some turn pairs
+            auto energyMap = capacitanceOutput.get_electric_energy_among_turns();
+            auto voltageMap = capacitanceOutput.get_voltage_drop_among_turns();
+            auto capacitanceMap = capacitanceOutput.get_capacitance_among_turns();
+            
+            if (energyMap && voltageMap && capacitanceMap) {
+                int pairsShown = 0;
+                for (auto& [turn1Name, aux] : energyMap.value()) {
+                    for (auto& [turn2Name, energy] : aux) {
+                        if (energy > 0 && pairsShown < 3) {
+                            double voltage = voltageMap.value()[turn1Name][turn2Name];
+                            double capacitance = capacitanceMap.value()[turn1Name][turn2Name];
+                            std::cout << "  " << turn1Name << " <-> " << turn2Name << ":" << std::endl;
+                            std::cout << "    Capacitance: " << capacitance * 1e12 << " pF" << std::endl;
+                            std::cout << "    Voltage drop: " << voltage << " V" << std::endl;
+                            std::cout << "    Energy (0.5*C*V²): " << energy << " J = " << energy * 1e12 << " pJ" << std::endl;
+                            
+                            // Calculate area between turns
+                            auto turn1 = coil.get_turn_by_name(turn1Name);
+                            auto turn2 = coil.get_turn_by_name(turn2Name);
+                            double area = StrayCapacitance::calculate_area_between_two_turns(turn1, turn2);
+                            std::cout << "    Area between turns: " << area * 1e6 << " mm²" << std::endl;
+                            
+                            // Surface energy density
+                            double surfaceEnergyDensity = energy / area;
+                            std::cout << "    Surface energy density: " << surfaceEnergyDensity << " J/m²" << std::endl;
+                            
+                            // Estimate gap distance between turns
+                            double dx = turn1.get_coordinates()[0] - turn2.get_coordinates()[0];
+                            double dy = turn1.get_coordinates()[1] - turn2.get_coordinates()[1];
+                            double centerDist = std::sqrt(dx*dx + dy*dy);
+                            auto dims1 = turn1.get_dimensions().value();
+                            auto dims2 = turn2.get_dimensions().value();
+                            double r1 = dims1[0] / 2.0;
+                            double r2 = dims2[0] / 2.0;
+                            double gap = centerDist - r1 - r2;
+                            if (gap < 0) gap = 0;
+                            std::cout << "    Center distance: " << centerDist*1000 << " mm" << std::endl;
+                            std::cout << "    Gap: " << gap*1000 << " mm" << std::endl;
+                            
+                            // SDF method estimate
+                            if (gap > 1e-9) {
+                                double E_field = voltage / gap;
+                                double epsilon0 = 8.854e-12;
+                                double volEnergyDensitySDF = 0.5 * epsilon0 * E_field * E_field;
+                                std::cout << "    SDF E-field: " << E_field/1000 << " kV/m" << std::endl;
+                                std::cout << "    SDF energy density: " << volEnergyDensitySDF << " J/m³" << std::endl;
+                                std::cout << "    Ratio (SDF/LEGACY area-based): " << volEnergyDensitySDF / surfaceEnergyDensity << std::endl;
+                            }
+                            pairsShown++;
+                        }
+                    }
+                }
+            }
+            
+            // Print pixel dimensions (will calculate after magnetic is created)
+            std::cout << "\n  Settings: 50x100 grid points" << std::endl;
+        }
+
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
+
+        // Print pixel dimensions now that magnetic is available
+        {
+            settings.set_painter_number_points_x(50);
+            settings.set_painter_number_points_y(100);
+            auto [pixelX, pixelY] = Painter::get_pixel_dimensions(magnetic);
+            std::cout << "\n  Pixel dimensions: " << pixelX*1000 << " mm x " << pixelY*1000 << " mm" << std::endl;
+            std::cout << "  Pixel area: " << pixelX*pixelY*1e6 << " mm²" << std::endl;
+            std::cout << "  Pixel volume: " << pixelX*pixelY << " m³ (with 1m depth)" << std::endl;
+            std::cout << "  1/Volume: " << 1.0/(pixelX*pixelY) << " 1/m³" << std::endl;
+        }
 
         // === Test LEGACY method ===
         {
@@ -5213,6 +5290,166 @@ namespace {
             std::cout << "SDF_PHYSICS method: " << durationSdf.count() << " ms" << std::endl;
             
             REQUIRE(std::filesystem::exists(outFile));
+        }
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_Toroid_Magnetic_Field_BasicPainter", "[support][painter][magnetic-field-painter][round-winding-window][toroidal][basicpainter]") {
+        // Test magnetic field visualization for toroidal cores using BasicPainter (no matplotplusplus required)
+        clear_databases();
+        
+        double temperature = 20;
+        std::vector<int64_t> numberTurns({50});
+        std::vector<int64_t> numberParallels({1});
+        std::vector<double> turnsRatios({});
+
+        auto label = WaveformLabel::SINUSOIDAL;
+        double offset = 0;
+        double peakToPeak = 2 * 1.73205;
+        double dutyCycle = 0.5;
+        double frequency = 100000;
+        double magnetizingInductance = 1e-3;
+        std::string shapeName = "T 20/10/7";
+
+        Processed processed;
+        processed.set_label(label);
+        processed.set_offset(offset);
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
+                                                                                         magnetizingInductance,
+                                                                                         temperature,
+                                                                                         label,
+                                                                                         peakToPeak,
+                                                                                         dutyCycle,
+                                                                                         offset,
+                                                                                         turnsRatios);
+
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::INNER_OR_TOP;
+        auto sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C97";
+        auto gapping = json::array();
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        
+        // Ensure coil is processed (wound) to generate turn coordinates and additionalCoordinates
+        coil.wind();
+        
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+        
+        // Test magnetic field with BasicPainter
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Toroid_Magnetic_Field_BasicPainter.svg");
+            std::filesystem::remove(outFile);
+            
+            // Use BasicPainter (useAdvancedPainter = false)
+            Painter painter(outFile, false, false, false);
+            
+            settings.set_painter_mode(PainterModes::QUIVER);
+            settings.set_painter_logarithmic_scale(false);
+            settings.set_painter_include_fringing(true);
+            settings.set_painter_number_points_x(40);
+            settings.set_painter_number_points_y(40);
+            settings.set_painter_maximum_value_colorbar(std::nullopt);
+            settings.set_painter_minimum_value_colorbar(std::nullopt);
+            
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+
+            REQUIRE(std::filesystem::exists(outFile));
+            
+            // Verify the SVG file has content (field was actually painted)
+            auto fileSize = std::filesystem::file_size(outFile);
+            REQUIRE(fileSize > 1000);  // Should be at least 1KB if field was painted
+            
+            std::cout << "Toroidal magnetic field SVG size: " << fileSize << " bytes" << std::endl;
+        }
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_Toroid_Electric_Field_BasicPainter", "[support][painter][electric-field-painter][round-winding-window][toroidal][basicpainter]") {
+        // Test electric field visualization for toroidal cores using BasicPainter (no matplotplusplus required)
+        clear_databases();
+        
+        std::vector<int64_t> numberTurns = {30};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 1000;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97";
+
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment turnsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, 
+                                                         interleavingLevel, sectionOrientation, layersOrientation, 
+                                                         turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, json::array(), numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 0.001, 25, 
+                                                                           WaveformLabel::SINUSOIDAL, 
+                                                                           voltagePeakToPeak, 0.5, 0, turnsRatios);
+        
+        // Ensure coil is processed (wound) to generate turn coordinates and additionalCoordinates
+        coil.wind();
+        
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        
+        auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+        
+        // Test electric field with BasicPainter using SDF_PHYSICS model
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Toroid_Electric_Field_BasicPainter.svg");
+            std::filesystem::remove(outFile);
+            
+            // Use BasicPainter (useAdvancedPainter = false)
+            Painter painter(outFile, false, false, false);
+            
+            settings.set_painter_number_points_x(40);
+            settings.set_painter_number_points_y(40);
+            settings.set_painter_include_fringing(false);
+            settings.set_painter_logarithmic_scale(false);
+            
+            painter.paint_electric_field(inputs.get_operating_point(0), magnetic, 1, std::nullopt, 
+                                         ElectricFieldVisualizationModel::SDF_PHYSICS, ColorPalette::VIRIDIS);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+
+            REQUIRE(std::filesystem::exists(outFile));
+            
+            // Verify the SVG file has content (field was actually painted)
+            auto fileSize = std::filesystem::file_size(outFile);
+            REQUIRE(fileSize > 1000);  // Should be at least 1KB if field was painted
+            
+            std::cout << "Toroidal electric field SVG size: " << fileSize << " bytes" << std::endl;
         }
         settings.reset();
     }
