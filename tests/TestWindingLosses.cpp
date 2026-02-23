@@ -1794,7 +1794,12 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
         WindingProximityEffectLossesModels::FERREIRA,
         WindingProximityEffectLossesModels::LAMMERANER,
         WindingProximityEffectLossesModels::ALBACH,
-        WindingProximityEffectLossesModels::DOWELL
+        WindingProximityEffectLossesModels::DOWELL,
+        WindingProximityEffectLossesModels::XI_NAN,
+        WindingProximityEffectLossesModels::WOJDA,
+        WindingProximityEffectLossesModels::SULLIVAN,
+        WindingProximityEffectLossesModels::BARTOLI,
+        WindingProximityEffectLossesModels::VANDELAC
     };
     
     // Structure for tracking results

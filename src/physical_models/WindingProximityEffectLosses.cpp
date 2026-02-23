@@ -50,8 +50,23 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
     else if (modelName == WindingProximityEffectLossesModels::DOWELL) {
         return std::make_shared<WindingProximityEffectLossesDowellModel>();
     }
+    else if (modelName == WindingProximityEffectLossesModels::XI_NAN) {
+        return std::make_shared<WindingProximityEffectLossesNanModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::WOJDA) {
+        return std::make_shared<WindingProximityEffectLossesWojdaModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::SULLIVAN) {
+        return std::make_shared<WindingProximityEffectLossesSullivanModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::BARTOLI) {
+        return std::make_shared<WindingProximityEffectLossesBartoliModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::VANDELAC) {
+        return std::make_shared<WindingProximityEffectLossesVandelacModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER, DOWELL}");
+        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER, DOWELL, XI_NAN, WOJDA, SULLIVAN, BARTOLI, VANDELAC}");
 }
 
 std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride) {

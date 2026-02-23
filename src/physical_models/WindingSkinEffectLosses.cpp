@@ -83,7 +83,6 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLossesModel::fact
 std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model(WireType wireType, std::optional<WindingSkinEffectLossesModels> modelOverride) {
     // If an explicit model override is provided, use it
     if (modelOverride.has_value()) {
-        std::cerr << "[WindingSkinEffectLosses] Using model override: " << magic_enum::enum_name(modelOverride.value()) << std::endl;
         return WindingSkinEffectLossesModel::factory(modelOverride.value());
     }
 
