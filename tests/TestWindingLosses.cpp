@@ -2158,3 +2158,301 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     
     settings.reset();
 }
+
+TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model][winding-losses][ultimate-comparison][all-models]") {
+    // Ultimate comprehensive test: Find the best combination of ALL 4 model types:
+    // 1. H-field model (5 options)
+    // 2. H-field fringing model (3 options)
+    // 3. Skin effect model (12 options)
+    // 4. Proximity effect model (11 options)
+    // Total: 5 × 3 × 12 × 11 = 1,980 combinations per test case
+    
+    std::cout << "\n======================================================================================" << std::endl;
+    std::cout << "ULTIMATE MODEL COMBINATION COMPARISON - ALL 4 MODEL TYPES" << std::endl;
+    std::cout << "======================================================================================" << std::endl;
+    std::cout << "Testing: H-field × Fringing × Skin × Proximity models" << std::endl;
+    std::cout << "Total combinations per test: 1,980" << std::endl;
+    std::cout << "======================================================================================\n" << std::endl;
+    
+    // Define all model types
+    std::vector<std::pair<MagneticFieldStrengthModels, std::string>> hFieldModels = {
+        {MagneticFieldStrengthModels::BINNS_LAWRENSON, "Binns_Lawrenson"},
+        {MagneticFieldStrengthModels::LAMMERANER, "Lammeraner"},
+        {MagneticFieldStrengthModels::DOWELL, "Dowell_HField"},
+        {MagneticFieldStrengthModels::WANG, "Wang_HField"},
+        {MagneticFieldStrengthModels::ALBACH, "Albach_HField"}
+    };
+    
+    std::vector<std::pair<MagneticFieldStrengthFringingEffectModels, std::string>> fringingModels = {
+        {MagneticFieldStrengthFringingEffectModels::ROSHEN, "Roshen"},
+        {MagneticFieldStrengthFringingEffectModels::ALBACH, "Albach_Fringing"},
+        {MagneticFieldStrengthFringingEffectModels::SULLIVAN, "Sullivan"}
+    };
+    
+    std::vector<WindingSkinEffectLossesModels> skinModels = {
+        WindingSkinEffectLossesModels::DOWELL,
+        WindingSkinEffectLossesModels::WOJDA,
+        WindingSkinEffectLossesModels::ALBACH,
+        WindingSkinEffectLossesModels::PAYNE,
+        WindingSkinEffectLossesModels::LOTFI,
+        WindingSkinEffectLossesModels::XI_NAN,
+        WindingSkinEffectLossesModels::KAZIMIERCZUK,
+        WindingSkinEffectLossesModels::KUTKUT,
+        WindingSkinEffectLossesModels::FERREIRA,
+        WindingSkinEffectLossesModels::DIMITRAKAKIS,
+        WindingSkinEffectLossesModels::WANG,
+        WindingSkinEffectLossesModels::HOLGUIN,
+        WindingSkinEffectLossesModels::PERRY
+    };
+    
+    std::vector<WindingProximityEffectLossesModels> proximityModels = {
+        WindingProximityEffectLossesModels::ROSSMANITH,
+        WindingProximityEffectLossesModels::WANG,
+        WindingProximityEffectLossesModels::FERREIRA,
+        WindingProximityEffectLossesModels::LAMMERANER,
+        WindingProximityEffectLossesModels::ALBACH,
+        WindingProximityEffectLossesModels::DOWELL,
+        WindingProximityEffectLossesModels::XI_NAN,
+        WindingProximityEffectLossesModels::WOJDA,
+        WindingProximityEffectLossesModels::SULLIVAN,
+        WindingProximityEffectLossesModels::BARTOLI,
+        WindingProximityEffectLossesModels::VANDELAC
+    };
+    
+    // Helper to convert enum to string
+    auto enumToString = [](auto enumValue) -> std::string {
+        nlohmann::json j;
+        to_json(j, enumValue);
+        return j.get<std::string>();
+    };
+    
+    // Structure for tracking results
+    struct ModelResult {
+        std::string hFieldModelName;
+        std::string fringingModelName;
+        std::string skinModelName;
+        std::string proximityModelName;
+        std::string combinedName;
+        std::string wireType;
+        double totalError;
+        int validCount;
+        int crashCount;
+        double maxError;
+    };
+    std::vector<ModelResult> allResults;
+    
+    // Get test configs - use one representative test per wire type for speed
+    auto allConfigs = TestWindingLossesModelComparison::getAllTestConfigs();
+    
+    // Select one test per wire type
+    std::map<std::string, TestWindingLossesModelComparison::TestConfig> selectedConfigs;
+    for (const auto& [name, config] : allConfigs) {
+        std::string wireType = WindingLossesTestData::wireTypeToString(config.wireType);
+        if (selectedConfigs.find(wireType) == selectedConfigs.end()) {
+            selectedConfigs[wireType] = config;
+            std::cout << "Selected test for " << wireType << ": " << name << std::endl;
+        }
+    }
+    
+    std::cout << "\nTesting " << selectedConfigs.size() << " wire types...\n" << std::endl;
+    
+    int totalCombinations = hFieldModels.size() * fringingModels.size() * 
+                           skinModels.size() * proximityModels.size();
+    int currentCombo = 0;
+    
+    // Test all combinations
+    for (const auto& [hFieldModel, hFieldName] : hFieldModels) {
+        for (const auto& [fringingModel, fringingName] : fringingModels) {
+            for (const auto& skinModel : skinModels) {
+                std::string skinName = enumToString(skinModel);
+                for (const auto& proximityModel : proximityModels) {
+                    std::string proximityName = enumToString(proximityModel);
+                    
+                    currentCombo++;
+                    if (currentCombo % 100 == 1) {
+                        std::cout << "[" << currentCombo << "/" << totalCombinations 
+                                  << "] Testing: " << hFieldName << "+" << fringingName 
+                                  << "+" << skinName << "+" << proximityName << std::endl;
+                    }
+                    
+                    // Test this combination on all wire types
+                    for (const auto& [wireType, config] : selectedConfigs) {
+                        settings.reset();
+                        clear_databases();
+                        
+                        // Set all 4 model types
+                        settings.set_magnetic_field_strength_model(hFieldModel);
+                        settings.set_magnetic_field_strength_fringing_effect_model(fringingModel);
+                        settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
+                        settings.set_magnetic_field_include_fringing(config.includeFringing);
+                        settings.set_coil_enable_user_winding_losses_models(true);
+                        settings.set_winding_skin_effect_losses_model(skinModel);
+                        settings.set_winding_proximity_effect_losses_model(proximityModel);
+                        
+                        double totalError = 0;
+                        int validCount = 0;
+                        int crashCount = 0;
+                        double maxError = 0;
+                        
+                        // Test at just 2 frequencies for speed
+                        std::vector<std::pair<double, double>> testPoints;
+                        if (config.expectedValues.size() >= 2) {
+                            testPoints.push_back(config.expectedValues[0]);
+                            testPoints.push_back(config.expectedValues[config.expectedValues.size()-1]);
+                        } else {
+                            testPoints = config.expectedValues;
+                        }
+                        
+                        for (const auto& [frequency, expectedValue] : testPoints) {
+                            try {
+                                auto magnetic = config.createMagnetic();
+                                auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+                                    frequency, config.magnetizingInductance, config.temperature,
+                                    config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+                                
+                                WindingLosses windingLosses;
+                                auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature);
+                                double actual = ohmicLosses.get_winding_losses();
+                                double errorPct = 100.0 * std::abs(actual - expectedValue) / expectedValue;
+                                
+                                totalError += errorPct;
+                                validCount++;
+                                if (errorPct > maxError) maxError = errorPct;
+                            } catch (const std::exception& e) {
+                                crashCount++;
+                            }
+                        }
+                        
+                        // Record result
+                        if (validCount > 0 || crashCount > 0) {
+                            ModelResult result;
+                            result.hFieldModelName = hFieldName;
+                            result.fringingModelName = fringingName;
+                            result.skinModelName = skinName;
+                            result.proximityModelName = proximityName;
+                            result.combinedName = hFieldName + "+" + fringingName + "+" + skinName + "+" + proximityName;
+                            result.wireType = wireType;
+                            result.totalError = totalError;
+                            result.validCount = validCount;
+                            result.crashCount = crashCount;
+                            result.maxError = maxError;
+                            allResults.push_back(result);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    std::cout << "\n======================================================================================" << std::endl;
+    std::cout << "RESULTS BY WIRE TYPE - BEST COMBINATIONS" << std::endl;
+    std::cout << "======================================================================================\n" << std::endl;
+    
+    // Group results by wire type and find best for each
+    std::map<std::string, std::vector<ModelResult>> resultsByWireType;
+    for (const auto& result : allResults) {
+        resultsByWireType[result.wireType].push_back(result);
+    }
+    
+    for (const auto& [wireType, results] : resultsByWireType) {
+        std::cout << "\n--- " << wireType << " WIRE ---" << std::endl;
+        std::cout << std::setw(60) << "H+Fringing+Skin+Proximity" << " | ";
+        std::cout << std::setw(10) << "Avg Error" << " | ";
+        std::cout << std::setw(8) << "Tests" << " | ";
+        std::cout << std::setw(8) << "Crashes" << std::endl;
+        std::cout << std::string(100, '-') << std::endl;
+        
+        // Sort by average error
+        std::vector<ModelResult> sortedResults = results;
+        std::sort(sortedResults.begin(), sortedResults.end(), [](const auto& a, const auto& b) {
+            double avgA = a.validCount > 0 ? a.totalError / a.validCount : 999999;
+            double avgB = b.validCount > 0 ? b.totalError / b.validCount : 999999;
+            return avgA < avgB;
+        });
+        
+        // Show top 5 for this wire type
+        int count = 0;
+        for (const auto& result : sortedResults) {
+            if (count++ >= 5) break;
+            double avgError = result.validCount > 0 ? result.totalError / result.validCount : 0;
+            std::cout << std::setw(60) << result.combinedName << " | ";
+            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avgError << "%" << " | ";
+            std::cout << std::setw(8) << result.validCount << " | ";
+            std::cout << std::setw(8) << result.crashCount << std::endl;
+        }
+    }
+    
+    // Overall best across all wire types
+    std::cout << "\n======================================================================================" << std::endl;
+    std::cout << "OVERALL BEST COMBINATIONS (All Wire Types Combined)" << std::endl;
+    std::cout << "======================================================================================\n" << std::endl;
+    
+    // Aggregate results by combination across all wire types
+    std::map<std::string, ModelResult> aggregatedResults;
+    for (const auto& result : allResults) {
+        auto& agg = aggregatedResults[result.combinedName];
+        agg.combinedName = result.combinedName;
+        agg.hFieldModelName = result.hFieldModelName;
+        agg.fringingModelName = result.fringingModelName;
+        agg.skinModelName = result.skinModelName;
+        agg.proximityModelName = result.proximityModelName;
+        agg.totalError += result.totalError;
+        agg.validCount += result.validCount;
+        agg.crashCount += result.crashCount;
+        if (result.maxError > agg.maxError) agg.maxError = result.maxError;
+    }
+    
+    // Convert to vector and sort
+    std::vector<ModelResult> overallResults;
+    for (const auto& [name, result] : aggregatedResults) {
+        overallResults.push_back(result);
+    }
+    std::sort(overallResults.begin(), overallResults.end(), [](const auto& a, const auto& b) {
+        double avgA = a.validCount > 0 ? a.totalError / a.validCount : 999999;
+        double avgB = b.validCount > 0 ? b.totalError / b.validCount : 999999;
+        return avgA < avgB;
+    });
+    
+    std::cout << std::setw(5) << "Rank" << " | ";
+    std::cout << std::setw(60) << "H+Fringing+Skin+Proximity" << " | ";
+    std::cout << std::setw(12) << "Avg Error" << " | ";
+    std::cout << std::setw(10) << "Max Error" << " | ";
+    std::cout << std::setw(8) << "Tests" << " | ";
+    std::cout << std::setw(8) << "Crashes" << std::endl;
+    std::cout << std::string(120, '-') << std::endl;
+    
+    int rank = 1;
+    for (const auto& result : overallResults) {
+        if (rank > 20) break;
+        double avgError = result.validCount > 0 ? result.totalError / result.validCount : 0;
+        std::cout << std::setw(5) << rank++ << " | ";
+        std::cout << std::setw(60) << result.combinedName << " | ";
+        std::cout << std::setw(10) << std::fixed << std::setprecision(1) << avgError << "%" << " | ";
+        std::cout << std::setw(10) << std::fixed << std::setprecision(1) << result.maxError << "%" << " | ";
+        std::cout << std::setw(8) << result.validCount << " | ";
+        std::cout << std::setw(8) << result.crashCount << std::endl;
+    }
+    
+    // Best by wire type summary
+    std::cout << "\n======================================================================================" << std::endl;
+    std::cout << "SUMMARY: BEST COMBINATION BY WIRE TYPE" << std::endl;
+    std::cout << "======================================================================================\n" << std::endl;
+    
+    for (const auto& [wireType, results] : resultsByWireType) {
+        if (!results.empty()) {
+            const auto& best = *std::min_element(results.begin(), results.end(), [](const auto& a, const auto& b) {
+                double avgA = a.validCount > 0 ? a.totalError / a.validCount : 999999;
+                double avgB = b.validCount > 0 ? b.totalError / b.validCount : 999999;
+                return avgA < avgB;
+            });
+            double avgError = best.validCount > 0 ? best.totalError / best.validCount : 0;
+            std::cout << std::setw(15) << wireType << ": " << best.combinedName << std::endl;
+            std::cout << std::setw(15) << "" << "  Error: " << std::fixed << std::setprecision(1) 
+                      << avgError << "%, Tests: " << best.validCount << ", Crashes: " << best.crashCount << "\n" << std::endl;
+        }
+    }
+    
+    std::cout << "\n======================================================================================\n" << std::endl;
+    
+    settings.reset();
+}
