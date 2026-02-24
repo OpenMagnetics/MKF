@@ -28,50 +28,87 @@ static std::vector<std::vector<double>> get_all_turn_coordinates(const Turn& tur
     return coords;
 }
 
-std::vector<std::pair<Turn, size_t>> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription) {
+// Helper function to compute the global minimum surface-to-surface gap between any two turns
+static double compute_global_minimum_gap(const std::vector<Turn>& turnsDescription) {
+    double globalMinGap = DBL_MAX;
+    
+    for (size_t i = 0; i < turnsDescription.size(); ++i) {
+        auto coords1 = get_all_turn_coordinates(turnsDescription[i]);
+        double maxDim1 = std::max(turnsDescription[i].get_dimensions().value()[0], 
+                                   turnsDescription[i].get_dimensions().value()[1]);
+        
+        for (size_t j = i + 1; j < turnsDescription.size(); ++j) {
+            auto coords2 = get_all_turn_coordinates(turnsDescription[j]);
+            double maxDim2 = std::max(turnsDescription[j].get_dimensions().value()[0], 
+                                       turnsDescription[j].get_dimensions().value()[1]);
+            
+            // Find minimum gap between any coordinate pair
+            for (const auto& c1 : coords1) {
+                for (const auto& c2 : coords2) {
+                    double centerDist = hypot(c1[0] - c2[0], c1[1] - c2[1]);
+                    double surfaceGap = centerDist - maxDim1 / 2 - maxDim2 / 2;
+                    // Only consider positive gaps (non-overlapping turns)
+                    if (surfaceGap >= 0 && surfaceGap < globalMinGap) {
+                        globalMinGap = surfaceGap;
+                    }
+                }
+            }
+        }
+    }
+    
+    // If no valid gap found (all turns overlap), return a small default
+    // This ensures at least one turn pair will be found
+    if (globalMinGap == DBL_MAX) {
+        return 1e-6;
+    }
+    
+    return globalMinGap;
+}
+
+std::vector<std::pair<Turn, size_t>> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription, double globalMinimumGap) {
     std::vector<std::pair<Turn, size_t>> surroundingTurns;
     auto factor = Defaults().overlappingFactorSurroundingTurns;
-    
+
+    auto dx1 = currentTurn.get_dimensions().value()[0];
+    auto dy1 = currentTurn.get_dimensions().value()[1];
+
     // Get all coordinate positions for the current turn (including additional_coordinates for toroidal)
     auto currentCoords = get_all_turn_coordinates(currentTurn);
-    
+
     for (size_t turnIndex = 0; turnIndex < turnsDescription.size(); ++turnIndex) {
         auto potentiallySurroundingTurn = turnsDescription[turnIndex];
-        
+
         // Skip if this is the same turn as currentTurn
-        // Compare by coordinates since turns might be copied
         if (potentiallySurroundingTurn.get_coordinates()[0] == currentTurn.get_coordinates()[0] &&
             potentiallySurroundingTurn.get_coordinates()[1] == currentTurn.get_coordinates()[1]) {
             continue;
         }
-        
-        auto dx1 = currentTurn.get_dimensions().value()[0];
-        auto dy1 = currentTurn.get_dimensions().value()[1];
+
         auto dx2 = potentiallySurroundingTurn.get_dimensions().value()[0];
         auto dy2 = potentiallySurroundingTurn.get_dimensions().value()[1];
 
         double minimumDimension = std::min(std::max(dx1, dy1), std::max(dx2, dy2));
         double maximumDim1 = std::max(dx1, dy1);
         double maximumDim2 = std::max(dx2, dy2);
-        
+
         // Get all coordinate positions for the potentially surrounding turn
         auto potentialCoords = get_all_turn_coordinates(potentiallySurroundingTurn);
-        
-        // Find minimum distance across all coordinate combinations
+
+        // Find minimum distance across all coordinate combinations for threshold check
         double minDistance = DBL_MAX;
         double bestX1 = 0, bestY1 = 0, bestX2 = 0, bestY2 = 0;
         bool foundValidPair = false;
-        
+
         for (const auto& c1 : currentCoords) {
             for (const auto& c2 : potentialCoords) {
                 double x1 = c1[0], y1 = c1[1];
                 double x2 = c2[0], y2 = c2[1];
-                
+
                 // Skip if same position
                 if (x1 == x2 && y1 == y2) {
                     continue;
                 }
-                
+
                 double distance = hypot(x2 - x1, y2 - y1) - maximumDim1 / 2 - maximumDim2 / 2;
                 if (distance < minDistance) {
                     minDistance = distance;
@@ -81,38 +118,41 @@ std::vector<std::pair<Turn, size_t>> StrayCapacitance::get_surrounding_turns(Tur
                 }
             }
         }
-        
+
         // Skip if no valid coordinate pair found
         if (!foundValidPair) {
             continue;
         }
-        
-        // Use minimum distance for the distance check
-        double distance = minDistance;
 
-        // For toroidal cores, the gap between turns can be larger than traditional windings
-        // Use a more permissive threshold based on the average turn dimension
-        double distanceThreshold = minimumDimension * 5;
-        if (distance > distanceThreshold) {
+        // Dual threshold logic:
+        // threshold1: 1x minimumDimension (wire diameter) - for tightly wound coils
+        // threshold2: 1.5x globalMinimumGap - adaptive based on actual geometry
+        // Use the maximum of the two thresholds to ensure we capture adjacent turns
+        // while not including too many distant turns
+        double threshold1 = minimumDimension;  // 1x wire diameter
+        double threshold2 = (globalMinimumGap > 0) ? globalMinimumGap * 1.5 : 0;
+        double distanceThreshold = std::max(threshold1, threshold2);
+        
+        if (minDistance > distanceThreshold) {
             continue;
         }
 
         double maximumDimensionOf12 = (maximumDim1 + maximumDim2) / 2;
-        
+
         // Use the closest coordinate pair for the "turn between" check
         double x1 = bestX1, y1 = bestY1;
         double x2 = bestX2, y2 = bestY2;
-        
+
         bool thereIsTurnBetween12 = false;
         for (auto potentiallyCollidingTurn : turnsDescription) {
             auto dx0 = potentiallyCollidingTurn.get_dimensions().value()[0];
             auto dy0 = potentiallyCollidingTurn.get_dimensions().value()[1];
-            
+
             // Check all coordinates of the potentially colliding turn
             auto collidingCoords = get_all_turn_coordinates(potentiallyCollidingTurn);
             for (const auto& c0 : collidingCoords) {
                 double x0 = c0[0], y0 = c0[1];
-                
+
                 if ((x1 == x0 && y1 == y0) || (x2 == x0 && y2 == y0)) {
                     continue;
                 }
@@ -750,18 +790,32 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
     auto coords1 = get_all_turn_coordinates(firstTurn);
     auto coords2 = get_all_turn_coordinates(secondTurn);
     
-    double minDistance = DBL_MAX;
+    double sumDistance = 0;
+    int validDistancesCount = 0;
     for (const auto& c1 : coords1) {
         for (const auto& c2 : coords2) {
+            // Skip if same position (same turn)
+            if (c1[0] == c2[0] && c1[1] == c2[1]) {
+                continue;
+            }
             double dist = hypot(c1[0] - c2[0], c1[1] - c2[1]);
             dist -= outerDiameterFirstWire / 2 + outerDiameterSecondWire / 2;
-            if (dist < minDistance) {
-                minDistance = dist;
-            }
+            sumDistance += dist;
+            validDistancesCount++;
         }
     }
     
-    double distanceBetweenTurns = minDistance;
+    double distanceBetweenTurns;
+    if (validDistancesCount > 0) {
+        distanceBetweenTurns = sumDistance / validDistancesCount;
+    } else {
+        // Fallback to single coordinate calculation
+        double x1 = firstTurn.get_coordinates()[0];
+        double y1 = firstTurn.get_coordinates()[1];
+        double x2 = secondTurn.get_coordinates()[0];
+        double y2 = secondTurn.get_coordinates()[1];
+        distanceBetweenTurns = hypot(x2 - x1, y2 - y1) - outerDiameterFirstWire / 2 - outerDiameterSecondWire / 2;
+    }
     distanceBetweenTurns = roundFloat(distanceBetweenTurns, 6);
     
     double distanceThroughLayers = 0;
@@ -1065,6 +1119,16 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
     // β: Gap geometry parameter
     double beta = 1.0 / zeta * (1 + distanceThroughLayersAndAir / (2 * effectiveRelativePermittivity * (conductingRadius + wireCoatingThickness)));
     
+    // Handle edge case where beta is too close to 1 - use parallel plate approximation
+    // When beta <= 1, sqrt(beta^2 - 1) returns NaN
+    if (beta <= 1.001) {
+        // Use parallel plate approximation as fallback
+        double totalDistance = wireCoatingThickness + distanceThroughLayersAndAir;
+        double epsilonEff = get_effective_relative_permittivity(wireCoatingThickness, relativePermittivityWireCoating, distanceThroughLayersAndAir, relativePermittivityInsulationLayers);
+        double projectedWidth = conductingRadius * 2;  // Projected width of round wire
+        return vacuumPermittivity * epsilonEff * projectedWidth * averageTurnLength / totalDistance;
+    }
+    
     // V: Arctangent auxiliary function
     double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1)));
     
@@ -1152,6 +1216,16 @@ double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns
     else {
         // Gap is pure air
         beta = 1.0 / alpha * (1 + distanceThroughAir / (2 * vacuumPermittivity * conductingRadius));
+    }
+    
+    // Handle edge case where beta is too close to 1 - use parallel plate approximation
+    // When beta <= 1, sqrt(beta^2 - 1) returns NaN
+    if (beta <= 1.001) {
+        // Use parallel plate approximation as fallback
+        double totalDistance = wireCoatingThickness + distanceThroughLayers + distanceThroughAir;
+        double epsilonEff = get_effective_relative_permittivity(wireCoatingThickness, relativePermittivityWireCoating, distanceThroughLayers + distanceThroughAir, relativePermittivityInsulationLayers);
+        double projectedWidth = conductingRadius * 2;  // Projected width of round wire
+        return vacuumPermittivity * epsilonEff * projectedWidth * averageTurnLength / totalDistance;
     }
     
     // V: Auxiliary function (arctangent approximation of elliptic integral) - Eq. (5)
@@ -1247,12 +1321,15 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
     auto turns = coil.get_turns_description().value();
     auto wirePerWinding = coil.get_wires();
 
+    // Compute global minimum gap once for all turns
+    double globalMinimumGap = compute_global_minimum_gap(turns);
+
     std::set<std::pair<size_t, size_t>> turnsCombinations;
 
     for (size_t turnIndex = 0; turnIndex <  turns.size(); ++turnIndex) {
         auto turnWindingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
         auto turnWire = wirePerWinding[turnWindingIndex];
-        auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turns[turnIndex], turns);
+        auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turns[turnIndex], turns, globalMinimumGap);
 
         for (auto [surroundingTurn, surroundingTurnIndex] : surroundingTurns) {
             auto key = std::make_pair(turnIndex, surroundingTurnIndex);
@@ -1514,12 +1591,35 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
         // for (size_t secondTurnIndex = firstTurnIndex + 1; secondTurnIndex < turns.size(); ++secondTurnIndex) {
             auto secondTurnName = turns[secondTurnIndex].get_name();
             auto turnsKey = std::make_pair(firstTurnIndex, secondTurnIndex);
-            electricEnergyAmongTurns[firstTurnName][secondTurnName] = electricEnergyBetweenTurnsMap[turnsKey];
-            // electricEnergyAmongTurns[secondTurnName][firstTurnName] = electricEnergyBetweenTurnsMap[turnsKey];
-            voltageDropAmongTurns[firstTurnName][secondTurnName] = voltageDropBetweenTurnsMap[turnsKey];
-            // voltageDropAmongTurns[secondTurnName][firstTurnName] = -voltageDropBetweenTurnsMap[turnsKey];
-            capacitanceAmongTurnsOutput[firstTurnName][secondTurnName] = capacitanceAmongTurns[turnsKey];
-            // capacitanceAmongTurnsOutput[secondTurnName][firstTurnName] = capacitanceAmongTurns[turnsKey];
+            auto inverseTurnsKey = std::make_pair(secondTurnIndex, firstTurnIndex);
+            
+            // Electric energy - check both key directions
+            if (electricEnergyBetweenTurnsMap.contains(turnsKey)) {
+                electricEnergyAmongTurns[firstTurnName][secondTurnName] = electricEnergyBetweenTurnsMap[turnsKey];
+            } else if (electricEnergyBetweenTurnsMap.contains(inverseTurnsKey)) {
+                electricEnergyAmongTurns[firstTurnName][secondTurnName] = electricEnergyBetweenTurnsMap[inverseTurnsKey];
+            } else {
+                electricEnergyAmongTurns[firstTurnName][secondTurnName] = 0;
+            }
+            
+            // Voltage drop - check both key directions (with sign flip for inverse)
+            if (voltageDropBetweenTurnsMap.contains(turnsKey)) {
+                voltageDropAmongTurns[firstTurnName][secondTurnName] = voltageDropBetweenTurnsMap[turnsKey];
+            } else if (voltageDropBetweenTurnsMap.contains(inverseTurnsKey)) {
+                // For inverse key, negate the voltage drop (V_ab = -V_ba)
+                voltageDropAmongTurns[firstTurnName][secondTurnName] = -voltageDropBetweenTurnsMap[inverseTurnsKey];
+            } else {
+                voltageDropAmongTurns[firstTurnName][secondTurnName] = 0;
+            }
+            
+            // Capacitance - check both key directions (capacitance is symmetric)
+            if (capacitanceAmongTurns.contains(turnsKey)) {
+                capacitanceAmongTurnsOutput[firstTurnName][secondTurnName] = capacitanceAmongTurns[turnsKey];
+            } else if (capacitanceAmongTurns.contains(inverseTurnsKey)) {
+                capacitanceAmongTurnsOutput[firstTurnName][secondTurnName] = capacitanceAmongTurns[inverseTurnsKey];
+            } else {
+                capacitanceAmongTurnsOutput[firstTurnName][secondTurnName] = 0;
+            }
         }
     }
 

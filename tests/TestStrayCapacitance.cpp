@@ -1341,6 +1341,17 @@ TEST_CASE("Calculate capacitance for toroidal core", "[physical-model][stray-cap
 
     // Check that capacitance among turns is not empty
     auto capacitanceAmongTurns = result.get_capacitance_among_turns();
+    std::cout << "\nCapacitance among turns count: " << capacitanceAmongTurns->size() << std::endl;
+    
+    // Print some capacitance values between turns
+    int count = 0;
+    for (auto [key, innerMap] : capacitanceAmongTurns.value()) {
+        for (auto [key2, capacitance] : innerMap) {
+            if (count++ < 20) {
+                std::cout << "  " << key << " <-> " << key2 << ": " << capacitance << " F" << std::endl;
+            }
+        }
+    }
 
     // For a toroidal core with 10 turns, we should have multiple turn pairs
     // If the capacitance matrix is 0, it means get_surrounding_turns is not finding neighbors
@@ -1360,4 +1371,302 @@ TEST_CASE("Calculate capacitance for toroidal core", "[physical-model][stray-cap
     }
 
     CHECK(hasNonZeroCapacitance);
+}
+
+TEST_CASE("Investigate missing energy between Tertiary and Secondary turns", "[physical-model][stray-capacitance][bug][debug]") {
+    auto testDataPath = get_test_data_path(std::source_location::current(), "bug_capacitance_error_4.json");
+    std::cout << "\n=== Investigating missing energy from: " << testDataPath << " ===" << std::endl;
+    
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    
+    std::string jsonStr((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    
+    auto masJson = nlohmann::json::parse(jsonStr);
+    MAS::Mas mas;
+    MAS::from_json(masJson, mas);
+    auto magnetic = mas.get_mutable_magnetic();
+    auto coil = magnetic.get_mutable_coil();
+    
+    std::cout << "\nCoil info:" << std::endl;
+    std::cout << "  Number of windings: " << coil.get_functional_description().size() << std::endl;
+    for (const auto& winding : coil.get_functional_description()) {
+        std::cout << "    - " << winding.get_name() << ": " << winding.get_number_turns() << " turns" << std::endl;
+    }
+    
+    // Get turns description
+    auto turns = coil.get_turns_description().value();
+    std::cout << "\nTotal turns: " << turns.size() << std::endl;
+    
+    // Find specific turns
+    int tertiaryTurn0Idx = -1;
+    int secondaryTurn2Idx = -1;
+    
+    for (size_t i = 0; i < turns.size(); ++i) {
+        const auto& turn = turns[i];
+        std::cout << "Turn " << i << ": " << turn.get_name() 
+                  << " at (" << turn.get_coordinates()[0] << ", " << turn.get_coordinates()[1] << ")"
+                  << " winding: " << turn.get_winding() << std::endl;
+        
+        if (turn.get_winding() == "Tertiary" && turn.get_name().find("turn 0") != std::string::npos) {
+            tertiaryTurn0Idx = i;
+        }
+        if (turn.get_winding() == "secondary" && turn.get_name().find("turn 2") != std::string::npos) {
+            secondaryTurn2Idx = i;
+        }
+    }
+    
+    std::cout << "\nTertiary turn 0 index: " << tertiaryTurn0Idx << std::endl;
+    std::cout << "Secondary turn 2 index: " << secondaryTurn2Idx << std::endl;
+    
+    if (tertiaryTurn0Idx >= 0 && secondaryTurn2Idx >= 0) {
+        const auto& turn1 = turns[tertiaryTurn0Idx];
+        const auto& turn2 = turns[secondaryTurn2Idx];
+        
+        double x1 = turn1.get_coordinates()[0];
+        double y1 = turn1.get_coordinates()[1];
+        double x2 = turn2.get_coordinates()[0];
+        double y2 = turn2.get_coordinates()[1];
+        
+        double dx1 = turn1.get_dimensions().value()[0];
+        double dy1 = turn1.get_dimensions().value()[1];
+        double dx2 = turn2.get_dimensions().value()[0];
+        double dy2 = turn2.get_dimensions().value()[1];
+        
+        double maxDim1 = std::max(dx1, dy1);
+        double maxDim2 = std::max(dx2, dy2);
+        double minDimension = std::min(maxDim1, maxDim2);
+        
+        double centerDist = hypot(x2 - x1, y2 - y1);
+        double surfaceGap = centerDist - maxDim1 / 2 - maxDim2 / 2;
+        
+        std::cout << "\nDistance analysis between Tertiary turn 0 and Secondary turn 2:" << std::endl;
+        std::cout << "  Center-to-center distance: " << centerDist << " m" << std::endl;
+        std::cout << "  Surface-to-surface gap: " << surfaceGap << " m" << std::endl;
+        std::cout << "  Minimum dimension (wire diameter): " << minDimension << " m" << std::endl;
+        std::cout << "  Gap / minDimension ratio: " << surfaceGap / minDimension << "x" << std::endl;
+        std::cout << "  Is gap < 1x minDimension? " << (surfaceGap < minDimension ? "YES" : "NO") << std::endl;
+    }
+    
+    // Now calculate capacitance and check energies
+    StrayCapacitance strayCapacitance;
+    auto output = strayCapacitance.calculate_capacitance(coil);
+    
+    // Find turn names first (needed for multiple checks)
+    std::string tertiaryTurn0Name;
+    std::string secondaryTurn2Name;
+    for (const auto& turn : turns) {
+        if (turn.get_winding() == "Tertiary" && turn.get_name().find("turn 0") != std::string::npos) {
+            tertiaryTurn0Name = turn.get_name();
+        }
+        if (turn.get_winding() == "secondary" && turn.get_name().find("turn 2") != std::string::npos) {
+            secondaryTurn2Name = turn.get_name();
+        }
+    }
+    
+    auto energyMap = output.get_electric_energy_among_turns();
+    if (energyMap) {
+        std::cout << "\n=== Energy between turns ===" << std::endl;
+        
+        std::cout << "Looking for energy between:" << std::endl;
+        std::cout << "  " << tertiaryTurn0Name << std::endl;
+        std::cout << "  " << secondaryTurn2Name << std::endl;
+        
+        auto it1 = energyMap->find(tertiaryTurn0Name);
+        if (it1 != energyMap->end()) {
+            auto it2 = it1->second.find(secondaryTurn2Name);
+            if (it2 != it1->second.end()) {
+                std::cout << "\nEnergy found: " << it2->second << " J" << std::endl;
+            } else {
+                std::cout << "\n*** NO ENERGY FOUND between these turns! ***" << std::endl;
+            }
+        } else {
+            std::cout << "\n*** Tertiary turn 0 not found in energy map! ***" << std::endl;
+        }
+        
+        // Print all energies for Tertiary turn 0
+        std::cout << "\nAll energies for Tertiary parallel 0 turn 0:" << std::endl;
+        if (it1 != energyMap->end()) {
+            for (const auto& [otherTurn, energy] : it1->second) {
+                std::cout << "  -> " << otherTurn << ": " << energy << " J" << std::endl;
+            }
+        }
+        
+        // Also check capacitance
+        auto capacitanceMap = output.get_capacitance_among_turns();
+        if (capacitanceMap) {
+            std::cout << "\nCapacitance for Tertiary parallel 0 turn 0:" << std::endl;
+            auto itCap = capacitanceMap->find(tertiaryTurn0Name);
+            if (itCap != capacitanceMap->end()) {
+                for (const auto& [otherTurn, cap] : itCap->second) {
+                    std::cout << "  -> " << otherTurn << ": " << cap << " F" << std::endl;
+                }
+            }
+        }
+    }
+    
+    // Check voltage per turn
+    auto voltagePerTurn = output.get_voltage_per_turn();
+    if (voltagePerTurn) {
+        std::cout << "\n=== Voltage per turn ===" << std::endl;
+        for (size_t i = 0; i < turns.size() && i < voltagePerTurn->size(); ++i) {
+            std::cout << "  " << turns[i].get_name() << ": " << (*voltagePerTurn)[i] << " V" << std::endl;
+        }
+    }
+    
+    // Check voltage drops
+    auto voltageDropMap = output.get_voltage_drop_among_turns();
+    if (voltageDropMap) {
+        std::cout << "\n=== Voltage drops for Tertiary parallel 0 turn 0 ===" << std::endl;
+        auto itVolt = voltageDropMap->find(tertiaryTurn0Name);
+        if (itVolt != voltageDropMap->end()) {
+            bool foundNonZero = false;
+            for (const auto& [otherTurn, voltage] : itVolt->second) {
+                std::cout << "  -> " << otherTurn << ": " << voltage << " V" << std::endl;
+                if (voltage != 0) foundNonZero = true;
+            }
+            if (!foundNonZero) {
+                std::cout << "  (All voltage drops are zero!)" << std::endl;
+            }
+        } else {
+            std::cout << "  Tertiary turn 0 not found in voltage drop map!" << std::endl;
+        }
+    }
+    
+    // Check surrounding turns
+    std::cout << "\n=== Surrounding turns analysis ===" << std::endl;
+    if (tertiaryTurn0Idx >= 0) {
+        auto surrounding = StrayCapacitance::get_surrounding_turns(turns[tertiaryTurn0Idx], turns, -1.0);
+        std::cout << "Tertiary turn 0 has " << surrounding.size() << " surrounding turns:" << std::endl;
+        for (const auto& [surroundingTurn, idx] : surrounding) {
+            std::cout << "  - " << surroundingTurn.get_name() << " (index " << idx << ")" << std::endl;
+        }
+    }
+    
+    // Check if turns are in the same or different windings
+    std::cout << "\n=== Winding analysis ===" << std::endl;
+    if (tertiaryTurn0Idx >= 0 && secondaryTurn2Idx >= 0) {
+        std::cout << "Tertiary turn 0 winding: " << turns[tertiaryTurn0Idx].get_winding() << std::endl;
+        std::cout << "Secondary turn 2 winding: " << turns[secondaryTurn2Idx].get_winding() << std::endl;
+        std::cout << "Are they in the same winding? " 
+                  << (turns[tertiaryTurn0Idx].get_winding() == turns[secondaryTurn2Idx].get_winding() ? "YES" : "NO") 
+                  << std::endl;
+    }
+    
+    REQUIRE(true);
+}
+
+TEST_CASE("Debug primary-primary intrawinding capacitance", "[physical-model][stray-capacitance][debug][intrawinding]") {
+    auto testDataPath = get_test_data_path(std::source_location::current(), "bug_capacitance_error_4.json");
+    std::cout << "\n=== Debug primary-primary intrawinding capacitance ===" << std::endl;
+    
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    
+    std::string jsonStr((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    
+    auto masJson = nlohmann::json::parse(jsonStr);
+    MAS::Mas mas;
+    MAS::from_json(masJson, mas);
+    auto magnetic = mas.get_mutable_magnetic();
+    auto coil = magnetic.get_mutable_coil();
+    
+    auto turns = coil.get_turns_description().value();
+    
+    // Find primary turns 0 and 1 (should be adjacent in layer 0)
+    const auto& turn0 = turns[0];  // primary parallel 0 turn 0
+    const auto& turn1 = turns[1];  // primary parallel 0 turn 1
+    
+    std::cout << "\n=== Primary turn 0 and 1 analysis ===" << std::endl;
+    std::cout << "Turn 0: " << turn0.get_name() << " at (" << turn0.get_coordinates()[0] << ", " << turn0.get_coordinates()[1] << ")" << std::endl;
+    std::cout << "Turn 1: " << turn1.get_name() << " at (" << turn1.get_coordinates()[0] << ", " << turn1.get_coordinates()[1] << ")" << std::endl;
+    
+    double x0 = turn0.get_coordinates()[0];
+    double y0 = turn0.get_coordinates()[1];
+    double x1 = turn1.get_coordinates()[0];
+    double y1 = turn1.get_coordinates()[1];
+    
+    double dx0 = turn0.get_dimensions().value()[0];
+    double dy0 = turn0.get_dimensions().value()[1];
+    double dx1 = turn1.get_dimensions().value()[0];
+    double dy1 = turn1.get_dimensions().value()[1];
+    
+    double maxDim0 = std::max(dx0, dy0);
+    double maxDim1 = std::max(dx1, dy1);
+    double minDimension = std::min(maxDim0, maxDim1);
+    
+    double centerDist = hypot(x1 - x0, y1 - y0);
+    double surfaceGap = centerDist - maxDim0 / 2 - maxDim1 / 2;
+    
+    std::cout << "\nGeometry analysis:" << std::endl;
+    std::cout << "  Wire diameter: " << maxDim0 << " m (" << maxDim0 * 1000 << " mm)" << std::endl;
+    std::cout << "  Center-to-center distance: " << centerDist << " m (" << centerDist * 1000 << " mm)" << std::endl;
+    std::cout << "  Surface-to-surface gap: " << surfaceGap << " m (" << surfaceGap * 1000 << " mm)" << std::endl;
+    std::cout << "  Gap / wire_diameter ratio: " << surfaceGap / minDimension << "x" << std::endl;
+    std::cout << "  Is gap < 1x wire diameter? " << (surfaceGap < minDimension ? "YES" : "NO") << std::endl;
+    
+    // Check surrounding turns for turn 0
+    std::cout << "\n=== Surrounding turns for primary turn 0 ===" << std::endl;
+    auto surroundingForTurn0 = StrayCapacitance::get_surrounding_turns(turn0, turns, -1.0);
+    std::cout << "Found " << surroundingForTurn0.size() << " surrounding turns:" << std::endl;
+    for (const auto& [surroundingTurn, idx] : surroundingForTurn0) {
+        std::cout << "  - " << surroundingTurn.get_name() << " (index " << idx << ", winding: " << surroundingTurn.get_winding() << ")" << std::endl;
+    }
+    
+    // Check if turn 1 is in the surrounding turns
+    bool foundTurn1 = false;
+    for (const auto& [surroundingTurn, idx] : surroundingForTurn0) {
+        if (idx == 1) {
+            foundTurn1 = true;
+            break;
+        }
+    }
+    std::cout << "\nIs turn 1 found as surrounding? " << (foundTurn1 ? "YES" : "NO") << std::endl;
+    
+    // Calculate capacitance and check
+    StrayCapacitance strayCapacitance;
+    auto output = strayCapacitance.calculate_capacitance(coil);
+    
+    auto capacitanceAmongWindings = output.get_capacitance_among_windings();
+    if (capacitanceAmongWindings) {
+        std::cout << "\n=== Capacitance among windings ===" << std::endl;
+        for (const auto& [winding1, inner] : *capacitanceAmongWindings) {
+            for (const auto& [winding2, cap] : inner) {
+                std::cout << "  " << winding1 << " <-> " << winding2 << ": " << cap << " F (" << cap * 1e12 << " pF)" << std::endl;
+            }
+        }
+    }
+    
+    // Check capacitance between primary turn 0 and turn 1
+    auto capacitanceMap = output.get_capacitance_among_turns();
+    if (capacitanceMap) {
+        std::cout << "\n=== Capacitance between primary turns ===" << std::endl;
+        auto it = capacitanceMap->find(turn0.get_name());
+        if (it != capacitanceMap->end()) {
+            auto it2 = it->second.find(turn1.get_name());
+            if (it2 != it->second.end()) {
+                std::cout << "  " << turn0.get_name() << " <-> " << turn1.get_name() << ": " << it2->second << " F" << std::endl;
+            } else {
+                std::cout << "  *** Turn 1 NOT FOUND in capacitance map for turn 0! ***" << std::endl;
+            }
+        }
+    }
+    
+    // Output full JSON for debugging
+    nlohmann::json result;
+    to_json(result, output);
+    std::cout << "\n=== Full JSON output (capacitanceAmongWindings only) ===" << std::endl;
+    if (result.contains("capacitanceAmongWindings")) {
+        std::cout << result["capacitanceAmongWindings"].dump(2) << std::endl;
+    }
+    
+    // Check Maxwell capacitance matrix
+    std::cout << "\n=== Maxwell Capacitance Matrix ===" << std::endl;
+    if (result.contains("maxwellCapacitanceMatrix")) {
+        std::cout << result["maxwellCapacitanceMatrix"].dump(2) << std::endl;
+    }
+    
+    REQUIRE(true);
 }
