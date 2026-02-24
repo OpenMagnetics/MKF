@@ -4791,12 +4791,45 @@ bool Coil::wind_toroidal_additional_turns() {
             double currentBaseRadialHeightForLayers = currentBaseRadialHeight + turnsInSection[0].get_dimensions().value()[0] / 2;
 
             auto layersThisSection = get_layers_by_section(section.get_name());
-            bool areLayersTaped = layersThisSection.size() > 1;
-            for (size_t layerIndex = 0; layerIndex < layersThisSection.size() - 1; ++layerIndex) {
-                if (layersThisSection[layerIndex].get_type() == ElectricalType::CONDUCTION && layersThisSection[layerIndex + 1].get_type() == ElectricalType::CONDUCTION) {
-                    areLayersTaped = false;
+            // Check if there are at least 2 conduction layers with NO real insulation between them
+            // Real insulation = thickness > MIN_INSULATION_THICKNESS
+            const double MIN_INSULATION_THICKNESS = 1e-9;
+            bool areLayersTaped = true;
+            
+            // Find all conduction layer indices
+            std::vector<size_t> conductionLayerIndices;
+            for (size_t i = 0; i < layersThisSection.size(); ++i) {
+                if (layersThisSection[i].get_type() == ElectricalType::CONDUCTION) {
+                    conductionLayerIndices.push_back(i);
                 }
             }
+            
+            // If we have 2+ conduction layers, check if there's real insulation between any pair
+            if (conductionLayerIndices.size() >= 2) {
+                areLayersTaped = false;  // Assume no tape until we find real insulation
+                
+                for (size_t i = 0; i < conductionLayerIndices.size() - 1; ++i) {
+                    size_t firstCondIdx = conductionLayerIndices[i];
+                    size_t secondCondIdx = conductionLayerIndices[i + 1];
+                    
+                    // Check all layers between these two conduction layers
+                    bool hasRealInsulation = false;
+                    for (size_t j = firstCondIdx + 1; j < secondCondIdx; ++j) {
+                        if (layersThisSection[j].get_type() == ElectricalType::INSULATION) {
+                            double insulationThickness = layersThisSection[j].get_dimensions()[0];
+                            if (insulationThickness > MIN_INSULATION_THICKNESS) {
+                                hasRealInsulation = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (hasRealInsulation) {
+                        areLayersTaped = true;
+                    }
+                }
+            }
+            
             for (auto layer : layersThisSection) {
                 if (layer.get_type() == ElectricalType::CONDUCTION) {
                     auto turnsThisLayer = get_turns_by_layer(layer.get_name());

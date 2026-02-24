@@ -919,10 +919,6 @@ void BasicPainter::paint_toroidal_core(Core core) {
     std::string cssClassName = generate_random_string();
     _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_ferrite()), std::regex("0x"), "#"));
     paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr);
-
-    // _root.autoscale();
-    _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);  // TODO remove
-    _root.set_attr("viewBox", std::to_string(-_imageWidth / 2 * _scale) + " " + std::to_string(-_imageHeight / 2 * _scale) + " " + std::to_string(_imageWidth * _scale) + " " + std::to_string(_imageHeight * _scale));  // TODO remove
 }
 
 void BasicPainter::paint_two_piece_set_margin(Magnetic magnetic) {
@@ -2617,6 +2613,10 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
 }
 
 std::string BasicPainter::export_svg() {
+    // Autoscale to fit all content before exporting
+    // This ensures proper centering when additional turns extend asymmetrically
+    _root.autoscale();
+    
     if (!_filepath.empty()) {
         if (!std::filesystem::exists(_filepath)) {
             std::filesystem::create_directory(_filepath);

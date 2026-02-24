@@ -9190,8 +9190,7 @@ TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-
     auto turns = coil.get_turns_description().value();
     auto layers = coil.get_layers_description().value();
     
-    std::cout << "Number of layers: " << layers.size() << std::endl;
-    
+
     // Check that all turns have additional coordinates
     for (auto& turn : turns) {
         REQUIRE(turn.get_additional_coordinates());
@@ -9201,11 +9200,6 @@ TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-
     std::map<std::string, std::vector<size_t>> turnsByLayer;
     for (size_t i = 0; i < turns.size(); ++i) {
         turnsByLayer[turns[i].get_layer().value()].push_back(i);
-    }
-    
-    std::cout << "Turns per layer:" << std::endl;
-    for (auto& [layerName, indices] : turnsByLayer) {
-        std::cout << "  " << layerName << ": " << indices.size() << " turns" << std::endl;
     }
     
     // Collect all additional radii
@@ -9222,13 +9216,7 @@ TEST_CASE("Test_Additiona_Turns_Bug", "[constructive-model][coil][round-winding-
         // Round to 0.1mm precision
         uniqueRadii.insert(round(r * 10000) / 10000);
     }
-    
-    std::cout << "Unique additional radii: ";
-    for (auto r : uniqueRadii) {
-        std::cout << r * 1000 << "mm ";
-    }
-    std::cout << std::endl;
-    
+
     // The bug was that additional turns from layer 1 were placed at a different radius
     // than turns from layer 0, even though there was space in the first additional layer.
     // After the fix, all additional turns should be at the same radius (compacted).
@@ -10476,5 +10464,76 @@ TEST_CASE("Test_Toroidal_Delimit_And_Compact_Multilayer", "[toroidal][coil][comp
     
     settings.reset();
 }
+
+TEST_CASE("Test_Coil_Compacting_Tertiary_Winding", "[constructive-model][coil][bug][visualization]") {
+    auto testDataPath = get_test_data_path(std::source_location::current(), "bug_coil_compacting.json");
+    std::ifstream file(testDataPath);
+    REQUIRE(file.good());
+    
+    json j;
+    file >> j;
+    
+    auto magneticJson = j["magnetic"];
+    auto coilJson = magneticJson["coil"];
+    auto coreJson = magneticJson["core"];
+    
+    OpenMagnetics::Coil coil(coilJson);
+    OpenMagnetics::Core core(coreJson);
+    
+    // Enable compacting and additional coordinates
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_coil_include_additional_coordinates(true);
+    
+    // Wind the coil
+    coil.wind();
+    
+    // Check if we have turns
+    REQUIRE(coil.get_turns_description().has_value());
+    auto turns = coil.get_turns_description().value();
+    
+    // Create magnetic for visualization
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_coil(coil);
+    magnetic.set_core(core);
+    
+    // Paint the coil with core
+    auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+    auto outFile = outputFilePath;
+    outFile.append("Test_Coil_Compacting_Tertiary_Winding.svg");
+    std::filesystem::remove(outFile);
+    
+    Painter painter(outFile);
+    painter.paint_core(magnetic);
+    painter.paint_bobbin(magnetic);
+    painter.paint_coil_sections(magnetic);
+    painter.paint_coil_turns(magnetic);
+    painter.export_svg();
+    
+    // Analyze turns by winding
+    std::map<std::string, std::vector<Turn>> turnsByWinding;
+    for (const auto& turn : turns) {
+        turnsByWinding[turn.get_winding()].push_back(turn);
+    }
+    
+    // Check each winding has additional coordinates
+    for (const auto& [windingName, windingTurns] : turnsByWinding) {
+        int withAdditional = 0;
+        int withoutAdditional = 0;
+        
+        for (const auto& turn : windingTurns) {
+            if (turn.get_additional_coordinates().has_value()) {
+                withAdditional++;
+            } else {
+                withoutAdditional++;
+            }
+        }
+        
+        // All turns should have additional coordinates
+        REQUIRE(withoutAdditional == 0);
+    }
+    
+    settings.reset();
+}
+
 
 }  // namespace
