@@ -358,6 +358,8 @@ class PainterInterface {
     virtual std::string export_svg() = 0;
     virtual void export_png() = 0;
     virtual void paint_core(Magnetic magnetic) = 0;
+    ComplexField calculate_magnetic_field_internal_only(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex);
+    ComplexField calculate_magnetic_field_external_only(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex);
     virtual void paint_bobbin(Magnetic magnetic) = 0;
     virtual void paint_coil_sections(Magnetic magnetic) = 0;
     virtual void paint_coil_layers(Magnetic magnetic) = 0;

@@ -3,6 +3,7 @@
 #include "physical_models/StrayCapacitance.h"
 #include "support/Painter.h"
 #include "support/CoilMesher.h"
+#include "constructive_models/Coil.h"
 #include "MAS.hpp"
 #include "support/Utils.h"
 #include "json.hpp"
@@ -91,6 +92,110 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
 
 
     return field;
+}
+
+ComplexField PainterInterface::calculate_magnetic_field_internal_only(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
+    // Calculate field using only internal turns (original coordinates)
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing in excitation");
+    }
+    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
+            auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+            if (!current.get_waveform()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from current");
+            }
+            auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            current.set_harmonics(harmonics);
+            if (!current.get_processed()) {
+                auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
+                current.set_processed(processed);
+            }
+            operatingPoint.get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+        }
+    }
+
+    auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    auto frequency = harmonics.get_frequencies()[harmonicIndex];
+
+    bool includeFringing = settings.get_painter_include_fringing();
+    bool mirroringDimension = settings.get_painter_mirroring_dimension();
+
+    size_t numberPointsX = settings.get_painter_number_points_x();
+    size_t numberPointsY = settings.get_painter_number_points_y();
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
+
+    auto modelOverride = settings.get_painter_magnetic_field_strength_model();
+    auto magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
+    auto fringingEffectModel = settings.get_magnetic_field_strength_fringing_effect_model();
+    MagneticField magneticField(magneticFieldModel, fringingEffectModel);
+    settings.set_magnetic_field_include_fringing(includeFringing);
+    settings.set_magnetic_field_mirroring_dimension(mirroringDimension);
+    
+    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
+    return windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
+}
+
+ComplexField PainterInterface::calculate_magnetic_field_external_only(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
+    // Calculate field using only external turns (additional coordinates)
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing in excitation");
+    }
+    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
+            auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+            if (!current.get_waveform()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from current");
+            }
+            auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            current.set_harmonics(harmonics);
+            if (!current.get_processed()) {
+                auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
+                current.set_processed(processed);
+            }
+            operatingPoint.get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+        }
+    }
+
+    auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    auto frequency = harmonics.get_frequencies()[harmonicIndex];
+
+    bool includeFringing = settings.get_painter_include_fringing();
+    bool mirroringDimension = settings.get_painter_mirroring_dimension();
+
+    size_t numberPointsX = settings.get_painter_number_points_x();
+    size_t numberPointsY = settings.get_painter_number_points_y();
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true).first;
+
+    auto modelOverride = settings.get_painter_magnetic_field_strength_model();
+    auto magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
+    auto fringingEffectModel = settings.get_magnetic_field_strength_fringing_effect_model();
+    MagneticField magneticField(magneticFieldModel, fringingEffectModel);
+    settings.set_magnetic_field_include_fringing(includeFringing);
+    settings.set_magnetic_field_mirroring_dimension(mirroringDimension);
+    
+    // Swap to external coordinates
+    auto turns = magnetic.get_coil().get_turns_description().value();
+    bool hasAdditional = false;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        if (turns[turnIndex].get_additional_coordinates()) {
+            turns[turnIndex].set_coordinates(turns[turnIndex].get_additional_coordinates().value()[0]);
+            hasAdditional = true;
+        }
+    }
+    
+    if (!hasAdditional) {
+        // No external turns, return empty field
+        ComplexField emptyField;
+        emptyField.set_frequency(frequency);
+        return emptyField;
+    }
+    
+    magnetic.get_mutable_coil().set_turns_description(turns);
+    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
+    return windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 }
 
 
@@ -776,13 +881,28 @@ std::pair<double, double> Painter::get_pixel_dimensions(Magnetic magnetic) {
     double coreColumnHeight = columns[0].get_height();
 
     auto windingWindow = magnetic.get_mutable_core().get_winding_window();
-    if (!windingWindow.get_width()) {
-        return {0.0, 0.0};
+    double coreWindingWindowWidth;
+    double extraDimension = 1.0;
+    
+    if (windingWindow.get_width()) {
+        // Rectangular winding window - use width directly
+        coreWindingWindowWidth = windingWindow.get_width().value();
+    } else {
+        // Round winding window (toroidal) - use core width (diameter) as effective width
+        auto processedDesc = magnetic.get_mutable_core().get_processed_description();
+        if (processedDesc && processedDesc->get_width() > 0) {
+            coreWindingWindowWidth = processedDesc->get_width();
+            // For toroidal cores, get extraDimension to match grid spacing in CoilMesher
+            extraDimension = Coil::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
+        } else {
+            // Fallback: estimate from column dimensions
+            coreWindingWindowWidth = columns[0].get_width() * 2.5;  // Approximate toroid diameter
+        }
     }
-    double coreWindingWindowWidth = windingWindow.get_width().value();
 
-    double pixelXDimension = coreWindingWindowWidth / numberPointsX;
-    double pixelYDimension = coreColumnHeight / numberPointsY;
+    // Apply extraDimension for toroidal cores to match grid spacing
+    double pixelXDimension = (coreWindingWindowWidth * extraDimension) / numberPointsX;
+    double pixelYDimension = (coreColumnHeight * extraDimension) / numberPointsY;
 
     return {pixelXDimension, pixelYDimension};
 }

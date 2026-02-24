@@ -13,62 +13,131 @@
 
 namespace OpenMagnetics {
 
+// Helper function to get all coordinate positions for a turn (main + additional for toroidal)
+static std::vector<std::vector<double>> get_all_turn_coordinates(const Turn& turn) {
+    std::vector<std::vector<double>> coords;
+    coords.push_back(turn.get_coordinates());
+    if (turn.get_additional_coordinates()) {
+        auto additionalCoords = turn.get_additional_coordinates().value();
+        for (const auto& addCoord : additionalCoords) {
+            if (addCoord.size() >= 2) {
+                coords.push_back(addCoord);
+            }
+        }
+    }
+    return coords;
+}
+
 std::vector<std::pair<Turn, size_t>> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription) {
     std::vector<std::pair<Turn, size_t>> surroundingTurns;
+    auto factor = Defaults().overlappingFactorSurroundingTurns;
+    
+    // Get all coordinate positions for the current turn (including additional_coordinates for toroidal)
+    auto currentCoords = get_all_turn_coordinates(currentTurn);
+    
     for (size_t turnIndex = 0; turnIndex < turnsDescription.size(); ++turnIndex) {
         auto potentiallySurroundingTurn = turnsDescription[turnIndex];
-        auto factor = Defaults().overlappingFactorSurroundingTurns;
-        auto x1 = currentTurn.get_coordinates()[0];
-        auto y1 = currentTurn.get_coordinates()[1];
-        auto x2 = potentiallySurroundingTurn.get_coordinates()[0];
-        auto y2 = potentiallySurroundingTurn.get_coordinates()[1];
-        if (x1 == x2 && y1 == y2) {
+        
+        // Skip if this is the same turn as currentTurn
+        // Compare by coordinates since turns might be copied
+        if (potentiallySurroundingTurn.get_coordinates()[0] == currentTurn.get_coordinates()[0] &&
+            potentiallySurroundingTurn.get_coordinates()[1] == currentTurn.get_coordinates()[1]) {
             continue;
         }
-
+        
         auto dx1 = currentTurn.get_dimensions().value()[0];
         auto dy1 = currentTurn.get_dimensions().value()[1];
         auto dx2 = potentiallySurroundingTurn.get_dimensions().value()[0];
         auto dy2 = potentiallySurroundingTurn.get_dimensions().value()[1];
 
         double minimumDimension = std::min(std::max(dx1, dy1), std::max(dx2, dy2));
-        double distance = hypot(x2 - x1, y2 - y1) - std::max(dx1, dy1) / 2 - std::max(dx2, dy2) / 2;
+        double maximumDim1 = std::max(dx1, dy1);
+        double maximumDim2 = std::max(dx2, dy2);
+        
+        // Get all coordinate positions for the potentially surrounding turn
+        auto potentialCoords = get_all_turn_coordinates(potentiallySurroundingTurn);
+        
+        // Find minimum distance across all coordinate combinations
+        double minDistance = DBL_MAX;
+        double bestX1 = 0, bestY1 = 0, bestX2 = 0, bestY2 = 0;
+        bool foundValidPair = false;
+        
+        for (const auto& c1 : currentCoords) {
+            for (const auto& c2 : potentialCoords) {
+                double x1 = c1[0], y1 = c1[1];
+                double x2 = c2[0], y2 = c2[1];
+                
+                // Skip if same position
+                if (x1 == x2 && y1 == y2) {
+                    continue;
+                }
+                
+                double distance = hypot(x2 - x1, y2 - y1) - maximumDim1 / 2 - maximumDim2 / 2;
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestX1 = x1; bestY1 = y1;
+                    bestX2 = x2; bestY2 = y2;
+                    foundValidPair = true;
+                }
+            }
+        }
+        
+        // Skip if no valid coordinate pair found
+        if (!foundValidPair) {
+            continue;
+        }
+        
+        // Use minimum distance for the distance check
+        double distance = minDistance;
 
-        if (distance > minimumDimension / 2) {
+        // For toroidal cores, the gap between turns can be larger than traditional windings
+        // Use a more permissive threshold based on the average turn dimension
+        double distanceThreshold = minimumDimension * 5;
+        if (distance > distanceThreshold) {
             continue;
         }
 
-        double maximumDimensionOf12 = (std::max(potentiallySurroundingTurn.get_dimensions().value()[0], potentiallySurroundingTurn.get_dimensions().value()[1]) + 
-                                               std::max(currentTurn.get_dimensions().value()[0], currentTurn.get_dimensions().value()[1])) / 2;
+        double maximumDimensionOf12 = (maximumDim1 + maximumDim2) / 2;
+        
+        // Use the closest coordinate pair for the "turn between" check
+        double x1 = bestX1, y1 = bestY1;
+        double x2 = bestX2, y2 = bestY2;
+        
         bool thereIsTurnBetween12 = false;
         for (auto potentiallyCollidingTurn : turnsDescription) {
-            auto x0 = potentiallyCollidingTurn.get_coordinates()[0];
-            auto y0 = potentiallyCollidingTurn.get_coordinates()[1];
             auto dx0 = potentiallyCollidingTurn.get_dimensions().value()[0];
             auto dy0 = potentiallyCollidingTurn.get_dimensions().value()[1];
-            if ((x1 == x0 && y1 == y0) || (x2 == x0 && y2 == y0)) {
-                continue;
-            }
+            
+            // Check all coordinates of the potentially colliding turn
+            auto collidingCoords = get_all_turn_coordinates(potentiallyCollidingTurn);
+            for (const auto& c0 : collidingCoords) {
+                double x0 = c0[0], y0 = c0[1];
+                
+                if ((x1 == x0 && y1 == y0) || (x2 == x0 && y2 == y0)) {
+                    continue;
+                }
 
-            if ((x0 + dx0 / 2 * factor) < std::min(x1, x2)) {
-                continue;
-            }
-            if ((x0 - dx0 / 2 * factor) > std::max(x1, x2)) {
-                continue;
-            }
-            if ((y0 + dy0 / 2 * factor) < std::min(y1, y2)) {
-                continue;
-            }
-            if ((y0 - dy0 / 2 * factor) > std::max(y1, y2)) {
-                continue;
-            }
+                if ((x0 + dx0 / 2 * factor) < std::min(x1, x2)) {
+                    continue;
+                }
+                if ((x0 - dx0 / 2 * factor) > std::max(x1, x2)) {
+                    continue;
+                }
+                if ((y0 + dy0 / 2 * factor) < std::min(y1, y2)) {
+                    continue;
+                }
+                if ((y0 - dy0 / 2 * factor) > std::max(y1, y2)) {
+                    continue;
+                }
 
-            double maximumDimensionOf0 = std::max(potentiallyCollidingTurn.get_dimensions().value()[0], potentiallyCollidingTurn.get_dimensions().value()[1]);
-            auto distanceFrom0toLine12 = fabs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1) / sqrt(pow(y2 - y1, 2) + pow(x2 - x1, 2));
-            if (maximumDimensionOf12 / 2 + maximumDimensionOf0 / 2 * factor > distanceFrom0toLine12) {
-                thereIsTurnBetween12 = true;
-                break;
+                double maximumDimensionOf0 = std::max(dx0, dy0);
+                auto distanceFrom0toLine12 = fabs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1) / sqrt(pow(y2 - y1, 2) + pow(x2 - x1, 2));
+                if (maximumDimensionOf12 / 2 + maximumDimensionOf0 / 2 * factor > distanceFrom0toLine12) {
+                    thereIsTurnBetween12 = true;
+                    break;
+                }
             }
+            if (thereIsTurnBetween12) break;
         }
 
         if (thereIsTurnBetween12) {
@@ -677,9 +746,24 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
     auto wireCoatingThickness = (wireCoatingThicknessFirstWire + wireCoatingThicknessSecondWire) / 2;
     auto conductingRadius = (conductingDiameterFirstWire + conductingDiameterSecondWire) / 2;
 
-    double distanceBetweenTurns = hypot(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0], firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1]);
-    distanceBetweenTurns -= outerDiameterFirstWire / 2 + outerDiameterSecondWire / 2;
+    // For toroidal cores, check distance between all coordinate combinations (inner/outer halves)
+    auto coords1 = get_all_turn_coordinates(firstTurn);
+    auto coords2 = get_all_turn_coordinates(secondTurn);
+    
+    double minDistance = DBL_MAX;
+    for (const auto& c1 : coords1) {
+        for (const auto& c2 : coords2) {
+            double dist = hypot(c1[0] - c2[0], c1[1] - c2[1]);
+            dist -= outerDiameterFirstWire / 2 + outerDiameterSecondWire / 2;
+            if (dist < minDistance) {
+                minDistance = dist;
+            }
+        }
+    }
+    
+    double distanceBetweenTurns = minDistance;
     distanceBetweenTurns = roundFloat(distanceBetweenTurns, 6);
+    
     double distanceThroughLayers = 0;
     std::vector<double> distancesThroughLayers;
     std::vector<double> relativePermittivityLayers;
@@ -708,10 +792,13 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
     double distanceThroughAir = distanceBetweenTurns - distanceThroughLayers;
 
     if (distanceBetweenTurns < 0) {
-        distanceBetweenTurns = DBL_MAX;
-        distanceThroughAir = DBL_MAX;
-        distanceThroughLayers = DBL_MAX;
-        // throw std::invalid_argument("distanceBetweenTurns cannot be negative");
+        // For toroidal cores, negative distance can occur when turns overlap in 2D projection
+        // but are actually at different radial positions. Use a small positive distance instead.
+        distanceBetweenTurns = 1e-9;  // 1nm minimum gap
+        distanceThroughAir = distanceBetweenTurns - distanceThroughLayers;
+        if (distanceThroughAir < 0) {
+            distanceThroughAir = 0;
+        }
     }
     auto averageTurnLength = (firstTurn.get_length() + secondTurn.get_length()) / 2;
 
@@ -1166,6 +1253,7 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
         auto turnWindingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
         auto turnWire = wirePerWinding[turnWindingIndex];
         auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turns[turnIndex], turns);
+
         for (auto [surroundingTurn, surroundingTurnIndex] : surroundingTurns) {
             auto key = std::make_pair(turnIndex, surroundingTurnIndex);
             auto inverseKey = std::make_pair(surroundingTurnIndex, turnIndex);

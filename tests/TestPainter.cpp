@@ -5366,8 +5366,9 @@ namespace {
             settings.set_painter_mode(PainterModes::QUIVER);
             settings.set_painter_logarithmic_scale(false);
             settings.set_painter_include_fringing(true);
-            settings.set_painter_number_points_x(40);
-            settings.set_painter_number_points_y(40);
+            // Increased grid points for toroidal cores to better resolve the circular field pattern
+            settings.set_painter_number_points_x(60);
+            settings.set_painter_number_points_y(60);
             settings.set_painter_maximum_value_colorbar(std::nullopt);
             settings.set_painter_minimum_value_colorbar(std::nullopt);
             
@@ -5391,7 +5392,7 @@ namespace {
         // Test electric field visualization for toroidal cores using BasicPainter (no matplotplusplus required)
         clear_databases();
         
-        std::vector<int64_t> numberTurns = {30};
+        std::vector<int64_t> numberTurns = {58};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
         uint8_t interleavingLevel = 1;
@@ -5402,7 +5403,7 @@ namespace {
 
         WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
         WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment turnsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
         CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, 
@@ -5431,12 +5432,13 @@ namespace {
             // Use BasicPainter (useAdvancedPainter = false)
             Painter painter(outFile, false, false, false);
             
-            settings.set_painter_number_points_x(40);
-            settings.set_painter_number_points_y(40);
+            // Increased grid points for toroidal cores to better resolve the circular field pattern
+            settings.set_painter_number_points_x(300);
+            settings.set_painter_number_points_y(300);
             settings.set_painter_include_fringing(false);
             settings.set_painter_logarithmic_scale(false);
             
-            painter.paint_electric_field(inputs.get_operating_point(0), magnetic, 1, std::nullopt, 
+            painter.paint_electric_field(inputs.get_operating_point(0), magnetic, 1, std::nullopt,
                                          ElectricFieldVisualizationModel::SDF_PHYSICS, ColorPalette::VIRIDIS);
 
             painter.paint_core(magnetic);

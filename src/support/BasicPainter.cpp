@@ -1292,9 +1292,21 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
     // settings.set_painter_number_points_y(4);
     bool logarithmicScale = settings.get_painter_logarithmic_scale();
 
+    auto core = magnetic.get_core();
+    auto family = core.get_shape_family();
+    bool isToroidal = (family == MAS::CoreShapeFamily::T);
+    
     ComplexField field;
+    ComplexField internalField;
+    ComplexField externalField;
+    
     if (inputField) {
         field = inputField.value();
+    }
+    else if (isToroidal) {
+        // For toroidal cores, calculate internal and external fields separately
+        internalField = calculate_magnetic_field_internal_only(operatingPoint, magnetic, harmonicIndex);
+        externalField = calculate_magnetic_field_external_only(operatingPoint, magnetic, harmonicIndex);
     }
     else {
         field = calculate_magnetic_field(operatingPoint, magnetic, harmonicIndex);
@@ -1302,18 +1314,50 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
 
     auto [pixelXDimension, pixelYDimension] = Painter::get_pixel_dimensions(magnetic);
 
-    for (size_t i = 0; i < field.get_data().size(); ++i) {
-        auto datum = field.get_data()[i];
-
-        double value;
-        if (logarithmicScale) {
-            value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+    // Collect all values for color scale
+    if (isToroidal) {
+        // Collect values from both internal and external fields
+        for (size_t i = 0; i < internalField.get_data().size(); ++i) {
+            auto datum = internalField.get_data()[i];
+            double value;
+            if (logarithmicScale) {
+                value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+            }
+            else {
+                value = hypot(datum.get_real(), datum.get_imaginary());
+            }
+            if (std::isfinite(value)) modules.push_back(value);
         }
-        else {
-            value = hypot(datum.get_real(), datum.get_imaginary());
+        for (size_t i = 0; i < externalField.get_data().size(); ++i) {
+            auto datum = externalField.get_data()[i];
+            double value;
+            if (logarithmicScale) {
+                value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+            }
+            else {
+                value = hypot(datum.get_real(), datum.get_imaginary());
+            }
+            if (std::isfinite(value)) modules.push_back(value);
         }
-        modules.push_back(value);
     }
+    else {
+        for (size_t i = 0; i < field.get_data().size(); ++i) {
+            auto datum = field.get_data()[i];
+            double value;
+            if (logarithmicScale) {
+                value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+            }
+            else {
+                value = hypot(datum.get_real(), datum.get_imaginary());
+            }
+            modules.push_back(value);
+        }
+    }
+    
+    if (modules.empty()) {
+        modules.push_back(0.0);
+    }
+    
     std::sort(modules.begin(), modules.end());
     size_t index05 = static_cast<size_t>(0.02 * (modules.size() - 1));
     size_t index95 = static_cast<size_t>(0.98 * (modules.size() - 1));
@@ -1340,20 +1384,82 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
     auto magneticFieldMinimumColor = settings.get_painter_color_magnetic_field_minimum();
     auto magneticFieldMaximumColor = settings.get_painter_color_magnetic_field_maximum();
     
-    for (auto datum : field.get_data()) {
-        double value;
-        if (logarithmicScale) {
-            value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
-        }
-        else {
-            value = hypot(datum.get_real(), datum.get_imaginary());
-        }
-        auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
+    if (isToroidal) {
+        // For toroidal cores: plot internal field inside, external field outside
+        auto processedDesc = core.get_processed_description();
+        double coreRadius = processedDesc->get_width() / 2.0;
+        double innerRadius = coreRadius - core.get_columns()[0].get_width();
+        
+        // Plot internal field only for points inside the core
+        for (size_t i = 0; i < internalField.get_data().size(); ++i) {
+            auto datum = internalField.get_data()[i];
+            auto& point = datum.get_point();
+            double px = point[0];
+            double py = point[1];
+            double distFromCenter = sqrt(px*px + py*py);
+            
+            // Only plot if inside the core
+            if (distFromCenter <= coreRadius) {
+                double value;
+                if (logarithmicScale) {
+                    value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+                }
+                else {
+                    value = hypot(datum.get_real(), datum.get_imaginary());
+                }
+                auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
 
-        std::stringstream stream;
-        stream << std::scientific << std::setprecision(1) << value;
-        std::string label = stream.str() + " A/m";
-        paint_field_point(datum.get_point()[0], datum.get_point()[1], pixelXDimension, pixelYDimension, color, label);
+                std::stringstream stream;
+                stream << std::scientific << std::setprecision(1) << value;
+                std::string label = stream.str() + " A/m (int)";
+                paint_field_point(px, py, pixelXDimension, pixelYDimension, color, label);
+            }
+        }
+        
+        // Plot external field only for points outside the core
+        for (size_t i = 0; i < externalField.get_data().size(); ++i) {
+            auto datum = externalField.get_data()[i];
+            auto& point = datum.get_point();
+            double px = point[0];
+            double py = point[1];
+            double distFromCenter = sqrt(px*px + py*py);
+            
+            // Only plot if outside the core
+            if (distFromCenter > coreRadius) {
+                double value;
+                if (logarithmicScale) {
+                    value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+                }
+                else {
+                    value = hypot(datum.get_real(), datum.get_imaginary());
+                }
+                auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
+
+                std::stringstream stream;
+                stream << std::scientific << std::setprecision(1) << value;
+                std::string label = stream.str() + " A/m (ext)";
+                paint_field_point(px, py, pixelXDimension, pixelYDimension, color, label);
+            }
+        }
+    }
+    else {
+        // Original behavior for non-toroidal cores
+        for (auto datum : field.get_data()) {
+            double value;
+            if (logarithmicScale) {
+                value = hypot(log10(fabs(datum.get_real())), log10(fabs(datum.get_imaginary())));
+            }
+            else {
+                value = hypot(datum.get_real(), datum.get_imaginary());
+            }
+            auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, value);
+
+            std::stringstream stream;
+            stream << std::scientific << std::setprecision(1) << value;
+            std::string label = stream.str() + " A/m";
+            auto& point = datum.get_point();
+            paint_field_point(point[0], point[1], pixelXDimension, pixelYDimension, color, label);
+        }
     }
 }
 
@@ -1446,24 +1552,27 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     auto core = magnetic.get_core();
     auto family = core.get_shape_family();
 
-    // Paint winding window background for rectangular cores
-    // For toroidal cores, skip the winding window background painting
+    // Paint winding window background with minimum color from palette
+    // For rectangular cores, use winding window dimensions
+    // For toroidal cores, use the processed core dimensions
+    std::string cssClassName = generate_random_string();
+    auto bgColor = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, minimumModule);
+    bgColor = std::regex_replace(std::string(bgColor), std::regex("0x"), "#");
+    _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", bgColor);
+
     if (family != MAS::CoreShapeFamily::T) {
+        // Rectangular cores - use winding window
         if (windingWindow.get_width() && windingWindow.get_coordinates() && windingWindow.get_height()) {
             auto coords = windingWindow.get_coordinates().value();
             if (coords.size() >= 2) {
-                std::string cssClassName = generate_random_string();
-
-                auto color = get_color(minimumModule, maximumModule, magneticFieldMinimumColor, magneticFieldMaximumColor, minimumModule);
-                color = std::regex_replace(std::string(color), std::regex("0x"), "#");
-                _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color);
-
                 paint_rectangle(coords[0] + windingWindow.get_width().value() / 2, coords[1], windingWindow.get_width().value(), windingWindow.get_height().value(), cssClassName);
             }
         }
+    } else {
+        // Toroidal cores - paint background using full image size (includes extra space for additional turns)
+        // _imageWidth and _imageHeight are already set by set_image_size(magnetic) which includes extraDimension
+        paint_rectangle(0, 0, _imageWidth, _imageHeight, cssClassName);
     }
-    // For toroidal cores, we skip the winding window background painting
-    // The field points will still be painted below
 
     // Determine label based on output unit
     // Both LEGACY and SDF_PHYSICS now output J/m³ (volumetric energy density)

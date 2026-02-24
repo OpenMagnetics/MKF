@@ -167,6 +167,8 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
         dA = dx * dy;
     }
     else {
+        // For toroidal cores with round winding windows, use standard Cartesian grid
+        // This provides consistent behavior across all core types
         auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
         bobbinPointsX = linspace(-coreWidth / 2 * extraDimension, coreWidth / 2 * extraDimension, numberPointsX);
         bobbinPointsY = linspace(-coreHeight / 2 * extraDimension, coreHeight / 2 * extraDimension, numberPointsY);

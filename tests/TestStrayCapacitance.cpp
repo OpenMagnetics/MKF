@@ -1292,3 +1292,72 @@ TEST_CASE("Investigate negative C3 in bug_capacitance_error_3", "[physical-model
     
     REQUIRE(true);
 }
+TEST_CASE("Calculate capacitance for toroidal core", "[physical-model][stray-capacitance][toroidal][smoke-test]") {
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {10};
+    std::vector<int64_t> numberParallels = {1};
+    std::vector<double> turnsRatios = {};
+    uint8_t interleavingLevel = 1;
+    int64_t numberStacks = 1;
+    std::string coreShape = "T 20/10/7";
+    std::string coreMaterial = "3C97";
+
+    // Use SPREAD alignment for toroidal cores (like other toroidal tests)
+    WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+    WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+    CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
+    CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape,
+                                                     interleavingLevel, sectionOrientation, layersOrientation,
+                                                     turnsAlignment, sectionsAlignment);
+    auto core = OpenMagneticsTesting::get_quick_core(coreShape, json::array(), numberStacks, coreMaterial);
+
+    // Ensure coil is wound to generate turn coordinates and additionalCoordinates for toroidal
+    coil.wind();
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    StrayCapacitance strayCapacitance(OpenMagnetics::StrayCapacitanceModels::ALBACH);
+
+    auto result = strayCapacitance.calculate_capacitance(coil);
+    auto maxwellCapacitanceMatrix = result.get_maxwell_capacitance_matrix();
+
+    // Check that we have a valid capacitance matrix
+    REQUIRE(maxwellCapacitanceMatrix.has_value());
+    REQUIRE(maxwellCapacitanceMatrix.value().size() > 0);
+
+    // Print the capacitance values for debugging
+    std::cout << "\nToroidal Capacitance Matrix:" << std::endl;
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix.value()[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            std::cout << "  " << firstKey << " -> " << secondKey << ": " << capacitance << " F" << std::endl;
+        }
+    }
+
+    // Check that capacitance among turns is not empty
+    auto capacitanceAmongTurns = result.get_capacitance_among_turns();
+
+    // For a toroidal core with 10 turns, we should have multiple turn pairs
+    // If the capacitance matrix is 0, it means get_surrounding_turns is not finding neighbors
+    CHECK(capacitanceAmongTurns->size() > 0);
+
+    // Verify that at least some capacitance values are non-zero
+    bool hasNonZeroCapacitance = false;
+    for (auto [firstKey, aux] : maxwellCapacitanceMatrix.value()[0].get_magnitude()) {
+        for (auto [secondKey, capacitanceWithTolerance] : aux) {
+            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            if (std::abs(capacitance) > 1e-15) {
+                hasNonZeroCapacitance = true;
+                break;
+            }
+        }
+        if (hasNonZeroCapacitance) break;
+    }
+
+    CHECK(hasNonZeroCapacitance);
+}
