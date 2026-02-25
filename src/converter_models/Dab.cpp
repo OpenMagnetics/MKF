@@ -10,6 +10,16 @@
 
 namespace OpenMagnetics {
 
+// Helper to extract value from either double or std::optional<double>
+template<typename T>
+double get_value_or(T&& val, double default_val) {
+    if constexpr (std::is_same_v<std::decay_t<T>, std::optional<double>>) {
+        return val.value_or(default_val);
+    } else {
+        return val;
+    }
+}
+
 // =========================================================================
 // Construction
 // =========================================================================
@@ -142,13 +152,13 @@ bool Dab::run_checks(bool assertErrors) {
             if (assertErrors) throw std::runtime_error("DAB: voltage/current count mismatch");
             ok = false;
         }
-        double fsw = op.get_switching_frequency();
+        double fsw = get_value_or(op.get_switching_frequency(), 0.0);
         if (fsw <= 0) {
             if (assertErrors) throw std::runtime_error("DAB: invalid switching frequency");
             ok = false;
         }
         // Phase shift should be in range (-90, 90) degrees for SPS
-        double phi_deg = op.get_phase_shift();
+        double phi_deg = get_value_or(op.get_phase_shift(), 0.0);
         if (std::abs(phi_deg) > 90.0) {
             if (assertErrors) throw std::runtime_error("DAB: phase shift out of range (|phi| > 90 deg)");
             ok = false;
@@ -179,7 +189,7 @@ DesignRequirements Dab::process_design_requirements() {
     double mainOutputVoltage = ops[0].get_output_voltages()[0];
     double mainOutputCurrent = ops[0].get_output_currents()[0];
     double mainOutputPower = mainOutputVoltage * mainOutputCurrent;
-    double Fs = ops[0].get_switching_frequency();
+    double Fs = get_value_or(ops[0].get_switching_frequency(), 0.0);
 
     // 1. Turns ratio: N = V1_nom / V2_nom
     double N = Vin_nom / mainOutputVoltage;
@@ -192,7 +202,7 @@ DesignRequirements Dab::process_design_requirements() {
     }
 
     // 2. Phase shift (from operating point, converted from degrees to radians)
-    double phi_deg = ops[0].get_phase_shift();
+    double phi_deg = get_value_or(ops[0].get_phase_shift(), 0.0);
     double phi_rad = phi_deg * M_PI / 180.0;
 
     // 3. Series inductance
@@ -347,7 +357,7 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
 {
     OperatingPoint operatingPoint;
 
-    double Fs = dabOpPoint.get_switching_frequency();
+    double Fs = get_value_or(dabOpPoint.get_switching_frequency(), 0.0);
     double V1 = inputVoltage;
     double V2 = dabOpPoint.get_output_voltages()[0];
     double N = turnsRatios[0]; // Primary-to-secondary turns ratio
@@ -355,7 +365,7 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
     double L = computedSeriesInductance;
 
     // Phase shift: from operating point (degrees) or computed
-    double phi_deg = dabOpPoint.get_phase_shift();
+    double phi_deg = get_value_or(dabOpPoint.get_phase_shift(), 0.0);
     double phi_rad;
     if (std::abs(phi_deg) > 1e-6) {
         phi_rad = phi_deg * M_PI / 180.0;
@@ -553,7 +563,7 @@ std::string Dab::generate_ngspice_circuit(
     double V1 = inputVoltages[std::min(inputVoltageIndex, inputVoltages.size() - 1)];
     auto& dabOp = ops[std::min(operatingPointIndex, ops.size() - 1)];
 
-    double Fs = dabOp.get_switching_frequency();
+    double Fs = get_value_or(dabOp.get_switching_frequency(), 0.0);
     double period = 1.0 / Fs;
     double halfPeriod = period / 2.0;
     double deadTime = computedDeadTime;
@@ -567,7 +577,7 @@ std::string Dab::generate_ngspice_circuit(
     double Lm = magnetizingInductance;
 
     // Phase shift time delay
-    double phi_deg = dabOp.get_phase_shift();
+    double phi_deg = get_value_or(dabOp.get_phase_shift(), 0.0);
     double phi_rad = (std::abs(phi_deg) > 1e-6) ? phi_deg * M_PI / 180.0 : computedPhaseShift;
     double phaseDelay = std::abs(phi_rad) / (2.0 * M_PI * Fs);
 
@@ -705,7 +715,7 @@ std::vector<ConverterWaveforms> Dab::simulate_and_extract_topology_waveforms(
             auto opPoint = get_operating_points()[opIndex];
             
             std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
-            double switchingFrequency = opPoint.get_switching_frequency();
+            double switchingFrequency = get_value_or(opPoint.get_switching_frequency(), 0.0);
             
             SimulationConfig config;
             config.frequency = switchingFrequency;

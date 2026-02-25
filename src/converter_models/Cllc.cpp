@@ -9,6 +9,16 @@
 
 namespace OpenMagnetics {
 
+// Helper to extract value from either double or std::optional<double>
+template<typename T>
+double get_value_or(T&& val, double default_val) {
+    if constexpr (std::is_same_v<std::decay_t<T>, std::optional<double>>) {
+        return val.value_or(default_val);
+    } else {
+        return val;
+    }
+}
+
     // =========================================================================
     // Construction
     // =========================================================================
@@ -69,7 +79,7 @@ namespace OpenMagnetics {
                 nominalOutputVoltage = op.get_output_voltages()[0];
                 double current = op.get_output_currents().size() > 0 ? op.get_output_currents()[0] : 0;
                 nominalOutputPower = nominalOutputVoltage * current;
-                representativeFrequency = op.get_switching_frequency();
+                representativeFrequency = get_value_or(op.get_switching_frequency(), 0.0);
                 break;
             }
         }
@@ -270,7 +280,7 @@ namespace OpenMagnetics {
         const CllcResonantParameters& params) {
 
         OperatingPoint operatingPoint;
-        double switchingFrequency = cllcOpPoint.get_switching_frequency();
+        double switchingFrequency = get_value_or(cllcOpPoint.get_switching_frequency(), 0.0);
         double outputVoltage = cllcOpPoint.get_output_voltages()[0];
         double outputCurrent = cllcOpPoint.get_output_currents()[0];
         double outputPower = outputVoltage * outputCurrent;
@@ -548,7 +558,7 @@ namespace OpenMagnetics {
 
         double inputVoltage = inputVoltages[inputVoltageIndex];
         auto opPoint = get_operating_points()[operatingPointIndex];
-        double switchingFrequency = opPoint.get_switching_frequency();
+        double switchingFrequency = get_value_or(opPoint.get_switching_frequency(), 0.0);
         double outputVoltage = opPoint.get_output_voltages()[0];
         double outputCurrent = opPoint.get_output_currents()[0];
         double n = turnsRatio;
@@ -729,7 +739,7 @@ namespace OpenMagnetics {
                 auto cllcOpPoint = get_operating_points()[opIndex];
 
                 std::string netlist = generate_ngspice_circuit(n, params, inputVoltageIndex, opIndex);
-                double switchingFrequency = cllcOpPoint.get_switching_frequency();
+                double switchingFrequency = get_value_or(cllcOpPoint.get_switching_frequency(), 0.0);
 
                 SimulationConfig config;
                 config.frequency = switchingFrequency;
@@ -823,7 +833,7 @@ namespace OpenMagnetics {
                 auto opPoint = get_operating_points()[opIndex];
 
                 std::string netlist = generate_ngspice_circuit(n, params, inputVoltageIndex, opIndex);
-                double switchingFrequency = opPoint.get_switching_frequency();
+                double switchingFrequency = get_value_or(opPoint.get_switching_frequency(), 0.0);
 
                 SimulationConfig config;
                 config.frequency = switchingFrequency;

@@ -395,6 +395,10 @@ add_custom_command(
     -S ${MAS_DIR}/schemas/inputs/topologies/isolatedBuck.json
     -S ${MAS_DIR}/schemas/inputs/topologies/isolatedBuckBoost.json
     -S ${MAS_DIR}/schemas/inputs/topologies/pushPull.json
+    -S ${MAS_DIR}/schemas/inputs/topologies/cllcResonant.json
+    -S ${MAS_DIR}/schemas/inputs/topologies/dualActiveBridge.json
+    -S ${MAS_DIR}/schemas/inputs/topologies/llcResonant.json
+    -S ${MAS_DIR}/schemas/inputs/topologies/phaseShiftFullBridge.json
     -o ${MAS_DIRECTORY}/MAS.hpp --namespace MAS --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
   USES_TERMINAL)
 
