@@ -10,12 +10,14 @@ namespace OpenMagnetics {
 
 double linear_table_interpolation(std::vector<std::pair<double, double>> table, double x){
     if (x > table.back().first) {
+        if (table.size() < 2) return table.back().second; // FIX H-INS-2: Guard against single-element table
         double slope = (table[table.size() - 1].second - table[table.size() - 2].second) / (table[table.size() - 1].first - table[table.size() - 2].first);
         return (x - table.back().first) * slope + table.back().second;
     }
     if (x < table.front().first) {
+        if (table.size() < 2) return table.front().second;
         double slope = (table[1].second - table[0].second) / (table[1].first - table[0].first);
-        return (table[0].first - x) * slope + table.front().second;
+        return table.front().second + (x - table[0].first) * slope; // FIX H-INS-1: Correct extrapolation direction
     }
 
 
@@ -448,7 +450,7 @@ double InsulationCoordinator::calculate_distance_through_insulation(Inputs& inpu
     return dti;
 }
 
-bool InsulationIEC60664Model::electric_field_strenth_is_valid(double dti, double voltage) {
+bool InsulationIEC60664Model::electric_field_strength_is_valid(double dti, double voltage) {
     if (dti == 0) {
         return false;
     }
@@ -465,7 +467,7 @@ bool InsulationIEC60664Model::electric_field_strenth_is_valid(double dti, double
 
 double InsulationIEC60664Model::calculate_distance_through_insulation_over_30kHz(double workingVoltage) {
     double dti = 0;
-    while (!electric_field_strenth_is_valid(dti, workingVoltage)) {
+    while (!electric_field_strength_is_valid(dti, workingVoltage)) {
         dti += 1e-6;
     }
 
@@ -1208,7 +1210,7 @@ double InsulationIEC61558Model::get_distance_through_insulation_table_22(Insulat
     return dti;
 }
 
-bool InsulationIEC61558Model::electric_field_strenth_is_valid(double dti, double voltage) {
+bool InsulationIEC61558Model::electric_field_strength_is_valid(double dti, double voltage) {
     if (dti == 0) {
         return false;
     }
@@ -1225,7 +1227,7 @@ bool InsulationIEC61558Model::electric_field_strenth_is_valid(double dti, double
 
 double InsulationIEC61558Model::calculate_distance_through_insulation_over_30kHz(double workingVoltage) {
     double dti = 0;
-    while (!electric_field_strenth_is_valid(dti, workingVoltage)) {
+    while (!electric_field_strength_is_valid(dti, workingVoltage)) {
         dti += 1e-6;
     }
 

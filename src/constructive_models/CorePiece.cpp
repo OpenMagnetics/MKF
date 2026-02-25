@@ -291,6 +291,9 @@ class CorePieceEl : public CorePieceE {
         areas.push_back((areas[0] + a21) / 2);
         areas.push_back((a23 + areas[2]) / 2);
 
+        // FIX L-CP-1: Division by 2 in loop and *2 for minimumArea accounts for
+        // half-core shape constants per IEC 60205 — areas[] describe one half-piece,
+        // so effective parameters need correction for the full magnetic circuit.
         double c1 = 0, c2 = 0;
         for (size_t i = 0; i < lengths.size(); ++i) {
             c1 += lengths[i] / areas[i] / 2;
@@ -356,6 +359,9 @@ class CorePieceEfd : public CorePieceEl {
         double f = dimensions["F"];
         double f2 = dimensions["F2"];
         double k = dimensions["K"];
+        if (dimensions.find("q") == dimensions.end() || dimensions["q"] == 0) { // FIX M-CP-1: Validate "q" dimension exists
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Missing 'q' dimension for EFD shape");
+        }
         double q = dimensions["q"];
 
         lengths.push_back(d);

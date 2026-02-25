@@ -678,7 +678,7 @@ namespace OpenMagnetics {
 
     double get_packing_factor_from_standard(WireStandard standard, double numberConductors) {
         if (standard == WireStandard::IEC_60317) {
-            // Accoding to standard IEC 60317 - 11
+            // According to standard IEC 60317 - 11
             if (numberConductors == 2) {
                 return sqrt(2);
             }
@@ -696,7 +696,7 @@ namespace OpenMagnetics {
             }
         }
         else {
-            // Accoding to Rubadue, page 25 of https://www.psma.com/sites/default/files/uploads/files/Litz%20Wire%20Practical%20Design%20Considerations%20for%20Todays%20HF%20Applications%20Jensen%2C%20Rubadue.pdf
+            // According to Rubadue, page 25 of https://www.psma.com/sites/default/files/uploads/files/Litz%20Wire%20Practical%20Design%20Considerations%20for%20Todays%20HF%20Applications%20Jensen%2C%20Rubadue.pdf
             return 1.155;
         }
     }
@@ -910,7 +910,7 @@ namespace OpenMagnetics {
         return unservedOuterDiameter + 2 * thicknessLayers * numberLayers;
     }
 
-    // Thought for enamelled reactangular wires
+    // Thought for enamelled rectangular wires
     double Wire::get_filling_factor_rectangular(double conductingWidth, double conductingHeight, int grade, WireStandard standard) {
         double realConductingArea = get_conducting_area_rectangular(conductingWidth, conductingHeight, standard);
         double outerWidth = get_outer_width_rectangular(conductingWidth, grade, standard);
@@ -920,7 +920,7 @@ namespace OpenMagnetics {
         return realConductingArea / outerArea;
     }
 
-    // Thought for enamelled reactangular wires
+    // Thought for enamelled rectangular wires
     double Wire::get_outer_width_rectangular(double conductingWidth, int grade, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
@@ -940,7 +940,7 @@ namespace OpenMagnetics {
                                    key);
     }
 
-    // Thought for enamelled reactangular wires
+    // Thought for enamelled rectangular wires
     double Wire::get_outer_height_rectangular(double conductingHeight, int grade, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
@@ -960,7 +960,7 @@ namespace OpenMagnetics {
                                    key);
     }
 
-    // Thought for enamelled reactangular wires
+    // Thought for enamelled rectangular wires
     double Wire::get_conducting_area_rectangular(double conductingWidth, double conductingHeight, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 

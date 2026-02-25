@@ -258,33 +258,28 @@ namespace OpenMagnetics {
 
         // Number of switching cycles in one mains period (full AC cycle = 20ms at 50Hz)
         double mainsPeriod = 1.0 / _lineFrequency;
+        double switchingPeriod = 1.0 / _switchingFrequency;
         
         // Generate requested number of periods
         int actualPeriods = (_numberOfPeriods > 0) ? _numberOfPeriods : 2;
         double totalTime = mainsPeriod * actualPeriods;
         
-        int switchingCyclesPerLinePeriod = static_cast<int>(std::round(_switchingFrequency * mainsPeriod));
-        int totalSwitchingCycles = switchingCyclesPerLinePeriod * actualPeriods;
-        
-        // Use power-of-2 points per switching cycle for clean FFT
-        int pointsPerSwitchingCycle = 32;
-        int totalPoints = totalSwitchingCycles * pointsPerSwitchingCycle;
-        
-        // Ensure power of 2 total points for FFT
-        int powerOf2 = 1;
-        while (powerOf2 < totalPoints) powerOf2 *= 2;
-        totalPoints = powerOf2;
+        // Use 4 points per switching period for good resolution
+        // 65kHz switching × 4 points = 260k points per second
+        // For 2 line periods (40ms): ~10,400 points - shows triangles clearly
+        double timeStep = switchingPeriod / 4.0;
+        size_t numPoints = static_cast<size_t>(totalTime / timeStep) + 1;
 
-        double switchingPeriod = 1.0 / _switchingFrequency;
-        double dt = totalTime / totalPoints;
+        std::vector<double> currentData;
+        std::vector<double> voltageData;
+        std::vector<double> timeData;
+        currentData.reserve(numPoints);
+        voltageData.reserve(numPoints);
+        timeData.reserve(numPoints);
 
-        std::vector<double> currentData(totalPoints);
-        std::vector<double> voltageData(totalPoints);
-        std::vector<double> timeData(totalPoints);
-
-        for (int i = 0; i < totalPoints; ++i) {
-            double t = i * dt;
-            timeData[i] = t;
+        for (size_t i = 0; i < numPoints; ++i) {
+            double t = i * timeStep;
+            timeData.push_back(t);
 
             // Line phase angle (0 to 2π for full cycle, rectified)
             double theta = 2.0 * std::numbers::pi * t / mainsPeriod;
@@ -326,57 +321,43 @@ namespace OpenMagnetics {
             }
             
             // Total current = envelope + ripple
-            currentData[i] = iAvgInst + ripple;
+            currentData.push_back(iAvgInst + ripple);
             
             // Voltage across inductor:
             // On-time: V_L = Vin (switch closed, diode reverse biased)
             // Off-time: V_L = Vin - Vout (switch open, diode conducting)
             if (switchPhase < D) {
-                voltageData[i] = vinInst;  // On-time
+                voltageData.push_back(vinInst);  // On-time
             } else {
-                voltageData[i] = vinInst - _outputVoltage - _diodeVoltageDrop;  // Off-time (negative)
+                voltageData.push_back(vinInst - _outputVoltage - _diodeVoltageDrop);  // Off-time (negative)
             }
-        }
-
-        // Extract the requested number of line periods from the end
-        // This contains all the switching cycles within the line frequency periods
-        int pointsPerLinePeriod = static_cast<int>(std::round(mainsPeriod / dt));
-        int pointsToExtract = pointsPerLinePeriod * actualPeriods;
-        int startIndex = totalPoints - pointsToExtract;
-        if (startIndex < 0) startIndex = 0;
-        
-        // Extract multiple line periods of data from the end
-        std::vector<double> extractedCurrent;
-        std::vector<double> extractedVoltage;
-        std::vector<double> extractedTime;
-        
-        for (int i = 0; i < pointsToExtract && (startIndex + i) < totalPoints; ++i) {
-            extractedCurrent.push_back(currentData[startIndex + i]);
-            extractedVoltage.push_back(voltageData[startIndex + i]);
-            extractedTime.push_back(timeData[startIndex + i] - timeData[startIndex]);  // Start from 0
         }
         
         // Create current waveform (multiple line periods)
         Waveform currentWaveform;
-        currentWaveform.set_data(extractedCurrent);
-        currentWaveform.set_time(extractedTime);
+        currentWaveform.set_data(currentData);
+        currentWaveform.set_time(timeData);
 
         SignalDescriptor current;
         current.set_waveform(currentWaveform);
         auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, _lineFrequency);
         current.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, _lineFrequency));
-        current.set_processed(Inputs::calculate_processed_data(currentWaveform, _lineFrequency, true));
+        auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, _lineFrequency, true);
+        currentProcessed.set_label(WaveformLabel::CUSTOM);
+        current.set_processed(currentProcessed);
 
         // Create voltage waveform (multiple line periods)
         Waveform voltageWaveform;
-        voltageWaveform.set_data(extractedVoltage);
-        voltageWaveform.set_time(extractedTime);
+        voltageWaveform.set_data(voltageData);
+        voltageWaveform.set_time(timeData);
 
         SignalDescriptor voltage;
         voltage.set_waveform(voltageWaveform);
         auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, _lineFrequency);
         voltage.set_harmonics(Inputs::calculate_harmonics_data(sampledVoltageWaveform, _lineFrequency));
-        voltage.set_processed(Inputs::calculate_processed_data(voltageWaveform, _lineFrequency, true));
+        auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, _lineFrequency, true);
+        voltageProcessed.set_label(WaveformLabel::CUSTOM);
+        voltage.set_processed(voltageProcessed);
 
         // Create operating point with multiple line periods
         OperatingPointExcitation excitation;
@@ -488,14 +469,17 @@ namespace OpenMagnetics {
         double switchingPeriod = 1.0 / _switchingFrequency;
         double simulationTime = numberOfCycles * linePeriod;
         
-        // Use 100 points per switching period for good resolution
-        double timeStep = switchingPeriod / 100.0;
+        // Use 4 points per switching period to show the triangular ripple
+        // 65kHz switching × 4 points = 260k points per second
+        // For 2 line periods (40ms): ~10,400 points - shows triangles clearly
+        double timeStep = switchingPeriod / 4.0;
         size_t numPoints = static_cast<size_t>(simulationTime / timeStep) + 1;
         
         // Pre-allocate vectors
         waveforms.time.resize(numPoints);
         waveforms.inputVoltage.resize(numPoints);
         waveforms.inductorCurrent.resize(numPoints);
+        waveforms.inductorVoltage.resize(numPoints);
         waveforms.currentEnvelope.resize(numPoints);
         waveforms.currentRipple.resize(numPoints);
         
@@ -535,6 +519,15 @@ namespace OpenMagnetics {
             
             // Total inductor current = envelope + ripple
             waveforms.inductorCurrent[i] = iEnv + rippleAmplitude * triangular;
+            
+            // Inductor voltage for boost PFC:
+            // During switch ON (first half of switching cycle): V_L = Vin
+            // During switch OFF (second half): V_L = Vin - Vout
+            if (sawtoothPhase < 0.5) {
+                waveforms.inductorVoltage[i] = vin;  // Switch ON
+            } else {
+                waveforms.inductorVoltage[i] = vin - vout;  // Switch OFF (negative when Vin < Vout)
+            }
         }
         
         // Input current is same as inductor current for boost PFC
@@ -588,7 +581,9 @@ namespace OpenMagnetics {
         try {
             auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, _switchingFrequency);
             current.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, _switchingFrequency));
-            current.set_processed(Inputs::calculate_processed_data(currentWaveform, _switchingFrequency, true));
+            auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, _switchingFrequency, true);
+            currentProcessed.set_label(WaveformLabel::CUSTOM);
+            current.set_processed(currentProcessed);
         } catch (const std::exception& e) {
             // If sampling fails, just use the raw waveform without harmonics
             Processed processed;
@@ -622,7 +617,9 @@ namespace OpenMagnetics {
             try {
                 auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, _switchingFrequency);
                 voltage.set_harmonics(Inputs::calculate_harmonics_data(sampledVoltageWaveform, _switchingFrequency));
-                voltage.set_processed(Inputs::calculate_processed_data(voltageWaveform, _switchingFrequency, true));
+                auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, _switchingFrequency, true);
+                voltageProcessed.set_label(WaveformLabel::CUSTOM);
+                voltage.set_processed(voltageProcessed);
             } catch (const std::exception& e) {
                 // Just use raw waveform without harmonics
             }
@@ -631,7 +628,7 @@ namespace OpenMagnetics {
         // Create operating point
         OperatingPointExcitation excitation;
         excitation.set_current(current);
-        excitation.set_frequency(_switchingFrequency);
+        excitation.set_frequency(_lineFrequency);
         excitation.set_voltage(voltage);
         
         OperatingPoint operatingPoint;

@@ -106,55 +106,25 @@ double Core::get_width() {
 }
 
 double Core::get_mass() {
-    auto shapeFamily = get_shape_family();
-    auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
+    // FIX H-1: Replaced entire method. Previous version doubled effective volume for E/PQ/EP families.
+    // Ae * le = Ve already, and process_data() already accounts for TWO_PIECE_SET doubling.
+    // Now uses get_effective_volume() directly for all non-toroidal shapes.
+    if (!get_processed_description()) {
+        process_data();
+    }
     double density = get_density();
-    double volume = 0.0;
-    
+    if (std::isnan(density)) return std::numeric_limits<double>::quiet_NaN();
+
+    auto shapeFamily = get_shape_family();
     if (shapeFamily == CoreShapeFamily::T) {
-        // Toroidal: V = π * (R_outer² - R_inner²) * height
-        volume = std::numbers::pi * (pow(dimensions["A"] / 2, 2) - pow(dimensions["B"] / 2, 2)) * dimensions["C"];
+        // Toroidal: use exact analytic formula since effective parameters may not capture physical volume accurately
+        auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
+        double volume = std::numbers::pi * (pow(dimensions["A"] / 2, 2) - pow(dimensions["B"] / 2, 2)) * dimensions["C"];
+        volume *= get_number_stacks();
+        return volume * density;
     }
-    else if (shapeFamily == CoreShapeFamily::E || shapeFamily == CoreShapeFamily::ETD ||
-             shapeFamily == CoreShapeFamily::ER || shapeFamily == CoreShapeFamily::EQ) {
-        // E-type cores: Approximate as 2 * A_eff * l_eff (both halves)
-        // This is a rough approximation; exact calculation would require detailed geometry
-        double effectiveArea = get_effective_area();
-        double effectiveLength = get_effective_length();
-        volume = 2.0 * effectiveArea * effectiveLength;
-    }
-    else if (shapeFamily == CoreShapeFamily::U || shapeFamily == CoreShapeFamily::UT) {
-        // U cores: Similar to E cores but single piece
-        double effectiveArea = get_effective_area();
-        double effectiveLength = get_effective_length();
-        volume = effectiveArea * effectiveLength;
-    }
-    else if (shapeFamily == CoreShapeFamily::PQ) {
-        // PQ cores: Approximate as E core
-        double effectiveArea = get_effective_area();
-        double effectiveLength = get_effective_length();
-        volume = 2.0 * effectiveArea * effectiveLength;
-    }
-    else if (shapeFamily == CoreShapeFamily::RM || shapeFamily == CoreShapeFamily::P) {
-        // RM and Pot cores: Approximate as toroidal-like structure
-        double effectiveArea = get_effective_area();
-        double effectiveLength = get_effective_length();
-        volume = effectiveArea * effectiveLength;
-    }
-    else if (shapeFamily == CoreShapeFamily::EP || shapeFamily == CoreShapeFamily::EPX) {
-        // EP cores: Similar to E cores
-        double effectiveArea = get_effective_area();
-        double effectiveLength = get_effective_length();
-        volume = 2.0 * effectiveArea * effectiveLength;
-    }
-    else {
-        // Generic approximation for unknown core types
-        double effectiveArea = get_effective_area();
-        double effectiveLength = get_effective_length();
-        volume = effectiveArea * effectiveLength;
-    }
-    
-    return volume * density;
+    // For all non-toroidal shapes, effective volume already accounts for TWO_PIECE_SET doubling
+    return get_effective_volume() * density;
 }
 
 double Core::get_effective_length() {
@@ -185,7 +155,7 @@ double Core::get_effective_volume() {
     return get_processed_description()->get_effective_parameters().get_effective_volume();
 }
 
-std::string Core::get_reference() {
+std::string Core::get_reference() const {
     if (get_manufacturer_info()) {
         if (get_manufacturer_info()->get_reference()) {
             return get_manufacturer_info()->get_reference().value();
@@ -204,6 +174,10 @@ double interp(std::vector<std::pair<double, double>> data, double temperature) {
         result = data[0].second;
     }
     else if (data.size() == 2) {
+        // FIX L-1: Sort data for consistency with >2 branch
+        std::sort(data.begin(), data.end(), [](const std::pair<double, double>& b1, const std::pair<double, double>& b2) {
+                return b1.first < b2.first;
+        });
         result = data[0].second -
         (data[0].first - temperature) *
             (data[0].second - data[1].second) /
@@ -453,26 +427,26 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                         }
                         minimum_column_width *= (1 + constants.spacerProtudingPercentage);
                         minimum_column_depth *= (1 + constants.spacerProtudingPercentage);
-                        double protuding_width = minimum_column_width * constants.spacerProtudingPercentage;
-                        double protuding_depth = minimum_column_depth * constants.spacerProtudingPercentage;
+                        double protruding_width = minimum_column_width * constants.spacerProtudingPercentage;
+                        double protruding_depth = minimum_column_depth * constants.spacerProtudingPercentage;
                         spacer.set_dimensions(std::vector<double>({minimum_column_width, spacerThickness, minimum_column_depth}));
                         spacer.set_rotation(std::vector<double>({0, 0, 0}));
                         if (column.get_coordinates()[0] == 0) {
                             spacer.set_coordinates({0, column.get_coordinates()[1],
                                                          -dimensions["C"] / 2 +
-                                                             minimum_column_depth / 2 - protuding_depth});
+                                                             minimum_column_depth / 2 - protruding_depth});
                         }
                         else if (column.get_coordinates()[0] < 0) {
                             if (shape_data.get_family() == CoreShapeFamily::U ||
                                 shape_data.get_family() == CoreShapeFamily::UR ||
                                 shape_data.get_family() == CoreShapeFamily::C) {
                                 spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] - column.get_width() / 2 +
-                                                                 minimum_column_width / 2 - protuding_width,
+                                                                 minimum_column_width / 2 - protruding_width,
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
                             }
                             else {
                                 spacer.set_coordinates(std::vector<double>({-dimensions["A"] / 2 +
-                                                                 minimum_column_width / 2 - protuding_width,
+                                                                 minimum_column_width / 2 - protruding_width,
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
                             }
                         }
@@ -481,12 +455,12 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                                 shape_data.get_family() == CoreShapeFamily::UR ||
                                 shape_data.get_family() == CoreShapeFamily::C) {
                                 spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] + column.get_width() / 2 -
-                                                                 minimum_column_width / 2 + protuding_width,
+                                                                 minimum_column_width / 2 + protruding_width,
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
                             }
                             else {
                                 spacer.set_coordinates(std::vector<double>({dimensions["A"] / 2 -
-                                                                 minimum_column_width / 2 + protuding_width,
+                                                                 minimum_column_width / 2 + protruding_width,
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
                             }
                         }
@@ -546,7 +520,7 @@ int Core::find_exact_column_index_by_coordinates(std::vector<double> coordinates
         double distance = 0;
         auto columnCoordinates = columns[index].get_coordinates();
 
-        double maxCoordinate = 1e-6; // Toavoid dividing by 0;
+        double maxCoordinate = 1e-6; // To avoid dividing by 0;
         for (size_t i = 0; i < columnCoordinates.size(); ++i) {
             if (i != 1) { // We don't care about how high in the column the gap is, just about its projection, with are
                           // axis X and Z
@@ -571,7 +545,9 @@ ColumnElement Core::find_closest_column_by_coordinates(std::vector<double> coord
         double distance = 0;
         auto columnCoordinates = column.get_coordinates();
         for (size_t i = 0; i < columnCoordinates.size(); ++i) {
-            distance += fabs(columnCoordinates[i] - coordinates[i]);
+            if (i != 1) { // FIX M-3: Skip Y-axis to match find_closest_column_index_by_coordinates
+                    distance += fabs(columnCoordinates[i] - coordinates[i]);
+                }
         }
         if (distance < closestDistance) {
             closestColumn = column;
@@ -897,8 +873,6 @@ std::vector<CoreGap> Core::create_distributed_gapping(double gapLength, size_t n
     return create_distributed_gapping(gapLength, numberGaps, numberColumns);
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 std::vector<CoreGap> Core::create_distributed_gapping(double gapLength, size_t numberGaps, size_t numberColumns) {
     std::vector<CoreGap> gapping;
     for (size_t i = 0; i < numberGaps; ++i) {
@@ -915,7 +889,6 @@ std::vector<CoreGap> Core::create_distributed_gapping(double gapLength, size_t n
     }
     return gapping;
 }
-#pragma GCC diagnostic pop
 
 void Core::set_distributed_gapping(double gapLength, size_t numberGaps) {
     get_mutable_functional_description().set_gapping(create_distributed_gapping(gapLength, numberGaps));
@@ -964,7 +937,7 @@ void Core::set_residual_gapping() {
 }
 
 
-bool Core::is_gapping_missaligned() {
+bool Core::is_gapping_misaligned() {
     auto gapping = get_functional_description().get_gapping();
     for (size_t i = 0; i < gapping.size(); ++i) {
         if (!gapping[i].get_coordinates()) {
@@ -1000,7 +973,7 @@ bool Core::process_gap() {
     }
 
     if (family != CoreShapeFamily::T) {
-        if (gapping.size() == 0 || !gapping[0].get_coordinates() || is_gapping_missaligned()) {
+        if (gapping.size() == 0 || !gapping[0].get_coordinates() || is_gapping_misaligned()) {
             return distribute_and_process_gap();
         }
 
@@ -1077,6 +1050,7 @@ void Core::set_material_initial_permeability(double value) {
     PermeabilityPoint permeabilityPoint;
     permeabilityPoint.set_value(value);
     coreMaterial.get_mutable_permeability().set_initial(permeabilityPoint);
+    get_mutable_functional_description().set_material(coreMaterial); // FIX M-1: persist the change
 }
 
 
@@ -1153,6 +1127,22 @@ void Core::process_data() {
             processedDescription.set_height(corePiece->get_height() * 2);
             processedDescription.set_width(corePiece->get_width());
             break;
+        case CoreType::PIECE_AND_PLATE:
+            // FIX M-7: Placeholder for PIECE_AND_PLATE — approximating as TWO_PIECE_SET
+            for (auto& column : coreColumns) {
+                column.set_height(2 * column.get_height());
+            }
+            processedDescription.set_columns(coreColumns);
+            coreEffectiveParameters.set_effective_length(2 * coreEffectiveParameters.get_effective_length());
+            coreEffectiveParameters.set_effective_volume(2 * coreEffectiveParameters.get_effective_volume());
+            processedDescription.set_effective_parameters(coreEffectiveParameters);
+            coreWindingWindow.set_area(2 * coreWindingWindow.get_area().value());
+            coreWindingWindow.set_height(2 * coreWindingWindow.get_height().value());
+            processedDescription.get_mutable_winding_windows().push_back(coreWindingWindow);
+            processedDescription.set_depth(corePiece->get_depth());
+            processedDescription.set_height(corePiece->get_height() * 2);
+            processedDescription.set_width(corePiece->get_width());
+            break;
         default:
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Unknown type of core, available options are {TOROIDAL, TWO_PIECE_SET}");
     }
@@ -1198,7 +1188,7 @@ double Core::get_magnetic_field_strength_saturation(CoreMaterial coreMaterial, d
     std::vector<std::pair<double, double>> data;
 
     if (saturationData.size() == 0) {
-        return defaults.magneticFluxDensitySaturation;
+        throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA, "Missing saturation data for magnetic field strength"); // FIX M-2
         // throw std::runtime_error("Missing saturation data in core material");
     }
     for (auto& datum : saturationData) {
@@ -1490,7 +1480,7 @@ Application Core::guess_material_application(std::string coreMaterialName) {
     return guess_material_application(coreMaterial);
 }
 
-CoreType Core::get_type() {
+CoreType Core::get_type() const {
     return get_functional_description().get_type();
 }
 
@@ -1628,8 +1618,11 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
     core.set_number_stacks(numberStacks);
     core.set_gapping(gapping);
     core.set_name("Quick core with " + coreMaterialName + " " + coreShapeName);
-    if (coreShape.get_family() == CoreShapeFamily::T || coreShape.get_family() == CoreShapeFamily::UT) {
+    if (coreShape.get_family() == CoreShapeFamily::T) {
         core.set_type(CoreType::TOROIDAL);
+    }
+    else if (coreShape.get_family() == CoreShapeFamily::UT) {
+        core.set_type(CoreType::TWO_PIECE_SET); // FIX L-3: UT cores are U-type assembled, not toroidal
     }
     else {
         core.set_type(CoreType::TWO_PIECE_SET);

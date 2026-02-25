@@ -395,14 +395,10 @@ std::vector<double> Bobbin::get_winding_window_dimensions(double coreWindingWind
 
 
     if (bobbinWindingWindowHeight > coreWindingWindowHeight) {
-        // Not proud, but the library is missbehaving...
-        // bobbinWindingWindowHeight = coreWindingWindowHeight - 0.001;
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
     }
 
     if (bobbinWindingWindowWidth > coreWindingWindowWidth) {
-        // Not proud, but the library is missbehaving...
-        // bobbinWindingWindowWidth = coreWindingWindowWidth - 0.001;
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
     }
 
@@ -703,7 +699,7 @@ bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t w
 
 void Bobbin::set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex) {
     if (!get_processed_description()) {
-        throw CoilNotProcessedException("Boobbin has not been processed yet");
+        throw CoilNotProcessedException("Bobbin has not been processed yet");
     }
 
     auto bobbinProcessedDescription = get_processed_description().value();

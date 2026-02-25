@@ -16,6 +16,9 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
     
 inline std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
+// WARNING: These global caches are NOT thread-safe. If OpenMagnetics is used in a
+// multi-threaded context, wrap access in std::shared_mutex or use a thread-safe singleton.
+// See code review finding L-3.
 inline std::map<std::string, tk::spline> wireFillingFactorInterps;
 inline std::map<std::string, tk::spline> wirePackingFactorInterps;
 inline std::map<std::string, tk::spline> wireConductingAreaProportionInterps;

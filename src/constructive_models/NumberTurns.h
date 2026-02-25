@@ -24,13 +24,13 @@ class NumberTurns {
                 }
                 _turnsRatios.push_back(turnsRatio);
             }
-            uint64_t InitialPrimaryNumberTurnsMinusOne = initialPrimaryNumberTurns - 1; // Because looking afor a new one will increment turns by one
+            uint64_t InitialPrimaryNumberTurnsMinusOne = initialPrimaryNumberTurns - 1; // Because looking for a new one will increment turns by one
             _currentNumberTurns.push_back(InitialPrimaryNumberTurnsMinusOne);
             increment_number_turns();
         }
 
         NumberTurns(double initialPrimaryNumberTurns) {
-            uint64_t InitialPrimaryNumberTurnsMinusOne = initialPrimaryNumberTurns - 1; // Because looking afor a new one will increment turns by one
+            uint64_t InitialPrimaryNumberTurnsMinusOne = initialPrimaryNumberTurns - 1; // Because looking for a new one will increment turns by one
             _currentNumberTurns.push_back(InitialPrimaryNumberTurnsMinusOne);
             increment_number_turns();
         }

@@ -85,7 +85,8 @@ namespace {
 
     TEST_CASE("Test_Complete_Ellipitical_1_2", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_1(std::sin(M_PI / 18 / 2));
-        double expectedValue = 1.685058;
+        // Updated to correct mathematical value (was 1.685058, correct is ~1.5738)
+        double expectedValue = 1.573792;
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
@@ -103,7 +104,8 @@ namespace {
 
     TEST_CASE("Test_Complete_Ellipitical_2_2", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_2(std::sin(M_PI / 18 / 2));
-        double expectedValue = 1.576;
+        // Updated to correct mathematical value (was 1.576, correct is ~1.5678)
+        double expectedValue = 1.567809;
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 

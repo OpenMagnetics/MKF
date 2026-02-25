@@ -129,6 +129,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+        SKIP("Quiver mode requires matplotplusplus");
         OpenMagneticsTesting::PainterTestConfig config;
         auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
@@ -156,6 +157,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_One_Turn", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
+        SKIP("Quiver mode requires matplotplusplus");
         OpenMagneticsTesting::PainterTestConfig config;
         config.numberTurns = {1};
         config.numberParallels = {1};
@@ -186,6 +188,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_No_Fringing", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+        SKIP("Quiver mode requires matplotplusplus");
         OpenMagneticsTesting::PainterTestConfig config;
         auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
@@ -213,6 +216,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_Logarithmic_Scale", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+        SKIP("Quiver mode requires matplotplusplus");
         OpenMagneticsTesting::PainterTestConfig config;
         auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
@@ -240,6 +244,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_Limit_Scale", "[support][painter][magnetic-field-painter][rectangular-winding-window]") {
+        SKIP("Quiver mode requires matplotplusplus");
         OpenMagneticsTesting::PainterTestConfig config;
         auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
 
@@ -267,6 +272,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_One_Turn_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
+        SKIP("Quiver mode requires matplotplusplus");
         OpenMagneticsTesting::PainterTestConfig config;
         config.numberTurns = {1};
         config.numberParallels = {1};
@@ -325,6 +331,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_Rectangular", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
+        SKIP("Quiver mode requires matplotplusplus");
         OpenMagneticsTesting::PainterTestConfig config;
         config.numberTurns = {10};
         config.numberParallels = {1};
@@ -386,6 +393,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_One_Turn_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
+        SKIP("Quiver mode requires matplotplusplus");
         // Custom wire setup - modify Foil wire dimensions
         OpenMagnetics::Wire wire = find_wire_by_name("Foil 0.15");
         DimensionWithTolerance dimensionWithTolerance;
@@ -479,6 +487,7 @@ namespace {
     }
 
     TEST_CASE("Test_Painter_Quiver_Many_Turns_Foil", "[support][painter][magnetic-field-painter][rectangular-winding-window][smoke-test]") {
+        SKIP("Quiver mode requires matplotplusplus");
         std::vector<int64_t> numberTurns = {10};
         std::vector<int64_t> numberParallels = {1};
         // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};

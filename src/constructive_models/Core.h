@@ -33,7 +33,7 @@ class Core : public MAS::MagneticCore {
     std::vector<CoreGap> find_gaps_by_type(GapType gappingType);
     std::vector<CoreGap> find_gaps_by_column(ColumnElement column);
     void scale_to_stacks(int64_t numberStacks);
-    bool is_gapping_missaligned();
+    bool is_gapping_misaligned();
     bool is_gap_processed();
     bool process_gap();
     bool distribute_and_process_gap();
@@ -56,7 +56,7 @@ class Core : public MAS::MagneticCore {
     double get_effective_area();
     double get_minimum_area();
     double get_effective_volume();
-    std::string get_reference();
+    std::string get_reference() const;
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
     double get_initial_permeability(double temperature = Defaults().ambientTemperature);
@@ -93,7 +93,7 @@ class Core : public MAS::MagneticCore {
     int64_t get_number_stacks();
     std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods();
     static std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods(CoreMaterial coreMaterial);
-    CoreType get_type();
+    CoreType get_type() const;
     bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
     std::vector<double> get_maximum_dimensions();
     void set_type(CoreType coreType);
