@@ -395,14 +395,10 @@ std::vector<double> Bobbin::get_winding_window_dimensions(double coreWindingWind
 
 
     if (bobbinWindingWindowHeight > coreWindingWindowHeight) {
-        // Not proud, but the library is missbehaving...
-        // bobbinWindingWindowHeight = coreWindingWindowHeight - 0.001;
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
     }
 
     if (bobbinWindingWindowWidth > coreWindingWindowWidth) {
-        // Not proud, but the library is missbehaving...
-        // bobbinWindingWindowWidth = coreWindingWindowWidth - 0.001;
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
     }
 
@@ -703,7 +699,7 @@ bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t w
 
 void Bobbin::set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex) {
     if (!get_processed_description()) {
-        throw CoilNotProcessedException("Boobbin has not been processed yet");
+        throw CoilNotProcessedException("Bobbin has not been processed yet");
     }
 
     auto bobbinProcessedDescription = get_processed_description().value();
@@ -756,6 +752,141 @@ std::vector<double> Bobbin::get_maximum_dimensions() {
     }
 
     return {width, height, depth};
+}
+
+// ============================================================================
+// Thermal Surface Area Calculations
+// ============================================================================
+
+double Bobbin::get_column_right_face_area(double coreDepth, size_t windingWindowIndex) {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    
+    auto shape = get_processed_description()->get_column_shape();
+    double windingWindowHeight = get_winding_window_height(windingWindowIndex);
+    
+    if (shape == ColumnShape::RECTANGULAR) {
+        // For rectangular: height * depth
+        return windingWindowHeight * coreDepth;
+    }
+    else {
+        // For round: curved surface area = 2 * pi * r * h (for half cylinder facing winding)
+        double columnRadius = get_column_width();  // column_width is radius for round columns
+        return std::numbers::pi * columnRadius * windingWindowHeight;
+    }
+}
+
+double Bobbin::get_column_top_face_area(double coreDepth, size_t windingWindowIndex) {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    
+    auto shape = get_processed_description()->get_column_shape();
+    double wallThickness = get_processed_description()->get_wall_thickness();
+    
+    if (shape == ColumnShape::RECTANGULAR) {
+        // For rectangular: thickness * depth
+        return wallThickness * coreDepth;
+    }
+    else {
+        // For round: circular segment area = pi * r² (for top surface)
+        double columnRadius = get_column_width();
+        return std::numbers::pi * columnRadius * columnRadius;
+    }
+}
+
+double Bobbin::get_column_bottom_face_area(double coreDepth, size_t windingWindowIndex) {
+    // Same as top face for symmetrical bobbins
+    return get_column_top_face_area(coreDepth, windingWindowIndex);
+}
+
+double Bobbin::get_yoke_interior_face_area(double coreDepth, bool isTopYoke, size_t windingWindowIndex) {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    
+    auto shape = get_processed_description()->get_column_shape();
+    double windingWindowWidth = get_winding_window_width(windingWindowIndex);
+    double columnWidth = get_column_width();
+    
+    if (shape == ColumnShape::RECTANGULAR) {
+        // For rectangular: width from column edge to outer edge * depth
+        // This is the face facing the winding window (bottom of top yoke / top of bottom yoke)
+        return windingWindowWidth * coreDepth;
+    }
+    else {
+        // For round: annular sector area
+        // Inner radius = column_radius, outer radius = column_radius + winding_window_radial_height
+        double innerRadius = columnWidth;
+        double outerRadius = columnWidth + windingWindowWidth;  // windingWindowWidth is radial height for round
+        // Full annulus area = pi * (R² - r²), but we use half (one side of bobbin)
+        return 0.5 * std::numbers::pi * (outerRadius * outerRadius - innerRadius * innerRadius);
+    }
+}
+
+double Bobbin::get_yoke_exterior_face_area(double coreDepth, bool isTopYoke, size_t windingWindowIndex) {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    
+    auto shape = get_processed_description()->get_column_shape();
+    double windingWindowWidth = get_winding_window_width(windingWindowIndex);
+    double columnWidth = get_column_width();
+    double wallThickness = get_processed_description()->get_wall_thickness();
+    
+    if (shape == ColumnShape::RECTANGULAR) {
+        // For rectangular: exterior face is (winding_window_width + wall_thickness) * depth
+        // This accounts for the yoke extending beyond the winding window
+        return (windingWindowWidth + wallThickness) * coreDepth;
+    }
+    else {
+        // For round: similar to interior but including the wall thickness extension
+        double innerRadius = columnWidth;
+        double outerRadius = columnWidth + windingWindowWidth + wallThickness;
+        return 0.5 * std::numbers::pi * (outerRadius * outerRadius - innerRadius * innerRadius);
+    }
+}
+
+double Bobbin::get_yoke_right_face_area(double wallThickness, double coreDepth, size_t windingWindowIndex) {
+    // The right face of the yoke is always: wallThickness * coreDepth / 2
+    // (half depth because we model one side of the bobbin)
+    return wallThickness * coreDepth / 2.0;
+}
+
+double Bobbin::get_winding_window_height(size_t windingWindowIndex) {
+    if (get_winding_window_shape(windingWindowIndex) == WindingWindowShape::RECTANGULAR) {
+        return get_processed_description()->get_winding_windows()[windingWindowIndex].get_height().value();
+    }
+    else {
+        // For round, we need to calculate the arc length or use the radial height
+        // For thermal purposes, we use the winding window radial height
+        return get_processed_description()->get_winding_windows()[windingWindowIndex].get_radial_height().value();
+    }
+}
+
+double Bobbin::get_winding_window_width(size_t windingWindowIndex) {
+    if (get_winding_window_shape(windingWindowIndex) == WindingWindowShape::RECTANGULAR) {
+        return get_processed_description()->get_winding_windows()[windingWindowIndex].get_width().value();
+    }
+    else {
+        // For round, width is the radial height
+        return get_processed_description()->get_winding_windows()[windingWindowIndex].get_radial_height().value();
+    }
+}
+
+double Bobbin::get_column_width() {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    return get_processed_description()->get_column_width().value();
+}
+
+double Bobbin::get_column_depth() {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    return get_processed_description()->get_column_depth();
 }
 
 

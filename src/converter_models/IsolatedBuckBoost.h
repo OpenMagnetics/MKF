@@ -4,6 +4,7 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
 
 using namespace MAS;
 
@@ -11,6 +12,10 @@ namespace OpenMagnetics {
 
 
 class IsolatedBuckBoost : public MAS::IsolatedBuckBoost, public Topology {
+private:
+    int numPeriodsToExtract = 5;
+    int numSteadyStatePeriods = 5;
+
 public:
     bool _assertErrors = false;
 
@@ -18,14 +23,59 @@ public:
     IsolatedBuckBoost() {
     };
 
+    int get_num_periods_to_extract() const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
+    
+    int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
+
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
-    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckBoostOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
+
+    /**
+     * @brief Generate an ngspice circuit for this Isolated Buck-Boost converter
+     * 
+     * @param turnsRatios Turns ratios for secondary windings
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @param inputVoltageIndex Which input voltage to use (0=nom, 1=min, 2=max)
+     * @param operatingPointIndex Which operating point to simulate
+     * @return SPICE netlist string
+     */
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex = 0,
+        size_t operatingPointIndex = 0);
+    
+    /**
+     * @brief Simulate the Isolated Buck-Boost converter and extract operating points
+     * 
+     * @param turnsRatios Turns ratios for each winding
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance);
+    
+    /**
+     * @brief Simulate and extract topology-level waveforms for converter validation
+     * 
+     * @param turnsRatios Turns ratios for each winding
+     * @param magnetizingInductance Magnetizing inductance in H
+     * @param numberOfPeriods Number of switching periods to simulate (default 2)
+     * @return Vector of OperatingPoints extracted from simulation
+     */
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t numberOfPeriods = 2);
 
 };
 
@@ -36,7 +86,7 @@ private:
 
 protected:
 public:
-    bool _assertErrors = false;
+
 
     AdvancedIsolatedBuckBoost() = default;
     ~AdvancedIsolatedBuckBoost() = default;

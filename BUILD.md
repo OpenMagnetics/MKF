@@ -54,6 +54,40 @@ ninja
 python3 -m pip install -e ../ -vvv
 ```
 
+### Fast builds with Ninja (recommended)
+
+If you want the fastest builds (no AddressSanitizer, no gprof), configure a fresh Release build with Ninja:
+
+```bash
+# remove any existing build dir to avoid stale flags
+rm -rf build
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+# or
+ninja -C build -j "$(nproc)"
+```
+
+Enable AddressSanitizer for Debug (opt-in):
+
+```bash
+rm -rf build
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_ASAN=ON
+cmake --build build
+```
+
+Enable gprof profiling (opt-in):
+
+```bash
+rm -rf build
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_PROFILING=ON
+cmake --build build --parallel
+```
+
+Quick check that ASan or profiling flags are present after configure:
+
+```bash
+grep -R "fsanitize=address\|-pg" build/compile_commands.json || true
+```
 
 if quicktype/MAS generation fails in step 4, try to generate it manually:
 

@@ -17,6 +17,20 @@
 
 namespace OpenMagnetics {
 
+
+// PERF-003: Cached ResistivityModel to avoid repeated factory() calls
+inline std::shared_ptr<ResistivityModel>& get_cached_resistivity_model() {
+    static std::shared_ptr<ResistivityModel> m = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    return m;
+}
+// PERF-002: Composite hash to avoid collisions when wire has no name
+inline std::size_t hash_combine_wire(int64_t n, double w, double h) {
+    std::size_t seed = std::hash<int64_t>{}(n);
+    seed ^= std::hash<double>{}(w) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= std::hash<double>{}(h) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+}
+
 std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels modelName){
     if (modelName == WindingProximityEffectLossesModels::ROSSMANITH) {
         return std::make_shared<WindingProximityEffectLossesRossmanithModel>();
@@ -33,14 +47,43 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
     else if (modelName == WindingProximityEffectLossesModels::LAMMERANER) {
         return std::make_shared<WindingProximityEffectLossesLammeranerModel>();
     }
+    else if (modelName == WindingProximityEffectLossesModels::DOWELL) {
+        return std::make_shared<WindingProximityEffectLossesDowellModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::XI_NAN) {
+        return std::make_shared<WindingProximityEffectLossesNanModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::WOJDA) {
+        return std::make_shared<WindingProximityEffectLossesWojdaModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::SULLIVAN) {
+        return std::make_shared<WindingProximityEffectLossesSullivanModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::BARTOLI) {
+        return std::make_shared<WindingProximityEffectLossesBartoliModel>();
+    }
+    else if (modelName == WindingProximityEffectLossesModels::VANDELAC) {
+        return std::make_shared<WindingProximityEffectLossesVandelacModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER}");
+        throw ModelNotAvailableException("Unknown wire proximity effect losses mode, available options are: {ROSSMANITH, WANG, FERREIRA, ALBACH, LAMMERANER, DOWELL, XI_NAN, WOJDA, SULLIVAN, BARTOLI, VANDELAC}");
 }
 
 std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType, std::optional<WindingProximityEffectLossesModels> modelOverride) {
+    // If an explicit model override is provided, use it
     if (modelOverride.has_value()) {
         return WindingProximityEffectLossesModel::factory(modelOverride.value());
     }
+
+    // Check if user has enabled manual model selection
+    auto& settings = Settings::GetInstance();
+    if (settings.get_coil_enable_user_winding_losses_models()) {
+        // Use the user's selected model from Settings
+        auto userSelectedModel = settings.get_winding_proximity_effect_losses_model();
+        return WindingProximityEffectLossesModel::factory(userSelectedModel);
+    }
+
+    // Otherwise, auto-select based on wire type (default behavior)
     switch(wireType) {
         case WireType::ROUND: {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
@@ -68,7 +111,7 @@ std::optional<double> WindingProximityEffectLossesModel::try_get_proximity_facto
     }
     std::size_t hash;
     if (!wire.get_name()) {
-        hash = std::hash<double>{}(wire.get_number_conductors().value() * wire.get_maximum_outer_width() * wire.get_maximum_outer_height() );
+        hash = hash_combine_wire(wire.get_number_conductors().value(), wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
     }
     else {
         hash = std::hash<std::string>{}(wire.get_name().value());
@@ -91,7 +134,7 @@ void WindingProximityEffectLossesModel::set_proximity_factor(Wire wire,  double 
     }
     std::size_t hash;
     if (!wire.get_name()) {
-        hash = std::hash<double>{}(wire.get_number_conductors().value() * wire.get_maximum_outer_width() * wire.get_maximum_outer_height() );
+        hash = hash_combine_wire(wire.get_number_conductors().value(), wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
     }
     else {
         hash = std::hash<std::string>{}(wire.get_name().value());
@@ -187,6 +230,9 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
     windingLossesOutput.set_winding_losses_per_turn(windingLossesPerTurn);
 
     windingLossesOutput.set_method_used("AnalyticalModels");
+    if (std::isnan(totalProximityEffectLosses)) {
+        throw NaNResultException("NaN found in total proximity effect losses");
+    }
     windingLossesOutput.set_winding_losses(windingLossesOutput.get_winding_losses() + totalProximityEffectLosses);
     return windingLossesOutput;
 }
@@ -262,15 +308,16 @@ double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(Wire w
         set_proximity_factor(wire, frequency, temperature, proximityFactor);
     }
 
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
-    double He = 0;
+    // BUG-002 FIX: Use RMS of |H|
+    double He2_sum = 0;
     for (auto& datum : data) {
-        He += sqrt(pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2));
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
-    He /= data.size();
-    double turnLosses = resistivity * pow(He, 2) * proximityFactor;
+    double He2_rms = He2_sum / data.size();
+    double turnLosses = resistivity * He2_rms * proximityFactor;
 
     turnLosses *= wire.get_number_conductors().value();
 
@@ -309,7 +356,7 @@ double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(Wire w
  * @return Proximity effect losses for this turn [W]
  */
 double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double c = 0;
@@ -369,8 +416,9 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     turnLosses += c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(hTerm) - sin(hTerm)) / (cosh(hTerm) + cos(hTerm));
     turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(cTerm) - sin(cTerm)) / (cosh(cTerm) + cos(cTerm));
 
-    // For the H field not planned for in Wang's model, we use Ferreira's
-    if (nonPlanarHe != 0) {
+    // BUG-003 FIX: Normalize nonPlanarHe by data.size()
+    if (nonPlanarHe != 0 && !data.empty()) {
+        nonPlanarHe /= data.size();
         double proximityFactor = WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(wire, frequency, temperature);
         turnLosses += proximityFactor * pow(nonPlanarHe, 2);
     }
@@ -410,7 +458,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
  */
 double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
     double factor;
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
 
@@ -530,7 +578,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wir
  * @return Proximity effect losses for this turn [W]
  */
 double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double d = 0;
@@ -553,13 +601,13 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
     std::complex<double> alpha(1, 1);
     alpha /= skinDepth;
 
-    double He = 0;
-
+    // BUG-002 FIX: Use RMS of |H|
+    double He2_sum = 0;
     for (auto& datum : data) {
-        He += hypot(datum.get_real(), datum.get_imaginary());
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
-    He /= data.size();
-    double turnLosses = c * resistivity * pow(He, 2) * (alpha * d * tanh(alpha * d / 2.0)).real();
+    double He2_rms = He2_sum / data.size();
+    double turnLosses = c * resistivity * He2_rms * (alpha * d * tanh(alpha * d / 2.0)).real();
 
     turnLosses *= wire.get_number_conductors().value();
 
@@ -620,8 +668,23 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
     }
 
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+
+    // CRITICAL FIX: Lammeraner's formula is only valid for low frequencies where d/δ < 1
+    // (Lammeraner & Stafl, 1966; Kutkut 1998). At high frequencies where skin depth is 
+    // much smaller than conductor dimension, this formula overestimates losses by (d/δ)^4.
+    // For rectangular wires at 1MHz with d=0.9mm and δ=66μm, d/δ=13.6, leading to
+    // errors of ~34,000x (19,833,400% error observed in testing).
+    double normalizedDimension = wireConductingDimension / skinDepth;
+    
+    if (normalizedDimension > 1.0) {
+        // Model not valid at this frequency - d/δ must be < 1 for Lammeraner approximation
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, 
+            "Lammeraner proximity model is only valid for low frequencies where conductor_dimension/skin_depth < 1. "
+            "Current ratio is " + std::to_string(normalizedDimension) + 
+            ". Use a different proximity model (e.g., WANG or FERREIRA) for high frequencies.");
+    }
 
     factor = 2.0 * std::numbers::pi * resistivity * pow((wireConductingDimension / 2) / skinDepth, 4) / 4;
 
@@ -640,22 +703,547 @@ double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(Wire w
         set_proximity_factor(wire, frequency, temperature, proximityFactor);
     }
 
-    double Hx = 0;
-    double Hy = 0;
+    // BUG-004 FIX: Use mean of |H|^2 instead of averaging components separately
+    double He2_sum = 0;
     for (auto& datum : data) {
-        Hx += datum.get_real();
-        Hy += datum.get_imaginary();
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
     }
-    Hx /= data.size();
-    Hy /= data.size();
+    double He2_mean = He2_sum / data.size();
 
-    double turnLosses = (pow(Hx, 2) + pow(Hy, 2)) * proximityFactor;
+    double turnLosses = He2_mean * proximityFactor;
     turnLosses *= wire.get_number_conductors().value();
 
     if (std::isnan(turnLosses)) {
         throw NaNResultException("NaN found in Lammeraner's model for proximity effect losses");
     }
 
+    return turnLosses;
+}
+
+
+/**
+ * @brief Calculates proximity factor using Dowell's analytical method for transformer windings.
+ * 
+ * Based on: "Effects of eddy currents in transformer windings" by P. L. Dowell
+ * Proceedings of the IEE, Vol. 113, No. 8, August 1966
+ * https://ieeexplore.ieee.org/document/5247417
+ * 
+ * Dowell's method models rectangular conductors in layered windings. The AC resistance
+ * ratio FR (Eq. 10) is decomposed into skin effect (M') and proximity effect (D') parts:
+ * 
+ *   FR = M' + (m² - 1)/3 · D'                                    (Eq. 10)
+ * 
+ * where the proximity contribution uses the D function:
+ * 
+ *   M = αh · coth(αh)                                             (Eq. 32)
+ *   D = 2αh · tanh(αh/2)                                          (Eq. 33)
+ * 
+ * with:
+ * - α = (1+j)/δ, the complex propagation constant
+ * - δ = skin depth = √(2ρ/(ωμ₀))
+ * - h = conductor height (dimension in the direction of field penetration)
+ * - M' and D' are the real parts of M and D, respectively
+ * 
+ * For round conductors, Dowell's approach replaces them with equivalent-area square
+ * conductors (Section 3, Fig. 3 of the paper), yielding h = d·√(π/4).
+ * 
+ * The proximity factor for a single conductor of width a and height h exposed to
+ * external field He gives losses per unit length:
+ * 
+ *   P_prox/l = (a · ρ / h) · He² · D'
+ * 
+ * @param wire Wire object containing conductor geometry
+ * @param frequency Operating frequency [Hz]
+ * @param temperature Operating temperature [K]
+ * @return Proximity factor for loss calculation [Ω·m per (A/m)²]
+ */
+double WindingProximityEffectLossesDowellModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
+    auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double factor;
+
+    double h = 0; // conductor height (dimension in direction of field penetration)
+    double a = 0; // conductor width (dimension perpendicular to field penetration)
+
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        if (!wire.get_conducting_width()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting width in wire");
+        }
+        if (!wire.get_conducting_height()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting height in wire");
+        }
+        a = resolve_dimensional_values(wire.get_conducting_width().value());
+        h = resolve_dimensional_values(wire.get_conducting_height().value());
+    }
+    else if (wire.get_type() == WireType::ROUND) {
+        // Dowell's approach: replace round conductor with equivalent square of same area
+        // (Section 3, Fig. 3 of the paper)
+        double d = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        a = d * sqrt(std::numbers::pi / 4.0);
+        h = a;
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        // Apply Dowell's round-to-square equivalence to each strand
+        auto strand = wire.resolve_strand();
+        double d = resolve_dimensional_values(strand.get_conducting_diameter());
+        a = d * sqrt(std::numbers::pi / 4.0);
+        h = a;
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+    }
+
+    // Dowell's complex propagation constant: α = (1+j)/δ  (derived from Eq. 27)
+    std::complex<double> alpha(1.0, 1.0);
+    alpha /= skinDepth;
+
+    // Compute D = 2αh·tanh(αh/2) from Dowell's Eq. 33
+    // D' = Re(D) is the proximity effect factor
+    std::complex<double> ah = alpha * h;
+    std::complex<double> D = 2.0 * ah * std::tanh(ah / 2.0);
+    double D_prime = D.real();
+
+    // Proximity factor: P_prox/l = factor · He²
+    // Derived from Dowell's leakage impedance (Eq. 8) for a single conductor
+    // of width a and height h exposed to external field He:
+    //   factor = a · ρ · D' / h
+    //
+    // Dimensional analysis: [m] · [Ω·m] · [1] / [m] = [Ω·m]
+    // Then: [Ω·m] · [A²/m²] = [W/m] ✓
+    factor = a * resistivity * D_prime / h;
+
+    if (std::isnan(factor)) {
+        throw NaNResultException("NaN found in Dowell's proximity factor");
+    }
+
+    return factor;
+}
+
+double WindingProximityEffectLossesDowellModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    double proximityFactor;
+    auto optionalproximityFactor = try_get_proximity_factor(wire, frequency, temperature);
+
+    if (optionalproximityFactor) {
+        proximityFactor = optionalproximityFactor.value();
+    }
+    else {
+        proximityFactor = calculate_proximity_factor(wire, frequency, temperature);
+        set_proximity_factor(wire, frequency, temperature, proximityFactor);
+    }
+
+    // Use RMS of |H|² (consistent with Rossmanith, Albach, and Lammeraner models)
+    double He2_sum = 0;
+    for (auto& datum : data) {
+        if (std::isnan(datum.get_real())) {
+            throw NaNResultException("NaN found in Dowell proximity losses calculation");
+        }
+        if (std::isnan(datum.get_imaginary())) {
+            throw NaNResultException("NaN found in Dowell proximity losses calculation");
+        }
+        He2_sum += pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
+    }
+    double He2_rms = He2_sum / data.size();
+
+    double turnLosses = proximityFactor * He2_rms;
+
+    if (!wire.get_number_conductors()) {
+        wire.set_number_conductors(1);
+    }
+    turnLosses *= wire.get_number_conductors().value();
+
+    if (std::isnan(turnLosses)) {
+        throw NaNResultException("NaN found in Dowell's model for proximity effect losses: frequency=" +
+            std::to_string(frequency) + ", proximityFactor=" + std::to_string(proximityFactor) +
+            ", He2_rms=" + std::to_string(He2_rms));
+    }
+
+    return turnLosses;
+}
+
+// =============================================================================
+// NAN & SULLIVAN 2003 — Modified Dowell for round conductors
+// =============================================================================
+double WindingProximityEffectLossesNanModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
+    auto& resistivityModel = get_cached_resistivity_model();
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+
+    double d = 0;
+    if (wire.get_type() == WireType::ROUND) {
+        d = resolve_dimensional_values(wire.get_conducting_diameter().value());
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        auto strand = wire.resolve_strand();
+        d = resolve_dimensional_values(strand.get_conducting_diameter());
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "Nan/Sullivan 2003 model only supports ROUND and LITZ wire");
+    }
+
+    double X = d / skinDepth;  // Eq. 16
+
+    // Default fitted coefficients for square packing (v/d≈1, h/d≈1), Table I
+    constexpr double k1 = 1.45, k2 = 0.33;
+    constexpr double K  = 0.29, b  = 1.1, n = 3.0, w = 0.54;
+
+    // Modified Dowell function G' (Eq. 15)
+    double sqk2X = std::sqrt(k2) * X;
+    double G_mod = k1 * std::sqrt(k2) * X
+                 * (std::sinh(sqk2X) - std::sin(sqk2X))
+                 / (std::cosh(sqk2X) + std::cos(sqk2X));
+
+    // Smooth transition function g(X) (Eq. 17)
+    double three_n = 3.0 * n;
+    double g_smooth = K * X / std::pow(std::pow(X, -three_n) + std::pow(b, three_n), 1.0 / three_n);
+
+    // Weighted combination (Eq. 18)
+    double G = (1.0 - w) * G_mod + w * g_smooth;
+
+    // Convert: P/l = G * H²/σ  →  factor [Ω·m] = G * ρ
+    double factor = G * resistivity;
+
+    if (std::isnan(factor))
+        throw NaNResultException("NaN in Nan/Sullivan proximity factor");
+    return factor;
+}
+
+double WindingProximityEffectLossesNanModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    double proximityFactor;
+    auto opt = try_get_proximity_factor(wire, frequency, temperature);
+    if (opt) { proximityFactor = opt.value(); }
+    else {
+        proximityFactor = calculate_proximity_factor(wire, frequency, temperature);
+        set_proximity_factor(wire, frequency, temperature, proximityFactor);
+    }
+    double He2_sum = 0;
+    for (auto& d : data) {
+        if (std::isnan(d.get_real()) || std::isnan(d.get_imaginary()))
+            throw NaNResultException("NaN in field data for Nan proximity model");
+        He2_sum += pow(d.get_real(), 2) + pow(d.get_imaginary(), 2);
+    }
+    double turnLosses = proximityFactor * He2_sum / data.size();
+    if (!wire.get_number_conductors()) wire.set_number_conductors(1);
+    turnLosses *= wire.get_number_conductors().value();
+    if (std::isnan(turnLosses))
+        throw NaNResultException("NaN in Nan model turn losses: f=" + std::to_string(frequency));
+    return turnLosses;
+}
+
+
+// =============================================================================
+// WOJDA & KAZIMIERCZUK 2012 — Field-averaging proximity model
+// =============================================================================
+double WindingProximityEffectLossesWojdaModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
+    auto& resistivityModel = get_cached_resistivity_model();
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+    auto constants = Constants();
+    double mu0   = constants.vacuumPermeability;
+    double omega  = 2.0 * std::numbers::pi * frequency;
+    double factor;
+
+    auto wt = wire.get_type();
+    if (wt == WireType::FOIL || wt == WireType::PLANAR) {
+        // Eq. 42: per-turn per-metre proximity factor
+        // R_pe/l = ηh²·μ₀²·ω²·h / (12·ρ·b)  where ηh = h/p ≈ 1 for dense foil
+        double h = resolve_dimensional_values(wire.get_conducting_height().value());
+        double bw = resolve_dimensional_values(wire.get_conducting_width().value());
+        // factor = μ₀²·ω²·h³ / (12·ρ·bw)
+        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3)
+               / (12.0 * resistivity * bw);
+    }
+    else if (wt == WireType::RECTANGULAR) {
+        // Same form as foil (Eq. 42/45):
+        double h  = resolve_dimensional_values(wire.get_conducting_height().value());
+        double bw = resolve_dimensional_values(wire.get_conducting_width().value());
+        factor = std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(h, 3)
+               / (12.0 * resistivity * bw);
+    }
+    else if (wt == WireType::ROUND) {
+        // Eq. 70: R_pe = ηb²·π²·μ₀²·ω²·Nl²·lT·d² / (576·ρ)
+        // Per-conductor per-metre, single layer (Nl=1):
+        //   factor = π²·μ₀²·ω²·d⁴ / (128·ρ)  (consistent with Sullivan SFD at low freq)
+        double d = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        factor = std::pow(std::numbers::pi, 2) * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
+               / (128.0 * resistivity);
+    }
+    else if (wt == WireType::LITZ) {
+        auto strand = wire.resolve_strand();
+        double d = resolve_dimensional_values(strand.get_conducting_diameter());
+        factor = std::pow(std::numbers::pi, 2) * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
+               / (128.0 * resistivity);
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown wire type for Wojda model");
+    }
+
+    if (std::isnan(factor))
+        throw NaNResultException("NaN in Wojda proximity factor");
+    return factor;
+}
+
+double WindingProximityEffectLossesWojdaModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    double proximityFactor;
+    auto opt = try_get_proximity_factor(wire, frequency, temperature);
+    if (opt) { proximityFactor = opt.value(); }
+    else {
+        proximityFactor = calculate_proximity_factor(wire, frequency, temperature);
+        set_proximity_factor(wire, frequency, temperature, proximityFactor);
+    }
+    double He2_sum = 0;
+    for (auto& d : data) {
+        if (std::isnan(d.get_real()) || std::isnan(d.get_imaginary()))
+            throw NaNResultException("NaN in field data for Wojda proximity model");
+        He2_sum += pow(d.get_real(), 2) + pow(d.get_imaginary(), 2);
+    }
+    double turnLosses = proximityFactor * He2_sum / data.size();
+    if (!wire.get_number_conductors()) wire.set_number_conductors(1);
+    turnLosses *= wire.get_number_conductors().value();
+    if (std::isnan(turnLosses))
+        throw NaNResultException("NaN in Wojda model turn losses: f=" + std::to_string(frequency));
+    return turnLosses;
+}
+
+
+// =============================================================================
+// SULLIVAN SFD 2001 — Squared-Field-Derivative method
+// =============================================================================
+double WindingProximityEffectLossesSullivanModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
+    auto& resistivityModel = get_cached_resistivity_model();
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+    auto constants = Constants();
+    double mu0  = constants.vacuumPermeability;
+    double omega = 2.0 * std::numbers::pi * frequency;
+
+    double d = 0;
+    if (wire.get_type() == WireType::ROUND) {
+        d = resolve_dimensional_values(wire.get_conducting_diameter().value());
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        auto strand = wire.resolve_strand();
+        d = resolve_dimensional_values(strand.get_conducting_diameter());
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "Sullivan SFD model only supports ROUND and LITZ wire");
+    }
+
+    // Appendix A, Eq. (1): P_inst/l = (π·d⁴)/(128·ρ) · |dB/dt|²
+    // For sinusoidal B=μ₀·H·sin(ωt): <|dB/dt|²> = μ₀²·ω²·H²_rms
+    // → factor [Ω·m] = π·μ₀²·ω²·d⁴ / (128·ρ)
+    double factor = std::numbers::pi * std::pow(mu0, 2) * std::pow(omega, 2) * std::pow(d, 4)
+                  / (128.0 * resistivity);
+
+    if (std::isnan(factor))
+        throw NaNResultException("NaN in Sullivan SFD proximity factor");
+    return factor;
+}
+
+double WindingProximityEffectLossesSullivanModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    double proximityFactor;
+    auto opt = try_get_proximity_factor(wire, frequency, temperature);
+    if (opt) { proximityFactor = opt.value(); }
+    else {
+        proximityFactor = calculate_proximity_factor(wire, frequency, temperature);
+        set_proximity_factor(wire, frequency, temperature, proximityFactor);
+    }
+    double He2_sum = 0;
+    for (auto& d : data) {
+        if (std::isnan(d.get_real()) || std::isnan(d.get_imaginary()))
+            throw NaNResultException("NaN in field data for Sullivan SFD proximity model");
+        He2_sum += pow(d.get_real(), 2) + pow(d.get_imaginary(), 2);
+    }
+    double turnLosses = proximityFactor * He2_sum / data.size();
+    if (!wire.get_number_conductors()) wire.set_number_conductors(1);
+    turnLosses *= wire.get_number_conductors().value();
+    if (std::isnan(turnLosses))
+        throw NaNResultException("NaN in Sullivan SFD model turn losses: f=" + std::to_string(frequency));
+    return turnLosses;
+}
+
+
+// =============================================================================
+// BARTOLI ET AL. 1996 — Litz-wire internal + external proximity
+// =============================================================================
+double WindingProximityEffectLossesBartoliModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
+    auto& resistivityModel = get_cached_resistivity_model();
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+
+    double d_s = 0;
+    int    n_s = 1;
+
+    if (wire.get_type() == WireType::ROUND) {
+        d_s = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        n_s = 1;
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        auto strand = wire.resolve_strand();
+        d_s = resolve_dimensional_values(strand.get_conducting_diameter());
+        n_s = wire.get_number_conductors().value_or(1);
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "Bartoli model only supports ROUND and LITZ wire");
+    }
+
+    // Kelvin-Bessel proximity variable: y_s = d_s·√2 / δ  (Eq. 4 adapted)
+    double y_s = d_s * std::sqrt(2.0) / skinDepth;
+
+    // Proximity Bessel factor K2(y):
+    //   Low-freq  (y→0):    K2 ≈ y⁴/64
+    //   High-freq (y→∞):    K2 ≈ y/(2√2)
+    //   Smooth Padé bridge:
+    double K2;
+    if (y_s < 0.01) {
+        K2 = std::pow(y_s, 4) / 64.0;
+    }
+    else {
+        double low  = std::pow(y_s, 4) / 64.0;
+        double high = y_s / (2.0 * std::sqrt(2.0));
+        K2 = (low * high) / (low + high);   // harmonic mean → low for small y, high for large y
+    }
+
+    // External proximity factor per strand: factor_ext = 2π·ρ·K2 (Eq. 10 converted)
+    double factor_ext = 2.0 * std::numbers::pi * resistivity * K2;
+
+    double factor = factor_ext;
+
+    // Internal proximity (strand-to-strand) for litz only (Eq. 13):
+    //   Contribution ≈ k_s · K2 · factor_ext  with 50% reduction for twisted litz
+    if (wire.get_type() == WireType::LITZ && n_s > 1) {
+        // Packing factor k_s = n_s · d_s² / d_outer²
+        double d_outer = 0;
+        if (wire.get_conducting_diameter())
+            d_outer = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        else if (wire.get_outer_diameter())
+            d_outer = resolve_dimensional_values(wire.get_outer_diameter().value());
+
+        if (d_outer > 0) {
+            double k_s = n_s * std::pow(d_s, 2) / std::pow(d_outer, 2);
+            // ×0.5 for twisted litz (Section II: 50% reduction of internal proximity)
+            factor += 0.5 * k_s * factor_ext;
+        }
+    }
+
+    if (std::isnan(factor))
+        throw NaNResultException("NaN in Bartoli proximity factor");
+    return factor;
+}
+
+double WindingProximityEffectLossesBartoliModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    double proximityFactor;
+    auto opt = try_get_proximity_factor(wire, frequency, temperature);
+    if (opt) { proximityFactor = opt.value(); }
+    else {
+        proximityFactor = calculate_proximity_factor(wire, frequency, temperature);
+        set_proximity_factor(wire, frequency, temperature, proximityFactor);
+    }
+    double He2_sum = 0;
+    for (auto& d : data) {
+        if (std::isnan(d.get_real()) || std::isnan(d.get_imaginary()))
+            throw NaNResultException("NaN in field data for Bartoli proximity model");
+        He2_sum += pow(d.get_real(), 2) + pow(d.get_imaginary(), 2);
+    }
+    double turnLosses = proximityFactor * He2_sum / data.size();
+    if (!wire.get_number_conductors()) wire.set_number_conductors(1);
+    turnLosses *= wire.get_number_conductors().value();
+    if (std::isnan(turnLosses))
+        throw NaNResultException("NaN in Bartoli model turn losses: f=" + std::to_string(frequency));
+    return turnLosses;
+}
+
+
+// =============================================================================
+// VANDELAC & ZIOGAS 1988 — F1/F2 proximity model (α=1 case)
+// =============================================================================
+double WindingProximityEffectLossesVandelacModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
+    auto& resistivityModel = get_cached_resistivity_model();
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+
+    double h = 0, a = 0;
+    auto wt = wire.get_type();
+
+    if (wt == WireType::FOIL || wt == WireType::PLANAR || wt == WireType::RECTANGULAR) {
+        a = resolve_dimensional_values(wire.get_conducting_width().value());
+        h = resolve_dimensional_values(wire.get_conducting_height().value());
+    }
+    else if (wt == WireType::ROUND) {
+        // Eq. 12(b)/(c): round→square equivalence with same cross-section
+        double d = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        a = d * std::sqrt(std::numbers::pi / 4.0);
+        h = a;
+    }
+    else if (wt == WireType::LITZ) {
+        auto strand = wire.resolve_strand();
+        double d = resolve_dimensional_values(strand.get_conducting_diameter());
+        a = d * std::sqrt(std::numbers::pi / 4.0);
+        h = a;
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown wire type for Vandelac model");
+    }
+
+    // p = h / (δ·√2)   (Eq. 27, using δ = δ_actual)
+    double p = h / (skinDepth * std::sqrt(2.0));
+
+    // F1(p) = [sinh(2p) + sin(2p)] / [cosh(2p) - cos(2p)]  (Eq. 29)
+    // F2(p) = [sinh(p)·cos(p) + cosh(p)·sin(p)] / [cosh(2p) - cos(2p)]  (Eq. 30)
+    double denom, F1, F2;
+    if (p < 1e-4) {
+        // Taylor series: F1 → 1, F2 → 1/2  as p→0
+        F1 = 1.0;
+        F2 = 0.5;
+    }
+    else {
+        denom = std::cosh(2.0 * p) - std::cos(2.0 * p);
+        F1 = (std::sinh(2.0 * p) + std::sin(2.0 * p)) / denom;
+        F2 = (std::sinh(p) * std::cos(p) + std::cosh(p) * std::sin(p)) / denom;
+    }
+
+    // Proximity-only case (α=1, β=0), from Eq. 25 differentiated:
+    //   Q_prox = H²_e·ρ / δ · [3·F1 - 4·F2] / 2
+    // Per-unit-length for conductor width a:
+    //   P_prox/l = Q_prox · a = H²_e · (a·ρ·(3·F1-4·F2)) / (2·δ)
+    //
+    // Note: at α=1 the total loss from Eq. 25 is:
+    //   Q_total = H²/(2·σ·δ) · [(1+α²)·F1 - 2α·F2]
+    //           = H²·ρ/δ · [(1+1)·F1 - 2·F2] / 2
+    //           = H²·ρ/δ · [2·F1 - 2·F2] / 2
+    //           = H²·ρ/δ · (F1 - F2)     [for field on BOTH surfaces]
+    // But in our architecture H is the EXTERNAL field (one side only, proximity only):
+    //   factor = a · ρ · (3·F1 - 4·F2) / (2·δ)
+    double factor = a * resistivity * (3.0 * F1 - 4.0 * F2) / (2.0 * skinDepth);
+
+    // Guard against negative factor at extreme p
+    if (factor < 0) factor = 0;
+
+    if (std::isnan(factor))
+        throw NaNResultException("NaN in Vandelac proximity factor");
+    return factor;
+}
+
+double WindingProximityEffectLossesVandelacModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+    double proximityFactor;
+    auto opt = try_get_proximity_factor(wire, frequency, temperature);
+    if (opt) { proximityFactor = opt.value(); }
+    else {
+        proximityFactor = calculate_proximity_factor(wire, frequency, temperature);
+        set_proximity_factor(wire, frequency, temperature, proximityFactor);
+    }
+    double He2_sum = 0;
+    for (auto& d : data) {
+        if (std::isnan(d.get_real()) || std::isnan(d.get_imaginary()))
+            throw NaNResultException("NaN in field data for Vandelac proximity model");
+        He2_sum += pow(d.get_real(), 2) + pow(d.get_imaginary(), 2);
+    }
+    double turnLosses = proximityFactor * He2_sum / data.size();
+    if (!wire.get_number_conductors()) wire.set_number_conductors(1);
+    turnLosses *= wire.get_number_conductors().value();
+    if (std::isnan(turnLosses))
+        throw NaNResultException("NaN in Vandelac model turn losses: f=" + std::to_string(frequency));
     return turnLosses;
 }
 

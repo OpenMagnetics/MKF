@@ -52,6 +52,9 @@ std::vector<double> Magnetic::get_maximum_dimensions() {
     return _maximumDimensions.value();
 }
 
+// NOTE (code review L-7): These fits_*_dimension() functions are duplicated in Core.cpp.
+// They should be consolidated into a shared utility (e.g., support/DimensionChecker.h).
+// See OpenMagnetics Code Review Report for details.
 bool fits_one_dimension(std::vector<double> magneticDimensions, double dimension) {
     if (magneticDimensions[2] <= dimension || magneticDimensions[1] <= dimension || magneticDimensions[0] <= dimension) {
         return true;

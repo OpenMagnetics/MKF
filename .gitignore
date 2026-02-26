@@ -126,6 +126,11 @@ website/package-lock.json
 *.csv
 *.Identifier
 
+# Ignore Doxygen generated docs and MkDocs site output
 docs/
+docs/api/html/
+site/
 tests/testData
 src/tools
+
+output/

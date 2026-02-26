@@ -1,5 +1,6 @@
 #include "support/Utils.h"
 #include "support/Settings.h"
+#include <magic_enum.hpp>
 
 namespace OpenMagnetics {
 
@@ -25,6 +26,8 @@ namespace OpenMagnetics {
         _windingSkinEffectLossesModel = WindingSkinEffectLossesModels::DOWELL;
         _windingProximityEffectLossesModel = WindingProximityEffectLossesModels::FERREIRA;
         _strayCapacitanceModel = StrayCapacitanceModels::ALBACH;
+        _electricFieldOutputUnit = ElectricFieldOutputUnit::JOULES_PER_CUBIC_METER;
+        _coilEnableUserWindingLossesModels = false;
         _coreAdviserMaximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
     }
 
@@ -130,6 +133,9 @@ namespace OpenMagnetics {
         _windingSkinEffectLossesModel = WindingSkinEffectLossesModels::DOWELL;
         _windingProximityEffectLossesModel = WindingProximityEffectLossesModels::FERREIRA;
         _strayCapacitanceModel = StrayCapacitanceModels::ALBACH;
+        _electricFieldOutputUnit = ElectricFieldOutputUnit::JOULES_PER_CUBIC_METER;
+
+        _coilEnableUserWindingLossesModels = false;
     }
 
     bool Settings::get_verbose() const {
@@ -249,6 +255,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_use_only_cores_in_stock(bool value) {
         _useOnlyCoresInStock = value;
+    }
+
+    bool Settings::get_use_powder_cores() const {
+        return _usePowderCores;
+    }
+    void Settings::set_use_powder_cores(bool value) {
+        _usePowderCores = value;
     }
 
     size_t Settings::get_painter_number_points_x() const {
@@ -721,6 +734,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_stray_capacitance_model(StrayCapacitanceModels value) {
         _strayCapacitanceModel = value;
+    }
+
+    ElectricFieldOutputUnit Settings::get_electric_field_output_unit() const {
+        return _electricFieldOutputUnit;
+    }
+    void Settings::set_electric_field_output_unit(ElectricFieldOutputUnit value) {
+        _electricFieldOutputUnit = value;
+    }
+
+    bool Settings::get_coil_enable_user_winding_losses_models() const {
+        return _coilEnableUserWindingLossesModels;
+    }
+    void Settings::set_coil_enable_user_winding_losses_models(bool value) {
+        _coilEnableUserWindingLossesModels = value;
     }
 
 } // namespace OpenMagnetics

@@ -1,0 +1,293 @@
+% OpenMagnetics Power Inductor Datasheet Template
+% =================================================
+% Professional inductor datasheet for power chokes, filter inductors, buck/boost inductors
+% Focus on current handling, saturation, and EMI performance
+
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usepackage{colortbl}
+
+\geometry{left=15mm, right=15mm, top=18mm, bottom=18mm}
+
+\definecolor{headerblue}{RGB}{0, 80, 140}
+\definecolor{lightblue}{RGB}{230, 240, 250}
+\definecolor{darkgray}{RGB}{80, 80, 80}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize {{COMPANY_NAME}}}
+\fancyhead[C]{\footnotesize\bfseries Power Inductor - {{PART_NUMBER}}}
+\fancyhead[R]{\footnotesize Rev. {{REVISION}}}
+\fancyfoot[C]{\footnotesize\thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.5pt}
+
+\begin{document}
+
+% ============================================================================
+% HEADER WITH INDUCTANCE HIGHLIGHT
+% ============================================================================
+\begin{center}
+\colorbox{headerblue}{
+\begin{minipage}{0.95\textwidth}
+\centering
+\color{white}
+\vspace{3mm}
+{\Huge\bfseries {{PART_NUMBER}}} \\[2mm]
+{\Large {{PART_DESCRIPTION}}} \\[1mm]
+{\large Power Inductor / Filter Choke}
+\vspace{3mm}
+\end{minipage}
+}
+\end{center}
+
+\vspace{3mm}
+
+% ============================================================================
+% HIGHLIGHTED SPECS BAR
+% ============================================================================
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\rowcolor{lightblue}
+\multicolumn{5}{|c|}{\textbf{KEY PARAMETERS}} \\
+\hline
+\textbf{Inductance} & \textbf{DCR} & \textbf{Isat (30\%)} & \textbf{Irms (40$^\circ$C rise)} & \textbf{Core} \\
+\hline
+{\Large\bfseries {{MAGNETIZING_INDUCTANCE_UH}}} & TBD m$\Omega$ & TBD A & TBD A & {{CORE_SHAPE}} \\
+\hline
+\end{tabular}
+\end{center}
+
+\vspace{5mm}
+
+% ============================================================================
+% TWO COLUMN LAYOUT
+% ============================================================================
+\begin{minipage}[t]{0.52\textwidth}
+
+% ELECTRICAL SPECIFICATIONS
+\noindent{\large\bfseries\textcolor{headerblue}{Electrical Specifications}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{tabular}{|p{4.5cm}|c|c|c|c|}
+\hline
+\rowcolor{lightblue}
+\textbf{Parameter} & \textbf{Min} & \textbf{Typ} & \textbf{Max} & \textbf{Unit} \\
+\hline
+Inductance @ 0 A DC & - & {{MAGNETIZING_INDUCTANCE_UH}} & - & $\mu$H \\
+\hline
+Inductance Tolerance & -20 & - & +20 & \% \\
+\hline
+DC Resistance (DCR) & - & - & TBD & m$\Omega$ \\
+\hline
+Saturation Current (30\% drop) & - & - & TBD & A \\
+\hline
+RMS Current (40$^\circ$C rise) & - & - & TBD & A \\
+\hline
+Self-Resonant Frequency & TBD & - & - & MHz \\
+\hline
+Operating Frequency & - & {{OPERATING_FREQUENCY_KHZ}} & 1000 & kHz \\
+\hline
+\end{tabular}
+}
+
+\vspace{4mm}
+
+% CORE INFORMATION
+\noindent{\large\bfseries\textcolor{headerblue}{Core Information}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{lightblue}
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Core Type & {{CORE_SHAPE}} \\
+\hline
+Core Material & {{CORE_MATERIAL}} \\
+\hline
+Effective Area ($A_e$) & {{EFFECTIVE_AREA_MM2}} \\
+\hline
+Effective Length ($l_e$) & {{EFFECTIVE_LENGTH_MM}} \\
+\hline
+Air Gap Total & {{GAP_LENGTH_MM}} \\
+\hline
+Number of Gaps & {{NUMBER_GAPS}} \\
+\hline
+\end{tabular}
+}
+
+\vspace{4mm}
+
+% WINDING DATA
+\noindent{\large\bfseries\textcolor{headerblue}{Winding Construction}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{lightblue}
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Number of Turns & {{NUMBER_TURNS_W1}} \\
+\hline
+Number of Parallels & {{NUMBER_PARALLELS_W1}} \\
+\hline
+Wire Type & {{WIRE_TYPE_W1}} \\
+\hline
+Conductor Size & {{WIRE_DIAMETER_W1}} \\
+\hline
+Winding Style & Single Layer \\
+\hline
+\end{tabular}
+}
+
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.45\textwidth}
+
+% OPERATING CONDITIONS
+\noindent{\large\bfseries\textcolor{headerblue}{Operating Conditions}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{lightblue}
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Operating Temperature & -40 to +125$^\circ$C \\
+\hline
+Storage Temperature & -40 to +150$^\circ$C \\
+\hline
+Ambient Test Temp & {{AMBIENT_TEMPERATURE}} \\
+\hline
+\end{tabular}
+}
+
+\vspace{4mm}
+
+% LOSS ANALYSIS
+\noindent{\large\bfseries\textcolor{headerblue}{Loss Analysis}}
+\vspace{2mm}
+
+Test conditions: {{OPERATING_FREQUENCY_KHZ}}, {{AMBIENT_TEMPERATURE}}
+
+{\footnotesize
+\begin{tabular}{|l|l|}
+\hline
+\rowcolor{lightblue}
+\textbf{Loss Component} & \textbf{Value} \\
+\hline
+Core Losses ($P_{core}$) & {{CORE_LOSSES}} \\
+\hline
+Copper Losses ($P_{cu}$) & {{WINDING_LOSSES}} \\
+\hline
+\textbf{Total Losses} & \textbf{{{TOTAL_LOSSES}}} \\
+\hline
+Peak Flux Density & {{PEAK_FLUX_DENSITY_MT}} \\
+\hline
+Max Surface Temp & {{MAX_TEMPERATURE}} \\
+\hline
+\end{tabular}
+}
+
+\vspace{4mm}
+
+% TYPICAL APPLICATIONS
+\noindent{\large\bfseries\textcolor{headerblue}{Typical Applications}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{itemize}
+    \setlength{\itemsep}{0pt}
+    \item DC-DC Buck/Boost Converters
+    \item Power Factor Correction (PFC)
+    \item EMI/EMC Input Filters
+    \item Energy Storage Inductors
+    \item Solar Inverters
+    \item EV/HEV Power Systems
+\end{itemize}
+}
+
+\vspace{4mm}
+
+% FEATURES
+\noindent{\large\bfseries\textcolor{headerblue}{Features}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{itemize}
+    \setlength{\itemsep}{0pt}
+    \item High saturation current
+    \item Low DC resistance
+    \item Excellent thermal performance
+    \item Soft saturation characteristic
+    \item RoHS compliant
+\end{itemize}
+}
+
+\end{minipage}
+
+\vspace{8mm}
+
+% ============================================================================
+% CHARACTERISTIC CURVES PLACEHOLDERS
+% ============================================================================
+\noindent{\large\bfseries\textcolor{headerblue}{Characteristic Curves}}
+\vspace{3mm}
+
+\begin{center}
+\begin{minipage}{0.3\textwidth}
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{15mm}\footnotesize L vs. DC Bias\\Inductance Roll-off\vspace{15mm}}}
+\end{minipage}
+\hfill
+\begin{minipage}{0.3\textwidth}
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{15mm}\footnotesize Core Loss vs. Frequency\\@ Various $B_{pk}$\vspace{15mm}}}
+\end{minipage}
+\hfill
+\begin{minipage}{0.3\textwidth}
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{15mm}\footnotesize Temperature Rise\\vs. Current\vspace{15mm}}}
+\end{minipage}
+\end{center}
+
+\vspace{8mm}
+
+% ============================================================================
+% ORDERING INFORMATION
+% ============================================================================
+\noindent{\large\bfseries\textcolor{headerblue}{Ordering Information}}
+\vspace{2mm}
+
+{\footnotesize
+\begin{tabular}{|l|l|l|l|l|}
+\hline
+\rowcolor{lightblue}
+\textbf{Part Number} & \textbf{Inductance} & \textbf{Tolerance} & \textbf{Packaging} & \textbf{MOQ} \\
+\hline
+{{PART_NUMBER}} & {{MAGNETIZING_INDUCTANCE_UH}} & $\pm$20\% & Bulk / Tape \& Reel & 100 \\
+\hline
+\end{tabular}
+}
+
+\vspace{5mm}
+\hrule
+\vspace{2mm}
+{\footnotesize\textit{For custom inductance values, current ratings, or alternative cores, contact {{COMPANY_NAME}}.}}
+
+\end{document}

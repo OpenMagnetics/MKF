@@ -22,6 +22,280 @@ namespace OpenMagnetics {
 
 inline std::map<std::string, tk::spline> lossFactorInterps;
 
+// ============================================================================
+// Roshen Hysteresis Model - Data Structures
+// ============================================================================
+
+/**
+ * @brief Cache key for B-H loop calculations
+ */
+struct BHLoopCacheKey {
+    std::string materialName;
+    double temperature;
+    double magneticFluxDensityPeak;
+    
+    bool operator<(const BHLoopCacheKey& other) const {
+        if (materialName != other.materialName) return materialName < other.materialName;
+        if (temperature != other.temperature) return temperature < other.temperature;
+        return magneticFluxDensityPeak < other.magneticFluxDensityPeak;
+    }
+    
+    bool operator==(const BHLoopCacheKey& other) const {
+        return materialName == other.materialName &&
+               temperature == other.temperature &&
+               magneticFluxDensityPeak == other.magneticFluxDensityPeak;
+    }
+};
+
+/**
+ * @brief Represents a complete B-H hysteresis loop
+ */
+struct BHLoop {
+    std::vector<double> upperH;  // H values for upper branch
+    std::vector<double> upperB;  // B values for upper branch
+    std::vector<double> lowerH;  // H values for lower branch
+    std::vector<double> lowerB;  // B values for lower branch
+    double area;                 // Loop area (hysteresis loss per cycle)
+    double coerciveForce;
+    double remanence;
+    double saturationB;
+    double saturationH;
+    
+    /**
+     * @brief Calculate loop area using trapezoidal integration
+     */
+    double calculate_area() const;
+    
+    /**
+     * @brief Get B value for given H on upper or lower branch
+     */
+    double get_b_for_h(double H, bool upperBranch) const;
+};
+
+/**
+ * @brief Parameters for Roshen hysteresis model
+ */
+struct RoshenParameters {
+    double coerciveForce;
+    double remanence;
+    double saturationMagneticFluxDensity;
+    double saturationMagneticFieldStrength;
+    double a1;  // Roshen coefficient
+    double b1;  // Roshen coefficient
+    double b2;  // Roshen coefficient
+    
+    // Temperature coefficients for correction
+    double alpha_Hc = 0.002;  // Hc temperature coefficient (1/°C)
+    double alpha_Br = 0.001;  // Br temperature coefficient (1/°C)
+    double T_ref = 25.0;      // Reference temperature (°C)
+    
+    /**
+     * @brief Calculate Roshen coefficients from material properties
+     */
+    static RoshenParameters from_material(const CoreMaterial& material, double temperature);
+    
+    /**
+     * @brief Apply temperature correction to coercive force and remanence
+     */
+    void apply_temperature_correction(double temperature);
+    
+    /**
+     * @brief Calculate squared error between model and measured data
+     */
+    double calculate_fitting_error(const std::vector<std::pair<double, double>>& measuredPoints) const;
+};
+
+/**
+ * @brief Improved Roshen hysteresis model with caching and analytical methods
+ * 
+ * This class provides:
+ * - Cached B-H loop calculations for improved performance
+ * - Analytical minor loop scaling (O(N) instead of iterative O(N*k))
+ * - Sub-loop handling for arbitrary waveforms
+ * - DC bias correction
+ * - Air gap shearing support
+ */
+class RoshenHysteresisModel {
+private:
+    // Cache for computed loops
+    static std::map<BHLoopCacheKey, BHLoop> _loopCache;
+    static std::map<std::string, RoshenParameters> _paramsCache;
+    
+    // Cache configuration
+    static constexpr size_t MAX_CACHE_SIZE = 1000;
+    
+    /**
+     * @brief Generate H points from -Hs to +Hs
+     */
+    std::vector<double> generate_h_points(double Hs, double step) const;
+    
+    /**
+     * @brief Calculate B from H using Roshen equation
+     */
+    double calculate_b(double H, double coerciveForce, double a, double b, bool upperBranch) const;
+    
+    /**
+     * @brief Calculate B-H curve point using Roshen hyperbolic model
+     */
+    double bh_curve_half_loop(double H, double Hc, double a, double b) const {
+        return (H + Hc) / (a + b * std::fabs(H + Hc));
+    }
+
+public:
+    RoshenHysteresisModel() = default;
+    ~RoshenHysteresisModel() = default;
+    
+    /**
+     * @brief Clear all caches
+     */
+    static void clear_cache();
+    
+    /**
+     * @brief Get cached parameters for a material, or calculate and cache them
+     */
+    static RoshenParameters get_cached_parameters(const CoreMaterial& material, double temperature);
+    
+    /**
+     * @brief Calculate major B-H loop (full saturation)
+     */
+    BHLoop calculate_major_loop(const RoshenParameters& params, double temperature, double stepSize = -1.0);
+    
+    /**
+     * @brief Analytically scale major loop to minor loop at target flux density
+     * 
+     * This replaces the iterative method with O(N) analytical scaling.
+     * 
+     * @param majorLoop The full major hysteresis loop
+     * @param params Material parameters
+     * @param targetBpeak Target peak flux density for minor loop
+     * @return Scaled minor loop
+     */
+    BHLoop scale_to_minor_loop_analytical(const BHLoop& majorLoop, 
+                                          const RoshenParameters& params,
+                                          double targetBpeak);
+    
+    /**
+     * @brief Get minor loop with caching
+     */
+    BHLoop get_minor_loop(const CoreMaterial& material, 
+                         double temperature,
+                         double targetBpeak,
+                         bool useCache = true);
+    
+    /**
+     * @brief Calculate hysteresis loss density from B-H loop area
+     */
+    double calculate_hysteresis_loss_density(const BHLoop& loop, double frequency) const {
+        return loop.area * frequency;
+    }
+    
+    /**
+     * @brief Detect and calculate sub-loops in an arbitrary waveform
+     * 
+     * Based on Roshen Eq. (8.21): Total loss = sum of losses from each separated loop
+     * 
+     * @param H_wavefield Magnetic field strength waveform
+     * @param B_wavefield Magnetic flux density waveform
+     * @param frequency Operating frequency
+     * @return Total hysteresis loss density including sub-loops
+     */
+    double calculate_loss_with_subloops(const std::vector<double>& H_wavefield,
+                                       const std::vector<double>& B_wavefield,
+                                       double frequency);
+    
+    /**
+     * @brief Apply DC bias correction to loop
+     * 
+     * DC bias shifts the loop and changes effective permeability
+     */
+    BHLoop apply_dc_bias(const BHLoop& originalLoop, double B_dc, const RoshenParameters& params);
+    
+    /**
+     * @brief Apply air gap shearing to loop
+     * 
+     * Air gaps cause shearing of the B-H loop (tilt)
+     */
+    BHLoop apply_air_gap_shear(const BHLoop& originalLoop, 
+                              double gapLength, 
+                              double coreLength,
+                              double effectivePermeability);
+    
+    /**
+     * @brief High-level interface matching existing API
+     * 
+     * Returns upper and lower B waveforms for given H field
+     */
+    std::pair<std::vector<double>, std::vector<double>> get_hysteresis_loop(
+        const CoreMaterial& material,
+        double temperature,
+        std::optional<double> magneticFluxDensityPeak,
+        std::optional<double> magneticFieldStrengthPeak);
+    
+    /**
+     * @brief Get amplitude permeability from minor loop slope
+     */
+    std::optional<double> get_amplitude_permeability(const CoreMaterial& material,
+                                                     double temperature,
+                                                     std::optional<double> magneticFluxDensityPeak,
+                                                     std::optional<double> magneticFieldStrengthPeak);
+    
+    /**
+     * @brief Fit Roshen parameters to measured B-H data using least squares
+     * 
+     * This provides better accuracy than analytical calculation from saturation points alone.
+     * Uses the existing levmar library for optimization.
+     * 
+     * @param measuredPoints Vector of (H, B) measured data points
+     * @param initialParams Initial parameter estimate
+     * @return Optimized parameters
+     */
+    static RoshenParameters fit_parameters_to_data(
+        const std::vector<std::pair<double, double>>& measuredPoints,
+        const RoshenParameters& initialParams);
+    
+    /**
+     * @brief Calculate loop area using adaptive Simpson integration
+     * 
+     * More accurate than simple trapezoidal rule, especially near coercive points
+     * where curvature is high.
+     * 
+     * @param loop B-H loop to integrate
+     * @param tolerance Integration tolerance
+     * @return Loop area
+     */
+    double calculate_loop_area_adaptive(const BHLoop& loop, double tolerance = 1e-6) const;
+    
+    /**
+     * @brief Get parameters with temperature correction applied
+     * 
+     * @param material Core material
+     * @param temperature Operating temperature
+     * @return Parameters with temperature-corrected Hc and Br
+     */
+    static RoshenParameters get_temperature_corrected_parameters(
+        const CoreMaterial& material, 
+        double temperature);
+    
+    /**
+     * @brief Calculate hysteresis losses with all improvements
+     * 
+     * Combines temperature correction, dynamic fitting (if data available),
+     * and adaptive integration for maximum accuracy.
+     * 
+     * @param core Core geometry
+     * @param excitation Operating point excitation
+     * @param temperature Core temperature
+     * @return Hysteresis loss density (W/m³)
+     */
+    double calculate_hysteresis_losses_improved(
+        Core core,
+        OperatingPointExcitation excitation,
+        double temperature);
+};
+
+// ============================================================================
+// Core Losses Models
+// ============================================================================
 
 class CoreLossesModel {
   private:

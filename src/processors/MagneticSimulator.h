@@ -4,6 +4,7 @@
 #include "physical_models/CoreTemperature.h"
 #include "physical_models/WindingLosses.h"
 #include "support/Utils.h"
+#include "support/Settings.h"
 #include "constructive_models/Mas.h"
 #include <MAS.hpp>
 
@@ -25,9 +26,10 @@ class MagneticSimulator {
     public:
 
         MagneticSimulator() {
-            _coreTemperatureModelName = defaults.coreTemperatureModelDefault;
-            
-            _reluctanceModelName = defaults.reluctanceModelDefault;
+            // Use Settings instead of defaults
+            auto& settings = Settings::GetInstance();
+            _coreTemperatureModelName = settings.get_core_temperature_model();
+            _reluctanceModelName = settings.get_reluctance_model();
 
             _coreTemperatureModel = CoreTemperatureModel::factory(_coreTemperatureModelName);
             _magnetizingInductanceModel = MagnetizingInductance(to_string(_reluctanceModelName));

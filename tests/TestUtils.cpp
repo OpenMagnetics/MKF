@@ -70,13 +70,13 @@ namespace {
 
     TEST_CASE("Test_Complete_Ellipitical_1_0", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_1(0);
-        double expectedValue = std::comp_ellint_1(0);
+        double expectedValue = M_PI / 2.0;
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
     TEST_CASE("Test_Complete_Ellipitical_1_1", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_1(1);
-        double expectedValue = std::comp_ellint_1(1);
+        double expectedValue = std::numeric_limits<double>::infinity();
         // Our implementation returns NaN, standard library may return NaN or infinity
         REQUIRE(std::isnan(calculatedValue));
         // MSVC returns infinity, GCC/Clang return NaN - both are valid for the singularity at k=1
@@ -85,25 +85,27 @@ namespace {
 
     TEST_CASE("Test_Complete_Ellipitical_1_2", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_1(std::sin(M_PI / 18 / 2));
-        double expectedValue = std::comp_ellint_1(std::sin(M_PI / 18 / 2));
+        // Updated to correct mathematical value (was 1.685058, correct is ~1.5738)
+        double expectedValue = 1.573792;
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
     TEST_CASE("Test_Complete_Ellipitical_2_0", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_2(0);
-        double expectedValue = std::comp_ellint_2(0);
+        double expectedValue = M_PI / 2.0;
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
     TEST_CASE("Test_Complete_Ellipitical_2_1", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_2(1);
-        double expectedValue = std::comp_ellint_2(1);
+        double expectedValue = 1.0;
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
     TEST_CASE("Test_Complete_Ellipitical_2_2", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_2(std::sin(M_PI / 18 / 2));
-        double expectedValue = std::comp_ellint_2(std::sin(M_PI / 18 / 2));
+        // Updated to correct mathematical value (was 1.576, correct is ~1.5678)
+        double expectedValue = 1.567809;
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
     }
 
@@ -751,6 +753,86 @@ namespace {
         REQUIRE(autocompletedMagnetic.get_core().get_geometrical_description().value()[0].get_machining());
         REQUIRE(autocompletedMagnetic.get_core().get_geometrical_description().value()[0].get_machining().value()[0].get_length() > 0);
         REQUIRE(!autocompletedMagnetic.get_core().get_geometrical_description().value()[1].get_machining());
+    }
+
+    TEST_CASE("Test_Prune_Harmonics_Frequency_Mismatch", "[processors][inputs][bug]") {
+        // Test case for the bug where prune_harmonics mismatches amplitudes and frequencies
+        // when harmonic indexes are sorted but frequencies are not reordered to match
+        
+        OperatingPoint operatingPoint;
+        
+        // Create first excitation with harmonics at indexes 1, 2, 3, 4
+        {
+            OperatingPointExcitation excitation;
+            excitation.set_name("Primary");
+            
+            SignalDescriptor current;
+            Harmonics harmonics;
+            // DC component at index 0
+            harmonics.get_mutable_amplitudes().push_back(0.0);
+            harmonics.get_mutable_frequencies().push_back(0.0);
+            // Harmonics at indexes 1-4
+            harmonics.get_mutable_amplitudes().push_back(10.0);  // index 1, freq 100000
+            harmonics.get_mutable_frequencies().push_back(100000.0);
+            harmonics.get_mutable_amplitudes().push_back(5.0);   // index 2, freq 200000
+            harmonics.get_mutable_frequencies().push_back(200000.0);
+            harmonics.get_mutable_amplitudes().push_back(8.0);   // index 3, freq 300000 (high amp to keep)
+            harmonics.get_mutable_frequencies().push_back(300000.0);
+            harmonics.get_mutable_amplitudes().push_back(2.0);   // index 4, freq 400000 (low amp, might be pruned)
+            harmonics.get_mutable_frequencies().push_back(400000.0);
+            
+            current.set_harmonics(harmonics);
+            excitation.set_current(current);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+        }
+        
+        // Create second excitation with only harmonics at indexes 1, 2, 4
+        // This creates a scenario where get_main_harmonic_indexes returns unsorted indexes
+        {
+            OperatingPointExcitation excitation;
+            excitation.set_name("Secondary");
+            
+            SignalDescriptor current;
+            Harmonics harmonics;
+            // DC component at index 0
+            harmonics.get_mutable_amplitudes().push_back(0.0);
+            harmonics.get_mutable_frequencies().push_back(0.0);
+            // Harmonics - skip index 3 to create index gap
+            harmonics.get_mutable_amplitudes().push_back(10.0);  // index 1, freq 100000
+            harmonics.get_mutable_frequencies().push_back(100000.0);
+            harmonics.get_mutable_amplitudes().push_back(5.0);   // index 2, freq 200000
+            harmonics.get_mutable_frequencies().push_back(200000.0);
+            // Index 3 is missing in this winding!
+            harmonics.get_mutable_amplitudes().push_back(8.0);   // index 3 in this winding is actually index 4 freq
+            harmonics.get_mutable_frequencies().push_back(400000.0);
+            
+            current.set_harmonics(harmonics);
+            excitation.set_current(current);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+        }
+        
+        // Prune harmonics with a threshold that should keep indexes 1, 2, 3 (or 4 in secondary)
+        double threshold = 0.1;  // Keep harmonics above 10% of max
+        auto prunedOperatingPoint = OpenMagnetics::Inputs::prune_harmonics(operatingPoint, threshold);
+        
+        // Verify that frequencies and amplitudes are correctly matched
+        for (const auto& excitation : prunedOperatingPoint.get_excitations_per_winding()) {
+            auto harmonics = excitation.get_current()->get_harmonics().value();
+            
+            // Check that amplitudes and frequencies arrays have the same size
+            REQUIRE(harmonics.get_amplitudes().size() == harmonics.get_frequencies().size());
+            
+            // Check that each frequency is valid (not NaN, not zero for AC harmonics)
+            for (size_t i = 1; i < harmonics.get_frequencies().size(); ++i) {
+                REQUIRE(!std::isnan(harmonics.get_frequencies()[i]));
+                REQUIRE(harmonics.get_frequencies()[i] > 0);
+            }
+            
+            // Verify frequency ordering (should be increasing)
+            for (size_t i = 2; i < harmonics.get_frequencies().size(); ++i) {
+                REQUIRE(harmonics.get_frequencies()[i] > harmonics.get_frequencies()[i-1]);
+            }
+        }
     }
 
 }  // namespace

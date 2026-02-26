@@ -2231,12 +2231,14 @@ TEST_CASE("Test_Standardize_Waveform", "[processor][inputs][smoke-test]") {
 
     auto standardSignalDescriptor = OpenMagnetics::Inputs::standardize_waveform(signalDescriptor, 50);
 
-    auto outFile = outputFilePath;
-    outFile.append("Test_Standardize_Waveform.svg");
-    std::filesystem::remove(outFile);   
-    Painter painter(outFile, false, true);
-    painter.paint_waveform(standardSignalDescriptor.get_waveform().value());
-    painter.export_svg();
+    #ifdef ENABLE_MATPLOTPP
+        auto outFile = outputFilePath;
+        outFile.append("Test_Standardize_Waveform.svg");
+        std::filesystem::remove(outFile);   
+        Painter painter(outFile, false, true);
+        painter.paint_waveform(standardSignalDescriptor.get_waveform().value());
+        painter.export_svg();
+    #endif
 
 }
 }  // namespace

@@ -84,7 +84,8 @@ enum class ErrorCode : int {
     
     // Calculation result errors (1300-1399)
     CALCULATION_INVALID_RESULT = 1300,
-    CALCULATION_TIMEOUT = 1301
+    CALCULATION_TIMEOUT = 1301,
+    INVALID_LOSS_DATA = 1302
 };
 
 /**
@@ -131,6 +132,7 @@ inline std::string to_string(ErrorCode code) {
         case ErrorCode::INVALID_DESIGN_REQUIREMENTS: return "INVALID_DESIGN_REQUIREMENTS";
         case ErrorCode::CALCULATION_INVALID_RESULT: return "CALCULATION_INVALID_RESULT";
         case ErrorCode::CALCULATION_TIMEOUT: return "CALCULATION_TIMEOUT";
+        case ErrorCode::INVALID_LOSS_DATA: return "INVALID_LOSS_DATA";
         default: return "UNKNOWN";
     }
 }

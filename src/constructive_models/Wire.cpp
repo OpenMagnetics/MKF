@@ -678,7 +678,7 @@ namespace OpenMagnetics {
 
     double get_packing_factor_from_standard(WireStandard standard, double numberConductors) {
         if (standard == WireStandard::IEC_60317) {
-            // Accoding to standard IEC 60317 - 11
+            // According to standard IEC 60317 - 11
             if (numberConductors == 2) {
                 return sqrt(2);
             }
@@ -696,7 +696,7 @@ namespace OpenMagnetics {
             }
         }
         else {
-            // Accoding to Rubadue, page 25 of https://www.psma.com/sites/default/files/uploads/files/Litz%20Wire%20Practical%20Design%20Considerations%20for%20Todays%20HF%20Applications%20Jensen%2C%20Rubadue.pdf
+            // According to Rubadue, page 25 of https://www.psma.com/sites/default/files/uploads/files/Litz%20Wire%20Practical%20Design%20Considerations%20for%20Todays%20HF%20Applications%20Jensen%2C%20Rubadue.pdf
             return 1.155;
         }
     }
@@ -910,7 +910,7 @@ namespace OpenMagnetics {
         return unservedOuterDiameter + 2 * thicknessLayers * numberLayers;
     }
 
-    // Thought for enamelled reactangular wires
+    // Thought for enamelled rectangular wires
     double Wire::get_filling_factor_rectangular(double conductingWidth, double conductingHeight, int grade, WireStandard standard) {
         double realConductingArea = get_conducting_area_rectangular(conductingWidth, conductingHeight, standard);
         double outerWidth = get_outer_width_rectangular(conductingWidth, grade, standard);
@@ -920,7 +920,7 @@ namespace OpenMagnetics {
         return realConductingArea / outerArea;
     }
 
-    // Thought for enamelled reactangular wires
+    // Thought for enamelled rectangular wires
     double Wire::get_outer_width_rectangular(double conductingWidth, int grade, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
@@ -940,7 +940,7 @@ namespace OpenMagnetics {
                                    key);
     }
 
-    // Thought for enamelled reactangular wires
+    // Thought for enamelled rectangular wires
     double Wire::get_outer_height_rectangular(double conductingHeight, int grade, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
@@ -960,7 +960,7 @@ namespace OpenMagnetics {
                                    key);
     }
 
-    // Thought for enamelled reactangular wires
+    // Thought for enamelled rectangular wires
     double Wire::get_conducting_area_rectangular(double conductingWidth, double conductingHeight, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
@@ -1567,6 +1567,21 @@ namespace OpenMagnetics {
         }
     }
 
+    double Wire::get_minimum_outer_dimension() {
+        switch (get_type()) {
+            case WireType::LITZ:
+            case WireType::ROUND:
+                    return resolve_dimensional_values(get_outer_diameter().value());
+            case WireType::PLANAR:
+            case WireType::RECTANGULAR:
+                    return resolve_dimensional_values(get_outer_height().value());
+            case WireType::FOIL:
+                    return resolve_dimensional_values(get_outer_width().value());
+            default:
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
+        }
+    }
+
     void Wire::cut_foil_wire_to_section(Section section) {
         if (get_type() != WireType::FOIL) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Method only valid for Foil wire");
@@ -1667,6 +1682,78 @@ namespace OpenMagnetics {
         auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
         auto coatingThickness = get_coating_thickness(wire);
         return coatingInsulationMaterial.get_dielectric_strength_by_thickness(coatingThickness);
+    }
+
+    double Wire::get_coating_thermal_conductivity() {
+        return get_coating_thermal_conductivity(*this);
+    }
+
+    double Wire::get_coating_thermal_conductivity(Wire wire) {
+        auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
+        
+        // If the material has thermal conductivity specified, use it
+        if (coatingInsulationMaterial.get_thermal_conductivity().has_value()) {
+            return coatingInsulationMaterial.get_thermal_conductivity().value();
+        }
+        
+        // Default values based on common coating materials
+        // These are typical values from literature
+        auto coatingType = wire.resolve_coating();
+        if (coatingType) {
+            auto coatingTypeEnum = coatingType->get_type();
+            if (coatingTypeEnum == InsulationWireCoatingType::INSULATED) {
+                // Polyimide, polyurethane, etc.
+                return 0.25;  // W/(m·K) - typical for polyimide
+            } else if (coatingTypeEnum == InsulationWireCoatingType::BARE) {
+                return 0.0;  // No coating
+            } else if (coatingTypeEnum == InsulationWireCoatingType::SERVED) {
+                return 0.2;  // Served/litz wire insulation
+            }
+        }
+        
+        // Fallback default
+        return 0.25;  // Conservative default for wire enamel
+    }
+
+    double Wire::get_coating_thickness(const InsulationWireCoating& coating) {
+        // First try to get explicit thickness
+        if (coating.get_thickness().has_value()) {
+            return resolve_dimensional_values(coating.get_thickness().value());
+        }
+        
+        // Otherwise calculate from layers
+        if (coating.get_thickness_layers().has_value() && coating.get_number_layers().has_value()) {
+            return coating.get_thickness_layers().value() * coating.get_number_layers().value();
+        }
+        
+        // Default thickness for insulated wires (typical enamel coating)
+        return 30e-6;  // 30 micrometers
+    }
+
+    double Wire::get_coating_thermal_conductivity(const InsulationWireCoating& coating) {
+        // Try to get from material specification
+        auto materialOpt = coating.get_material();
+        if (materialOpt.has_value()) {
+            auto materialVariant = materialOpt.value();
+            if (std::holds_alternative<MAS::InsulationMaterial>(materialVariant)) {
+                auto material = std::get<MAS::InsulationMaterial>(materialVariant);
+                if (material.get_thermal_conductivity().has_value()) {
+                    return material.get_thermal_conductivity().value();
+                }
+            }
+        }
+        
+        // Default values based on coating type
+        auto coatingType = coating.get_type();
+        if (coatingType == InsulationWireCoatingType::INSULATED) {
+            return 0.25;  // Polyimide/polyurethane
+        } else if (coatingType == InsulationWireCoatingType::SERVED) {
+            return 0.2;
+        } else if (coatingType == InsulationWireCoatingType::BARE) {
+            return 0.0;  // No coating
+        }
+        
+        return 0.25;  // Conservative default
     }
 
     double Wire::get_coating_relative_permittivity() {

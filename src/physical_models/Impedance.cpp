@@ -5,6 +5,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "constructive_models/NumberTurns.h"
 #include "support/Utils.h"
+#include "support/Settings.h"
 #include <cmath>
 
 
@@ -30,11 +31,13 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
     auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
 
     double capacitance;
+    auto& settings = Settings::GetInstance();
     if (_fastCapacitance) {
         capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
     }
     else {
-        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil).get_capacitance_among_windings().value();
+        auto strayCapacitanceModel = settings.get_stray_capacitance_model();
+        auto capacitanceMatrix = StrayCapacitance(strayCapacitanceModel).calculate_capacitance(coil).get_capacitance_among_windings().value();
         capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
     }
 

@@ -1,0 +1,76 @@
+% OpenMagnetics LaTeX Datasheet Template
+% =====================================
+% This is a customizable template for generating magnetic component datasheets.
+% Tags in the format { {TAG_NAME} } will be replaced with actual values from MAS data.
+%
+% Usage:
+%   LatexReportGenerator generator(config);
+%   std::string result = generator.generate_from_template_file("templates/datasheet_template.tex", mas);
+%
+% Available Tags:
+% ---------------
+% Configuration: PART_NUMBER, PART_DESCRIPTION, COMPANY_NAME, REVISION
+% Core: CORE_SHAPE, CORE_MATERIAL, EFFECTIVE_AREA_MM2, EFFECTIVE_LENGTH_MM, 
+%       EFFECTIVE_VOLUME_MM3, GAP_LENGTH_MM, NUMBER_GAPS
+% Windings: NUMBER_WINDINGS, NUMBER_TURNS_W1, NUMBER_TURNS_W2, NUMBER_TURNS_W3,
+%           NUMBER_PARALLELS_W1, WIRE_TYPE_W1, WIRE_DIAMETER_W1
+% Electrical: MAGNETIZING_INDUCTANCE, MAGNETIZING_INDUCTANCE_UH, TURNS_RATIO,
+%             OPERATING_FREQUENCY, OPERATING_FREQUENCY_KHZ, AMBIENT_TEMPERATURE
+% Results: CORE_LOSSES, WINDING_LOSSES, TOTAL_LOSSES, PEAK_FLUX_DENSITY, MAX_TEMPERATURE
+% Full Sections: PREAMBLE, HEADER, ELECTRICAL_SPECS_TABLE, MECHANICAL_SPECS_TABLE,
+%                WINDING_DATA_TABLE, PIN_ASSIGNMENT_TABLE, FOOTER, DOCUMENT_END
+
+{{PREAMBLE}}
+
+{{HEADER}}
+
+% Features and Applications side by side
+\begin{minipage}[t]{0.48\textwidth}
+{{FEATURES_SECTION}}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48\textwidth}
+{{APPLICATIONS_SECTION}}
+\end{minipage}
+\vspace{5mm}
+
+% Main specifications in two columns
+\begin{minipage}[t]{0.55\textwidth}
+{{ELECTRICAL_SPECS_TABLE}}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.42\textwidth}
+{{MECHANICAL_SPECS_TABLE}}
+{{WINDING_DATA_TABLE}}
+\end{minipage}
+\vspace{5mm}
+
+% Pin assignment
+{{PIN_ASSIGNMENT_TABLE}}
+
+% Operating conditions
+{{OPERATING_CONDITIONS}}
+
+% Waveform figures (if enabled)
+{{WAVEFORM_FIGURES}}
+
+% Images row
+\begin{minipage}[t]{0.32\textwidth}
+{{SCHEMATIC_FIGURE}}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.32\textwidth}
+{{WINDING_FIGURE}}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.32\textwidth}
+{{PACKAGE_FIGURE}}
+\end{minipage}
+\vspace{5mm}
+
+% Quality information
+{{QUALITY_INFO}}
+
+{{FOOTER}}
+
+{{DOCUMENT_END}}

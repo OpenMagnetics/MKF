@@ -7,8 +7,8 @@
 #include "physical_models/WindingLosses.h"
 #include "TestingUtils.h"
 
-using namespace MAS;
-using namespace OpenMagnetics;
+using namespace MAS; // QUAL-001 TODO: qualify types and remove
+using namespace OpenMagnetics; // QUAL-001 TODO: qualify types and remove
 
 namespace WindingLossesTestData {
 
@@ -1021,7 +1021,7 @@ namespace WindingLossesTestData {
         };
         
         config.createMagnetic = []() {
-            auto path = std::filesystem::path(__FILE__).parent_path() / "Test_Winding_Losses_One_Turn_Planar.json";
+            auto path = std::filesystem::path(__FILE__).parent_path() / "testData" / "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing.json";
             auto mas = OpenMagneticsTesting::mas_loader(path);
             return mas.get_magnetic();
         };
@@ -1046,7 +1046,7 @@ namespace WindingLossesTestData {
         };
         
         config.createMagnetic = []() {
-            auto path = std::filesystem::path(__FILE__).parent_path() / "Test_Winding_Losses_One_Turn_Planar.json";
+            auto path = std::filesystem::path(__FILE__).parent_path() / "testData" / "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json";
             auto mas = OpenMagneticsTesting::mas_loader(path);
             return mas.get_magnetic();
         };
@@ -1071,7 +1071,7 @@ namespace WindingLossesTestData {
         };
         
         config.createMagnetic = []() {
-            auto path = std::filesystem::path(__FILE__).parent_path() / "Test_Winding_Losses_Sixteen_Turns_Planar.json";
+            auto path = std::filesystem::path(__FILE__).parent_path() / "testData" / "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json";
             auto mas = OpenMagneticsTesting::mas_loader(path);
             return mas.get_magnetic();
         };
@@ -1096,7 +1096,7 @@ namespace WindingLossesTestData {
         };
         
         config.createMagnetic = []() {
-            auto path = std::filesystem::path(__FILE__).parent_path() / "Test_Winding_Losses_Sixteen_Turns_Planar_Close.json";
+            auto path = std::filesystem::path(__FILE__).parent_path() / "testData" / "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json";
             auto mas = OpenMagneticsTesting::mas_loader(path);
             return mas.get_magnetic();
         };
@@ -1121,7 +1121,7 @@ namespace WindingLossesTestData {
         };
         
         config.createMagnetic = []() {
-            auto path = std::filesystem::path(__FILE__).parent_path() / "Test_Winding_Losses_Sixteen_Turns_Planar_Far.json";
+            auto path = std::filesystem::path(__FILE__).parent_path() / "testData" / "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json";
             auto mas = OpenMagneticsTesting::mas_loader(path);
             return mas.get_magnetic();
         };
@@ -1587,12 +1587,12 @@ namespace WindingLossesTestData {
         configs["One_Turn_Rectangular_Toroidal"] = createOneTurnRectangularToroidalConfig();
         configs["Ten_Turns_Rectangular_Toroidal"] = createTenTurnsRectangularToroidalConfig();
         
-        // Planar tests (require JSON files)
-        // configs["One_Turn_Planar_No_Fringing"] = createOneTurnPlanarNoFringingConfig();
-        // configs["One_Turn_Planar_Fringing"] = createOneTurnPlanarFringingConfig();
-        // configs["Sixteen_Turns_Planar_No_Fringing"] = createSixteenTurnsPlanarNoFringingConfig();
-        // configs["Sixteen_Turns_Planar_Fringing_Close"] = createSixteenTurnsPlanarFringingCloseConfig();
-        // configs["Sixteen_Turns_Planar_Fringing_Far"] = createSixteenTurnsPlanarFringingFarConfig();
+        // Planar tests (JSON files now exist in testData)
+        configs["One_Turn_Planar_No_Fringing"] = createOneTurnPlanarNoFringingConfig();
+        configs["One_Turn_Planar_Fringing"] = createOneTurnPlanarFringingConfig();
+        configs["Sixteen_Turns_Planar_No_Fringing"] = createSixteenTurnsPlanarNoFringingConfig();
+        configs["Sixteen_Turns_Planar_Fringing_Close"] = createSixteenTurnsPlanarFringingCloseConfig();
+        configs["Sixteen_Turns_Planar_Fringing_Far"] = createSixteenTurnsPlanarFringingFarConfig();
         
         return configs;
     }

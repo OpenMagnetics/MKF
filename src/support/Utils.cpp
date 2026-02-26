@@ -46,9 +46,8 @@ static inline void strip_cr(std::string& s) {
 // Windows-1252 encodes µ as single byte 0xB5, while UTF-8 uses 0xC2 0xB5
 // This ensures consistent UTF-8 encoding across platforms
 static inline void normalize_micro_sign(std::string& s) {
-#ifdef _WIN32
     std::string result;
-    result.reserve(s.size() * 2);  // Reserve extra space for potential expansions
+    result.reserve(s.size() * 2); // Reserve extra space for potential expansions
     for (size_t i = 0; i < s.size(); ++i) {
         unsigned char c = static_cast<unsigned char>(s[i]);
         // Check for standalone 0xB5 (Windows-1252 micro sign) that's not already part of UTF-8 sequence
@@ -62,9 +61,41 @@ static inline void normalize_micro_sign(std::string& s) {
         result.push_back(s[i]);
     }
     s = std::move(result);
-#else
-    (void)s;  // Unused on non-Windows
+}
+
+// Helper function to iterate over NDJSON (newline-delimited JSON) data and call a callback for each parsed JSON object
+// This reduces code duplication across load_* functions
+template<typename Callback>
+static void parse_ndjson(std::string database, Callback&& callback) {
+    std::string delimiter = "\n";
+    size_t pos = 0;
+    std::string token;
+    if (!database.empty() && database.back() != delimiter.back()) {
+        database += delimiter;
+    }
+    while ((pos = database.find(delimiter)) != std::string::npos) {
+        token = database.substr(0, pos);
+#ifdef _WIN32
+        strip_cr(token);
 #endif
+        if (token.empty()) {
+            database.erase(0, pos + delimiter.length());
+            continue;
+        }
+        json jf = json::parse(token);
+        callback(jf);
+        database.erase(0, pos + delimiter.length());
+    }
+}
+
+// Helper function to load NDJSON from embedded resource or optional file
+static std::string load_ndjson_data(const std::string& resourcePath, std::optional<std::string> fileToLoad = std::nullopt) {
+    if (fileToLoad) {
+        return fileToLoad.value();
+    }
+    auto fs = cmrc::data::get_filesystem();
+    auto data = fs.open(resourcePath);
+    return std::string(data.begin(), data.end());
 }
 
 namespace OpenMagnetics {
@@ -203,60 +234,15 @@ void load_core_materials(std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
-    auto fs = cmrc::data::get_filesystem();
-    {
-        std::string database;
-        if (fileToLoad) {
-            database = fileToLoad.value();
-        }
-        else {
-            auto data = fs.open("MAS/data/core_materials.ndjson");
-            database = std::string(data.begin(), data.end());
-        }
-
-        std::string delimiter = "\n";
-        size_t pos = 0;
-        std::string token;
-        if (database.back() != delimiter.back()) {
-            database += delimiter;
-        }
-        while ((pos = database.find(delimiter)) != std::string::npos) {
-            token = database.substr(0, pos);
-#ifdef _WIN32
-            strip_cr(token);
-#endif
-            if (token.empty()) {
-                database.erase(0, pos + delimiter.length());
-                continue;
-            }
-            json jf = json::parse(token);
-            CoreMaterial coreMaterial(jf);
-            coreMaterialDatabase[jf["name"]] = coreMaterial;
-            database.erase(0, pos + delimiter.length());
-        }
-    }
+    std::string database = load_ndjson_data("MAS/data/core_materials.ndjson", fileToLoad);
+    parse_ndjson(database, [](const json& jf) {
+        CoreMaterial coreMaterial(jf);
+        coreMaterialDatabase[jf["name"]] = coreMaterial;
+    });
 }
 
 void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManufacturer) {
-    std::string database = fileToLoad;
-
-    std::string delimiter = "\n";
-    size_t pos = 0;
-    std::string token;
-    if (database.back() != delimiter.back()) {
-        database += delimiter;
-    }
-    while ((pos = database.find(delimiter)) != std::string::npos) {
-        token = database.substr(0, pos);
-#ifdef _WIN32
-        strip_cr(token);
-#endif
-        if (token.empty()) {
-            database.erase(0, pos + delimiter.length());
-            continue;
-        }
-        json jf = json::parse(token);
-
+    parse_ndjson(fileToLoad, [onlyDataFromManufacturer](const json& jf) {
         if (coreMaterialDatabase.count(jf["name"])) {
             auto material = coreMaterialDatabase[jf["name"]];
             if (jf.contains("bhCycle")) {
@@ -288,190 +274,75 @@ void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManuf
             }
             coreMaterialDatabase[jf["name"]] = material;
         }
-        database.erase(0, pos + delimiter.length());
-    }
+    });
 }
 
 void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
-    auto fs = cmrc::data::get_filesystem();
-    {
-        bool includeToroidalCores = settings.get_use_toroidal_cores();
-        bool includeConcentricCores = settings.get_use_concentric_cores();
+    bool includeToroidalCores = settings.get_use_toroidal_cores();
+    bool includeConcentricCores = settings.get_use_concentric_cores();
 
-        std::string database;
-        if (fileToLoad) {
-            database = fileToLoad.value();
-        }
-        else {
-            auto data = fs.open("MAS/data/core_shapes.ndjson");
-            database = std::string(data.begin(), data.end());
-        }
-
-        std::string delimiter = "\n";
-        size_t pos = 0;
-        std::string token;
-        if (database.back() != delimiter.back()) {
-            database += delimiter;
-        }
-        while ((pos = database.find(delimiter)) != std::string::npos) {
-            token = database.substr(0, pos);
-#ifdef _WIN32
-            strip_cr(token);
-#endif
-            if (token.empty()) {
-                database.erase(0, pos + delimiter.length());
-                continue;
+    std::string database = load_ndjson_data("MAS/data/core_shapes.ndjson", fileToLoad);
+    parse_ndjson(database, [withAliases, includeToroidalCores, includeConcentricCores](const json& jf) {
+        CoreShape coreShape(jf);
+        if ((includeToroidalCores && coreShape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && coreShape.get_family() != CoreShapeFamily::T)) {
+            if (std::find(coreShapeFamiliesInDatabase.begin(), coreShapeFamiliesInDatabase.end(), coreShape.get_family()) == coreShapeFamiliesInDatabase.end()) {
+                coreShapeFamiliesInDatabase.push_back(coreShape.get_family());
             }
-            json jf = json::parse(token);
-            CoreShape coreShape(jf);
-            if ((includeToroidalCores && coreShape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && coreShape.get_family() != CoreShapeFamily::T)) {
-                if (std::find(coreShapeFamiliesInDatabase.begin(), coreShapeFamiliesInDatabase.end(), coreShape.get_family()) == coreShapeFamiliesInDatabase.end()) {
-                    coreShapeFamiliesInDatabase.push_back(coreShape.get_family());
-                }
-                coreShapeDatabase[jf["name"]] = coreShape;
-                if (withAliases) {
-                    for (auto& alias : jf["aliases"]) {
-                        coreShapeDatabase[alias] = coreShape;
-                    }
+            coreShapeDatabase[jf["name"]] = coreShape;
+            if (withAliases) {
+                for (auto& alias : jf["aliases"]) {
+                    coreShapeDatabase[alias] = coreShape;
                 }
             }
-            database.erase(0, pos + delimiter.length());
         }
-    }
+    });
 }
 
 void load_wires(std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
-    auto fs = cmrc::data::get_filesystem();
-    {
-        std::string database;
-        if (fileToLoad) {
-            database = fileToLoad.value();
-        }
-        else {
-            auto data = fs.open("MAS/data/wires.ndjson");
-            database = std::string(data.begin(), data.end());
-        }
-
-        std::string delimiter = "\n";
-        size_t pos = 0;
-        std::string token;
-        if (database.back() != delimiter.back()) {
-            database += delimiter;
-        }
-        while ((pos = database.find(delimiter)) != std::string::npos) {
-            token = database.substr(0, pos);
-#ifdef _WIN32
-            strip_cr(token);
-#endif
-            if (token.empty()) {
-                database.erase(0, pos + delimiter.length());
-                continue;
-            }
-            json jf = json::parse(token);
-            OpenMagnetics::Wire wire(jf);
-            wireDatabase[jf["name"]] = wire;
-            database.erase(0, pos + delimiter.length());
-        }
-    }
+    std::string database = load_ndjson_data("MAS/data/wires.ndjson", fileToLoad);
+    parse_ndjson(database, [](const json& jf) {
+        OpenMagnetics::Wire wire(jf);
+        wireDatabase[jf["name"]] = wire;
+    });
 }
 
 void load_bobbins() {
     if (!_addInternalData) {
         return;
     }
-    auto fs = cmrc::data::get_filesystem();
-    {
-        auto data = fs.open("MAS/data/bobbins.ndjson");
-        std::string database = std::string(data.begin(), data.end());
-        std::string delimiter = "\n";
-        size_t pos = 0;
-        std::string token;
-        if (database.back() != delimiter.back()) {
-            database += delimiter;
-        }
-        while ((pos = database.find(delimiter)) != std::string::npos) {
-            token = database.substr(0, pos);
-#ifdef _WIN32
-            strip_cr(token);
-#endif
-            if (token.empty()) {
-                database.erase(0, pos + delimiter.length());
-                continue;
-            }
-            json jf = json::parse(token);
-            Bobbin bobbin(jf);
-            bobbinDatabase[jf["name"]] = bobbin;
-            database.erase(0, pos + delimiter.length());
-        }
-    }
+    std::string database = load_ndjson_data("MAS/data/bobbins.ndjson");
+    parse_ndjson(database, [](const json& jf) {
+        Bobbin bobbin(jf);
+        bobbinDatabase[jf["name"]] = bobbin;
+    });
 }
 
 void load_insulation_materials() {
     if (!_addInternalData) {
         return;
     }
-    auto fs = cmrc::data::get_filesystem();
-    {
-        auto data = fs.open("MAS/data/insulation_materials.ndjson");
-        std::string database = std::string(data.begin(), data.end());
-        std::string delimiter = "\n";
-        size_t pos = 0;
-        std::string token;
-        if (database.back() != delimiter.back()) {
-            database += delimiter;
-        }
-        while ((pos = database.find(delimiter)) != std::string::npos) {
-            token = database.substr(0, pos);
-#ifdef _WIN32
-            strip_cr(token);
-#endif
-            if (token.empty()) {
-                database.erase(0, pos + delimiter.length());
-                continue;
-            }
-            json jf = json::parse(token);
-            InsulationMaterial insulationMaterial(jf);
-            insulationMaterialDatabase[jf["name"]] = insulationMaterial;
-            database.erase(0, pos + delimiter.length());
-        }
-    }
+    std::string database = load_ndjson_data("MAS/data/insulation_materials.ndjson");
+    parse_ndjson(database, [](const json& jf) {
+        InsulationMaterial insulationMaterial(jf);
+        insulationMaterialDatabase[jf["name"]] = insulationMaterial;
+    });
 }
 
 void load_wire_materials() {
     if (!_addInternalData) {
         return;
     }
-    auto fs = cmrc::data::get_filesystem();
-    {
-        auto data = fs.open("MAS/data/wire_materials.ndjson");
-        std::string database = std::string(data.begin(), data.end());
-        std::string delimiter = "\n";
-        size_t pos = 0;
-        std::string token;
-        if (database.back() != delimiter.back()) {
-            database += delimiter;
-        }
-        while ((pos = database.find(delimiter)) != std::string::npos) {
-            token = database.substr(0, pos);
-#ifdef _WIN32
-            strip_cr(token);
-#endif
-            if (token.empty()) {
-                database.erase(0, pos + delimiter.length());
-                continue;
-            }
-            json jf = json::parse(token);
-            WireMaterial wireMaterial(jf);
-            wireMaterialDatabase[jf["name"]] = wireMaterial;
-            database.erase(0, pos + delimiter.length());
-        }
-    }
+    std::string database = load_ndjson_data("MAS/data/wire_materials.ndjson");
+    parse_ndjson(database, [](const json& jf) {
+        WireMaterial wireMaterial(jf);
+        wireMaterialDatabase[jf["name"]] = wireMaterial;
+    });
 }
 
 void load_databases(json data, bool withAliases, bool addInternalData) {
@@ -1583,6 +1454,11 @@ double bessel_y1_fast(double x) {
 }
 
 std::complex<double> modified_bessel_first_kind(double order, std::complex<double> z) {
+    // Check for invalid input
+    if (!std::isfinite(z.real()) || !std::isfinite(z.imag())) {
+        return std::complex<double>(0.0, 0.0);
+    }
+    
     std::complex<double> sum = 0;
     std::complex<double> inc = 0;
     std::complex<double> aux = 0.25 * pow(z, 2);
@@ -1594,13 +1470,34 @@ std::complex<double> modified_bessel_first_kind(double order, std::complex<doubl
             break;
         }
         inc = pow(aux, k) / divider;
+        // Check if increment is valid
+        if (!std::isfinite(inc.real()) || !std::isfinite(inc.imag())) {
+            break;
+        }
         sum += inc;
         if (std::abs(inc) < std::abs(sum) * 0.0001){
             break;
         }
     }
 
-    auto bessel = sum * pow(0.5 * z, order);
+    // Check if sum is valid before final multiplication
+    if (!std::isfinite(sum.real()) || !std::isfinite(sum.imag())) {
+        return std::complex<double>(0.0, 0.0);
+    }
+    
+    auto scale = pow(0.5 * z, order);
+    // Check if scale factor is valid
+    if (!std::isfinite(scale.real()) || !std::isfinite(scale.imag())) {
+        return std::complex<double>(0.0, 0.0);
+    }
+    
+    auto bessel = sum * scale;
+    
+    // Final NaN check
+    if (!std::isfinite(bessel.real()) || !std::isfinite(bessel.imag())) {
+        return std::complex<double>(0.0, 0.0);
+    }
+    
     return bessel;
 }
 

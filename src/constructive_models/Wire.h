@@ -16,6 +16,9 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
     
 inline std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
+// WARNING: These global caches are NOT thread-safe. If OpenMagnetics is used in a
+// multi-threaded context, wrap access in std::shared_mutex or use a thread-safe singleton.
+// See code review finding L-3.
 inline std::map<std::string, tk::spline> wireFillingFactorInterps;
 inline std::map<std::string, tk::spline> wirePackingFactorInterps;
 inline std::map<std::string, tk::spline> wireConductingAreaProportionInterps;
@@ -263,12 +266,18 @@ class Wire : public MAS::Wire {
         double get_maximum_conducting_width();
         double get_maximum_conducting_height();
         double get_minimum_conducting_dimension();
+        double get_minimum_outer_dimension();
 
 
         double get_coating_thickness();
         double get_coating_dielectric_strength();
+        double get_coating_thermal_conductivity();  // NEW: Thermal conductivity for thermal modeling
         static double get_coating_thickness(Wire wire);
         static double get_coating_dielectric_strength(Wire wire);
+        static double get_coating_thermal_conductivity(Wire wire);  // NEW: Static version
+        // NEW: Overloads that work directly with InsulationWireCoating (for thermal modeling)
+        static double get_coating_thickness(const InsulationWireCoating& coating);
+        static double get_coating_thermal_conductivity(const InsulationWireCoating& coating);
         std::string encode_coating_label();
         static std::string encode_coating_label(Wire wire);
         static std::optional<InsulationWireCoating> decode_coating_label(std::string label);

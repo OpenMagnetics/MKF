@@ -15,7 +15,8 @@ enum class MagneticFieldStrengthModels : int {
 
 enum class MagneticFieldStrengthFringingEffectModels : int {
     ROSHEN,
-    ALBACH
+    ALBACH,
+    SULLIVAN
 };
 
 
@@ -46,6 +47,7 @@ enum class CoreLossesModels : int {
 
 enum class CoreThermalResistanceModels : int {
     MANIKTALA,
+    DIXON
 };
 
 
@@ -64,10 +66,12 @@ enum class WindingSkinEffectLossesModels : int {
     ALBACH,
     PAYNE,
     LOTFI,
+    XI_NAN,
     KAZIMIERCZUK,
     KUTKUT,
     FERREIRA,
     DIMITRAKAKIS,
+    MUEHLETHALER,
     WANG,
     HOLGUIN,
     PERRY
@@ -80,7 +84,12 @@ enum class WindingProximityEffectLossesModels : int {
     FERREIRA,
     LAMMERANER,
     ALBACH,
-    DOWELL
+    DOWELL,
+    XI_NAN,
+    WOJDA,
+    SULLIVAN,
+    BARTOLI,
+    VANDELAC
 };
 
 
@@ -89,6 +98,11 @@ enum class StrayCapacitanceModels : int {
     ALBACH,
     DUERDOTH,
     MASSARINI
+};
+
+enum class ElectricFieldOutputUnit : int {
+    JOULES_PER_CUBIC_METER,  // J/m³ - Energy density (natural output of SDF_PHYSICS)
+    VOLTS_PER_METER          // V/m - Electric field magnitude (requires conversion)
 };
 
 } // namespace OpenMagnetics

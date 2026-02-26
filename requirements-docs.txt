@@ -1,0 +1,12 @@
+# Documentation dependencies for MKF
+# Install with: pip install -r requirements-docs.txt
+
+# MkDocs with Material theme
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+
+# Mermaid diagram support
+mkdocs-mermaid2-plugin>=1.1.0
+
+# Additional markdown extensions (included in mkdocs-material but pinned for clarity)
+pymdown-extensions>=10.0

@@ -426,8 +426,18 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
         outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder_Theory.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_curve(windingCoreResistanceData, true);
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
         REQUIRE(std::filesystem::exists(outFile));
 
     }
@@ -455,8 +465,18 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
         auto outFile = outputFilePath;
         outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder_Modeled.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_curve(Curve2D(frequenciesVector, modeledCoreResistances, "meh"));
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 
     errorAverage /= coreResistanceVector.size();
@@ -583,32 +603,72 @@ TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-read
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (true) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (true) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryMagnetizingCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryMagnetizingCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (true) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 
@@ -646,40 +706,90 @@ TEST_CASE("Test_Import_Csv_Rosano_Flyback", "[processor][circuit-simulation-read
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (true) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (true) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryMagnetizingCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryMagnetizingCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (true) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (true) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 
@@ -714,32 +824,72 @@ TEST_CASE("Test_Simba", "[processor][circuit-simulation-reader]") {
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 
@@ -759,8 +909,18 @@ TEST_CASE("Test_PFC_Only_Current", "[processor][circuit-simulation-reader]") {
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 
@@ -809,32 +969,72 @@ TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 
@@ -868,32 +1068,72 @@ TEST_CASE("Test_Ltspice", "[processor][circuit-simulation-reader][ltspice]") {
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 
@@ -921,16 +1161,36 @@ TEST_CASE("Test_Plecs", "[processor][circuit-simulation-reader][plecs]") {
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 
@@ -977,16 +1237,36 @@ TEST_CASE("Test_Plecs_Missing_Windings", "[processor][circuit-simulation-reader]
             auto outFile = outputFilePath;
             outFile.append("primaryCurrent.svg");
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(primaryCurrent.get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
         if (plot) {
             auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("primaryVoltage.svg");
             Painter painter(outFile, false, true);
+            #ifdef ENABLE_MATPLOTPP
             painter.paint_waveform(primaryVoltage.get_waveform().value());
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
+            #ifdef ENABLE_MATPLOTPP
             painter.export_svg();
+            #else
+                INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+            #endif
+
         }
     }
 }
@@ -1018,32 +1298,72 @@ TEST_CASE("Test_Psim", "[processor][circuit-simulation-reader][psim]") {
         auto outFile = outputFilePath;
         outFile.append("primaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("primaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(primaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryCurrent.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryCurrent.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
     if (plot) {
         auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
         outFile.append("secondaryVoltage.svg");
         Painter painter(outFile, false, true);
+        #ifdef ENABLE_MATPLOTPP
         painter.paint_waveform(secondaryVoltage.get_waveform().value());
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
+        #ifdef ENABLE_MATPLOTPP
         painter.export_svg();
+        #else
+            INFO("matplotplusplus disabled — skipping AdvancedPainter call");
+        #endif
+
     }
 }
 

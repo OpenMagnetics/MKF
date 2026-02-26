@@ -9,12 +9,12 @@
 #include <fstream>
 #include <iostream>
 #include <numbers>
-#include <matplot/matplot.h>
 #include <streambuf>
 #include <vector>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 
+using OpenMagnetics::linspace;
 
 namespace OpenMagnetics {
 
@@ -40,26 +40,46 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint opera
     }
 }
 
+bool is_point_inside_turn(const Turn& turn, double pointX, double pointY, double factor = 1.0) {
+    double distanceX = fabs(turn.get_coordinates()[0] - pointX) * factor;
+    double distanceY = fabs(turn.get_coordinates()[1] - pointY) * factor;
+    if (!turn.get_dimensions()) {
+        throw CoilNotProcessedException("Turns is missing dimensions, which is needed for leakage inductance calculation");
+    }
+    if (!turn.get_cross_sectional_shape()) {
+        if (distanceX < turn.get_dimensions().value()[0] / 2 && distanceY < turn.get_dimensions().value()[1] / 2) {
+            return true;
+        }
+    }
+    else if (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
+        if (hypot(distanceX, distanceY) < turn.get_dimensions().value()[0] / 2) {
+            return true;
+        }
+    }
+    else {
+        if (distanceX < turn.get_dimensions().value()[0] / 2 && distanceY < turn.get_dimensions().value()[1] / 2) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
     for (auto turn : turns) {
-        double distanceX = fabs(turn.get_coordinates()[0] - pointX) * settings.get_coil_mesher_inside_turns_factor();
-        double distanceY = fabs(turn.get_coordinates()[1] - pointY) * settings.get_coil_mesher_inside_turns_factor();
-        if (!turn.get_dimensions()) {
-            throw CoilNotProcessedException("Turns is missing dimensions, which is needed for leakage inductance calculation");
+        // Check main coordinates
+        if (is_point_inside_turn(turn, pointX, pointY, settings.get_coil_mesher_inside_turns_factor())) {
+            return true;
         }
-        if (!turn.get_cross_sectional_shape()) {
-            if (distanceX < turn.get_dimensions().value()[0] / 2 && distanceY < turn.get_dimensions().value()[1] / 2) {
-                return true;
-            }
-        }
-        else if (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
-            if (hypot(distanceX, distanceY) < turn.get_dimensions().value()[0] / 2) {
-                return true;
-            }
-        }
-        else {
-            if (distanceX < turn.get_dimensions().value()[0] / 2 && distanceY < turn.get_dimensions().value()[1] / 2) {
-                return true;
+        // Check additional coordinates for toroidal turns (outer half)
+        if (turn.get_additional_coordinates()) {
+            auto additionalCoords = turn.get_additional_coordinates().value();
+            for (const auto& coord : additionalCoords) {
+                // Create a temporary turn with additional coordinates to check
+                Turn tempTurn = turn;
+                tempTurn.set_coordinates(coord);
+                if (is_point_inside_turn(tempTurn, pointX, pointY, settings.get_coil_mesher_inside_turns_factor())) {
+                    return true;
+                }
             }
         }
     }
@@ -69,14 +89,25 @@ bool is_inside_turns(std::vector<Turn> turns, double pointX, double pointY) {
 
 bool is_far_from_turns(std::vector<Turn> turns, double pointX, double pointY) {
     for (auto turn : turns) {
+        // Check distance to main coordinates
         double distanceX = fabs(turn.get_coordinates()[0] - pointX);
         double distanceY = fabs(turn.get_coordinates()[1] - pointY);
         if (!turn.get_dimensions()) {
             throw CoilNotProcessedException("Turns is missing dimensions, which is needed for leakage inductance calculation");
         }
         if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 2) {
-        // if (hypot(distanceX, distanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 1) {
             return false;
+        }
+        // Check distance to additional coordinates for toroidal turns (outer half)
+        if (turn.get_additional_coordinates()) {
+            auto additionalCoords = turn.get_additional_coordinates().value();
+            for (const auto& coord : additionalCoords) {
+                double addDistanceX = fabs(coord[0] - pointX);
+                double addDistanceY = fabs(coord[1] - pointY);
+                if (hypot(addDistanceX, addDistanceY) < std::max(turn.get_dimensions().value()[0], turn.get_dimensions().value()[1]) * 2) {
+                    return false;
+                }
+            }
         }
     }
 
@@ -128,17 +159,19 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magneti
         double pixelXDimension = totalWidthInGrid / numberPointsX;
         double pixelYDimension = coreColumnHeight / numberPointsY;
         
-        bobbinPointsX = matplot::linspace(coreColumnWidth / 2 + pixelXDimension / 2, bobbinWidthStart + bobbinWidth - pixelXDimension / 2, numberPointsX);
-        bobbinPointsY = matplot::linspace(-coreColumnHeight / 2 + pixelYDimension / 2, coreColumnHeight / 2 - pixelYDimension / 2, numberPointsY);
+        bobbinPointsX = linspace(coreColumnWidth / 2 + pixelXDimension / 2, bobbinWidthStart + bobbinWidth - pixelXDimension / 2, numberPointsX);
+        bobbinPointsY = linspace(-coreColumnHeight / 2 + pixelYDimension / 2, coreColumnHeight / 2 - pixelYDimension / 2, numberPointsY);
 
         double dx = totalWidthInGrid / numberPointsX;
         double dy = coreColumnHeight / numberPointsY;
         dA = dx * dy;
     }
     else {
+        // For toroidal cores with round winding windows, use standard Cartesian grid
+        // This provides consistent behavior across all core types
         auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
-        bobbinPointsX = matplot::linspace(-coreWidth / 2 * extraDimension, coreWidth / 2 * extraDimension, numberPointsX);
-        bobbinPointsY = matplot::linspace(-coreHeight / 2 * extraDimension, coreHeight / 2 * extraDimension, numberPointsY);
+        bobbinPointsX = linspace(-coreWidth / 2 * extraDimension, coreWidth / 2 * extraDimension, numberPointsX);
+        bobbinPointsY = linspace(-coreHeight / 2 * extraDimension, coreHeight / 2 * extraDimension, numberPointsY);
         double dx = coreWidth * extraDimension / numberPointsX;
         double dy = coreHeight * extraDimension / numberPointsY;
         dA = dx * dy;
@@ -459,29 +492,45 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
     else {
         auto mainColumn = processedDescription.get_columns()[0];
 
-        FieldPoint fieldPoint;
-        fieldPoint.set_value(1);  // Will be multiplied later
-        if (!turn.get_rotation()) {
-            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal cores should have rotation in the turn, even if it is 0");
+        // For toroidal cores, generate field points for both main coordinates and additional coordinates (outer half)
+        std::vector<std::vector<double>> coordinatesToProcess;
+        coordinatesToProcess.push_back({turn.get_coordinates()[0], turn.get_coordinates()[1]});
+        
+        // Add additional coordinates if present (outer half of toroidal turns)
+        if (turn.get_additional_coordinates()) {
+            auto additionalCoords = turn.get_additional_coordinates().value();
+            for (const auto& coord : additionalCoords) {
+                if (coord.size() >= 2) {
+                    coordinatesToProcess.push_back({coord[0], coord[1]});
+                }
+            }
         }
 
-        fieldPoint.set_rotation(turn.get_rotation().value());
-        if (turnLength) {
-            fieldPoint.set_turn_length(turnLength.value());
-        }
-        if (turnIndex) {
-            fieldPoint.set_turn_index(turnIndex.value());
-        }
+        for (const auto& coords : coordinatesToProcess) {
+            FieldPoint fieldPoint;
+            fieldPoint.set_value(1);  // Will be multiplied later
+            if (!turn.get_rotation()) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal cores should have rotation in the turn, even if it is 0");
+            }
 
-        if (!turn.get_coordinate_system()) {
-            throw CoilNotProcessedException("Turn is missing coordinate system");
-        }
-        if (turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
-            throw CoilNotProcessedException("CoilMesher: Turn coordinates are not in cartesian");
-        }
+            fieldPoint.set_rotation(turn.get_rotation().value());
+            if (turnLength) {
+                fieldPoint.set_turn_length(turnLength.value());
+            }
+            if (turnIndex) {
+                fieldPoint.set_turn_index(turnIndex.value());
+            }
 
-        fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1]});
-        fieldPoints.push_back(fieldPoint);
+            if (!turn.get_coordinate_system()) {
+                throw CoilNotProcessedException("Turn is missing coordinate system");
+            }
+            if (turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
+                throw CoilNotProcessedException("CoilMesher: Turn coordinates are not in cartesian");
+            }
+
+            fieldPoint.set_point({coords[0], coords[1]});
+            fieldPoints.push_back(fieldPoint);
+        }
     }
 
     return fieldPoints;

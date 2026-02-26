@@ -48,7 +48,7 @@ namespace OpenMagnetics {
     }
 
     std::pair<double, double> InsulationMaterial::get_thinner_tape(){
-        double tapeThickness = DBL_MAX;
+        double tapeThickness = 0; // FIX M-IMC-1: Return {0,0} instead of {DBL_MAX,0} when no thicknesses available
         double tapeDielectricStrength = 0;
 
         for (auto dielectricStrengthElement : get_dielectric_strength()) {

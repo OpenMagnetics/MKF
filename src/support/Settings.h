@@ -34,6 +34,7 @@ class Settings
         size_t _coilMaximumLayersPlanar = 4;
 
         bool _useOnlyCoresInStock = true;
+        bool _usePowderCores = true;
 
         size_t _painterNumberPointsX = 25;
         size_t _painterNumberPointsY = 50;
@@ -109,6 +110,9 @@ class Settings
         WindingSkinEffectLossesModels _windingSkinEffectLossesModel;
         WindingProximityEffectLossesModels _windingProximityEffectLossesModel;
         StrayCapacitanceModels _strayCapacitanceModel;
+        ElectricFieldOutputUnit _electricFieldOutputUnit;
+
+        bool _coilEnableUserWindingLossesModels = false;
 
         bool _verbose = false;
 
@@ -178,6 +182,9 @@ class Settings
 
         bool get_use_only_cores_in_stock() const;
         void set_use_only_cores_in_stock(bool value);
+
+        bool get_use_powder_cores() const;
+        void set_use_powder_cores(bool value);
 
         size_t get_painter_number_points_x() const;
         void set_painter_number_points_x(size_t value);
@@ -378,6 +385,40 @@ class Settings
         StrayCapacitanceModels get_stray_capacitance_model() const;
         void set_stray_capacitance_model(StrayCapacitanceModels value);
 
+        ElectricFieldOutputUnit get_electric_field_output_unit() const;
+        void set_electric_field_output_unit(ElectricFieldOutputUnit value);
+
+        bool get_coil_enable_user_winding_losses_models() const;
+        void set_coil_enable_user_winding_losses_models(bool value);
+
 
     };
+
+
+// ARCH-002: RAII guard for exception-safe Settings mutations
+template<typename T>
+class SettingsGuard {
+public:
+    using GetterFn = T (Settings::*)() const;
+    using SetterFn = void (Settings::*)(T);
+    
+    SettingsGuard(Settings& settings, GetterFn getter, SetterFn setter, T newValue)
+        : _settings(settings), _setter(setter) {
+        _previousValue = (settings.*getter)();
+        (settings.*setter)(newValue);
+    }
+    
+    ~SettingsGuard() {
+        (_settings.*_setter)(_previousValue);
+    }
+    
+    SettingsGuard(const SettingsGuard&) = delete;
+    SettingsGuard& operator=(const SettingsGuard&) = delete;
+
+private:
+    Settings& _settings;
+    SetterFn _setter;
+    T _previousValue;
+};
+
 } // namespace OpenMagnetics

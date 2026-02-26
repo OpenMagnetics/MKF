@@ -20,6 +20,22 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
+// FIX H-COIL-2: Helper to safely compute equal proportion per winding
+static inline std::vector<double> make_equal_proportion_per_winding(size_t numWindings) {
+    if (numWindings == 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Cannot compute proportion for zero windings");
+    }
+    return std::vector<double>(numWindings, 1.0 / numWindings);
+}
+
+// FIX L-COIL-3: Integer factorial to replace fragile tgamma() usage
+static inline size_t factorial(size_t n) {
+    size_t result = 1;
+    for (size_t i = 2; i <= n; ++i) result *= i;
+    return result;
+}
+
+
 
 std::vector<double> Coil::cartesian_to_polar(std::vector<double> value) {
     auto bobbin = resolve_bobbin();
@@ -362,7 +378,7 @@ bool Coil::unwind() {
 bool Coil::wind() {
     std::vector<double> proportionPerWinding;
 
-    proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+    proportionPerWinding = make_equal_proportion_per_winding(get_functional_description().size());
     std::vector<size_t> pattern;
     double numberWindings = get_functional_description().size();
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -377,12 +393,12 @@ bool Coil::wind(size_t repetitions){
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         pattern.push_back(windingIndex);
     }
-    auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+    auto proportionPerWinding = make_equal_proportion_per_winding(get_functional_description().size());
     return wind(proportionPerWinding, pattern, repetitions);
 }
 
 bool Coil::wind(std::vector<size_t> pattern, size_t repetitions){
-    auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+    auto proportionPerWinding = make_equal_proportion_per_winding(get_functional_description().size());
     return wind(proportionPerWinding, pattern, repetitions);
 }
 
@@ -1728,7 +1744,7 @@ std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> Coil::add_insu
     // last insulation layer we compare between last and first
     if (windingOrientation != WindingOrientation::CONTIGUOUS || bobbinWindingWindowShape != WindingWindowShape::RECTANGULAR) {
         // We don't add one in the sections are contiguous, as they end in the bobbin
-        auto leftWindingIndex = orderedSections[orderedSections.size() - 1].first;
+        auto leftWindingIndex = orderedSections.back().first;
         auto rightWindingIndex = orderedSections[0].first;
         auto windingsMapKey = std::pair<size_t, size_t>{leftWindingIndex, rightWindingIndex}; 
 
@@ -1794,7 +1810,7 @@ std::vector<double> get_physical_turns_proportions(std::vector<int64_t> physical
     average /= physicalTurns.size();
 
     for (size_t index = 0; index < physicalTurns.size(); ++index) {
-        if (index < physicalTurns.size() - 1)
+        if (index + 1 < physicalTurns.size())
             physicalTurnsProportions.push_back(double(physicalTurns[index]) / average);
         else
             physicalTurnsProportions.push_back(1 + double(physicalTurns[index]) / average);
@@ -1825,7 +1841,7 @@ std::vector<double> get_length_proportions(std::vector<double> lengths, std::vec
     }
 
     for (size_t index = 0; index < lengths.size(); ++index) {
-        if (index < lengths.size() - 1)
+        if (index + 1 < lengths.size())
             lengthProportions.push_back(lengths[index] / averages[windingIndexes[index]]);
         else
             lengthProportions.push_back(1 + lengths[index] / averages[windingIndexes[index]]);
@@ -1980,7 +1996,7 @@ bool Coil::wind_by_sections() {
     auto sectionAlignment = get_section_alignment();
 
     if (bobbinWindingWindowShape == WindingWindowShape::ROUND && windingOrientation == WindingOrientation::CONTIGUOUS && sectionAlignment == CoilAlignment::SPREAD ) {
-        proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+        proportionPerWinding = make_equal_proportion_per_winding(get_functional_description().size());
     }
     else {
         proportionPerWinding = get_proportion_per_winding_based_on_wires();
@@ -1994,12 +2010,12 @@ bool Coil::wind_by_sections(size_t repetitions){
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         pattern.push_back(windingIndex);
     }
-    auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+    auto proportionPerWinding = make_equal_proportion_per_winding(get_functional_description().size());
     return wind_by_sections(proportionPerWinding, pattern, repetitions);
 }
 
 bool Coil::wind_by_sections(std::vector<size_t> pattern, size_t repetitions) {
-    auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+    auto proportionPerWinding = make_equal_proportion_per_winding(get_functional_description().size());
     return wind_by_sections(proportionPerWinding, pattern, repetitions);
 }
 
@@ -2770,7 +2786,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
 
                 auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
                 size_t nextWindingIndex;
-                if (sectionIndex != (orderedSectionsWithInsulation.size() - 1)) {
+                if (sectionIndex + 1 != orderedSectionsWithInsulation.size()) {
                     nextWindingIndex = orderedSectionsWithInsulation[sectionIndex + 1].second.first;
                 }
                 else {
@@ -2841,7 +2857,7 @@ void Coil::remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, d
     for (size_t sectionIndex = 0; sectionIndex < orderedSections.size(); ++sectionIndex) {
         size_t indexForMarginLeftSection = sectionIndex * multiplier;
         size_t indexForMarginRightSection;
-        if (sectionIndex != (orderedSections.size() - 1)) {
+        if (sectionIndex + 1 != orderedSections.size()) {
             indexForMarginRightSection = (sectionIndex + 1) * multiplier;
         }
         else {
@@ -2858,7 +2874,7 @@ void Coil::remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, d
         size_t indexForMarginRightSection;
         size_t leftWindingIndex = orderedSections[sectionIndex].first;
         size_t rightWindingIndex;
-        if (sectionIndex != (orderedSections.size() - 1)) {
+        if (sectionIndex + 1 != orderedSections.size()) {
             indexForMarginRightSection = (sectionIndex + 1) * multiplier;
             // indexForMarginRightSection = sectionIndex + 1;
             rightWindingIndex = orderedSections[sectionIndex + 1].first;
@@ -3130,7 +3146,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
      
                 auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
                 size_t nextWindingIndex;
-                if (sectionIndex != (orderedSectionsWithInsulation.size() - 1)) {
+                if (sectionIndex + 1 != orderedSectionsWithInsulation.size()) {
                     nextWindingIndex = orderedSectionsWithInsulation[sectionIndex + 1].second.first;
                 }
                 else {
@@ -3237,7 +3253,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     double totalSectionHeight = 0;
     double totalAvailableHeight = group.get_dimensions()[1];
     for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
-        if (stackUpIndex < stackUpForThisGroup.size() - 1) {
+        if (stackUpIndex + 1 < stackUpForThisGroup.size()) {
             std::pair key = {stackUpForThisGroup[stackUpIndex], stackUpForThisGroup[stackUpIndex + 1]};
             if (insulationThickness.count(key)) {
                 totalAvailableHeight -= insulationThickness[key];
@@ -3255,7 +3271,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         sectionHeightPerWinding.push_back(sectionHeight);
         totalSectionHeight += sectionHeight;
 
-        if (stackUpIndex < stackUpForThisGroup.size() - 1) {
+        if (stackUpIndex + 1 < stackUpForThisGroup.size()) {
             std::pair key = {stackUpForThisGroup[stackUpIndex], stackUpForThisGroup[stackUpIndex + 1]};
             if (insulationThickness.count(key)) {
                 totalSectionHeight += insulationThickness[key];
@@ -3329,7 +3345,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         currentSectionCenterHeight = roundFloat(currentSectionCenterHeight -= sectionHeight / 2, 9);
         currentSectionIndexPerwinding[windingIndex]++;
 
-        if (stackUpIndex < stackUpForThisGroup.size() - 1) {
+        if (stackUpIndex + 1 < stackUpForThisGroup.size()) {
             std::pair key = {stackUpForThisGroup[stackUpIndex], stackUpForThisGroup[stackUpIndex + 1]};
             double insulationThicknessThisLayer;
             if (insulationThickness.count(key)) {
@@ -3644,7 +3660,7 @@ bool Coil::wind_by_rectangular_layers() {
             auto partialWinding = sections[sectionIndex - 1].get_partial_windings()[0];
             auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
             Section nextSection;
-            if (sectionIndex != (sections.size() - 1)) {
+            if (sectionIndex + 1 != sections.size()) {
                 if (sections[sectionIndex - 1].get_type() != ElectricalType::CONDUCTION || sections[sectionIndex + 1].get_type() != ElectricalType::CONDUCTION) {
                     throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Previous and next sections must be conductive");
                 }
@@ -3935,7 +3951,7 @@ bool Coil::wind_by_round_layers() {
             auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
 
             Section nextSection;
-            if (sectionIndex != (sections.size() - 1)) {
+            if (sectionIndex + 1 != sections.size()) {
                 if (sections[sectionIndex - 1].get_type() != ElectricalType::CONDUCTION || sections[sectionIndex + 1].get_type() != ElectricalType::CONDUCTION) {
                     throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Previous and next sections must be conductive");
                 }
@@ -4725,7 +4741,8 @@ std::vector<std::pair<double, std::vector<double>>> Coil::get_collision_distance
     for (auto placedTurnCoordinates : placedTurnsCoordinates) {
         auto placedTurnCartesianCoordinates = polar_to_cartesian(placedTurnCoordinates);
         double distance = sqrt(pow(turnCartesianCoordinates[0] - placedTurnCartesianCoordinates[0], 2) + pow(turnCartesianCoordinates[1] - placedTurnCartesianCoordinates[1], 2));
-        if (distance - wireHeight < 0) {
+        // Use a small tolerance to account for floating point precision
+        if (distance < wireHeight - 1e-9) {
             double collisionDistance = wireHeight - distance;
             auto placedCoordinates = placedTurnCoordinates;
             collisions.push_back({collisionDistance, placedCoordinates});
@@ -4790,12 +4807,45 @@ bool Coil::wind_toroidal_additional_turns() {
             double currentBaseRadialHeightForLayers = currentBaseRadialHeight + turnsInSection[0].get_dimensions().value()[0] / 2;
 
             auto layersThisSection = get_layers_by_section(section.get_name());
-            bool areLayersTaped = layersThisSection.size() > 1;
-            for (size_t layerIndex = 0; layerIndex < layersThisSection.size() - 1; ++layerIndex) {
-                if (layersThisSection[layerIndex].get_type() == ElectricalType::CONDUCTION && layersThisSection[layerIndex + 1].get_type() == ElectricalType::CONDUCTION) {
-                    areLayersTaped = false;
+            // Check if there are at least 2 conduction layers with NO real insulation between them
+            // Real insulation = thickness > MIN_INSULATION_THICKNESS
+            const double MIN_INSULATION_THICKNESS = 1e-9;
+            bool areLayersTaped = true;
+            
+            // Find all conduction layer indices
+            std::vector<size_t> conductionLayerIndices;
+            for (size_t i = 0; i < layersThisSection.size(); ++i) {
+                if (layersThisSection[i].get_type() == ElectricalType::CONDUCTION) {
+                    conductionLayerIndices.push_back(i);
                 }
             }
+            
+            // If we have 2+ conduction layers, check if there's real insulation between any pair
+            if (conductionLayerIndices.size() >= 2) {
+                areLayersTaped = false;  // Assume no tape until we find real insulation
+                
+                for (size_t i = 0; i < conductionLayerIndices.size() - 1; ++i) {
+                    size_t firstCondIdx = conductionLayerIndices[i];
+                    size_t secondCondIdx = conductionLayerIndices[i + 1];
+                    
+                    // Check all layers between these two conduction layers
+                    bool hasRealInsulation = false;
+                    for (size_t j = firstCondIdx + 1; j < secondCondIdx; ++j) {
+                        if (layersThisSection[j].get_type() == ElectricalType::INSULATION) {
+                            double insulationThickness = layersThisSection[j].get_dimensions()[0];
+                            if (insulationThickness > MIN_INSULATION_THICKNESS) {
+                                hasRealInsulation = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (hasRealInsulation) {
+                        areLayersTaped = true;
+                    }
+                }
+            }
+            
             for (auto layer : layersThisSection) {
                 if (layer.get_type() == ElectricalType::CONDUCTION) {
                     auto turnsThisLayer = get_turns_by_layer(layer.get_name());
@@ -4938,7 +4988,9 @@ bool Coil::wind_toroidal_additional_turns() {
                                             // Only try slot scanning if we're still at the first additional layer
                                             if (std::abs(newCoordinates[0] - currentBaseRadialHeight) < turn.get_dimensions().value()[0] / 4) {
                                                 // Scan from minimum angle to maximum angle looking for an empty slot
-                                                for (double testAngle = sectionMinAngle + currentWireAngle / 2; testAngle <= sectionMaxAngle - currentWireAngle / 2; testAngle += currentWireAngle) {
+                                                // Use a smaller step for denser packing - half the wire angle for better slot finding
+                                                double scanStep = currentWireAngle / 2;
+                                                for (double testAngle = sectionMinAngle + currentWireAngle / 2; testAngle <= sectionMaxAngle - currentWireAngle / 2; testAngle += scanStep) {
                                                     std::vector<double> testCoords = {currentBaseRadialHeight, testAngle};
                                                     auto testCollisions = get_collision_distances(testCoords, placedTurnsCoordinates, wireHeight);
                                                     if (testCollisions.size() == 0) {
@@ -4973,11 +5025,41 @@ bool Coil::wind_toroidal_additional_turns() {
                                         double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
                                         double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
 
-                                        if (newCoordinates[1] - currentWireAngle / 2 < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2)) {
-                                            newCoordinates[1] = additionalCoordinates[1];
-                                        }
-                                        if (newCoordinates[1] + currentWireAngle / 2 > (section.get_coordinates()[1] + section.get_dimensions()[1] / 2)) {
-                                            newCoordinates[1] = additionalCoordinates[1];
+                                        // Normalize angles for comparison to handle wrap-around cases
+                                        double sectionMinAngle = section.get_coordinates()[1] - section.get_dimensions()[1] / 2;
+                                        double sectionMaxAngle = section.get_coordinates()[1] + section.get_dimensions()[1] / 2;
+                                        
+                                        // Normalize all angles to [0, 360) range for consistent comparison
+                                        auto normalizeAngle = [](double angle) -> double {
+                                            while (angle < 0) angle += 360;
+                                            while (angle >= 360) angle -= 360;
+                                            return angle;
+                                        };
+                                        
+                                        double normNewAngle = normalizeAngle(newCoordinates[1]);
+                                        double normSectionMin = normalizeAngle(sectionMinAngle);
+                                        double normSectionMax = normalizeAngle(sectionMaxAngle);
+                                        double normAdditionalAngle = normalizeAngle(additionalCoordinates[1]);
+                                        
+                                        // Check if angle is outside section bounds
+                                        // For full 360 degree sections, skip the check
+                                        bool isFullCircle = (section.get_dimensions()[1] >= 360 - 1e-6);
+                                        
+                                        if (!isFullCircle) {
+                                            bool outsideBounds = false;
+                                            if (normSectionMin < normSectionMax) {
+                                                // Normal case: min < max
+                                                outsideBounds = (normNewAngle < normSectionMin + currentWireAngle / 2) || 
+                                                               (normNewAngle > normSectionMax - currentWireAngle / 2);
+                                            } else {
+                                                // Wrap-around case: min > max (section crosses 0/360 boundary)
+                                                outsideBounds = (normNewAngle < normSectionMin + currentWireAngle / 2) && 
+                                                               (normNewAngle > normSectionMax - currentWireAngle / 2);
+                                            }
+                                            
+                                            if (outsideBounds) {
+                                                newCoordinates[1] = normAdditionalAngle;
+                                            }
                                         }
 
                                         collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
@@ -5521,7 +5603,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
                         layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
                                                                    currentLayerMaximumHeight - currentLayerMinimumHeight}));
                     }
-                    if (i < layers.size() - 1) {
+                    if (i + 1 < layers.size()) {
                         layerCoordinates = layers[i + 1].get_coordinates();
                         if (layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::CONTIGUOUS) {
                             layers[i + 1].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
@@ -6368,7 +6450,7 @@ void Coil::try_rewind() {
                         currentSpace += sections[sectionIndex].get_dimensions()[0];
 
                         // We need to add half the insulation space after it, in case there is
-                        if (sectionIndex < sections.size() - 1) {
+                        if (sectionIndex + 1 < sections.size()) {
                             if (sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
                                 // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
                                 if (sectionIndex == 0) {
@@ -6387,7 +6469,7 @@ void Coil::try_rewind() {
                         currentSpace += sections[sectionIndex].get_dimensions()[1];
 
                         // We need to add half the insulation space after it, in case there is
-                        if (sectionIndex < sections.size() - 1) {
+                        if (sectionIndex + 1 < sections.size()) {
                             if (sections[sectionIndex + 1].get_type() != ElectricalType::INSULATION) {
                                 // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
                                 if (sectionIndex == 0 || sectionIndex == sections.size() - 2) {
@@ -6798,9 +6880,33 @@ std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType cor
 }
 
 
+/**
+ * @brief Get valid winding repetition patterns for a given configuration.
+ *
+ * For Common Mode Chokes (CMC) on toroidal cores, returns {2, 1} to enable
+ * bifilar (interleaved) winding which is essential for common-mode rejection.
+ * Bifilar winding ensures both windings have identical impedance characteristics.
+ *
+ * @param inputs Design inputs including sub-application type
+ * @param coreType Type of core being wound
+ * @return Vector of valid repetition counts to try
+ */
 std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
-    if (inputs.get_design_requirements().get_turns_ratios().size() == 0 || coreType == CoreType::TOROIDAL) {
-        return {1};  // hardcoded
+    // CMCs on toroids need bifilar winding for common-mode rejection
+    if (coreType == CoreType::TOROIDAL) {
+        if (inputs.get_design_requirements().get_sub_application() &&
+            inputs.get_design_requirements().get_sub_application().value() == SubApplication::COMMON_MODE_NOISE_FILTERING) {
+            // Bifilar (interleaved) winding is preferred for CMCs to ensure matched impedance
+            return {2, 1};
+        }
+        // Non-CMC toroids (inductors) don't need interleaving
+        if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
+            return {1};
+        }
+    }
+    
+    if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
+        return {1};
     }
     if (inputs.get_design_requirements().get_wiring_technology()) {
         if (inputs.get_design_requirements().get_wiring_technology().value() == WiringTechnology::PRINTED) {
@@ -6812,10 +6918,10 @@ std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
         }
     }
     if (inputs.get_design_requirements().get_leakage_inductance()) {
-        return {2, 1};  // hardcoded
+        return {2, 1};
     }
     else{
-        return {1, 2};  // hardcoded
+        return {1, 2};
     }
 }
 

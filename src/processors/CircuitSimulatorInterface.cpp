@@ -1,6 +1,7 @@
 #include "support/Utils.h"
 #include "Defaults.h"
 #include "processors/CircuitSimulatorInterface.h"
+#include "processors/Inputs.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -383,28 +384,29 @@ std::string CircuitSimulatorExporter::export_magnetic_as_symbol(Magnetic magneti
 
 std::string CircuitSimulatorExporterSimbaModel::generate_id() {
     // generator for hex numbers from 0 to F
-    std::uniform_int_distribution<int> dis(0x0, 0xF);
+    std::uniform_int_distribution<int> dis(0, 15);
     
-    const char hexChars[16] = { '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F' };
+    const char hexChars[] = { '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F' };
+    const std::size_t hexCharsSize = sizeof(hexChars) / sizeof(hexChars[0]);
     std::string id = "";
     for (std::size_t i = 0; i < 8; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     id += "-";
     for (std::size_t i = 0; i < 4; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     id += "-";
     for (std::size_t i = 0; i < 4; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     id += "-";
     for (std::size_t i = 0; i < 4; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     id += "-";
     for (std::size_t i = 0; i < 12; ++i) {
-        id += hexChars[dis(_gen)];
+        id += hexChars[static_cast<std::size_t>(dis(_gen)) % hexCharsSize];
     }
     return id;
 }
@@ -1401,7 +1403,7 @@ char CircuitSimulationReader::guess_separator(std::string line){
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "No column separator found");
 }
 
-Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample) {
+Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample, bool alignToZeroCrossing) {
     double period = 1.0 / frequency;
     if (!waveform.get_time()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing time data");
@@ -1428,15 +1430,18 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
             }
         }
 
-        double previousData = data[periodStartIndex];
-        for (int i = periodStartIndex - 1; i >= 0; --i)
-        {
-            if ((data[i] >= 0 && previousData <= 0) || (data[i] <= 0 && previousData >= 0)) {
-                periodStartIndex = i;
-                periodStart = time[i];
-                break;
+        // Only search for zero crossing if alignToZeroCrossing is true
+        if (alignToZeroCrossing) {
+            double previousData = data[periodStartIndex];
+            for (int i = periodStartIndex - 1; i >= 0; --i)
+            {
+                if ((data[i] >= 0 && previousData <= 0) || (data[i] <= 0 && previousData >= 0)) {
+                    periodStartIndex = i;
+                    periodStart = time[i];
+                    break;
+                }
+                previousData = data[i];
             }
-            previousData = data[i];
         }
 
 
@@ -1766,18 +1771,27 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
+                // Calculate processed data for current
+                auto currentProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
+                current.set_processed(currentProcessed);
                 excitation.set_current(current);
             }
             if (column.windingIndex == windingIndex && column.type == DataType::MAGNETIZING_CURRENT) {
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
+                // Calculate processed data for magnetizing current
+                auto currentProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
+                current.set_processed(currentProcessed);
                 excitation.set_magnetizing_current(current);
             }
             if (column.windingIndex == windingIndex && column.type == DataType::VOLTAGE) {
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor voltage;
                 voltage.set_waveform(waveform);
+                // Calculate processed data for voltage
+                auto voltageProcessed = Inputs::calculate_processed_data(waveform, frequency, true);
+                voltage.set_processed(voltageProcessed);
                 excitation.set_voltage(voltage);
             }
         }

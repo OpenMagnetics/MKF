@@ -99,6 +99,28 @@ public:
         OperatingPoint* operatingPoint = nullptr);
 
     /**
+     * @brief Calculate the leakage inductance matrix for a magnetic component.
+     * 
+     * Builds a matrix [Llk] where each element Llk(i,j) is the leakage inductance
+     * between winding i (source) and winding j (destination) referred to winding i.
+     *
+     * - Diagonal elements are 0 (no leakage from a winding into itself).
+     * - Off-diagonal elements are generally NOT symmetric because they are referred
+     *   to the source winding.
+     *
+     * Example for a 3-winding transformer: returns a 3x3 matrix with zeros on the
+     * diagonal and Llk(0,1) being the leakage between winding 0 and 1 referred to 0.
+     *
+     * @param magnetic The magnetic component (core + coil).
+     * @param frequency Operating frequency in Hz.
+     * @return ScalarMatrixAtFrequency containing the leakage inductance matrix [Llk].
+     */
+    ScalarMatrixAtFrequency calculate_leakage_inductance_matrix(
+        Magnetic magnetic,
+        double frequency);
+
+
+    /**
      * @brief Calculate the mutual inductance between two windings.
      * 
      * The mutual inductance M is derived from the magnetizing inductance:

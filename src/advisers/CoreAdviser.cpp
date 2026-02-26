@@ -1006,6 +1006,11 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
 }
 
 bool CoreAdviser::should_include_powder(Inputs inputs) {
+    // Check if powder cores are disabled in settings
+    if (!settings.get_use_powder_cores()) {
+        return false;
+    }
+    
     if (get_application() != Application::POWER) {
         return false;
     }

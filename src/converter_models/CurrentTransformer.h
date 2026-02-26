@@ -4,9 +4,9 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 
-using namespace MAS;
 
 namespace OpenMagnetics {
+using namespace MAS;
 
 class CurrentTransformer : public MAS::CurrentTransformer {
 public:

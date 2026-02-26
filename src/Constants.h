@@ -14,6 +14,11 @@ struct Constants {
     const double minimumNonResidualGap = 0.1e-3;
     const double vacuumPermeability = 1.25663706212e-6;
     const double vacuumPermittivity =  8.8541878128e-12;
+    
+    // Thermal constants
+    const double gravityAcceleration = 9.80665;                    // m/s² - standard gravity
+    const double kelvinOffset = 273.15;                            // K - offset from Celsius to Kelvin
+    const double stefanBoltzmannConstant = 5.670374419e-8;         // W/(m²·K⁴) - Stefan-Boltzmann constant
 
     const double quasiStaticFrequencyLimit = 100;
 
@@ -70,6 +75,53 @@ struct Constants {
     const double foilToSectionMargin = 0.05;
     const double planarToSectionMargin = 0.05;
 };
+
+// ============================================================================
+// IMP-2: Thermal analysis named constants (replaces magic numbers)
+// ============================================================================
+namespace ThermalDefaults {
+    // Wire defaults
+    constexpr double kWire_DefaultWidth = 0.001;           // [m] 1mm
+    constexpr double kWire_DefaultHeight = 0.001;          // [m] 1mm
+    constexpr double kWire_CopperThermalConductivity = 385.0;  // [W/(m·K)]
+    constexpr double kWire_DefaultEnamelThickness = 0.00005;   // [m] 50µm
+    constexpr double kWire_DefaultEnamelConductivity = 0.2;    // [W/(m·K)]
+    
+    // Insulation & Bobbin
+    constexpr double kBobbin_ThermalConductivity = 0.2;    // [W/(m·K)] nylon/PBT
+    constexpr double kInsulation_DefaultConductivity = 0.2;// [W/(m·K)] polyimide
+    constexpr double kInsulation_DefaultThickness = 0.0001;// [m] 0.1mm
+    
+    // Core
+    constexpr double kCore_FerriteThermalConductivity = 4.0;   // [W/(m·K)] 3C90/3C95
+    
+    // Convection & Radiation
+    constexpr double kConvection_DefaultEmissivity = 0.9;      // [-] dark/matte
+    constexpr double kConvection_InitialDeltaT = 30.0;         // [°C] initial estimate
+    constexpr double kConvection_MinNaturalH = 2.0;            // [W/(m²·K)] IMP-7
+    constexpr double kConvection_MinForcedH = 10.0;            // [W/(m²·K)]
+    
+    // TIM
+    constexpr double kTIM_DefaultResistance = 0.5;             // [K/W]
+    
+    // Solver
+    constexpr double kSolver_MinConductance = 1e-9;            // [W/K]
+} // namespace ThermalDefaults
+
+
+// Input processing constants
+namespace InputConstants {
+    constexpr double kPowerConductionThreshold = 0.01;
+    constexpr double kVoltageCloseToZeroThreshold = 0.05;
+    constexpr double kZeroCrossingPointRatio = 0.02;
+    constexpr double kNonConductingPointRatio = 0.1;
+    constexpr double kSlopeComparisonThreshold = 0.01;
+    constexpr double kSinusoidalFitErrorThreshold = 0.05;
+    constexpr double kDutyCycleLowerBound = 0.03;
+    constexpr double kDutyCycleUpperBound = 0.97;
+    constexpr double kDutyCycleOnThreshold = 0.05;
+}
+
 } // namespace OpenMagnetics
 
 #endif

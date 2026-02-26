@@ -168,8 +168,22 @@ bool is_instantaneously_conducting_power(OperatingPoint operatingPoint) {
         std::vector<double> voltageWaveform;
 
         if (excitation.get_current()->get_waveform()->get_data().size() != excitation.get_voltage()->get_waveform()->get_data().size()) {
-            auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency());
-            auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+            // Determine a common number of points for both waveforms to ensure they have the same size after resampling
+            size_t currentSize = excitation.get_current()->get_waveform()->get_data().size();
+            size_t voltageSize = excitation.get_voltage()->get_waveform()->get_data().size();
+            size_t numberPointsForSampling = settings.get_inputs_number_points_sampled_waveforms();
+            size_t maxSize = std::max(currentSize, voltageSize);
+            if (maxSize > numberPointsForSampling) {
+                // Check if maxSize is a power of 2
+                if (maxSize > 0 && ((maxSize & (maxSize - 1)) == 0)) {
+                    numberPointsForSampling = maxSize;
+                }
+                else {
+                    numberPointsForSampling = round_up_size_to_power_of_2(maxSize);
+                }
+            }
+            auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
+            auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
             currentWaveform = currentSampledWaveform.get_data();
             voltageWaveform = voltageSampledWaveform.get_data();
         }
@@ -563,7 +577,7 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
         size_t stepNeededForSkew = round(skew / timeStep);
 
         auto auxData = sampledWaveform.get_data();
-        auxData[auxData.size() - 1] = auxData[auxData.size() - 1] - period;
+        // FIXED: BUG-05 — Removed period subtraction
         std::rotate(auxData.rbegin(), auxData.rbegin() + stepNeededForSkew, auxData.rend());
         waveform = sampledWaveform;
         waveform.set_data(auxData);
@@ -828,8 +842,10 @@ SignalDescriptor Inputs::calculate_induced_voltage(OperatingPointExcitation& exc
         time.push_back(time[time.size() - 1] + difference);
     }
     else {
-        source.push_back(source[1]);
-        time.push_back(time[time.size() - 1] + time[1]);
+        // FIXED: BUG-04 — Use period-based wrapping
+        double wrapPeriod = time.back() - time.front();
+        source.push_back(source[0]);
+        time.push_back(time[time.size() - 1] + wrapPeriod);
     }
 
     std::adjacent_difference(source.begin(), source.end(), source.begin());
@@ -906,8 +922,10 @@ Waveform Inputs::calculate_derivative_waveform(Waveform waveform) {
         tempTime.push_back(tempTime[tempTime.size() - 1] + difference);
     }
     else {
-        tempData.push_back(tempData[1]);
-        tempTime.push_back(tempTime[tempTime.size() - 1] + tempTime[1]);
+        // FIXED: BUG-04 — Use period-based wrapping
+        double wrapPeriod = tempTime.back() - tempTime.front();
+        tempData.push_back(tempData[0]);
+        tempTime.push_back(tempTime[tempTime.size() - 1] + wrapPeriod);
     }
 
     std::adjacent_difference(tempData.begin(), tempData.end(), tempData.begin());
@@ -950,13 +968,16 @@ Waveform Inputs::calculate_integral_waveform(Waveform waveform, bool subtractAve
     std::vector<double> integration;
     Waveform resultWaveform(waveform);
 
+    // FIXED: BUG-02 — Ensure integration result matches time vector size
     double integral = 0;
+    size_t integrationSize = std::min(data.size(), time.size());
     integration.push_back(integral);
-    for (size_t i = 0; i < time.size() - 1; ++i) {
+    for (size_t i = 0; i < integrationSize - 1; ++i) {
         double timePerPoint = time[i + 1] - time[i];
         integral += data[i] * timePerPoint;
         integration.push_back(integral);
     }
+    while (integration.size() > time.size()) { integration.pop_back(); }
     resultWaveform.set_data(integration);
 
     if (subtractAverage) {
@@ -1254,6 +1275,15 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
             }
         case WaveformLabel::FLYBACK_SECONDARY:
             return waveform.get_data()[3];
+    // FIXED: BUG-06 — Handle missing waveform labels
+    case WaveformLabel::RECTANGULAR_WITH_DEADTIME:
+    case WaveformLabel::SECONDARY_RECTANGULAR:
+    case WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME:
+        return 0; // Rectangular variants: zero offset like RECTANGULAR
+    case WaveformLabel::TRIANGULAR_WITH_DEADTIME:
+    case WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME:
+        return (*max_element(waveform.get_data().begin(), waveform.get_data().end()) +
+                *min_element(waveform.get_data().begin(), waveform.get_data().end())) / 2;
     }
     return 0;
 }
@@ -1524,7 +1554,7 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
     std::vector<size_t> currentHarmonicIndexesToMaintain;
     std::vector<double> currentHarmonicFrequenciesToMaintain;
     std::vector<size_t> magnetizingCurrentHarmonicIndexesToMaintain;
-    std::vector<double> magnetizingCurrFrequenciesonicIndexesToMaintain;
+    std::vector<double> magnetizingCurrentHarmonicFrequenciesToMaintain;
     std::vector<size_t> voltageHarmonicIndexesToMaintain;
     std::vector<double> voltageHarmonicFrequenciesToMaintain;
 
@@ -1548,7 +1578,7 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             for (auto harmonicIndex : harmonicsIndexesToMaintain) {
                 if (std::find(magnetizingCurrentHarmonicIndexesToMaintain.begin(), magnetizingCurrentHarmonicIndexesToMaintain.end(), harmonicIndex) == magnetizingCurrentHarmonicIndexesToMaintain.end()) {
                     magnetizingCurrentHarmonicIndexesToMaintain.push_back(harmonicIndex);
-                    magnetizingCurrFrequenciesonicIndexesToMaintain.push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
+                    magnetizingCurrentHarmonicFrequenciesToMaintain.push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
             }
         }
@@ -1569,6 +1599,8 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
     std::vector<OperatingPointExcitation> newExcitationsPerWinding;
     for (auto excitation : operatingPoint.get_excitations_per_winding()) {
         OperatingPointExcitation newExcitation;
+        // Copy the name from the original excitation
+        newExcitation.set_name(excitation.get_name());
         // Current
         if (allExcitationsHaveCurrent) {
             auto current = excitation.get_current().value();
@@ -1576,15 +1608,29 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             Harmonics prunedHarmonics;
             prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[0]);
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
-            std::sort(currentHarmonicIndexesToMaintain.begin(), currentHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
-            for (auto harmonicIndex : currentHarmonicIndexesToMaintain) {
+            // Sort indexes and frequencies together to maintain alignment
+            {
+                std::vector<std::pair<size_t, double>> indexFreqPairs;
+                for (size_t i = 0; i < currentHarmonicIndexesToMaintain.size(); ++i) {
+                    indexFreqPairs.push_back({currentHarmonicIndexesToMaintain[i], currentHarmonicFrequenciesToMaintain[i]});
+                }
+                std::sort(indexFreqPairs.begin(), indexFreqPairs.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                currentHarmonicIndexesToMaintain.clear();
+                currentHarmonicFrequenciesToMaintain.clear();
+                for (const auto& pair : indexFreqPairs) {
+                    currentHarmonicIndexesToMaintain.push_back(pair.first);
+                    currentHarmonicFrequenciesToMaintain.push_back(pair.second);
+                }
+            }
+            for (size_t i = 0; i < currentHarmonicIndexesToMaintain.size(); ++i) {
+                auto harmonicIndex = currentHarmonicIndexesToMaintain[i];
                 if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
                     prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
                     prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
                 else {
                     prunedHarmonics.get_mutable_amplitudes().push_back(0);
-                    prunedHarmonics.get_mutable_frequencies().push_back(currentHarmonicFrequenciesToMaintain[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(currentHarmonicFrequenciesToMaintain[i]);
                 }
             }
             current.set_harmonics(prunedHarmonics);
@@ -1601,15 +1647,29 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             Harmonics prunedHarmonics;
             prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[0]);
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
-            std::sort(magnetizingCurrentHarmonicIndexesToMaintain.begin(), magnetizingCurrentHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
-            for (auto harmonicIndex : magnetizingCurrentHarmonicIndexesToMaintain) {
+            // Sort indexes and frequencies together to maintain alignment
+            {
+                std::vector<std::pair<size_t, double>> indexFreqPairs;
+                for (size_t i = 0; i < magnetizingCurrentHarmonicIndexesToMaintain.size(); ++i) {
+                    indexFreqPairs.push_back({magnetizingCurrentHarmonicIndexesToMaintain[i], magnetizingCurrentHarmonicFrequenciesToMaintain[i]});
+                }
+                std::sort(indexFreqPairs.begin(), indexFreqPairs.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                magnetizingCurrentHarmonicIndexesToMaintain.clear();
+                magnetizingCurrentHarmonicFrequenciesToMaintain.clear();
+                for (const auto& pair : indexFreqPairs) {
+                    magnetizingCurrentHarmonicIndexesToMaintain.push_back(pair.first);
+                    magnetizingCurrentHarmonicFrequenciesToMaintain.push_back(pair.second);
+                }
+            }
+            for (size_t i = 0; i < magnetizingCurrentHarmonicIndexesToMaintain.size(); ++i) {
+                auto harmonicIndex = magnetizingCurrentHarmonicIndexesToMaintain[i];
                 if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
                     prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
                     prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
                 else {
                     prunedHarmonics.get_mutable_amplitudes().push_back(0);
-                    prunedHarmonics.get_mutable_frequencies().push_back(magnetizingCurrFrequenciesonicIndexesToMaintain[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(magnetizingCurrentHarmonicFrequenciesToMaintain[i]);
                 }
             }
             magnetizingCurrent.set_harmonics(prunedHarmonics);
@@ -1627,15 +1687,29 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             Harmonics prunedHarmonics;
             prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[0]);
             prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
-            std::sort(voltageHarmonicIndexesToMaintain.begin(), voltageHarmonicIndexesToMaintain.end(), [](const size_t& b1, const size_t& b2) {return b1 < b2; });
-            for (auto harmonicIndex : voltageHarmonicIndexesToMaintain) {
+            // Sort indexes and frequencies together to maintain alignment
+            {
+                std::vector<std::pair<size_t, double>> indexFreqPairs;
+                for (size_t i = 0; i < voltageHarmonicIndexesToMaintain.size(); ++i) {
+                    indexFreqPairs.push_back({voltageHarmonicIndexesToMaintain[i], voltageHarmonicFrequenciesToMaintain[i]});
+                }
+                std::sort(indexFreqPairs.begin(), indexFreqPairs.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                voltageHarmonicIndexesToMaintain.clear();
+                voltageHarmonicFrequenciesToMaintain.clear();
+                for (const auto& pair : indexFreqPairs) {
+                    voltageHarmonicIndexesToMaintain.push_back(pair.first);
+                    voltageHarmonicFrequenciesToMaintain.push_back(pair.second);
+                }
+            }
+            for (size_t i = 0; i < voltageHarmonicIndexesToMaintain.size(); ++i) {
+                auto harmonicIndex = voltageHarmonicIndexesToMaintain[i];
                 if (harmonicIndex < unprunedHarmonics.get_amplitudes().size()) {
                     prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
                     prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
                 }
                 else {
                     prunedHarmonics.get_mutable_amplitudes().push_back(0);
-                    prunedHarmonics.get_mutable_frequencies().push_back(voltageHarmonicFrequenciesToMaintain[harmonicIndex]);
+                    prunedHarmonics.get_mutable_frequencies().push_back(voltageHarmonicFrequenciesToMaintain[i]);
                 }
             }
             voltage.set_harmonics(prunedHarmonics);
@@ -1645,7 +1719,8 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
             newExcitation.set_voltage(excitation.get_voltage());
         }
 
-        newExcitationsPerWinding.push_back(excitation);
+        // FIXED: BUG-03 — Push pruned newExcitation, not original excitation
+        newExcitationsPerWinding.push_back(newExcitation);
     }
     operatingPoint.set_excitations_per_winding(newExcitationsPerWinding);
 
@@ -1663,8 +1738,30 @@ Waveform Inputs::compress_waveform(Waveform waveform) {
     std::vector<double> compressedTime;
     double previousSlope = DBL_MAX;
     for (size_t i = 0; i < data.size() - 1; ++i){
-        auto slope = (data[i + 1] - data[i]) / (time[i + 1] - time[i]);
-        if (fabs((slope - previousSlope) / previousSlope) > 0.01) {
+        // FIXED: BUG-01 — Guard against division by zero on identical time points
+        double slope;
+        if (time[i + 1] == time[i]) {
+            slope = (data[i + 1] >= data[i]) ? DBL_MAX : -DBL_MAX;
+        } else {
+            slope = (data[i + 1] - data[i]) / (time[i + 1] - time[i]);
+        }
+        
+        // Emit point if: (1) discontinuity, OR (2) slope changes significantly
+        bool isDiscontinuity = (slope == DBL_MAX || slope == -DBL_MAX);
+        bool previousWasDiscontinuity = (previousSlope == DBL_MAX || previousSlope == -DBL_MAX);
+        
+        // Detect slope change: use relative change if possible, absolute if previous slope is near zero
+        bool slopeChanged = false;
+        if (!isDiscontinuity && !previousWasDiscontinuity) {
+            if (fabs(previousSlope) > 1e-9) {
+                // Non-zero previous slope: use relative change
+                slopeChanged = fabs((slope - previousSlope) / previousSlope) > 0.01;
+            } else {
+                // Previous slope near zero: use absolute change
+                slopeChanged = fabs(slope) > 1e-9;
+            }
+        }
+        if (isDiscontinuity || previousWasDiscontinuity || slopeChanged) {
             compressedData.push_back(data[i]);
             compressedTime.push_back(time[i]);
         }
@@ -1779,8 +1876,22 @@ bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
     std::vector<double> voltageWaveform;
 
     if (excitation.get_current()->get_waveform()->get_data().size() != excitation.get_voltage()->get_waveform()->get_data().size()) {
-        auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency());
-        auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+        // Determine a common number of points for both waveforms to ensure they have the same size after resampling
+        size_t currentSize = excitation.get_current()->get_waveform()->get_data().size();
+        size_t voltageSize = excitation.get_voltage()->get_waveform()->get_data().size();
+        size_t numberPointsForSampling = settings.get_inputs_number_points_sampled_waveforms();
+        size_t maxSize = std::max(currentSize, voltageSize);
+        if (maxSize > numberPointsForSampling) {
+            // Check if maxSize is a power of 2
+            if (maxSize > 0 && ((maxSize & (maxSize - 1)) == 0)) {
+                numberPointsForSampling = maxSize;
+            }
+            else {
+                numberPointsForSampling = round_up_size_to_power_of_2(maxSize);
+            }
+        }
+        auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
+        auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
         currentWaveform = currentSampledWaveform.get_data();
         voltageWaveform = voltageSampledWaveform.get_data();
     }
@@ -2591,7 +2702,7 @@ WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
             double minimum = *min_element(waveform.get_data().begin(), waveform.get_data().end());
 
             double peakToPeak = maximum - minimum;
-            double offset = (maximum - minimum) / 2;
+            double offset = (maximum + minimum) / 2; // FIXED: BUG-08
 
             for (size_t i = 0; i < waveform.get_data().size(); ++i) {
                 double angle = i * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
@@ -2616,7 +2727,7 @@ WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
         double minimum = *min_element(waveform.get_data().begin(), waveform.get_data().end());
 
         double peakToPeak = maximum - minimum;
-        double offset = (maximum - minimum) / 2;
+        double offset = (maximum + minimum) / 2; // FIXED: BUG-08
 
         for (size_t i = 0; i < waveform.get_data().size(); ++i) {
             double angle = i * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();

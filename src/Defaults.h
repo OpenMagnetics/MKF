@@ -18,7 +18,7 @@ struct Defaults {
     // Lowest overall error: 9.6% ± 8.4% across 87 tests covering ROUND, LITZ, RECTANGULAR, and FOIL wires
     // See MKF/docs/WindingLossesModelValidation.md for full methodology and results
     const OpenMagnetics::MagneticFieldStrengthModels magneticFieldStrengthModelDefault = OpenMagnetics::MagneticFieldStrengthModels::ALBACH;
-    const OpenMagnetics::MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModelDefault = OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN;
+    const OpenMagnetics::MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModelDefault = OpenMagnetics::MagneticFieldStrengthFringingEffectModels::SULLIVAN;
     const OpenMagnetics::CoreThermalResistanceModels coreThermalResistanceModelDefault = OpenMagnetics::CoreThermalResistanceModels::MANIKTALA;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;
@@ -35,6 +35,7 @@ struct Defaults {
     const double magneticFluxDensitySaturation = 0.5;
     const double ferriteInitialPermeability = 2000;
     const double magnetizingInductanceThresholdValidity = 0.25;
+    const double selfResonantFrequencyMargin = 0.25;  // Maximum operating frequency as fraction of SRF (e.g., 0.25 = f_op < 0.25 * SRF)
     const double harmonicAmplitudeThreshold = 0.05;
     const double ambientTemperature = 25;
     const double measurementFrequency = 10000;

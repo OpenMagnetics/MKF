@@ -147,6 +147,54 @@ double Inductance::calculate_coupling_coefficient(
     return std::min(1.0, std::max(0.0, k));
 }
 
+ScalarMatrixAtFrequency Inductance::calculate_leakage_inductance_matrix(
+    Magnetic magnetic,
+    double frequency) {
+    
+    auto& functionalDescription = magnetic.get_coil().get_functional_description();
+    size_t numWindings = functionalDescription.size();
+    
+    if (numWindings == 0) {
+        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
+            "Cannot calculate leakage inductance matrix: no windings defined");
+    }
+    
+    ScalarMatrixAtFrequency result;
+    result.set_frequency(frequency);
+    
+    std::map<std::string, std::map<std::string, DimensionWithTolerance>> magnitude;
+    
+    LeakageInductance leakageInductanceModel;
+    
+    // Row i: leakage inductances referred to winding i
+    for (size_t i = 0; i < numWindings; ++i) {
+        std::string windingName_i = get_winding_name(magnetic, i);
+        
+        auto leakageOutput = leakageInductanceModel.calculate_leakage_inductance_all_windings(
+            magnetic, frequency, i);
+        auto leakagePerWinding = leakageOutput.get_leakage_inductance_per_winding();
+        
+        for (size_t j = 0; j < numWindings; ++j) {
+            std::string windingName_j = get_winding_name(magnetic, j);
+            
+            DimensionWithTolerance value;
+            if (i == j) {
+                // By definition: no leakage from a winding into itself
+                value.set_nominal(0.0);
+            } else if (j < leakagePerWinding.size() && leakagePerWinding[j].get_nominal()) {
+                value.set_nominal(leakagePerWinding[j].get_nominal().value());
+            } else {
+                value.set_nominal(0.0);
+            }
+            
+            magnitude[windingName_i][windingName_j] = value;
+        }
+    }
+    
+    result.set_magnitude(magnitude);
+    return result;
+}
+
 ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
     Magnetic magnetic,
     double frequency,

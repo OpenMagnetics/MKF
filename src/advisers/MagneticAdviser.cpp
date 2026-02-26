@@ -60,6 +60,28 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     clear_scoring();
     load_filter_flow(filterFlow, inputs);
     std::vector<Mas> masData;
+    
+    // Store original toroid setting for potential retry
+    bool toroidsOriginallyEnabled = settings.get_use_toroidal_cores();
+
+    // Check if high voltage requirements make toroids impractical
+    // High voltage (>600V) with strict insulation requirements rarely works with toroids
+    double maxVoltage = 0;
+    if (inputs.get_design_requirements().get_insulation()) {
+        auto insulation = inputs.get_design_requirements().get_insulation().value();
+        if (insulation.get_main_supply_voltage()) {
+            auto voltages = insulation.get_main_supply_voltage().value();
+            maxVoltage = std::max({voltages.get_nominal().value_or(0), 
+                                   voltages.get_minimum().value_or(0), 
+                                   voltages.get_maximum().value_or(0)});
+        }
+    }
+    
+    if (toroidsOriginallyEnabled && maxVoltage > 600) {
+        logEntry("High voltage requirements (" + std::to_string(int(maxVoltage)) + "V) detected. Disabling toroidal cores for better results.", "MagneticAdviser", 1);
+        settings.set_use_toroidal_cores(false);
+        toroidsOriginallyEnabled = false; // Don't retry since we proactively disabled
+    }
 
     if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
         settings.set_use_toroidal_cores(true);
@@ -185,6 +207,79 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
     if (masMagneticsWithScoring.size() > maximumNumberResults) {
         masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+    }
+
+    // Retry without toroids if toroids were enabled but no results found
+    if (masMagneticsWithScoring.empty() && toroidsOriginallyEnabled) {
+        logEntry("No magnetics found with toroids enabled. Retrying without toroids...", "MagneticAdviser", 1);
+        settings.set_use_toroidal_cores(false);
+        // Reset evaluated cores to allow re-evaluation
+        evaluatedCores.clear();
+        coresWound = 0;
+        masData.clear();
+        
+        // Retry the core search
+        whileIteration = 0;
+        requestedCores = expectedWoundCores;
+        previouslyObtainedCores = SIZE_MAX;
+        while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores) {
+            whileIteration++;
+            requestedCores += 20;
+            auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores);
+
+            if (previouslyObtainedCores == masMagneticsWithCore.size()) {
+                break;
+            }
+            previouslyObtainedCores = masMagneticsWithCore.size();
+            
+            for (auto& [mas, coreScoring] : masMagneticsWithCore) {
+                if (std::find(evaluatedCores.begin(), evaluatedCores.end(), mas.get_magnetic().get_core().get_name().value()) != evaluatedCores.end()) {
+                    continue;
+                }
+                else {
+                    evaluatedCores.push_back(mas.get_magnetic().get_core().get_name().value());
+                }
+
+                if (evaluatedCores.size() >= maxEvaluatedCores) {
+                    logEntry("Reached maxEvaluatedCores limit (" + std::to_string(maxEvaluatedCores) + ")", "MagneticAdviser", 2);
+                    break;
+                }
+
+                logEntry("core: " + mas.get_magnetic().get_core().get_name().value(), "MagneticAdviser", 2);
+                logEntry("Getting coil", "MagneticAdviser", 2);
+                std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
+                auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
+                if (masMagneticsWithCoreAndCoil.size() > 0) {
+                    logEntry("Core wound!", "MagneticAdviser", 2);
+                    coresWound++;
+                }
+                size_t processedCoils = 0;
+
+                for (auto& masWithCoil : masMagneticsWithCoreAndCoil) {
+                    if (masWithCoil.get_magnetic().get_coil().get_turns_description()) {
+                        masData.push_back(masWithCoil);
+                        processedCoils++;
+                        if (processedCoils >= size_t(ceil(maximumNumberResults * 0.5))) {
+                            break;
+                        }
+                    }
+                }
+            }
+            if (coresWound >= expectedWoundCores) {
+                break;
+            }
+        }
+        
+        logEntry("Found " + std::to_string(masData.size()) + " magnetics without toroids", "MagneticAdviser", 2);
+        masMagneticsWithScoring = score_magnetics(masData, filterFlow);
+        
+        sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
+            return b1.second > b2.second;
+        });
+
+        if (masMagneticsWithScoring.size() > maximumNumberResults) {
+            masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+        }
     }
 
     settings.set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
