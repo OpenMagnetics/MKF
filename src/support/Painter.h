@@ -355,6 +355,7 @@ class PainterInterface {
     virtual void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt) = 0;
     virtual void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS) = 0;
     virtual void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature) = 0;
+    virtual void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false, ColorPalette palette = ColorPalette::BLUE_TO_RED, double ambientTemperature = 25.0) = 0;
     virtual std::string export_svg() = 0;
     virtual void export_png() = 0;
     virtual void paint_core(Magnetic magnetic) = 0;
@@ -661,6 +662,7 @@ class Painter{
     void paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
     void paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1, std::optional<Field> inputField = std::nullopt, ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY, ColorPalette colorPalette = ColorPalette::VIRIDIS);
     void paint_wire_losses(Magnetic magnetic, std::optional<Outputs> outputs = std::nullopt, std::optional<OperatingPoint> operatingPoint = std::nullopt, double temperature=defaults.ambientTemperature);
+    void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false, ColorPalette palette = ColorPalette::BLUE_TO_RED, double ambientTemperature = 25.0);
     static double get_pixel_proportion_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
     static double get_pixel_area_between_turns(std::vector<double> firstTurnCoordinates, std::vector<double> firstTurnDimensions, TurnCrossSectionalShape firstTurncrossSectionalShape, std::vector<double> secondTurnCoordinates, std::vector<double> secondTurnDimensions, TurnCrossSectionalShape secondTurncrossSectionalShape, std::vector<double> pixelCoordinates, double dimension);
     static std::pair<double, double> get_pixel_dimensions(Magnetic magnetic);

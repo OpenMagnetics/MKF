@@ -743,6 +743,10 @@ void Painter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> output
     _painter->paint_wire_losses(magnetic, outputs, operatingPoint, temperature);
 }
 
+void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature) {
+    _painter->paint_temperature_field(magnetic, nodeTemperatures, showColorBar, palette, ambientTemperature);
+}
+
 std::string Painter::export_svg() {
     return _painter->export_svg();
 }

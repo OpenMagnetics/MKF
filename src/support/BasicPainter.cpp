@@ -1771,6 +1771,7 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
 
 void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature) {
     set_image_size(magnetic);
+    _scale = constants.coilPainterScale * 10;
     
     if (nodeTemperatures.empty()) {
         return;
@@ -2604,11 +2605,9 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         double viewBoxWidth = newMaxX - newMinX;
         double viewBoxHeight = newMaxY - newMinY;
         
-        // Update the image dimensions and viewBox
+        // Update the image dimensions only (viewBox will be set by autoscale in export_svg)
         _imageWidth = viewBoxWidth;
         _imageHeight = viewBoxHeight;
-        _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);
-        _root.set_attr("viewBox", std::to_string(newMinX * _scale) + " " + std::to_string(-newMaxY * _scale) + " " + std::to_string(viewBoxWidth * _scale) + " " + std::to_string(viewBoxHeight * _scale));
     }
 }
 
