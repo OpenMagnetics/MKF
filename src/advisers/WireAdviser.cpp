@@ -411,9 +411,6 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_dataset(Winding wind
             }
         }
 
-        // std::cout << "_maximumEffectiveCurrentDensity: " << _maximumEffectiveCurrentDensity << std::endl;
-        // std::cout << "_maximumNumberParallels: " << _maximumNumberParallels << std::endl;
-
         winding.set_number_parallels(numberParallelsNeeded);
         winding.set_wire(wire);
         windings.push_back(std::pair<Winding, double>{winding, 0});

@@ -28,8 +28,6 @@ namespace OpenMagnetics {
     }
 
     OperatingPoint Buck::process_operating_points_for_input_voltage(double inputVoltage, const BuckOperatingPoint& outputOperatingPoint, double inductance) {
-        std::cout << "[DEBUG Buck] switchingFrequency from BuckOperatingPoint: " << switchingFrequency << std::endl;
-
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
         double outputVoltage = outputOperatingPoint.get_output_voltage();
