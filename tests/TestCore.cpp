@@ -1892,4 +1892,59 @@ TEST_CASE("Test_Core_Resistivity", "[constructive-model][core][functional-descri
     REQUIRE_THAT(expectedResistivity, Catch::Matchers::WithinAbs(resistivity, expectedResistivity * maximumError));
 }
 
+TEST_CASE("Toroid_Effective_Parameters_Different_Standards", "[constructive-model][core][effective-parameters][standards]") {
+    // Test that powder materials use IEC 63182 and ferrite materials use IEC 60205
+    // and that the resulting effective parameters are different
+    
+    json coreJsonPowder;
+    coreJsonPowder["functionalDescription"] = json();
+    coreJsonPowder["name"] = "core_T_40_24_16_powder";
+    coreJsonPowder["functionalDescription"]["type"] = "toroidal";
+    coreJsonPowder["functionalDescription"]["material"] = "Kool Mµ 14";  // Powder material
+    coreJsonPowder["functionalDescription"]["shape"] = "T 40/24/16";
+    coreJsonPowder["functionalDescription"]["gapping"] = json::array();
+    coreJsonPowder["functionalDescription"]["numberStacks"] = 1;
+    
+    json coreJsonFerrite;
+    coreJsonFerrite["functionalDescription"] = json();
+    coreJsonFerrite["name"] = "core_T_40_24_16_ferrite";
+    coreJsonFerrite["functionalDescription"]["type"] = "toroidal";
+    coreJsonFerrite["functionalDescription"]["material"] = "N97";  // Ferrite material
+    coreJsonFerrite["functionalDescription"]["shape"] = "T 40/24/16";
+    coreJsonFerrite["functionalDescription"]["gapping"] = json::array();
+    coreJsonFerrite["functionalDescription"]["numberStacks"] = 1;
+    
+    // Create cores
+    Core corePowder(coreJsonPowder, true);
+    Core coreFerrite(coreJsonFerrite, true);
+    
+    // Verify material types
+    REQUIRE(corePowder.resolve_material().get_material() == MAS::MaterialType::POWDER);
+    REQUIRE(coreFerrite.resolve_material().get_material() == MAS::MaterialType::FERRITE);
+    
+    // Get effective parameters
+    auto paramsPowder = corePowder.get_processed_description()->get_effective_parameters();
+    auto paramsFerrite = coreFerrite.get_processed_description()->get_effective_parameters();
+    
+    // Verify that effective parameters are calculated
+    REQUIRE(paramsPowder.get_effective_area() > 0);
+    REQUIRE(paramsPowder.get_effective_length() > 0);
+    REQUIRE(paramsPowder.get_effective_volume() > 0);
+    REQUIRE(paramsPowder.get_minimum_area() > 0);
+    
+    REQUIRE(paramsFerrite.get_effective_area() > 0);
+    REQUIRE(paramsFerrite.get_effective_length() > 0);
+    REQUIRE(paramsFerrite.get_effective_volume() > 0);
+    REQUIRE(paramsFerrite.get_minimum_area() > 0);
+    
+    // The key assertion: parameters should be DIFFERENT between standards
+    // IEC 63182 (powder) should give different results than IEC 60205 (ferrite)
+    bool areaDifferent = paramsPowder.get_effective_area() != paramsFerrite.get_effective_area();
+    bool lengthDifferent = paramsPowder.get_effective_length() != paramsFerrite.get_effective_length();
+    bool volumeDifferent = paramsPowder.get_effective_volume() != paramsFerrite.get_effective_volume();
+    
+    // At least one parameter should be different
+    REQUIRE((areaDifferent || lengthDifferent || volumeDifferent));
+}
+
 }  // namespace

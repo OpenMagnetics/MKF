@@ -1,4 +1,5 @@
 #include "constructive_models/CorePiece.h"
+#include "support/Settings.h"
 
 #include "json.hpp"
 #include "support/Utils.h"
@@ -18,23 +19,51 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
 
 void CorePiece::process() {
-    
+
     process_winding_window();
     process_columns();
     process_extra_data();
 
-    auto [c1, c2, minimumArea] = get_shape_constants();
+    auto& settings = Settings::GetInstance();
+    auto standard = settings.get_effective_parameter_standard();
 
-    if (c1 <= 0 || c2 <= 0 || minimumArea <= 0) {
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Shape constants cannot be negative or 0");
+    if (standard == EffectiveParameterStandard::IEC_63182) {
+        // IEC 63182: get_shape_constants_iec63182() returns (le, Ae, Amin) directly.
+        auto [le, Ae, minimumArea] = get_shape_constants_iec63182();
+        if (le <= 0 || Ae <= 0 || minimumArea <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "IEC 63182 effective parameters cannot be negative or 0");
+        }
+        EffectiveParameters ep;
+        ep.set_effective_length(le);
+        ep.set_effective_area(Ae);
+        ep.set_effective_volume(le * Ae);
+        ep.set_minimum_area(minimumArea);
+        set_partial_effective_parameters(ep);
     }
+    else {
+        // IEC 60205 (DEFAULT): shape-constant integral method.
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        if (c1 <= 0 || c2 <= 0 || minimumArea <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Shape constants cannot be negative or 0");
+        }
+        EffectiveParameters ep;
+        ep.set_effective_length(pow(c1, 2) / c2);
+        ep.set_effective_area(c1 / c2);
+        ep.set_effective_volume(pow(c1, 3) / pow(c2, 2));
+        ep.set_minimum_area(minimumArea);
+        set_partial_effective_parameters(ep);
+    }
+}
 
-    EffectiveParameters pieceEffectiveParameters;
-    pieceEffectiveParameters.set_effective_length(pow(c1, 2) / c2);
-    pieceEffectiveParameters.set_effective_area(c1 / c2);
-    pieceEffectiveParameters.set_effective_volume(pow(c1, 3) / pow(c2, 2));
-    pieceEffectiveParameters.set_minimum_area(minimumArea);
-    set_partial_effective_parameters(pieceEffectiveParameters);
+
+// Default IEC 63182 fallback: derives le,Ae from IEC 60205 shape constants.
+std::tuple<double, double, double> CorePiece::get_shape_constants_iec63182() {
+    auto [c1, c2, minimumArea] = get_shape_constants();
+    double le = pow(c1, 2) / c2;
+    double Ae = c1 / c2;
+    return {le, Ae, minimumArea};
 }
 
 class CorePieceE : public CorePiece {
@@ -118,6 +147,20 @@ class CorePieceE : public CorePiece {
         auto minimumArea = *min_element(areas.begin(), areas.end());
 
         return {c1, c2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double h = dimensions["B"] - dimensions["D"];
+        double q = dimensions["C"];
+        double s = dimensions["F"] / 2;
+        double p = (dimensions["A"] - dimensions["E"]) / 2;
+        std::vector<double> L = { dimensions["D"], (dimensions["E"]-dimensions["F"])/2,
+            dimensions["D"], std::numbers::pi/8*(p+h), std::numbers::pi/8*(s+h) };
+        std::vector<double> A = { 2*q*p, 2*q*h, 2*s*q, (2*q*p+2*q*h)/2, (2*q*h+2*s*q)/2 };
+        double le=0, sla=0;
+        for (size_t i=0;i<L.size();++i){ le+=L[i]; sla+=L[i]/A[i]; }
+        return {le, le/sla, *min_element(A.begin(),A.end())};
     }
 };
 
@@ -209,6 +252,13 @@ class CorePieceEtd : public CorePieceE {
         auto minimumArea = *min_element(areas.begin(), areas.end());
 
         return {c1, c2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
     }
 };
 
@@ -303,6 +353,13 @@ class CorePieceEl : public CorePieceE {
 
         return {c1, c2, minimumArea};
     }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
+    }
 };
 
 class CorePieceEfd : public CorePieceEl {
@@ -384,6 +441,13 @@ class CorePieceEfd : public CorePieceEl {
         auto minimumArea = 2 * (*min_element(areas.begin(), areas.end()));
 
         return {c1, c2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
     }
 };
 
@@ -543,6 +607,13 @@ class CorePieceEp : public CorePieceE {
         auto minimumArea = *min_element(areas.begin(), areas.end());
 
         return {c1, c2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
     }
 };
 
@@ -782,6 +853,13 @@ class CorePieceRm : public CorePiece {
 
         return {c1, c2, minimumArea};
     }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
+    }
 };
 
 class CorePiecePq : public CorePiece {
@@ -924,6 +1002,13 @@ class CorePiecePq : public CorePiece {
         auto minimumArea = *min_element(areas.begin(), areas.end());
 
         return {c1, c2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
     }
 };
 
@@ -1068,6 +1153,13 @@ class CorePiecePm : public CorePiece {
 
         return {c1, c2, minimumArea};
     }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
+    }
 };
 
 class CorePieceP : public CorePiece {
@@ -1205,6 +1297,13 @@ class CorePieceP : public CorePiece {
 
         return {c1, c2, minimumArea};
     }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
+    }
 };
 
 class CorePieceU : public CorePiece {
@@ -1310,6 +1409,13 @@ class CorePieceU : public CorePiece {
         auto minimumArea = *min_element(areas.begin(), areas.end());
 
         return {c1, c2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
     }
 };
 
@@ -1478,6 +1584,13 @@ class CorePieceUr : public CorePiece {
 
         return {c1, c2, minimumArea};
     }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
+    }
 };
 
 class CorePieceUt : public CorePiece {
@@ -1562,6 +1675,13 @@ class CorePieceUt : public CorePiece {
 
         return {c1, c2, minimumArea};
     }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
+    }
 };
 
 class CorePieceT : public CorePiece {
@@ -1618,6 +1738,39 @@ class CorePieceT : public CorePiece {
         auto minimumArea = *min_element(areas.begin(), areas.end());
 
         return {c1, c2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        // IEC 63182: Calculation method for effective parameters of ring-cores
+        // le = π × (A - B) / ln(A/B)  (logarithmic mean magnetic path length)
+        // Ag = ((A - B) / 2) × C - (4 - π) × r₀²  (geometric cross-sectional area)
+        // Ve = le × Ag  (effective volume)
+        // Note: Ag is taken as the effective cross-sectional area (Ae)
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double A = dimensions["A"];   // Outer diameter (OD)
+        double B = dimensions["B"];   // Inner diameter (ID)
+        double C = dimensions["C"];   // Height (h)
+        
+        // Effective magnetic path length (logarithmic mean)
+        double le = std::numbers::pi * (A - B) / std::log(A / B);
+        
+        // Geometric cross-sectional area
+        double Ag = ((A - B) / 2.0) * C;
+        
+        // Apply chamfer correction if rounding radius r₀ is available
+        if (dimensions.find("r0") != dimensions.end() || dimensions.find("R") != dimensions.end()) {
+            double r0 = 0.0;
+            if (dimensions.find("r0") != dimensions.end()) {
+                r0 = dimensions["r0"];
+            } else if (dimensions.find("R") != dimensions.end()) {
+                r0 = dimensions["R"];
+            }
+            if (r0 > 0) {
+                Ag -= (4.0 - std::numbers::pi) * r0 * r0;
+            }
+        }
+        
+        return {le, Ag, Ag};  // For toroid, minimum area = geometric area = effective area
     }
 };
 
@@ -1699,6 +1852,13 @@ class CorePieceC : public CorePiece {
         auto minimumArea = *min_element(areas.begin(), areas.end());
 
         return {c1, c2, minimumArea};
+    }
+
+    std::tuple<double, double, double> get_shape_constants_iec63182() override {
+        auto [c1, c2, minimumArea] = get_shape_constants();
+        double le = pow(c1, 2) / c2;
+        double Ae = c1 / c2;
+        return {le, Ae, minimumArea};
     }
 };
 

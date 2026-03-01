@@ -1091,17 +1091,39 @@ void Core::process_data() {
         get_mutable_functional_description().set_material(material_data);
     }
 
+    // Automatically select effective parameter standard based on material type
+    // Powder materials use IEC 63182, others use IEC 60205
+    auto& settings = Settings::GetInstance();
+    auto coreMaterial = resolve_material();
+    if (coreMaterial.get_material() == MAS::MaterialType::POWDER) {
+        settings.set_effective_parameter_standard(EffectiveParameterStandard::IEC_63182);
+    } else {
+        settings.set_effective_parameter_standard(EffectiveParameterStandard::IEC_60205);
+    }
+
     auto corePiece =
         CorePiece::factory(std::get<CoreShape>(get_functional_description().get_shape()));
     CoreProcessedDescription processedDescription;
     auto coreColumns = corePiece->get_columns();
     auto coreWindingWindow = corePiece->get_winding_window();
     auto coreEffectiveParameters = corePiece->get_partial_effective_parameters();
+
+    // Apply stacking factor for tape-wound cores (nanocrystalline and amorphous)
+    // Stacking factor accounts for the space between ribbon layers in tape-wound cores
+    if (coreMaterial.get_material() == MAS::MaterialType::NANOCRYSTALLINE ||
+        coreMaterial.get_material() == MAS::MaterialType::AMORPHOUS) {
+        double kf = settings.get_nanocrystalline_stacking_factor();
+        // Apply stacking factor to effective area and volume
+        coreEffectiveParameters.set_effective_area(coreEffectiveParameters.get_effective_area() * kf);
+        coreEffectiveParameters.set_effective_volume(coreEffectiveParameters.get_effective_volume() * kf);
+        coreEffectiveParameters.set_minimum_area(coreEffectiveParameters.get_minimum_area() * kf);
+    }
+
     switch (get_functional_description().get_type()) {
         case CoreType::TOROIDAL:
         case CoreType::CLOSED_SHAPE:
             processedDescription.set_columns(coreColumns);
-            processedDescription.set_effective_parameters(corePiece->get_partial_effective_parameters());
+            processedDescription.set_effective_parameters(coreEffectiveParameters);
             processedDescription.get_mutable_winding_windows().push_back(corePiece->get_winding_window());
             processedDescription.set_depth(corePiece->get_depth());
             processedDescription.set_height(corePiece->get_height());

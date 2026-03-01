@@ -4,6 +4,15 @@
 #include "Definitions.h"
 #include "Models.h"
 
+// ============================================================================
+// IEC Standard Selection for Effective Parameter Calculation
+// ============================================================================
+enum class EffectiveParameterStandard {
+    IEC_60205,   // Default -- integral / shape-constant method (c1/c2)
+    IEC_63182    // Simplified geometric method (powder-core convention)
+};
+
+
 using namespace MAS;
 
 namespace OpenMagnetics {
@@ -35,6 +44,8 @@ class Settings
 
         bool _useOnlyCoresInStock = true;
         bool _usePowderCores = true;
+        EffectiveParameterStandard _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
+        double _nanocrystallineStackingFactor = 0.80;  // Stacking factor for tape-wound nanocrystalline cores (0.75-0.85 typical)
 
         size_t _painterNumberPointsX = 25;
         size_t _painterNumberPointsY = 50;
@@ -185,6 +196,12 @@ class Settings
 
         bool get_use_powder_cores() const;
         void set_use_powder_cores(bool value);
+
+    EffectiveParameterStandard get_effective_parameter_standard() const;
+    void set_effective_parameter_standard(EffectiveParameterStandard value);
+
+        double get_nanocrystalline_stacking_factor() const;
+        void set_nanocrystalline_stacking_factor(double value);
 
         size_t get_painter_number_points_x() const;
         void set_painter_number_points_x(size_t value);

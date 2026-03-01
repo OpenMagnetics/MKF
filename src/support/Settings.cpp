@@ -29,6 +29,7 @@ namespace OpenMagnetics {
         _electricFieldOutputUnit = ElectricFieldOutputUnit::JOULES_PER_CUBIC_METER;
         _coilEnableUserWindingLossesModels = false;
         _coreAdviserMaximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
+    _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
     }
 
 
@@ -55,6 +56,7 @@ namespace OpenMagnetics {
         _coilMaximumLayersPlanar = 32;
 
         _useOnlyCoresInStock = true;
+    _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
 
         _painterNumberPointsX = 25;
         _painterNumberPointsY = 50;
@@ -262,6 +264,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_use_powder_cores(bool value) {
         _usePowderCores = value;
+    }
+
+    EffectiveParameterStandard Settings::get_effective_parameter_standard() const {
+        return _effectiveParameterStandard;
+    }
+    void Settings::set_effective_parameter_standard(EffectiveParameterStandard value) {
+        _effectiveParameterStandard = value;
+    }
+
+    double Settings::get_nanocrystalline_stacking_factor() const {
+        return _nanocrystallineStackingFactor;
+    }
+    void Settings::set_nanocrystalline_stacking_factor(double value) {
+        _nanocrystallineStackingFactor = value;
     }
 
     size_t Settings::get_painter_number_points_x() const {
