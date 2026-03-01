@@ -536,7 +536,6 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
             text += "\t\t\tProximity effect losses: " + std::to_string(proximityEffectLosses) + "\n";
 
             if (windingIndex > 0) {
-                std::cout <<  output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding().size() << std::endl;
                 // output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding();
                 double value = output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding()[windingIndex - 1].get_nominal().value();
                 text += "\t\t\tLeakage inductance referred to primary: " + std::to_string(value) + "\n";

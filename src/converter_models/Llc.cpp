@@ -186,14 +186,9 @@ DesignRequirements Llc::process_design_requirements() {
     double Ln = get_inductance_ratio();
     double L = Ln * Ls;
 
-    std::cout << "LLC Design Parameters:" << std::endl;
-    std::cout << "  Q  = " << Q << (get_quality_factor().has_value() ? " (user)" : " (default)") << std::endl;
-    std::cout << "  Ln = " << Ln << " (user)" << std::endl;
-    std::cout << "  fr = " << (fr/1e3) << " kHz" << std::endl;
-    std::cout << "  Ls = " << (Ls*1e6) << " uH, Cr = " << (Cr*1e9) << " nF, Lm = " << (L*1e6) << " uH" << std::endl;
-
-    if (Ln < 2.0 || Ln > 20.0)
+    if (Ln < 2.0 || Ln > 20.0) {
         std::cerr << "WARNING: Ln=" << Ln << " outside typical range [3, 12]." << std::endl;
+    }
 
     computedResonantInductance  = Ls;
     computedResonantCapacitance = Cr;
@@ -439,22 +434,7 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         double Q_det = get_quality_factor().value_or(0.4);
         double Po_det = llcOpPoint.get_output_voltages()[0] * llcOpPoint.get_output_currents()[0];
 
-        LlcModeAnalysis modeAnalysis = detect_operating_mode(
-            Vi, Vo, Po_det, fsw, f0_det, Ln_det, Q_det, isFullBridge);
-
-        std::cout << "\n" << std::string(70, '=') << std::endl;
-        std::cout << "LLC MODE ANALYSIS (Runo Nielsen TDA)" << std::endl;
-        std::cout << std::string(70, '=') << std::endl;
-        std::cout << "Mode: " << mode_to_string(modeAnalysis.mode) << std::endl;
-        std::cout << "  " << modeAnalysis.description << std::endl;
-        std::cout << "  fn = " << modeAnalysis.fn << " (fsw=" << fsw << " / f0=" << f0_det << ")" << std::endl;
-        std::cout << "  Ln = " << Ln_det << ", Q = " << Q_det << std::endl;
-        std::cout << "  LIP = " << modeAnalysis.lip_voltage << " V, Vi = " << Vi << " V "
-                  << (modeAnalysis.is_below_lip ? "(below)" : "(above)") << std::endl;
-        std::cout << "  ZVS: " << (modeAnalysis.is_zvs_capable ? "YES" : "NO")
-                  << "  Freewheeling: " << (modeAnalysis.has_freewheeling ? "YES" : "NO")
-                  << "  Integrated Ls: " << (integratedLs ? "YES" : "NO") << std::endl;
-        std::cout << std::string(70, '=') << std::endl;
+        LlcModeAnalysis modeAnalysis = detect_operating_mode(Vi, Vo, Po_det, fsw, f0_det, Ln_det, Q_det, isFullBridge);
 
         if (modeAnalysis.mode == LlcOperatingMode::MODE_BELOW_RESONANCE_LIGHT)
             std::cerr << "WARNING: Below resonance — NO ZVS!" << std::endl;
@@ -536,13 +516,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         ILs0 = -ILs_end;
     }
 
-    std::cout << "\nSimulation Results:" << std::endl;
-    std::cout << "  Freewheeling: " << (simResult.has_freewheeling ? "YES" : "NO") << std::endl;
-    if (simResult.has_freewheeling)
-        std::cout << "  Freewheeling: " << (simResult.freewheeling_time * 1e6)
-                  << " us (" << (simResult.freewheeling_time / Thalf_eff * 100.0) << "%)" << std::endl;
-    std::cout << "  iLm at turn-on: " << simResult.iLm_at_turnon << " A" << std::endl;
-
     // =====================================================================
     // Build full-period waveforms
     //
@@ -593,11 +566,7 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     if (integratedLs) {
         double Vpmax = *std::max_element(Vpri_full.begin(), Vpri_full.end());
         double Vpmin = *std::min_element(Vpri_full.begin(), Vpri_full.end());
-        std::cout << "  Integrated Ls: Vpri = Vi - Vc(t), range [" << Vpmin << ", " << Vpmax << "] V" << std::endl;
-    } else {
-        std::cout << "  Separate Ls: Vpri = VLm(t) (flat clamp + soft hill)" << std::endl;
-    }
-    std::cout << std::string(70, '=') << "\n" << std::endl;
+    } 
 
     // --- Primary excitation ---
     {
@@ -927,9 +896,7 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
             throw std::runtime_error("LLC simulation failed: " + simResult.errorMessage);
 
         std::map<std::string, size_t> nameToIndex;
-        std::cout << "[LLC DEBUG] Available waveforms:" << std::endl;
         for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-            std::cout << "  - " << simResult.waveformNames[i] << std::endl;
             std::string lower = simResult.waveformNames[i];
             std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             nameToIndex[lower] = i;
@@ -969,14 +936,11 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
         // Get input current - use Vpri_sense current (resonant tank current) as proxy for input current
         // The DC input current is the rectified version of this, but this gives us the actual current waveform
         Waveform iin = getWf("vpri_sense#branch");
-        std::cout << "[LLC DEBUG] Looking for input current 'vpri_sense#branch', found data size: " << iin.get_data().size() << std::endl;
         if (iin.get_data().empty()) {
             // Fallback to vin_sense if available
             iin = getWf("vin_sense#branch");
-            std::cout << "[LLC DEBUG] Fallback to 'vin_sense#branch', found data size: " << iin.get_data().size() << std::endl;
         }
         wf.set_input_current(iin);
-        std::cout << "[LLC DEBUG] Set input current with data size: " << wf.get_input_current().get_data().size() << std::endl;
         if (!iin.get_data().empty()) {
             // Check if data is all zeros
             bool allZero = true;
@@ -985,10 +949,6 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
                     allZero = false;
                     break;
                 }
-            }
-            std::cout << "[LLC DEBUG] Input current first 10 values all zero: " << (allZero ? "YES" : "NO") << std::endl;
-            if (!allZero) {
-                std::cout << "[LLC DEBUG] Sample input current values: " << iin.get_data()[0] << ", " << iin.get_data()[50] << ", " << iin.get_data()[100] << std::endl;
             }
         }
 
