@@ -5465,4 +5465,51 @@ namespace {
         settings.reset();
     }
 
+    TEST_CASE("Test_Painter_Bug_Rectangular_Toroidal_Core", "[support][painter][toroidal][rectangular-wire][bug]") {
+        // Test case for investigating rectangular wire orientation in toroidal cores
+        // The shorter side of rectangular wire should point toward the center of the toroid
+        auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_rectangular_toroidal_core.json");
+        
+        // Load the MAS data and run autocomplete to regenerate turns with correct rotation
+        auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        
+        // Verify that turns have been generated with correct rotation
+        REQUIRE(magnetic.get_coil().get_turns_description().has_value());
+        auto turns = magnetic.get_coil().get_turns_description().value();
+        REQUIRE(turns.size() > 0);
+        
+        // Verify rectangular turns exist
+        int rectangularTurnCount = 0;
+        for (const auto& turn : turns) {
+            if (turn.get_cross_sectional_shape() == TurnCrossSectionalShape::RECTANGULAR) {
+                rectangularTurnCount++;
+                REQUIRE(turn.get_rotation().has_value());
+            }
+        }
+        
+        REQUIRE(rectangularTurnCount > 0);
+        std::cout << "Found " << rectangularTurnCount << " rectangular wire turns" << std::endl;
+        
+        auto inputs = mas.get_inputs();
+        
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Bug_Rectangular_Toroidal_Core.svg");
+        std::filesystem::remove(outFile);
+        
+        Painter painter(outFile, true);
+        painter.paint_core(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        
+        REQUIRE(std::filesystem::exists(outFile));
+        
+        // Log file size for debugging
+        auto fileSize = std::filesystem::file_size(outFile);
+        std::cout << "Bug rectangular toroidal core SVG size: " << fileSize << " bytes" << std::endl;
+        
+        // Check that the file was created and has content
+        REQUIRE(fileSize > 0);
+    }
+
 }  // namespace

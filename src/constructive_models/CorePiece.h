@@ -51,6 +51,7 @@ class CorePiece {
 
   public:
     virtual std::tuple<double, double, double> get_shape_constants() = 0;
+    virtual std::tuple<double, double, double> get_shape_constants_iec63182();
     virtual void process_columns() = 0;
     virtual void process_winding_window() = 0;
     virtual void process_extra_data() = 0;

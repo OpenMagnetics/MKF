@@ -685,7 +685,12 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
             paint_litz_wire(xCoordinate, yCoordinate, wire);
         }
         else {
-            double turnAngle = turns[i].get_rotation().value();
+            // For rectangular wires, compute the geometric angle from the toroid center (origin)
+            // to the turn position. This ensures the wide side aligns radially.
+            // In SVG coordinates: SVG_x = x, SVG_y = -y, so the geometric angle is atan2(-y, x)
+            // which gives us the angle in SVG space. We negate it in paint_rectangle, so pass
+            // the physical angle: atan2(y, x) converted to degrees.
+            double turnAngle = std::atan2(yCoordinate, xCoordinate) * 180.0 / std::numbers::pi;
             std::vector<double> turnCenter = {(xCoordinate), (-yCoordinate)};
             paint_rectangular_wire(xCoordinate, yCoordinate, wire, turnAngle, turnCenter);
         }
@@ -703,7 +708,8 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
                     paint_litz_wire(xAdditionalCoordinate, yAdditionalCoordinate, wire);
                 }
                 else {
-                    double turnAngle = turns[i].get_rotation().value();
+                    // Same geometric angle calculation for additional coordinates
+                    double turnAngle = std::atan2(yAdditionalCoordinate, xAdditionalCoordinate) * 180.0 / std::numbers::pi;
                     std::vector<double> turnCenter = {(xAdditionalCoordinate), (-yAdditionalCoordinate)};
                     paint_rectangular_wire(xAdditionalCoordinate, yAdditionalCoordinate, wire, turnAngle, turnCenter);
                 }
@@ -1156,6 +1162,7 @@ void BasicPainter::paint_core(Magnetic magnetic) {
     Core core = magnetic.get_core();
     set_image_size(magnetic);
     CoreShape shape = core.resolve_shape();
+    _coreFamily = shape.get_family();
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
             return paint_toroidal_core(core);
@@ -1769,7 +1776,7 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
     }
 }
 
-void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature) {
+void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature, const std::string& textColor, const std::string& bgColor) {
     set_image_size(magnetic);
     _scale = constants.coilPainterScale * 10;
     
@@ -1825,12 +1832,6 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
     
     auto shapes = _root.add_child<SVG::Group>();
     
-    // Add ambient temperature background for entire SVG (centered at origin)
-    auto ambientColor = uint_to_hex(get_uint_color_from_palette(0.0, palette), "#");
-    std::string bgClassName = generate_random_string();
-    _root.style("." + bgClassName).set_attr("fill", ambientColor).set_attr("opacity", "1.0");
-    paint_rectangle(0, 0, 10000, 10000, bgClassName, shapes);
-    
     // Helper function to find a node temperature by exact name match
     auto findNodeTemperatureExact = [&nodeTemperatures](const std::string& name) -> std::optional<double> {
         auto it = nodeTemperatures.find(name);
@@ -1885,7 +1886,27 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
     
     double coreHeight = processedElements.get_height();
     double mainColumnHeight = mainColumn.get_height();
-    
+
+    // Calculate full dimensions including winding window (using same logic as get_image_size)
+    double fullWidth = showingCoreWidth;
+    double fullHeight = coreHeight;
+    if (family == MAS::CoreShapeFamily::T) {
+        // For toroidal cores, _extraDimension was calculated in get_image_size via set_image_size
+        // For non-toroidal, _extraDimension = 1
+        fullWidth = showingCoreWidth * _extraDimension;
+        fullHeight = coreHeight * _extraDimension;
+    }
+
+    // Add ambient temperature background covering the full area (core + winding window)
+    if (family != MAS::CoreShapeFamily::T) {
+        auto ambientColor = uint_to_hex(get_uint_color_from_palette(0.0, palette), "#");
+        std::string bgClassName = generate_random_string();
+        _root.style("." + bgClassName).set_attr("fill", ambientColor).set_attr("opacity", "1.0");
+        // Background covers full width and height including winding window area
+        // Position at center (0,0) with dimensions extending in positive x and both y directions
+        paint_rectangle(fullWidth / 2, 0, fullWidth, fullHeight, bgClassName, shapes);
+    }
+
     // Paint columns with matching 2D view geometry
     // Skip for toroidal cores as they use segments instead
     if (family != MAS::CoreShapeFamily::T) {
@@ -2077,15 +2098,16 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                 
                 // Create SVG path for the arc segment (annular sector)
                 // M = move to, A = arc, L = line, Z = close path
+                // Note: Using physical coordinates (not scaled) - autoscale() will handle sizing
                 std::stringstream pathData;
-                pathData << "M " << (x1 * _scale) << "," << (-y1 * _scale)  // Move to start on outer circle
-                         << " A " << (outerRadius * _scale) << "," << (outerRadius * _scale)  // Arc on outer circle
+                pathData << "M " << x1 << "," << (-y1)  // Move to start on outer circle
+                         << " A " << outerRadius << "," << outerRadius  // Arc on outer circle
                          << " 0 0 0 "  // x-axis-rotation, large-arc-flag, sweep-flag (counter-clockwise)
-                         << (x2 * _scale) << "," << (-y2 * _scale)  // End point on outer circle
-                         << " L " << (x3 * _scale) << "," << (-y3 * _scale)  // Line to inner circle
-                         << " A " << (innerRadius * _scale) << "," << (innerRadius * _scale)  // Arc on inner circle
+                         << x2 << "," << (-y2)  // End point on outer circle
+                         << " L " << x3 << "," << (-y3)  // Line to inner circle
+                         << " A " << innerRadius << "," << innerRadius  // Arc on inner circle
                          << " 0 0 1 "  // clockwise for proper annular sector
-                         << (x4 * _scale) << "," << (-y4 * _scale)  // Back to start on inner circle
+                         << x4 << "," << (-y4)  // Back to start on inner circle
                          << " Z";  // Close path
                 
                 // Add the path to the SVG
@@ -2544,7 +2566,9 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         // Position: left edge at barX - barWidth/2 (start of color bar), centered
         double whiteBgCenterX = (barX - barWidth / 2) + whiteBgWidth / 2;
         std::string whiteBgClass = generate_random_string();
-        _root.style("." + whiteBgClass).set_attr("fill", "#FFFFFF").set_attr("opacity", "1.0");
+        // Use configurable background color if provided, otherwise default to white
+        std::string effectiveBgColor = bgColor.empty() ? "#FFFFFF" : bgColor;
+        _root.style("." + whiteBgClass).set_attr("fill", effectiveBgColor).set_attr("opacity", "1.0");
         paint_rectangle(whiteBgCenterX, barY, whiteBgWidth, whiteBgHeight, whiteBgClass, shapes);
         
         size_t numSteps = 20;
@@ -2566,7 +2590,7 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
         
         // Add outline around color bar
         std::string outlineClass = generate_random_string();
-        _root.style("." + outlineClass).set_attr("fill", "none").set_attr("stroke", "#000000").set_attr("stroke-width", "1");
+        _root.style("." + outlineClass).set_attr("fill", "none").set_attr("stroke", textColor).set_attr("stroke-width", "1");
         paint_rectangle(barX, barY, barWidth, barHeight, outlineClass, shapes);
         
         // Add temperature labels
@@ -2587,7 +2611,7 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
             double textY = -labelY * _scale;  // Note: SVG Y is inverted
             auto* text = _root.add_child<SVG::Text>(textX, textY, label);
             text->set_attr("font-size", std::to_string(barHeight * _scale * 0.08));
-            text->set_attr("fill", "#000000");
+            text->set_attr("fill", textColor);
             text->set_attr("text-anchor", "start");
         }
         
@@ -2613,17 +2637,77 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
 
 std::string BasicPainter::export_svg() {
     // Autoscale to fit all content before exporting
-    // This ensures proper centering when additional turns extend asymmetrically
     _root.autoscale();
+    
+    std::string svgString;
+    
+    // For toroidal cores, ensure symmetric viewBox and flip Y-axis so the SVG
+    // matches the physical/3D coordinate system (Y pointing up instead of SVG convention Y-down)
+    if (_coreFamily.has_value() && _coreFamily.value() == CoreShapeFamily::T) {
+        // Parse the current viewBox attribute
+        auto viewBoxAttr = _root.attr.find("viewBox");
+        if (viewBoxAttr != _root.attr.end()) {
+            std::stringstream viewBoxStream(viewBoxAttr->second);
+            double minX, minY, width, height;
+            viewBoxStream >> minX >> minY >> width >> height;
+            
+            double maxX = minX + width;
+            double maxY = minY + height;
+            
+            // Calculate maximum extent from origin (0,0) in each direction
+            // For toroidal cores, the center should be at (0,0)
+            double maxExtent = std::max({
+                std::abs(minX), std::abs(maxX),
+                std::abs(minY), std::abs(maxY)
+            });
+            
+            // Create symmetric viewBox centered on origin (0,0)
+            double newMinX = -maxExtent;
+            double newMinY = -maxExtent;
+            double newWidth = 2.0 * maxExtent;
+            double newHeight = 2.0 * maxExtent;
+            
+            // Update the viewBox and dimensions for a square SVG
+            std::stringstream newViewBox;
+            newViewBox << std::fixed << std::setprecision(2)
+                    << newMinX << " "
+                    << newMinY << " "
+                    << newWidth << " "
+                    << newHeight;
+            _root.set_attr("viewBox", newViewBox.str());
+            _root.set_attr("width", newWidth);
+            _root.set_attr("height", newHeight);
+        }
+        
+        // Get the SVG string and wrap the content in a group that flips Y-axis
+        // This converts from SVG convention (Y-down) to physical convention (Y-up)
+        svgString = std::string(_root);
+        
+        // Find the end of the opening <svg ...> tag
+        auto svgTagEnd = svgString.find('>');
+        if (svgTagEnd != std::string::npos) {
+            // Find the closing </svg> tag
+            auto closingTag = svgString.rfind("</svg>");
+            if (closingTag != std::string::npos) {
+                std::string opening = svgString.substr(0, svgTagEnd + 1);
+                std::string content = svgString.substr(svgTagEnd + 1, closingTag - svgTagEnd - 1);
+                std::string closing = svgString.substr(closingTag);
+                svgString = opening + "\n<g transform=\"scale(1,-1)\">" + content + "</g>\n" + closing;
+            }
+        }
+    }
+    else {
+        svgString = std::string(_root);
+    }
     
     if (!_filepath.empty()) {
         if (!std::filesystem::exists(_filepath)) {
             std::filesystem::create_directory(_filepath);
         }
         std::ofstream outfile(_filepath.replace_filename(_filename));
-        outfile << std::string(_root);
+        outfile << svgString;
     }
-    return std::string(_root);
+    return svgString;
 }
 
 void BasicPainter::paint_waveform_svg(
