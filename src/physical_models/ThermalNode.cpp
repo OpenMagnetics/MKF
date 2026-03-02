@@ -244,19 +244,48 @@ void ThermalNetworkNode::initializeConcentricQuadrant(double wireWidth, double w
     }
 }
 
-void ThermalNetworkNode::initializeConcentricTurnQuadrants(double wireWidth, double wireHeight, 
-                                                            double turnLength,
-                                                            double thermalCond,
-                                                            const std::optional<InsulationWireCoating>& wireCoating,
-                                                            TurnCrossSectionalShape shape) {
+double ThermalNetworkNode::computeTurnLengthAtRadius(double radius, ColumnShape columnShape,
+                                                      double columnWidth, double columnDepth) {
+    // Matches the turn length formulas used in Coil.cpp
+    // radius: radial distance from center axis to the point of interest
+    // columnWidth: half-width of the column (same as bobbinColumnWidth in Coil.cpp)
+    // columnDepth: half-depth of the column (same as bobbinColumnDepth in Coil.cpp)
+    radius = std::max(radius, 1e-6);
+    
+    if (columnShape == ColumnShape::ROUND) {
+        // Circular turn: length = full circumference at this radius
+        return 2.0 * std::numbers::pi * radius;
+    }
+    else if (columnShape == ColumnShape::OBLONG) {
+        // Stadium shape: circular arcs + straight sections
+        // Straight sections length = 4 * (columnDepth - columnWidth) (two sides, each 2*(depth-width))
+        return 2.0 * std::numbers::pi * radius + 4.0 * (columnDepth - columnWidth);
+    }
+    else {
+        // RECTANGULAR or IRREGULAR:
+        // Four straight sections (two pairs along width and depth of the column)
+        // Plus four quarter-circle corners with radius = distance from column surface to wire
+        double cornerRadius = std::max(radius - columnWidth, 1e-6);
+        return 4.0 * columnDepth + 4.0 * columnWidth + 2.0 * std::numbers::pi * cornerRadius;
+    }
+}
+
+void ThermalNetworkNode::initializeConcentricTurnQuadrants(double wireWidth, double wireHeight,
+                                                             double centerRadius, ColumnShape columnShape,
+                                                             double columnWidth, double columnDepth,
+                                                             double thermalCond,
+                                                             const std::optional<InsulationWireCoating>& wireCoating,
+                                                             TurnCrossSectionalShape shape) {
     isInnerTurn = false;
     
     // Store geometry
     crossSectionalShape = shape;
-    dimensions = NodeDimensions(wireWidth, wireHeight, turnLength);
+    
+    // Compute turn length at the wire center (used for dimensions.depth)
+    double turnLengthCenter = computeTurnLengthAtRadius(centerRadius, columnShape, columnWidth, columnDepth);
+    dimensions = NodeDimensions(wireWidth, wireHeight, turnLengthCenter);
     
     // For concentric turns: quadrants map to cardinal directions (Cartesian-aligned)
-    // This is different from toroidal where directions are angle-dependent
     //
     // Quadrant mapping for concentric turns:
     // - RADIAL_INNER  (index 0): LEFT face (-X) - facing toward bobbin/center
@@ -264,26 +293,35 @@ void ThermalNetworkNode::initializeConcentricTurnQuadrants(double wireWidth, dou
     // - TANGENTIAL_LEFT  (index 2): TOP face (+Y) - facing up
     // - TANGENTIAL_RIGHT (index 3): BOTTOM face (-Y) - facing down
     
-    double sideArea = wireHeight * turnLength;    // LEFT/RIGHT faces: height * length
-    double topBottomArea = wireWidth * turnLength; // TOP/BOTTOM faces: width * length
+    // Compute turn length at each face's radial position
+    // The inner face is closer to the center axis, so its turn length is shorter
+    // The outer face is farther from the center axis, so its turn length is longer
+    double rInner = centerRadius - wireWidth / 2.0;
+    double rOuter = centerRadius + wireWidth / 2.0;
+    
+    double turnLengthInner = computeTurnLengthAtRadius(rInner, columnShape, columnWidth, columnDepth);
+    double turnLengthOuter = computeTurnLengthAtRadius(rOuter, columnShape, columnWidth, columnDepth);
+    
+    double leftArea  = wireHeight * turnLengthInner;   // LEFT face: height * length at inner radius
+    double rightArea = wireHeight * turnLengthOuter;   // RIGHT face: height * length at outer radius
+    double topBottomArea = wireWidth * turnLengthCenter; // TOP/BOTTOM faces: width * length at center
     
     // Get node center position
-    // IMP-9
     double nodeX = safeCoord(physicalCoordinates, 0);
     double nodeY = safeCoord(physicalCoordinates, 1);
     
     // LEFT face (-X direction) - toward center/bobbin
     quadrants[0].face = ThermalNodeFace::RADIAL_INNER;
-    quadrants[0].surfaceArea = sideArea;
-    quadrants[0].length = turnLength;
+    quadrants[0].surfaceArea = leftArea;
+    quadrants[0].length = turnLengthInner;
     quadrants[0].thermalConductivity = thermalCond;
     quadrants[0].coating = wireCoating;
     quadrants[0].limitCoordinates = {nodeX - wireWidth/2, nodeY, 0.0};
     
     // RIGHT face (+X direction) - away from center
     quadrants[1].face = ThermalNodeFace::RADIAL_OUTER;
-    quadrants[1].surfaceArea = sideArea;
-    quadrants[1].length = turnLength;
+    quadrants[1].surfaceArea = rightArea;
+    quadrants[1].length = turnLengthOuter;
     quadrants[1].thermalConductivity = thermalCond;
     quadrants[1].coating = wireCoating;
     quadrants[1].limitCoordinates = {nodeX + wireWidth/2, nodeY, 0.0};
@@ -291,7 +329,7 @@ void ThermalNetworkNode::initializeConcentricTurnQuadrants(double wireWidth, dou
     // TOP face (+Y direction)
     quadrants[2].face = ThermalNodeFace::TANGENTIAL_LEFT;
     quadrants[2].surfaceArea = topBottomArea;
-    quadrants[2].length = turnLength;
+    quadrants[2].length = turnLengthCenter;
     quadrants[2].thermalConductivity = thermalCond;
     quadrants[2].coating = wireCoating;
     quadrants[2].limitCoordinates = {nodeX, nodeY + wireHeight/2, 0.0};
@@ -299,7 +337,7 @@ void ThermalNetworkNode::initializeConcentricTurnQuadrants(double wireWidth, dou
     // BOTTOM face (-Y direction)
     quadrants[3].face = ThermalNodeFace::TANGENTIAL_RIGHT;
     quadrants[3].surfaceArea = topBottomArea;
-    quadrants[3].length = turnLength;
+    quadrants[3].length = turnLengthCenter;
     quadrants[3].thermalConductivity = thermalCond;
     quadrants[3].coating = wireCoating;
     quadrants[3].limitCoordinates = {nodeX, nodeY - wireHeight/2, 0.0};

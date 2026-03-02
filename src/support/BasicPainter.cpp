@@ -2061,64 +2061,111 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
             std::string nodeName = "Core_Segment_" + std::to_string(i);
             auto tempOpt = findNodeTemperatureExact(nodeName);
             
+            // Get temperature: use segment temp if available, otherwise use ambient
+            double temp;
+            std::string label;
             if (tempOpt) {
-                double temp = tempOpt.value();
-                auto color = getColorForTemperature(temp);
-                
+                temp = tempOpt.value();
                 std::stringstream stream;
                 stream << std::fixed << std::setprecision(1) << temp;
-                std::string label = nodeName + ": " + stream.str() + " °C";
-                
-                // Calculate start and end angles (start from top, go clockwise)
-                // In SVG, angles are measured clockwise from 3 o'clock
-                // We want to start from top (12 o'clock = -90 degrees)
+                label = nodeName + ": " + stream.str() + " °C";
+            } else {
+                temp = ambientTemperature;
+                label = nodeName + ": No temperature data";
+            }
+            auto color = getColorForTemperature(temp);
+            
+            // Calculate start and end angles (start from top, go clockwise)
+            // In SVG, angles are measured clockwise from 3 o'clock
+            // We want to start from top (12 o'clock = -90 degrees)
+            double startAngle = -std::numbers::pi / 2.0 + i * anglePerSegment;
+            double endAngle = startAngle + anglePerSegment;
+            
+            // Calculate points for the arc path
+            // Start point on outer circle
+            double x1 = outerRadius * std::cos(startAngle);
+            double y1 = outerRadius * std::sin(startAngle);
+            
+            // End point on outer circle
+            double x2 = outerRadius * std::cos(endAngle);
+            double y2 = outerRadius * std::sin(endAngle);
+            
+            // End point on inner circle
+            double x3 = innerRadius * std::cos(endAngle);
+            double y3 = innerRadius * std::sin(endAngle);
+            
+            // Start point on inner circle
+            double x4 = innerRadius * std::cos(startAngle);
+            double y4 = innerRadius * std::sin(startAngle);
+            
+            // Create SVG path for the arc segment (annular sector)
+            // M = move to, A = arc, L = line, Z = close path
+            // Scale coordinates by _scale like paint_circle and paint_rectangle do
+            std::stringstream pathData;
+            pathData << "M " << (x1 * _scale) << "," << (-y1 * _scale)  // Move to start on outer circle
+                     << " A " << (outerRadius * _scale) << "," << (outerRadius * _scale)  // Arc on outer circle
+                     << " 0 0 0 "  // x-axis-rotation, large-arc-flag, sweep-flag (counter-clockwise)
+                     << (x2 * _scale) << "," << (-y2 * _scale)  // End point on outer circle
+                     << " L " << (x3 * _scale) << "," << (-y3 * _scale)  // Line to inner circle
+                     << " A " << (innerRadius * _scale) << "," << (innerRadius * _scale)  // Arc on inner circle
+                     << " 0 0 1 "  // clockwise for proper annular sector
+                     << (x4 * _scale) << "," << (-y4 * _scale)  // Back to start on inner circle
+                     << " Z";  // Close path
+            
+            // Add the path to the SVG
+            std::string cssClassName = generate_random_string();
+            _root.style("." + cssClassName)
+                .set_attr("fill", color)
+                .set_attr("opacity", "1.0");
+            auto* path = shapes->add_child<SVG::Path>();
+            path->set_attr("d", pathData.str());
+            path->set_attr("class", cssClassName);
+            path->add_child<SVG::Title>(label);
+        }
+        
+        // Paint ambient area outside the core (where additional turns are located)
+        if (maxTurnRadius > outerRadius) {
+            std::stringstream ambientLabelStream;
+            ambientLabelStream << std::fixed << std::setprecision(1) << ambientTemperature;
+            std::string ambientLabel = "Ambient Area: " + ambientLabelStream.str() + " °C";
+            
+            std::string ambientClassName = generate_random_string();
+            _root.style("." + ambientClassName).set_attr("fill", ambientColor).set_attr("opacity", "1.0");
+            
+            // Create a ring from outerRadius to maxTurnRadius
+            // Draw it as numSegments segments to match the core segments
+            for (int i = 0; i < numSegments; ++i) {
                 double startAngle = -std::numbers::pi / 2.0 + i * anglePerSegment;
                 double endAngle = startAngle + anglePerSegment;
                 
-                // Convert to degrees for SVG
-                double startAngleDeg = startAngle * 180.0 / std::numbers::pi;
-                double endAngleDeg = endAngle * 180.0 / std::numbers::pi;
+                // Points on maxTurnRadius (outer ring)
+                double x1 = maxTurnRadius * std::cos(startAngle);
+                double y1 = maxTurnRadius * std::sin(startAngle);
+                double x2 = maxTurnRadius * std::cos(endAngle);
+                double y2 = maxTurnRadius * std::sin(endAngle);
                 
-                // Calculate points for the arc path
-                // Start point on outer circle
-                double x1 = outerRadius * std::cos(startAngle);
-                double y1 = outerRadius * std::sin(startAngle);
+                // Points on outerRadius (inner ring - edge of core)
+                double x3 = outerRadius * std::cos(endAngle);
+                double y3 = outerRadius * std::sin(endAngle);
+                double x4 = outerRadius * std::cos(startAngle);
+                double y4 = outerRadius * std::sin(startAngle);
                 
-                // End point on outer circle
-                double x2 = outerRadius * std::cos(endAngle);
-                double y2 = outerRadius * std::sin(endAngle);
+                // Create path for this ambient segment
+                std::stringstream ambientPathData;
+                ambientPathData << "M " << (x1 * _scale) << "," << (-y1 * _scale)
+                               << " A " << (maxTurnRadius * _scale) << "," << (maxTurnRadius * _scale)
+                               << " 0 0 0 "
+                               << (x2 * _scale) << "," << (-y2 * _scale)
+                               << " L " << (x3 * _scale) << "," << (-y3 * _scale)
+                               << " A " << (outerRadius * _scale) << "," << (outerRadius * _scale)
+                               << " 0 0 1 "
+                               << (x4 * _scale) << "," << (-y4 * _scale)
+                               << " Z";
                 
-                // End point on inner circle
-                double x3 = innerRadius * std::cos(endAngle);
-                double y3 = innerRadius * std::sin(endAngle);
-                
-                // Start point on inner circle
-                double x4 = innerRadius * std::cos(startAngle);
-                double y4 = innerRadius * std::sin(startAngle);
-                
-                // Create SVG path for the arc segment (annular sector)
-                // M = move to, A = arc, L = line, Z = close path
-                // Note: Using physical coordinates (not scaled) - autoscale() will handle sizing
-                std::stringstream pathData;
-                pathData << "M " << x1 << "," << (-y1)  // Move to start on outer circle
-                         << " A " << outerRadius << "," << outerRadius  // Arc on outer circle
-                         << " 0 0 0 "  // x-axis-rotation, large-arc-flag, sweep-flag (counter-clockwise)
-                         << x2 << "," << (-y2)  // End point on outer circle
-                         << " L " << x3 << "," << (-y3)  // Line to inner circle
-                         << " A " << innerRadius << "," << innerRadius  // Arc on inner circle
-                         << " 0 0 1 "  // clockwise for proper annular sector
-                         << x4 << "," << (-y4)  // Back to start on inner circle
-                         << " Z";  // Close path
-                
-                // Add the path to the SVG
-                std::string cssClassName = generate_random_string();
-                _root.style("." + cssClassName)
-                    .set_attr("fill", color)
-                    .set_attr("opacity", "1.0");
-                auto* path = shapes->add_child<SVG::Path>();
-                path->set_attr("d", pathData.str());
-                path->set_attr("class", cssClassName);
-                path->add_child<SVG::Title>(label);
+                auto* ambientPath = shapes->add_child<SVG::Path>();
+                ambientPath->set_attr("d", ambientPathData.str());
+                ambientPath->set_attr("class", ambientClassName);
+                ambientPath->add_child<SVG::Title>(ambientLabel);
             }
         }
     }
@@ -2259,7 +2306,8 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
             if (coil.get_layers_description()) {
                 auto layers = coil.get_layers_description().value();
                 size_t insulationIdx = 0;
-                for (const auto& layer : layers) {
+                for (size_t layerFullIdx = 0; layerFullIdx < layers.size(); layerFullIdx++) {
+                    const auto& layer = layers[layerFullIdx];
                     if (layer.get_type() == MAS::ElectricalType::INSULATION) {
                         if (insulationIdx == layerIdx) {
                             auto color = getColorForTemperature(temp);
@@ -2274,6 +2322,50 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                                 double yCoord = layer.get_coordinates()[1];
                                 double width = layer.get_dimensions()[0];
                                 double height = layer.get_dimensions()[1];
+                                
+                                // For planar wire coils, extend FR4 layer height by half the
+                                // wire conducting height of each adjacent conduction layer.
+                                // This fills the visual gap between FR4 and copper layers.
+                                bool isPlanarWire = false;
+                                auto wires = coil.get_wires();
+                                for (const auto& wire : wires) {
+                                    if (wire.get_type() == WireType::PLANAR) {
+                                        isPlanarWire = true;
+                                        break;
+                                    }
+                                }
+                                
+                                if (isPlanarWire && coil.get_turns_description()) {
+                                    auto turns = coil.get_turns_description().value();
+                                    
+                                    // Helper to get wire conducting height from turns in a conduction layer
+                                    auto getConductingHeight = [&](const Layer& conductionLayer) -> double {
+                                        std::string conductionLayerName = conductionLayer.get_name();
+                                        for (const auto& turn : turns) {
+                                            if (turn.get_layer().has_value() && turn.get_layer().value() == conductionLayerName) {
+                                                if (turn.get_dimensions().has_value() && turn.get_dimensions().value().size() >= 2) {
+                                                    return turn.get_dimensions().value()[1];
+                                                }
+                                            }
+                                        }
+                                        return 0.0;
+                                    };
+                                    
+                                    double topExtension = 0.0;
+                                    double bottomExtension = 0.0;
+                                    
+                                    // Check layer above (lower index = closer to top in planar stacking)
+                                    if (layerFullIdx > 0 && layers[layerFullIdx - 1].get_type() == MAS::ElectricalType::CONDUCTION) {
+                                        topExtension = getConductingHeight(layers[layerFullIdx - 1]) / 2.0;
+                                    }
+                                    // Check layer below (higher index = closer to bottom in planar stacking)
+                                    if (layerFullIdx + 1 < layers.size() && layers[layerFullIdx + 1].get_type() == MAS::ElectricalType::CONDUCTION) {
+                                        bottomExtension = getConductingHeight(layers[layerFullIdx + 1]) / 2.0;
+                                    }
+                                    
+                                    height += topExtension + bottomExtension;
+                                    yCoord += (bottomExtension - topExtension) / 2.0;
+                                }
                                 
                                 // Draw insulation layer filled with temperature color
                                 std::string cssClassName = generate_random_string();
@@ -2409,31 +2501,35 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                 stream << std::fixed << std::setprecision(1) << temp;
                 std::string label = turnName + ": " + stream.str() + " °C";
                 
-                if (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
-                    double xCoordinate = turn.get_coordinates()[0];
-                    double yCoordinate = turn.get_coordinates()[1];
-                    double diameter = turn.get_dimensions().value()[0];
-                    std::string cssClassName = generate_random_string();
-                    _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
-                    paint_circle(xCoordinate, yCoordinate, diameter / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
+                // Check if turn has cross_sectional_shape and dimensions
+                bool isRound = false;
+                if (turn.get_cross_sectional_shape().has_value()) {
+                    isRound = (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND);
+                }
+                
+                if (!turn.get_dimensions().has_value() || turn.get_dimensions().value().empty()) {
+                    throw std::runtime_error("Turn '" + turnName + "' is missing dimensions required for temperature visualization");
+                }
+                
+                double xCoordinate = turn.get_coordinates()[0];
+                double yCoordinate = turn.get_coordinates()[1];
+                double conductingWidth = turn.get_dimensions().value()[0];
+                double conductingHeight = turn.get_dimensions().value().size() >= 2 ? turn.get_dimensions().value()[1] : turn.get_dimensions().value()[0];
+                
+                // Get rotation angle if available (for rectangular wires in toroidal cores)
+                double turnAngle = 0;
+                std::vector<double> turnCenter = {xCoordinate, -yCoordinate};
+                if (turn.get_rotation()) {
+                    turnAngle = turn.get_rotation().value();
+                }
+                
+                std::string cssClassName = generate_random_string();
+                _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
+                
+                if (isRound) {
+                    paint_circle(xCoordinate, yCoordinate, conductingWidth / 2, cssClassName, shapes, 360, 0, {0, 0}, label);
                 } else {
-                    if (turn.get_dimensions().value()[0] && turn.get_dimensions().value()[1]) {
-                        double xCoordinate = turn.get_coordinates()[0];
-                        double yCoordinate = turn.get_coordinates()[1];
-                        double conductingWidth = turn.get_dimensions().value()[0];
-                        double conductingHeight = turn.get_dimensions().value()[1];
-                        
-                        // Get rotation angle if available (for rectangular wires in toroidal cores)
-                        double turnAngle = 0;
-                        std::vector<double> turnCenter = {xCoordinate, -yCoordinate};
-                        if (turn.get_rotation()) {
-                            turnAngle = turn.get_rotation().value();
-                        }
-                        
-                        std::string cssClassName = generate_random_string();
-                        _root.style("." + cssClassName).set_attr("fill", color).set_attr("opacity", "1.0");
-                        paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, cssClassName, shapes, turnAngle, turnCenter, label);
-                    }
+                    paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, cssClassName, shapes, turnAngle, turnCenter, label);
                 }
                 
                 // Paint additional coordinates if present (e.g., outer half of toroidal turns)
@@ -2457,31 +2553,35 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                         
                         auto additionalColor = getColorForTemperature(additionalTemp);
                         
-                        if (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND) {
-                            double xCoord = additionalCoords[addIdx][0];
-                            double yCoord = additionalCoords[addIdx][1];
-                            double diameter = turn.get_dimensions().value()[0];
-                            std::string cssClassName = generate_random_string();
-                            _root.style("." + cssClassName).set_attr("fill", additionalColor).set_attr("opacity", "1.0");
-                            paint_circle(xCoord, yCoord, diameter / 2, cssClassName, shapes, 360, 0, {0, 0}, additionalLabel);
+                        // Check if turn has cross_sectional_shape and dimensions
+                        bool isRoundAdd = false;
+                        if (turn.get_cross_sectional_shape().has_value()) {
+                            isRoundAdd = (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND);
+                        }
+                        
+                        if (!turn.get_dimensions().has_value() || turn.get_dimensions().value().empty()) {
+                            throw std::runtime_error("Turn '" + turnName + "' additional coordinate " + std::to_string(addIdx) + " is missing dimensions required for temperature visualization");
+                        }
+                        
+                        double xCoord = additionalCoords[addIdx][0];
+                        double yCoord = additionalCoords[addIdx][1];
+                        double conductingWidth = turn.get_dimensions().value()[0];
+                        double conductingHeight = turn.get_dimensions().value().size() >= 2 ? turn.get_dimensions().value()[1] : turn.get_dimensions().value()[0];
+                        
+                        // Get rotation angle if available (for rectangular wires in toroidal cores)
+                        double turnAngle = 0;
+                        std::vector<double> turnCenter = {xCoord, -yCoord};
+                        if (turn.get_rotation()) {
+                            turnAngle = turn.get_rotation().value();
+                        }
+                        
+                        std::string cssClassName = generate_random_string();
+                        _root.style("." + cssClassName).set_attr("fill", additionalColor).set_attr("opacity", "1.0");
+                        
+                        if (isRoundAdd) {
+                            paint_circle(xCoord, yCoord, conductingWidth / 2, cssClassName, shapes, 360, 0, {0, 0}, additionalLabel);
                         } else {
-                            if (turn.get_dimensions().value()[0] && turn.get_dimensions().value()[1]) {
-                                double xCoord = additionalCoords[addIdx][0];
-                                double yCoord = additionalCoords[addIdx][1];
-                                double conductingWidth = turn.get_dimensions().value()[0];
-                                double conductingHeight = turn.get_dimensions().value()[1];
-                                
-                                // Get rotation angle if available (for rectangular wires in toroidal cores)
-                                double turnAngle = 0;
-                                std::vector<double> turnCenter = {xCoord, -yCoord};
-                                if (turn.get_rotation()) {
-                                    turnAngle = turn.get_rotation().value();
-                                }
-                                
-                                std::string cssClassName = generate_random_string();
-                                _root.style("." + cssClassName).set_attr("fill", additionalColor).set_attr("opacity", "1.0");
-                                paint_rectangle(xCoord, yCoord, conductingWidth, conductingHeight, cssClassName, shapes, turnAngle, turnCenter, additionalLabel);
-                            }
+                            paint_rectangle(xCoord, yCoord, conductingWidth, conductingHeight, cssClassName, shapes, turnAngle, turnCenter, additionalLabel);
                         }
                     }
                 }
@@ -2607,7 +2707,7 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
             }
             // Text position needs to be in scaled coordinates for SVG::Text
             // Position text closer to the color bar
-            double textX = (barX + barWidth * 1.7) * _scale;
+            double textX = (barX + barWidth * 0.6) * _scale;
             double textY = -labelY * _scale;  // Note: SVG Y is inverted
             auto* text = _root.add_child<SVG::Text>(textX, textY, label);
             text->set_attr("font-size", std::to_string(barHeight * _scale * 0.08));

@@ -161,6 +161,8 @@ enum class ThermalNodePartType {
     BOBBIN_BOTTOM_YOKE,
     TURN,
     INSULATION_LAYER,  // Solid insulation layer between turns/sections
+    HEATSINK,          // Heatsink node (external cooling)
+    COLD_PLATE,        // Cold plate node (fixed temperature boundary)
     AMBIENT
 };
 
@@ -483,16 +485,43 @@ public:
      * - TANGENTIAL_LEFT  (index 2) ↔ TOP    (+Y direction)
      * - TANGENTIAL_RIGHT (index 3) ↔ BOTTOM (-Y direction)
      * 
+     * Each quadrant face uses a turn length computed at the face's radial position,
+     * accounting for the column shape (round, oblong, rectangular).
+     * 
      * @param wireWidth Wire width in X direction (radial/horizontal)
      * @param wireHeight Wire height in Y direction (axial/vertical)
-     * @param turnLength Length of the turn (circumferential)
+     * @param centerRadius Radial position of wire center (coords[0])
+     * @param columnShape Shape of the bobbin column
+     * @param columnWidth Half-width of the column cross-section
+     * @param columnDepth Half-depth of the column cross-section (used for oblong/rectangular)
      * @param thermalCond Thermal conductivity of wire material
      * @param wireCoating Optional wire coating information
+     * @param shape Cross-sectional shape of the wire (round or rectangular)
      */
-    void initializeConcentricTurnQuadrants(double wireWidth, double wireHeight, double turnLength,
+    void initializeConcentricTurnQuadrants(double wireWidth, double wireHeight,
+                                            double centerRadius, ColumnShape columnShape,
+                                            double columnWidth, double columnDepth,
                                             double thermalCond,
                                             const std::optional<InsulationWireCoating>& wireCoating = std::nullopt,
                                             TurnCrossSectionalShape shape = TurnCrossSectionalShape::ROUND);
+    
+    /**
+     * @brief Compute the turn length at a given radial position for a column shape
+     * 
+     * Uses the same formulas as Coil.cpp:
+     * - ROUND: 2 * pi * radius
+     * - OBLONG: 2 * pi * radius + 4 * (columnDepth - columnWidth)
+     * - RECTANGULAR/IRREGULAR: 4 * columnDepth + 4 * columnWidth + 2 * pi * cornerRadius
+     *   where cornerRadius = radius - columnWidth
+     * 
+     * @param radius Radial position from center axis
+     * @param columnShape Shape of the bobbin column
+     * @param columnWidth Half-width of the column
+     * @param columnDepth Half-depth of the column
+     * @return Turn length in meters
+     */
+    static double computeTurnLengthAtRadius(double radius, ColumnShape columnShape,
+                                             double columnWidth, double columnDepth);
     
     /**
      * @brief Initialize quadrants for concentric core/bobbin nodes with cardinal directions

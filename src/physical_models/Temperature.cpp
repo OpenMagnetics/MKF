@@ -121,28 +121,46 @@ TemperatureConfig TemperatureConfig::fromMasOperatingConditions(
 }
 
 // ============================================================================
-// Legacy API Functions
+// Material Properties
 // ============================================================================
 
-double Temperature::calculate_temperature_from_core_thermal_resistance(Core core, double totalLosses) {
-    if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core is missing processed description");
+double Temperature::getCoreThermalConductivity() const {
+    try {
+        auto coreMaterial = Core(_magnetic.get_core()).resolve_material();
+        return ThermalResistance::getCoreMaterialThermalConductivity(coreMaterial);
+    } catch (...) {
+        return _config.coreThermalConductivity;
     }
-
-    double thermalResistance;
-    if (!core.get_processed_description()->get_thermal_resistance()) {
-        auto thermalResistanceModel = CoreThermalResistanceModel::factory();
-        thermalResistance = thermalResistanceModel->get_core_thermal_resistance_reluctance(core);
-    }
-    else {
-        thermalResistance = core.get_processed_description()->get_thermal_resistance().value();
-    }
-
-    return thermalResistance * totalLosses;
 }
 
-double Temperature::calculate_temperature_from_core_thermal_resistance(double thermalResistance, double totalLosses) {
-    return thermalResistance * totalLosses;
+double Temperature::getBobbinThermalConductivity() const {
+    try {
+        auto bobbinOpt = _magnetic.get_coil().get_bobbin();
+        if (std::holds_alternative<Bobbin>(bobbinOpt)) {
+            auto bobbin = std::get<Bobbin>(bobbinOpt);
+            auto funcDesc = bobbin.get_functional_description();
+            if (funcDesc) {
+                auto materialOpt = funcDesc->get_material();
+                if (materialOpt) {
+                    auto& materialVariant = *materialOpt;
+                    if (std::holds_alternative<MAS::InsulationMaterial>(materialVariant)) {
+                        OpenMagnetics::InsulationMaterial resolved(
+                            std::get<MAS::InsulationMaterial>(materialVariant));
+                        return ThermalResistance::getInsulationMaterialThermalConductivity(resolved);
+                    } else if (std::holds_alternative<std::string>(materialVariant)) {
+                        auto material = find_insulation_material_by_name(
+                            std::get<std::string>(materialVariant));
+                        return ThermalResistance::getInsulationMaterialThermalConductivity(material);
+                    }
+                }
+            }
+        }
+        // No material on bobbin: use default bobbin material (PET)
+        auto defaultMaterial = find_insulation_material_by_name(Defaults().defaultBobbinMaterial);
+        return ThermalResistance::getInsulationMaterialThermalConductivity(defaultMaterial);
+    } catch (...) {
+        return kBobbin_ThermalConductivity;
+    }
 }
 
 // ============================================================================
@@ -165,13 +183,13 @@ ThermalResult Temperature::calculateTemperatures() {
     // Step 4: Calculate schematic scaling
     calculateSchematicScaling();
     
-    // Step 5: Create and solve thermal equivalent circuit
-    ThermalResult result = solveThermalCircuit();
-    
-    // Step 6: Plot schematic if requested
+    // Step 5: Plot schematic if requested (before solving, so it's available even if solver fails)
     if (_config.plotSchematic) {
         plotSchematic();
     }
+    
+    // Step 6: Create and solve thermal equivalent circuit
+    ThermalResult result = solveThermalCircuit();
     
     if (THERMAL_DEBUG) {
     }
@@ -188,12 +206,14 @@ void Temperature::extractWireProperties() {
     auto windings = coil.get_functional_description();
     
     if (windings.empty()) {
-        return;
+        throw std::runtime_error("Temperature::extractWireProperties: No windings found in coil. "
+                                 "Cannot extract wire properties for thermal analysis.");
     }
     
     auto wireVariant = windings[0].get_wire();
     if (!std::holds_alternative<Wire>(wireVariant)) {
-        return;
+        throw std::runtime_error("Temperature::extractWireProperties: Wire in winding[0] is not a resolved Wire object. "
+                                 "Wire must be resolved before thermal analysis.");
     }
     
     auto wire = std::get<Wire>(wireVariant);
@@ -219,13 +239,25 @@ void Temperature::extractWireProperties() {
         }
     }
     
-    // For rectangular wires, dimensions are estimated from conducting diameter
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
-        if (wire.get_outer_diameter()) {
+    // For rectangular/foil wires, query actual width and height
+    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
+        // Prefer conducting_width / conducting_height if available
+        if (wire.get_conducting_width() && wire.get_conducting_height()) {
+            _wireWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+            _wireHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+        } else if (wire.get_outer_width() && wire.get_outer_height()) {
+            _wireWidth = resolve_dimensional_values(wire.get_outer_width().value());
+            _wireHeight = resolve_dimensional_values(wire.get_outer_height().value());
+        } else if (wire.get_outer_diameter()) {
             auto outerDiam = wire.get_outer_diameter().value();
             if (outerDiam.get_nominal()) {
                 _wireWidth = outerDiam.get_nominal().value();
-                _wireHeight = _wireWidth * 0.5;  // Assume 2:1 aspect ratio
+                // Fallback: use outer_diameter for both if no separate width/height
+                _wireHeight = _wireWidth;
+                if (THERMAL_DEBUG) {
+                    std::cout << "[TEMP] WARNING: Rectangular/foil wire has no conducting_width/height, "
+                              << "using outer_diameter for both dimensions" << std::endl;
+                }
             }
         }
     }
@@ -241,8 +273,9 @@ void Temperature::extractWireProperties() {
                 if (thermalCond && !thermalCond->empty()) {
                     _wireThermalCond = (*thermalCond)[0].get_value();
                 }
-            } catch (const std::exception& /* e */) { // IMP-8
-                _wireThermalCond = kWire_CopperThermalConductivity;
+            } catch (const std::exception& e) {
+                throw std::runtime_error("Temperature::extractWireProperties: Failed to lookup wire material '" + 
+                                         materialName + "' for thermal conductivity: " + e.what());
             }
         }
     }
@@ -251,7 +284,7 @@ void Temperature::extractWireProperties() {
     _wireCoating = wire.resolve_coating();
     
     // =========================================================================
-    // IMP-NEW-06: Populate per-winding wire properties
+    // IMP-NEW-06: Populate per-winding wire properties from EACH winding's wire
     // =========================================================================
     for (size_t wIdx = 0; wIdx < windings.size(); ++wIdx) {
         WindingWireProperties wProps;
@@ -260,9 +293,60 @@ void Temperature::extractWireProperties() {
             auto w = std::get<Wire>(wv);
             wProps.isRoundWire = (w.get_type() == WireType::ROUND || w.get_type() == WireType::LITZ);
             wProps.isPlanar = (w.get_type() == WireType::PLANAR || w.get_type() == WireType::FOIL);
-            wProps.wireWidth = _wireWidth;
-            wProps.wireHeight = _wireHeight;
-            wProps.wireThermalCond = _wireThermalCond;
+            
+            // Extract dimensions from THIS winding's wire (not winding[0])
+            wProps.wireWidth = kWire_DefaultWidth;
+            wProps.wireHeight = kWire_DefaultHeight;
+            
+            if (wProps.isRoundWire) {
+                if (w.get_conducting_diameter()) {
+                    auto condDiam = w.get_conducting_diameter().value();
+                    if (condDiam.get_nominal()) {
+                        wProps.wireWidth = condDiam.get_nominal().value();
+                        wProps.wireHeight = wProps.wireWidth;
+                    }
+                } else if (w.get_outer_diameter()) {
+                    auto outerDiam = w.get_outer_diameter().value();
+                    if (outerDiam.get_nominal()) {
+                        wProps.wireWidth = outerDiam.get_nominal().value();
+                        wProps.wireHeight = wProps.wireWidth;
+                    }
+                }
+            } else if (w.get_type() == WireType::RECTANGULAR || w.get_type() == WireType::FOIL || w.get_type() == WireType::PLANAR) {
+                if (w.get_conducting_width() && w.get_conducting_height()) {
+                    wProps.wireWidth = resolve_dimensional_values(w.get_conducting_width().value());
+                    wProps.wireHeight = resolve_dimensional_values(w.get_conducting_height().value());
+                } else if (w.get_outer_width() && w.get_outer_height()) {
+                    wProps.wireWidth = resolve_dimensional_values(w.get_outer_width().value());
+                    wProps.wireHeight = resolve_dimensional_values(w.get_outer_height().value());
+                }
+            }
+            
+            // Validate that wire dimensions were actually extracted
+            if (wProps.wireWidth == kWire_DefaultWidth && wProps.wireHeight == kWire_DefaultHeight) {
+                throw std::runtime_error("Temperature::extractWireProperties: Could not extract wire dimensions for winding " +
+                                         std::to_string(wIdx) + ". Wire must have conducting_diameter (round/litz) or " +
+                                         "conducting_width/height (rectangular/foil/planar) defined.");
+            }
+            
+            // Extract thermal conductivity from THIS winding's wire material
+            wProps.wireThermalCond = kWire_CopperThermalConductivity;
+            if (w.get_material()) {
+                auto materialVariant = w.get_material().value();
+                if (std::holds_alternative<std::string>(materialVariant)) {
+                    try {
+                        auto wireMaterial = find_wire_material_by_name(std::get<std::string>(materialVariant));
+                        auto thermalCond = wireMaterial.get_thermal_conductivity();
+                        if (thermalCond && !thermalCond->empty()) {
+                            wProps.wireThermalCond = (*thermalCond)[0].get_value();
+                        }
+                    } catch (const std::exception& e) {
+                        throw std::runtime_error("Temperature::extractWireProperties: Failed to lookup wire material for winding " + 
+                                                 std::to_string(wIdx) + ": " + e.what());
+                    }
+                }
+            }
+            
             wProps.wireCoating = w.resolve_coating();
             _perWindingWireProps[wIdx] = wProps;
         }
@@ -309,8 +393,7 @@ void Temperature::createThermalNodes() {
             if (THERMAL_DEBUG) {
             }
         } catch (const std::exception& e) {
-            if (THERMAL_DEBUG) {
-            }
+            throw std::runtime_error("Temperature::createThermalNodes: Failed to wind coil: " + std::string(e.what()));
         }
     }
     
@@ -338,9 +421,18 @@ void Temperature::createThermalNodes() {
 }
 
 void Temperature::createToroidalCoreNodes() {
+    if (THERMAL_DEBUG) {
+        std::cout << "[TEMP] Creating toroidal core nodes..." << std::endl;
+    }
     auto core = _magnetic.get_core();
     auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
     
+    if (dimensions.find("A") == dimensions.end() || 
+        dimensions.find("B") == dimensions.end() || 
+        dimensions.find("C") == dimensions.end()) {
+        throw std::runtime_error("Toroidal core dimensions must include keys A (outer diameter), "
+                                 "B (inner diameter), and C (height)");
+    }
     double outerDiameter = dimensions["A"];
     double innerDiameter = dimensions["B"];
     double height = dimensions["C"];
@@ -352,7 +444,7 @@ void Temperature::createToroidalCoreNodes() {
     size_t numSegments = _config.toroidalSegments;
     double angularStep = 2.0 * M_PI / numSegments;
     
-    double coreK = _config.coreThermalConductivity;
+    double coreK = getCoreThermalConductivity();
     
     // Pre-calculate turn positions and widths for segment-specific coverage
     // Map each turn to its angular position and width
@@ -379,8 +471,8 @@ void Temperature::createToroidalCoreNodes() {
                 
                 // Calculate turn width at inner and outer radii
                 // Use turn's actual dimensions if available, otherwise use defaults
-                double innerWidth = 0.001;  // Default 1mm
-                double outerWidth = 0.001;
+                double innerWidth = _wireWidth;  // Use cached wire width
+                double outerWidth = _wireWidth;
                 if (turn.get_dimensions() && turn.get_dimensions()->size() >= 1) {
                     innerWidth = (*turn.get_dimensions())[0];
                     outerWidth = innerWidth;
@@ -391,6 +483,18 @@ void Temperature::createToroidalCoreNodes() {
         }
     }
     
+    // Pre-calculate loss weighting proportional to 1/r^2 (B ~ 1/r, losses ~ B^2)
+    // Each segment's mean radius determines its share of total core losses
+    double lossWeightSum = 0.0;
+    std::vector<double> segmentLossWeights(numSegments);
+    for (size_t i = 0; i < numSegments; ++i) {
+        // All segments have same mean radius in toroidal azimuthal segmentation,
+        // so losses are equal per segment (radial variation is within each segment)
+        // For azimuthal segmentation: the loss distribution is uniform around the ring
+        segmentLossWeights[i] = 1.0;
+        lossWeightSum += segmentLossWeights[i];
+    }
+    
     for (size_t i = 0; i < numSegments; ++i) {
         double angle = i * angularStep;
         double midAngle = angle + angularStep / 2.0;
@@ -399,7 +503,9 @@ void Temperature::createToroidalCoreNodes() {
         node.part = ThermalNodePartType::CORE_TOROIDAL_SEGMENT;
         node.name = "Core_Segment_" + std::to_string(i);
         node.temperature = _config.ambientTemperature;
-        node.powerDissipation = _config.coreLosses / numSegments;
+        // Distribute losses proportionally (currently uniform for azimuthal segments,
+        // but framework supports non-uniform distribution if segments are radially split)
+        node.powerDissipation = _config.coreLosses * (segmentLossWeights[i] / lossWeightSum);
         
         node.physicalCoordinates = {
             meanRadius * std::cos(midAngle),
@@ -514,6 +620,9 @@ void Temperature::createToroidalCoreNodes() {
         
         _nodes.push_back(node);
     }
+    if (THERMAL_DEBUG) {
+        std::cout << "[TEMP] Created " << numSegments << " toroidal core segments" << std::endl;
+    }
 }
 
 void Temperature::createConcentricCoreNodes() {
@@ -521,11 +630,16 @@ void Temperature::createConcentricCoreNodes() {
     auto columns = core.get_columns();
     auto processedDesc = core.get_processed_description();
     
-    if (columns.empty() || !processedDesc) {
-        return;
+    if (columns.empty()) {
+        throw std::runtime_error("Temperature::createConcentricCoreNodes: Core has no columns. "
+                                 "Cannot build thermal model without core column geometry.");
+    }
+    if (!processedDesc) {
+        throw std::runtime_error("Temperature::createConcentricCoreNodes: Core is missing processed description. "
+                                 "Cannot build thermal model without core dimensions.");
     }
     
-    double coreK = _config.coreThermalConductivity;
+    double coreK = getCoreThermalConductivity();
     double coreWidth = processedDesc->get_width();
     double coreHeight = processedDesc->get_height();
     double coreDepth = processedDesc->get_depth();
@@ -570,14 +684,13 @@ void Temperature::createConcentricCoreNodes() {
     // =========================================================================
 
     // =========================================================================
-    // IMP-NEW-12: HALF-CORE SYMMETRY MODEL DOCUMENTATION
+    // IMP-NEW-12: HALF-CORE SYMMETRY MODEL
     // =========================================================================
     // This model uses HALF the core depth for concentric cores (left-right symmetry).
     // - Node volumes are halved -> power dissipation per node is correct (same W/m3)
     // - Surface areas are halved -> convection area represents one half only
-    // - totalThermalResistance from solver = R_half_core
-    // - Since two halves dissipate in parallel: R_total_real ~ R_solver / 2
-    // TODO: Apply symmetry factor x2 to convection areas or x0.5 to final R_th
+    // - The symmetry correction is applied by doubling all convection surface areas
+    //   to account for the other symmetric half
     // =========================================================================
     // Create central column node(s) - using HALF depth for symmetry (left half only)
     int mainColGaps = countGapsInColumn(mainColumn);
@@ -638,7 +751,8 @@ void Temperature::createConcentricCoreNodes() {
 void Temperature::createBobbinNodes() {
     auto bobbinOpt = _magnetic.get_mutable_coil().get_bobbin();
     if (!std::holds_alternative<Bobbin>(bobbinOpt)) {
-        return;
+        throw std::runtime_error("Temperature::createBobbinNodes: Bobbin is not resolved to a Bobbin object. "
+                                 "Bobbin reference must be resolved before thermal analysis.");
     }
     
     if (_isToroidal) {
@@ -648,10 +762,11 @@ void Temperature::createBobbinNodes() {
     auto bobbin = std::get<Bobbin>(bobbinOpt);
     auto processedDesc = bobbin.get_processed_description();
     if (!processedDesc) {
-        return;
+        throw std::runtime_error("Temperature::createBobbinNodes: Bobbin is missing processed description. "
+                                 "Cannot build thermal model without bobbin geometry.");
     }
     
-    double bobbinK = 0.2;  // Thermal conductivity of typical bobbin material (W/m·K)
+    double bobbinK = getBobbinThermalConductivity();
     double wallThickness = processedDesc->get_wall_thickness();
     
     // Only create bobbin nodes if there's actual wall thickness
@@ -662,7 +777,8 @@ void Temperature::createBobbinNodes() {
     auto core = _magnetic.get_core();
     auto processedCore = core.get_processed_description();
     if (!processedCore) {
-        return;
+        throw std::runtime_error("Temperature::createBobbinNodes: Core is missing processed description. "
+                                 "Cannot build thermal model without core dimensions.");
     }
     
     double coreWidth = processedCore->get_width();
@@ -674,11 +790,19 @@ void Temperature::createBobbinNodes() {
     
     // Get winding window for proper bobbin positioning
     auto windingWindows = core.get_winding_windows();
-    double windingWindowWidth = 0.01;  // Default 10mm
-    double windingWindowHeight = coreHeight * 0.8;
-    if (!windingWindows.empty()) {
-        windingWindowWidth = windingWindows[0].get_width().value_or(0.01);
-        windingWindowHeight = windingWindows[0].get_height().value_or(coreHeight * 0.8);
+    if (windingWindows.empty()) {
+        throw std::runtime_error("Temperature::createBobbinNodes: Core has no winding windows. "
+                                 "Cannot create bobbin nodes without winding window geometry.");
+    }
+    if (!windingWindows[0].get_width().has_value() || !windingWindows[0].get_height().has_value()) {
+        throw std::runtime_error("Temperature::createBobbinNodes: Winding window is missing width or height. "
+                                 "Both dimensions must be specified for thermal analysis.");
+    }
+    double windingWindowWidth = windingWindows[0].get_width().value();
+    double windingWindowHeight = windingWindows[0].get_height().value();
+    if (windingWindowWidth <= 0 || windingWindowHeight <= 0) {
+        throw std::runtime_error("Temperature::createBobbinNodes: Winding window has zero or negative dimensions. "
+                                 "Width=" + std::to_string(windingWindowWidth) + ", Height=" + std::to_string(windingWindowHeight));
     }
     
     // Calculate bobbin positions
@@ -843,10 +967,11 @@ void Temperature::createInsulationLayerNodes() {
     // Get core depth for insulation layer depth
     auto core = _magnetic.get_core();
     auto processedCore = core.get_processed_description();
-    double coreDepth = 0.01;  // Default 10mm
-    if (processedCore) {
-        coreDepth = processedCore->get_depth();
+    if (!processedCore) {
+        throw std::runtime_error("Temperature::createInsulationLayerNodes: Core is missing processed description. "
+                                 "Cannot determine core depth for insulation layer geometry.");
     }
+    double coreDepth = processedCore->get_depth();
     
     size_t layerIdx = 0;
     size_t createdCount = 0;
@@ -889,19 +1014,17 @@ void Temperature::createInsulationLayerNodes() {
                 if (specifiedThickness > 1e-9) {
                     layerWidth = specifiedThickness;
                 } else {
-                    // Default: 0.1mm typical insulation thickness
-                    layerWidth = 0.0001;
+                    layerWidth = kInsulation_DefaultThickness;
                 }
             } catch (const std::exception& /* e */) { // IMP-8
-                // Default: 0.1mm typical insulation thickness
-                layerWidth = 0.0001;
+                layerWidth = kInsulation_DefaultThickness;
             }
             if (THERMAL_DEBUG) {
             }
         }
         
         // Get layer thermal conductivity from material
-        double layerK = 0.2;  // Default for typical insulation material
+        double layerK = kInsulation_DefaultConductivity;
         try {
             auto insulationMaterial = coil.resolve_insulation_layer_insulation_material(layer);
             if (insulationMaterial.get_thermal_conductivity()) {
@@ -995,6 +1118,20 @@ void Temperature::createInsulationLayerNodes() {
                 innerNode.physicalCoordinates = {innerX, innerY, 0};
                 innerNode.initializeInsulationLayerQuadrants(radialThickness, segmentArcLength, layerDepth, layerK);
                 
+                // Override tangential limit coordinates to match segment boundaries
+                // (generic ±90° perpendicular from initializeInsulationLayerQuadrants doesn't
+                //  align with angular segment edges for toroidal layout)
+                innerNode.quadrants[2].limitCoordinates = {
+                    innerSurfaceRadius * std::cos(segAngle),
+                    innerSurfaceRadius * std::sin(segAngle),
+                    0.0
+                };
+                innerNode.quadrants[3].limitCoordinates = {
+                    innerSurfaceRadius * std::cos(segEnd),
+                    innerSurfaceRadius * std::sin(segEnd),
+                    0.0
+                };
+                
                 _nodes.push_back(innerNode);
                 createdCount++;
                 
@@ -1011,6 +1148,18 @@ void Temperature::createInsulationLayerNodes() {
                 double outerY = outerSurfaceRadius * std::sin(segMidAngle);
                 outerNode.physicalCoordinates = {outerX, outerY, 0};
                 outerNode.initializeInsulationLayerQuadrants(radialThickness, segmentArcLength, layerDepth, layerK);
+                
+                // Override tangential limit coordinates to match segment boundaries
+                outerNode.quadrants[2].limitCoordinates = {
+                    outerSurfaceRadius * std::cos(segAngle),
+                    outerSurfaceRadius * std::sin(segAngle),
+                    0.0
+                };
+                outerNode.quadrants[3].limitCoordinates = {
+                    outerSurfaceRadius * std::cos(segEnd),
+                    outerSurfaceRadius * std::sin(segEnd),
+                    0.0
+                };
                 
                 _nodes.push_back(outerNode);
                 createdCount++;
@@ -1074,35 +1223,75 @@ void Temperature::createTurnNodes() {
     auto coil = _magnetic.get_coil();
     auto turns = coil.get_turns_description();
     
-    if (!turns || turns->empty()) {
-        return;
+    if (!turns) {
+        throw std::runtime_error("Temperature::createTurnNodes: Coil has no turns description. "
+                                 "Cannot build thermal model without turn geometry.");
+    }
+    if (turns->empty()) {
+        throw std::runtime_error("Temperature::createTurnNodes: Coil has zero turns. "
+                                 "Cannot build thermal model without turns to assign losses to.");
     }
     
     // Extract wire properties locally from the coil
     auto wireOpt = extractWire();
-    double defaultWireWidth = 0.001;
-    double defaultWireHeight = 0.001;
-    double defaultWireThermalCond = 385.0;
-    bool defaultIsRoundWire = false;    std::optional<InsulationWireCoating> defaultWireCoating;
-    
-    if (wireOpt) {
-        // IMP-3: Use cached member variables
-        defaultWireWidth = _wireWidth;
-        defaultWireHeight = _wireHeight;
-        defaultWireThermalCond = _wireThermalCond;
-        defaultIsRoundWire = _isRoundWire;
-        defaultWireCoating = wireOpt.value().resolve_coating();
+    if (!wireOpt) {
+        throw std::runtime_error("Temperature::createTurnNodes: Cannot extract wire from coil. "
+                                 "Wire properties are required for thermal analysis.");
     }
     
-    // Pre-compute turn counts per winding to calculate turn index within winding
+    // IMP-3: Use cached member variables
+    double defaultWireWidth = _wireWidth;
+    double defaultWireHeight = _wireHeight;
+    double defaultWireThermalCond = _wireThermalCond;
+    bool defaultIsRoundWire = _isRoundWire;
+    std::optional<InsulationWireCoating> defaultWireCoating = wireOpt.value().resolve_coating();
+    
+    // Pre-compute turn counts per winding and per-turn index within winding
+    // Uses incrementing counter per winding to handle interleaved windings correctly
     std::map<size_t, size_t> turnsPerWinding;
-    std::map<size_t, size_t> windingBaseIndex;  // Starting global index for each winding
+    std::map<size_t, size_t> windingTurnCounter;  // Incrementing counter per winding
+    std::vector<size_t> turnIdxInWindingVec(turns->size(), 0);  // Per-turn index within its winding
     for (size_t i = 0; i < turns->size(); ++i) {
         size_t wIdx = coil.get_winding_index_by_name((*turns)[i].get_winding());
-        if (turnsPerWinding.count(wIdx) == 0) {
-            windingBaseIndex[wIdx] = i;  // First turn of this winding
-        }
+        turnIdxInWindingVec[i] = windingTurnCounter[wIdx];
+        windingTurnCounter[wIdx]++;
         turnsPerWinding[wIdx]++;
+    }
+    
+    // Get per-turn losses from simulation output if available
+    // Per-turn losses are REQUIRED for accurate thermal analysis
+    std::vector<double> turnLosses;
+    bool hasPerTurnLosses = false;
+    
+    if (_config.windingLossesOutput) {
+        auto lossesPerTurn = _config.windingLossesOutput->get_winding_losses_per_turn();
+        if (lossesPerTurn && !lossesPerTurn->empty()) {
+            hasPerTurnLosses = true;
+            for (const auto& elem : *lossesPerTurn) {
+                double loss = 0.0;
+                if (elem.get_ohmic_losses()) {
+                    loss += elem.get_ohmic_losses()->get_losses();
+                }
+                if (elem.get_skin_effect_losses()) {
+                    auto harmonics = elem.get_skin_effect_losses()->get_losses_per_harmonic();
+                    for (double h : harmonics) {
+                        loss += h;
+                    }
+                }
+                if (elem.get_proximity_effect_losses()) {
+                    auto harmonics = elem.get_proximity_effect_losses()->get_losses_per_harmonic();
+                    for (double h : harmonics) {
+                        loss += h;
+                    }
+                }
+                turnLosses.push_back(loss);
+            }
+        }
+    } else if (_config.windingLosses <= 0.0) {
+        // When total winding losses are zero, all turns have zero losses
+        // No windingLossesOutput needed - this is an explicit zero, not a fallback
+        hasPerTurnLosses = true;
+        turnLosses.assign(turns->size(), 0.0);
     }
     
     if (_isToroidal) {
@@ -1115,57 +1304,39 @@ void Temperature::createTurnNodes() {
         double windingWindowOuterRadius = outerDiameter / 2.0;
         double meanRadius = (windingWindowInnerRadius + windingWindowOuterRadius) / 2.0;
         
-        // Get per-turn losses from simulation output
-        // Real losses per turn are REQUIRED - no mock/equal distribution allowed
-        std::vector<double> turnLosses;
-        
-        if (!_config.windingLossesOutput) {
-            throw std::runtime_error("WindingLossesOutput is required for thermal analysis. "
+        // Per-turn losses are already calculated above in turnLosses vector
+        // For toroidal cores, per-turn losses are strictly required
+        if (!hasPerTurnLosses) {
+            throw std::runtime_error("WindingLossesOutput with per-turn losses is required for thermal analysis. "
                                      "Use MagneticSimulator to calculate real losses per turn.");
         }
         
-        auto lossesPerTurn = _config.windingLossesOutput->get_winding_losses_per_turn();
-        if (!lossesPerTurn || lossesPerTurn->empty()) {
-            throw std::runtime_error("WindingLossesOutput must contain per-turn losses (winding_losses_per_turn). "
-                                     "Use MagneticSimulator to calculate real losses per turn.");
+        if (THERMAL_DEBUG) {
+            std::cout << "[TEMP] Creating " << turns->size() << " toroidal turn nodes with per-turn losses" << std::endl;
         }
         
-        for (const auto& elem : *lossesPerTurn) {
-            double loss = 0.0;
-            if (elem.get_ohmic_losses()) {
-                loss += elem.get_ohmic_losses()->get_losses();
-            }
-            if (elem.get_skin_effect_losses()) {
-                auto harmonics = elem.get_skin_effect_losses()->get_losses_per_harmonic();
-                for (double h : harmonics) {
-                    loss += h;
-                }
-            }
-            if (elem.get_proximity_effect_losses()) {
-                auto harmonics = elem.get_proximity_effect_losses()->get_losses_per_harmonic();
-                for (double h : harmonics) {
-                    loss += h;
-                }
-            }
-            turnLosses.push_back(loss);
+        // Validate that per-turn losses count matches turn count
+        if (turnLosses.size() != turns->size()) {
+            throw std::runtime_error("Per-turn losses count (" + std::to_string(turnLosses.size()) + 
+                                     ") does not match turn count (" + std::to_string(turns->size()) + 
+                                     "). The winding losses simulation and coil description are inconsistent.");
         }
         
         for (size_t t = 0; t < turns->size(); ++t) {
             const auto& turn = (*turns)[t];
-            double turnLoss = (t < turnLosses.size()) ? turnLosses[t] : 0.0;
+            double turnLoss = turnLosses[t];
             
             // Calculate winding index and turn index within winding
             size_t windingIdx = coil.get_winding_index_by_name(turn.get_winding());
-            size_t turnIdxInWinding = t - windingBaseIndex[windingIdx];
+            size_t turnIdxInWinding = turnIdxInWindingVec[t];
             
             auto coords = turn.get_coordinates();
-            double angle = 0;
-            double turnCenterRadius = meanRadius;  // fallback
-            if (coords.size() >= 2) {
-                angle = std::atan2(coords[1], coords[0]);
-                // Use actual turn radius from coordinates
-                turnCenterRadius = std::sqrt(coords[0]*coords[0] + coords[1]*coords[1]);
+            if (coords.size() < 2) {
+                throw std::runtime_error("Temperature::createToroidalTurnNodes: Turn " + turn.get_name() + 
+                                         " has fewer than 2 coordinates. Valid coordinates are required for thermal analysis.");
             }
+            double angle = std::atan2(coords[1], coords[0]);
+            double turnCenterRadius = std::sqrt(coords[0]*coords[0] + coords[1]*coords[1]);
             
             // Get wire dimensions from turn (use turn-specific if available, otherwise use defaults)
             double wireWidth = defaultWireWidth;
@@ -1253,18 +1424,38 @@ void Temperature::createTurnNodes() {
         }
     } else {
         // Concentric cores - single node per turn
+        // Get column geometry for turn length calculations at each face's radial position
+        auto bobbinOpt = _magnetic.get_mutable_coil().get_bobbin();
+        ColumnShape colShape = ColumnShape::ROUND;  // default
+        double colWidth = 0.0;
+        double colDepth = 0.0;
+        if (std::holds_alternative<Bobbin>(bobbinOpt)) {
+            auto bobbin = std::get<Bobbin>(bobbinOpt);
+            auto bobbinDesc = bobbin.get_processed_description();
+            if (bobbinDesc) {
+                colShape = bobbinDesc->get_column_shape();
+                colWidth = bobbinDesc->get_column_width().value_or(0.0);
+                colDepth = bobbinDesc->get_column_depth();
+            }
+        }
+        
         for (size_t t = 0; t < turns->size(); ++t) {
             const auto& turn = (*turns)[t];
             
             // Calculate winding index and turn index within winding
             size_t windingIdx = coil.get_winding_index_by_name(turn.get_winding());
-            size_t turnIdxInWinding = t - windingBaseIndex[windingIdx];
+            size_t turnIdxInWinding = turnIdxInWindingVec[t];
             
             ThermalNetworkNode node;
             node.part = ThermalNodePartType::TURN;
             node.name = turn.get_name();
             node.temperature = _config.ambientTemperature;
-            node.powerDissipation = _config.windingLosses / turns->size();
+            // Per-turn losses are REQUIRED - no fallback allowed
+            if (!hasPerTurnLosses || t >= turnLosses.size()) {
+                throw std::runtime_error("Per-turn winding losses are required for thermal analysis. "
+                                         "Use MagneticSimulator to calculate real losses per turn.");
+            }
+            node.powerDissipation = turnLosses[t];
             node.windingIndex = static_cast<int>(windingIdx);
             node.turnIndex = static_cast<int>(turnIdxInWinding);
             
@@ -1274,7 +1465,8 @@ void Temperature::createTurnNodes() {
             } else if (coords.size() >= 2) {
                 node.physicalCoordinates = {coords[0], coords[1], 0};
             } else {
-                node.physicalCoordinates = {0, 0, 0};
+                throw std::runtime_error("Temperature::createConcentricTurnNodes: Turn " + turn.get_name() + 
+                                         " has fewer than 2 coordinates. Valid coordinates are required for thermal analysis.");
             }
             
             // Get wire dimensions from turn (each turn may have different wire size)
@@ -1290,13 +1482,13 @@ void Temperature::createTurnNodes() {
                 isRoundWire = (turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::ROUND);
             }
             
-            double turnLength = turn.get_length();
-            // For concentric cores, use toroidal quadrant initialization with 0 angle
-            // This gives proper RADIAL_INNER/OUTER and TANGENTIAL_LEFT/RIGHT quadrants
-            node.initializeToroidalQuadrants(wireWidth, wireHeight, turnLength, 
-                                             defaultWireThermalCond, true, 0.0,
-                                             defaultWireCoating,
-                                             isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
+            // Use turn's x-coordinate (radial position) as centerRadius
+            double centerRadius = coords[0];
+            node.initializeConcentricTurnQuadrants(wireWidth, wireHeight, centerRadius,
+                                                   colShape, colWidth, colDepth,
+                                                   defaultWireThermalCond,
+                                                   defaultWireCoating,
+                                                   isRoundWire ? TurnCrossSectionalShape::ROUND : TurnCrossSectionalShape::RECTANGULAR);
             _nodes.push_back(node);
         }
     }
@@ -1321,6 +1513,7 @@ void Temperature::createThermalResistances() {
         createTurnToBobbinConnections();
     }
     createTurnToInsulationConnections();
+    createInsulationLayerConnections();
     createTurnToSolidConnections();
     createConvectionConnections();
     
@@ -1394,7 +1587,7 @@ void Temperature::createConcentricCoreConnections() {
     
     auto core = _magnetic.get_core();
     auto processedDesc = core.get_processed_description();
-    double coreK = _config.coreThermalConductivity;
+    double coreK = getCoreThermalConductivity();
     
     // Helper to create conduction connection between core nodes with specific quadrants
     auto createCoreConnection = [&](size_t fromIdx, ThermalNodeFace fromFace,
@@ -1562,6 +1755,8 @@ void Temperature::createBobbinConnections() {
         return;
     }
     
+    double bobbinK = getBobbinThermalConductivity();
+    
     // Collect bobbin node indices
     size_t bobbinColumnIdx = std::numeric_limits<size_t>::max();
     size_t bobbinTopYokeIdx = std::numeric_limits<size_t>::max();
@@ -1598,8 +1793,8 @@ void Temperature::createBobbinConnections() {
     
     // Helper to create conduction connection with specific quadrants
     auto createConnectionWithQuadrants = [&](size_t fromIdx, ThermalNodeFace fromFace,
-                                              size_t toIdx, ThermalNodeFace toFace,
-                                              double dist, double area, double k = 0.2) {
+                                               size_t toIdx, ThermalNodeFace toFace,
+                                               double dist, double area, double k) {
         ThermalResistanceElement r;
         r.nodeFromId = fromIdx;
         r.quadrantFrom = fromFace;
@@ -1642,7 +1837,7 @@ void Temperature::createBobbinConnections() {
             double area = calculateBobbinColumnContactArea(bobbinColumnIdx, coreIdx);
             createConnectionWithQuadrants(bobbinColumnIdx, ThermalNodeFace::RADIAL_INNER,
                                           coreIdx, ThermalNodeFace::RADIAL_OUTER,
-                                          dist, area, 0.2);
+                                          dist, area, bobbinK);
         }
     }
     
@@ -1664,7 +1859,7 @@ void Temperature::createBobbinConnections() {
         // With cardinal mapping: Bobbin yoke TOP ↔ Core yoke BOTTOM
         createConnectionWithQuadrants(bobbinTopYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT,  // Bobbin TOP
                                       closestIdx, ThermalNodeFace::TANGENTIAL_RIGHT,       // Core yoke BOTTOM
-                                      minDist, area, 0.2);
+                                      minDist, area, bobbinK);
     }
     
     // 3. Bobbin bottom yoke connects ONLY to closest bottom core yoke
@@ -1685,7 +1880,7 @@ void Temperature::createBobbinConnections() {
         // With cardinal mapping: Bobbin yoke BOTTOM ↔ Core yoke TOP
         createConnectionWithQuadrants(bobbinBottomYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT, // Bobbin BOTTOM
                                       closestIdx, ThermalNodeFace::TANGENTIAL_LEFT,           // Core yoke TOP
-                                      minDist, area, 0.2);
+                                      minDist, area, bobbinK);
     }
     
     // 4. Bobbin column connects to bobbin yokes (internal bobbin conduction)
@@ -1701,7 +1896,7 @@ void Temperature::createBobbinConnections() {
             // Column TOP ↔ Top yoke LEFT
             createConnectionWithQuadrants(bobbinColumnIdx, ThermalNodeFace::TANGENTIAL_LEFT,  // Column TOP
                                           bobbinTopYokeIdx, ThermalNodeFace::RADIAL_INNER,     // Yoke LEFT
-                                          dist, area, 0.2);
+                                          dist, area, bobbinK);
         }
         if (bobbinBottomYokeIdx != std::numeric_limits<size_t>::max()) {
             double dx = _nodes[bobbinColumnIdx].physicalCoordinates[0] - _nodes[bobbinBottomYokeIdx].physicalCoordinates[0];
@@ -1711,7 +1906,7 @@ void Temperature::createBobbinConnections() {
             // Column BOTTOM ↔ Bottom yoke LEFT
             createConnectionWithQuadrants(bobbinColumnIdx, ThermalNodeFace::TANGENTIAL_RIGHT, // Column BOTTOM
                                           bobbinBottomYokeIdx, ThermalNodeFace::RADIAL_INNER,  // Yoke LEFT
-                                          dist, area, 0.2);
+                                          dist, area, bobbinK);
         }
     }
     
@@ -1749,6 +1944,8 @@ void Temperature::createTurnToTurnConnections() {
 }
 
 void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist) {
+    // NOTE: O(N^2) complexity over turn nodes. For designs with >1000 turns,
+    // consider implementing spatial indexing (grid hash or k-d tree) for neighbor search.
     // Pure geometry-based connections - no layer or consecutiveness logic
     for (size_t i = 0; i < turnNodeIndices.size(); i++) {
         size_t node1Idx = turnNodeIndices[i];
@@ -1819,21 +2016,29 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
             r.nodeToId = node2Idx;
             r.quadrantTo = face2;
             r.type = HeatTransferType::CONDUCTION;
-            
+
             auto* q1 = _nodes[node1Idx].getQuadrant(face1);
             auto* q2 = _nodes[node2Idx].getQuadrant(face2);
-            
+
             if (q1 && q2) {
                 double contactArea = std::min(q1->surfaceArea, q2->surfaceArea);
-                int turn1Idx = _nodes[node1Idx].turnIndex.value_or(0);
-                int turn2Idx = _nodes[node2Idx].turnIndex.value_or(0);
-                
+                if (!_nodes[node1Idx].turnIndex.has_value()) {
+                    throw std::runtime_error("Temperature::createConcentricTurnToTurnConnections: Turn node " +
+                                             _nodes[node1Idx].name + " is missing turnIndex.");
+                }
+                if (!_nodes[node2Idx].turnIndex.has_value()) {
+                    throw std::runtime_error("Temperature::createConcentricTurnToTurnConnections: Turn node " +
+                                             _nodes[node2Idx].name + " is missing turnIndex.");
+                }
+                int turn1Idx = _nodes[node1Idx].turnIndex.value();
+                int turn2Idx = _nodes[node2Idx].turnIndex.value();
+
                 // Check if there's a solid insulation layer between these turns
                 // If so, skip direct connection - turns will connect through insulation layer node
                 auto coil = _magnetic.get_coil();
                 auto turnsDescription = coil.get_turns_description();
                 bool hasSolidInsulationBetween = false;
-                
+
                 if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
                     turn2Idx >= 0 && turn2Idx < static_cast<int>(turnsDescription->size())) {
                     try {
@@ -1921,6 +2126,8 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
 }
 
 void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist) {
+    // NOTE: O(N^2) complexity over turn nodes. For designs with >1000 turns,
+    // consider implementing spatial indexing (grid hash or k-d tree) for neighbor search.
     // Pure geometry-based connections using turn rotation to determine facing quadrants
     for (size_t i = 0; i < turnNodeIndices.size(); i++) {
         size_t node1Idx = turnNodeIndices[i];
@@ -2023,9 +2230,17 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
             
             if (q1 && q2) {
                 double contactArea = std::min(q1->surfaceArea, q2->surfaceArea);
-                int turn1Idx = _nodes[node1Idx].turnIndex.value_or(0);
-                int turn2Idx = _nodes[node2Idx].turnIndex.value_or(0);
-                
+                if (!_nodes[node1Idx].turnIndex.has_value()) {
+                    throw std::runtime_error("Temperature::createToroidalTurnToTurnConnections: Turn node " +
+                                             _nodes[node1Idx].name + " is missing turnIndex.");
+                }
+                if (!_nodes[node2Idx].turnIndex.has_value()) {
+                    throw std::runtime_error("Temperature::createToroidalTurnToTurnConnections: Turn node " +
+                                             _nodes[node2Idx].name + " is missing turnIndex.");
+                }
+                int turn1Idx = _nodes[node1Idx].turnIndex.value();
+                int turn2Idx = _nodes[node2Idx].turnIndex.value();
+
                 // Check if there's a solid insulation layer between these turns
                 // If so, skip direct connection - turns will connect through insulation layer node
                 auto coil = _magnetic.get_coil();
@@ -2193,10 +2408,12 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
                        ThermalNodeFace::TANGENTIAL_LEFT : ThermalNodeFace::TANGENTIAL_RIGHT;
         r.type = HeatTransferType::CONDUCTION;
         
-        // Calculate resistance through air/bobbin gap - use turn's actual dimensions
-        double contactArea = turnWidth * turnHeight * 0.5;
-        double k_air = 0.025;  // W/m·K
-        r.resistance = dist / (k_air * contactArea);
+        // Calculate resistance through air/bobbin gap - use quadrant surface area
+        auto* turnQuadrant = _nodes[turnIdx].getQuadrant(r.quadrantTo);
+        double contactArea = turnQuadrant ? turnQuadrant->surfaceArea : (turnWidth * turnHeight * 0.5);
+        // Issue 15: Use configurable interface conductivity for turn-to-bobbin contact
+        double k_interface = _config.turnToBobbinInterfaceConductivity;
+        r.resistance = dist / (k_interface * contactArea);
         
         _resistances.push_back(r);
     };
@@ -2211,7 +2428,8 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
             for (const auto& [turnIdx, dist] : nearbyTurns) {
                 // Estimate contact area for this turn using its stored dimensions
                 const auto& turnNode = _nodes[turnIdx];
-                double turnContactArea = turnNode.dimensions.width * turnNode.dimensions.height * 0.25;
+                auto* tq = turnNode.getQuadrant(ThermalNodeFace::TANGENTIAL_LEFT);
+                double turnContactArea = tq ? tq->surfaceArea : (turnNode.dimensions.width * turnNode.dimensions.height * 0.25);
                 totalContactArea += turnContactArea;
             }
             
@@ -2232,7 +2450,8 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
             double totalContactArea = 0;
             for (const auto& [turnIdx, dist] : nearbyTurns) {
                 const auto& turnNode = _nodes[turnIdx];
-                double turnContactArea = turnNode.dimensions.width * turnNode.dimensions.height * 0.25;
+                auto* tq = turnNode.getQuadrant(ThermalNodeFace::TANGENTIAL_RIGHT);
+                double turnContactArea = tq ? tq->surfaceArea : (turnNode.dimensions.width * turnNode.dimensions.height * 0.25);
                 totalContactArea += turnContactArea;
             }
             
@@ -2377,7 +2596,7 @@ void Temperature::createTurnToBobbinConnections() {
                     r.type = HeatTransferType::CONDUCTION;
                     
                     auto* q = turnNode.getQuadrant(quadrant.face);
-                    double contactArea = q ? q->surfaceArea * 0.5 : (turnWidth * turnHeight * 0.25);
+                    double contactArea = q ? q->surfaceArea : (turnWidth * turnHeight * 0.5);
                     double distance = std::max(dist, 1e-6);
                     
                     // IMP-NEW-05: Configurable interface conductivity (was k_air=0.025)
@@ -2466,7 +2685,7 @@ void Temperature::createTurnToInsulationConnections() {
                 double insulationH = insulationNode.dimensions.height;
 
                 // Get insulation thermal conductivity
-                double insulationK = 0.2;
+                double insulationK = kInsulation_DefaultConductivity;
                 if (insulationNode.quadrants[0].thermalConductivity > 0) {
                     insulationK = insulationNode.quadrants[0].thermalConductivity;
                 }
@@ -2535,7 +2754,8 @@ void Temperature::createTurnToInsulationConnections() {
                 r.quadrantTo = ThermalNodeFace::RADIAL_INNER;    // Turn's LEFT face
                 r.type = HeatTransferType::CONDUCTION;
                 
-                double contactArea = turnWidth * turnHeight * 0.5;
+                auto* leftQ = turnNode.getQuadrant(ThermalNodeFace::RADIAL_INNER);
+                double contactArea = leftQ ? leftQ->surfaceArea : (turnWidth * turnHeight * 0.5);
                 double conductionDistance = leftCandidate.insulationWidth / 2.0;
                 
                 r.resistance = ThermalResistance::calculateConductionResistance(
@@ -2563,7 +2783,8 @@ void Temperature::createTurnToInsulationConnections() {
                 r.quadrantTo = ThermalNodeFace::RADIAL_OUTER;    // Turn's RIGHT face
                 r.type = HeatTransferType::CONDUCTION;
                 
-                double contactArea = turnWidth * turnHeight * 0.5;
+                auto* rightQ = turnNode.getQuadrant(ThermalNodeFace::RADIAL_OUTER);
+                double contactArea = rightQ ? rightQ->surfaceArea : (turnWidth * turnHeight * 0.5);
                 double conductionDistance = rightCandidate.insulationWidth / 2.0;
                 
                 r.resistance = ThermalResistance::calculateConductionResistance(
@@ -2599,10 +2820,12 @@ void Temperature::createTurnToInsulationConnections() {
         // Group insulation nodes by layer index
         std::map<int, std::vector<size_t>> insNodesByLayer;
         for (size_t insIdx : insulationNodeIndices) {
-            int layerIdx = _nodes[insIdx].insulationLayerIndex.value_or(-1);
-            if (layerIdx >= 0) {
-                insNodesByLayer[layerIdx].push_back(insIdx);
+            if (!_nodes[insIdx].insulationLayerIndex.has_value()) {
+                throw std::runtime_error("Temperature::createTurnToInsulationConnections: Insulation layer node " +
+                                         _nodes[insIdx].name + " is missing insulationLayerIndex.");
             }
+            int layerIdx = _nodes[insIdx].insulationLayerIndex.value();
+            insNodesByLayer[layerIdx].push_back(insIdx);
         }
         
         // Pre-calculate layer data for efficiency
@@ -2781,15 +3004,17 @@ void Temperature::createTurnToInsulationConnections() {
                     insQ ? insQ->surfaceArea : 0.0
                 );
                 if (contactArea <= 0) {
-                    // Fallback: use turn cross-section area estimate
-                    contactArea = turnNode.dimensions.width * turnNode.dimensions.height * 0.5;
+                    // Fallback: use quadrant surface area from the turn
+                    auto* fallbackQ = turnNode.getQuadrant(bestTurnFace);
+                    contactArea = fallbackQ ? fallbackQ->surfaceArea : 
+                                  (turnNode.dimensions.width * turnNode.dimensions.height * 0.5);
                 }
                 
                 // Conduction distance is the surface-to-surface distance
                 double conductionDistance = std::max(minQuadrantDistance, 1e-6);
                 
                 // Get insulation thermal conductivity
-                double insulationK = 0.2;  // Default
+                double insulationK = kInsulation_DefaultConductivity;
                 if (insNode.quadrants[0].thermalConductivity > 0) {
                     insulationK = insNode.quadrants[0].thermalConductivity;
                 }
@@ -2812,6 +3037,100 @@ void Temperature::createTurnToInsulationConnections() {
         
         if (THERMAL_DEBUG) {
         }
+    }
+}
+
+void Temperature::createInsulationLayerConnections() {
+    if (!_isToroidal) return;
+    
+    // Group insulation layer nodes by (layerIdx, isInner) and segment index
+    // Node naming convention: IL_{layerIdx}_{segIdx}_{i|o}
+    // We need to connect adjacent segments tangentially and inner↔outer radially
+    
+    // Structure: layerGroups[layerIdx][isInner] = vector of (segIdx, nodeIdx) sorted by segIdx
+    struct SegNode {
+        size_t segIdx;
+        size_t nodeIdx;
+    };
+    // Map from layerIdx -> inner nodes and outer nodes
+    std::map<size_t, std::vector<SegNode>> innerNodes;  // layerIdx -> sorted by segIdx
+    std::map<size_t, std::vector<SegNode>> outerNodes;
+    
+    for (size_t i = 0; i < _nodes.size(); i++) {
+        if (_nodes[i].part != ThermalNodePartType::INSULATION_LAYER) continue;
+        
+        const std::string& name = _nodes[i].name;
+        // Parse IL_{layerIdx}_{segIdx}_{i|o}
+        if (name.substr(0, 3) != "IL_") continue;  // Only toroidal segmented insulation nodes
+        
+        // Extract layerIdx and segIdx from name
+        size_t firstUnderscore = name.find('_', 0);   // After "IL"
+        size_t secondUnderscore = name.find('_', firstUnderscore + 1);
+        size_t thirdUnderscore = name.find('_', secondUnderscore + 1);
+        
+        if (secondUnderscore == std::string::npos || thirdUnderscore == std::string::npos) continue;
+        
+        size_t layerIdx = std::stoul(name.substr(firstUnderscore + 1, secondUnderscore - firstUnderscore - 1));
+        size_t segIdx = std::stoul(name.substr(secondUnderscore + 1, thirdUnderscore - secondUnderscore - 1));
+        std::string suffix = name.substr(thirdUnderscore + 1);
+        
+        if (suffix == "i") {
+            innerNodes[layerIdx].push_back({segIdx, i});
+        } else if (suffix == "o") {
+            outerNodes[layerIdx].push_back({segIdx, i});
+        }
+    }
+    
+    // Sort each group by segment index
+    for (auto& [layerIdx, nodes] : innerNodes) {
+        std::sort(nodes.begin(), nodes.end(), [](const SegNode& a, const SegNode& b) {
+            return a.segIdx < b.segIdx;
+        });
+    }
+    for (auto& [layerIdx, nodes] : outerNodes) {
+        std::sort(nodes.begin(), nodes.end(), [](const SegNode& a, const SegNode& b) {
+            return a.segIdx < b.segIdx;
+        });
+    }
+    
+    // Helper: create tangential connections in circular fashion for a set of segment nodes
+    auto connectTangentially = [&](const std::vector<SegNode>& segNodes) {
+        if (segNodes.size() < 2) return;
+        
+        for (size_t i = 0; i < segNodes.size(); i++) {
+            size_t nextI = (i + 1) % segNodes.size();
+            
+            size_t fromIdx = segNodes[i].nodeIdx;
+            size_t toIdx = segNodes[nextI].nodeIdx;
+            
+            ThermalResistanceElement r;
+            r.nodeFromId = fromIdx;
+            r.quadrantFrom = ThermalNodeFace::TANGENTIAL_RIGHT;
+            r.nodeToId = toIdx;
+            r.quadrantTo = ThermalNodeFace::TANGENTIAL_LEFT;
+            r.type = HeatTransferType::CONDUCTION;
+            
+            auto* q1 = _nodes[fromIdx].getQuadrant(ThermalNodeFace::TANGENTIAL_RIGHT);
+            auto* q2 = _nodes[toIdx].getQuadrant(ThermalNodeFace::TANGENTIAL_LEFT);
+            
+            if (q1 && q2) {
+                double contactArea = std::min(q1->surfaceArea, q2->surfaceArea);
+                r.resistance = q1->calculateConductionResistance(*q2, contactArea);
+                _resistances.push_back(r);
+            }
+        }
+    };
+    
+    // Connect tangentially for each layer's inner and outer node rings
+    for (auto& [layerIdx, nodes] : innerNodes) {
+        connectTangentially(nodes);
+    }
+    for (auto& [layerIdx, nodes] : outerNodes) {
+        connectTangentially(nodes);
+    }
+    
+    if (THERMAL_DEBUG) {
+        std::cout << "Created insulation layer tangential connections" << std::endl;
     }
 }
 
@@ -2895,11 +3214,13 @@ void Temperature::createTurnToSolidConnections() {
                     r.nodeToId = closestCoreIdx;
                     r.quadrantTo = ThermalNodeFace::RADIAL_INNER;    // Core's inner face
                     r.type = HeatTransferType::CONDUCTION;
-                    
 
-                    
-                    int turnIdx = turnNode.turnIndex.value_or(0);
-                    
+                    if (!turnNode.turnIndex.has_value()) {
+                        throw std::runtime_error("Temperature::createTurnToCoreConnections: Turn node " +
+                                                 turnNode.name + " is missing turnIndex.");
+                    }
+                    int turnIdx = turnNode.turnIndex.value();
+
                     // Copper conduction: from turn node center to surface
                     // Node is at wire surface, so conduction length is half the turn's width
                     double turnWidth = turnNode.dimensions.width;
@@ -2980,10 +3301,12 @@ void Temperature::createTurnToSolidConnections() {
                     r.nodeToId = closestCoreIdx;
                     r.quadrantTo = ThermalNodeFace::RADIAL_OUTER;     // Core's outer face (away from center)
                     r.type = HeatTransferType::CONDUCTION;
-                    
 
-                    
-                    int turnIdx = turnNode.turnIndex.value_or(0);
+                    if (!turnNode.turnIndex.has_value()) {
+                        throw std::runtime_error("Temperature::createTurnToCoreConnections: Turn node " +
+                                                 turnNode.name + " is missing turnIndex.");
+                    }
+                    int turnIdx = turnNode.turnIndex.value();
                     
                     // Copper conduction: from turn node center to surface
                     double turnWidth = turnNode.dimensions.width;
@@ -3138,11 +3461,13 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                         double radialDiff = nodeR - otherR;
                         // Must be: significantly closer (not tangential) AND within max blocking distance
                         if (radialDiff > minRadialDiff && radialDiff < maxBlockingDist) {
-                            double angleDiff = std::abs(nodeAngle - otherAngle);
+                            // Proper angle normalization to [-pi, pi]
+                            double angleDiff = nodeAngle - otherAngle;
                             while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
+                            while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
                             
                             // Block if there's an object in roughly same angular direction
-                            if (std::abs(angleDiff) < 0.3) {
+                            if (std::abs(angleDiff) < kConvection_AngularBlockingTolerance) {
                                 isExposed = false;
                                 break;
                             }
@@ -3162,11 +3487,13 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                         double radialDiff = otherR - nodeR;
                         // Must be: significantly farther (not tangential) AND within max blocking distance
                         if (radialDiff > minRadialDiff && radialDiff < maxBlockingDist) {
-                            double angleDiff = std::abs(nodeAngle - otherAngle);
+                            // Proper angle normalization to [-pi, pi]
+                            double angleDiff = nodeAngle - otherAngle;
                             while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
+                            while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
                             
                             // Block if there's an object in roughly same angular direction
-                            if (std::abs(angleDiff) < 0.3) {
+                            if (std::abs(angleDiff) < kConvection_AngularBlockingTolerance) {
                                 isExposed = false;
                                 break;
                             }
@@ -3364,20 +3691,28 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
         int maxLayerIdx = -1;
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) {
-                int layerIdx = _nodes[i].insulationLayerIndex.value_or(-1);
+                if (!_nodes[i].insulationLayerIndex.has_value()) {
+                    throw std::runtime_error("Temperature::createToroidalConvectionConnections: Insulation layer node " +
+                                             _nodes[i].name + " is missing insulationLayerIndex.");
+                }
+                int layerIdx = _nodes[i].insulationLayerIndex.value();
                 if (layerIdx > maxLayerIdx) {
                     maxLayerIdx = layerIdx;
                 }
             }
         }
-        
+
         // Only create convection for the outermost insulation layer
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::INSULATION_LAYER) continue;
-            
+
             const auto& node = _nodes[i];
-            int layerIdx = node.insulationLayerIndex.value_or(-1);
-            
+            if (!node.insulationLayerIndex.has_value()) {
+                throw std::runtime_error("Temperature::createToroidalConvectionConnections: Insulation layer node " +
+                                         node.name + " is missing insulationLayerIndex.");
+            }
+            int layerIdx = node.insulationLayerIndex.value();
+
             // Skip if not the outermost layer
             if (layerIdx != maxLayerIdx) continue;
             
@@ -3652,7 +3987,7 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                         r.type = HeatTransferType::CONDUCTION;
                         double contactArea = turnQuad->surfaceArea;
                         double thickness = std::max(minDist, 1e-6);
-                        double k = 0.2; // FR4 thermal conductivity W/(m·K)
+                        double k = kFR4_ThermalConductivity; // FR4 through-plane thermal conductivity W/(m·K)
                         r.resistance = ThermalResistance::calculateConductionResistance(
                             thickness, k, contactArea);
                         r.area = contactArea;
@@ -3796,10 +4131,23 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
 
             if (!isCoreNode) continue;
 
-            // Connect all core quadrants to ambient
+            // Build connected quadrants set for planar core convection check
+            std::set<std::string> planarConnectedQuadrants;
+            for (const auto& res : _resistances) {
+                if (res.type == HeatTransferType::CONDUCTION) {
+                    planarConnectedQuadrants.insert(std::to_string(res.nodeFromId) + "_" + std::string(magic_enum::enum_name(res.quadrantFrom)));
+                    planarConnectedQuadrants.insert(std::to_string(res.nodeToId) + "_" + std::string(magic_enum::enum_name(res.quadrantTo)));
+                }
+            }
+
+            // Connect only exposed (non-conduction-connected) core quadrants to ambient
             for (int qIdx = 0; qIdx < 4; ++qIdx) {
                 ThermalNodeFace face = _nodes[i].quadrants[qIdx].face;
                 if (face == ThermalNodeFace::NONE) continue;
+
+                // Skip quadrants already connected by conduction (e.g., facing bobbin/winding)
+                std::string qKey = std::to_string(i) + "_" + std::string(magic_enum::enum_name(face));
+                if (planarConnectedQuadrants.count(qKey) > 0) continue;
 
                 auto* coreQuad = _nodes[i].getQuadrant(face);
                 if (!coreQuad || coreQuad->surfaceArea <= 0) continue;
@@ -3828,7 +4176,10 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
 
 // IMP-4: Concentric convection connections
 void Temperature::createConcentricConvectionConnections(size_t ambientIdx, double h_conv) {
-    // IMP-4: Local variables
+    // Track initial resistance count for symmetry correction at the end
+    size_t initialResistanceCount = _resistances.size();
+    
+    // Build connected quadrants set ONCE (used throughout this method)
     std::set<std::string> connectedQuadrants;
     for (const auto& res : _resistances) {
         if (res.type == HeatTransferType::CONDUCTION) {
@@ -3850,18 +4201,7 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
         
         if (hasConcentricCoreNodes) {
             // Concentric core - quadrant-specific convection with symmetry boundary
-            // Build a map of which quadrants are already connected by conduction
-            std::set<std::string> connectedQuadrants;
-            for (const auto& res : _resistances) {
-                if (res.type == HeatTransferType::CONDUCTION) {
-                    std::string key1 = std::to_string(res.nodeFromId) + "_" + 
-                                       std::string(magic_enum::enum_name(res.quadrantFrom));
-                    std::string key2 = std::to_string(res.nodeToId) + "_" + 
-                                       std::string(magic_enum::enum_name(res.quadrantTo));
-                    connectedQuadrants.insert(key1);
-                    connectedQuadrants.insert(key2);
-                }
-            }
+            // connectedQuadrants already built above - reuse it
             
             for (size_t i = 0; i < _nodes.size(); i++) {
                 if (_nodes[i].part == ThermalNodePartType::AMBIENT) continue;
@@ -4019,6 +4359,18 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
                 _resistances.push_back(r);
             }
         }
+    
+    // Half-core symmetry correction: the model uses half the core depth,
+    // so convection areas represent only one half. The real core has double
+    // the convection area (both halves), so halve all convection resistances
+    // created in this method (R = 1/(h*A), double A => R/2)
+    for (size_t i = initialResistanceCount; i < _resistances.size(); ++i) {
+        if (_resistances[i].type == HeatTransferType::NATURAL_CONVECTION ||
+            _resistances[i].type == HeatTransferType::FORCED_CONVECTION) {
+            _resistances[i].resistance /= 2.0;
+            _resistances[i].area *= 2.0;
+        }
+    }
 }
 
 // ============================================================================
@@ -4027,33 +4379,46 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
 
 double Temperature::calculateSurfaceDistance(const ThermalNetworkNode& node1, 
                                               const ThermalNetworkNode& node2) const {
+    // Calculate true surface-to-surface distance by subtracting wire extents
     double dx = node1.physicalCoordinates[0] - node2.physicalCoordinates[0];
     double dy = node1.physicalCoordinates[1] - node2.physicalCoordinates[1];
-    double dz = node1.physicalCoordinates[2] - node2.physicalCoordinates[2];
-    return std::sqrt(dx*dx + dy*dy + dz*dz);
+    double dz = (node1.physicalCoordinates.size() > 2 && node2.physicalCoordinates.size() > 2)
+                ? (node1.physicalCoordinates[2] - node2.physicalCoordinates[2]) : 0.0;
+    double centerDistance = std::sqrt(dx*dx + dy*dy + dz*dz);
+    
+    // Subtract extents (half of minimum dimension) for each node
+    double extent1 = std::min(node1.dimensions.width, node1.dimensions.height) / 2.0;
+    double extent2 = std::min(node2.dimensions.width, node2.dimensions.height) / 2.0;
+    double surfaceDistance = centerDistance - extent1 - extent2;
+    
+    return std::max(surfaceDistance, 0.0);
 }
 
 bool Temperature::shouldConnectQuadrants(const ThermalNetworkNode& node1, ThermalNodeFace face1,
                                           const ThermalNetworkNode& node2, ThermalNodeFace face2) const {
-    double dist = calculateSurfaceDistance(node1, node2);
-    // Use average dimensions for conduction threshold
-    double avgWidth = (node1.dimensions.width + node2.dimensions.width) / 2.0;
-    double avgHeight = (node1.dimensions.height + node2.dimensions.height) / 2.0;
-    // Assume rectangular for threshold calculation (conservative)
-    double minConductionDist = std::min(avgWidth, avgHeight) * 0.75;
-    return dist <= minConductionDist;
+    // Use evaluateTurnPairDistance for consistent threshold logic
+    auto geom = evaluateTurnPairDistance(node1, node2);
+    return geom.shouldConnect;
 }
 
 double Temperature::calculateContactArea(const ThermalNodeQuadrant& q1, const ThermalNodeQuadrant& q2) const {
+    if (q1.length <= 1e-9) {
+        throw std::runtime_error("Temperature::calculateContactArea: Quadrant length is effectively zero (" +
+                                 std::to_string(q1.length) + "). Cannot calculate contact area.");
+    }
+    if (q2.length <= 1e-9) {
+        throw std::runtime_error("Temperature::calculateContactArea: Quadrant length is effectively zero (" +
+                                 std::to_string(q2.length) + "). Cannot calculate contact area.");
+    }
     double minLength = std::min(q1.length, q2.length);
-    // Use quadrant dimensions if available, otherwise use a default
-    double height = q1.surfaceArea / (q1.length > 1e-9 ? q1.length : 0.001);
+    double height = q1.surfaceArea / q1.length;
     return height * minLength;
 }
 
 double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnIdx2, double contactArea) {
     if (contactArea <= 0.0) {
-        return 1e9;
+        throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: Contact area is zero or negative (" +
+                                 std::to_string(contactArea) + "). Cannot calculate thermal resistance.");
     }
     
     try {
@@ -4062,18 +4427,21 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
         
         // For turn-to-solid connections (turnIdx2 = -1)
         if (turnIdx2 < 0) {
-            double insulationThickness = 0.00005;  // 50 microns enamel
-            double insulationK = 0.2;  // Polyurethane
+            double insulationThickness = kWire_DefaultEnamelThickness;
+            double insulationK = kWire_DefaultEnamelConductivity;
             
             double resistance = ThermalResistance::calculateConductionResistance(
                 insulationThickness, insulationK, contactArea);
             
-            return std::max(resistance, 0.001);
+            return std::max(resistance, 1e-6);  // Physically plausible minimum
         }
         
         if (!turnsDescription || turnIdx1 < 0 || turnIdx1 >= static_cast<int>(turnsDescription->size()) || 
             turnIdx2 >= static_cast<int>(turnsDescription->size())) {
-            return 0.001;
+            // Return resistance based on typical enamel insulation rather than near-zero
+            double defaultResistance = ThermalResistance::calculateConductionResistance(
+                kWire_DefaultEnamelThickness, kWire_DefaultEnamelConductivity, contactArea);
+            return std::max(defaultResistance, 1e-6);
         }
         
         auto& turn1 = (*turnsDescription)[turnIdx1];
@@ -4084,7 +4452,7 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
         double totalLayerResistance = 0.0;
         for (const auto& layer : layersBetween) {
             double layerThickness = coil.get_insulation_layer_thickness(layer);
-            double layerK = 0.2;
+            double layerK = kInsulation_DefaultConductivity;
             
             auto insulationMaterialOpt = layer.get_insulation_material();
             if (insulationMaterialOpt.has_value()) {
@@ -4106,7 +4474,10 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
         
         return totalLayerResistance;
     } catch (const std::exception& /* e */) { // IMP-8
-        return 0.001;
+        // Return resistance based on typical enamel insulation rather than near-zero
+        double defaultResistance = ThermalResistance::calculateConductionResistance(
+            kWire_DefaultEnamelThickness, kWire_DefaultEnamelConductivity, contactArea);
+        return std::max(defaultResistance, 1e-6);
     }
 }
 
@@ -4254,11 +4625,8 @@ void Temperature::recalculateConvectionResistances(const std::vector<double>& te
 ThermalResult Temperature::solveThermalCircuit() {
     size_t n = _nodes.size();
     if (n == 0) {
-        ThermalResult result;
-        result.converged = false;
-        result.maximumTemperature = _config.ambientTemperature;
-        result.totalThermalResistance = 0;
-        return result;
+        throw std::runtime_error("Temperature::solveThermalCircuit: Thermal network has zero nodes. "
+                                 "The thermal model was not properly built.");
     }
 
     if (THERMAL_DEBUG) {
@@ -4340,22 +4708,12 @@ ThermalResult Temperature::solveThermalCircuit() {
             bool solveSuccess = true;
             temperatures = SimpleMatrix::solve(G, powerInputs, solveSuccess);
             if (!solveSuccess) {
-                ThermalResult failResult;
-                failResult.converged = false;
-                failResult.methodUsed = "Quadrant-based Thermal Equivalent Circuit (SINGULAR)";
-                failResult.maximumTemperature = _config.ambientTemperature;
-                failResult.averageCoreTemperature = _config.ambientTemperature;
-                failResult.averageCoilTemperature = _config.ambientTemperature;
-                failResult.totalThermalResistance = 0;
-                failResult.iterationsToConverge = iteration;
-                failResult.thermalResistances = _resistances;
-                return failResult;
+                throw std::runtime_error("Temperature::solveThermalCircuit: Thermal matrix is singular (not solvable). "
+                                         "This indicates disconnected thermal nodes or missing boundary conditions.");
             }
         } catch (const std::exception& e) {
-            if (THERMAL_DEBUG) {
-                std::cerr << "Solver error: " << e.what() << std::endl;
-            }
-            break;
+            throw std::runtime_error("Temperature::solveThermalCircuit: Solver failed with exception: " + 
+                                     std::string(e.what()));
         }
         
         // Check for NaN or infinite temperatures
@@ -4369,9 +4727,8 @@ ThermalResult Temperature::solveThermalCircuit() {
             }
         }
         if (hasInvalidTemps) {
-            // Fall back to ambient temperatures
-            temperatures = std::vector<double>(n, _config.ambientTemperature);
-            break;
+            throw std::runtime_error("Temperature::solveThermalCircuit: Solver produced NaN or infinite temperatures at iteration " +
+                                     std::to_string(iteration) + ". This indicates a numerical instability in the thermal network.");
         }
         
         converged = true;
@@ -4396,11 +4753,20 @@ ThermalResult Temperature::solveThermalCircuit() {
     result.thermalResistances = _resistances;
     
     result.maximumTemperature = _config.ambientTemperature;
+    if (THERMAL_DEBUG) {
+        std::cout << "[TEMP] Result node temperatures (" << n - 1 << " nodes):" << std::endl;
+    }
     for (size_t i = 0; i < n - 1; ++i) {
         result.nodeTemperatures[_nodes[i].name] = temperatures[i];
         if (temperatures[i] > result.maximumTemperature) {
             result.maximumTemperature = temperatures[i];
         }
+        if (THERMAL_DEBUG && _nodes[i].part == ThermalNodePartType::TURN) {
+            std::cout << "  " << _nodes[i].name << ": " << temperatures[i] << "°C" << std::endl;
+        }
+    }
+    if (THERMAL_DEBUG) {
+        std::cout << "[TEMP] Total turn nodes: " << result.nodeTemperatures.size() << std::endl;
     }
     
     double totalPower = 0.0;
@@ -4422,7 +4788,9 @@ ThermalResult Temperature::solveThermalCircuit() {
     for (size_t i = 0; i < n; ++i) {
         if (_nodes[i].part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT ||
             _nodes[i].part == ThermalNodePartType::CORE_CENTRAL_COLUMN ||
-            _nodes[i].part == ThermalNodePartType::CORE_LATERAL_COLUMN) {
+            _nodes[i].part == ThermalNodePartType::CORE_LATERAL_COLUMN ||
+            _nodes[i].part == ThermalNodePartType::CORE_TOP_YOKE ||
+            _nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE) {
             coreTempSum += temperatures[i];
             coreCount++;
         } else if (_nodes[i].part == ThermalNodePartType::TURN) {
@@ -4457,7 +4825,9 @@ double Temperature::getBulkThermalResistance() const {
 }
 
 double Temperature::getTemperatureAtPoint(const std::vector<double>& point) const {
-    if (point.size() < 2) return _config.ambientTemperature;
+    if (point.size() < 2) {
+        throw std::runtime_error("Temperature::getTemperatureAtPoint: Point must have at least 2 coordinates (x, y).");
+    }
     
     double minDist = 1e9;
     double nearestTemp = _config.ambientTemperature;
@@ -4509,10 +4879,14 @@ void Temperature::applyMasCooling(const MAS::Cooling& cooling) {
 
 void Temperature::applyForcedConvection(const MAS::Cooling& cooling) {
     if (!cooling.get_velocity().has_value() || cooling.get_velocity().value().empty()) {
-        return;
+        throw std::runtime_error("Temperature::applyForcedConvection: Forced convection requested but velocity is missing or empty.");
     }
     
     double velocity = cooling.get_velocity().value()[0]; // m/s
+    
+    // Store velocity in config so recalculateConvectionResistances can use it
+    _config.airVelocity = velocity;
+    _config.includeForcedConvection = true;
     
     if (THERMAL_DEBUG) {
     }
@@ -4552,6 +4926,9 @@ void Temperature::applyForcedConvection(const MAS::Cooling& cooling) {
 }
 
 void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
+    // NOTE: Heatsink currently always mounts on top yoke (for concentric cores).
+    // Future improvement: add heatsinkPlacement config option (TOP, BOTTOM, SIDE)
+    // to support different mounting orientations.
     // Find top yoke node (for concentric cores)
     size_t topYokeIdx = static_cast<size_t>(-1);
     for (size_t i = 0; i < _nodes.size(); ++i) {
@@ -4563,9 +4940,8 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
     }
     
     if (topYokeIdx == static_cast<size_t>(-1)) {
-        if (THERMAL_DEBUG) {
-        }
-        return;
+        throw std::runtime_error("Temperature::applyHeatsinkCooling: No top yoke node found for heatsink mounting. "
+                                 "Heatsink cooling cannot be applied without a top yoke or bobbin top yoke node.");
     }
     
     if (THERMAL_DEBUG) {
@@ -4574,7 +4950,7 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
     // Create heatsink node
     ThermalNetworkNode heatsinkNode;
     heatsinkNode.name = "Heatsink";
-    heatsinkNode.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;  // Dummy part type
+    heatsinkNode.part = ThermalNodePartType::HEATSINK;
     heatsinkNode.temperature = _config.ambientTemperature;
     heatsinkNode.physicalCoordinates = _nodes[topYokeIdx].physicalCoordinates;
     heatsinkNode.physicalCoordinates[1] += 0.02;  // 20mm above top yoke
@@ -4583,15 +4959,15 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
     _nodes.push_back(heatsinkNode);
     
     // Create TIM resistance if interface properties provided
-    double timResistance = 0.5;  // Default 0.5 K/W
+    double timResistance = kTIM_DefaultResistance;
     if (cooling.get_interface_thickness().has_value() && 
         cooling.get_interface_thermal_resistance().has_value()) {
-        
-        double thickness = cooling.get_interface_thickness().value();
-        double k = cooling.get_interface_thermal_resistance().value();
+        // Issue 25: interface_thermal_resistance is area-specific resistance (K*m^2/W)
+        // R_total = R_specific / area
+        double areaSpecificResistance = cooling.get_interface_thermal_resistance().value();
         double area = _nodes[topYokeIdx].getTotalSurfaceArea();
         if (area > 0) {
-            timResistance = thickness / (k * area);
+            timResistance = areaSpecificResistance / area;
         }
     }
     
@@ -4631,9 +5007,9 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
 
 void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
     if (!cooling.get_maximum_temperature().has_value()) {
-        return;
+        throw std::runtime_error("Temperature::applyColdPlateCooling: Cold plate cooling requested but maximum_temperature is missing.");
     }
-    
+
     double coldPlateTemp = cooling.get_maximum_temperature().value();
     
     if (THERMAL_DEBUG) {
@@ -4653,23 +5029,33 @@ void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
         }
     }
     
-    // Second pass: collect nodes near the bottom (within 5mm of minY)
+    // Calculate proximity threshold based on core size
+    // For toroidal cores, use 10% of core outer radius as proximity threshold
+    double coldPlateProximityThreshold = 0.005;  // Default 5mm
+    auto core = _magnetic.get_core();
+    if (core.get_shape_family() == CoreShapeFamily::T) {
+        auto coreDims = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+        if (coreDims.find("A") != coreDims.end()) {
+            coldPlateProximityThreshold = 0.1 * coreDims["A"] / 2.0;  // 10% of outer radius
+        }
+    }
+    
+    // Second pass: collect nodes near the bottom (within proximity threshold of minY)
     for (size_t i = 0; i < _nodes.size(); ++i) {
         if (_nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE ||
             _nodes[i].part == ThermalNodePartType::BOBBIN_BOTTOM_YOKE) {
             surfaceNodes.push_back(i);
         } else if (_nodes[i].part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT) {
             // For toroidal, include segments near the bottom
-            if (std::abs(_nodes[i].physicalCoordinates[1] - minY) < 0.005) {
+            if (std::abs(_nodes[i].physicalCoordinates[1] - minY) < coldPlateProximityThreshold) {
                 surfaceNodes.push_back(i);
             }
         }
     }
     
     if (surfaceNodes.empty()) {
-        if (THERMAL_DEBUG) {
-        }
-        return;
+        throw std::runtime_error("Temperature::applyColdPlateCooling: No surface nodes found for cold plate attachment. "
+                                 "Cold plate cooling requires core bottom yoke, bobbin bottom yoke, or toroidal segments.");
     }
     
     // Create cold plate node with fixed temperature
@@ -4677,7 +5063,7 @@ void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
     // The solver will treat it as a fixed temperature boundary
     ThermalNetworkNode coldPlateNode;
     coldPlateNode.name = "ColdPlate";
-    coldPlateNode.part = ThermalNodePartType::CORE_CENTRAL_COLUMN;  // Dummy part type, will be fixed by flag
+    coldPlateNode.part = ThermalNodePartType::COLD_PLATE;
     coldPlateNode.temperature = coldPlateTemp;
     coldPlateNode.isFixedTemperature = true;
     
@@ -4697,15 +5083,16 @@ void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
     
     // Connect surface nodes to cold plate
     for (size_t nodeIdx : surfaceNodes) {
-        double timResistance = 0.5;  // Default 0.5 K/W
+        double timResistance = kTIM_DefaultResistance;
         
         if (cooling.get_interface_thickness().has_value() && 
             cooling.get_interface_thermal_resistance().has_value()) {
-            double thickness = cooling.get_interface_thickness().value();
-            double k = cooling.get_interface_thermal_resistance().value();
+            // Issue 25: interface_thermal_resistance is area-specific resistance (K*m^2/W)
+            // R_total = R_specific / area
+            double areaSpecificResistance = cooling.get_interface_thermal_resistance().value();
             double area = _nodes[nodeIdx].getTotalSurfaceArea();
             if (area > 0) {
-                timResistance = thickness / (k * area);
+                timResistance = areaSpecificResistance / area;
             }
         }
         

@@ -1,6 +1,7 @@
 #pragma once
 #include "Constants.h"
 #include "constructive_models/Core.h"
+#include "constructive_models/InsulationMaterial.h"
 #include "ThermalNode.h"  // For HeatTransferType
 #include <MAS.hpp>
 

@@ -88,7 +88,7 @@ namespace ThermalDefaults {
     constexpr double kWire_DefaultEnamelConductivity = 0.2;    // [W/(m·K)]
     
     // Insulation & Bobbin
-    constexpr double kBobbin_ThermalConductivity = 0.2;    // [W/(m·K)] nylon/PBT
+    constexpr double kBobbin_ThermalConductivity = 0.2;    // [W/(m·K)] PET (default bobbin material)
     constexpr double kInsulation_DefaultConductivity = 0.2;// [W/(m·K)] polyimide
     constexpr double kInsulation_DefaultThickness = 0.0001;// [m] 0.1mm
     
@@ -100,6 +100,12 @@ namespace ThermalDefaults {
     constexpr double kConvection_InitialDeltaT = 30.0;         // [°C] initial estimate
     constexpr double kConvection_MinNaturalH = 2.0;            // [W/(m²·K)] IMP-7
     constexpr double kConvection_MinForcedH = 10.0;            // [W/(m²·K)]
+    
+    // FR4 PCB
+    constexpr double kFR4_ThermalConductivity = 0.3;           // [W/(m·K)] through-plane
+    
+    // Angular tolerance for convection blocking detection on toroidal cores
+    constexpr double kConvection_AngularBlockingTolerance = 0.3; // [rad] ~17 degrees
     
     // TIM
     constexpr double kTIM_DefaultResistance = 0.5;             // [K/W]

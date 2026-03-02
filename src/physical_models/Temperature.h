@@ -491,12 +491,30 @@ public:
      * @brief Get bulk thermal resistance (Tmax - Tambient) / Ptotal
      */
     double getBulkThermalResistance() const;
-    
-    // Legacy API functions (maintained for backward compatibility)
-    static double calculate_temperature_from_core_thermal_resistance(Core core, double totalLosses);
-    static double calculate_temperature_from_core_thermal_resistance(double thermalResistance, double totalLosses);
 
 private:
+    // =========================================================================
+    // Material Properties
+    // =========================================================================
+    
+    /**
+     * @brief Get core thermal conductivity from actual material data
+     * 
+     * Resolves the core material from the database and returns its thermal
+     * conductivity. Falls back to _config.coreThermalConductivity if material
+     * resolution fails.
+     */
+    double getCoreThermalConductivity() const;
+    
+    /**
+     * @brief Get bobbin thermal conductivity from bobbin material data
+     * 
+     * Checks if the bobbin has a material specified in its functional description.
+     * If so, resolves it and returns its thermal conductivity.
+     * Falls back to the default bobbin material (PET) from Defaults.
+     */
+    double getBobbinThermalConductivity() const;
+    
     // =========================================================================
     // Node Creation
     // =========================================================================
@@ -684,6 +702,18 @@ private:
     void createTurnToInsulationConnections();
     
     /**
+     * @brief Create tangential connections between adjacent insulation layer segments
+     * 
+     * For toroidal cores, insulation layers are continuous entities wrapped around the core.
+     * Each layer is discretized into angular segments (matching core segmentation), with
+     * inner (_i) and outer (_o) nodes per segment. This method connects adjacent segments
+     * tangentially in a circular fashion (segment N connects to segment 0), and also
+     * connects inner to outer nodes within each segment radially.
+     * This mirrors createToroidalCoreConnections() for core segments.
+     */
+    void createInsulationLayerConnections();
+    
+    /**
      * @brief Create convection resistances to ambient
      * 
      * Creates convection connections for exposed quadrants
@@ -731,6 +761,9 @@ private:
     TurnPairGeometry evaluateTurnPairDistance(
         const ThermalNetworkNode& n1, const ThermalNetworkNode& n2) const {
         TurnPairGeometry g;
+        if (n1.physicalCoordinates.size() < 2 || n2.physicalCoordinates.size() < 2) {
+            return g;  // Cannot evaluate, return defaults (shouldConnect=false)
+        }
         double dx = n1.physicalCoordinates[0] - n2.physicalCoordinates[0];
         double dy = n1.physicalCoordinates[1] - n2.physicalCoordinates[1];
         g.centerDistance = std::sqrt(dx*dx + dy*dy);
