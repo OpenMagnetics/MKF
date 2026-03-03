@@ -628,20 +628,38 @@ bool Inputs::is_multiport_inductor(OperatingPoint operatingPoint, std::optional<
                 return true;
             }
         }
+
+        // Check for flyback-type labels on primary winding current
+        bool hasFlybackLabel = false;
         OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
         if (excitation.get_current()->get_waveform()) {
             if (excitation.get_current()->get_waveform()->get_ancillary_label()) {
                 WaveformLabel ancillaryLabel = excitation.get_current()->get_waveform()->get_ancillary_label().value();
                 if (ancillaryLabel == WaveformLabel::FLYBACK_PRIMARY || ancillaryLabel == WaveformLabel::FLYBACK_SECONDARY) {
-                    return true;
+                    hasFlybackLabel = true;
                 }
             }
         }
-        if (excitation.get_current()->get_processed()) {
+        if (!hasFlybackLabel && excitation.get_current()->get_processed()) {
             auto label = excitation.get_current()->get_processed()->get_label();
             if (label == WaveformLabel::FLYBACK_PRIMARY || label == WaveformLabel::FLYBACK_SECONDARY) {
-                return true;
+                hasFlybackLabel = true;
             }
+        }
+
+        if (hasFlybackLabel) {
+            // Guard: If another winding shares the primary's isolation side, this is a
+            // forward converter with a demagnetization winding, not a flyback/coupled inductor.
+            // Forward converters should use the voltage integration path instead.
+            if (isolationSides && isolationSides->size() >= 2) {
+                auto primarySide = isolationSides.value()[0];
+                for (size_t windingIndex = 1; windingIndex < isolationSides->size(); ++windingIndex) {
+                    if (isolationSides.value()[windingIndex] == primarySide) {
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
     }
     return false;
@@ -688,13 +706,27 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
     }
 
-    double rms = excitation.get_current()->get_processed()->get_rms().value();
-    double triangularPeak = rms * sqrt(3);
+    auto processed = excitation.get_current()->get_processed().value();
+    double peakToPeak = processed.get_peak_to_peak().value();
+    double offset = processed.get_offset();
 
+    // Preserve the duty cycle from the original waveform to get correct asymmetric slopes
+    double dutyCycle = 0.5;
+    if (processed.get_duty_cycle()) {
+        dutyCycle = processed.get_duty_cycle().value();
+    } else if (excitation.get_current()->get_waveform()) {
+        dutyCycle = try_guess_duty_cycle(excitation.get_current()->get_waveform().value(),
+                                          processed.get_label());
+    }
+
+    // Build a continuous triangular magnetizing current with the correct offset,
+    // peak-to-peak, and duty cycle (asymmetric slopes for tOn vs tOff)
     Processed triangularProcessed;
     triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
-    triangularProcessed.set_offset(triangularPeak / 2);
-    triangularProcessed.set_peak_to_peak(triangularPeak);
+    triangularProcessed.set_offset(offset + peakToPeak / 2);
+    triangularProcessed.set_peak_to_peak(peakToPeak);
+    triangularProcessed.set_duty_cycle(dutyCycle);
+
     auto waveform = create_waveform(triangularProcessed, excitation.get_frequency());
     SignalDescriptor magnetizingCurrent;
     auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, excitation.get_frequency());
@@ -1940,10 +1972,21 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 
         double offset = excitation.get_current()->get_processed()->get_offset();
         double peakToPeak = excitation.get_current()->get_processed()->get_peak_to_peak().value();
+
+        // Preserve the duty cycle from the original waveform to get correct asymmetric slopes
+        double dutyCycle = 0.5;
+        if (excitation.get_current()->get_processed()->get_duty_cycle()) {
+            dutyCycle = excitation.get_current()->get_processed()->get_duty_cycle().value();
+        } else if (excitation.get_current()->get_waveform()) {
+            dutyCycle = try_guess_duty_cycle(excitation.get_current()->get_waveform().value(),
+                                              excitation.get_current()->get_processed()->get_label());
+        }
+
         Processed triangularProcessed;
         triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
         triangularProcessed.set_offset(offset + peakToPeak / 2);
         triangularProcessed.set_peak_to_peak(peakToPeak);
+        triangularProcessed.set_duty_cycle(dutyCycle);
         auto newWaveform = create_waveform(triangularProcessed, excitation.get_frequency());
         sampledMagnetizingCurrentWaveform = calculate_sampled_waveform(newWaveform, excitation.get_frequency());            
     }

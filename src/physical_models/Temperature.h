@@ -491,6 +491,27 @@ public:
      * @brief Get bulk thermal resistance (Tmax - Tambient) / Ptotal
      */
     double getBulkThermalResistance() const;
+    
+    /**
+     * @brief Get maximum temperature per component category after solving.
+     * 
+     * Returns a map with keys like "core", "bobbin", "winding 0", "winding 1", 
+     * "insulation", "heatsink" and the maximum temperature across all nodes of 
+     * that category. Turn nodes are grouped by winding index.
+     * 
+     * Must be called after calculateTemperatures().
+     */
+    std::map<std::string, double> getTemperaturesByComponentType() const;
+    
+    /**
+     * @brief Get solved temperature for each individual turn, keyed by turn name.
+     * 
+     * For toroidal cores where a turn is split into inner/outer nodes, 
+     * returns the maximum of the two.
+     * 
+     * Must be called after calculateTemperatures().
+     */
+    std::map<std::string, double> getTemperaturePerTurn() const;
 
 private:
     // =========================================================================

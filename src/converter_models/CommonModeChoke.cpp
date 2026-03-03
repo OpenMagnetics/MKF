@@ -1,562 +1,845 @@
 #include "converter_models/CommonModeChoke.h"
-#include "converter_models/Topology.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
 #include <cfloat>
 #include <cmath>
 #include <numbers>
+#include <sstream>
+#include <algorithm>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
 
-    CommonModeChoke::CommonModeChoke(const json& j) {
-        // Parse configuration (number of phases)
-        if (j.contains("configuration")) {
-            std::string configStr = j["configuration"].get<std::string>();
-            if (configStr == "Single Phase" || configStr == "singlePhase" || configStr == "SINGLE_PHASE") {
-                _configuration = CmcConfiguration::SINGLE_PHASE;
-            } else if (configStr == "Three Phase" || configStr == "threePhase" || configStr == "THREE_PHASE") {
-                _configuration = CmcConfiguration::THREE_PHASE;
-            } else if (configStr == "Three Phase With Neutral" || configStr == "threePhaseWithNeutral" || 
-                       configStr == "THREE_PHASE_WITH_NEUTRAL" || configStr == "Three Phase + Neutral") {
-                _configuration = CmcConfiguration::THREE_PHASE_WITH_NEUTRAL;
-            }
-        } else if (j.contains("numberOfWindings")) {
-            // Alternative: specify number of windings directly
-            int numWindings = j["numberOfWindings"].get<int>();
-            if (numWindings == 2) {
-                _configuration = CmcConfiguration::SINGLE_PHASE;
-            } else if (numWindings == 3) {
-                _configuration = CmcConfiguration::THREE_PHASE;
-            } else if (numWindings == 4) {
-                _configuration = CmcConfiguration::THREE_PHASE_WITH_NEUTRAL;
-            }
+// ═══════════════════════════════════════════════════════════════════════
+// Static helpers
+// ═══════════════════════════════════════════════════════════════════════
+
+double CommonModeChoke::impedanceToInductance(double impedance_Ohms, double frequency_Hz) {
+    // |Z_L| = 2πf·L  →  L = Z / (2πf)
+    return impedance_Ohms / (2.0 * M_PI * frequency_Hz);
+}
+
+double CommonModeChoke::inductanceToImpedance(double inductance_H, double frequency_Hz) {
+    return 2.0 * M_PI * frequency_Hz * inductance_H;
+}
+
+double CommonModeChoke::insertionLossToImpedance(double insertionLoss_dB, double lineImpedance_Ohms) {
+    // Single-stage CM low-pass:
+    //   IL(dB) ≈ 20·log10(Z_cm/Z_LISN + 1)
+    //   → Z_cm = Z_LISN · (10^(IL/20) − 1)
+    double linearFactor = std::pow(10.0, insertionLoss_dB / 20.0) - 1.0;
+    return lineImpedance_Ohms * linearFactor;
+}
+
+std::vector<std::string> CommonModeChoke::windingNames(int numWindings) {
+    switch (numWindings) {
+        case 2:  return {"Line", "Neutral"};
+        case 3:  return {"Phase A", "Phase B", "Phase C"};
+        case 4:  return {"Phase A", "Phase B", "Phase C", "Neutral"};
+        default: {
+            std::vector<std::string> names;
+            for (int i = 0; i < numWindings; ++i)
+                names.push_back("Winding " + std::to_string(i + 1));
+            return names;
         }
-        
-        // Parse operating voltage
-        if (j.contains("operatingVoltage")) {
-            _operatingVoltage = j["operatingVoltage"].get<DimensionWithTolerance>();
-        }
-        
-        // Parse operating current (line current)
-        if (j.contains("operatingCurrent")) {
-            _operatingCurrent = j["operatingCurrent"].get<double>();
-        }
-        
-        // Parse neutral current (for 4-winding config)
-        if (j.contains("neutralCurrent")) {
-            _neutralCurrent = j["neutralCurrent"].get<double>();
-        }
-        
-        // Parse minimum impedance requirements
-        if (j.contains("minimumImpedance")) {
-            for (const auto& imp : j["minimumImpedance"]) {
-                ImpedanceAtFrequency impAtFreq;
-                impAtFreq.set_frequency(imp["frequency"].get<double>());
-                
-                ImpedancePoint impedance;
-                impedance.set_magnitude(imp["impedance"].get<double>());
-                impAtFreq.set_impedance(impedance);
-                
-                _minimumImpedance.push_back(impAtFreq);
-            }
-        }
-        
-        // Parse line frequency (mains frequency for differential mode current) - REQUIRED
-        if (!j.contains("lineFrequency")) {
-            throw std::runtime_error("CommonModeChoke: 'lineFrequency' is required");
-        }
-        _lineFrequency = j["lineFrequency"].get<double>();
-        
-        // Parse optional parameters
-        if (j.contains("lineImpedance")) {
-            _lineImpedance = j["lineImpedance"].get<double>();
-        }
-        if (j.contains("maximumDcResistance")) {
-            _maximumDcResistance = j["maximumDcResistance"].get<double>();
-        }
-        if (j.contains("maximumLeakageInductance")) {
-            _maximumLeakageInductance = j["maximumLeakageInductance"].get<double>();
-        }
-        if (j.contains("ambientTemperature")) {
-            _ambientTemperature = j["ambientTemperature"].get<double>();
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Static helper: noise-estimation → required CM impedance
+// ═══════════════════════════════════════════════════════════════════════
+
+double CommonModeChoke::noiseParamsToImpedance(double parasiticCap_pF,
+                                    double dvdt_V_ns,
+                                    double lineImpedance_Ohms,
+                                    double safetyMargin_dB,
+                                    double testFrequency_Hz) {
+    // CM current generated by switching transients (simplified):
+    //   I_cm = C_parasitic × dV/dt
+    double Icm_A      = (parasiticCap_pF * 1e-12) * (dvdt_V_ns * 1e9);
+    // CM voltage noise across half of LISN impedance:
+    double Vnoise_V   = Icm_A * (lineImpedance_Ohms / 2.0);
+    // Convert to dBµV (CISPR reference: 1 µV)
+    double Vnoise_dBuV = 20.0 * std::log10(std::max(Vnoise_V, 1e-9) / 1e-6);
+    // CISPR class-B limit at 150 kHz: 66 dBµV
+    const double limit_dBuV = 66.0;
+    double atten_dB   = std::max(0.0, Vnoise_dBuV - limit_dBuV + safetyMargin_dB);
+    // Required CM impedance at the test frequency
+    double Zcm        = (lineImpedance_Ohms / 2.0) * std::pow(10.0, atten_dB / 20.0);
+    return Zcm;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Constructor
+// ═══════════════════════════════════════════════════════════════════════
+
+CommonModeChoke::CommonModeChoke(const json& j) : Topology(j) {
+    operatingVoltage    = j.at("operatingVoltage").get<DimensionWithTolerance>();
+    operatingCurrent    = j.at("operatingCurrent").get<double>();
+    lineFrequency       = j.at("lineFrequency").get<double>();
+    ambientTemperature  = j.at("ambientTemperature").get<double>();
+
+    lineImpedance            = j.value("lineImpedance",            50.0);
+    maximumDcResistance      = j.value("maximumDcResistance",       0.0);
+    maximumLeakageInductance = j.value("maximumLeakageInductance",  0.0);
+    numberOfWindings         = j.value("numberOfWindings",           2);
+
+    // ── Parse minimumImpedance ──────────────────────────────────────
+    if (j.contains("minimumImpedance")) {
+        for (const auto& item : j.at("minimumImpedance")) {
+            minimumImpedance.push_back({
+                item.at("frequency").get<double>(),
+                item.at("impedance").get<double>()
+            });
         }
     }
 
-    size_t CommonModeChoke::get_number_of_windings() const {
-        switch (_configuration) {
-            case CmcConfiguration::SINGLE_PHASE:
-                return 2;
-            case CmcConfiguration::THREE_PHASE:
-                return 3;
-            case CmcConfiguration::THREE_PHASE_WITH_NEUTRAL:
-                return 4;
-            default:
-                return 2;
+    // ── Parse targetInsertionLoss and convert to impedance points ───
+    if (j.contains("targetInsertionLoss")) {
+        for (const auto& item : j.at("targetInsertionLoss")) {
+            double freq = item.at("frequency").get<double>();
+            double il   = item.at("insertionLoss").get<double>();
+            targetInsertionLoss.push_back({freq, il});
+            minimumImpedance.push_back({
+                freq,
+                insertionLossToImpedance(il, lineImpedance)
+            });
         }
     }
 
-    DesignRequirements CommonModeChoke::process_design_requirements() {
-        DesignRequirements designRequirements;
+    // ── Parse noise-estimation params and convert to impedance point ─
+    // Frontend sends raw physical values; ALL calculation is done here.
+    if (j.contains("parasiticCap_pF") &&
+        j.contains("dvdt_V_ns")       &&
+        j["parasiticCap_pF"].get<double>() > 0 &&
+        j["dvdt_V_ns"].get<double>()   > 0) {
 
-        size_t numWindings = get_number_of_windings();
+        parasiticCap_pF = j["parasiticCap_pF"].get<double>();
+        dvdt_V_ns       = j["dvdt_V_ns"].get<double>();
+        safetyMargin_dB = j.value("safetyMargin_dB", 6.0);
 
-        // CMC has N identical windings (all 1:1 turns ratios)
-        // For N windings, we need N-1 turns ratios (all 1:1)
-        for (size_t i = 1; i < numWindings; ++i) {
-            DimensionWithTolerance turnsRatioWithTolerance;
-            turnsRatioWithTolerance.set_nominal(1.0);
-            designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
-        }
+        const double testFreq_Hz = 150e3;
+        double Zcm = noiseParamsToImpedance(
+            parasiticCap_pF, dvdt_V_ns, lineImpedance, safetyMargin_dB, testFreq_Hz);
 
-        // Set minimum impedance requirements - crucial for CMC performance
-        designRequirements.set_minimum_impedance(_minimumImpedance);
-
-        // All windings are on the primary side (line side)
-        std::vector<IsolationSide> isolationSides;
-        for (size_t i = 0; i < numWindings; ++i) {
-            isolationSides.push_back(IsolationSide::PRIMARY);
-        }
-        designRequirements.set_isolation_sides(isolationSides);
-
-        // Set application and sub-application for proper adviser configuration
-        designRequirements.set_application(Application::INTERFERENCE_SUPPRESSION);
-        designRequirements.set_sub_application(SubApplication::COMMON_MODE_NOISE_FILTERING);
-
-        // Magnetizing inductance is not the primary concern for CMCs,
-        // but set a minimum to ensure the core provides adequate impedance
-        // The actual inductance will be determined by impedance requirements
-        DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_minimum(1e-6);  // 1 µH minimum
-        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-
-        return designRequirements;
+        minimumImpedance.push_back({ testFreq_Hz, Zcm });
     }
 
-    std::vector<OperatingPoint> CommonModeChoke::process_operating_points() {
-        std::vector<OperatingPoint> operatingPoints;
+    // ── Compute required inductance from all impedance points ───────
+    // L = Z / (2πf) for each point; take the maximum (most demanding)
+    computedInductance = 0.0;
+    for (const auto& pt : minimumImpedance) {
+        double L = impedanceToInductance(pt.impedance, pt.frequency);
+        if (L > computedInductance) {
+            computedInductance = L;
+            dominantFrequency  = pt.frequency;
+            dominantImpedance  = pt.impedance;
+        }
+    }
+}
 
-        // The operating frequency is the LINE frequency (mains), NOT the noise frequency
-        // The differential mode current flows at mains frequency (50/60 Hz)
-        // This is what causes magnetic excitation and determines core/copper losses
-        // The noise frequencies in minimumImpedance are filtering requirements, not excitation
-        double operatingFrequency = _lineFrequency;  // 50 or 60 Hz typically
+// ═══════════════════════════════════════════════════════════════════════
+// AdvancedCommonModeChoke constructor
+// ═══════════════════════════════════════════════════════════════════════
 
-        double operatingVoltage = resolve_dimensional_values(_operatingVoltage);
-        
-        // Create voltage waveform (same for all windings - minimal in differential mode)
-        auto voltageWaveform = Inputs::create_waveform(
+AdvancedCommonModeChoke::AdvancedCommonModeChoke(const json& j) : CommonModeChoke(j) {
+    desiredInductance = j.at("desiredInductance").get<double>();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// run_checks
+// ═══════════════════════════════════════════════════════════════════════
+
+bool CommonModeChoke::run_checks(bool assert) {
+    if (minimumImpedance.empty()) {
+        if (!assert) return false;
+        throw InvalidInputException(
+            ErrorCode::MISSING_DATA,
+            "CMC: at least one impedance requirement must be provided");
+    }
+    if (operatingCurrent <= 0) {
+        if (!assert) return false;
+        throw InvalidInputException(
+            ErrorCode::INVALID_INPUT,
+            "CMC: operatingCurrent must be > 0");
+    }
+    if (lineFrequency <= 0) {
+        if (!assert) return false;
+        throw InvalidInputException(
+            ErrorCode::INVALID_INPUT,
+            "CMC: lineFrequency must be > 0");
+    }
+    for (const auto& pt : minimumImpedance) {
+        if (pt.frequency <= 0 || pt.impedance <= 0) {
+            if (!assert) return false;
+            throw InvalidInputException(
+                ErrorCode::INVALID_INPUT,
+                "CMC: impedance point frequency and value must be > 0");
+        }
+    }
+    if (numberOfWindings < 2 || numberOfWindings > 4) {
+        if (!assert) return false;
+        throw InvalidInputException(
+            ErrorCode::INVALID_INPUT,
+            "CMC: numberOfWindings must be 2, 3, or 4");
+    }
+    return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// process_design_requirements
+// ═══════════════════════════════════════════════════════════════════════
+
+DesignRequirements CommonModeChoke::process_design_requirements() {
+    DesignRequirements designRequirements;
+
+    // ── Turns ratios: all 1:1 ───────────────────────────────────────
+    // A CMC has N identical windings on the same core → every ratio = 1.0
+    // There are (numberOfWindings - 1) ratios, same convention as Buck/LLC.
+    designRequirements.get_mutable_turns_ratios().clear();
+    for (int i = 1; i < numberOfWindings; ++i) {
+        DimensionWithTolerance ratio;
+        ratio.set_nominal(1.0);
+        designRequirements.get_mutable_turns_ratios().push_back(ratio);
+    }
+
+    // ── Magnetizing inductance = CM inductance ─────────────────────
+    // set_minimum so the core/winding solver treats it as a lower bound
+    DimensionWithTolerance lmSpec;
+    lmSpec.set_minimum(roundFloat(computedInductance, 10));
+    designRequirements.set_magnetizing_inductance(lmSpec);
+
+    // ── Isolation sides ────────────────────────────────────────────
+    // All windings are on the same magnetic core and typically on the
+    // same isolation side in a CM choke (no primary/secondary distinction).
+    std::vector<IsolationSide> sides;
+    for (int i = 0; i < numberOfWindings; ++i) {
+        sides.push_back(get_isolation_side_from_index(0)); // all "primary"
+    }
+    designRequirements.set_isolation_sides(sides);
+
+    return designRequirements;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// process_operating_points(turnsRatios, magnetizingInductance)
+//
+// The magnetic core of a CMC only sees the common-mode excitation.
+// We model it as a small sinusoidal CM current at the dominant frequency
+// (the frequency of the hardest impedance requirement).
+// The winding RMS current for copper losses equals the full line current.
+// ═══════════════════════════════════════════════════════════════════════
+
+std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
+    const std::vector<double>& /*turnsRatios*/,
+    double magnetizingInductance)
+{
+    // Frequency at which the core is excited (worst-case impedance point)
+    double excFreq = (dominantFrequency > 0) ? dominantFrequency : lineFrequency;
+
+    // CM current amplitude:
+    // We assume a conservative 1 % of rated line current as CM ripple.
+    // This is consistent with typical SMPS parasitic coupling levels and
+    // gives a reasonable core-loss estimate without detailed CM measurements.
+    double iCmPeak = operatingCurrent * 0.01;
+
+    // CM voltage across the inductance: V = L · ω · I_cm_peak
+    double omega      = 2.0 * M_PI * excFreq;
+    double vCmPeak    = magnetizingInductance * omega * iCmPeak;
+
+    auto names = windingNames(numberOfWindings);
+
+    OperatingPoint operatingPoint;
+
+    for (int w = 0; w < numberOfWindings; ++w) {
+        // ── Current waveform ───────────────────────────────────────
+        // Sinusoidal CM ripple, offset by the DC line current so that
+        // processed.rms reflects the actual copper heating.
+        Waveform currentWaveform = Inputs::create_waveform(
             WaveformLabel::SINUSOIDAL,
-            operatingVoltage * 0.01,  // Small voltage (leakage drop only)
-            operatingFrequency,
-            0.5
+            iCmPeak * 2.0,       // peak-to-peak of CM ripple
+            excFreq,
+            0.5,                 // duty cycle (unused for sinusoidal)
+            operatingCurrent,    // DC offset = nominal line current
+            0                    // phase
         );
 
-        SignalDescriptor voltage;
-        voltage.set_waveform(voltageWaveform);
-        auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, operatingFrequency);
-        voltage.set_harmonics(Inputs::calculate_harmonics_data(sampledVoltageWaveform, operatingFrequency));
-        voltage.set_processed(Inputs::calculate_processed_data(voltageWaveform, operatingFrequency, true));
+        // ── Voltage waveform ───────────────────────────────────────
+        // Sinusoidal CM voltage induced by the CM inductance
+        Waveform voltageWaveform = Inputs::create_waveform(
+            WaveformLabel::SINUSOIDAL,
+            vCmPeak * 2.0,
+            excFreq,
+            0.5,
+            0.0,  // no DC voltage offset across the CM inductance
+            0
+        );
 
+        auto excitation = complete_excitation(
+            currentWaveform, voltageWaveform, excFreq, names[w]);
+
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
+
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(ambientTemperature);
+    conditions.set_cooling(std::nullopt);
+    operatingPoint.set_conditions(conditions);
+    operatingPoint.set_name("Nominal");
+
+    return {operatingPoint};
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// process_operating_points(Magnetic)
+// Calculates Lm from the physical core + coil, then delegates.
+// ═══════════════════════════════════════════════════════════════════════
+
+std::vector<OperatingPoint> CommonModeChoke::process_operating_points(Magnetic magnetic) {
+    run_checks(_assertErrors);
+
+    auto& settings = Settings::GetInstance();
+    MagnetizingInductance magIndModel(settings.get_reluctance_model());
+    double Lm = magIndModel
+        .calculate_inductance_from_number_turns_and_gapping(
+            magnetic.get_mutable_core(),
+            magnetic.get_mutable_coil())
+        .get_magnetizing_inductance()
+        .get_nominal()
+        .value();
+
+    std::vector<double> turnsRatios = magnetic.get_turns_ratios();
+    return process_operating_points(turnsRatios, Lm);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// AdvancedCommonModeChoke::process
+// Mirrors AdvancedBuck::process exactly:
+//   1. run_checks
+//   2. process_design_requirements  (base computes L from impedance table)
+//   3. Override magnetizingInductance with user-specified desiredInductance
+//   4. process_operating_points with the overridden value
+//   5. Prune harmonics (same call as Topology::process uses)
+//   6. Return populated Inputs
+// ═══════════════════════════════════════════════════════════════════════
+
+Inputs AdvancedCommonModeChoke::process() {
+    CommonModeChoke::run_checks(_assertErrors);
+
+    Inputs inputs;
+
+    auto designRequirements = CommonModeChoke::process_design_requirements();
+
+    // Override with user-supplied inductance
+    DimensionWithTolerance lmUser;
+    lmUser.set_nominal(roundFloat(desiredInductance, 10));
+    designRequirements.set_magnetizing_inductance(lmUser);
+
+    inputs.set_design_requirements(designRequirements);
+
+    std::vector<double> turnsRatios;
+    for (const auto& tr : designRequirements.get_turns_ratios())
+        turnsRatios.push_back(resolve_dimensional_values(tr));
+
+    auto operatingPoints = CommonModeChoke::process_operating_points(turnsRatios, desiredInductance);
+
+    // Prune harmonics — same step used in Topology::process()
+    for (auto& op : operatingPoints)
+        op = Inputs::prune_harmonics(op, Defaults().harmonicAmplitudeThreshold);
+
+    for (auto& op : operatingPoints)
+        inputs.get_mutable_operating_points().push_back(op);
+
+    return inputs;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Ngspice simulation methods (from original CommonModeChoke)
+// ═══════════════════════════════════════════════════════════════════════
+
+std::string CommonModeChoke::generate_ngspice_circuit(double inductance, double frequency) {
+    int numWindings = get_number_of_windings();
+
+    std::ostringstream circuit;
+    double period = 1.0 / frequency;
+
+    // Simulation parameters
+    int numPeriods = 20;  // Simulate 20 periods for settling
+    double simTime = numPeriods * period;
+    double stepTime = period / 100;  // 100 points per period
+
+    circuit << "* Common Mode Choke EMI Test Circuit - LISN Configuration\n";
+    circuit << "* Generated by OpenMagnetics\n";
+    circuit << "* Configuration: " << (numWindings == 2 ? "Single Phase" :
+                                       (numWindings == 3 ? "Three Phase" : "Three Phase + Neutral")) << "\n";
+    circuit << "* Test frequency: " << (frequency / 1e3) << " kHz\n";
+    circuit << "* Inductance per winding: " << (inductance * 1e6) << " uH\n\n";
+
+    // Common mode noise source (represents switching converter noise)
+    // Connected to ground, couples into both lines equally
+    circuit << "* Common Mode Noise Source (switching noise)\n";
+    circuit << "Vcm_noise cm_src 0 SIN(0 1 " << frequency << ")\n\n";
+
+    // Noise coupling capacitors (CM noise couples to both lines)
+    circuit << "* CM Noise Coupling (parasitic capacitance to ground)\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Ccm" << w << " cm_src cmc_in" << w << " 100p\n";
+    }
+    circuit << "\n";
+
+    // CMC coupled inductors
+    // Windings are wound in the same direction - CM currents add, DM currents cancel
+    circuit << "* Common Mode Choke\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Lcmc" << w << " cmc_in" << w << " cmc_out" << w << " "
+                << std::scientific << inductance << std::fixed << "\n";
+    }
+
+    // Couple all windings together (perfect coupling for ideal CMC)
+    circuit << "\n* CMC Coupling (k ~ 1 for tight coupling)\n";
+    for (int i = 0; i < numWindings; ++i) {
+        for (int j = i + 1; j < numWindings; ++j) {
+            circuit << "K" << i << "_" << j << " Lcmc" << i << " Lcmc" << j << " 0.99\n";
+        }
+    }
+    circuit << "\n";
+
+    // Simplified LISN per CISPR 16
+    // Each line has: Series L (50µH) + parallel RC to ground
+    circuit << "* LISN Network (simplified CISPR 16)\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "* Line " << w << " LISN\n";
+        circuit << "Llisn" << w << " cmc_out" << w << " lisn_mid" << w << " 50u\n";
+        circuit << "Clisn" << w << " lisn_mid" << w << " 0 1u\n";
+        circuit << "Rlisn" << w << " lisn_mid" << w << " lisn_out" << w << " 5\n";
+    }
+    circuit << "\n";
+
+    // 50Ω measurement resistors (standard EMI receiver input impedance)
+    circuit << "* 50Ohm Measurement Point\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Rmeas" << w << " lisn_out" << w << " 0 50\n";
+    }
+    circuit << "\n";
+
+    // Current sense resistors for waveform extraction
+    circuit << "* Current Sense\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Vsense" << w << " cmc_in" << w << " cmc_in" << w << "_sense 0\n";
+    }
+    circuit << "\n";
+
+    // AC load (represents the EUT - Equipment Under Test)
+    circuit << "* AC Load (EUT)\n";
+    double loadResistance = resolve_dimensional_values(operatingVoltage) / operatingCurrent;
+    if (numWindings == 2) {
+        circuit << "Rload cmc_in0_sense cmc_in1_sense " << loadResistance << "\n";
+    } else {
+        // Delta-connected load for three-phase
+        for (int w = 0; w < 3; ++w) {
+            int next = (w + 1) % 3;
+            circuit << "Rload" << w << " cmc_in" << w << "_sense cmc_in" << next << "_sense "
+                    << (loadResistance * 3) << "\n";
+        }
+    }
+    circuit << "\n";
+
+    // Transient Analysis
+    circuit << "* Transient Analysis\n";
+    circuit << ".tran " << std::scientific << stepTime << " " << simTime << std::fixed << "\n\n";
+
+    // Save signals
+    circuit << "* Output signals\n";
+    circuit << ".save v(cm_src)";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << " v(lisn_out" << w << ") i(Vsense" << w << ")";
+    }
+    circuit << "\n\n";
+
+    // Options
+    circuit << ".options RELTOL=0.001 ABSTOL=1e-12 VNTOL=1e-9\n\n";
+
+    circuit << ".end\n";
+
+    return circuit.str();
+}
+
+std::vector<CmcSimulationWaveforms> CommonModeChoke::simulate_and_extract_waveforms(
+    double inductance,
+    const std::vector<double>& frequencies) {
+
+    std::vector<CmcSimulationWaveforms> results;
+
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        throw std::runtime_error("ngspice is not available for CMC simulation");
+    }
+
+    for (double frequency : frequencies) {
+        std::string netlist = generate_ngspice_circuit(inductance, frequency);
+
+        SimulationConfig config;
+        config.frequency = frequency;
+        config.keepTempFiles = false;
+        config.extractOnePeriod = false;
+
+        auto simResult = runner.run_simulation(netlist, config);
+
+        if (!simResult.success) {
+            continue;  // Skip failed simulations
+        }
+
+        CmcSimulationWaveforms waveforms;
+        waveforms.frequency = frequency;
+        waveforms.operatingPointName = "CMC_" + std::to_string(static_cast<int>(frequency / 1000)) + "kHz";
+
+        // Extract waveforms from simulation result
+        for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+            const auto& name = simResult.waveformNames[i];
+            const auto& wf = simResult.waveforms[i];
+
+            if (name == "cm_src") {
+                waveforms.inputVoltage = wf.get_data();
+                waveforms.time = wf.get_time().value_or(std::vector<double>());
+            } else if (name.find("lisn_out") != std::string::npos) {
+                waveforms.lisnVoltage = wf.get_data();
+            } else if (name.find("vsense") != std::string::npos) {
+                waveforms.windingCurrents.push_back(wf.get_data());
+            }
+        }
+
+        // Calculate theoretical impedance: Z = 2*pi*f*L
+        waveforms.theoreticalImpedance = 2.0 * M_PI * frequency * inductance;
+
+        // Calculate CM attenuation (dB) = 20 * log10(Vin / Vout)
+        if (!waveforms.inputVoltage.empty() && !waveforms.lisnVoltage.empty()) {
+            double vinPeak = *std::max_element(waveforms.inputVoltage.begin(), waveforms.inputVoltage.end());
+            double voutPeak = *std::max_element(waveforms.lisnVoltage.begin(), waveforms.lisnVoltage.end());
+            if (voutPeak > 0 && vinPeak > 0) {
+                waveforms.commonModeAttenuation = 20.0 * std::log10(vinPeak / voutPeak);
+            }
+        }
+
+        // Calculate actual impedance from voltage/current (Z = V/I)
+        // The CM current is the sum of all winding currents
+        if (!waveforms.inputVoltage.empty() && !waveforms.windingCurrents.empty()) {
+            double vinPeak = *std::max_element(waveforms.inputVoltage.begin(), waveforms.inputVoltage.end());
+
+            // Sum CM currents from all windings
+            double totalCmCurrentPeak = 0;
+            for (const auto& windingCurrent : waveforms.windingCurrents) {
+                if (!windingCurrent.empty()) {
+                    double iPeak = *std::max_element(windingCurrent.begin(), windingCurrent.end());
+                    totalCmCurrentPeak += iPeak;
+                }
+            }
+
+            // Z = V / I (for CM path, all currents flow in same direction)
+            if (totalCmCurrentPeak > 1e-12) {
+                waveforms.commonModeImpedance = vinPeak / totalCmCurrentPeak;
+            } else {
+                // If current is negligible, use theoretical value
+                waveforms.commonModeImpedance = waveforms.theoreticalImpedance;
+            }
+        } else {
+            waveforms.commonModeImpedance = waveforms.theoreticalImpedance;
+        }
+
+        results.push_back(waveforms);
+    }
+
+    return results;
+}
+
+std::vector<OperatingPoint> CommonModeChoke::simulate_and_extract_operating_points(double inductance) {
+    std::vector<OperatingPoint> operatingPoints;
+
+    // Get frequencies from minimum impedance requirements
+    std::vector<double> frequencies;
+    for (const auto& pt : minimumImpedance) {
+        frequencies.push_back(pt.frequency);
+    }
+
+    if (frequencies.empty()) {
+        frequencies = {100000, 1000000};  // Default: 100kHz and 1MHz
+    }
+
+    auto simWaveforms = simulate_and_extract_waveforms(inductance, frequencies);
+
+    for (const auto& simWf : simWaveforms) {
         std::vector<OperatingPointExcitation> excitations;
 
-        if (_configuration == CmcConfiguration::SINGLE_PHASE) {
-            // Single-phase: 2 windings with opposite phase (180° shift)
-            // Line winding
-            auto currentWaveform1 = Inputs::create_waveform(
-                WaveformLabel::SINUSOIDAL, 
-                _operatingCurrent * std::sqrt(2) * 2,  // Peak-to-peak
-                operatingFrequency, 
-                0.5
-            );
-
-            SignalDescriptor winding1Current;
-            winding1Current.set_waveform(currentWaveform1);
-            auto sampledCurrentWaveform1 = Inputs::calculate_sampled_waveform(currentWaveform1, operatingFrequency);
-            winding1Current.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform1, operatingFrequency));
-            winding1Current.set_processed(Inputs::calculate_processed_data(currentWaveform1, operatingFrequency, true));
-
-            OperatingPointExcitation winding1Excitation;
-            winding1Excitation.set_current(winding1Current);
-            winding1Excitation.set_frequency(operatingFrequency);
-            winding1Excitation.set_voltage(voltage);
-            winding1Excitation.set_name("Line");
-            excitations.push_back(winding1Excitation);
-
-            // Neutral winding (180° phase shift - opposite)
-            auto currentWaveform2 = Inputs::create_waveform(
-                WaveformLabel::SINUSOIDAL, 
-                _operatingCurrent * std::sqrt(2) * 2,
-                operatingFrequency, 
-                0.5
-            );
-            auto waveformData = currentWaveform2.get_data();
-            for (auto& point : waveformData) {
-                point = -point;  // 180° shift
+        // Create voltage waveform from inputVoltage
+        Waveform voltageWaveform;
+        if (!simWf.inputVoltage.empty()) {
+            voltageWaveform.set_data(simWf.inputVoltage);
+            if (!simWf.time.empty()) {
+                voltageWaveform.set_time(simWf.time);
             }
-            currentWaveform2.set_data(waveformData);
+        }
 
-            SignalDescriptor winding2Current;
-            winding2Current.set_waveform(currentWaveform2);
-            auto sampledCurrentWaveform2 = Inputs::calculate_sampled_waveform(currentWaveform2, operatingFrequency);
-            winding2Current.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform2, operatingFrequency));
-            winding2Current.set_processed(Inputs::calculate_processed_data(currentWaveform2, operatingFrequency, true));
-
-            OperatingPointExcitation winding2Excitation;
-            winding2Excitation.set_current(winding2Current);
-            winding2Excitation.set_frequency(operatingFrequency);
-            winding2Excitation.set_voltage(voltage);
-            winding2Excitation.set_name("Neutral");
-            excitations.push_back(winding2Excitation);
-
-        } else {
-            // Three-phase (with or without neutral): currents 120° apart
-            // Phase angles: L1=0°, L2=120°, L3=240°
-            std::vector<double> phaseAngles = {0.0, 2.0 * std::numbers::pi / 3.0, 4.0 * std::numbers::pi / 3.0};
-            std::vector<std::string> phaseNames = {"L1", "L2", "L3"};
-
-            for (size_t phase = 0; phase < 3; ++phase) {
-                // Create sinusoidal current with phase shift
-                size_t numPoints = 128;  // Power of 2 for FFT
-                double period = 1.0 / operatingFrequency;
-                std::vector<double> data;
-                std::vector<double> time;
-                
-                double peakCurrent = _operatingCurrent * std::sqrt(2);
-                for (size_t i = 0; i < numPoints; ++i) {
-                    double t = i * period / (numPoints - 1);
-                    double angle = 2.0 * std::numbers::pi * operatingFrequency * t + phaseAngles[phase];
-                    data.push_back(peakCurrent * std::sin(angle));
-                    time.push_back(t);
-                }
-
-                Waveform currentWaveform;
-                currentWaveform.set_data(data);
-                currentWaveform.set_time(time);
-
-                SignalDescriptor phaseCurrent;
-                phaseCurrent.set_waveform(currentWaveform);
-                auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, operatingFrequency);
-                phaseCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, operatingFrequency));
-                phaseCurrent.set_processed(Inputs::calculate_processed_data(currentWaveform, operatingFrequency, true));
-
-                OperatingPointExcitation phaseExcitation;
-                phaseExcitation.set_current(phaseCurrent);
-                phaseExcitation.set_frequency(operatingFrequency);
-                phaseExcitation.set_voltage(voltage);
-                phaseExcitation.set_name(phaseNames[phase]);
-                excitations.push_back(phaseExcitation);
+        for (size_t w = 0; w < simWf.windingCurrents.size(); ++w) {
+            Waveform currentWaveform;
+            currentWaveform.set_data(simWf.windingCurrents[w]);
+            if (!simWf.time.empty()) {
+                currentWaveform.set_time(simWf.time);
             }
 
-            // Add neutral winding if 4-winding configuration
-            if (_configuration == CmcConfiguration::THREE_PHASE_WITH_NEUTRAL) {
-                // Neutral current: In a balanced system, neutral current is zero
-                // In unbalanced systems or with harmonics, neutral carries the sum of phase currents
-                // For modeling, we use a smaller current representing unbalance/harmonics
-                double neutralCurrentValue = _neutralCurrent.value_or(_operatingCurrent * 0.1);  // Default 10% of line
-                
-                auto neutralWaveform = Inputs::create_waveform(
-                    WaveformLabel::SINUSOIDAL, 
-                    neutralCurrentValue * std::sqrt(2) * 2,  // Peak-to-peak
-                    operatingFrequency, 
-                    0.5
-                );
+            SignalDescriptor current;
+            current.set_waveform(currentWaveform);
+            auto sampledWaveform = Inputs::calculate_sampled_waveform(currentWaveform, simWf.frequency);
+            current.set_harmonics(Inputs::calculate_harmonics_data(sampledWaveform, simWf.frequency));
+            current.set_processed(Inputs::calculate_processed_data(currentWaveform, simWf.frequency, true));
 
-                SignalDescriptor neutralCurrent;
-                neutralCurrent.set_waveform(neutralWaveform);
-                auto sampledNeutralWaveform = Inputs::calculate_sampled_waveform(neutralWaveform, operatingFrequency);
-                neutralCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledNeutralWaveform, operatingFrequency));
-                neutralCurrent.set_processed(Inputs::calculate_processed_data(neutralWaveform, operatingFrequency, true));
+            OperatingPointExcitation excitation;
+            excitation.set_current(current);
+            excitation.set_frequency(simWf.frequency);
 
-                OperatingPointExcitation neutralExcitation;
-                neutralExcitation.set_current(neutralCurrent);
-                neutralExcitation.set_frequency(operatingFrequency);
-                neutralExcitation.set_voltage(voltage);
-                neutralExcitation.set_name("Neutral");
-                excitations.push_back(neutralExcitation);
+            // Also set voltage if available
+            if (!simWf.inputVoltage.empty()) {
+                SignalDescriptor voltage;
+                voltage.set_waveform(voltageWaveform);
+                auto voltageSampled = Inputs::calculate_sampled_waveform(voltageWaveform, simWf.frequency);
+                voltage.set_harmonics(Inputs::calculate_harmonics_data(voltageSampled, simWf.frequency));
+                voltage.set_processed(Inputs::calculate_processed_data(voltageWaveform, simWf.frequency, true));
+                excitation.set_voltage(voltage);
             }
+
+            excitations.push_back(excitation);
         }
 
         OperatingPoint operatingPoint;
         operatingPoint.set_excitations_per_winding(excitations);
-        operatingPoint.get_mutable_conditions().set_ambient_temperature(_ambientTemperature);
+        operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
+        operatingPoint.set_name(simWf.operatingPointName);
 
         operatingPoints.push_back(operatingPoint);
-
-        return operatingPoints;
     }
 
-    Inputs CommonModeChoke::process() {
-        Inputs inputs;
-        
-        auto designRequirements = process_design_requirements();
-        auto operatingPoints = process_operating_points();
+    return operatingPoints;
+}
 
-        inputs.set_design_requirements(designRequirements);
-        inputs.set_operating_points(operatingPoints);
+// ═══════════════════════════════════════════════════════════════════════
+// Realistic CMC Simulation with Line Signal + Switching Noise
+// ═══════════════════════════════════════════════════════════════════════
 
-        return inputs;
+std::string CommonModeChoke::generate_realistic_cmc_circuit(
+    double inductance,
+    double parasiticCap_pF_param,
+    double dvdt_V_ns_param,
+    double lineFrequency_Hz) {
+
+    int numWindings = get_number_of_windings();
+    std::ostringstream circuit;
+
+    // Calculate switching frequency from dV/dt (assume 50% duty cycle, square wave)
+    double switchingFrequency = dvdt_V_ns_param * 1e9 / resolve_dimensional_values(operatingVoltage);
+    switchingFrequency = std::min(switchingFrequency, 1e6); // Cap at 1 MHz
+    switchingFrequency = std::max(switchingFrequency, 10e3); // Min 10 kHz
+
+    // Calculate CM noise current: I_cm = C_parasitic * dV/dt
+    double cmNoiseCurrent = (parasiticCap_pF_param * 1e-12) * (dvdt_V_ns_param * 1e9);
+
+    // Simulation time: 5 periods of switching frequency (not line frequency!)
+    double simTime = 5.0 / switchingFrequency;
+    double timeStep = 1.0 / (switchingFrequency * 50); // 50 points per switching period
+
+    circuit << "* Realistic CMC Circuit with Line + Switching Noise\n";
+    circuit << "* Line Frequency: " << lineFrequency_Hz << " Hz\n";
+    circuit << "* Switching Frequency: " << (switchingFrequency / 1e3) << " kHz\n";
+    circuit << "* Parasitic Capacitance: " << parasiticCap_pF_param << " pF\n";
+    circuit << "* dV/dt: " << dvdt_V_ns_param << " V/ns\n";
+    circuit << "* CM Noise Current: " << (cmNoiseCurrent * 1e3) << " mA\n\n";
+
+    // AC Line voltage sources (mains)
+    double vRms = resolve_dimensional_values(operatingVoltage);
+    double vPeak = vRms * std::sqrt(2);
+    circuit << "* AC Mains Voltage Sources\n";
+    for (int w = 0; w < numWindings; ++w) {
+        double phaseShift = (2.0 * M_PI * w) / numWindings; // Phase shift for each line
+        circuit << "Vline" << w << " line" << w << " 0 SIN(0 " << vPeak << " " << lineFrequency_Hz << " 0 0 " << phaseShift << ")\n";
+    }
+    circuit << "\n";
+
+    // Common mode noise current source (switching noise)
+    circuit << "* Common Mode Noise Current Source (from switching)\n";
+    circuit << "Icm cm_src 0 PULSE(0 " << cmNoiseCurrent << " 0 1n 1n "
+            << (0.5 / switchingFrequency) << " " << (1.0 / switchingFrequency) << ")\n\n";
+
+    // Coupling capacitors for CM noise
+    circuit << "* CM Noise Coupling Capacitors\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Ccm" << w << " cm_src cmc_in" << w << " " << (parasiticCap_pF_param / numWindings) << "p\n";
+    }
+    circuit << "\n";
+
+    // CMC coupled inductors
+    circuit << "* Common Mode Choke\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Lcmc" << w << " cmc_in" << w << " cmc_out" << w << " "
+                << std::scientific << inductance << std::fixed << "\n";
     }
 
-    std::string CommonModeChoke::generate_ngspice_circuit(double inductance, double frequency) {
-        // ============================================================
-        // LISN (Line Impedance Stabilization Network) Test Circuit
-        // ============================================================
-        // Based on CISPR 16-1-2 standard for conducted emissions testing
-        // 
-        // The LISN:
-        // - Provides a known impedance (50Ω) to the EUT
-        // - Isolates the AC mains from measurement equipment
-        // - Extracts common mode noise for measurement
-        //
-        // Circuit topology:
-        //   CM Noise Source -> CMC -> LISN -> 50Ω Measurement
-        //
-        // For single-phase: Line and Neutral through CMC
-        // For three-phase: L1, L2, L3 through CMC (and N if 4-winding)
-        // ============================================================
-
-        size_t numWindings = get_number_of_windings();
-        
-        std::ostringstream circuit;
-        double period = 1.0 / frequency;
-        
-        // Simulation parameters
-        int numPeriods = 20;  // Simulate 20 periods for settling
-        double simTime = numPeriods * period;
-        double stepTime = period / 100;  // 100 points per period
-        
-        circuit << "* Common Mode Choke EMI Test Circuit - LISN Configuration\n";
-        circuit << "* Generated by OpenMagnetics\n";
-        circuit << "* Configuration: " << (numWindings == 2 ? "Single Phase" : 
-                                           (numWindings == 3 ? "Three Phase" : "Three Phase + Neutral")) << "\n";
-        circuit << "* Test frequency: " << (frequency / 1e3) << " kHz\n";
-        circuit << "* Inductance per winding: " << (inductance * 1e6) << " uH\n\n";
-
-        // Common mode noise source (represents switching converter noise)
-        // Connected to ground, couples into both lines equally
-        circuit << "* Common Mode Noise Source (switching noise)\n";
-        circuit << "Vcm_noise cm_src 0 SIN(0 1 " << frequency << ")\n\n";
-        
-        // Noise coupling capacitors (CM noise couples to both lines)
-        circuit << "* CM Noise Coupling (parasitic capacitance to ground)\n";
-        for (size_t w = 0; w < numWindings; ++w) {
-            circuit << "Ccm" << w << " cm_src cmc_in" << w << " 100p\n";
+    // Coupling between windings
+    circuit << "\n* CMC Coupling (k ~ 0.99 for tight CM coupling)\n";
+    for (int i = 0; i < numWindings; ++i) {
+        for (int j = i + 1; j < numWindings; ++j) {
+            circuit << "K" << i << "_" << j << " Lcmc" << i << " Lcmc" << j << " 0.99\n";
         }
-        circuit << "\n";
+    }
+    circuit << "\n";
 
-        // CMC coupled inductors
-        // Windings are wound in the same direction - CM currents add, DM currents cancel
-        circuit << "* Common Mode Choke\n";
-        for (size_t w = 0; w < numWindings; ++w) {
-            circuit << "Lcmc" << w << " cmc_in" << w << " cmc_out" << w << " " 
-                    << std::scientific << inductance << std::fixed << "\n";
+    // Line impedance
+    double lineZ = lineImpedance;
+    circuit << "* Line Impedance\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Rline" << w << " cmc_out" << w << " load" << w << " " << lineZ << "\n";
+    }
+    circuit << "\n";
+
+    // Load - differential mode current flows through load
+    double loadR = resolve_dimensional_values(operatingVoltage) / operatingCurrent;
+    circuit << "* Load (EUT)\n";
+    if (numWindings == 2) {
+        // Single phase: load between lines
+        circuit << "Rload load0 load1 " << loadR << "\n";
+    } else {
+        // Three phase: delta-connected load
+        for (int w = 0; w < 3; ++w) {
+            int next = (w + 1) % 3;
+            circuit << "Rload" << w << " load" << w << " load" << next << " " << (loadR * 3) << "\n";
         }
-        
-        // Couple all windings together (perfect coupling for ideal CMC)
-        circuit << "\n* CMC Coupling (k ~ 1 for tight coupling)\n";
-        for (size_t i = 0; i < numWindings; ++i) {
-            for (size_t j = i + 1; j < numWindings; ++j) {
-                circuit << "K" << i << "_" << j << " Lcmc" << i << " Lcmc" << j << " 0.99\n";
-            }
-        }
-        circuit << "\n";
+    }
+    circuit << "\n";
 
-        // Simplified LISN per CISPR 16
-        // Each line has: Series L (50µH) + parallel RC to ground
-        circuit << "* LISN Network (simplified CISPR 16)\n";
-        for (size_t w = 0; w < numWindings; ++w) {
-            circuit << "* Line " << w << " LISN\n";
-            circuit << "Llisn" << w << " cmc_out" << w << " lisn_mid" << w << " 50u\n";
-            circuit << "Clisn" << w << " lisn_mid" << w << " 0 1u\n";
-            circuit << "Rlisn" << w << " lisn_mid" << w << " lisn_out" << w << " 5\n";
-        }
-        circuit << "\n";
+    // Current sense resistors for measuring winding currents
+    circuit << "* Current Sense Resistors\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Vsense" << w << " cmc_in" << w << " sense" << w << " 0\n";
+    }
+    circuit << "\n";
 
-        // 50Ω measurement resistors (standard EMI receiver input impedance)
-        circuit << "* 50Ohm Measurement Point\n";
-        for (size_t w = 0; w < numWindings; ++w) {
-            circuit << "Rmeas" << w << " lisn_out" << w << " 0 50\n";
-        }
-        circuit << "\n";
+    // Transient Analysis
+    circuit << "* Transient Analysis\n";
+    circuit << ".tran " << std::scientific << timeStep << " " << simTime << std::fixed << "\n\n";
 
-        // Current sense resistors for waveform extraction
-        circuit << "* Current Sense\n";
-        for (size_t w = 0; w < numWindings; ++w) {
-            circuit << "Vsense" << w << " cmc_in" << w << " cmc_in" << w << "_sense 0\n";
-        }
-        circuit << "\n";
+    // Save signals
+    circuit << "* Output signals\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << ".save v(cmc_in" << w << ") v(cmc_out" << w << ") i(Vsense" << w << ")\n";
+    }
+    circuit << ".save i(Icm)\n\n";
 
-        // AC load (represents the EUT - Equipment Under Test)
-        circuit << "* AC Load (EUT)\n";
-        double loadResistance = resolve_dimensional_values(_operatingVoltage) / _operatingCurrent;
-        if (_configuration == CmcConfiguration::SINGLE_PHASE) {
-            circuit << "Rload cmc_in0_sense cmc_in1_sense " << loadResistance << "\n";
-        } else {
-            // Delta-connected load for three-phase
-            for (size_t w = 0; w < 3; ++w) {
-                size_t next = (w + 1) % 3;
-                circuit << "Rload" << w << " cmc_in" << w << "_sense cmc_in" << next << "_sense " 
-                        << (loadResistance * 3) << "\n";
-            }
-        }
-        circuit << "\n";
+    // Options
+    circuit << ".options RELTOL=0.001 ABSTOL=1e-12 VNTOL=1e-9\n\n";
+    circuit << ".end\n";
 
-        // Transient Analysis
-        circuit << "* Transient Analysis\n";
-        circuit << ".tran " << std::scientific << stepTime << " " << simTime << std::fixed << "\n\n";
+    return circuit.str();
+}
 
-        // Save signals
-        circuit << "* Output signals\n";
-        circuit << ".save v(cm_src)";
-        for (size_t w = 0; w < numWindings; ++w) {
-            circuit << " v(lisn_out" << w << ") i(Vsense" << w << ")";
-        }
-        circuit << "\n\n";
+std::vector<OperatingPoint> CommonModeChoke::simulate_realistic_cmc(
+    double inductance,
+    double parasiticCap_pF_param,
+    double dvdt_V_ns_param) {
 
-        // Options
-        circuit << ".options RELTOL=0.001 ABSTOL=1e-12 VNTOL=1e-9\n\n";
+    std::vector<OperatingPoint> operatingPoints;
 
-        circuit << ".end\n";
-
-        return circuit.str();
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        throw std::runtime_error("ngspice is not available for CMC simulation");
     }
 
-    std::vector<CmcSimulationWaveforms> CommonModeChoke::simulate_and_extract_waveforms(
-        double inductance,
-        const std::vector<double>& frequencies) {
-        
-        std::vector<CmcSimulationWaveforms> results;
-        
-        NgspiceRunner runner;
-        if (!runner.is_available()) {
-            throw std::runtime_error("ngspice is not available for CMC simulation");
-        }
+    // Generate circuit with realistic line + noise
+    std::string netlist = generate_realistic_cmc_circuit(
+        inductance, parasiticCap_pF_param, dvdt_V_ns_param, lineFrequency);
 
-        size_t numWindings = get_number_of_windings();
+    SimulationConfig config;
+    config.frequency = lineFrequency;
+    config.keepTempFiles = false;
+    config.extractOnePeriod = false;
 
-        for (double frequency : frequencies) {
-            std::string netlist = generate_ngspice_circuit(inductance, frequency);
-            
-            SimulationConfig config;
-            config.frequency = frequency;
-            config.keepTempFiles = false;
-            config.extractOnePeriod = false;
-            
-            auto simResult = runner.run_simulation(netlist, config);
-            
-            if (!simResult.success) {
-                continue;  // Skip failed simulations
-            }
+    auto simResult = runner.run_simulation(netlist, config);
 
-            CmcSimulationWaveforms waveforms;
-            waveforms.frequency = frequency;
-            waveforms.operatingPointName = "CMC_" + std::to_string(static_cast<int>(frequency / 1000)) + "kHz";
-
-            // Extract waveforms from simulation result
-            for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
-                const auto& name = simResult.waveformNames[i];
-                const auto& wf = simResult.waveforms[i];
-                
-                if (name == "cm_src") {
-                    waveforms.inputVoltage = wf.get_data();
-                    waveforms.time = wf.get_time().value_or(std::vector<double>());
-                } else if (name.find("lisn_out") != std::string::npos) {
-                    waveforms.lisnVoltage = wf.get_data();
-                } else if (name.find("vsense") != std::string::npos) {
-                    waveforms.windingCurrents.push_back(wf.get_data());
-                }
-            }
-
-            // Calculate theoretical impedance: Z = 2*pi*f*L
-            waveforms.theoreticalImpedance = 2.0 * M_PI * frequency * inductance;
-
-            // Calculate CM attenuation (dB) = 20 * log10(Vin / Vout)
-            if (!waveforms.inputVoltage.empty() && !waveforms.lisnVoltage.empty()) {
-                double vinPeak = *std::max_element(waveforms.inputVoltage.begin(), waveforms.inputVoltage.end());
-                double voutPeak = *std::max_element(waveforms.lisnVoltage.begin(), waveforms.lisnVoltage.end());
-                if (voutPeak > 0 && vinPeak > 0) {
-                    waveforms.commonModeAttenuation = 20.0 * std::log10(vinPeak / voutPeak);
-                }
-            }
-
-            // Calculate actual impedance from voltage/current (Z = V/I)
-            // The CM current is the sum of all winding currents
-            if (!waveforms.inputVoltage.empty() && !waveforms.windingCurrents.empty()) {
-                double vinPeak = *std::max_element(waveforms.inputVoltage.begin(), waveforms.inputVoltage.end());
-                
-                // Sum CM currents from all windings
-                double totalCmCurrentPeak = 0;
-                for (const auto& windingCurrent : waveforms.windingCurrents) {
-                    if (!windingCurrent.empty()) {
-                        double iPeak = *std::max_element(windingCurrent.begin(), windingCurrent.end());
-                        totalCmCurrentPeak += iPeak;
-                    }
-                }
-                
-                // Z = V / I (for CM path, all currents flow in same direction)
-                if (totalCmCurrentPeak > 1e-12) {
-                    waveforms.commonModeImpedance = vinPeak / totalCmCurrentPeak;
-                } else {
-                    // If current is negligible, use theoretical value
-                    waveforms.commonModeImpedance = waveforms.theoreticalImpedance;
-                }
-            } else {
-                waveforms.commonModeImpedance = waveforms.theoreticalImpedance;
-            }
-
-            results.push_back(waveforms);
-        }
-
-        return results;
+    if (!simResult.success) {
+        throw std::runtime_error("CMC realistic simulation failed: " + simResult.errorMessage);
     }
 
-    std::vector<OperatingPoint> CommonModeChoke::simulate_and_extract_operating_points(double inductance) {
-        std::vector<OperatingPoint> operatingPoints;
-        
-        // Get frequencies from minimum impedance requirements
-        std::vector<double> frequencies;
-        for (const auto& impReq : _minimumImpedance) {
-            frequencies.push_back(impReq.get_frequency());
-        }
-        
-        if (frequencies.empty()) {
-            frequencies = {100000, 1000000};  // Default: 100kHz and 1MHz
-        }
-
-        auto simWaveforms = simulate_and_extract_waveforms(inductance, frequencies);
-        
-        for (const auto& simWf : simWaveforms) {
-            std::vector<OperatingPointExcitation> excitations;
-            
-            for (size_t w = 0; w < simWf.windingCurrents.size(); ++w) {
-                Waveform currentWaveform;
-                currentWaveform.set_data(simWf.windingCurrents[w]);
-                if (!simWf.time.empty()) {
-                    currentWaveform.set_time(simWf.time);
-                }
-                
-                SignalDescriptor current;
-                current.set_waveform(currentWaveform);
-                auto sampledWaveform = Inputs::calculate_sampled_waveform(currentWaveform, simWf.frequency);
-                current.set_harmonics(Inputs::calculate_harmonics_data(sampledWaveform, simWf.frequency));
-                current.set_processed(Inputs::calculate_processed_data(currentWaveform, simWf.frequency, true));
-                
-                OperatingPointExcitation excitation;
-                excitation.set_current(current);
-                excitation.set_frequency(simWf.frequency);
-                
-                excitations.push_back(excitation);
-            }
-
-            OperatingPoint operatingPoint;
-            operatingPoint.set_excitations_per_winding(excitations);
-            operatingPoint.get_mutable_conditions().set_ambient_temperature(_ambientTemperature);
-            operatingPoint.set_name(simWf.operatingPointName);
-            
-            operatingPoints.push_back(operatingPoint);
-        }
-
-        return operatingPoints;
+    // DEBUG: Print available waveform names
+    std::cerr << "[CMC DEBUG] Available waveforms (" << simResult.waveformNames.size() << "):" << std::endl;
+    for (const auto& name : simResult.waveformNames) {
+        std::cerr << "  - " << name << std::endl;
     }
+
+    int numWindings = get_number_of_windings();
+
+    // Create excitations for each winding
+    std::vector<OperatingPointExcitation> excitations;
+    for (int w = 0; w < numWindings; ++w) {
+        // ngspice output names: voltage is node name, current is component name + "#branch"
+        std::string vinName = "cmc_in" + std::to_string(w);
+        std::string iName = "vsense" + std::to_string(w) + "#branch";  // ngspice adds #branch for currents
+
+        // Find waveforms for this winding
+        std::vector<double> time;
+        std::vector<double> voltage;
+        std::vector<double> current;
+
+        for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+            const auto& name = simResult.waveformNames[i];
+            const auto& wf = simResult.waveforms[i];
+
+            if (name == vinName) {
+                voltage = wf.get_data();
+                time = wf.get_time().value_or(std::vector<double>());
+            } else if (name == iName) {
+                current = wf.get_data();
+            }
+        }
+
+        // DEBUG: Log what we found
+        std::cerr << "[CMC DEBUG] Winding " << w << ": time=" << time.size() 
+                  << " voltage=" << voltage.size() << " current=" << current.size() << std::endl;
+
+        if (!time.empty() && !voltage.empty() && !current.empty()) {
+            std::cerr << "[CMC DEBUG] Creating excitation for winding " << w << std::endl;
+            // Create voltage waveform
+            Waveform voltageWaveform;
+            voltageWaveform.set_data(voltage);
+            voltageWaveform.set_time(time);
+
+            // Create current waveform
+            Waveform currentWaveform;
+            currentWaveform.set_data(current);
+            currentWaveform.set_time(time);
+
+            // Build excitation using complete_excitation from Topology
+            auto excitation = Topology::complete_excitation(
+                currentWaveform,
+                voltageWaveform,
+                lineFrequency,
+                "Winding " + std::to_string(w));
+
+            excitations.push_back(excitation);
+        }
+    }
+
+    // DEBUG: Log excitation count
+    std::cerr << "[CMC DEBUG] Total excitations created: " << excitations.size() << std::endl;
+
+    if (!excitations.empty()) {
+        OperatingPoint operatingPoint;
+        operatingPoint.set_excitations_per_winding(excitations);
+        operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
+        operatingPoint.set_name("CMC_Realistic_Line_" + std::to_string(static_cast<int>(lineFrequency)) + "Hz");
+
+        operatingPoints.push_back(operatingPoint);
+        std::cerr << "[CMC DEBUG] Operating point created successfully" << std::endl;
+    } else {
+        std::cerr << "[CMC DEBUG] WARNING: No excitations created!" << std::endl;
+    }
+
+    return operatingPoints;
+}
 
 } // namespace OpenMagnetics

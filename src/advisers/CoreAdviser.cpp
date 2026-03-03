@@ -1434,26 +1434,24 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " at the beginning.", "CoreAdviser");
+    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " at the beginning." << std::endl;
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " after adding turns for inductance.", "CoreAdviser");
-    // magneticsWithScoring = add_initial_turns_by_impedance(magneticsWithScoring, inputs);
-    // logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " after adding turns for impedance.", "CoreAdviser");
+    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after adding turns for inductance." << std::endl;
 
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Minimum Impedance filter.", "CoreAdviser");
+    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Minimum Impedance filter." << std::endl;
 
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Cost filter.", "CoreAdviser");
+    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Cost filter (weight=" << weights[CoreAdviserFilters::COST] << ")." << std::endl;
 
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS], true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Dimensions filter.", "CoreAdviser");
+    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Dimensions filter (weight=" << weights[CoreAdviserFilters::DIMENSIONS] << ")." << std::endl;
 
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Magnetizing Inductance.", "CoreAdviser");
+    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Magnetizing Inductance filter (weight=" << weights[CoreAdviserFilters::EFFICIENCY] << ")." << std::endl;
 
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Core Losses filter.", "CoreAdviser");
+    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Core Losses filter." << std::endl;
 
     if (magneticsWithScoring.size() == 0) {
         return {};

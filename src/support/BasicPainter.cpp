@@ -1778,7 +1778,7 @@ void BasicPainter::paint_wire_losses(Magnetic magnetic, std::optional<Outputs> o
 
 void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar, ColorPalette palette, double ambientTemperature, const std::string& textColor, const std::string& bgColor) {
     set_image_size(magnetic);
-    _scale = constants.coilPainterScale * 10;
+    _scale = constants.coilPainterScale;
     
     if (nodeTemperatures.empty()) {
         return;

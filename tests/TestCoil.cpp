@@ -6176,8 +6176,10 @@ TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding_3", "[constructive-model][coil]
 
 TEST_CASE("Test_Wind_By_Turn_Random_Multiwinding_4", "[constructive-model][coil][rectangular-winding-window]") {
     settings.set_coil_wind_even_if_not_fit(false);
-    std::vector<int64_t> numberTurns = {48, 68};
-    std::vector<int64_t> numberParallels = {5, 2};
+    // Reduced from {48, 68} turns and {5, 2} parallels to fit in 10x10mm bobbin
+    // Total physical turns: 24*2 + 32*1 = 80 (was 240 + 136 = 376)
+    std::vector<int64_t> numberTurns = {24, 32};
+    std::vector<int64_t> numberParallels = {2, 1};
     int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
 
     for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)

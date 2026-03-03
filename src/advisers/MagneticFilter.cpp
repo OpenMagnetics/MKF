@@ -1033,8 +1033,11 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
         }
     }
 
-    auto currentNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
-    NumberTurns numberTurns(currentNumberTurns);
+    // For impedance filter, start searching from 1 turn rather than from inductance-based
+    // initial value. In interference suppression applications, impedance is the primary
+    // requirement and we need to find the optimal turn count that meets impedance while
+    // keeping SRF above the operating frequency range.
+    NumberTurns numberTurns(1);
 
     Coil coil = magnetic->get_coil();
 
@@ -1060,6 +1063,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
         auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
 
         if (numberTurnsCombination[0] * std::numbers::pi * pow(resolve_dimensional_values(wire.get_outer_diameter().value()) / 2, 2) >= windingWindowArea) {
+            std::cerr << "Impedance filter: core " << core.get_name().value_or("?") << " N=" << numberTurnsCombination[0] << " wire area exceeds winding window" << std::endl;
             validMaterial = false;
             break;
         }
@@ -1069,6 +1073,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
         for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
             auto frequency = impedanceAtFrequency.get_frequency();
             if (frequency > defaults.selfResonantFrequencyMargin * selfResonantFrequency) {
+                std::cerr << "Impedance filter: core " << core.get_name().value_or("?") << " N=" << numberTurnsCombination[0] << " SRF=" << selfResonantFrequency << " too low for f=" << frequency << std::endl;
                 validDesign = false;
                 break;
             }
@@ -1083,6 +1088,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
             auto minimumImpedanceRequired = impedanceAtFrequency.get_impedance();
             try {
                 auto impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency));
+                std::cerr << "Impedance filter: core " << core.get_name().value_or("?") << " N=" << numberTurnsCombination[0] << " f=" << frequency << " Z=" << impedance << " req=" << minimumImpedanceRequired.get_magnitude() << std::endl;
                 if (impedance < minimumImpedanceRequired.get_magnitude()) {
                     validDesign = false;
                     break;
@@ -1093,6 +1099,7 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
 
             }
             catch (const ModelNotAvailableException &exc) {
+                std::cerr << "Impedance filter: core " << core.get_name().value_or("?") << " N=" << numberTurnsCombination[0] << " ModelNotAvailable: " << exc.what() << std::endl;
                 validMaterial = false;
             }
         }
@@ -1105,14 +1112,17 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
 
     if (validDesign && validMaterial) {
         coil.fast_wind();
-
+        bool fitting = coil.are_sections_and_layers_fitting();
+        bool hasTurns = coil.get_turns_description().has_value();
+        if (!fitting || !hasTurns) {
+            std::cerr << "Impedance filter: core " << core.get_name().value_or("?") << " N=" << coil.get_functional_description()[0].get_number_turns() << " COIL FIT FAIL: fitting=" << fitting << " hasTurns=" << hasTurns << std::endl;
+        }
+        magnetic->set_coil(std::move(coil));
+        return {fitting && hasTurns, totalImpedanceExtra};
     }
 
-    bool valid = coil.are_sections_and_layers_fitting() && coil.get_turns_description();
-    
     magnetic->set_coil(std::move(coil));
-
-    return {valid, totalImpedanceExtra};
+    return {false, 0};
 }
 
 MagneticFilterAreaNoParallels::MagneticFilterAreaNoParallels(int maximumNumberParallels) {
@@ -1553,6 +1563,10 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
         scoring += fabs(resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) - magnetizingInductance);
 
         if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance)) {
+            std::cerr << "MagnetizingInductance filter: core " << magnetic->get_core().get_name().value_or("?") 
+                      << " N=" << magnetic->get_coil().get_functional_description()[0].get_number_turns()
+                      << " L=" << magnetizingInductance*1e6 << "uH required=" 
+                      << resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance())*1e6 << "uH" << std::endl;
             valid = false;
         }
         else {

@@ -2,21 +2,12 @@
 #include "Constants.h"
 #include <MAS.hpp>
 #include "processors/Inputs.h"
-#include "processors/NgspiceRunner.h"
 #include "constructive_models/Magnetic.h"
-
-using namespace MAS;
+#include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
 
 namespace OpenMagnetics {
-
-/**
- * @brief CMC configuration types based on number of phases.
- */
-enum class CmcConfiguration {
-    SINGLE_PHASE,           ///< 2 windings: Line + Neutral
-    THREE_PHASE,            ///< 3 windings: L1 + L2 + L3
-    THREE_PHASE_WITH_NEUTRAL ///< 4 windings: L1 + L2 + L3 + N
-};
+using namespace MAS;
 
 /**
  * @brief Structure holding CMC simulation waveforms for analysis
@@ -24,16 +15,16 @@ enum class CmcConfiguration {
 struct CmcSimulationWaveforms {
     std::vector<double> time;
     double frequency;
-    
+
     // Input signals
     std::vector<double> inputVoltage;              // Common mode noise source
-    
+
     // CMC line currents
     std::vector<std::vector<double>> windingCurrents;  // Current through each winding
-    
+
     // LISN output (measured noise)
     std::vector<double> lisnVoltage;              // Voltage at LISN measurement point
-    
+
     // Metadata
     std::string operatingPointName;
     double commonModeAttenuation;   // Attenuation in dB at test frequency
@@ -42,160 +33,165 @@ struct CmcSimulationWaveforms {
 };
 
 /**
- * @brief Common Mode Choke (CMC) converter model for EMI filter applications.
- * 
- * Common Mode Chokes are coupled inductors wound on toroidal cores used to 
- * suppress common mode noise while passing differential signals. The design
- * process focuses on:
- * 
- * - **Impedance Requirements**: CMCs must meet minimum impedance specifications
- *   at specified frequencies. Higher impedance = better common mode rejection.
- * 
- * - **Coupling Coefficient**: For effective common mode rejection, windings
- *   should be tightly coupled (k ≈ 1). This is achieved through bifilar
- *   winding on toroidal cores, minimizing leakage inductance.
- * 
- * - **Self-Resonant Frequency**: The CMC must operate below its SRF to avoid
- *   impedance collapse. Typically f_op < 0.25 * SRF.
- * 
- * - **Saturation**: The magnetizing inductance must not saturate under
- *   differential mode (unbalanced) currents.
- * 
- * Supported configurations:
- * - **Single-phase (2 windings)**: Line + Neutral - typical for AC mains
- * - **Three-phase (3 windings)**: L1 + L2 + L3 - for 3-phase systems without neutral
- * - **Three-phase with neutral (4 windings)**: L1 + L2 + L3 + N - full 3-phase+N filtering
- * 
- * The topology generates Inputs suitable for MagneticAdviser with:
- * - SubApplication::COMMON_MODE_NOISE_FILTERING
- * - INTERFERENCE_SUPPRESSION application
- * - Multiple identical windings with PRIMARY isolation side
- * - Minimum impedance requirements for filter calculation
+ * @brief Common Mode Choke (CMC) for EMI filtering
+ *
+ * Physical principle:
+ *   - CM currents (same phase on all lines) produce ADDITIVE flux → high Z
+ *   - DM currents (opposite phase) produce CANCELLING flux → low Z
+ *
+ * Specification modes (all resolved to impedance points inside the constructor):
+ *   1. minimumImpedance[]    : direct (frequency, impedance) pairs
+ *   2. targetInsertionLoss[] : (frequency, insertionLoss[dB]) pairs
+ *                              Z_cm = Z_line·(10^(IL/20)−1)
+ *   3. Estimate from noise   : parasiticCap_pF + dvdt_V_ns + safetyMargin_dB
+ *                              → CM current estimate → required Z at 150 kHz
+ *
+ * Output:
+ *   designRequirements.magnetizingInductance = L_cm = max(Z/(2πf))
+ *   operatingPoints: sinusoidal CM excitation at dominant frequency
+ *
+ * Supported configurations: 2 windings (single-phase), 3 (three-phase), 4 (three-phase+neutral)
+ *
+ * Also provides ngspice simulation methods for CISPR 16 LISN testing and
+ * realistic line + switching noise simulation.
  */
-class CommonModeChoke {
+class CommonModeChoke : public Topology {
+private:
+    int numPeriodsToExtract   = 5;
+    int numSteadyStatePeriods = 3;
+
+    // ── Parsed fields ──────────────────────────────────────────────
+    DimensionWithTolerance operatingVoltage;
+    double operatingCurrent         = 1.0;
+    double lineFrequency            = 50.0;
+    double lineImpedance            = 50.0;
+    double ambientTemperature       = 25.0;
+    double maximumDcResistance      = 0.0;
+    double maximumLeakageInductance = 0.0;
+    int    numberOfWindings         = 2;
+
+    // Noise-estimation fields (specMode = "Estimate from noise")
+    double parasiticCap_pF  = 0.0;
+    double dvdt_V_ns        = 0.0;
+    double safetyMargin_dB  = 6.0;
+
+    struct ImpedancePoint     { double frequency; double impedance; };
+    struct InsertionLossPoint { double frequency; double insertionLoss; };
+
+    std::vector<ImpedancePoint>     minimumImpedance;
+    std::vector<InsertionLossPoint> targetInsertionLoss;
+
+    // ── Computed ───────────────────────────────────────────────────
+    double computedInductance = 0.0;
+    double dominantFrequency  = 0.0;
+    double dominantImpedance  = 0.0;
+
+    // ── Internal helpers ───────────────────────────────────────────
+    void computeFromNoiseParams();
+    void resolveInductance();
+
 public:
     bool _assertErrors = false;
 
-    CommonModeChoke() = default;
     CommonModeChoke(const json& j);
+    CommonModeChoke() {}
 
-    /**
-     * @brief Process the CMC specification into a complete Inputs structure.
-     * 
-     * @return Inputs structure with design requirements and operating points
-     */
-    Inputs process();
+    // ── Accessors ──────────────────────────────────────────────────
+    int    get_num_periods_to_extract()   const { return numPeriodsToExtract; }
+    void   set_num_periods_to_extract(int v)    { numPeriodsToExtract = v; }
+    int    get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void   set_num_steady_state_periods(int v)  { numSteadyStatePeriods = v; }
 
-    /**
-     * @brief Generate design requirements for CMC optimization.
-     * 
-     * Sets up:
-     * - N windings with identical turns (all 1:1 turns ratios)
-     * - INTERFERENCE_SUPPRESSION application
-     * - COMMON_MODE_NOISE_FILTERING sub-application
-     * - Minimum impedance requirements
-     * - Toroidal core preference
-     * 
-     * N = 2 for single-phase, 3 for three-phase, 4 for three-phase+neutral
-     */
-    DesignRequirements process_design_requirements();
+    double get_computed_inductance() const { return computedInductance; }
+    double get_dominant_frequency()  const { return dominantFrequency; }
+    double get_dominant_impedance()  const { return dominantImpedance; }
+    int    get_number_of_windings()  const { return numberOfWindings; }
+    double get_operating_current()   const { return operatingCurrent; }
+    double get_line_frequency()      const { return lineFrequency; }
+    double get_line_impedance()      const { return lineImpedance; }
+    double get_ambient_temperature() const { return ambientTemperature; }
 
-    /**
-     * @brief Generate operating points representing CMC excitation.
-     * 
-     * For CMCs:
-     * - Common mode: All windings carry in-phase current (additive MMF)
-     * - Differential mode: Windings carry phase-shifted currents (canceling MMF)
-     * 
-     * For three-phase systems, currents are 120° phase shifted.
-     * The operating point models nominal differential mode current flow.
-     * 
-     * @return Vector of operating points
-     */
-    std::vector<OperatingPoint> process_operating_points();
+    void   set_operating_current(double v)  { operatingCurrent = v; }
+    void   set_line_frequency(double v)     { lineFrequency = v; }
+    void   set_line_impedance(double v)     { lineImpedance = v; }
+    void   set_ambient_temperature(double v){ ambientTemperature = v; }
+    void   set_number_of_windings(int v)    { numberOfWindings = v; }
 
-    /**
-     * @brief Get the number of windings based on configuration.
-     */
-    size_t get_number_of_windings() const;
+    const DimensionWithTolerance& get_operating_voltage() const { return operatingVoltage; }
+    void set_operating_voltage(const DimensionWithTolerance& v) { operatingVoltage = v; }
 
-    // Accessors for CMC parameters
+    // ── Topology interface ─────────────────────────────────────────
+    bool run_checks(bool assert_errors = false) override;
+    DesignRequirements process_design_requirements() override;
+    std::vector<OperatingPoint> process_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) override;
+    std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    void set_configuration(CmcConfiguration value) { _configuration = value; }
-    CmcConfiguration get_configuration() const { return _configuration; }
+    // ── Static helpers (public for unit tests) ─────────────────────
+    static double impedanceToInductance(double impedance_Ohms, double frequency_Hz);
+    static double inductanceToImpedance(double inductance_H,   double frequency_Hz);
+    static double insertionLossToImpedance(double insertionLoss_dB, double lineImpedance_Ohms);
+    static double noiseParamsToImpedance(double parasiticCap_pF,
+                                         double dvdt_V_ns,
+                                         double lineImpedance_Ohms,
+                                         double safetyMargin_dB,
+                                         double testFrequency_Hz = 150e3);
+    static std::vector<std::string> windingNames(int numWindings);
 
-    void set_operating_voltage(DimensionWithTolerance value) { _operatingVoltage = value; }
-    DimensionWithTolerance get_operating_voltage() const { return _operatingVoltage; }
-
-    void set_operating_current(double value) { _operatingCurrent = value; }
-    double get_operating_current() const { return _operatingCurrent; }
-
-    void set_line_frequency(double value) { _lineFrequency = value; }
-    double get_line_frequency() const { return _lineFrequency; }
-
-    void set_neutral_current(std::optional<double> value) { _neutralCurrent = value; }
-    std::optional<double> get_neutral_current() const { return _neutralCurrent; }
-
-    void set_minimum_impedance(std::vector<ImpedanceAtFrequency> value) { _minimumImpedance = value; }
-    std::vector<ImpedanceAtFrequency> get_minimum_impedance() const { return _minimumImpedance; }
-
-    void set_line_impedance(double value) { _lineImpedance = value; }
-    double get_line_impedance() const { return _lineImpedance.value_or(50.0); }
-
-    void set_maximum_dc_resistance(std::optional<double> value) { _maximumDcResistance = value; }
-    std::optional<double> get_maximum_dc_resistance() const { return _maximumDcResistance; }
-
-    void set_maximum_leakage_inductance(std::optional<double> value) { _maximumLeakageInductance = value; }
-    std::optional<double> get_maximum_leakage_inductance() const { return _maximumLeakageInductance; }
-
-    void set_ambient_temperature(double value) { _ambientTemperature = value; }
-    double get_ambient_temperature() const { return _ambientTemperature; }
-
-    /**
-     * @brief Generate an ngspice circuit for CMC EMI testing with LISN.
-     * 
-     * Creates a test circuit with:
-     * - Common mode noise source (represents switching noise)
-     * - LISN (Line Impedance Stabilization Network) per CISPR 16
-     * - CMC between noise source and LISN
-     * - Measurement points for attenuation calculation
-     * 
-     * @param inductance Magnetizing inductance of each winding
-     * @param frequency Test frequency for AC analysis
-     * @return SPICE netlist string
-     */
+    // ── Ngspice simulation methods ────────────────────────────────
     std::string generate_ngspice_circuit(double inductance, double frequency = 150000);
-
-    /**
-     * @brief Simulate CMC and extract waveforms.
-     * 
-     * @param inductance Magnetizing inductance
-     * @param frequencies Test frequencies
-     * @return Simulation waveforms for analysis
-     */
+    std::string generate_realistic_cmc_circuit(
+        double inductance,
+        double parasiticCap_pF,
+        double dvdt_V_ns,
+        double lineFrequency_Hz = 50.0);
     std::vector<CmcSimulationWaveforms> simulate_and_extract_waveforms(
         double inductance,
         const std::vector<double>& frequencies);
-
-    /**
-     * @brief Simulate and extract operating points from simulation.
-     * 
-     * @param inductance Magnetizing inductance
-     * @return Vector of OperatingPoints from simulation
-     */
     std::vector<OperatingPoint> simulate_and_extract_operating_points(double inductance);
-
-private:
-    CmcConfiguration _configuration = CmcConfiguration::SINGLE_PHASE;  ///< Default to single-phase
-    DimensionWithTolerance _operatingVoltage;
-    double _operatingCurrent;
-    double _lineFrequency;  ///< Mains/line frequency in Hz (50 or 60 Hz typically) - REQUIRED
-    std::optional<double> _neutralCurrent;  ///< Current in neutral (for 4-winding config)
-    std::vector<ImpedanceAtFrequency> _minimumImpedance;
-    std::optional<double> _lineImpedance;
-    std::optional<double> _maximumDcResistance;
-    std::optional<double> _maximumLeakageInductance;
-    double _ambientTemperature = 25.0;
+    std::vector<OperatingPoint> simulate_realistic_cmc(
+        double inductance,
+        double parasiticCap_pF,
+        double dvdt_V_ns);
 };
+
+// Backward-compatible alias
+using Cmc = CommonModeChoke;
+
+
+// ─── AdvancedCommonModeChoke — "I know the design I want" variant ─────
+class AdvancedCommonModeChoke : public CommonModeChoke {
+private:
+    double desiredInductance = 0.0;
+
+public:
+    AdvancedCommonModeChoke() = default;
+    ~AdvancedCommonModeChoke() = default;
+    AdvancedCommonModeChoke(const json& j);
+
+    Inputs process();
+
+    const double& get_desired_inductance() const  { return desiredInductance; }
+    double& get_mutable_desired_inductance()       { return desiredInductance; }
+    void set_desired_inductance(const double& v)   { desiredInductance = v; }
+};
+
+// Backward-compatible alias
+using AdvancedCmc = AdvancedCommonModeChoke;
+
+void from_json(const json& j, AdvancedCommonModeChoke& x);
+void to_json(json& j, const AdvancedCommonModeChoke& x);
+
+inline void from_json(const json& j, AdvancedCommonModeChoke& x) {
+    CommonModeChoke base(j);
+    static_cast<CommonModeChoke&>(x) = base;
+    x.set_desired_inductance(j.at("desiredInductance").get<double>());
+}
+
+inline void to_json(json& j, const AdvancedCommonModeChoke& x) {
+    j = json::object();
+    j["desiredInductance"] = x.get_desired_inductance();
+}
 
 } // namespace OpenMagnetics

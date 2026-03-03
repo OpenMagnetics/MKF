@@ -136,9 +136,9 @@ void CircuitSimulatorExporter::core_ladder_func(double *p, double *x, int m, int
 std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_ladder(Magnetic magnetic, double temperature) {
     const size_t numberUnknowns = 10;
 
-    const size_t numberElements = 20;
+    const size_t numberElements = 40;
     const size_t numberElementsPlusOne = 101;
-    size_t loopIterations = 5;
+    size_t loopIterations = 15;
     double startingFrequency = 0.1;
     double endingFrequency = 10000000;
     auto coil = magnetic.get_coil();
@@ -1615,24 +1615,77 @@ std::vector<double> rolling_window_filter(std::vector<double> data) {
     return cleanData;
 }
 
+// Helper: check if a character is a word boundary (non-alphanumeric or start/end of string)
+static bool is_word_boundary(const std::string& str, size_t pos) {
+    if (pos == 0 || pos >= str.size()) return true;
+    char c = str[pos - 1];
+    return !std::isalnum(static_cast<unsigned char>(c)) && c != '_';
+}
+
+// Helper: check if alias matches at a word boundary in the name
+static bool matches_at_word_boundary(const std::string& name, const std::string& prefix) {
+    size_t pos = 0;
+    while ((pos = name.find(prefix, pos)) != std::string::npos) {
+        // Check that the match is at a word boundary (preceded by non-alnum or start of string)
+        if (is_word_boundary(name, pos)) {
+            // For single-char prefixes, also check that the next char (if any) is uppercase or non-alpha
+            // This ensures "I" matches "Ipri" but not the "I" in "Inductor"
+            size_t endPos = pos + prefix.size();
+            if (endPos >= name.size()) return true;
+            char nextChar = name[endPos];
+            // If prefix is a single uppercase letter, the next char should not be lowercase
+            // (to avoid matching "I" in "Inductor" or "V" in "Voltage")
+            if (prefix.size() == 1 && std::isupper(static_cast<unsigned char>(prefix[0]))) {
+                if (std::islower(static_cast<unsigned char>(nextChar))) {
+                    pos++;
+                    continue;
+                }
+            }
+            return true;
+        }
+        pos++;
+    }
+    return false;
+}
+
 std::optional<CircuitSimulationReader::DataType> CircuitSimulationReader::guess_type_by_name(std::string name) {
-    for (auto timeAlias : _timeAliases) {
+    // 1. Check time aliases first (substring match is fine for multi-char aliases)
+    for (const auto& timeAlias : _timeAliases) {
         if (name.find(timeAlias) != std::string::npos)  {
             return CircuitSimulationReader::DataType::TIME;
         }
     }
-    for (auto currentAlias : _currentAliases) {
+
+    // 2. Check magnetizing current BEFORE regular current (more specific first)
+    for (const auto& magAlias : _magnetizingCurrentAliases) {
+        if (name.find(magAlias) != std::string::npos)  {
+            return CircuitSimulationReader::DataType::MAGNETIZING_CURRENT;
+        }
+    }
+
+    // 3. Check multi-char current aliases (substring match)
+    for (const auto& currentAlias : _currentAliases) {
         if (name.find(currentAlias) != std::string::npos)  {
             return CircuitSimulationReader::DataType::CURRENT;
         }
     }
-    for (auto magnetizingCurrentAlias : _magnetizingCurrentAliases) {
-        if (name.find(magnetizingCurrentAlias) != std::string::npos)  {
-            return CircuitSimulationReader::DataType::MAGNETIZING_CURRENT;
+
+    // 4. Check multi-char voltage aliases (substring match)
+    for (const auto& voltageAlias : _voltageAliases) {
+        if (name.find(voltageAlias) != std::string::npos)  {
+            return CircuitSimulationReader::DataType::VOLTAGE;
         }
     }
-    for (auto voltageAlias : _voltageAliases) {
-        if (name.find(voltageAlias) != std::string::npos)  {
+
+    // 5. Check single-char prefixes with word-boundary awareness
+    for (const auto& prefix : _currentPrefixes) {
+        if (matches_at_word_boundary(name, prefix)) {
+            return CircuitSimulationReader::DataType::CURRENT;
+        }
+    }
+
+    for (const auto& prefix : _voltagePrefixes) {
+        if (matches_at_word_boundary(name, prefix)) {
             return CircuitSimulationReader::DataType::VOLTAGE;
         }
     }
@@ -1698,6 +1751,8 @@ std::vector<std::map<std::string, std::string>> CircuitSimulationReader::extract
     for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
         std::map<std::string, std::string> columnNameToSignal;
         columnNameToSignal["time"] = _time.name;
+        columnNameToSignal["current"] = "";
+        columnNameToSignal["voltage"] = "";
         for (auto column : _columns) {
             if (column.windingIndex == windingIndex && column.type == DataType::CURRENT) {
                 columnNameToSignal["current"] = column.name;
@@ -1796,6 +1851,18 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
             }
         }
         excitationsPerWinding.push_back(excitation);
+    }
+
+    // Remove trailing empty excitations (no current, no voltage, no magnetizing current)
+    // This handles the case where the user requests more windings than the data supports
+    while (excitationsPerWinding.size() > 1) {
+        auto& last = excitationsPerWinding.back();
+        if (!last.get_current() && !last.get_voltage() && !last.get_magnetizing_current()) {
+            excitationsPerWinding.pop_back();
+        }
+        else {
+            break;
+        }
     }
 
     operatingPoint.set_excitations_per_winding(excitationsPerWinding);

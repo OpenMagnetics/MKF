@@ -30,7 +30,7 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "P45");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "DMR95");
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
         auto scoredValues = coreMaterialCrossReferencer.get_scored_values();

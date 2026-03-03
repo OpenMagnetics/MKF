@@ -155,9 +155,13 @@ class CircuitSimulationReader {
     std::optional<size_t> _periodStopIndex = std::nullopt;
 
     std::vector<std::string> _timeAliases = {"TIME", "Time", "time", "[s]"};
-    std::vector<std::string> _magnetizingCurrentAliases = {"MAG", "mag", "Im", "Imag"};
-    std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I", "I(", "current", "curr", "i(", "[A]", "Ip", "Is", "It", "Id", "Ipri", "I_", "i_"};
-    std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V", "V(", "voltage", "volt", "v(", "[V]", "Vp", "Vs", "Vt", "Vout", "Vpri", "V_", "v_"};
+    std::vector<std::string> _magnetizingCurrentAliases = {"Imag", "MAG", "mag", "Im", "magnetizing"};
+    // Aliases sorted by specificity: multi-char first, single-char last
+    std::vector<std::string> _currentAliases = {"Inductor current", "CURRENT", "CURR", "Current", "Curr", "current", "curr", "Ipri", "Isec", "I_", "i_", "I(", "i(", "[A]", "Ip", "Is", "It", "Id"};
+    std::vector<std::string> _voltageAliases = {"Inductor voltage", "VOLTAGE", "VOLT", "Voltage", "Volt", "voltage", "volt", "Vpri", "Vsec", "Vout", "V_", "v_", "V(", "v(", "[V]", "Vp", "Vs", "Vt"};
+    // Single-char prefixes: matched only at the start of a word (token boundary)
+    std::vector<std::string> _currentPrefixes = {"I"};
+    std::vector<std::string> _voltagePrefixes = {"V"};
 
   public:
 

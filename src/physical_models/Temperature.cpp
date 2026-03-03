@@ -4824,6 +4824,89 @@ double Temperature::getBulkThermalResistance() const {
     return (maxTemp - _config.ambientTemperature) / totalPower;
 }
 
+std::map<std::string, double> Temperature::getTemperaturesByComponentType() const {
+    std::map<std::string, double> result;
+    
+    for (const auto& node : _nodes) {
+        if (node.part == ThermalNodePartType::AMBIENT) continue;
+        
+        std::string category;
+        switch (node.part) {
+            case ThermalNodePartType::CORE_CENTRAL_COLUMN:
+            case ThermalNodePartType::CORE_LATERAL_COLUMN:
+            case ThermalNodePartType::CORE_TOP_YOKE:
+            case ThermalNodePartType::CORE_BOTTOM_YOKE:
+            case ThermalNodePartType::CORE_TOROIDAL_SEGMENT:
+                category = "core";
+                break;
+            case ThermalNodePartType::BOBBIN_CENTRAL_COLUMN:
+            case ThermalNodePartType::BOBBIN_TOP_YOKE:
+            case ThermalNodePartType::BOBBIN_BOTTOM_YOKE:
+                category = "bobbin";
+                break;
+            case ThermalNodePartType::TURN:
+                if (node.windingIndex.has_value()) {
+                    category = "winding " + std::to_string(node.windingIndex.value());
+                } else {
+                    category = "winding";
+                }
+                break;
+            case ThermalNodePartType::INSULATION_LAYER:
+                category = "insulation";
+                break;
+            case ThermalNodePartType::HEATSINK:
+                category = "heatsink";
+                break;
+            case ThermalNodePartType::COLD_PLATE:
+                category = "cold plate";
+                break;
+            default:
+                continue;
+        }
+        
+        auto it = result.find(category);
+        if (it == result.end()) {
+            result[category] = node.temperature;
+        } else {
+            it->second = std::max(it->second, node.temperature);
+        }
+    }
+    
+    return result;
+}
+
+std::map<std::string, double> Temperature::getTemperaturePerTurn() const {
+    // For toroidal cores, a single turn is split into inner/outer nodes
+    // (e.g. "Turn_W0_T3_Inner", "Turn_W0_T3_Outer"). We merge them by
+    // stripping the suffix and taking the maximum.
+    std::map<std::string, double> result;
+    
+    for (const auto& node : _nodes) {
+        if (node.part != ThermalNodePartType::TURN) continue;
+        
+        std::string key = node.name;
+        // Strip "_Inner" or "_Outer" suffix to group toroidal half-nodes
+        const std::string innerSuffix = "_Inner";
+        const std::string outerSuffix = "_Outer";
+        if (key.size() > innerSuffix.size() &&
+            key.compare(key.size() - innerSuffix.size(), innerSuffix.size(), innerSuffix) == 0) {
+            key = key.substr(0, key.size() - innerSuffix.size());
+        } else if (key.size() > outerSuffix.size() &&
+                   key.compare(key.size() - outerSuffix.size(), outerSuffix.size(), outerSuffix) == 0) {
+            key = key.substr(0, key.size() - outerSuffix.size());
+        }
+        
+        auto it = result.find(key);
+        if (it == result.end()) {
+            result[key] = node.temperature;
+        } else {
+            it->second = std::max(it->second, node.temperature);
+        }
+    }
+    
+    return result;
+}
+
 double Temperature::getTemperatureAtPoint(const std::vector<double>& point) const {
     if (point.size() < 2) {
         throw std::runtime_error("Temperature::getTemperatureAtPoint: Point must have at least 2 coordinates (x, y).");
