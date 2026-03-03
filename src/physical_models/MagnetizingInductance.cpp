@@ -155,10 +155,14 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                         auto voltage = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
                         auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
 
+                        auto turnsRatios = coil.get_turns_ratios();
+                        bool addOffset = Inputs::include_dc_offset_into_magnetizing_current(*operatingPoint, turnsRatios);
+
                         auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation,
-                                                                                               sampledVoltageWaveform,
-                                                                                               modifiedMagnetizingInductance,
-                                                                                               false);
+                                                                                                sampledVoltageWaveform,
+                                                                                                modifiedMagnetizingInductance,
+                                                                                                false,
+                                                                                                addOffset);
 
                         auto sampledMagnetizingCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
                         magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
