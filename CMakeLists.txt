@@ -61,7 +61,7 @@ option(INCLUDE_MKF_TESTS "Compile the test suite" ON)
 option(BUILD_TESTS "Build tests (for dependencies)" OFF)
 option(BUILD_EXAMPLES "Build examples (for dependencies)" OFF)
 option(BUILD_DEMO "Build demo (for dependencies)" OFF)
-option(HAVE_LAPACK "Use LAPACK" OFF)
+# REMOVED: # REMOVED: option(HAVE_LAPACK "Use LAPACK" OFF) — no longer needed, levmar replaced by Eigen — no longer needed, levmar replaced by Eigen
 option(INCLUDE_PYMKF "Compile the Python interface" OFF)
 option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile high resolution maps for geoplots" OFF)
 option(ENABLE_NGSPICE "Enable ngspice integration for circuit simulation" OFF)
@@ -153,11 +153,6 @@ FetchContent_Declare(spline
 FetchContent_MakeAvailable(spline)
 include_directories("${CMAKE_BINARY_DIR}/_deps/spline-src/src")
 
-FetchContent_Declare(levmar
-    GIT_REPOSITORY https://github.com/AlfVII/levmar.git
-    GIT_TAG main)
-FetchContent_MakeAvailable(levmar)
-include_directories("${CMAKE_BINARY_DIR}/_deps/levmar-src")
 
 FetchContent_Declare(svg
     GIT_REPOSITORY https://github.com/AlfVII/svg)
@@ -407,17 +402,6 @@ add_custom_target(MAS ALL
 
 include_directories("${MAS_DIRECTORY}")
 
-# message("Using for Levmar: ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6")
-# if( NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6 )
-#     if( NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6.tgz )
-#         file(DOWNLOAD https://users.ics.forth.gr/~lourakis/levmar/levmar-2.6.tgz ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6.tgz SHOW_PROGRESS)
-#     endif()
-    
-#     execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xzvf ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6.tgz)
-#     execute_process(COMMAND ${CMAKE_COMMAND} -E rename ${CMAKE_BINARY_DIR}/levmar-2.6 ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6)
-# endif()
-# add_subdirectory("${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6" "${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6")
-# include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6")
 
 file(GLOB SOURCES
     "src/*.cpp"
@@ -428,10 +412,9 @@ file(GLOB SOURCES
     "src/processors/*.cpp"
     "src/support/*.cpp")
 
-SET(LIBS levmar data::insulation_standards)
+SET(LIBS data::insulation_standards)
 
-LINK_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR}) # location of the levmar library
-LINK_DIRECTORIES(${LAPACKBLAS_DIR})
+# REMOVED: LINK_DIRECTORIES for LAPACKBLAS (no longer needed, levmar replaced by Eigen)
 
 # libraries the demo depends on
 IF(HAVE_PLASMA)
@@ -439,13 +422,6 @@ IF(HAVE_PLASMA)
     SET(LIBS ${LIBS} ${PLASMA_LIB_NAMES})
 ENDIF(HAVE_PLASMA)
 
-IF(HAVE_LAPACK)
-    IF(NEED_F2C)
-        SET(LIBS ${LIBS} ${LAPACKBLAS_LIB_NAMES} ${F2C_LIB_NAME})
-    ELSE(NEED_F2C)
-        SET(LIBS ${LIBS} ${LAPACKBLAS_LIB_NAMES})
-    ENDIF(NEED_F2C)
-ENDIF(HAVE_LAPACK)
 
 # On Windows, build as STATIC to avoid DLL boundary issues with inline globals
 # On other platforms, build as SHARED for better compatibility

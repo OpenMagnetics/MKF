@@ -652,13 +652,41 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     circuit << "* dV/dt: " << dvdt_V_ns_param << " V/ns\n";
     circuit << "* CM Noise Current: " << (cmNoiseCurrent * 1e3) << " mA\n\n";
 
+    // ── Circuit topology (per winding w) ────────────────────────────
+    //
+    //  Vline_w (AC mains)          CM noise injection
+    //     │                              │
+    //   line_w ── Vsense_w ── cmc_in_w ── Lcmc_w ── cmc_out_w ── Rline_w ── load_w
+    //     (gnd)      (0V src,      │                                          │
+    //                 measures I)  Ccm_w ── cm_src ── Icm ── gnd          Rload
+    //                                                                         │
+    //  (other windings same)                                              load_(w+1)
+    //
+    // Vsense is in series on the current path so i(Vsense_w) measures
+    // the full winding current (line + noise).  v(cmc_in_w) sees the
+    // mains voltage plus the CM noise voltage developed across the choke.
+
     // AC Line voltage sources (mains)
     double vRms = resolve_dimensional_values(operatingVoltage);
     double vPeak = vRms * std::sqrt(2);
     circuit << "* AC Mains Voltage Sources\n";
     for (int w = 0; w < numWindings; ++w) {
-        double phaseShift = (2.0 * M_PI * w) / numWindings; // Phase shift for each line
-        circuit << "Vline" << w << " line" << w << " 0 SIN(0 " << vPeak << " " << lineFrequency_Hz << " 0 0 " << phaseShift << ")\n";
+        // Phase shift in degrees (ngspice SIN PHASE is in degrees)
+        // For 2-winding single-phase: L=0°, N=180°
+        // For polyphase: equally spaced (120° for 3-phase)
+        double phaseDeg = (w == 0) ? 0.0 : 180.0;
+        if (numWindings > 2) {
+            phaseDeg = (360.0 * w) / numWindings;
+        }
+        circuit << "Vline" << w << " line" << w << " 0 SIN(0 " << vPeak << " " << lineFrequency_Hz << " 0 0 " << phaseDeg << ")\n";
+    }
+    circuit << "\n";
+
+    // Current sense: 0V voltage source in series (line_w → cmc_in_w)
+    // This lets us measure i(Vsense_w) = winding current
+    circuit << "* Current Sense (0V in series)\n";
+    for (int w = 0; w < numWindings; ++w) {
+        circuit << "Vsense" << w << " line" << w << " cmc_in" << w << " 0\n";
     }
     circuit << "\n";
 
@@ -667,7 +695,7 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     circuit << "Icm cm_src 0 PULSE(0 " << cmNoiseCurrent << " 0 1n 1n "
             << (0.5 / switchingFrequency) << " " << (1.0 / switchingFrequency) << ")\n\n";
 
-    // Coupling capacitors for CM noise
+    // CM noise coupling capacitors: inject noise at CMC input nodes
     circuit << "* CM Noise Coupling Capacitors\n";
     for (int w = 0; w < numWindings; ++w) {
         circuit << "Ccm" << w << " cm_src cmc_in" << w << " " << (parasiticCap_pF_param / numWindings) << "p\n";
@@ -681,7 +709,7 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
                 << std::scientific << inductance << std::fixed << "\n";
     }
 
-    // Coupling between windings
+    // Coupling between windings (tight CM coupling)
     circuit << "\n* CMC Coupling (k ~ 0.99 for tight CM coupling)\n";
     for (int i = 0; i < numWindings; ++i) {
         for (int j = i + 1; j < numWindings; ++j) {
@@ -690,7 +718,7 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     }
     circuit << "\n";
 
-    // Line impedance
+    // Line impedance (LISN-side)
     double lineZ = lineImpedance;
     circuit << "* Line Impedance\n";
     for (int w = 0; w < numWindings; ++w) {
@@ -698,7 +726,7 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     }
     circuit << "\n";
 
-    // Load - differential mode current flows through load
+    // Load — differential mode current flows through load
     double loadR = resolve_dimensional_values(operatingVoltage) / operatingCurrent;
     circuit << "* Load (EUT)\n";
     if (numWindings == 2) {
@@ -713,18 +741,11 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     }
     circuit << "\n";
 
-    // Current sense resistors for measuring winding currents
-    circuit << "* Current Sense Resistors\n";
-    for (int w = 0; w < numWindings; ++w) {
-        circuit << "Vsense" << w << " cmc_in" << w << " sense" << w << " 0\n";
-    }
-    circuit << "\n";
-
     // Transient Analysis
     circuit << "* Transient Analysis\n";
     circuit << ".tran " << std::scientific << timeStep << " " << simTime << std::fixed << "\n\n";
 
-    // Save signals
+    // Save signals — voltage at CMC input and output, winding currents
     circuit << "* Output signals\n";
     for (int w = 0; w < numWindings; ++w) {
         circuit << ".save v(cmc_in" << w << ") v(cmc_out" << w << ") i(Vsense" << w << ")\n";
@@ -750,12 +771,17 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_realistic_cmc(
         throw std::runtime_error("ngspice is not available for CMC simulation");
     }
 
+    // Calculate switching frequency (same formula used by generate_realistic_cmc_circuit)
+    double switchingFrequency = dvdt_V_ns_param * 1e9 / resolve_dimensional_values(operatingVoltage);
+    switchingFrequency = std::min(switchingFrequency, 1e6);
+    switchingFrequency = std::max(switchingFrequency, 10e3);
+
     // Generate circuit with realistic line + noise
     std::string netlist = generate_realistic_cmc_circuit(
         inductance, parasiticCap_pF_param, dvdt_V_ns_param, lineFrequency);
 
     SimulationConfig config;
-    config.frequency = lineFrequency;
+    config.frequency = switchingFrequency;  // Use switching freq for waveform extraction
     config.keepTempFiles = false;
     config.extractOnePeriod = false;
 
@@ -765,12 +791,6 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_realistic_cmc(
         throw std::runtime_error("CMC realistic simulation failed: " + simResult.errorMessage);
     }
 
-    // DEBUG: Print available waveform names
-    std::cerr << "[CMC DEBUG] Available waveforms (" << simResult.waveformNames.size() << "):" << std::endl;
-    for (const auto& name : simResult.waveformNames) {
-        std::cerr << "  - " << name << std::endl;
-    }
-
     int numWindings = get_number_of_windings();
 
     // Create excitations for each winding
@@ -778,7 +798,7 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_realistic_cmc(
     for (int w = 0; w < numWindings; ++w) {
         // ngspice output names: voltage is node name, current is component name + "#branch"
         std::string vinName = "cmc_in" + std::to_string(w);
-        std::string iName = "vsense" + std::to_string(w) + "#branch";  // ngspice adds #branch for currents
+        std::string iName = "vsense" + std::to_string(w) + "#branch";
 
         // Find waveforms for this winding
         std::vector<double> time;
@@ -797,12 +817,7 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_realistic_cmc(
             }
         }
 
-        // DEBUG: Log what we found
-        std::cerr << "[CMC DEBUG] Winding " << w << ": time=" << time.size() 
-                  << " voltage=" << voltage.size() << " current=" << current.size() << std::endl;
-
         if (!time.empty() && !voltage.empty() && !current.empty()) {
-            std::cerr << "[CMC DEBUG] Creating excitation for winding " << w << std::endl;
             // Create voltage waveform
             Waveform voltageWaveform;
             voltageWaveform.set_data(voltage);
@@ -813,30 +828,25 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_realistic_cmc(
             currentWaveform.set_data(current);
             currentWaveform.set_time(time);
 
-            // Build excitation using complete_excitation from Topology
+            // Build excitation at the switching frequency — that is the frequency
+            // relevant for core losses and winding AC losses in the CMC.
             auto excitation = Topology::complete_excitation(
                 currentWaveform,
                 voltageWaveform,
-                lineFrequency,
+                switchingFrequency,
                 "Winding " + std::to_string(w));
 
             excitations.push_back(excitation);
         }
     }
 
-    // DEBUG: Log excitation count
-    std::cerr << "[CMC DEBUG] Total excitations created: " << excitations.size() << std::endl;
-
     if (!excitations.empty()) {
         OperatingPoint operatingPoint;
         operatingPoint.set_excitations_per_winding(excitations);
         operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
-        operatingPoint.set_name("CMC_Realistic_Line_" + std::to_string(static_cast<int>(lineFrequency)) + "Hz");
+        operatingPoint.set_name("CMC_Realistic_" + std::to_string(static_cast<int>(switchingFrequency / 1000)) + "kHz");
 
         operatingPoints.push_back(operatingPoint);
-        std::cerr << "[CMC DEBUG] Operating point created successfully" << std::endl;
-    } else {
-        std::cerr << "[CMC DEBUG] WARNING: No excitations created!" << std::endl;
     }
 
     return operatingPoints;

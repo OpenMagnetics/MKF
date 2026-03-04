@@ -352,13 +352,16 @@ TEST_CASE("Test_Cmc_RealisticSimulation", "[converter-model][cmc-topology][simul
             CHECK(exc.get_voltage().has_value());
             CHECK(exc.get_current().has_value());
             
-            // Voltage should be around line voltage (230V RMS ~ 325V peak)
+            // The simulation covers only 5 µs of a 50 Hz sine.
+            // At t=0 the SIN starts at 0V, so the mains voltage barely
+            // rises in 5 µs.  The measured voltage is dominated by CM
+            // noise, which is small.  Just verify it's finite and not GV.
             if (exc.get_voltage().has_value() && exc.get_voltage().value().get_waveform()) {
                 auto vWf = exc.get_voltage().value().get_waveform().value();
                 auto data = vWf.get_data();
                 if (!data.empty()) {
-                    double vPeak = *std::max_element(data.begin(), data.end());
-                    CHECK(vPeak > 100.0); // Should be at least 100V
+                    double vMax = *std::max_element(data.begin(), data.end());
+                    CHECK(vMax < 1000.0); // Must NOT be in GV range
                 }
             }
         }
@@ -379,6 +382,351 @@ TEST_CASE("Test_Cmc_RealisticSimulation", "[converter-model][cmc-topology][simul
                 CHECK(time.has_value());
                 CHECK(time.value().size() == data.size());
             }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Realistic CMC Simulation — comprehensive waveform validation
+// Uses the same default values as the WebFrontend CmcWizard
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST_CASE("Test_Cmc_RealisticSimulation_FrontendDefaults", "[converter-model][cmc-topology][simulation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available");
+    }
+
+    // ── Frontend CmcWizard defaults (localData) ─────────────────────
+    //   operatingVoltage:  { nominal: 230 }  → 230 V RMS
+    //   operatingCurrent:  5 A
+    //   lineFrequency:     50 Hz
+    //   lineImpedance:     50 Ω
+    //   ambientTemperature: 25 °C
+    //   numberOfWindings:  2
+    //   parasiticCap_pF:   10 pF
+    //   dvdt_V_ns:         50 V/ns
+    //   inductance:        1 mH (default from getSimulateFn fallback)
+    json j = makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3);
+    CommonModeChoke cmc(j);
+
+    const double inductance      = 1e-3;   // 1 mH
+    const double parasiticCap_pF = 10.0;   // 10 pF (frontend localData default)
+    const double dvdt_V_ns       = 50.0;   // 50 V/ns (frontend localData default)
+    // ── Derived expected values ─────────────────────────────────────
+    // V_peak = 230 × √2 ≈ 325.3 V
+    [[maybe_unused]] const double vPeak = 230.0 * std::sqrt(2.0);
+    // Switching frequency: dV/dt [V/s] / V_operating = 50e9 / 230 ~ 217 MHz
+    //   → capped at 1 MHz
+    const double switchingFrequency = 1e6;
+    // CM noise current: C_parasitic × dV/dt = 10e-12 × 50e9 = 0.5 A
+    // Load: R_load = V_operating / I_operating = 230 / 5 = 46 Ω
+    // Sim time: 5 / f_sw = 5 µs
+    const double expectedSimTime    = 5.0 / switchingFrequency;
+
+    SECTION("Simulation produces one operating point with 2 winding excitations") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+
+        REQUIRE(ops.size() == 1);
+        CHECK(ops[0].get_excitations_per_winding().size() == 2);
+    }
+
+    SECTION("Operating point name contains switching frequency") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        auto name = ops[0].get_name().value_or("");
+        // Should contain "1000kHz" (1 MHz)
+        CHECK(name.find("1000kHz") != std::string::npos);
+    }
+
+    SECTION("Excitation frequency equals the switching frequency (not line frequency)") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        for (const auto& exc : ops[0].get_excitations_per_winding()) {
+            CHECK_THAT(exc.get_frequency(), Catch::Matchers::WithinRel(switchingFrequency, 0.01));
+        }
+    }
+
+    SECTION("Voltage waveform is in the correct range (not GV, not µV)") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        for (const auto& exc : ops[0].get_excitations_per_winding()) {
+            REQUIRE(exc.get_voltage().has_value());
+            REQUIRE(exc.get_voltage()->get_waveform().has_value());
+
+            auto data = exc.get_voltage()->get_waveform()->get_data();
+            REQUIRE(!data.empty());
+
+            double vMax = *std::max_element(data.begin(), data.end());
+            double vMin = *std::min_element(data.begin(), data.end());
+
+            // The simulation only covers 5 µs of the 20 ms line period.
+            // At 50 Hz the mains voltage barely changes in 5 µs, so the
+            // voltage should be near its initial value (close to 0 for a
+            // sine starting at 0 phase), but NOT in the gigavolt range.
+            //
+            // With CM noise superimposed, peak should be at most a few
+            // hundred volts above whatever the mains is at that instant.
+            INFO("vMax = " << vMax << " V, vMin = " << vMin << " V");
+            CHECK(vMax < 1000.0);    // Must NOT be in GV range
+            CHECK(vMin > -1000.0);   // Must NOT be in GV range
+        }
+    }
+
+    SECTION("Current waveform is non-zero") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        for (const auto& exc : ops[0].get_excitations_per_winding()) {
+            REQUIRE(exc.get_current().has_value());
+            REQUIRE(exc.get_current()->get_waveform().has_value());
+
+            auto data = exc.get_current()->get_waveform()->get_data();
+            REQUIRE(!data.empty());
+
+            double iMax = *std::max_element(data.begin(), data.end());
+            double iMin = *std::min_element(data.begin(), data.end());
+            double iPkPk = iMax - iMin;
+
+            INFO("iMax = " << iMax << " A, iMin = " << iMin << " A, iPkPk = " << iPkPk << " A");
+
+            // Current must be non-zero — both line current and CM noise
+            // should be present.
+            // Load current ~ V / (Rload + 2*Rline) = 230 / (46 + 100) ≈ 1.6 A peak
+            // CM noise current ~ 0.5 A peak
+            CHECK(iPkPk > 0.01);     // Must have some current flowing
+        }
+    }
+
+    SECTION("Time vector spans approximately 5 switching periods") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        auto exc = ops[0].get_excitations_per_winding()[0];
+        REQUIRE(exc.get_current().has_value());
+        REQUIRE(exc.get_current()->get_waveform().has_value());
+
+        auto time = exc.get_current()->get_waveform()->get_time();
+        REQUIRE(time.has_value());
+        REQUIRE(time->size() > 10);  // Must have reasonable number of points
+
+        double tStart = time->front();
+        double tEnd   = time->back();
+        double tSpan  = tEnd - tStart;
+
+        INFO("Time span = " << tSpan << " s, expected ~ " << expectedSimTime << " s");
+        // Should be approximately 5 µs (5 / 1e6)
+        CHECK(tSpan > expectedSimTime * 0.5);
+        CHECK(tSpan < expectedSimTime * 2.0);
+    }
+
+    SECTION("Voltage has processed data (peak, rms, etc.)") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        auto exc = ops[0].get_excitations_per_winding()[0];
+        REQUIRE(exc.get_voltage().has_value());
+        REQUIRE(exc.get_voltage()->get_processed().has_value());
+
+        auto processed = exc.get_voltage()->get_processed().value();
+        // Peak voltage should be in volts, not gigavolts
+        if (processed.get_peak().has_value()) {
+            INFO("Processed peak voltage = " << processed.get_peak().value() << " V");
+            CHECK(std::abs(processed.get_peak().value()) < 1000.0);
+        }
+        if (processed.get_rms().has_value()) {
+            INFO("Processed RMS voltage = " << processed.get_rms().value() << " V");
+            CHECK(processed.get_rms().value() < 1000.0);
+        }
+    }
+
+    SECTION("Current has processed data (non-zero rms)") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        auto exc = ops[0].get_excitations_per_winding()[0];
+        REQUIRE(exc.get_current().has_value());
+        REQUIRE(exc.get_current()->get_processed().has_value());
+
+        auto processed = exc.get_current()->get_processed().value();
+        if (processed.get_rms().has_value()) {
+            INFO("Processed RMS current = " << processed.get_rms().value() << " A");
+            CHECK(processed.get_rms().value() > 1e-6);  // Must be non-zero
+        }
+    }
+
+    SECTION("Both windings have similar voltage (symmetric CMC)") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        auto excitations = ops[0].get_excitations_per_winding();
+        REQUIRE(excitations.size() == 2);
+
+        // Both windings of a 2-winding CMC carry the same CM noise
+        // but opposite DM (line) voltages.  The voltages at cmc_in0
+        // and cmc_in1 differ by the mains phase, but their absolute
+        // magnitudes should be in the same order.
+        auto v0data = excitations[0].get_voltage()->get_waveform()->get_data();
+        auto v1data = excitations[1].get_voltage()->get_waveform()->get_data();
+        REQUIRE(!v0data.empty());
+        REQUIRE(!v1data.empty());
+
+        double v0max = *std::max_element(v0data.begin(), v0data.end());
+        double v1max = *std::max_element(v1data.begin(), v1data.end());
+        double v0min = *std::min_element(v0data.begin(), v0data.end());
+        double v1min = *std::min_element(v1data.begin(), v1data.end());
+
+        double v0range = v0max - v0min;
+        double v1range = v1max - v1min;
+
+        INFO("Winding 0 voltage range: " << v0range << " V");
+        INFO("Winding 1 voltage range: " << v1range << " V");
+
+        // Both voltage ranges should be comparable (within 10x)
+        if (v0range > 0 && v1range > 0) {
+            double ratio = v0range / v1range;
+            CHECK(ratio > 0.1);
+            CHECK(ratio < 10.0);
+        }
+    }
+
+    SECTION("Ambient temperature is set correctly") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        auto temp = ops[0].get_conditions().get_ambient_temperature();
+        CHECK_THAT(temp, Catch::Matchers::WithinRel(25.0, 0.01));
+    }
+
+    SECTION("Plot voltage and current waveforms for winding 0") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        // Print diagnostic info for all windings
+        for (size_t w = 0; w < ops[0].get_excitations_per_winding().size(); ++w) {
+            auto& exc = ops[0].get_excitations_per_winding()[w];
+            std::ostringstream diag;
+            diag << "\n--- Winding " << w << " ---\n";
+            diag << "  Frequency: " << exc.get_frequency() << " Hz\n";
+
+            if (exc.get_voltage() && exc.get_voltage()->get_waveform()) {
+                auto vData = exc.get_voltage()->get_waveform()->get_data();
+                auto vTime = exc.get_voltage()->get_waveform()->get_time();
+                double vMax = *std::max_element(vData.begin(), vData.end());
+                double vMin = *std::min_element(vData.begin(), vData.end());
+                diag << "  Voltage: " << vData.size() << " points\n";
+                diag << "    Max: " << vMax << " V, Min: " << vMin << " V, PkPk: " << (vMax - vMin) << " V\n";
+                if (vTime) diag << "    Time: " << vTime->front() << " to " << vTime->back() << " s\n";
+                if (exc.get_voltage()->get_processed()) {
+                    auto p = exc.get_voltage()->get_processed().value();
+                    if (p.get_peak()) diag << "    Proc peak: " << p.get_peak().value() << " V\n";
+                    if (p.get_rms()) diag << "    Proc RMS: " << p.get_rms().value() << " V\n";
+                }
+            }
+            if (exc.get_current() && exc.get_current()->get_waveform()) {
+                auto iData = exc.get_current()->get_waveform()->get_data();
+                double iMax = *std::max_element(iData.begin(), iData.end());
+                double iMin = *std::min_element(iData.begin(), iData.end());
+                diag << "  Current: " << iData.size() << " points\n";
+                diag << "    Max: " << iMax << " A, Min: " << iMin << " A, PkPk: " << (iMax - iMin) << " A\n";
+                if (exc.get_current()->get_processed()) {
+                    auto p = exc.get_current()->get_processed().value();
+                    if (p.get_peak()) diag << "    Proc peak: " << p.get_peak().value() << " A\n";
+                    if (p.get_rms()) diag << "    Proc RMS: " << p.get_rms().value() << " A\n";
+                }
+            }
+            WARN(diag.str());
+        }
+
+        auto exc = ops[0].get_excitations_per_winding()[0];
+
+        if (exc.get_voltage().has_value() && exc.get_voltage()->get_waveform().has_value()) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Cmc_Realistic_Voltage_W0.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(exc.get_voltage()->get_waveform().value());
+            painter.export_svg();
+        }
+
+        if (exc.get_current().has_value() && exc.get_current()->get_waveform().has_value()) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Cmc_Realistic_Current_W0.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(exc.get_current()->get_waveform().value());
+            painter.export_svg();
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Realistic CMC Simulation — with fallback defaults from getSimulateFn
+// (parasiticCap_pF=100, dvdt_V_ns=1)
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST_CASE("Test_Cmc_RealisticSimulation_FallbackDefaults", "[converter-model][cmc-topology][simulation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available");
+    }
+
+    json j = makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3);
+    CommonModeChoke cmc(j);
+
+    // Fallback defaults from CmcWizard.getSimulateFn():
+    //   parasiticCap_pF = 100 (aux.parasiticCap_pF || 100)
+    //   dvdt_V_ns       = 1   (aux.dvdt_V_ns || 1)
+    const double inductance      = 1e-3;
+    const double parasiticCap_pF = 100.0;
+    const double dvdt_V_ns       = 1.0;
+
+    // CM noise current: 100e-12 × 1e9 = 0.1 A
+
+    SECTION("Simulation completes and produces valid operating points") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+
+        REQUIRE(ops.size() == 1);
+        CHECK(ops[0].get_excitations_per_winding().size() == 2);
+    }
+
+    SECTION("Voltage is in realistic range (not GV)") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        for (const auto& exc : ops[0].get_excitations_per_winding()) {
+            REQUIRE(exc.get_voltage().has_value());
+            REQUIRE(exc.get_voltage()->get_waveform().has_value());
+            auto data = exc.get_voltage()->get_waveform()->get_data();
+            REQUIRE(!data.empty());
+
+            double vMax = *std::max_element(data.begin(), data.end());
+            double vMin = *std::min_element(data.begin(), data.end());
+
+            INFO("vMax = " << vMax << " V, vMin = " << vMin << " V");
+            CHECK(vMax < 1000.0);
+            CHECK(vMin > -1000.0);
+        }
+    }
+
+    SECTION("Current is non-zero") {
+        auto ops = cmc.simulate_realistic_cmc(inductance, parasiticCap_pF, dvdt_V_ns);
+        REQUIRE(!ops.empty());
+
+        for (const auto& exc : ops[0].get_excitations_per_winding()) {
+            REQUIRE(exc.get_current().has_value());
+            REQUIRE(exc.get_current()->get_waveform().has_value());
+            auto data = exc.get_current()->get_waveform()->get_data();
+            REQUIRE(!data.empty());
+
+            double iMax = *std::max_element(data.begin(), data.end());
+            double iMin = *std::min_element(data.begin(), data.end());
+
+            INFO("iMax = " << iMax << " A, iMin = " << iMin << " A");
+            CHECK((iMax - iMin) > 1e-6);
         }
     }
 }

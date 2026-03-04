@@ -1,5 +1,6 @@
 #include "support/Utils.h"
 #include "support/Settings.h"
+#include "processors/CircuitSimulatorInterface.h"
 #include <magic_enum.hpp>
 
 namespace OpenMagnetics {
@@ -30,6 +31,10 @@ namespace OpenMagnetics {
         _coilEnableUserWindingLossesModels = false;
         _coreAdviserMaximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
     _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
+        
+        // Circuit simulator export settings (0=LADDER, 1=ANALYTICAL, 2=FRACPOLE, 3=AUTO)
+        _circuitSimulatorCurveFittingMode = 0;  // Default to LADDER for backward compatibility
+        _circuitSimulatorFracpoleOptions = std::nullopt;
     }
 
 
@@ -764,6 +769,21 @@ namespace OpenMagnetics {
     }
     void Settings::set_coil_enable_user_winding_losses_models(bool value) {
         _coilEnableUserWindingLossesModels = value;
+    }
+
+
+    int Settings::get_circuit_simulator_curve_fitting_mode() const {
+        return _circuitSimulatorCurveFittingMode;
+    }
+    void Settings::set_circuit_simulator_curve_fitting_mode(int value) {
+        _circuitSimulatorCurveFittingMode = value;
+    }
+
+    std::optional<std::map<std::string, double>> Settings::get_circuit_simulator_fracpole_options() const {
+        return _circuitSimulatorFracpoleOptions;
+    }
+    void Settings::set_circuit_simulator_fracpole_options(std::optional<std::map<std::string, double>> value) {
+        _circuitSimulatorFracpoleOptions = value;
     }
 
 } // namespace OpenMagnetics

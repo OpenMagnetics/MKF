@@ -332,16 +332,23 @@ CoilAlignment Coil::get_turns_alignment(std::optional<std::string> sectionName) 
 
 CoilAlignment Coil::get_section_alignment() {
     auto bobbin = resolve_bobbin();
+    std::cout << "[get_section_alignment] Bobbin has processed_description: " << (bobbin.get_processed_description() ? "yes" : "no") << std::endl;
     if (!bobbin.get_processed_description()) {
         return _sectionAlignment;
     }
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+    std::cout << "[get_section_alignment] Number of windingWindows: " << windingWindows.size() << std::endl;
     if (windingWindows.size() > 1) {
         throw NotImplementedException("Bobbins with more than winding window not implemented yet");
     }
-    if (windingWindows[0].get_sections_alignment()) {
-        return windingWindows[0].get_sections_alignment().value();
+    if (windingWindows.size() > 0) {
+        std::cout << "[get_section_alignment] windingWindows[0] has sections_alignment: " << (windingWindows[0].get_sections_alignment() ? "yes" : "no") << std::endl;
+        if (windingWindows[0].get_sections_alignment()) {
+            auto alignment = windingWindows[0].get_sections_alignment().value();
+            std::cout << "[get_section_alignment] sections_alignment value: " << static_cast<int>(alignment) << std::endl;
+            return alignment;
+        }
     }
     return _sectionAlignment;
 }
@@ -2055,6 +2062,7 @@ bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType, double
     group.set_partial_windings(partialWindings);
     group.set_sections_orientation(get_winding_orientation());
     group.set_type(coilType);
+    std::cout << "[create_default_group] Setting group type to: " << (coilType == WiringTechnology::PRINTED ? "PRINTED" : "WOUND") << std::endl;
     set_groups_description(std::vector<Group>{group});
 
     return true;
@@ -3215,7 +3223,10 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     }
 
     set_winding_orientation(WindingOrientation::CONTIGUOUS);
-    set_section_alignment(CoilAlignment::CENTERED);
+    // Read section alignment from bobbin's windingWindows instead of hardcoding CENTERED
+    auto sectionAlignment = get_section_alignment();
+    std::cout << "[wind_by_planar_sections] sectionAlignment from get_section_alignment(): " << static_cast<int>(sectionAlignment) << std::endl;
+    set_section_alignment(sectionAlignment);
     set_turns_alignment(CoilAlignment::SPREAD);
 
     auto groups = get_groups_description().value();
@@ -3282,7 +3293,32 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         }
     }
     double currentSectionCenterWidth = roundFloat(group.get_coordinates()[0], 9);
-    double currentSectionCenterHeight = roundFloat(group.get_coordinates()[1] + totalSectionHeight / 2, 9);
+    double windowHeight = group.get_dimensions()[1];
+    double groupCenterY = group.get_coordinates()[1];
+    double currentSectionCenterHeight;
+    
+    // Calculate starting Y position based on section alignment
+    // Sections are placed from top to bottom
+    switch (sectionAlignment) {
+        case CoilAlignment::OUTER_OR_BOTTOM:
+            // Place sections at the bottom of the window
+            // Start higher so the stack ends at the bottom
+            currentSectionCenterHeight = roundFloat(groupCenterY + windowHeight/2 - totalSectionHeight + sectionHeightPerWinding[0]/2, 9);
+            break;
+        case CoilAlignment::CENTERED:
+            // Center the stack in the window
+            currentSectionCenterHeight = roundFloat(groupCenterY - totalSectionHeight/2 + sectionHeightPerWinding[0]/2, 9);
+            break;
+        case CoilAlignment::SPREAD:
+            // Spread sections to fill the window (like centered but using full height)
+            currentSectionCenterHeight = roundFloat(groupCenterY + totalSectionHeight/2, 9);
+            break;
+        case CoilAlignment::INNER_OR_TOP:
+        default:
+            // Start from top (original behavior)
+            currentSectionCenterHeight = roundFloat(groupCenterY + totalSectionHeight/2, 9);
+            break;
+    }
 
     for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
         Section section;

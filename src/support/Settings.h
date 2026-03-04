@@ -4,6 +4,8 @@
 #include "Definitions.h"
 #include "Models.h"
 
+
+
 // ============================================================================
 // IEC Standard Selection for Effective Parameter Calculation
 // ============================================================================
@@ -124,6 +126,10 @@ class Settings
         ElectricFieldOutputUnit _electricFieldOutputUnit;
 
         bool _coilEnableUserWindingLossesModels = false;
+
+        // Circuit simulator export settings (LADDER=0, ANALYTICAL=1, FRACPOLE=2, AUTO=3)
+        int _circuitSimulatorCurveFittingMode = 0;  // Default to LADDER
+        std::optional<std::map<std::string, double>> _circuitSimulatorFracpoleOptions;
 
         bool _verbose = false;
 
@@ -407,6 +413,12 @@ class Settings
 
         bool get_coil_enable_user_winding_losses_models() const;
         void set_coil_enable_user_winding_losses_models(bool value);
+
+        // Circuit simulator export settings
+        int get_circuit_simulator_curve_fitting_mode() const;
+        void set_circuit_simulator_curve_fitting_mode(int value);
+        std::optional<std::map<std::string, double>> get_circuit_simulator_fracpole_options() const;
+        void set_circuit_simulator_fracpole_options(std::optional<std::map<std::string, double>> value);
 
 
     };

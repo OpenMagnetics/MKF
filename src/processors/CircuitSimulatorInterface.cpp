@@ -10,9 +10,10 @@
 #include "support/Settings.h"
 #include <filesystem>
 #include <ctime>
-#include "levmar.h"
+// levmar.h removed - using Eigen LevenbergMarquardt
 #include <float.h>
 #include "support/Exceptions.h"
+#include "physical_models/CoreLosses.h"
 
 namespace OpenMagnetics {
 
@@ -84,13 +85,11 @@ double CircuitSimulatorExporter::ladder_model(double x[], double frequency, doub
     auto R5 = std::complex<double>(x[8], 0);
     auto L5 = std::complex<double>(0, w * x[9]);
 
-    if (x[1] > 1e-7) {
-        return 0;
-    }
-
+    // FIXED: Removed overly tight x[1] > 1e-7 constraint
+    // FIXED: Return large penalty instead of 0 to guide optimizer
     for(int i=0; i<10; ++i) {
         if (x[i] < 0) {
-            return 0;
+            return 1e30;  // Large penalty value instead of 0
         }
     }
 
@@ -116,9 +115,10 @@ double CircuitSimulatorExporter::core_ladder_model(double x[], double frequency,
     auto R3 = std::complex<double>(x[4], 0);
     auto L3 = std::complex<double>(0, w * x[5]);
 
+    // FIXED: Return large penalty instead of 0 to guide optimizer correctly
     for(int i=0; i<6; ++i) {
         if (x[i] < 0) {
-            return 0;
+            return 1e30;  // Large penalty value instead of 0
         }
     }
 
@@ -137,7 +137,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     const size_t numberUnknowns = 10;
 
     const size_t numberElements = 40;
-    const size_t numberElementsPlusOne = 101;
+    const size_t numberElementsPlusOne = numberElements + 1;
     size_t loopIterations = 15;
     double startingFrequency = 0.1;
     double endingFrequency = 10000000;
@@ -162,7 +162,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
             for (size_t index = 0; index < numberUnknowns; ++index) {
                 coefficients[index] = initialState;
             }
-            double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+            double opts[5], info[10];
 
             double lmInitMu = 1e-03;
             double lmStopThresh = 1e-25;
@@ -181,7 +181,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
                 dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
             }
 
-            dlevmar_dif(CircuitSimulatorExporter::ladder_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+            eigen_levmar_dif(CircuitSimulatorExporter::ladder_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
 
             double errorAverage = 0;
             for (size_t index = 0; index < frequenciesVector.size(); ++index) {
@@ -237,7 +237,7 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
         for (size_t index = 0; index < numberUnknowns; ++index) {
             coefficients[index] = initialState;
         }
-        double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+        double opts[5], info[10];
 
         double lmInitMu = 1e-03;
         double lmStopThresh = 1e-25;
@@ -256,11 +256,11 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
             dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
         }
 
-        dlevmar_dif(CircuitSimulatorExporter::core_ladder_func, coefficients, coreResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+        eigen_levmar_dif(CircuitSimulatorExporter::core_ladder_func, coefficients, coreResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
 
         double errorAverage = 0;
         for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-            double modeledAcResistance = CircuitSimulatorExporter::ladder_model(coefficients, frequenciesVector[index], coreResistances[0]);
+            double modeledAcResistance = CircuitSimulatorExporter::core_ladder_model(coefficients, frequenciesVector[index], coreResistances[0]);
             double error = fabs(valuePoints[index] - modeledAcResistance) / valuePoints[index];
             errorAverage += error;
         }
@@ -281,7 +281,7 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
 
 
 std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_analytical(Magnetic magnetic, double temperature) {
-    const size_t numberUnknowns = 4;
+    const size_t numberUnknowns = 3;  // analytical_model only uses x[0], x[1], x[2]
     const size_t numberElements = 20;
 
     double startingFrequency = 0.1;
@@ -303,7 +303,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
         for (size_t index = 0; index < numberUnknowns; ++index) {
             coefficients[index] = 1;
         }
-        double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+        double opts[5], info[10];
 
         double lmInitMu = 1e-03;
         double lmStopThresh = 1e-25;
@@ -320,7 +320,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
             frequencies[index] = frequenciesVector[index];
         }
 
-        dlevmar_dif(CircuitSimulatorExporter::analytical_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&frequencies));
+        eigen_levmar_dif(CircuitSimulatorExporter::analytical_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&frequencies));
 
         acResistanceCoefficientsPerWinding.push_back(std::vector<double>());
         for (auto coefficient : coefficients) {
@@ -331,10 +331,136 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     return acResistanceCoefficientsPerWinding;
 }
 
+// =============================================================================
+// FRACPOLE RL SYNTHESIS (Kundert DD-profile)
+//
+// Converts fitted (h, alpha) into concrete R,L values for a series chain of
+// parallel RL stages that approximate Z_skin(f) = h * (2*pi*f)^alpha.
+// =============================================================================
+static std::vector<double> compute_fracpole_rl_coefficients(
+    double h, double alpha, double f0, double f1, double lumpsPerDecade = 1.5)
+{
+    double decades = log10(f1 / f0);
+    int N = std::max(2, static_cast<int>(std::round(lumpsPerDecade * decades)));
+
+    double omega0 = 2 * std::numbers::pi * f0;
+    double omega1 = 2 * std::numbers::pi * f1;
+    double sigma = pow(omega1 / omega0, 1.0 / (2.0 * N));
+
+    // DD profile: poles at omega0 * sigma^(2k), zeros at omega0 * sigma^(2k+1)
+    std::vector<double> poles(N + 1), zeros(N);
+    for (int k = 0; k <= N; ++k)
+        poles[k] = omega0 * pow(sigma, 2.0 * k);
+    for (int k = 0; k < N; ++k)
+        zeros[k] = omega0 * pow(sigma, 2.0 * k + 1);
+
+    // G(s) = Z_skin(s)/s = h * s^(alpha-1)
+    // Rational approximation: G(s) = K * prod(s+zeros) / prod(s+poles)
+    double beta = alpha - 1.0;
+    double omega_ref = sqrt(omega0 * omega1);
+
+    double H_num_mag = 1.0, H_den_mag = 1.0;
+    for (int j = 0; j < N; ++j)
+        H_num_mag *= sqrt(omega_ref * omega_ref + zeros[j] * zeros[j]);
+    for (int k = 0; k <= N; ++k)
+        H_den_mag *= sqrt(omega_ref * omega_ref + poles[k] * poles[k]);
+
+    double target_mag = h * pow(omega_ref, beta);
+    double K = target_mag * H_den_mag / H_num_mag;
+
+    // Partial fraction expansion: G(s) = sum_k A_k / (s + poles[k])
+    // Z_skin(s) = s * G(s) = sum_k A_k * s / (s + poles[k])
+    // Each term = parallel RL stage: R_k = A_k, L_k = A_k / poles[k]
+    std::vector<double> coefficients;
+    for (int k = 0; k <= N; ++k) {
+        double residue_num = K;
+        for (int j = 0; j < N; ++j) {
+            residue_num *= (zeros[j] - poles[k]);
+        }
+        double residue_den = 1.0;
+        for (int m = 0; m <= N; ++m) {
+            if (m != k)
+                residue_den *= (poles[m] - poles[k]);
+        }
+        double A_k = residue_num / residue_den;
+
+        if (A_k > 1e-30) {
+            double R_k = A_k;
+            double L_k = A_k / poles[k];
+            coefficients.push_back(R_k);
+            coefficients.push_back(L_k);
+        }
+    }
+
+    return coefficients;
+}
+
+// Compute fracpole coefficients per winding:
+// 1. Fit R(f) = Rdc + h*(2*pi*f)^alpha  (2 unknowns: h, alpha)
+// 2. Synthesize RL values analytically from Kundert DD-profile algorithm
+std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_fracpole(
+    Magnetic magnetic, double temperature)
+{
+    const size_t numberUnknowns = 2; // h, alpha
+    const size_t numberElements = 20;
+    const size_t numberElementsPlusOne = numberElements + 1;
+    double startingFrequency = 0.1;
+    double endingFrequency = 10000000;
+    auto coil = magnetic.get_coil();
+
+    std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        Curve2D windingAcResistanceData = Sweeper().sweep_winding_resistance_over_frequency(
+            magnetic, startingFrequency, endingFrequency, numberElements, windingIndex, temperature);
+        auto frequenciesVector = windingAcResistanceData.get_x_points();
+        auto valuePoints = windingAcResistanceData.get_y_points();
+
+        double acResistances[numberElements];
+        for (size_t index = 0; index < valuePoints.size(); ++index) {
+            acResistances[index] = valuePoints[index];
+        }
+
+        double dcResistanceAndFrequencies[numberElementsPlusOne];
+        dcResistanceAndFrequencies[0] = acResistances[0]; // DC resistance
+        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+            dcResistanceAndFrequencies[index + 1] = frequenciesVector[index];
+        }
+
+        double coefficients[2];
+        coefficients[0] = 1e-4; // Initial guess for h
+        coefficients[1] = 0.5;  // Initial guess for alpha (skin effect)
+
+        double opts[5], info[10];
+        opts[0] = 1e-03;
+        opts[1] = 1e-25;
+        opts[2] = 1e-25;
+        opts[3] = 1e-25;
+        opts[4] = 1e-19;
+
+        eigen_levmar_dif(CircuitSimulatorExporter::fracpole_skin_func,
+                         coefficients, acResistances, numberUnknowns, numberElements,
+                         10000, opts, info, NULL, NULL,
+                         static_cast<void*>(&dcResistanceAndFrequencies));
+
+        double h_fit = std::max(coefficients[0], 1e-15);
+        double alpha_fit = std::clamp(coefficients[1], 0.1, 1.0);
+
+        auto rlCoefficients = compute_fracpole_rl_coefficients(
+            h_fit, alpha_fit, startingFrequency, endingFrequency, 1.5);
+
+        acResistanceCoefficientsPerWinding.push_back(rlCoefficients);
+    }
+
+    return acResistanceCoefficientsPerWinding;
+}
+
 
 std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(Magnetic magnetic, double temperature, CircuitSimulatorExporterCurveFittingModes mode) {
     if (mode == CircuitSimulatorExporterCurveFittingModes::LADDER) {
         return calculate_ac_resistance_coefficients_per_winding_ladder(magnetic, temperature);
+    }
+    else if (mode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
+        return calculate_ac_resistance_coefficients_per_winding_fracpole(magnetic, temperature);
     }
     else {
         return calculate_ac_resistance_coefficients_per_winding_analytical(magnetic, temperature);
@@ -342,12 +468,10 @@ std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistan
 }
 
 CircuitSimulatorExporterSimbaModel::CircuitSimulatorExporterSimbaModel() {
+    // FIXED: Was seeding with random_device then immediately overwriting with time(0)
+    // Now use random_device only, which provides proper entropy
     std::random_device rd;
     _gen = std::mt19937(rd());
-
-    std::seed_seq sseq{time(0)};
-    
-    _gen.seed(sseq);
 }
 
 std::shared_ptr<CircuitSimulatorExporterModel> CircuitSimulatorExporterModel::factory(CircuitSimulatorExporterModels programName){
@@ -470,6 +594,13 @@ ordered_json CircuitSimulatorExporterSimbaModel::create_inductor(double inductan
     return deviceJson;
 }
 
+ordered_json CircuitSimulatorExporterSimbaModel::create_capacitor(double capacitance, std::vector<int> coordinates, int angle, std::string name) {
+    ordered_json deviceJson = create_device("Capacitor", coordinates, angle, name);
+    deviceJson["Parameters"]["Value"] = to_string(capacitance, _precision);
+    deviceJson["Parameters"]["Vinit"] = "0";
+    return deviceJson;
+}
+
 std::pair<std::vector<ordered_json>, std::vector<ordered_json>> CircuitSimulatorExporterSimbaModel::create_ladder(std::vector<double> ladderCoefficients, std::vector<int> coordinates, std::string name) {
     std::vector<ordered_json> ladderJsons;
     std::vector<ordered_json> ladderConnectorsJsons;
@@ -498,6 +629,44 @@ std::pair<std::vector<ordered_json>, std::vector<ordered_json>> CircuitSimulator
         }
     }
 
+    return {ladderJsons, ladderConnectorsJsons};
+}
+
+std::pair<std::vector<ordered_json>, std::vector<ordered_json>> CircuitSimulatorExporterSimbaModel::create_fracpole_ladder(
+    const FractionalPoleNetwork& net, std::vector<int> coordinates, const std::string& name) {
+    std::vector<ordered_json> ladderJsons;
+    std::vector<ordered_json> ladderConnectorsJsons;
+    coordinates[0] -= 6;
+
+    for (size_t k = 0; k < net.stages.size(); ++k) {
+        std::string ks = std::to_string(k);
+        // Resistor (series, horizontal)
+        auto resistorJson = create_resistor(net.stages[k].R * net.opts.coef, coordinates, 180,
+                                            name + " Fracpole R" + ks);
+        ladderJsons.push_back(resistorJson);
+        coordinates[1] -= 3;
+        coordinates[0] += 3;
+        // Capacitor (shunt, vertical) - replaces the inductor in ladder mode
+        auto capacitorJson = create_capacitor(net.stages[k].C / net.opts.coef, coordinates, 90,
+                                              name + " Fracpole C" + ks);
+        ladderJsons.push_back(capacitorJson);
+        coordinates[1] -= 3;
+        coordinates[0] -= 3;
+        // Connector between stages
+        {
+            std::vector<int> top = {coordinates[0], coordinates[1] + 1};
+            std::vector<int> bot = {coordinates[0], coordinates[1] + 7};
+            auto connJson = create_connector(top, bot,
+                "Fracpole connector " + name + " stage " + ks);
+            ladderConnectorsJsons.push_back(connJson);
+        }
+        if (k == net.stages.size() - 1) {
+            std::vector<int> top = {coordinates[0], coordinates[1] + 1};
+            std::vector<int> bot = {coordinates[0] + 6, coordinates[1] + 1};
+            auto connJson = create_connector(top, bot, "Fracpole final connector " + name);
+            ladderConnectorsJsons.push_back(connJson);
+        }
+    }
     return {ladderJsons, ladderConnectorsJsons};
 }
 
@@ -664,6 +833,12 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     std::vector<std::vector<int>> columnTopCoordinates;
     
     auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature);
+    // Resolve AUTO mode from settings (fracpole support)
+    auto resolvedMode_sb = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
+    std::vector<FractionalPoleNetwork> fracpoleNets_sb;
+    if (resolvedMode_sb == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
+        fracpoleNets_sb = CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(magnetic, temperature);
+    }
     auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
     double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
     int numberLadderPairElements = acResistanceCoefficientsPerWinding[0].size() / 2 - 1;
@@ -731,7 +906,13 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
             coordinates[0] -= 6;
             acResistorJson = create_resistor(dcResistanceThisWinding, coordinates, 180, winding.get_name() + " AC resistance");
 
-            auto aux = create_ladder(acResistanceCoefficientsPerWinding[windingIndex], coordinates, winding.get_name());
+            std::pair<std::vector<ordered_json>, std::vector<ordered_json>> aux;
+            if (resolvedMode_sb == CircuitSimulatorExporterCurveFittingModes::FRACPOLE &&
+                windingIndex < fracpoleNets_sb.size()) {
+                aux = create_fracpole_ladder(fracpoleNets_sb[windingIndex], coordinates, winding.get_name());
+            } else {
+                aux = create_ladder(acResistanceCoefficientsPerWinding[windingIndex], coordinates, winding.get_name());
+            }
             if (acResistanceCoefficientsPerWinding[windingIndex].size() > 0) {
                 coordinates[0] -= 6;
             }
@@ -751,7 +932,13 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
             coordinates[0] += 4;
             acResistorJson = create_resistor(dcResistanceThisWinding, coordinates, 180, winding.get_name() + " AC resistance");
 
-            auto aux = create_ladder(acResistanceCoefficientsPerWinding[windingIndex], {coordinates[0] + 12, coordinates[1]}, winding.get_name());
+            std::pair<std::vector<ordered_json>, std::vector<ordered_json>> aux;
+            if (resolvedMode_sb == CircuitSimulatorExporterCurveFittingModes::FRACPOLE &&
+                windingIndex < fracpoleNets_sb.size()) {
+                aux = create_fracpole_ladder(fracpoleNets_sb[windingIndex], {coordinates[0] + 12, coordinates[1]}, winding.get_name());
+            } else {
+                aux = create_ladder(acResistanceCoefficientsPerWinding[windingIndex], {coordinates[0] + 12, coordinates[1]}, winding.get_name());
+            }
             ladderJsons = aux.first;
             ladderConnectorsJsons = aux.second;
             if (acResistanceCoefficientsPerWinding[windingIndex].size() > 0) {
@@ -934,7 +1121,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         columnBottomCoordinatesAux[0] += _modelSize / 2;
         auto bottomConnectorJson = create_connector(columnBottomCoordinates[0], columnBottomCoordinatesAux, "Bottom Connector between column " + std::to_string(0) + " and middle");
         device["SubcircuitDefinition"]["Connectors"].push_back(bottomConnectorJson);
-        auto topConnectorJson = create_connector(columnTopCoordinates[0], columnBottomCoordinatesAux, "Rop Connector between column " + std::to_string(0) + " and middle");
+        auto topConnectorJson = create_connector(columnTopCoordinates[0], columnBottomCoordinatesAux, "Top Connector between column " + std::to_string(0) + " and middle");
         device["SubcircuitDefinition"]["Connectors"].push_back(topConnectorJson);
         device["SubcircuitDefinition"]["Connectors"] = merge_connectors(device["SubcircuitDefinition"]["Connectors"]);
     }
@@ -952,6 +1139,86 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     return simulation.dump(2);
 }
 
+// =============================================================================
+// FRACPOLE SPICE EMITTERS
+// =============================================================================
+
+// Emit the fracpole subcircuit + instantiation for winding i in NgSpice/LTSpice format.
+// The winding resistance model is:
+//   Rdc in series with the skin_effect subcircuit (fracpole + gyrator).
+//   P+ ---[Rdc]---[skin_effect]--- Node_R_Lmag
+static std::string emit_fracpole_winding_spice(
+    const FractionalPoleNetwork& net, size_t windingIndex, const std::string& is,
+    double dcResistance) {
+    std::string s;
+    const std::string fp_name = "fracpole_w" + is;
+    const std::string sk_name = "skin_effect_w" + is;
+
+    // Fracpole subcircuit definition (R/C stages)
+    s += "* Winding " + is + " skin-effect fracpole (alpha=0.5, "
+       + std::to_string(net.stages.size()) + " stages)\n";
+    s += ".subckt " + fp_name + " p n\n";
+    s += ".param coef=" + to_string(net.opts.coef, 12) + "\n";
+    for (size_t k = 0; k < net.stages.size(); ++k) {
+        std::string kk = std::to_string(k + 1);
+        s += "R" + kk + " p " + kk + " r=" + to_string(net.stages[k].R, 12) + "*coef\n";
+        s += "C" + kk + " " + kk + " n c=" + to_string(net.stages[k].C, 12) + "/coef\n";
+    }
+    if (net.Cinf > 0.0)
+        s += "Cinf p n c=" + to_string(net.Cinf, 12) + "/coef\n";
+    if (net.Rinf > 0.0)
+        s += "Rinf p n r=" + to_string(net.Rinf, 12) + "*coef\n";
+    s += ".ends " + fp_name + "\n\n";
+
+    // Skin-effect subcircuit definition (fracpole + gyrator)
+    // The gyrator converts impedance fracpole -> admittance fracpole
+    // so resistance increases with frequency (skin effect)
+    s += ".subckt " + sk_name + " 1 2\n";
+    s += ".param scaling=1MEG gmin=1e-12\n";
+    s += "* Gyrator: converts impedance fracpole to admittance fracpole\n";
+    s += "Eg1 3 0 1 2 1\n";          // VCVS sense: input port voltage
+    s += "Gg1 1 2 3 0 1\n";          // VCCS: drives port with gyrator current
+    s += "Rg1 3 0 r={1/gmin}\n";     // Termination
+    s += "Xfp 3 0 " + fp_name + "\n";
+    s += ".ends " + sk_name + "\n\n";
+
+    // DC resistance element
+    s += "Rdc" + is + " P" + is + "+ Node_fp_" + is + " {Rdc_" + is + "_Value}\n";
+    // Skin effect instance
+    s += "Xskin" + is + " Node_fp_" + is + " Node_R_Lmag_" + is + " " + sk_name + "\n";
+
+    return s;
+}
+
+// Emit the fracpole subcircuit for core losses.
+// Core loss is represented as a frequency-dependent resistance in parallel
+// with the magnetizing inductance.
+static std::string emit_fracpole_core_spice(
+    const FractionalPoleNetwork& net, size_t numWindings) {
+    std::string s;
+    const std::string fp_name = "fracpole_core";
+
+    s += "* Core loss fracpole (alpha=" + to_string(net.opts.alpha, 3) + ", "
+       + std::to_string(net.stages.size()) + " stages)\n";
+    s += ".subckt " + fp_name + " p n\n";
+    s += ".param coef=" + to_string(net.opts.coef, 12) + "\n";
+    for (size_t k = 0; k < net.stages.size(); ++k) {
+        std::string kk = std::to_string(k + 1);
+        s += "R" + kk + " p " + kk + " r=" + to_string(net.stages[k].R, 12) + "*coef\n";
+        s += "C" + kk + " " + kk + " n c=" + to_string(net.stages[k].C, 12) + "/coef\n";
+    }
+    if (net.Cinf > 0.0)
+        s += "Cinf p n c=" + to_string(net.Cinf, 12) + "/coef\n";
+    if (net.Rinf > 0.0)
+        s += "Rinf p n r=" + to_string(net.Rinf, 12) + "*coef\n";
+    s += ".ends " + fp_name + "\n\n";
+
+    // Instantiate in parallel with the magnetizing inductance node
+    s += "Xcore_loss Node_R_Lmag_1 P1- " + fp_name + "\n";
+
+    return s;
+}
+
 std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     std::string headerString = "* Magnetic model made with OpenMagnetics\n";
     headerString += "* " + magnetic.get_reference() + "\n\n";
@@ -966,11 +1233,20 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature);
     auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
+    // Resolve AUTO mode from settings
+    auto resolvedMode = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
+    std::vector<FractionalPoleNetwork> fracpoleNets;
+    std::optional<FractionalPoleNetwork> coreFracNet;
+    if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
+        fracpoleNets = CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(magnetic, temperature);
+        try { coreFracNet = CircuitSimulatorExporter::calculate_core_fracpole_network(magnetic, temperature); }
+        catch (...) {}
+    }
+
     parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
     
     // Store coupling coefficients for each pair (indexed from winding 1)
-    // couplingCoeffs[i] = coupling between winding 1 and winding (i+2), i.e., k12, k13, k14, ...
     std::vector<double> couplingCoeffs;
     size_t numWindings = coil.get_functional_description().size();
     
@@ -981,12 +1257,10 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
         if (index > 0) {
             double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
-            // Clamp leakage inductance to avoid negative or very low coupling
             if (leakageInductance >= magnetizingInductance) {
-                leakageInductance = magnetizingInductance * 0.1;  // Limit to 90% coupling minimum
+                leakageInductance = magnetizingInductance * 0.1;
             }
             double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
-            // Store for later use in K statement generation
             couplingCoeffs.push_back(couplingCoefficient);
             parametersString += ".param Llk_" + is + "_Value=" + std::to_string(leakageInductance) + "\n";
             parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient) + "\n";
@@ -994,17 +1268,24 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
 
         std::vector<std::string> c = to_string(acResistanceCoefficientsPerWinding[index]);
 
-        if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
-            throw std::invalid_argument("Analytica mode not supported in NgSpice");
+        // FRACPOLE mode: emit fracpole-based winding subcircuit
+        if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
+            if (index < fracpoleNets.size()) {
+                circuitString += emit_fracpole_winding_spice(fracpoleNets[index], index, is, effectiveResistanceThisWinding);
+            } else {
+                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            }
+            circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+        }
+        else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
+            throw std::invalid_argument("Analytical mode not supported in NgSpice");
         }
         else {
-            // Check if ladder coefficients are valid (inductance values should be small, < 0.1H)
-            // If fitting failed, coefficients can be very large (1.0H or more) which breaks the circuit
+            // LADDER mode (default)
             bool validLadderCoeffs = true;
             for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
                 double inductanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex + 1];
                 double resistanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex];
-                // Sanity check: inductance should be < 0.1H (100mH), resistance should be < 100 Ohm per ladder element
                 if (inductanceVal > 0.1 || resistanceVal > 100.0 || inductanceVal < 0 || resistanceVal < 0) {
                     validLadderCoeffs = false;
                     break;
@@ -1012,7 +1293,6 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             }
             
             if (validLadderCoeffs && acResistanceCoefficientsPerWinding[index].size() >= 2) {
-                // Use full ladder network for AC resistance modeling
                 for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
                     std::string ladderIndexs = std::to_string(ladderIndex);
                     circuitString += "Lladder" + is + "_" + ladderIndexs + " P" + is + "+ Node_Lladder_" + is + "_" + ladderIndexs + " " + c[ladderIndex + 1] + "\n";
@@ -1025,14 +1305,9 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
                 }
                 circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             } else {
-                // Ladder fitting failed - use simplified model with just DC resistance
-                // Short circuit P+ directly to Node_R_Lmag with DC resistance only
                 circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             }
-            // Lmag: dot (first terminal) at Node_R_Lmag, undot at P-
-            // This ensures consistent polarity with standard transformer convention
             circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
-
         }
 
         headerString += " P" + is + "+ P" + is + "-";
@@ -1084,6 +1359,11 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         }
     }
 
+    // FRACPOLE: append core loss fracpole subcircuit if available
+    if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && coreFracNet.has_value()) {
+        circuitString += emit_fracpole_core_spice(coreFracNet.value(), numWindings);
+    }
+
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
 }
 
@@ -1101,6 +1381,16 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
     auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature);
     auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
+    // Resolve AUTO mode from settings
+    auto resolvedMode_lt = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
+    std::vector<FractionalPoleNetwork> fracpoleNets_lt;
+    std::optional<FractionalPoleNetwork> coreFracNet_lt;
+    if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
+        fracpoleNets_lt = CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(magnetic, temperature);
+        try { coreFracNet_lt = CircuitSimulatorExporter::calculate_core_fracpole_network(magnetic, temperature); }
+        catch (...) {}
+    }
+
     parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
     for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
@@ -1110,6 +1400,9 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
         if (index > 0) {
             double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
+            if (leakageInductance >= magnetizingInductance) {
+                leakageInductance = magnetizingInductance * 0.1;
+            }
             double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
             parametersString += ".param Llk_" + is + "_Value=" + std::to_string(leakageInductance) + "\n";
             parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient) + "\n";
@@ -1117,11 +1410,21 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
 
         std::vector<std::string> c = to_string(acResistanceCoefficientsPerWinding[index]);
 
-        if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
+        // FRACPOLE mode: emit fracpole-based winding subcircuit
+        if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
+            if (index < fracpoleNets_lt.size()) {
+                circuitString += emit_fracpole_winding_spice(fracpoleNets_lt[index], index, is, effectiveResistanceThisWinding);
+            } else {
+                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            }
+            circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+        }
+        else if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
             circuitString += "E" + is + " P" + is + "+ Node_R_Lmag_" + is + " P" + is + "+ Node_R_Lmag_" + is + " Laplace = 1 /(" + c[0] + " + " + c[1] + " * sqrt(abs(s)/(2*pi)) + " + c[2] + " * abs(s)/(2*pi))\n";
             circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
         }
         else {
+            // LADDER mode (default)
             // Check if ladder coefficients are valid (inductance values should be small, < 0.1H)
             // If fitting failed, coefficients can be very large (1.0H or more) which breaks the circuit
             bool validLadderCoeffs = true;
@@ -1153,7 +1456,6 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
                 circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             }
             circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
-
         }
         if (index > 0) {
             // Each K statement needs a unique name in LTspice (K1, K2, etc.)
@@ -1162,6 +1464,11 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
 
         headerString += " P" + is + "+ P" + is + "-";
 
+    }
+
+    // FRACPOLE: append core loss fracpole subcircuit if available
+    if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && coreFracNet_lt.has_value()) {
+        circuitString += emit_fracpole_core_spice(coreFracNet_lt.value(), coil.get_functional_description().size());
     }
 
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
@@ -1875,6 +2182,448 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
 }
 
 
+
+
+// =============================================================================
+// FRACPOLE SKIN-EFFECT MODEL
+// =============================================================================
+
+double CircuitSimulatorExporter::fracpole_skin_model(double x[], double frequency) {
+    double h = x[0];
+    double alpha = x[1];
+    if (h < 0) return 1e30;
+    if (alpha < 0.01) return 1e30;
+    if (alpha > 1.5) return 1e30;
+    return h * pow(2 * std::numbers::pi * frequency, alpha);
+}
+
+void CircuitSimulatorExporter::fracpole_skin_func(double *p, double *x, int m, int n, void *data) {
+    double* dcResistanceAndFrequencies = static_cast<double*>(data);
+    double dcResistance = dcResistanceAndFrequencies[0];
+    for (int i = 0; i < n; ++i) {
+        x[i] = dcResistance + fracpole_skin_model(p, dcResistanceAndFrequencies[i + 1]);
+    }
+}
+
+double CircuitSimulatorExporter::fracpole_model(double x[], int numCoeffs, double frequency, double dcResistance) {
+    double w = 2 * std::numbers::pi * frequency;
+    std::complex<double> Z(dcResistance, 0);
+    int maxStages = numCoeffs / 2;
+    for (int k = 0; k < maxStages; k++) {
+        if (x[2*k] <= 0 || x[2*k+1] <= 0) break;
+        auto R_k = std::complex<double>(x[2*k], 0);
+        auto jwL_k = std::complex<double>(0, w * x[2*k+1]);
+        Z += parallel(jwL_k, R_k);
+    }
+    return Z.real();
+}
+
+CircuitSimulatorExporterCurveFittingModes CircuitSimulatorExporter::resolve_curve_fitting_mode(
+    CircuitSimulatorExporterCurveFittingModes mode) {
+    if (mode == CircuitSimulatorExporterCurveFittingModes::AUTO) {
+        auto& settings = OpenMagnetics::Settings::GetInstance();
+        return static_cast<CircuitSimulatorExporterCurveFittingModes>(settings.get_circuit_simulator_curve_fitting_mode());
+    }
+    return mode;
+}
+
+std::vector<FractionalPoleNetwork> CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(
+    Magnetic magnetic, double temperature, FractionalPoleOptions opts) {
+
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    auto settingsOpts = settings.get_circuit_simulator_fracpole_options();
+    if (opts.f0 <= 0) opts.f0 = settingsOpts ? (*settingsOpts)["f0"] : 0.1;
+    if (opts.f1 <= opts.f0) opts.f1 = settingsOpts ? (*settingsOpts)["f1"] : 1e7;
+    if (opts.lumpsPerDecade <= 0) opts.lumpsPerDecade = settingsOpts ? (*settingsOpts)["lumpsPerDecade"] : 1.5;
+    opts.alpha = 0.5;  // Fixed by skin effect physics
+    opts.profile = FracpoleProfile::DD;  // Recommended for alpha <= 0.5
+
+    auto coil = magnetic.get_coil();
+    std::vector<FractionalPoleNetwork> networksPerWinding;
+
+    for (size_t windingIndex = 0;
+         windingIndex < coil.get_functional_description().size();
+         ++windingIndex) {
+        double dcResistance = WindingLosses::calculate_effective_resistance_of_winding(
+            magnetic, windingIndex, opts.f0, temperature);
+
+        opts.coef = FractionalPole::fit_coef_from_reference(
+            opts.f0, dcResistance, opts.alpha, opts.f0, opts.f1,
+            opts.lumpsPerDecade, opts.profile);
+
+        FractionalPoleNetwork net = FractionalPole::generate(opts);
+        networksPerWinding.push_back(net);
+    }
+    return networksPerWinding;
+}
+
+FractionalPoleNetwork CircuitSimulatorExporter::calculate_core_fracpole_network(
+    Magnetic magnetic, double temperature, FractionalPoleOptions opts) {
+
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    auto settingsOpts = settings.get_circuit_simulator_fracpole_options();
+    if (opts.f0 <= 0) opts.f0 = settingsOpts ? (*settingsOpts)["f0"] : 0.1;
+    if (opts.f1 <= opts.f0) opts.f1 = settingsOpts ? (*settingsOpts)["f1"] : 1e7;
+    if (opts.lumpsPerDecade <= 0) opts.lumpsPerDecade = settingsOpts ? (*settingsOpts)["lumpsPerDecade"] : 1.5;
+
+    // Extract Steinmetz alpha from core material
+    double steinmetzAlpha = 1.5;  // Default for typical ferrite
+    try {
+        auto core = magnetic.get_core();
+        auto material = core.resolve_material();
+        double refFreq = std::sqrt(opts.f0 * opts.f1);
+        auto steinmetzDatum = CoreLossesModel::get_steinmetz_coefficients(material, refFreq);
+        steinmetzAlpha = steinmetzDatum.get_alpha();
+    } catch (...) {
+        // Use default if material data unavailable
+    }
+
+    // alpha for fracpole: core resistance R_core ∝ f^(steinmetz_alpha - 1)
+    opts.alpha = std::clamp(steinmetzAlpha - 1.0, 0.05, 0.95);
+
+    // Choose profile: DD for alpha <= 0.5, FF for alpha > 0.5 (per Kundert recommendation)
+    opts.profile = (opts.alpha <= 0.5) ? FracpoleProfile::DD : FracpoleProfile::FF;
+
+    Curve2D coreResData = Sweeper().sweep_core_resistance_over_frequency(
+        magnetic, opts.f0, opts.f1, 5, temperature);
+    auto coreResVec = coreResData.get_y_points();
+    auto freqVec    = coreResData.get_x_points();
+
+    if (coreResVec.empty()) {
+        // Return default network if no data
+        return FractionalPole::generate(opts);
+    }
+
+    size_t midIdx = coreResVec.size() / 2;
+    double R_ref = coreResVec[midIdx];
+    double f_ref_actual = freqVec[midIdx];
+
+    opts.coef = FractionalPole::fit_coef_from_reference(
+        f_ref_actual, R_ref, opts.alpha, opts.f0, opts.f1,
+        opts.lumpsPerDecade, opts.profile);
+
+    return FractionalPole::generate(opts);
+}
+
+// ============================================================================
+// NL5 circuit simulator exporter
+// ============================================================================
+
+static std::string make_nl5_key(const std::string& seed) {
+    // Deterministic pseudo-UUID from seed hash (not cryptographic, just unique)
+    std::hash<std::string> hasher;
+    size_t h1 = hasher(seed);
+    size_t h2 = hasher(seed + "_b");
+    size_t h3 = hasher(seed + "_c");
+    size_t h4 = hasher(seed + "_d");
+    char buf[33];
+    snprintf(buf, sizeof(buf),
+             "%08X%08X%08X%08X",
+             static_cast<uint32_t>(h1),
+             static_cast<uint32_t>(h2),
+             static_cast<uint32_t>(h3),
+             static_cast<uint32_t>(h4));
+    return std::string(buf);
+}
+
+// ---- NL5 Component builder ----
+struct Nl5Cmp {
+    std::string type;      // e.g. "R_R", "L_L", "C_C", "K_K", "G_G", "W_T2"
+    int id;
+    std::string name;
+    int node0, node1;
+    int node2 = -1, node3 = -1; // for 4-terminal (K, G)
+    // Value parameter: for R=r, L=l, C=c, K=k
+    std::string valParam;  // parameter name ("r","l","c","k")
+    std::string valStr;    // value as string
+    // Extra parameters
+    std::map<std::string, std::string> extra;
+    // Position
+    int px = 0, py = 0, angle = 0;
+    bool flip = false;
+};
+
+// ---- Engineering notation formatter for NL5 _txt attributes ----
+static std::string nl5_to_eng(double v, int sigfigs = 4) {
+    if (v == 0.0) return "0";
+    bool neg = v < 0;
+    double av = std::abs(v);
+    std::string suffix; double scaled;
+    if      (av >= 1e12) { scaled = av/1e12; suffix = "T"; }
+    else if (av >= 1e9)  { scaled = av/1e9;  suffix = "G"; }
+    else if (av >= 1e6)  { scaled = av/1e6;  suffix = "Meg"; }
+    else if (av >= 1e3)  { scaled = av/1e3;  suffix = "k"; }
+    else if (av >= 1.0)  { scaled = av;       suffix = ""; }
+    else if (av >= 1e-3) { scaled = av*1e3;   suffix = "m"; }
+    else if (av >= 1e-6) { scaled = av*1e6;   suffix = "u"; }
+    else if (av >= 1e-9) { scaled = av*1e9;   suffix = "n"; }
+    else if (av >= 1e-12){ scaled = av*1e12;  suffix = "p"; }
+    else                 { scaled = av*1e15;  suffix = "f"; }
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.*g", sigfigs, scaled);
+    return (neg ? "-" : "") + std::string(buf) + suffix;
+}
+
+static std::string nl5_cmp_to_xml(const Nl5Cmp& cmp) {
+    std::ostringstream ss;
+    ss << "        <Cmp type=\"" << cmp.type << "\" id=\"" << cmp.id
+       << "\" name=\"" << cmp.name << "\" descr=\"\" view=\"0\""
+       << " node0=\"" << cmp.node0 << "\" node1=\"" << cmp.node1 << "\"";
+    if (cmp.node2 >= 0) ss << " node2=\"" << cmp.node2 << "\"";
+    if (cmp.node3 >= 0) ss << " node3=\"" << cmp.node3 << "\"";
+    if (!cmp.valParam.empty()) {
+        std::string mdl(1, static_cast<char>(std::toupper(static_cast<unsigned char>(cmp.valParam[0]))));
+        ss << " model=\"" << mdl << "\"";
+    }
+    if (!cmp.valParam.empty()) {
+        ss << " " << cmp.valParam << "=\"" << cmp.valStr << "\"";
+        double dval = 0.0;
+        try { dval = std::stod(cmp.valStr); } catch (...) {}
+        ss << " " << cmp.valParam << "_txt=\"" << nl5_to_eng(dval) << "\"";
+    }
+    for (auto& [k, v] : cmp.extra) ss << " " << k << "=\"" << v << "\"";
+    ss << ">\n";
+    ss << "          <Pos x=\"" << cmp.px << "\" y=\"" << cmp.py
+       << "\" angle=\"" << cmp.angle << "\" flip=\"" << (cmp.flip ? "1" : "0") << "\" />\n";
+    ss << "        </Cmp>\n";
+    return ss.str();
+}
+
+static std::string nl5_wire_to_xml(int id, int node0, int node1, int x0, int y0, int x1, int y1, const std::string& name="") {
+    std::ostringstream ss;
+    ss << "        <Cmp type=\"W_T2\" id=\"" << id << "\" name=\"" << (name.empty() ? "W" + std::to_string(id) : name)
+       << "\" descr=\"\" view=\"0\" node0=\"" << node0 << "\" node1=\"" << node1 << "\">\n";
+    ss << "          <Pos x=\"" << x0 << "\" y=\"" << y0 << "\" angle=\"0\" flip=\"0\" />\n";
+    ss << "          <Point x=\"" << x1 << "\" y=\"" << y1 << "\" />\n";
+    ss << "        </Cmp>\n";
+    return ss.str();
+}
+
+// ============================================================================
+// CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit
+// ============================================================================
+std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
+    Magnetic magnetic,
+    double frequency,
+    double temperature,
+    std::optional<std::string> filePathOrFile,
+    CircuitSimulatorExporterCurveFittingModes mode)
+{
+    auto coil = magnetic.get_coil();
+    size_t numWindings = coil.get_functional_description().size();
+
+    // Resolve mode
+    auto resolvedMode = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
+
+    // Precompute ladder coefficients (if needed)
+    std::vector<std::vector<double>> acCoeffs;
+    std::vector<FractionalPoleNetwork> fracNets;
+    std::optional<FractionalPoleNetwork> coreFracNet;
+
+    if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
+        fracNets = CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(magnetic, temperature);
+        try { coreFracNet = CircuitSimulatorExporter::calculate_core_fracpole_network(magnetic, temperature); }
+        catch (...) {}
+    } else if (resolvedMode != CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
+        acCoeffs = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
+            magnetic, temperature, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    }
+
+    auto coreCoeffs = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+
+    double magnetizingInductance = resolve_dimensional_values(
+        MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
+            .get_magnetizing_inductance());
+    auto leakageInductances = LeakageInductance()
+        .calculate_leakage_inductance(magnetic, Defaults().measurementFrequency)
+        .get_leakage_inductance_per_winding();
+
+    // ---- NL5 XML generation ----
+    // Node numbering scheme:
+    //   0          = ground
+    //   1..N       = winding positive terminal Pi+  (external)
+    //   N+1..2N    = winding negative terminal Pi-  (external)
+    //   100+i      = internal node after Rdc (before ladder/fracpole), winding i
+    //   200+i      = internal node after ladder/fracpole (connects to Lmag), winding i
+    //   300+i*20+k = internal nodes within fracpole/ladder stages for winding i, stage k
+    //   900        = internal node for core loss network (parallel with Lmag1)
+
+    int nextId = 1;   // component id counter
+    std::string cmps; // accumulated <Cmp> XML
+
+    auto add_R = [&](const std::string& name, int n0, int n1, double val, int px, int py, int angle=0) {
+        Nl5Cmp c; c.type="R_R"; c.id=nextId++; c.name=name;
+        c.node0=n0; c.node1=n1; c.valParam="r"; c.valStr=to_string(val,12);
+        c.px=px; c.py=py; c.angle=angle;
+        cmps += nl5_cmp_to_xml(c);
+    };
+    auto add_L = [&](const std::string& name, int n0, int n1, double val, int px, int py, int angle=0) {
+        Nl5Cmp c; c.type="L_L"; c.id=nextId++; c.name=name;
+        c.node0=n0; c.node1=n1; c.valParam="l"; c.valStr=to_string(val,12);
+        c.px=px; c.py=py; c.angle=angle;
+        cmps += nl5_cmp_to_xml(c);
+    };
+    auto add_C = [&](const std::string& name, int n0, int n1, double val, int px, int py, int angle=0) {
+        Nl5Cmp c; c.type="C_C"; c.id=nextId++; c.name=name;
+        c.node0=n0; c.node1=n1; c.valParam="c"; c.valStr=to_string(val,12);
+        c.px=px; c.py=py; c.angle=angle;
+        cmps += nl5_cmp_to_xml(c);
+    };
+    auto add_K = [&](const std::string& name, int Lid1, int Lid2, double k, int px, int py) {
+        Nl5Cmp c; c.type="K_K"; c.id=nextId++; c.name=name;
+        c.node0=Lid1; c.node1=Lid2;  // NL5 uses node0/node1 as inductor IDs for K
+        c.valParam="k"; c.valStr=to_string(k,8);
+        c.px=px; c.py=py;
+        cmps += nl5_cmp_to_xml(c);
+    };
+
+    // Stores the NL5 component id of each winding's Lmag (needed for K elements)
+    std::vector<int> lmag_ids(numWindings, -1);
+
+    // Layout: each winding is 80 units wide, 60 units tall, stacked vertically
+    for (size_t wi = 0; wi < numWindings; ++wi) {
+        int base_y = static_cast<int>(wi) * 80;
+        int is = static_cast<int>(wi) + 1;
+        std::string ws = std::to_string(is);
+
+        int node_Pplus  = static_cast<int>(wi) + 1;           // Pi+  external
+        int node_Pminus = static_cast<int>(numWindings) + is;  // Pi-  external
+        int node_after_rdc  = 100 + is;                        // after Rdc
+        int node_after_net  = 200 + is;                        // after ladder/fracpole
+
+        double Rdc = WindingLosses::calculate_effective_resistance_of_winding(magnetic, wi, 0.1, temperature);
+        double numTurns = static_cast<double>(coil.get_functional_description()[wi].get_number_turns());
+        double Lmag_i = magnetizingInductance * (numTurns * numTurns) /
+                        (static_cast<double>(coil.get_functional_description()[0].get_number_turns()) *
+                         static_cast<double>(coil.get_functional_description()[0].get_number_turns()));
+
+        // Add port wire labels (external terminals)
+        cmps += nl5_wire_to_xml(nextId++, node_Pplus, node_Pplus, 0, base_y, -20, base_y, "P"+ws+"+");
+        cmps += nl5_wire_to_xml(nextId++, node_Pminus, node_Pminus, 160, base_y+40, 180, base_y+40, "P"+ws+"-");
+
+        // 1. Rdc
+        add_R("Rdc"+ws, node_Pplus, node_after_rdc, Rdc, 20, base_y);
+
+        int node_last = node_after_rdc;
+
+        if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && wi < fracNets.size()) {
+            // FRACPOLE: R/C stages
+            const auto& net = fracNets[wi];
+            for (size_t k = 0; k < net.stages.size(); ++k) {
+                int node_stage = 300 + is * 20 + static_cast<int>(k);
+                int px_R = 40 + static_cast<int>(k) * 16;
+                // Series R from last node to stage node
+                add_R("Rfp"+ws+"_"+std::to_string(k), node_last, node_stage,
+                      net.stages[k].R * net.opts.coef, px_R, base_y);
+                // Shunt C from stage node to ground
+                add_C("Cfp"+ws+"_"+std::to_string(k), node_stage, 0,
+                      net.stages[k].C / net.opts.coef, px_R+4, base_y+20, 90);
+                node_last = node_stage;
+            }
+            if (net.Cinf > 0.0) {
+                add_C("Cfpinf"+ws, node_last, 0, net.Cinf / net.opts.coef,
+                      40 + static_cast<int>(net.stages.size())*16, base_y+20, 90);
+            }
+            add_R("Rdc_fp_term"+ws, node_last, node_after_net, 1e-9, // short circuit wire
+                  40 + static_cast<int>(net.stages.size())*16 + 4, base_y);
+        } else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::LADDER
+                   && !acCoeffs.empty() && wi < acCoeffs.size()) {
+            // LADDER: R/L stages
+            const auto& c = acCoeffs[wi];
+            size_t stages = c.size() / 2;
+            for (size_t k = 0; k < stages; ++k) {
+                int node_stage = 300 + is * 20 + static_cast<int>(k);
+                int px = 40 + static_cast<int>(k) * 16;
+                add_L("Ll"+ws+"_"+std::to_string(k), node_last, node_stage, c[2*k], px, base_y);
+                add_R("Rl"+ws+"_"+std::to_string(k), node_stage, 0, c[2*k+1], px+4, base_y+20, 90);
+                node_last = node_stage;
+            }
+            add_R("Rl_term"+ws, node_last, node_after_net, 1e-9, 40+static_cast<int>(acCoeffs[wi].size()/2)*16, base_y);
+        } else {
+            // ANALYTICAL or fallback: just wire node_after_rdc to node_after_net
+            cmps += nl5_wire_to_xml(nextId++, node_after_rdc, node_after_net,
+                                    40, base_y, 80, base_y);
+        }
+
+        // 2. Lmag_i (magnetizing inductance)
+        lmag_ids[wi] = nextId;
+        add_L("Lmag"+ws, node_after_net, node_Pminus, Lmag_i, 100, base_y);
+    }
+
+    // 3. Core loss network in parallel with Lmag1 (between node 201 and node N+1)
+    int node_core_p = 200 + 1;
+    int node_core_n = static_cast<int>(numWindings) + 1;
+
+    if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && coreFracNet.has_value()) {
+        const auto& net = coreFracNet.value();
+        for (size_t k = 0; k < net.stages.size(); ++k) {
+            int node_stage = 900 + static_cast<int>(k);
+            add_R("Rcore"+std::to_string(k), node_core_p, node_stage,
+                  net.stages[k].R * net.opts.coef, 100, static_cast<int>(numWindings)*80 + static_cast<int>(k)*16);
+            add_C("Ccore"+std::to_string(k), node_stage, node_core_n,
+                  net.stages[k].C / net.opts.coef, 104, static_cast<int>(numWindings)*80 + static_cast<int>(k)*16 + 20, 90);
+        }
+        if (net.Cinf > 0.0)
+            add_C("Ccore_inf", node_core_p, node_core_n, net.Cinf / net.opts.coef,
+                  100, static_cast<int>(numWindings)*80 + static_cast<int>(net.stages.size())*16 + 20, 90);
+    } else if (!coreCoeffs.empty()) {
+        // Ladder-style core loss: series R/C pairs
+        size_t coreStages = coreCoeffs.size() / 2;
+        int node_prev = node_core_p;
+        for (size_t k = 0; k < coreStages; ++k) {
+            int node_stage = 900 + static_cast<int>(k);
+            add_R("Rcore"+std::to_string(k), node_prev, node_stage,
+                  coreCoeffs[2*k], 100, static_cast<int>(numWindings)*80 + static_cast<int>(k)*16);
+            add_C("Ccore"+std::to_string(k), node_stage, node_core_n,
+                  coreCoeffs[2*k+1], 104, static_cast<int>(numWindings)*80 + static_cast<int>(k)*16 + 20, 90);
+            node_prev = node_stage;
+        }
+    }
+
+    // 4. Mutual coupling K elements between all winding pairs
+    for (size_t i = 0; i < numWindings; ++i) {
+        for (size_t j = i+1; j < numWindings; ++j) {
+            if (lmag_ids[i] < 0 || lmag_ids[j] < 0) continue;
+            double leakage = (j <= leakageInductances.size())
+                ? resolve_dimensional_values(leakageInductances[j-1]) : 0.0;
+            double Lmag_val = magnetizingInductance;
+            if (leakage >= Lmag_val) leakage = Lmag_val * 0.1;
+            double k_coupling = std::sqrt((Lmag_val - leakage) / Lmag_val);
+            add_K("K"+std::to_string(i+1)+std::to_string(j+1),
+                  lmag_ids[i], lmag_ids[j], k_coupling,
+                  140, static_cast<int>(i+j)*20);
+        }
+    }
+
+    // ---- Assemble full XML ----
+    std::string ref = fix_filename(magnetic.get_reference());
+    std::string key = make_nl5_key(ref);
+
+    std::ostringstream xml;
+    xml << "<?xml version=\"1.0\"?>\n";
+    xml << "<NL5>\n";
+    xml << "  <c>Generated by OpenMagnetics - do not edit manually</c>\n";
+    xml << "  <c>Component: " << magnetic.get_reference() << "</c>\n";
+    xml << "  <Version ver=\"3\" rev=\"18\" core=\"78\" build=\"99\" />\n";
+    xml << "  <Doc>\n";
+    xml << "    <Cir mode=\"2\">\n";
+    xml << "      <Cmps Key=\"" << key << "\">\n";
+    xml << cmps;
+    xml << "      </Cmps>\n";
+    xml << "      <Scopes />\n";
+    xml << "      <Scripts />\n";
+    xml << "    </Cir>\n";
+    xml << "  </Doc>\n";
+    xml << "</NL5>\n";
+
+    std::string result = xml.str();
+
+    if (filePathOrFile.has_value()) {
+        std::ofstream outFile(filePathOrFile.value());
+        outFile << result;
+    }
+    return result;
+}
 
 } // namespace OpenMagnetics
 

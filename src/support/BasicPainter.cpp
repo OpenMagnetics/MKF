@@ -507,6 +507,16 @@ void BasicPainter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
 
     auto layers = coil.get_layers_description().value();
 
+    WiringTechnology coilType = WiringTechnology::WOUND;
+    if (coil.get_groups_description()) {
+        coilType = coil.get_groups_description().value()[0].get_type();
+    }
+
+    // Skip layer painting for planar coils - FR4 board and turns are painted separately
+    if (coilType == WiringTechnology::PRINTED) {
+        return;
+    }
+
     auto shapes = _root.add_child<SVG::Group>();
     for (size_t i = 0; i < layers.size(); ++i){
         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
@@ -576,6 +586,9 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
 
     if (coil.get_groups_description()) {
         coilType = coil.get_groups_description().value()[0].get_type(); // TODO: take into account more groups
+        std::cout << "[paint_two_piece_set_coil_turns] coilType from groups: " << (coilType == WiringTechnology::PRINTED ? "PRINTED" : "WOUND") << std::endl;
+    } else {
+        std::cout << "[paint_two_piece_set_coil_turns] No groups_description, defaulting to WOUND" << std::endl;
     }
 
     auto layers = coil.get_layers_description().value();

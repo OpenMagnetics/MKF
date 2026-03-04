@@ -3,6 +3,7 @@
 #include "physical_models/InitialPermeability.h"
 
 #include "processors/Inputs.h"
+#include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagneticField.h"
 #include "support/Exceptions.h"
@@ -21,7 +22,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
-#include "levmar.h"
+// levmar.h removed - using Eigen LevenbergMarquardt
 
 
 namespace OpenMagnetics {
@@ -375,7 +376,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
     std::vector<double> bestErrorPerRange;
     std::vector<SteinmetzCoreLossesMethodRangeDatum> steinmetzCoefficientsPerRange;
 
-    double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+    double opts[5], info[10];
 
     double lmInitMu = 1e-03;
     double lmStopThresh = 1e-25;
@@ -519,7 +520,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                     }
                 }
 
-                dlevmar_dif(steinmetz_equation_first_no_temperature_func, tempCoefficients, tempVolumetricLossesArray, 3, numberElements100C, 10000, opts, info, NULL, NULL, static_cast<void*>(tempVolumetricLossesInputs));
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_no_temperature_func, tempCoefficients, tempVolumetricLossesArray, 3, numberElements100C, 10000, opts, info, NULL, NULL, static_cast<void*>(tempVolumetricLossesInputs));
                 coefficients[0] = tempCoefficients[0];
                 coefficients[1] = tempCoefficients[1];
                 coefficients[2] = tempCoefficients[2];
@@ -530,13 +531,13 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 for (size_t index = 0; index < 3; ++index) {
                     tempCoefficients[index] = initialState;
                 }
-                dlevmar_dif(steinmetz_equation_first_only_temperature_func, tempCoefficients, volumetricLossesArray, 3, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs));
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_only_temperature_func, tempCoefficients, volumetricLossesArray, 3, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs));
                 coefficients[3] = tempCoefficients[0];
                 coefficients[4] = tempCoefficients[1];
                 coefficients[5] = tempCoefficients[2];
             }
             else {
-                dlevmar_dif(steinmetz_equation_with_temperature_func, coefficients, volumetricLossesArray, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs));
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_with_temperature_func, coefficients, volumetricLossesArray, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs));
             }
 
             double errorAverage = 0;
