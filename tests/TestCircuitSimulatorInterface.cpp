@@ -4,8 +4,16 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "processors/Sweeper.h"
 #include "support/Painter.h"
+#include "processors/NgspiceRunner.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "converter_models/Flyback.h"
+#include "converter_models/Buck.h"
+#include "converter_models/Boost.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <fstream>
+#include <sstream>
+#include <cmath>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -1497,6 +1505,881 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_Runnable_Netlist", "[
     size_t k3_pos = netlistContent.find("K3 Lmag_1 Lmag_3");
     REQUIRE(k2_pos != std::string::npos);
     REQUIRE(k3_pos != std::string::npos);
+}
+
+// ============================================================================
+// MERGED TESTS FROM TestConverterParasiticComparison.cpp
+// ============================================================================
+
+// Helper to compare ideal vs parasitic for any converter
+template<typename ConverterType, typename OperatingPointType>
+void compare_ideal_vs_parasitic(
+    const std::string& converterName,
+    ConverterType& converter,
+    const OperatingPointType& opPoint,
+    OpenMagnetics::Magnetic magnetic,
+    double turnsRatio,
+    double magnetizingInductance) {
+    
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Calculate winding resistances
+    double primaryResistance = 0;
+    double secondaryResistance = 0;
+    auto coil = magnetic.get_coil();
+    if (coil.get_functional_description().size() > 0) {
+        primaryResistance = WindingLosses::calculate_effective_resistance_of_winding(
+            magnetic, 0, opPoint.get_switching_frequency().value_or(100000), 100);
+    }
+    if (coil.get_functional_description().size() > 1) {
+        secondaryResistance = WindingLosses::calculate_effective_resistance_of_winding(
+            magnetic, 1, opPoint.get_switching_frequency().value_or(100000), 100);
+    }
+    
+    INFO(converterName << " - Turns ratio: " << turnsRatio);
+    INFO(converterName << " - Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+    INFO(converterName << " - Primary resistance: " << primaryResistance << " Ohm");
+    
+    // Run ideal simulation
+    auto idealOps = converter.simulate_and_extract_operating_points({turnsRatio}, magnetizingInductance);
+    REQUIRE(idealOps.size() == 1);
+    
+    // Run real magnetic simulation
+    auto realOps = converter.simulate_with_magnetic_and_extract_operating_points(magnetic);
+    REQUIRE(realOps.size() == 1);
+    
+    // Both simulations should produce valid waveforms
+    REQUIRE(idealOps[0].get_excitations_per_winding().size() >= 1);
+    REQUIRE(realOps[0].get_excitations_per_winding().size() >= 1);
+    
+    // Extract primary current waveforms
+    auto idealPriI = idealOps[0].get_excitations_per_winding()[0].get_current()->get_waveform()->get_data();
+    auto realPriI = realOps[0].get_excitations_per_winding()[0].get_current()->get_waveform()->get_data();
+    
+    // Calculate RMS currents
+    double idealPriIrms = std::sqrt(std::inner_product(idealPriI.begin(), idealPriI.end(), 
+                                                       idealPriI.begin(), 0.0) / idealPriI.size());
+    double realPriIrms = std::sqrt(std::inner_product(realPriI.begin(), realPriI.end(), 
+                                                      realPriI.begin(), 0.0) / realPriI.size());
+    
+    INFO(converterName << " - Ideal primary RMS current: " << idealPriIrms << " A");
+    INFO(converterName << " - Real primary RMS current: " << realPriIrms << " A");
+    
+    // Real current should be within reasonable bounds of ideal (allowing for parasitics)
+    CHECK(realPriIrms > idealPriIrms * 0.7);  // Real should not be too much lower
+    CHECK(realPriIrms < idealPriIrms * 2.5);  // Real can be up to 2.5x higher with parasitics
+    
+    // Calculate copper losses
+    double realCopperLoss = realPriIrms * realPriIrms * primaryResistance;
+    INFO(converterName << " - Real copper losses: " << realCopperLoss << " W");
+    
+    // Real copper loss should be positive if we have winding resistance
+    if (primaryResistance > 0.01) {
+        CHECK(realCopperLoss > 0.001);
+    }
+}
+
+TEST_CASE("Converter_Flyback_Ideal_vs_Parasitic_CCM", "[converter][flyback][ideal-vs-parasitic][smoke-test]") {
+    OpenMagnetics::Flyback flyback;
+    
+    DimensionWithTolerance inputVoltage;
+    inputVoltage.set_nominal(24.0);
+    flyback.set_input_voltage(inputVoltage);
+    flyback.set_diode_voltage_drop(0.5);
+    
+    OpenMagnetics::FlybackOperatingPoint opPoint;
+    opPoint.set_output_voltages({5.0});
+    opPoint.set_output_currents({2.0});
+    opPoint.set_ambient_temperature(25.0);
+    opPoint.set_switching_frequency(100e3);
+    flyback.set_operating_points({opPoint});
+    
+    // Create magnetic
+    std::vector<int64_t> numberTurns = {20, 5};
+    std::vector<int64_t> numberParallels = {1, 1};
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "E 25/13/7");
+    auto core = OpenMagneticsTesting::get_quick_core("E 25/13/7", 
+        OpenMagneticsTesting::get_distributed_gap(0.0004, 1), 1, "3C90");
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    double turnsRatio = 4.0;
+    double magnetizingInductance = 75e-6;  // 75 uH
+    
+    compare_ideal_vs_parasitic("Flyback_CCM", flyback, opPoint, magnetic, turnsRatio, magnetizingInductance);
+}
+
+TEST_CASE("Converter_Basic_Simulation_Tests", "[converter][basic-simulation][smoke-test]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Test Buck
+    {
+        OpenMagnetics::Buck buck;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(12.0);
+        buck.set_input_voltage(inputVoltage);
+        buck.set_diode_voltage_drop(0.5);
+        
+        auto opPoint = BuckOperatingPoint();
+        opPoint.set_output_voltage(5.0);
+        opPoint.set_output_current(3.0);
+        opPoint.set_ambient_temperature(25.0);
+        opPoint.set_switching_frequency(500e3);
+        buck.set_operating_points({opPoint});
+        
+        double inductance = 10e-6;
+        auto ops = buck.simulate_and_extract_operating_points(inductance);
+        REQUIRE(ops.size() == 1);
+        REQUIRE(ops[0].get_excitations_per_winding().size() >= 1);
+    }
+    
+    // Test Boost
+    {
+        OpenMagnetics::Boost boost;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(5.0);
+        boost.set_input_voltage(inputVoltage);
+        boost.set_diode_voltage_drop(0.5);
+        
+        auto opPoint = BoostOperatingPoint();
+        opPoint.set_output_voltage(12.0);
+        opPoint.set_output_current(1.0);
+        opPoint.set_ambient_temperature(25.0);
+        opPoint.set_switching_frequency(300e3);
+        boost.set_operating_points({opPoint});
+        
+        double inductance = 22e-6;
+        auto ops = boost.simulate_and_extract_operating_points(inductance);
+        REQUIRE(ops.size() == 1);
+        REQUIRE(ops[0].get_excitations_per_winding().size() >= 1);
+    }
+    
+    INFO("Basic converter simulation tests passed");
+}
+
+// ============================================================================
+// MERGED TESTS FROM TestCurveFittingComparison.cpp
+// ============================================================================
+
+// Helper to calculate RMS error between fitted model and actual data
+struct CurveFitResult {
+    CircuitSimulatorExporterCurveFittingModes mode;
+    double rmsError;
+    double maxError;
+    double avgError;
+    size_t numPoints;
+    std::vector<double> frequencies;
+    std::vector<double> actualResistances;
+    std::vector<double> fittedResistances;
+};
+
+// Calculate AC resistance using the fitted model coefficients
+std::vector<double> calculate_fitted_resistances(
+    const std::vector<double>& frequencies,
+    const std::vector<double>& coefficients,
+    double dcResistance,
+    CircuitSimulatorExporterCurveFittingModes mode) {
+    
+    std::vector<double> fitted;
+    fitted.reserve(frequencies.size());
+    
+    for (double f : frequencies) {
+        double r;
+        if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
+            // Analytical model: R = Rdc + h * f^alpha (uses 3 coefficients)
+            double h = coefficients[0];
+            double alpha = coefficients[1];
+            r = dcResistance + h * std::pow(f, alpha);
+        } else if (mode == CircuitSimulatorExporterCurveFittingModes::LADDER) {
+            // Ladder model uses exactly 5 RL stages (10 coefficients)
+            std::vector<double> coeffsCopy = coefficients;
+            r = CircuitSimulatorExporter::ladder_model(coeffsCopy.data(), f, dcResistance);
+        } else if (mode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
+            // Fracpole model uses variable number of RL stages
+            std::vector<double> coeffsCopy = coefficients;
+            r = CircuitSimulatorExporter::fracpole_model(coeffsCopy.data(), static_cast<int>(coeffsCopy.size()), f, dcResistance);
+        } else {
+            r = dcResistance;  // Fallback
+        }
+        fitted.push_back(r);
+    }
+    return fitted;
+}
+
+// Calculate fit quality metrics
+CurveFitResult evaluate_fit(
+    const std::vector<double>& frequencies,
+    const std::vector<double>& actual,
+    const std::vector<double>& fitted) {
+    
+    CurveFitResult result;
+    result.frequencies = frequencies;
+    result.actualResistances = actual;
+    result.fittedResistances = fitted;
+    result.numPoints = frequencies.size();
+    
+    double sumSqError = 0.0;
+    double maxErr = 0.0;
+    double sumErr = 0.0;
+    
+    for (size_t i = 0; i < actual.size(); ++i) {
+        double error = std::abs(actual[i] - fitted[i]);
+        double relError = error / actual[i];  // Relative error
+        sumSqError += relError * relError;
+        maxErr = std::max(maxErr, relError);
+        sumErr += relError;
+    }
+    
+    result.rmsError = std::sqrt(sumSqError / actual.size());
+    result.maxError = maxErr;
+    result.avgError = sumErr / actual.size();
+    
+    return result;
+}
+
+// Compare all three curve fitting modes
+std::vector<CurveFitResult> compare_curve_fitting_modes(
+    OpenMagnetics::Magnetic magnetic,
+    double temperature,
+    size_t windingIndex) {
+    
+    std::vector<CurveFitResult> results;
+    
+    // Get actual AC resistance data
+    const size_t numPoints = 20;
+    const double fMin = 100;
+    const double fMax = 10e6;
+    
+    Curve2D acResistanceData = Sweeper().sweep_winding_resistance_over_frequency(
+        magnetic, fMin, fMax, numPoints, windingIndex, temperature);
+    
+    auto frequencies = acResistanceData.get_x_points();
+    auto actualResistances = acResistanceData.get_y_points();
+    
+    // Get DC resistance
+    double dcResistance = WindingLosses::calculate_effective_resistance_of_winding(
+        magnetic, windingIndex, 0.1, temperature);
+    
+    // Test ANALYTICAL mode
+    {
+        auto coeffs = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
+            magnetic, temperature, CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
+        if (windingIndex < coeffs.size()) {
+            auto fitted = calculate_fitted_resistances(
+                frequencies, coeffs[windingIndex], dcResistance, 
+                CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
+            auto result = evaluate_fit(frequencies, actualResistances, fitted);
+            result.mode = CircuitSimulatorExporterCurveFittingModes::ANALYTICAL;
+            results.push_back(result);
+        }
+    }
+    
+    // Test LADDER mode
+    {
+        auto coeffs = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
+            magnetic, temperature, CircuitSimulatorExporterCurveFittingModes::LADDER);
+        if (windingIndex < coeffs.size()) {
+            auto fitted = calculate_fitted_resistances(
+                frequencies, coeffs[windingIndex], dcResistance,
+                CircuitSimulatorExporterCurveFittingModes::LADDER);
+            auto result = evaluate_fit(frequencies, actualResistances, fitted);
+            result.mode = CircuitSimulatorExporterCurveFittingModes::LADDER;
+            results.push_back(result);
+        }
+    }
+    
+    // Test FRACPOLE mode
+    {
+        auto coeffs = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
+            magnetic, temperature, CircuitSimulatorExporterCurveFittingModes::FRACPOLE);
+        if (windingIndex < coeffs.size()) {
+            auto fitted = calculate_fitted_resistances(
+                frequencies, coeffs[windingIndex], dcResistance,
+                CircuitSimulatorExporterCurveFittingModes::FRACPOLE);
+            auto result = evaluate_fit(frequencies, actualResistances, fitted);
+            result.mode = CircuitSimulatorExporterCurveFittingModes::FRACPOLE;
+            results.push_back(result);
+        }
+    }
+    
+    return results;
+}
+
+const char* mode_to_string(CircuitSimulatorExporterCurveFittingModes mode) {
+    switch (mode) {
+        case CircuitSimulatorExporterCurveFittingModes::ANALYTICAL: return "ANALYTICAL";
+        case CircuitSimulatorExporterCurveFittingModes::LADDER: return "LADDER";
+        case CircuitSimulatorExporterCurveFittingModes::FRACPOLE: return "FRACPOLE";
+        case CircuitSimulatorExporterCurveFittingModes::AUTO: return "AUTO";
+        default: return "UNKNOWN";
+    }
+}
+
+TEST_CASE("Test_CurveFitting_Compare_All_Modes", "[curve-fitting][comparison][analysis]") {
+    // Create a test magnetic with significant skin effect
+    std::vector<int64_t> numberTurns = {30, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C90";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    double temperature = 100.0;  // Higher temp = more significant effects
+    
+    // Compare all modes for primary winding
+    auto results = compare_curve_fitting_modes(magnetic, temperature, 0);
+    
+    REQUIRE(results.size() == 3);  // All three modes should work
+    
+    // Log results
+    INFO("Curve Fitting Comparison Results for Winding 0 (Primary):");
+    INFO("=========================================================");
+    
+    for (const auto& result : results) {
+        INFO(mode_to_string(result.mode) << ":");
+        INFO("  RMS Error: " << (result.rmsError * 100) << "%");
+        INFO("  Max Error: " << (result.maxError * 100) << "%");
+        INFO("  Avg Error: " << (result.avgError * 100) << "%");
+    }
+    
+    // Find best fit
+    auto bestFit = *std::min_element(results.begin(), results.end(),
+        [](const CurveFitResult& a, const CurveFitResult& b) {
+            return a.rmsError < b.rmsError;
+        });
+    
+    INFO("\nBest fitting mode: " << mode_to_string(bestFit.mode));
+    INFO("With RMS error: " << (bestFit.rmsError * 100) << "%");
+    
+    // At least one mode should have excellent fit (RMS error < 5%)
+    // Ladder typically performs best for complex skin effect
+    CHECK(bestFit.rmsError < 0.05);
+    
+    // Verify ladder is working (should have very low error)
+    auto ladderResult = std::find_if(results.begin(), results.end(),
+        [](const CurveFitResult& r) { return r.mode == CircuitSimulatorExporterCurveFittingModes::LADDER; });
+    REQUIRE(ladderResult != results.end());
+    CHECK(ladderResult->rmsError < 0.01);  // Ladder should have < 1% error
+}
+
+TEST_CASE("Test_CurveFitting_Ladder_vs_Math_Detail", "[curve-fitting][ladder][math]") {
+    // Test with a magnetic that has high frequency content
+    std::vector<int64_t> numberTurns = {50, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";  // Higher permeability
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0005, 2);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Sweep over wide frequency range
+    const double fMin = 100;
+    const double fMax = 1e6;  // 1 MHz
+    const size_t numPoints = 30;
+    
+    Curve2D acResistanceData = Sweeper().sweep_winding_resistance_over_frequency(
+        magnetic, fMin, fMax, numPoints, 0, 100);
+    
+    auto frequencies = acResistanceData.get_x_points();
+    auto actualResistances = acResistanceData.get_y_points();
+    
+    // Get coefficients for both modes
+    auto mathCoeffs = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
+        magnetic, 100, CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
+    auto ladderCoeffs = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
+        magnetic, 100, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    double dcResistance = WindingLosses::calculate_effective_resistance_of_winding(
+        magnetic, 0, 0.1, 100);
+    
+    // Calculate fitted values for math mode
+    std::vector<double> mathFitted;
+    for (double f : frequencies) {
+        double h = mathCoeffs[0][0];
+        double alpha = mathCoeffs[0][1];
+        mathFitted.push_back(dcResistance + h * std::pow(f, alpha));
+    }
+    
+    // Calculate fitted values for ladder mode
+    std::vector<double> ladderFitted;
+    for (double f : frequencies) {
+        std::vector<double> coeffsCopy = ladderCoeffs[0];
+        ladderFitted.push_back(CircuitSimulatorExporter::ladder_model(
+            coeffsCopy.data(), f, dcResistance));
+    }
+    
+    // Evaluate both
+    auto mathResult = evaluate_fit(frequencies, actualResistances, mathFitted);
+    auto ladderResult = evaluate_fit(frequencies, actualResistances, ladderFitted);
+    
+    INFO("Math (Analytical) Fit:");
+    INFO("  RMS Error: " << (mathResult.rmsError * 100) << "%");
+    INFO("  Max Error: " << (mathResult.maxError * 100) << "%");
+    
+    INFO("Ladder Fit:");
+    INFO("  RMS Error: " << (ladderResult.rmsError * 100) << "%");
+    INFO("  Max Error: " << (ladderResult.maxError * 100) << "%");
+    
+    // Ladder should fit very well (< 1% error) for skin effect modeling
+    CHECK(ladderResult.rmsError < 0.01);
+    
+    // Analytical model may not fit as well for complex geometries
+    // We just verify it produces results (even if high error)
+    CHECK(mathResult.rmsError > 0.0);
+    
+    // Log which one is better
+    if (ladderResult.rmsError < mathResult.rmsError) {
+        INFO("Ladder fits better by " << ((mathResult.rmsError - ladderResult.rmsError) * 100) << "%");
+    } else {
+        INFO("Math fits better by " << ((ladderResult.rmsError - mathResult.rmsError) * 100) << "%");
+    }
+}
+
+// ============================================================================
+// MERGED TESTS FROM TestFracpoleInvestigation.cpp
+// ============================================================================
+
+TEST_CASE("Test_Fracpole_Error_Investigation", "[fracpole][investigation][debug]") {
+    // Create a simple test magnetic
+    std::vector<int64_t> numberTurns = {30};
+    std::vector<int64_t> numberParallels = {1};
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "E 25/13/7");
+    auto core = OpenMagneticsTesting::get_quick_core("E 25/13/7",
+        OpenMagneticsTesting::get_distributed_gap(0.0004, 1), 1, "3C90");
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    double temperature = 100.0;
+    
+    // Sweep actual AC resistance
+    const size_t numPoints = 20;
+    const double fMin = 100;
+    const double fMax = 10e6;
+    
+    Curve2D acResistanceData = Sweeper().sweep_winding_resistance_over_frequency(
+        magnetic, fMin, fMax, numPoints, 0, temperature);
+    
+    auto frequencies = acResistanceData.get_x_points();
+    auto actualResistances = acResistanceData.get_y_points();
+    
+    // Get DC resistance
+    double dcResistance = WindingLosses::calculate_effective_resistance_of_winding(
+        magnetic, 0, 0.1, temperature);
+    
+    INFO("DC Resistance: " << dcResistance << " Ohm");
+    
+    // Get ladder coefficients
+    auto ladderCoeffs = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
+        magnetic, temperature, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Get fracpole network
+    auto fracpoleNets = CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(
+        magnetic, temperature, FractionalPoleOptions{});
+    
+    // Create comparison table
+    std::ostringstream csvOutput;
+    csvOutput << "Frequency (Hz),Actual (Ohm),Ladder (Ohm),Fracpole (Ohm),Ladder Error (%),Fracpole Error (%)\n";
+    
+    double ladderSumSqError = 0;
+    double fracpoleSumSqError = 0;
+    double ladderMaxError = 0;
+    double fracpoleMaxError = 0;
+    
+    for (size_t i = 0; i < frequencies.size(); ++i) {
+        double f = frequencies[i];
+        double actual = actualResistances[i];
+        
+        // Calculate ladder resistance
+        std::vector<double> coeffsCopy = ladderCoeffs[0];
+        double ladderR = CircuitSimulatorExporter::ladder_model(
+            coeffsCopy.data(), f, dcResistance);
+        
+        // Calculate fracpole resistance
+        double fracpoleR = dcResistance + FractionalPole::evaluate_resistance(
+            fracpoleNets[0], f);
+        
+        // Calculate errors
+        double ladderError = std::abs(ladderR - actual) / actual * 100;
+        double fracpoleError = std::abs(fracpoleR - actual) / actual * 100;
+        
+        ladderSumSqError += ladderError * ladderError;
+        fracpoleSumSqError += fracpoleError * fracpoleError;
+        ladderMaxError = std::max(ladderMaxError, ladderError);
+        fracpoleMaxError = std::max(fracpoleMaxError, fracpoleError);
+        
+        csvOutput << f << "," << actual << "," << ladderR << ","
+                  << fracpoleR << "," << ladderError << "," << fracpoleError << "\n";
+    }
+    
+    // Calculate RMS errors
+    double ladderRMS = std::sqrt(ladderSumSqError / frequencies.size());
+    double fracpoleRMS = std::sqrt(fracpoleSumSqError / frequencies.size());
+    
+    INFO("\n=== ERROR SUMMARY ===");
+    INFO("Ladder RMS Error: " << ladderRMS << "%");
+    INFO("Ladder Max Error: " << ladderMaxError << "%");
+    INFO("\nFracpole RMS Error: " << fracpoleRMS << "%");
+    INFO("Fracpole Max Error: " << fracpoleMaxError << "%");
+    
+    // Save CSV for analysis
+    auto csvFile = outputFilePath;
+    csvFile.append("fracpole_error_analysis.csv");
+    std::ofstream ofs(csvFile);
+    if (ofs.is_open()) {
+        ofs << csvOutput.str();
+        ofs.close();
+        INFO("\nCSV saved to: " << csvFile.string());
+    }
+    
+    // Detailed fracpole info
+    INFO("\n=== FRACPOLE NETWORK DETAILS ===");
+    INFO("Number of stages: " << fracpoleNets[0].stages.size());
+    INFO("Alpha: " << fracpoleNets[0].opts.alpha);
+    INFO("f0: " << fracpoleNets[0].opts.f0);
+    INFO("f1: " << fracpoleNets[0].opts.f1);
+    INFO("Coef: " << fracpoleNets[0].opts.coef);
+    INFO("Profile: " << static_cast<int>(fracpoleNets[0].opts.profile));
+    
+    // Show first few stages
+    INFO("\nFirst 3 stages:");
+    for (size_t i = 0; i < std::min(size_t(3), fracpoleNets[0].stages.size()); ++i) {
+        INFO("  Stage " << i << ": R=" << fracpoleNets[0].stages[i].R 
+             << " Ohm, C=" << fracpoleNets[0].stages[i].C << " F");
+    }
+    
+    // Verify fracpole produces reasonable values
+    CHECK(fracpoleNets[0].stages.size() > 0);
+    CHECK(fracpoleNets[0].opts.alpha > 0);
+    CHECK(fracpoleNets[0].opts.coef > 0);
+}
+
+TEST_CASE("Test_Fracpole_Evaluate_Debug", "[fracpole][evaluate][debug][!mayfail]") {
+    // NOTE: This test intentionally expects INCREASING resistance with frequency,
+    // but bare fracpole evaluate_resistance() correctly gives DECREASING impedance.
+    // The gyrator in the SPICE subcircuit flips the impedance slope for skin effect.
+    // This test is tagged [!mayfail] to document this expected behavior.
+    FractionalPoleOptions opts;
+    opts.f0 = 0.1;
+    opts.f1 = 1e7;
+    opts.alpha = 0.5;  // Skin effect
+    opts.lumpsPerDecade = 1.5;
+    opts.profile = FracpoleProfile::DD;
+    opts.coef = 1.0;
+    
+    auto net = FractionalPole::generate(opts);
+    
+    INFO("Generated fracpole network with " << net.stages.size() << " stages");
+    
+    // Test impedance at multiple frequencies
+    std::vector<double> testFreqs = {1, 10, 100, 1e3, 1e4, 1e5, 1e6};
+    
+    INFO("\nFrequency Response:");
+    for (double f : testFreqs) {
+        double Z = FractionalPole::evaluate_impedance(net, f);
+        double R = FractionalPole::evaluate_resistance(net, f);
+        INFO("  f=" << f << " Hz: |Z|=" << Z << " Ohm, R=" << R << " Ohm");
+    }
+    
+    // Verify resistance increases with frequency (skin effect)
+    double R_low = FractionalPole::evaluate_resistance(net, 100);
+    double R_high = FractionalPole::evaluate_resistance(net, 1e6);
+    
+    INFO("\nSkin Effect Check:");
+    INFO("R at 100 Hz: " << R_low << " Ohm");
+    INFO("R at 1 MHz: " << R_high << " Ohm");
+    INFO("Ratio (R_high/R_low): " << (R_high / R_low));
+    
+    // For skin effect with alpha=0.5, R should increase by sqrt(f) ratio
+    // sqrt(1e6/100) = sqrt(10000) = 100
+    double expectedRatio = std::sqrt(1e6 / 100);
+    INFO("Expected ratio (sqrt(f2/f1)): " << expectedRatio);
+    
+    // Check that resistance increases significantly
+    CHECK(R_high > R_low * 10);  // Should increase by at least 10x
+}
+
+TEST_CASE("Test_Fracpole_Coef_Fitting_Debug", "[fracpole][coef][debug]") {
+    // Test the coefficient fitting function
+    double f_ref = 1000;  // 1 kHz reference
+    double R_ref = 1.0;   // 1 Ohm target resistance
+    double alpha = 0.5;
+    double f0 = 0.1;
+    double f1 = 1e7;
+    double lumps = 1.5;
+    auto profile = FracpoleProfile::DD;
+    
+    double coef = FractionalPole::fit_coef_from_reference(
+        f_ref, R_ref, alpha, f0, f1, lumps, profile);
+    
+    INFO("Fitted coefficient: " << coef);
+    
+    // Generate network with fitted coef
+    FractionalPoleOptions opts;
+    opts.f0 = f0;
+    opts.f1 = f1;
+    opts.alpha = alpha;
+    opts.lumpsPerDecade = lumps;
+    opts.profile = profile;
+    opts.coef = coef;
+    
+    auto net = FractionalPole::generate(opts);
+    
+    // Verify resistance at reference frequency matches target
+    double R_at_ref = FractionalPole::evaluate_resistance(net, f_ref);
+    double error = std::abs(R_at_ref - R_ref) / R_ref * 100;
+    
+    INFO("Target resistance at " << f_ref << " Hz: " << R_ref << " Ohm");
+    INFO("Actual resistance: " << R_at_ref << " Ohm");
+    INFO("Fitting error: " << error << "%");
+    
+    // Fitting should be very accurate
+    CHECK(error < 1.0);  // Less than 1% error
+}
+
+// ============================================================================
+// MERGED TESTS FROM TestParasiticComparison.cpp
+// ============================================================================
+
+TEST_CASE("Test_CircuitSimulatorExporter_Ngspice_Ideal_vs_Parasitic_Comparison", 
+          "[processor][circuit-simulator-exporter][ngspice][parasitic-comparison][smoke-test]") {
+    
+    // Skip if ngspice is not available
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a simple flyback converter setup
+    OpenMagnetics::Flyback flyback;
+    
+    DimensionWithTolerance inputVoltage;
+    inputVoltage.set_nominal(24.0);
+    flyback.set_input_voltage(inputVoltage);
+    flyback.set_diode_voltage_drop(0.5);
+    
+    OpenMagnetics::FlybackOperatingPoint opPoint;
+    opPoint.set_output_voltages({5.0});
+    opPoint.set_output_currents({2.0});
+    opPoint.set_ambient_temperature(25.0);
+    opPoint.set_switching_frequency(100e3);
+    flyback.set_operating_points({opPoint});
+    
+    // Create a real Magnetic component with significant winding resistance
+    std::vector<int64_t> numberTurns = {20, 5};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 25/13/7";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C90";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0004, 1);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Extract parameters
+    double primaryTurns = coil.get_functional_description()[0].get_number_turns();
+    double secondaryTurns = coil.get_functional_description()[1].get_number_turns();
+    double turnsRatio = primaryTurns / secondaryTurns;
+    double magnetizingInductance = resolve_dimensional_values(
+        MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
+    
+    INFO("Turns ratio: " << turnsRatio);
+    INFO("Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+    
+    // Calculate winding resistances
+    double primaryResistance = WindingLosses::calculate_effective_resistance_of_winding(
+        magnetic, 0, 100e3, 25.0);  // Primary at 100kHz
+    double secondaryResistance = WindingLosses::calculate_effective_resistance_of_winding(
+        magnetic, 1, 100e3, 25.0);  // Secondary at 100kHz
+    
+    INFO("Primary DC resistance: " << primaryResistance << " Ohm");
+    INFO("Secondary DC resistance: " << secondaryResistance << " Ohm");
+    
+    // Run ideal simulation (no winding resistances)
+    auto idealOps = flyback.simulate_and_extract_operating_points({turnsRatio}, magnetizingInductance);
+    REQUIRE(idealOps.size() == 1);
+    
+    // Run real magnetic simulation (with ladder model)
+    auto realOps = flyback.simulate_with_magnetic_and_extract_operating_points(magnetic);
+    REQUIRE(realOps.size() == 1);
+    
+    // Both simulations should produce valid waveforms
+    REQUIRE(idealOps[0].get_excitations_per_winding().size() == 2);
+    REQUIRE(realOps[0].get_excitations_per_winding().size() == 2);
+    
+    // Extract primary current waveforms
+    auto idealPriI = idealOps[0].get_excitations_per_winding()[0].get_current()->get_waveform()->get_data();
+    auto realPriI = realOps[0].get_excitations_per_winding()[0].get_current()->get_waveform()->get_data();
+    
+    // Calculate RMS and peak currents
+    double idealPriIrms = std::sqrt(std::inner_product(idealPriI.begin(), idealPriI.end(), 
+                                                       idealPriI.begin(), 0.0) / idealPriI.size());
+    double realPriIrms = std::sqrt(std::inner_product(realPriI.begin(), realPriI.end(), 
+                                                      realPriI.begin(), 0.0) / realPriI.size());
+    double idealPriImax = *std::max_element(idealPriI.begin(), idealPriI.end());
+    double realPriImax = *std::max_element(realPriI.begin(), realPriI.end());
+    
+    INFO("Ideal primary RMS current: " << idealPriIrms << " A");
+    INFO("Real primary RMS current: " << realPriIrms << " A");
+    INFO("Ideal primary peak current: " << idealPriImax << " A");
+    INFO("Real primary peak current: " << realPriImax << " A");
+    
+    // Verify that currents are similar but real has slightly higher values due to resistive losses
+    // Real current can be significantly higher (up to 2x) due to winding resistance and duty cycle changes
+    CHECK(realPriIrms > idealPriIrms * 0.9);  // Real should not be too much lower
+    CHECK(realPriIrms < idealPriIrms * 2.5);  // Real can be up to 2.5x higher with parasitics
+    
+    // Extract secondary current waveforms  
+    auto idealSecI = idealOps[0].get_excitations_per_winding()[1].get_current()->get_waveform()->get_data();
+    auto realSecI = realOps[0].get_excitations_per_winding()[1].get_current()->get_waveform()->get_data();
+    
+    double idealSecIrms = std::sqrt(std::inner_product(idealSecI.begin(), idealSecI.end(),
+                                                        idealSecI.begin(), 0.0) / idealSecI.size());
+    double realSecIrms = std::sqrt(std::inner_product(realSecI.begin(), realSecI.end(),
+                                                      realSecI.begin(), 0.0) / realSecI.size());
+    
+    INFO("Ideal secondary RMS current: " << idealSecIrms << " A");
+    INFO("Real secondary RMS current: " << realSecIrms << " A");
+    
+    // Secondary currents should also be similar (with tolerance for parasitics)
+    CHECK(realSecIrms > idealSecIrms * 0.9);
+    CHECK(realSecIrms < idealSecIrms * 2.5);
+    
+    // Calculate copper losses (I^2 * R)
+    double realCopperLoss = realPriIrms * realPriIrms * primaryResistance + 
+                           realSecIrms * realSecIrms * secondaryResistance;
+    
+    INFO("Real copper losses: " << realCopperLoss << " W");
+    
+    // Real copper loss should be positive (since we have winding resistance)
+    CHECK(realCopperLoss > 0.01);  // Should have measurable copper loss
+    
+    // Output voltage should be similar (within tolerance)
+    double idealOutputV = opPoint.get_output_voltages()[0];
+    // In a real converter, output voltage is controlled, so it should be close to target
+    CHECK(std::abs(idealOutputV - 5.0) < 0.5);  // Should be close to 5V
+    
+    // Save waveforms for visual inspection
+    BasicPainter painter;
+    
+    std::string svgIdeal = painter.paint_operating_point_waveforms(
+        idealOps[0], "Flyback Ideal Transformer", 1200, 900);
+    auto outIdeal = outputFilePath;
+    outIdeal.append("flyback_ideal_vs_parasitic_ideal.svg");
+    std::ofstream ofsIdeal(outIdeal);
+    if (ofsIdeal.is_open()) { ofsIdeal << svgIdeal; ofsIdeal.close(); }
+    
+    std::string svgReal = painter.paint_operating_point_waveforms(
+        realOps[0], "Flyback with Parasitic Ladder Model", 1200, 900);
+    auto outReal = outputFilePath;
+    outReal.append("flyback_ideal_vs_parasitic_ladder.svg");
+    std::ofstream ofsReal(outReal);
+    if (ofsReal.is_open()) { ofsReal << svgReal; ofsReal.close(); }
+    
+    INFO("Ideal waveforms saved to: " << outIdeal.string());
+    INFO("Real (ladder) waveforms saved to: " << outReal.string());
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Ngspice_Ladder_vs_Fracpole_Comparison", 
+          "[processor][circuit-simulator-exporter][ngspice][fracpole-comparison][smoke-test]") {
+    
+    // Skip if ngspice is not available
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a magnetic component
+    std::vector<int64_t> numberTurns = {30, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C90";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Export with LADDER mode
+    auto ladderFile = outputFilePath;
+    ladderFile.append("test_magnetic_ladder.cir");
+    std::filesystem::remove(ladderFile);
+    CircuitSimulatorExporter(CircuitSimulatorExporterModels::NGSPICE).export_magnetic_as_subcircuit(
+        magnetic, 100000, 100, ladderFile.string(), std::nullopt, 
+        CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Export with FRACPOLE mode
+    auto fracpoleFile = outputFilePath;
+    fracpoleFile.append("test_magnetic_fracpole.cir");
+    std::filesystem::remove(fracpoleFile);
+    CircuitSimulatorExporter(CircuitSimulatorExporterModels::NGSPICE).export_magnetic_as_subcircuit(
+        magnetic, 100000, 100, fracpoleFile.string(), std::nullopt,
+        CircuitSimulatorExporterCurveFittingModes::FRACPOLE);
+    
+    // Both files should exist
+    REQUIRE(std::filesystem::exists(ladderFile));
+    REQUIRE(std::filesystem::exists(fracpoleFile));
+    
+    // Read and compare the netlists
+    std::ifstream ladderStream(ladderFile);
+    std::string ladderContent((std::istreambuf_iterator<char>(ladderStream)),
+                              std::istreambuf_iterator<char>());
+    ladderStream.close();
+    
+    std::ifstream fracpoleStream(fracpoleFile);
+    std::string fracpoleContent((std::istreambuf_iterator<char>(fracpoleStream)),
+                                std::istreambuf_iterator<char>());
+    fracpoleStream.close();
+    
+    // Ladder model should contain R and L components
+    CHECK(ladderContent.find("R") != std::string::npos);
+    CHECK(ladderContent.find("L") != std::string::npos);
+    
+    // Fracpole model should also contain R and L components (fallback to ladder currently)
+    CHECK(fracpoleContent.find("R") != std::string::npos);
+    CHECK(fracpoleContent.find("L") != std::string::npos);
+    
+    // Both files should have valid netlist structure
+    CHECK(fracpoleContent.find(".subckt") != std::string::npos);
+    CHECK(fracpoleContent.find(".ends") != std::string::npos);
+    
+    // TODO: When fracpole implementation is complete, this should be different from ladder
+    // For now, they may be the same since fracpole falls back to ladder
+    INFO("Ladder model netlist length: " << ladderContent.length());
+    INFO("Fracpole model netlist length: " << fracpoleContent.length());
+    
+    // Note: fracpole mode may fall back to ladder if not fully implemented
+    // This test verifies the export mechanism works for both modes
 }
 
 }  // namespace
