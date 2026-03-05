@@ -359,6 +359,24 @@ namespace {
         REQUIRE_THAT(expectedConductingArea, Catch::Matchers::WithinAbs(conductingArea, max_error * expectedConductingArea));
     }
 
+    TEST_CASE("Test_Conducting_Area_Very_Large_Rectangular_BugFix", "[constructive-model][wire][smoke-test]") {
+        // Regression test for bug where spline interpolator returned crazy values
+        // for large wires (e.g., 13.5mm x 2.2mm), causing conducting area to be
+        // ~4000x too large and winding losses ~4000x too low.
+        // The fix ensures we fall back to theoretical area when proportion is out of bounds.
+        double conductingWidth = 0.0135;   // 13.5mm
+        double conductingHeight = 0.0022;  // 2.2mm
+        double theoreticalArea = conductingWidth * conductingHeight;  // 29.7 mm²
+        
+        auto conductingArea = OpenMagnetics::Wire::get_conducting_area_rectangular(conductingWidth, conductingHeight, WireStandard::IEC_60317);
+        
+        // Area should be close to theoretical (within ~5% for enamel coating)
+        // Before fix: area was ~122,000 mm² (proportion ~4118)
+        // After fix: area should be ~29.7 mm² (theoretical)
+        REQUIRE(conductingArea > theoreticalArea * 0.8);  // At least 80% of theoretical
+        REQUIRE(conductingArea < theoreticalArea * 1.1);  // At most 110% of theoretical
+    }
+
     TEST_CASE("Test_Outer_Height_Tiny_Rectangular_Grade_2", "[constructive-model][wire][smoke-test]") {
         auto outerHeight = OpenMagnetics::Wire::get_outer_height_rectangular(1e-9, 2, WireStandard::IEC_60317);
         double expectedOuterHeight = 1.2e-9;

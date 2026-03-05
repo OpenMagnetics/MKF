@@ -2976,6 +2976,7 @@ namespace {
         std::cout << "\n=== Step 1: Core Adviser ===" << std::endl;
         
         CoreAdviser coreAdviser;
+        coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
         
         // Use same weights as frontend
         std::map<CoreAdviser::CoreAdviserFilters, double> weights;
@@ -3003,12 +3004,13 @@ namespace {
         
         std::cout << "Number of coil results: " << masWithCoils.size() << std::endl;
         
-        if (masWithCoils.size() > 0) {
-            auto& masWithCoil = masWithCoils[0];
+        // Analyze all coil results to compare with frontend
+        for (size_t resultIndex = 0; resultIndex < masWithCoils.size(); ++resultIndex) {
+            std::cout << "\n=== Coil Result " << resultIndex << " ===" << std::endl;
+            auto& masWithCoil = masWithCoils[resultIndex];
             auto& advisedMagnetic = masWithCoil.get_mutable_magnetic();
             auto& advisedCoil = advisedMagnetic.get_mutable_coil();
             
-            std::cout << "\n=== Coil Analysis ===" << std::endl;
             std::cout << "Coil has turns_description: " << (advisedCoil.get_turns_description() ? "yes" : "no") << std::endl;
             
             if (advisedCoil.get_turns_description()) {
@@ -3078,11 +3080,55 @@ namespace {
                 std::cout << "\nWinding " << i << ":" << std::endl;
                 std::cout << "  Number of turns: " << functionalDesc[i].get_number_turns() << std::endl;
                 std::cout << "  Number of parallels: " << advisedCoil.get_number_parallels(i) << std::endl;
-                
+
                 auto windingLayers = advisedCoil.get_layers_by_winding_index(i);
                 std::cout << "  Number of layers: " << windingLayers.size() << std::endl;
                 for (size_t j = 0; j < windingLayers.size(); ++j) {
                     std::cout << "    Layer " << j << ": " << windingLayers[j].get_name() << std::endl;
+                }
+            }
+
+            // Check wire dimensions
+            std::cout << "\n=== Wire Dimensions ===" << std::endl;
+            for (size_t i = 0; i < wires.size(); ++i) {
+                std::cout << "Winding " << i << " wire:" << std::endl;
+                auto wire = wires[i];
+                double conductingWidth = 0;
+                double conductingHeight = 0;
+                if (wire.get_conducting_width()) {
+                    conductingWidth = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_width().value());
+                    std::cout << "  Conducting width: " << conductingWidth << " m" << std::endl;
+                }
+                if (wire.get_conducting_height()) {
+                    conductingHeight = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value());
+                    std::cout << "  Conducting height: " << conductingHeight << " m" << std::endl;
+                }
+                if (wire.get_outer_width()) {
+                    std::cout << "  Outer width: " << OpenMagnetics::resolve_dimensional_values(wire.get_outer_width().value()) << " m" << std::endl;
+                }
+                if (wire.get_outer_height()) {
+                    std::cout << "  Outer height: " << OpenMagnetics::resolve_dimensional_values(wire.get_outer_height().value()) << " m" << std::endl;
+                }
+                
+                // Calculate current density
+                if (conductingWidth > 0 && conductingHeight > 0) {
+                    double crossSectionalArea = conductingWidth * conductingHeight;
+                    std::cout << "  Cross-sectional area: " << crossSectionalArea << " m²" << std::endl;
+                    
+                    // Get current from operating point
+                    if (inputs.get_operating_points().size() > 0) {
+                        auto opPoint = inputs.get_operating_point(0);
+                        if (opPoint.get_excitations_per_winding().size() > i) {
+                            auto excitation = opPoint.get_excitations_per_winding()[i];
+                            if (excitation.get_current() && excitation.get_current().value().get_processed() && excitation.get_current().value().get_processed().value().get_rms()) {
+                                double currentRms = excitation.get_current().value().get_processed().value().get_rms().value();
+                                double currentDensity = currentRms / crossSectionalArea;
+                                std::cout << "  Current (RMS): " << currentRms << " A" << std::endl;
+                                std::cout << "  Current Density: " << currentDensity << " A/m²" << std::endl;
+                                std::cout << "  Current Density: " << (currentDensity / 1e6) << " A/mm²" << std::endl;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3095,6 +3141,121 @@ namespace {
     }
 
 }  // namespace
+
+// ============================================================================
+// Test with full MAS (EL 25/4.3 with 5 turns)
+// ============================================================================
+TEST_CASE("Test_Planar_CoilAdviser_From_Full_MAS", "[adviser][planar][coil][full-mas]") {
+    try {
+        // Load inputs from extracted JSON file (cleaned from full MAS)
+        std::ifstream file("tests/testData/planar_advise_from_mas_inputs.json");
+        REQUIRE(file.is_open());
+        
+        json j;
+        file >> j;
+        file.close();
+        
+        // Create inputs and process
+        OpenMagnetics::Inputs inputs(j);
+        inputs.process();
+        
+        // First run Core Adviser to get EL 25
+        CoreAdviser coreAdviser;
+        coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        
+        std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 40;
+        weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 30;
+        weights[CoreAdviser::CoreAdviserFilters::COST] = 30;
+        
+        auto coreResults = coreAdviser.get_advised_core(inputs, weights, 1);
+        REQUIRE(coreResults.size() > 0);
+        auto mas = coreResults[0].first;
+        
+        std::cout << "\n=== Test Planar Coil Adviser from Full MAS ===" << std::endl;
+        std::cout << "Core: " << (mas.get_magnetic().get_core().get_name() ? mas.get_magnetic().get_core().get_name().value() : "unnamed") << std::endl;
+        std::cout << "Number of Windings: " << mas.get_magnetic().get_coil().get_functional_description().size() << std::endl;
+        
+        for (size_t i = 0; i < mas.get_magnetic().get_coil().get_functional_description().size(); ++i) {
+            std::cout << "Winding " << i << " turns: " << mas.get_magnetic().get_coil().get_functional_description()[i].get_number_turns() << std::endl;
+        }
+        
+        // Run Coil Adviser
+        std::cout << "\n=== Running Coil Adviser ===" << std::endl;
+        
+        CoilAdviser coilAdviser;
+        auto masWithCoils = coilAdviser.get_advised_coil(mas, 5);
+        
+        std::cout << "Number of coil results: " << masWithCoils.size() << std::endl;
+        
+        // Show all results
+        for (size_t resultIndex = 0; resultIndex < masWithCoils.size(); ++resultIndex) {
+            std::cout << "\n=== Coil Result " << resultIndex << " ===" << std::endl;
+            auto& masWithCoil = masWithCoils[resultIndex];
+            auto& advisedMagnetic = masWithCoil.get_mutable_magnetic();
+            auto& advisedCoil = advisedMagnetic.get_mutable_coil();
+            
+            // Check section dimensions
+            std::cout << "\n  Section info:" << std::endl;
+            auto sections = advisedCoil.get_sections_description();
+            if (sections && sections->size() > 0) {
+                for (size_t i = 0; i < sections->size(); ++i) {
+                    auto sectionDims = (*sections)[i].get_dimensions();
+                    std::cout << "    Section " << i << " dimensions: " << sectionDims.size() << std::endl;
+                    if (sectionDims.size() >= 2) {
+                        std::cout << "      Width: " << sectionDims[0] * 1000 << " mm" << std::endl;
+                        std::cout << "      Height: " << sectionDims[1] * 1000 << " mm" << std::endl;
+                    }
+                }
+            }
+            
+            auto wires = advisedCoil.get_wires();
+            for (size_t i = 0; i < wires.size(); ++i) {
+                std::cout << "Winding " << i << " wire:" << std::endl;
+                auto wire = wires[i];
+                if (wire.get_conducting_width()) {
+                    std::cout << "  Conducting width: " << OpenMagnetics::resolve_dimensional_values(wire.get_conducting_width().value()) * 1000 << " mm" << std::endl;
+                }
+                if (wire.get_conducting_height()) {
+                    std::cout << "  Conducting height: " << OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value()) * 1000 << " mm" << std::endl;
+                }
+            }
+            
+            // Check bobbin and layers
+            std::cout << "\n  Bobbin info:" << std::endl;
+            auto bobbin = advisedCoil.resolve_bobbin();
+            if (bobbin.get_processed_description()) {
+                auto procDesc = bobbin.get_processed_description().value();
+                std::cout << "    Winding windows: " << procDesc.get_winding_windows().size() << std::endl;
+                for (size_t i = 0; i < procDesc.get_winding_windows().size(); ++i) {
+                    auto& ww = procDesc.get_winding_windows()[i];
+                    if (ww.get_width()) {
+                        std::cout << "    Window width: " << ww.get_width().value() * 1000 << " mm" << std::endl;
+                    }
+                    if (ww.get_height()) {
+                        std::cout << "    Window height: " << ww.get_height().value() * 1000 << " mm" << std::endl;
+                    }
+                }
+            }
+            
+            // Check layers
+            auto functionalDesc = advisedCoil.get_functional_description();
+            std::cout << "\n  Layers per winding:" << std::endl;
+            for (size_t i = 0; i < functionalDesc.size(); ++i) {
+                auto windingLayers = advisedCoil.get_layers_by_winding_index(i);
+                std::cout << "    Winding " << i << ": " << windingLayers.size() << " layers" << std::endl;
+                for (size_t j = 0; j < windingLayers.size(); ++j) {
+                    std::cout << "      - " << windingLayers[j].get_name() << std::endl;
+                }
+            }
+        }
+        
+        std::cout << "\n=== Test Complete ===" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Test failed with exception: " << e.what() << std::endl;
+        throw;
+    }
+}
 
 // ============================================================================
 // Tests for MagneticAdviser::get_advised_magnetic_from_converter() template method.

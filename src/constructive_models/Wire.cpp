@@ -668,8 +668,11 @@ namespace OpenMagnetics {
         else {
 
             double wireTheoreticalConductingArea = conductingWidth * conductingHeight;
-            double conductingArea = wireConductingAreaProportionInterps[key](wireTheoreticalConductingArea) * wireTheoreticalConductingArea;
-            if (conductingArea <= 0 || conductingArea < wireTheoreticalConductingArea / 2) {
+            double proportion = wireConductingAreaProportionInterps[key](wireTheoreticalConductingArea);
+            double conductingArea = proportion * wireTheoreticalConductingArea;
+            // Sanity check: proportion should be between 0.5 and 1.5 (enamel is ~2-5% of area, so ~0.95-0.98)
+            // Bug fix: Also check for unreasonably LARGE values from spline extrapolation
+            if (conductingArea <= 0 || conductingArea < wireTheoreticalConductingArea / 2 || proportion > 1.5 || proportion < 0.5) {
                 return wireTheoreticalConductingArea;
             }
             return conductingArea;
