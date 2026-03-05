@@ -4,7 +4,9 @@
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
 #include "constructive_models/Mas.h"
+#include "processors/Inputs.h"
 #include "Definitions.h"
+#include "Defaults.h"
 #include <MAS.hpp>
 
 using namespace MAS;
@@ -196,7 +198,128 @@ class MagneticAdviser{
          * @return Map of reference -> (filter -> normalized_score).
          */
         std::map<std::string, std::map<MagneticFilters, double>> get_scorings();
+
+        /**
+         * @brief Design magnetics from a converter topology using ngspice simulation.
+         * 
+         * This template method accepts any converter topology (Flyback, Buck, Boost, etc.),
+         * runs ngspice simulation to extract accurate voltage/current waveforms, and returns
+         * optimized magnetic designs.
+         * 
+         * @tparam ConverterType The converter type (e.g., Flyback, AdvancedFlyback, Buck, etc.)
+         * @param converter The converter instance with design parameters
+         * @param maximumNumberResults Maximum number of magnetic designs to return
+         * @return Vector of (Mas, score) pairs sorted by descending score
+         * 
+         * @note The converter must implement simulate_and_extract_operating_points() method
+         * 
+         * Example usage:
+         * ```cpp
+         * AdvancedFlyback flyback(jsonData);
+         * MagneticAdviser adviser;
+         * auto results = adviser.get_advised_magnetic_from_converter(flyback, 5);
+         * ```
+         */
+        template<typename ConverterType>
+        std::vector<std::pair<Mas, double>> get_advised_magnetic_from_converter(
+            ConverterType& converter,
+            size_t maximumNumberResults = 1);
+
+        /**
+         * @brief Design magnetics from a converter with custom weights.
+         * 
+         * @tparam ConverterType The converter type
+         * @param converter The converter instance
+         * @param weights Map of filter types to weight values
+         * @param maximumNumberResults Maximum number of designs to return
+         * @return Vector of (Mas, score) pairs sorted by descending score
+         */
+        template<typename ConverterType>
+        std::vector<std::pair<Mas, double>> get_advised_magnetic_from_converter(
+            ConverterType& converter,
+            std::map<MagneticFilters, double> weights,
+            size_t maximumNumberResults);
 };
 
+// Template method implementations
+
+/**
+ * @brief Helper to run ngspice simulation for transformer-based converters (with turns ratios)
+ * SFINAE overload for converters with two-parameter simulate_and_extract_operating_points
+ */
+template<typename ConverterType>
+auto run_ngspice_simulation_helper(ConverterType& converter, 
+                                   const std::vector<double>& turnsRatios, 
+                                   double inductance, int)
+    -> decltype(converter.simulate_and_extract_operating_points(turnsRatios, inductance)) {
+    return converter.simulate_and_extract_operating_points(turnsRatios, inductance);
+}
+
+/**
+ * @brief Helper to run ngspice simulation for inductor-based converters (no turns ratios)
+ * SFINAE overload for converters with one-parameter simulate_and_extract_operating_points
+ */
+template<typename ConverterType>
+auto run_ngspice_simulation_helper(ConverterType& converter, 
+                                   const std::vector<double>& turnsRatios, 
+                                   double inductance, long)
+    -> decltype(converter.simulate_and_extract_operating_points(inductance)) {
+    (void)turnsRatios;  // Unused for inductors
+    return converter.simulate_and_extract_operating_points(inductance);
+}
+
+/**
+ * @brief Run ngspice simulation with proper method dispatch
+ */
+template<typename ConverterType>
+std::vector<OperatingPoint> run_ngspice_simulation(ConverterType& converter, 
+                                                   const std::vector<double>& turnsRatios, 
+                                                   double inductance) {
+    return run_ngspice_simulation_helper(converter, turnsRatios, inductance, 0);
+}
+
+template<typename ConverterType>
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_from_converter(
+    ConverterType& converter,
+    size_t maximumNumberResults) {
+    return get_advised_magnetic_from_converter(converter, std::map<MagneticFilters, double>{}, maximumNumberResults);
+}
+
+template<typename ConverterType>
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_from_converter(
+    ConverterType& converter,
+    std::map<MagneticFilters, double> weights,
+    size_t maximumNumberResults) {
+    
+    // Step 1: Get design requirements from converter (calculates optimal turns ratios, inductance, etc.)
+    DesignRequirements designReqs = converter.process_design_requirements();
+    
+    // Step 2: Extract turns ratios and inductance from calculated design requirements
+    std::vector<double> turnsRatios;
+    for (const auto& turnsRatio : designReqs.get_turns_ratios()) {
+        turnsRatios.push_back(resolve_dimensional_values(turnsRatio));
+    }
+    double magnetizingInductance = resolve_dimensional_values(designReqs.get_magnetizing_inductance());
+    
+    // Step 3: Run ngspice simulation with calculated parameters to get accurate waveforms
+    // SFINAE automatically selects the correct method based on converter type
+    std::vector<OperatingPoint> operatingPoints = run_ngspice_simulation(converter, turnsRatios, magnetizingInductance);
+    
+    // Step 4: Build Inputs object with design requirements and simulated operating points
+    Inputs inputs;
+    inputs.set_design_requirements(designReqs);
+    inputs.set_operating_points(operatingPoints);
+    
+    // Step 5: Process inputs to compute harmonics, magnetizing current, etc.
+    // ngspice returns raw sampled waveforms; process() computes harmonics and other derived data
+    inputs.process();
+    
+    // Step 6: Get magnetics from adviser
+    if (weights.empty()) {
+        return get_advised_magnetic(inputs, maximumNumberResults);
+    } else {
+        return get_advised_magnetic(inputs, weights, maximumNumberResults);
+    }
+}
 
 } // namespace OpenMagnetics
