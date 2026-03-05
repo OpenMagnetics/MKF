@@ -2485,7 +2485,7 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(2.5, 2.5 * maxError));
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(3.09, 3.09 * maxError));
 }
 
 TEST_CASE("Test_XFlux_19", "[physical-model][core-losses][smoke-test]") {

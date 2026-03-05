@@ -33,6 +33,7 @@ namespace {
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 5.0;
         llcJson["integratedResonantInductor"] = false;
         llcJson["operatingPoints"] = json::array();
 
@@ -111,6 +112,7 @@ namespace {
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.35;
+        llcJson["inductanceRatio"] = 5.0;
         llcJson["integratedResonantInductor"] = false;
         llcJson["operatingPoints"] = json::array();
 
@@ -200,6 +202,7 @@ namespace {
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 5.0;
         llcJson["operatingPoints"] = json::array();
 
         {
@@ -309,8 +312,9 @@ namespace {
             llcJson["bridgeType"] = "Half Bridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
-            llcJson["resonantFrequency"] = 120000;
-            llcJson["operatingPoints"] = json::array();
+        llcJson["resonantFrequency"] = 120000;
+        llcJson["inductanceRatio"] = 5.0;
+        llcJson["operatingPoints"] = json::array();
 
             {
                 json LlcOperatingPointJson;
@@ -346,8 +350,9 @@ namespace {
             llcJson["bridgeType"] = "Half Bridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
-            llcJson["resonantFrequency"] = 120000;
-            llcJson["operatingPoints"] = json::array();
+        llcJson["resonantFrequency"] = 120000;
+        llcJson["inductanceRatio"] = 5.0;
+        llcJson["operatingPoints"] = json::array();
 
             {
                 json LlcOperatingPointJson;
@@ -396,8 +401,9 @@ namespace {
             llcJson["bridgeType"] = "Half Bridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
-            llcJson["resonantFrequency"] = 80000;
-            llcJson["operatingPoints"] = json::array();
+        llcJson["resonantFrequency"] = 80000;
+        llcJson["inductanceRatio"] = 5.0;
+        llcJson["operatingPoints"] = json::array();
 
             {
                 json LlcOperatingPointJson;
@@ -432,8 +438,9 @@ namespace {
             llcJson["bridgeType"] = "Half Bridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
-            llcJson["resonantFrequency"] = 80000;
-            llcJson["operatingPoints"] = json::array();
+        llcJson["resonantFrequency"] = 80000;
+        llcJson["inductanceRatio"] = 5.0;
+        llcJson["operatingPoints"] = json::array();
 
             {
                 json LlcOperatingPointJson;
@@ -483,21 +490,22 @@ namespace {
         llcJson["bridgeType"] = "Half Bridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
+        llcJson["inductanceRatio"] = 5.0;
         llcJson["operatingPoints"] = json::array();
 
-        {
-            json LlcOperatingPointJson;
-            LlcOperatingPointJson["ambientTemperature"] = 25.0;
-            LlcOperatingPointJson["outputVoltages"] = {12.0, 5.0};
-            LlcOperatingPointJson["outputCurrents"] = {10.0, 3.0};
-            LlcOperatingPointJson["switchingFrequency"] = 100000;
-            llcJson["operatingPoints"].push_back(LlcOperatingPointJson);
-        }
+            {
+                json LlcOperatingPointJson;
+                LlcOperatingPointJson["ambientTemperature"] = 25.0;
+                LlcOperatingPointJson["outputVoltages"] = {12.0, 5.0};
+                LlcOperatingPointJson["outputCurrents"] = {10.0, 3.0};
+                LlcOperatingPointJson["switchingFrequency"] = 100000;
+                llcJson["operatingPoints"].push_back(LlcOperatingPointJson);
+            }
 
-        OpenMagnetics::Llc llc(llcJson);
-        auto req = llc.process_design_requirements();
+            OpenMagnetics::Llc llc(llcJson);
+            auto req = llc.process_design_requirements();
 
-        SECTION("Turns ratios for each output") {
+            SECTION("Turns ratios for each output") {
             CHECK(req.get_turns_ratios().size() == 2);
         }
 
@@ -554,26 +562,27 @@ namespace {
         llcJson["bridgeType"] = "Half Bridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
+        llcJson["inductanceRatio"] = 5.0;
         llcJson["operatingPoints"] = json::array();
 
-        {
-            json op1;
-            op1["ambientTemperature"] = 25.0;
-            op1["outputVoltages"] = {12.0};
-            op1["outputCurrents"] = {10.0};
-            op1["switchingFrequency"] = 100000;
-            llcJson["operatingPoints"].push_back(op1);
+            {
+                json op1;
+                op1["ambientTemperature"] = 25.0;
+                op1["outputVoltages"] = {12.0};
+                op1["outputCurrents"] = {10.0};
+                op1["switchingFrequency"] = 100000;
+                llcJson["operatingPoints"].push_back(op1);
 
-            json op2;
-            op2["ambientTemperature"] = 50.0;
-            op2["outputVoltages"] = {12.0};
-            op2["outputCurrents"] = {5.0};
-            op2["switchingFrequency"] = 130000;
-            llcJson["operatingPoints"].push_back(op2);
-        }
+                json op2;
+                op2["ambientTemperature"] = 50.0;
+                op2["outputVoltages"] = {12.0};
+                op2["outputCurrents"] = {5.0};
+                op2["switchingFrequency"] = 130000;
+                llcJson["operatingPoints"].push_back(op2);
+            }
 
-        OpenMagnetics::Llc llc(llcJson);
-        auto req = llc.process_design_requirements();
+            OpenMagnetics::Llc llc(llcJson);
+            auto req = llc.process_design_requirements();
         
         std::vector<double> turnsRatios;
         for (auto& tr : req.get_turns_ratios()) {
@@ -616,18 +625,19 @@ namespace {
         llcJson["bridgeType"] = "Half Bridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
+        llcJson["inductanceRatio"] = 5.0;
         llcJson["operatingPoints"] = json::array();
 
-        {
-            json LlcOperatingPointJson;
-            LlcOperatingPointJson["ambientTemperature"] = 25.0;
-            LlcOperatingPointJson["outputVoltages"] = {12.0};
-            LlcOperatingPointJson["outputCurrents"] = {10.0};
-            LlcOperatingPointJson["switchingFrequency"] = 100000;
-            llcJson["operatingPoints"].push_back(LlcOperatingPointJson);
-        }
+            {
+                json LlcOperatingPointJson;
+                LlcOperatingPointJson["ambientTemperature"] = 25.0;
+                LlcOperatingPointJson["outputVoltages"] = {12.0};
+                LlcOperatingPointJson["outputCurrents"] = {10.0};
+                LlcOperatingPointJson["switchingFrequency"] = 100000;
+                llcJson["operatingPoints"].push_back(LlcOperatingPointJson);
+            }
 
-        llcJson["desiredTurnsRatios"] = {8.33};
+            llcJson["desiredTurnsRatios"] = {8.33};
         llcJson["desiredMagnetizingInductance"] = 500e-6;
         llcJson["desiredResonantInductance"] = 100e-6;
 
@@ -689,19 +699,20 @@ namespace {
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 5.0;
         llcJson["operatingPoints"] = json::array();
 
-        {
-            json LlcOperatingPointJson;
-            LlcOperatingPointJson["ambientTemperature"] = 25.0;
-            LlcOperatingPointJson["outputVoltages"] = {12.0};
-            LlcOperatingPointJson["outputCurrents"] = {10.0};
-            LlcOperatingPointJson["switchingFrequency"] = 100000;
-            llcJson["operatingPoints"].push_back(LlcOperatingPointJson);
-        }
+            {
+                json LlcOperatingPointJson;
+                LlcOperatingPointJson["ambientTemperature"] = 25.0;
+                LlcOperatingPointJson["outputVoltages"] = {12.0};
+                LlcOperatingPointJson["outputCurrents"] = {10.0};
+                LlcOperatingPointJson["switchingFrequency"] = 100000;
+                llcJson["operatingPoints"].push_back(LlcOperatingPointJson);
+            }
 
-        OpenMagnetics::Llc llc(llcJson);
-        llc._assertErrors = true;
+            OpenMagnetics::Llc llc(llcJson);
+            llc._assertErrors = true;
 
         // Use explicit namespace
         OpenMagnetics::Inputs inputs = llc.process();
@@ -774,6 +785,7 @@ namespace {
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 5.0;
         llcJson["operatingPoints"] = json::array();
 
         {
@@ -819,6 +831,7 @@ namespace {
             fbJson["minSwitchingFrequency"] = 80000;
             fbJson["maxSwitchingFrequency"] = 200000;
             fbJson["qualityFactor"] = 0.35;
+            fbJson["inductanceRatio"] = 5.0;
             fbJson["operatingPoints"] = json::array();
 
             {
@@ -858,6 +871,7 @@ namespace {
             llcJson["inputVoltage"] = inputVoltage;
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
+            llcJson["inductanceRatio"] = 5.0;
             llcJson["operatingPoints"] = json::array();
 
             OpenMagnetics::Llc llc(llcJson);
@@ -869,6 +883,7 @@ namespace {
             llcJson["inputVoltage"] = json::object();
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
+            llcJson["inductanceRatio"] = 5.0;
             llcJson["operatingPoints"] = json::array();
 
             {
@@ -897,6 +912,7 @@ namespace {
             llcJson["minSwitchingFrequency"] = 60000;
             llcJson["maxSwitchingFrequency"] = 150000;
             llcJson["qualityFactor"] = 0.3;
+            llcJson["inductanceRatio"] = 5.0;
             llcJson["operatingPoints"] = json::array();
 
             {
@@ -930,6 +946,7 @@ namespace {
             llcJson["bridgeType"] = "Half Bridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 250000;
+            llcJson["inductanceRatio"] = 5.0;
             llcJson["operatingPoints"] = json::array();
 
             {
@@ -960,6 +977,7 @@ namespace {
             llcJson["bridgeType"] = "Half Bridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
+            llcJson["inductanceRatio"] = 5.0;
             llcJson["operatingPoints"] = json::array();
 
             {
@@ -984,6 +1002,7 @@ namespace {
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
             llcJson["resonantFrequency"] = 120000;
+            llcJson["inductanceRatio"] = 5.0;
             llcJson["operatingPoints"] = json::array();
 
             {
@@ -1007,6 +1026,7 @@ namespace {
             llcJson["bridgeType"] = "Half Bridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
+            llcJson["inductanceRatio"] = 5.0;
             llcJson["operatingPoints"] = json::array();
 
             {
@@ -1031,6 +1051,7 @@ namespace {
             llcJson["bridgeType"] = "Half Bridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
+            llcJson["inductanceRatio"] = 5.0;
             llcJson["operatingPoints"] = json::array();
 
             {
