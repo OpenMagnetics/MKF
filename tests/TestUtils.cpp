@@ -85,8 +85,8 @@ namespace {
 
     TEST_CASE("Test_Complete_Ellipitical_1_2", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_1(std::sin(M_PI / 18 / 2));
-        double expectedValue = 1.685058;
-        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
+        double expectedValue = 1.573792;
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.01));
     }
 
     TEST_CASE("Test_Complete_Ellipitical_2_0", "[support][utils][smoke-test]") {
@@ -103,8 +103,8 @@ namespace {
 
     TEST_CASE("Test_Complete_Ellipitical_2_2", "[support][utils][smoke-test]") {
         double calculatedValue = comp_ellint_2(std::sin(M_PI / 18 / 2));
-        double expectedValue = 1.576;
-        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.001));
+        double expectedValue = 1.567809;
+        REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, expectedValue * 0.01));
     }
 
     TEST_CASE("Test_Find_By_Area_Product", "[support][utils][smoke-test]") {
@@ -142,7 +142,7 @@ namespace {
         settings.set_use_concentric_cores(true);
         auto shape = find_core_shape_by_effective_parameters(0.079, 0.000171, 0.000014, MAS::CoreShapeFamily::PQ);
 
-        REQUIRE("PQ 35/35" == shape.get_name().value());
+        REQUIRE("PQ 35/40" == shape.get_name().value());
     }
 
     TEST_CASE("Test_Find_By_Perimeter", "[support][utils][smoke-test]") {

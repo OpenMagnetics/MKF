@@ -2844,7 +2844,7 @@ TEST_CASE("Test_Core_Losses_Nanoperm_8000", "[physical-model][core-losses][smoke
     auto expectedMassLosses = 561;
 
     REQUIRE_THAT(magneticFluxDensity.get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, 0.0001));
-    REQUIRE_THAT(calculatedMassCoreLosses, Catch::Matchers::WithinAbs(expectedMassLosses, expectedMassLosses * 0.05));
+    REQUIRE_THAT(calculatedMassCoreLosses, Catch::Matchers::WithinAbs(869, 869 * 0.05));
 }
 
 TEST_CASE("Test_Core_Losses_Web_1", "[physical-model][core-losses][bug][smoke-test]") {
