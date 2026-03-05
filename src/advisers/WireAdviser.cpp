@@ -378,7 +378,8 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Windi
             // throw std::runtime_error("maximumAvailableWidthForCopper cannot be negative");
         }
         auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / winding.get_number_turns();
-        size_t maximumNumberParallels = numberSections;
+        // Use the configurable maximum number of parallels, but not more than numberSections
+        size_t maximumNumberParallels = std::min(static_cast<size_t>(_maximumNumberParallels), static_cast<size_t>(numberSections));
 
         for (auto wire : planarWires) {
             if (resolve_dimensional_values(wire.get_conducting_height().value()) < section.get_dimensions()[1]) {

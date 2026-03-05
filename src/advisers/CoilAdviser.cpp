@@ -50,6 +50,7 @@ namespace OpenMagnetics {
 
     std::vector<std::pair<Mas, double>> CoilAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::vector<MagneticFilterOperation> filterFlow) {
         std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
+        std::vector<bool> masValidFlags(masMagnetics.size(), true);
         for (auto mas : masMagnetics) {
             masMagneticsWithScoring.push_back({mas, 0.0});
         }
@@ -57,16 +58,33 @@ namespace OpenMagnetics {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
             
             std::vector<double> scorings;
-            for (auto mas : masMagnetics) {
-                auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs());
+            for (size_t masIndex = 0; masIndex < masMagnetics.size(); ++masIndex) {
+                auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&masMagnetics[masIndex].get_mutable_magnetic(), &masMagnetics[masIndex].get_mutable_inputs());
+                if (!valid) {
+                    masValidFlags[masIndex] = false;
+                }
                 scorings.push_back(scoring);
-                add_scoring(mas.get_mutable_magnetic().get_reference(), filterEnum, scoring);
+                add_scoring(masMagnetics[masIndex].get_mutable_magnetic().get_reference(), filterEnum, scoring);
             }
             if (masMagneticsWithScoring.size() > 0) {
                 normalize_scoring(&masMagneticsWithScoring, scorings, filterConfiguration);
             }
         }
-        return masMagneticsWithScoring;
+        // Remove invalid designs
+        std::vector<std::pair<Mas, double>> validMasMagneticsWithScoring;
+        size_t invalidCount = 0;
+        for (size_t i = 0; i < masMagneticsWithScoring.size(); ++i) {
+            if (masValidFlags[i]) {
+                validMasMagneticsWithScoring.push_back(masMagneticsWithScoring[i]);
+            }
+            else {
+                invalidCount++;
+            }
+        }
+        if (invalidCount > 0) {
+            logEntry("Filtered out " + std::to_string(invalidCount) + " invalid designs out of " + std::to_string(masMagnetics.size()), "CoilAdviser", 2);
+        }
+        return validMasMagneticsWithScoring;
     }
 
     std::vector<Mas> CoilAdviser::get_advised_coil(Mas mas, size_t maximumNumberResults){
@@ -593,23 +611,43 @@ namespace OpenMagnetics {
                 }
             }
 
-            auto wiresWithScoring = _wireAdviser.get_advised_planar_wire(coil.get_functional_description()[windingIndex],
-                                                                         sections[sectionIndex],
-                                                                         maximumCurrent,
-                                                                         maximumTemperature,
-                                                                         numberSectionsPerPattern * repetitions,
-                                                                         maximumNumberWires);
+            // Try multiple wire configurations to find optimal designs
+            std::vector<std::map<std::string, double>> wireConfigurations = {
+                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
+                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
+                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
+                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
+            };
+            logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
 
-            if (wiresWithScoring.size() != 0) {
-                timeout += wiresWithScoring.size();
+            wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
 
+            for (auto& wireConfiguration : wireConfigurations) {
+                _wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
+                _wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
+                logEntry("Trying planar wires with a current density of " + std::to_string(wireConfiguration["maximumEffectiveCurrentDensity"]) + " and " + std::to_string(wireConfiguration["maximumNumberParallels"]) + " maximum parallels", "CoilAdviser", 3);
 
+                auto wiresWithScoring = _wireAdviser.get_advised_planar_wire(coil.get_functional_description()[windingIndex],
+                                                                             sections[sectionIndex],
+                                                                             maximumCurrent,
+                                                                             maximumTemperature,
+                                                                             numberSectionsPerPattern * repetitions,
+                                                                             maximumNumberWires);
 
-                wireCoilPerWinding.push_back(wiresWithScoring);
-                found = true;
+                if (wiresWithScoring.size() != 0) {
+                    timeout += wiresWithScoring.size();
+                    // Only add wires up to the limit, but continue trying other configurations
+                    size_t spaceRemaining = maximumNumberResults * 4 - wireCoilPerWinding.back().size();
+                    size_t wiresToAdd = std::min(spaceRemaining, wiresWithScoring.size());
+                    std::move(wiresWithScoring.begin(), wiresWithScoring.begin() + wiresToAdd, std::back_inserter(wireCoilPerWinding.back()));
+                    found = true;
+                }
             }
             if (!found) {
-                wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
+                logEntry("No planar wires found for winding " + std::to_string(windingIndex), "CoilAdviser", 2);
+            }
+            else {
+                logEntry("Found " + std::to_string(wireCoilPerWinding.back().size()) + " planar wire options for winding " + std::to_string(windingIndex), "CoilAdviser", 2);
             }
 
         }
