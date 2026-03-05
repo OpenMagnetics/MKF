@@ -475,7 +475,74 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
                                  ", wireOuterRadius=" + std::to_string(wireOuterRadius));
     }
 
-    double factor = 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha) + wire.get_number_conductors().value() * (wire.get_number_conductors().value() - 1) * pow(wireRadius, 2) / pow(wireOuterRadius, 2) * modified_bessel_first_kind(1, alpha * wireRadius) / modified_bessel_first_kind(0, alpha * wireRadius))).real();
+    if (wireOuterRadius <= 0) {
+        throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT, 
+            "wireOuterRadius must be positive in Albach model: " + std::to_string(wireOuterRadius));
+    }
+
+    // For large alpha values, Bessel functions can overflow. Cap alpha to prevent NaN.
+    // The asymptotic behavior for large alpha is I_n(alpha) ~ exp(alpha)/sqrt(2*pi*alpha)
+    // so we cap alpha at a reasonable value where the ratio stabilizes
+    const double MAX_ALPHA_MAGNITUDE = 100.0;
+    std::complex<double> alphaCapped = alpha;
+    double alphaMag = std::abs(alpha);
+    if (alphaMag > MAX_ALPHA_MAGNITUDE) {
+        // Scale alpha down to MAX_ALPHA_MAGNITUDE
+        alphaCapped *= MAX_ALPHA_MAGNITUDE / alphaMag;
+    }
+    
+    std::complex<double> bessel0 = modified_bessel_first_kind(0, alphaCapped);
+    std::complex<double> bessel1 = modified_bessel_first_kind(1, alphaCapped);
+    
+    // Check for NaN/Inf in Bessel results and cap if needed
+    if (std::isnan(bessel0.real()) || std::isnan(bessel0.imag()) || 
+        std::isnan(bessel1.real()) || std::isnan(bessel1.imag()) ||
+        std::isinf(bessel0.real()) || std::isinf(bessel0.imag()) || 
+        std::isinf(bessel1.real()) || std::isinf(bessel1.imag())) {
+        // For very large arguments, I_0(x)/I_1(x) -> 1 and I_1(x)/I_0(x) -> 1
+        // Use asymptotic approximation
+        bessel0 = std::complex<double>(1e100, 0);
+        bessel1 = std::complex<double>(1e100, 0);
+    }
+    
+    std::complex<double> besselRatio1 = bessel0 / bessel1;
+    
+    // For the second term with alpha * wireRadius, also check bounds
+    std::complex<double> alpha2 = alpha * wireRadius;
+    std::complex<double> alpha2Capped = alpha2;
+    double alpha2Mag = std::abs(alpha2);
+    if (alpha2Mag > MAX_ALPHA_MAGNITUDE) {
+        alpha2Capped *= MAX_ALPHA_MAGNITUDE / alpha2Mag;
+    }
+    
+    std::complex<double> bessel0_2 = modified_bessel_first_kind(0, alpha2Capped);
+    std::complex<double> bessel1_2 = modified_bessel_first_kind(1, alpha2Capped);
+    
+    if (std::isnan(bessel0_2.real()) || std::isnan(bessel0_2.imag()) || 
+        std::isnan(bessel1_2.real()) || std::isnan(bessel1_2.imag()) ||
+        std::isinf(bessel0_2.real()) || std::isinf(bessel0_2.imag()) || 
+        std::isinf(bessel1_2.real()) || std::isinf(bessel1_2.imag())) {
+        bessel0_2 = std::complex<double>(1e100, 0);
+        bessel1_2 = std::complex<double>(1e100, 0);
+    }
+    
+    std::complex<double> besselRatio2 = bessel1_2 / bessel0_2;
+    
+    double numConductors = wire.get_number_conductors().value();
+    double geometricFactor = (numConductors * (numConductors - 1) * pow(wireRadius, 2)) / pow(wireOuterRadius, 2);
+    
+    double factor = 0.5 * (alpha * (besselRatio1 + geometricFactor * besselRatio2)).real();
+
+    // Final safety check - cap to reasonable physical values
+    // Skin factor should typically be between 1 (no skin effect) and ~10 (severe skin effect)
+    const double MAX_SKIN_FACTOR = 100.0;
+    if (std::isnan(factor) || std::isinf(factor)) {
+        factor = MAX_SKIN_FACTOR;
+    } else if (factor > MAX_SKIN_FACTOR) {
+        factor = MAX_SKIN_FACTOR;
+    } else if (factor < 1.0) {
+        factor = 1.0;  // Minimum skin factor is 1 (no additional losses)
+    }
 
     return factor;
 }

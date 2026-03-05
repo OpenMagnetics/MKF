@@ -332,21 +332,17 @@ CoilAlignment Coil::get_turns_alignment(std::optional<std::string> sectionName) 
 
 CoilAlignment Coil::get_section_alignment() {
     auto bobbin = resolve_bobbin();
-    std::cout << "[get_section_alignment] Bobbin has processed_description: " << (bobbin.get_processed_description() ? "yes" : "no") << std::endl;
     if (!bobbin.get_processed_description()) {
         return _sectionAlignment;
     }
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    std::cout << "[get_section_alignment] Number of windingWindows: " << windingWindows.size() << std::endl;
     if (windingWindows.size() > 1) {
         throw NotImplementedException("Bobbins with more than winding window not implemented yet");
     }
     if (windingWindows.size() > 0) {
-        std::cout << "[get_section_alignment] windingWindows[0] has sections_alignment: " << (windingWindows[0].get_sections_alignment() ? "yes" : "no") << std::endl;
         if (windingWindows[0].get_sections_alignment()) {
             auto alignment = windingWindows[0].get_sections_alignment().value();
-            std::cout << "[get_section_alignment] sections_alignment value: " << static_cast<int>(alignment) << std::endl;
             return alignment;
         }
     }
@@ -2062,7 +2058,6 @@ bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType, double
     group.set_partial_windings(partialWindings);
     group.set_sections_orientation(get_winding_orientation());
     group.set_type(coilType);
-    std::cout << "[create_default_group] Setting group type to: " << (coilType == WiringTechnology::PRINTED ? "PRINTED" : "WOUND") << std::endl;
     set_groups_description(std::vector<Group>{group});
 
     return true;
@@ -3225,7 +3220,6 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     set_winding_orientation(WindingOrientation::CONTIGUOUS);
     // Read section alignment from bobbin's windingWindows instead of hardcoding CENTERED
     auto sectionAlignment = get_section_alignment();
-    std::cout << "[wind_by_planar_sections] sectionAlignment from get_section_alignment(): " << static_cast<int>(sectionAlignment) << std::endl;
     set_section_alignment(sectionAlignment);
     set_turns_alignment(CoilAlignment::SPREAD);
 

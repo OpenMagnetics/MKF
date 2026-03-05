@@ -10,6 +10,7 @@
 #include "processors/MagneticSimulator.h"
 #include "TestingUtils.h"
 #include "TestWindingLosses.h"
+#include "advisers/CoilAdviser.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>

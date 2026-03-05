@@ -54,6 +54,12 @@ double WindingOhmicLosses::calculate_effective_resistance_per_meter(Wire wire, d
 
     double wireEffectiveConductingArea = wire.calculate_effective_conducting_area(frequency, temperature);
 
+    // Check for invalid conducting area that would cause division issues
+    if (std::isnan(wireEffectiveConductingArea) || std::isinf(wireEffectiveConductingArea) || wireEffectiveConductingArea <= 0) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, 
+            "Invalid wire effective conducting area: " + std::to_string(wireEffectiveConductingArea));
+    }
+
     double dcResistancePerMeter = resistivity / wireEffectiveConductingArea;
     return dcResistancePerMeter;
 };

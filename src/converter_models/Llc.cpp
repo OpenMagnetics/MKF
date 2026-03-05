@@ -582,7 +582,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
         auto excitation = complete_excitation(currentWaveform, voltageWaveform,
                                               fsw, "Primary");
-        // Debug: Verify name is set
         auto nameOpt = excitation.get_name();
         std::cerr << "DEBUG LLC Primary excitation name: '" 
                   << (nameOpt.has_value() ? nameOpt.value() : "NULL") 
@@ -647,7 +646,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
             std::string windingName = "Secondary " + std::to_string(outputIdx) + " Half " + std::to_string(halfIdx + 1);
             auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
-            // Debug: Verify name is set
             auto nameOpt = excitation.get_name();
             std::cerr << "DEBUG LLC Secondary excitation name: '" 
                       << (nameOpt.has_value() ? nameOpt.value() : "NULL") 

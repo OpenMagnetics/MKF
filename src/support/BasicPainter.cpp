@@ -586,22 +586,22 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
 
     if (coil.get_groups_description()) {
         coilType = coil.get_groups_description().value()[0].get_type(); // TODO: take into account more groups
-        std::cout << "[paint_two_piece_set_coil_turns] coilType from groups: " << (coilType == WiringTechnology::PRINTED ? "PRINTED" : "WOUND") << std::endl;
-    } else {
-        std::cout << "[paint_two_piece_set_coil_turns] No groups_description, defaulting to WOUND" << std::endl;
     }
 
-    auto layers = coil.get_layers_description().value();
-
-    if (coilType == WiringTechnology::WOUND) {
-        for (size_t i = 0; i < layers.size(); ++i){
-            if (layers[i].get_type() == ElectricalType::INSULATION) {
-                paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+    if (coil.get_layers_description()) {
+        auto layers = coil.get_layers_description().value();
+        
+        if (coilType == WiringTechnology::WOUND) {
+            for (size_t i = 0; i < layers.size(); ++i){
+                if (layers[i].get_type() == ElectricalType::INSULATION) {
+                    paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+                }
             }
+            paint_two_piece_set_margin(magnetic);
         }
-        paint_two_piece_set_margin(magnetic);
     }
-    else if (coilType == WiringTechnology::PRINTED){
+    
+    if (coilType == WiringTechnology::PRINTED){
         std::string styleClass = "fr4";
         if (!_fieldPainted) {
             // styleClass = "fr4_translucent";

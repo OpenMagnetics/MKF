@@ -5,6 +5,7 @@
 #include "physical_models/WindingLosses.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "support/Settings.h"
+#include "support/Utils.h"
 #include <list>
 #include <magic_enum.hpp>
 #include "support/Exceptions.h"
@@ -13,7 +14,33 @@
 
 namespace OpenMagnetics {
 
-void normalize_scoring(std::vector<std::pair<Winding, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true) {
+void normalize_scoring(std::vector<std::pair<Winding, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true, const std::string& filterName="") {
+    // Debug: Check for NaN values before normalization
+    for (size_t i = 0; i < newScoring->size(); ++i) {
+        if (std::isnan((*newScoring)[i]) || std::isinf((*newScoring)[i])) {
+            auto wire = OpenMagnetics::Coil::resolve_wire((*coilsWithScoring)[i].first);
+            std::string wireInfo = "Wire type: " + std::string(magic_enum::enum_name(wire.get_type()));
+            if (wire.get_name()) {
+                wireInfo += ", name: " + wire.get_name().value();
+            }
+            if (wire.get_conducting_width()) {
+                wireInfo += ", conducting_width: " + std::to_string(OpenMagnetics::resolve_dimensional_values(wire.get_conducting_width().value()));
+            }
+            else {
+                wireInfo += ", conducting_width: MISSING";
+            }
+            if (wire.get_conducting_height()) {
+                wireInfo += ", conducting_height: " + std::to_string(OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value()));
+            }
+            else {
+                wireInfo += ", conducting_height: MISSING";
+            }
+            throw std::invalid_argument("NaN/Inf scoring detected in filter '" + filterName + "' at index " + std::to_string(i) + 
+                                       ". Scoring value: " + std::to_string((*newScoring)[i]) + 
+                                       ". " + wireInfo);
+        }
+    }
+    
     auto normalizedScorings = OpenMagnetics::normalize_scoring(*newScoring, 1, invert, false);
 
     for (size_t i = 0; i < (*coilsWithScoring).size(); ++i) {
@@ -60,7 +87,7 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_no_parallel
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoilsWithScoring, &newScoring);
+        normalize_scoring(&filteredCoilsWithScoring, &newScoring, true, "area_no_parallels");
     }
     return filteredCoilsWithScoring;
 }
@@ -109,7 +136,7 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_with_parall
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoilsWithScoring, &newScoring, false);
+        normalize_scoring(&filteredCoilsWithScoring, &newScoring, false, "area_with_parallels");
     }
     return filteredCoilsWithScoring;
 }
@@ -154,7 +181,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_effective_resista
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoilsWithScoring, &newScoring);
+        normalize_scoring(&filteredCoilsWithScoring, &newScoring, true, "effective_resistance");
     }
     return filteredCoilsWithScoring;
 }
@@ -194,7 +221,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_skin_losses_densi
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoilsWithScoring, &newScoring);
+        normalize_scoring(&filteredCoilsWithScoring, &newScoring, true, "skin_losses_density");
     }
     return filteredCoilsWithScoring;
 }
@@ -239,7 +266,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_proximity_factor(
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoilsWithScoring, &newScoring);
+        normalize_scoring(&filteredCoilsWithScoring, &newScoring, true, "proximity_factor");
     }
     return filteredCoilsWithScoring;
 }
@@ -277,7 +304,7 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_solid_insulation_
     }
 
     if (filteredCoilsWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoilsWithScoring, &newScoring);
+        normalize_scoring(&filteredCoilsWithScoring, &newScoring, true, "solid_insulation_requirements");
     }
     return filteredCoilsWithScoring;
 }

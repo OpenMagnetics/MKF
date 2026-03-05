@@ -254,10 +254,6 @@ void Temperature::extractWireProperties() {
                 _wireWidth = outerDiam.get_nominal().value();
                 // Fallback: use outer_diameter for both if no separate width/height
                 _wireHeight = _wireWidth;
-                if (THERMAL_DEBUG) {
-                    std::cout << "[TEMP] WARNING: Rectangular/foil wire has no conducting_width/height, "
-                              << "using outer_diameter for both dimensions" << std::endl;
-                }
             }
         }
     }
@@ -415,15 +411,9 @@ void Temperature::createThermalNodes() {
     ambientNode.powerDissipation = 0.0;
     ambientNode.physicalCoordinates = {0, 0, 0};
     _nodes.push_back(ambientNode);
-    
-    if (THERMAL_DEBUG) {
-    }
 }
 
 void Temperature::createToroidalCoreNodes() {
-    if (THERMAL_DEBUG) {
-        std::cout << "[TEMP] Creating toroidal core nodes..." << std::endl;
-    }
     auto core = _magnetic.get_core();
     auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
     
@@ -619,9 +609,6 @@ void Temperature::createToroidalCoreNodes() {
         };
         
         _nodes.push_back(node);
-    }
-    if (THERMAL_DEBUG) {
-        std::cout << "[TEMP] Created " << numSegments << " toroidal core segments" << std::endl;
     }
 }
 
@@ -1311,10 +1298,6 @@ void Temperature::createTurnNodes() {
                                      "Use MagneticSimulator to calculate real losses per turn.");
         }
         
-        if (THERMAL_DEBUG) {
-            std::cout << "[TEMP] Creating " << turns->size() << " toroidal turn nodes with per-turn losses" << std::endl;
-        }
-        
         // Validate that per-turn losses count matches turn count
         if (turnLosses.size() != turns->size()) {
             throw std::runtime_error("Per-turn losses count (" + std::to_string(turnLosses.size()) + 
@@ -1804,12 +1787,6 @@ void Temperature::createBobbinConnections() {
         
         r.resistance = ThermalResistance::calculateConductionResistance(dist, k, area);
         _resistances.push_back(r);
-        
-        if (THERMAL_DEBUG) {
-            std::cout << "Connection: " << _nodes[fromIdx].name << "[" << magic_enum::enum_name(fromFace) 
-                      << "] -> " << _nodes[toIdx].name << "[" << magic_enum::enum_name(toFace)
-                      << "] (R=" << r.resistance << " K/W)" << std::endl;
-        }
     };
     
     // Helper to calculate contact area between bobbin and core surfaces
@@ -3772,15 +3749,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
         // of bottom-most turns, which connect to Tamb (convection).
         // Rule: at most ONE connection per quadrant.
         // ============================================================================
-        if (THERMAL_DEBUG) {
-            std::cout << "[PLANAR] Entering planar convection connections logic" << std::endl;
-            std::cout << "[PLANAR] Total nodes in network: " << _nodes.size() << std::endl;
-            std::cout << "[PLANAR] Node listing:" << std::endl;
-            for (size_t i = 0; i < _nodes.size(); i++) {
-                std::cout << "  [" << i << "] " << _nodes[i].name
-                          << " (type=" << static_cast<int>(_nodes[i].part) << ")" << std::endl;
-            }
-        }
 
         // 1. Find FR4 insulation layer nodes
         // For planar configurations, all insulation layers are PCB substrates (FR4)
@@ -3788,14 +3756,7 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) {
                 fr4LayerIndices.push_back(i);
-                if (THERMAL_DEBUG) {
-                    std::cout << "[PLANAR] Found FR4 layer node: " << _nodes[i].name
-                              << " (idx=" << i << ")" << std::endl;
-                }
             }
-        }
-        if (THERMAL_DEBUG) {
-            std::cout << "[PLANAR] Total FR4 layer nodes found: " << fr4LayerIndices.size() << std::endl;
         }
 
         // 2. Helper lambda: Find turns at LOWEST Y-coordinate (top PCB layer)
@@ -3821,14 +3782,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                         topTurns.push_back(i);
                     }
                 }
-            }
-
-            if (THERMAL_DEBUG && !topTurns.empty()) {
-                std::cout << "[PLANAR] Top layer (minY=" << minY << "mm, top in SVG): ";
-                for (size_t idx : topTurns) {
-                    std::cout << _nodes[idx].name << " ";
-                }
-                std::cout << std::endl;
             }
 
             return topTurns;
@@ -3858,15 +3811,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                     }
                 }
             }
-
-            if (THERMAL_DEBUG && !bottomTurns.empty()) {
-                std::cout << "[PLANAR] Bottom layer (maxY=" << maxY << "mm, bottom in SVG): ";
-                for (size_t idx : bottomTurns) {
-                    std::cout << _nodes[idx].name << " ";
-                }
-                std::cout << std::endl;
-            }
-
             return bottomTurns;
         };
 
@@ -3909,12 +3853,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                     r.area = turnQuad->surfaceArea;
                     _resistances.push_back(r);
 
-                    if (THERMAL_DEBUG) {
-                        std::cout << "[PLANAR] Top quadrant of top-most turn to ambient: "
-                                  << _nodes[i].name << " quadrant " << static_cast<int>(face)
-                                  << " → Tamb (R=" << r.resistance << "K/W)"
-                                  << std::endl;
-                    }
                     continue;  // Skip FR4 connection for this quadrant
                 }
 
@@ -3932,12 +3870,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                     r.area = turnQuad->surfaceArea;
                     _resistances.push_back(r);
 
-                    if (THERMAL_DEBUG) {
-                        std::cout << "[PLANAR] Bottom quadrant of bottom-most turn to ambient: "
-                                  << _nodes[i].name << " quadrant " << static_cast<int>(face)
-                                  << " → Tamb (R=" << r.resistance << "K/W)"
-                                  << std::endl;
-                    }
                     continue;  // Skip FR4 connection for this quadrant
                 }
 
@@ -3993,14 +3925,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                         r.area = contactArea;
                         _resistances.push_back(r);
 
-                        if (THERMAL_DEBUG) {
-                            std::cout << "[PLANAR] Created conduction connection: "
-                                      << _nodes[i].name << " quadrant " << static_cast<int>(face)
-                                      << " → " << _nodes[closestFr4Node].name << " quadrant "
-                                      << static_cast<int>(closestFr4Quadrant)
-                                      << " (dist=" << minDist*1000 << "mm, R=" << r.resistance << "K/W)"
-                                      << std::endl;
-                        }
                     }
                 }
             } // end quadrant loop
@@ -4041,11 +3965,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
             }
         }
 
-        if (THERMAL_DEBUG) {
-            std::cout << "[PLANAR] Copper coverage - Top layer: " << topCopperArea*1e6 << " mm², Bottom layer: "
-                      << bottomCopperArea*1e6 << " mm²" << std::endl;
-        }
-
         double fr4Tolerance = 1e-5;  // Same small tolerance to detect distinct layers
         for (size_t fr4Idx : fr4LayerIndices) {
             const auto& fr4Node = _nodes[fr4Idx];
@@ -4076,13 +3995,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                     r.area = effectiveArea;
                     _resistances.push_back(r);
 
-                    if (THERMAL_DEBUG) {
-                        std::cout << "[PLANAR] Created FR4 top surface to ambient (reduced by copper): "
-                                  << fr4Node.name << " quadrant " << static_cast<int>(ThermalNodeFace::TANGENTIAL_LEFT)
-                                  << " → Tamb (area=" << effectiveArea*1e6 << "mm², coverage=" << (1-areaProportion)*100
-                                  << "%, R=" << r.resistance << "K/W)"
-                                  << std::endl;
-                    }
                 }
             }
 
@@ -4108,13 +4020,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                     r.area = effectiveArea;
                     _resistances.push_back(r);
 
-                    if (THERMAL_DEBUG) {
-                        std::cout << "[PLANAR] Created FR4 bottom surface to ambient (reduced by copper): "
-                                  << fr4Node.name << " quadrant " << static_cast<int>(ThermalNodeFace::TANGENTIAL_RIGHT)
-                                  << " → Tamb (area=" << effectiveArea*1e6 << "mm², coverage=" << (1-areaProportion)*100
-                                  << "%, R=" << r.resistance << "K/W)"
-                                  << std::endl;
-                    }
                 }
             }
         }
@@ -4164,12 +4069,6 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
                 r.area = coreQuad->surfaceArea;
                 _resistances.push_back(r);
 
-                if (THERMAL_DEBUG) {
-                    std::cout << "[PLANAR] Created core convection: "
-                              << _nodes[i].name << " quadrant " << static_cast<int>(face)
-                              << " → Tamb (R=" << r.resistance << "K/W)"
-                              << std::endl;
-                }
             }
         }
 }
@@ -4629,26 +4528,6 @@ ThermalResult Temperature::solveThermalCircuit() {
                                  "The thermal model was not properly built.");
     }
 
-    if (THERMAL_DEBUG) {
-        std::cout << "[SOLVER] Total nodes in thermal network: " << n << std::endl;
-        std::cout << "[SOLVER] Total resistances: " << _resistances.size() << std::endl;
-
-        // Count connections per node
-        std::vector<int> connectionCount(n, 0);
-        for (const auto& r : _resistances) {
-            if (r.nodeFromId < n) connectionCount[r.nodeFromId]++;
-            if (r.nodeToId < n) connectionCount[r.nodeToId]++;
-        }
-
-        // Check for isolated nodes
-        for (size_t i = 0; i < n; ++i) {
-            if (connectionCount[i] == 0 && !_nodes[i].isAmbient()) {
-                std::cout << "[SOLVER] WARNING: Node " << i << " (" << _nodes[i].name
-                          << ") has no thermal connections!" << std::endl;
-            }
-        }
-    }
-
     // Find the ambient node (look for AMBIENT part type, not just last node)
     size_t ambientIdx = n - 1;  // Default to last node
     for (size_t i = 0; i < n; ++i) {
@@ -4753,9 +4632,6 @@ ThermalResult Temperature::solveThermalCircuit() {
     result.thermalResistances = _resistances;
     
     result.maximumTemperature = _config.ambientTemperature;
-    if (THERMAL_DEBUG) {
-        std::cout << "[TEMP] Result node temperatures (" << n - 1 << " nodes):" << std::endl;
-    }
     for (size_t i = 0; i < n - 1; ++i) {
         result.nodeTemperatures[_nodes[i].name] = temperatures[i];
         if (temperatures[i] > result.maximumTemperature) {
@@ -4765,10 +4641,6 @@ ThermalResult Temperature::solveThermalCircuit() {
             std::cout << "  " << _nodes[i].name << ": " << temperatures[i] << "°C" << std::endl;
         }
     }
-    if (THERMAL_DEBUG) {
-        std::cout << "[TEMP] Total turn nodes: " << result.nodeTemperatures.size() << std::endl;
-    }
-    
     double totalPower = 0.0;
     for (size_t i = 0; i < n; ++i) {
         totalPower += _nodes[i].powerDissipation;

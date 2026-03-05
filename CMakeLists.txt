@@ -487,6 +487,7 @@ target_include_directories(MKF PUBLIC
      "${PROJECT_SOURCE_DIR}/src/physical_models/"
      "${PROJECT_SOURCE_DIR}/src/processors/"
      "${PROJECT_SOURCE_DIR}/src/support/"
+     "${CMAKE_BINARY_DIR}/_deps/eigen-src"
      )
 
 # add_executable(magnetic_adviser "src/advisers/MagneticAdviser.cpp")
