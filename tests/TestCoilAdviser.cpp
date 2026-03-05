@@ -2179,6 +2179,15 @@ TEST_CASE("Test_CoilAdviser_WASM_Replication", "[adviser][coil-adviser][wasm-rep
     outFile.append(filename);
     Painter painter(outFile);
 
+    // Configure painter settings for electric field visualization
+    OpenMagnetics::Settings::GetInstance().set_painter_number_points_x(100);
+    OpenMagnetics::Settings::GetInstance().set_painter_number_points_y(100);
+    OpenMagnetics::Settings::GetInstance().set_painter_include_fringing(false);
+
+    // Paint electric field using the first operating point
+    painter.paint_electric_field(masMagneticsWithCoil[0].get_inputs().get_operating_points()[0], 
+                                  masMagneticsWithCoil[0].get_magnetic());
+
     painter.paint_core(masMagneticsWithCoil[0].get_mutable_magnetic());
     painter.paint_bobbin(masMagneticsWithCoil[0].get_mutable_magnetic());
     painter.paint_coil_turns(masMagneticsWithCoil[0].get_mutable_magnetic());
