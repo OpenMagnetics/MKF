@@ -6,6 +6,7 @@
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
 #include "processors/Inputs.h"
+#include "physical_models/StrayCapacitance.h"
 #include <magic_enum.hpp>
 #include "TestingUtils.h"
 #include "support/Settings.h"
@@ -2173,6 +2174,28 @@ TEST_CASE("Test_CoilAdviser_WASM_Replication", "[adviser][coil-adviser][wasm-rep
         REQUIRE(currentDensity < 12e6);
     }
 
+    // Calculate voltage for each winding (needed for electric field calculation)
+    // Get the actual magnetizing inductance from the designed magnetic
+    auto magnetic = masMagneticsWithCoil[0].get_mutable_magnetic();
+    OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    
+    // Add voltage to each winding's excitation
+    for (size_t opIndex = 0; opIndex < masMagneticsWithCoil[0].get_inputs().get_operating_points().size(); ++opIndex) {
+        auto& operatingPoint = masMagneticsWithCoil[0].get_mutable_inputs().get_mutable_operating_points()[opIndex];
+        auto inductanceOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+            magnetic.get_mutable_core(), coil, &operatingPoint);
+        double magnetizingInductance = resolve_dimensional_values(inductanceOutput.get_magnetizing_inductance());
+        
+        for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+            auto& excitation = operatingPoint.get_mutable_excitations_per_winding()[windingIndex];
+            // Calculate induced voltage based on turns ratio
+            double turnsRatio = static_cast<double>(coil.get_functional_description()[windingIndex].get_number_turns()) / static_cast<double>(coil.get_functional_description()[0].get_number_turns());
+            double windingInductance = magnetizingInductance * pow(turnsRatio, 2);
+            auto voltage = OpenMagnetics::Inputs::calculate_induced_voltage(excitation, windingInductance);
+            excitation.set_voltage(voltage);
+        }
+    }
+
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     auto outFile = outputFilePath;
     std::string filename = "Test_CoilAdviser_WASM_Replication.svg";
@@ -2184,9 +2207,12 @@ TEST_CASE("Test_CoilAdviser_WASM_Replication", "[adviser][coil-adviser][wasm-rep
     OpenMagnetics::Settings::GetInstance().set_painter_number_points_y(100);
     OpenMagnetics::Settings::GetInstance().set_painter_include_fringing(false);
 
-    // Paint electric field using the first operating point
+    // Paint electric field using the first operating point with SDF_PHYSICS model
     painter.paint_electric_field(masMagneticsWithCoil[0].get_inputs().get_operating_points()[0], 
-                                  masMagneticsWithCoil[0].get_magnetic());
+                                  masMagneticsWithCoil[0].get_magnetic(), 
+                                  1, std::nullopt, 
+                                  ElectricFieldVisualizationModel::SDF_PHYSICS, 
+                                  ColorPalette::VIRIDIS);
 
     painter.paint_core(masMagneticsWithCoil[0].get_mutable_magnetic());
     painter.paint_bobbin(masMagneticsWithCoil[0].get_mutable_magnetic());

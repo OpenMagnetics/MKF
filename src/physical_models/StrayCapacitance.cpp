@@ -1452,6 +1452,46 @@ std::pair<SixCapacitorNetworkPerWinding, TripoleCapacitancePerWinding> StrayCapa
 
 
 StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
+    std::map<std::string, double> voltageRmsPerWinding;
+    double primaryNumberTurns = coil.get_functional_description()[0].get_number_turns();
+    for (auto winding : coil.get_functional_description()) {
+        double turnsRatio = primaryNumberTurns /  winding.get_number_turns();
+        voltageRmsPerWinding[winding.get_name()] = 10.0 / turnsRatio;
+    }
+    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding);
+}
+
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, OperatingPoint operatingPoint) {
+    // Extract actual RMS voltages from operating point
+    std::map<std::string, double> voltageRmsPerWinding;
+    
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        if (windingIndex >= operatingPoint.get_excitations_per_winding().size()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing excitation for winding index: " + std::to_string(windingIndex));
+        }
+        
+        auto& excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+        
+        if (!excitation.get_voltage()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing voltage in excitation for winding: " + coil.get_functional_description()[windingIndex].get_name());
+        }
+        
+        if (!excitation.get_voltage()->get_processed()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Voltage is not processed for winding: " + coil.get_functional_description()[windingIndex].get_name());
+        }
+        
+        auto rmsVoltage = excitation.get_voltage()->get_processed()->get_rms();
+        if (!rmsVoltage) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing RMS voltage value for winding: " + coil.get_functional_description()[windingIndex].get_name());
+        }
+        
+        voltageRmsPerWinding[coil.get_functional_description()[windingIndex].get_name()] = rmsVoltage.value();
+    }
+    
+    return calculate_capacitance_with_voltages(coil, voltageRmsPerWinding);
+}
+
+StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding) {
     std::map<std::pair<size_t, size_t>, double> electricEnergyBetweenTurnsMap;
     std::map<std::pair<size_t, size_t>, double> voltageDropBetweenTurnsMap;
     std::map<std::string, std::map<std::string, ScalarMatrixAtFrequency>> capacitanceMatrix;
@@ -1459,13 +1499,6 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil) {
     std::map<std::string, std::map<std::string, TripoleCapacitancePerWinding>> tripoleCapacitancePerWinding;
 
     auto capacitanceAmongTurns = calculate_capacitance_among_turns(coil);
-
-    std::map<std::string, double> voltageRmsPerWinding;
-    double primaryNumberTurns = coil.get_functional_description()[0].get_number_turns();
-    for (auto winding : coil.get_functional_description()) {
-        double turnsRatio = primaryNumberTurns /  winding.get_number_turns();
-        voltageRmsPerWinding[winding.get_name()] = 10.0 / turnsRatio;
-    }
 
     auto strayCapacitanceOutput = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding);
     auto voltagesPerTurn = strayCapacitanceOutput.get_voltage_per_turn().value();

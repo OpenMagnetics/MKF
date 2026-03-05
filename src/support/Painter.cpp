@@ -474,7 +474,7 @@ Field PainterInterface::calculate_electric_field_sdf(OperatingPoint operatingPoi
     size_t numberPointsY = settings.get_painter_number_points_y();
     Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, false, false).first;
 
-    auto capacitanceOutput = strayCapacitance.calculate_capacitance(coil);
+    auto capacitanceOutput = strayCapacitance.calculate_capacitance(coil, operatingPoint);
     auto voltageDropAmongTurnsOpt = capacitanceOutput.get_voltage_drop_among_turns();
     if (!voltageDropAmongTurnsOpt) {
         // Return the mesh field even without voltage data

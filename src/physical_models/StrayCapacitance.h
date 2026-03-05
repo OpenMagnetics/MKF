@@ -72,6 +72,7 @@ class StrayCapacitance{
         StrayCapacitanceModels _modelName;
         static double calculate_area_between_two_turns_using_diagonals(Turn firstTurn, Turn secondTurn);
         static double calculate_area_between_two_turns_using_vecticals_and_horizontals(Turn firstTurn, Turn secondTurn);
+        StrayCapacitanceOutput calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding);
     public:
 
         StrayCapacitance(StrayCapacitanceModels strayCapacitanceModel = StrayCapacitanceModels::ALBACH){
@@ -93,6 +94,7 @@ class StrayCapacitance{
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
         StrayCapacitanceOutput calculate_capacitance(Coil coil);
+        StrayCapacitanceOutput calculate_capacitance(Coil coil, OperatingPoint operatingPoint);
     
     // Bipolar coordinate system for round-round energy density computation
     struct BipolarParams {
