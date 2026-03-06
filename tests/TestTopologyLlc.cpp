@@ -54,7 +54,7 @@ namespace {
 
         SECTION("Turns ratio calculation") {
             auto req = llc.process_design_requirements();
-            double expectedN = 400.0 * 0.5 / (2.0 * 12.0);  // n = Vin * k_bridge / (2 * Vout)
+            double expectedN = 400.0 * 0.5 / 12.0;  // n = Vin * k_bridge / Vout (center-tapped)
             double computedN = resolve_dimensional_values(req.get_turns_ratios()[0]);
             REQUIRE_THAT(computedN, Catch::Matchers::WithinAbs(expectedN, expectedN * 0.02));
         }
@@ -82,9 +82,12 @@ namespace {
         }
 
         SECTION("Inductance ratio") {
-            llc.set_computed_inductance_ratio(7.0);
-            auto req = llc.process_design_requirements();
-            double Lr = llc.get_computed_resonant_inductance();
+            // Create LLC with specific inductanceRatio of 7.0
+            json llcJson7 = llcJson;
+            llcJson7["inductanceRatio"] = 7.0;
+            OpenMagnetics::Llc llc7(llcJson7);
+            auto req = llc7.process_design_requirements();
+            double Lr = llc7.get_computed_resonant_inductance();
             double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
             REQUIRE_THAT(Lm / Lr, Catch::Matchers::WithinAbs(7.0, 0.01));
         }
@@ -129,8 +132,8 @@ namespace {
 
         SECTION("Turns ratio for full-bridge") {
             auto req = llc.process_design_requirements();
-            // n = Vin * 1.0 / (2 * Vout) for full-bridge
-            double expectedN = 400.0 * 1.0 / (2.0 * 48.0);
+            // n = Vin * 1.0 / Vout for full-bridge (center-tapped)
+            double expectedN = 400.0 * 1.0 / 48.0;
             double computedN = resolve_dimensional_values(req.get_turns_ratios()[0]);
             REQUIRE_THAT(computedN, Catch::Matchers::WithinAbs(expectedN, expectedN * 0.02));
         }
