@@ -3247,11 +3247,6 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         totalParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
         remainingParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
     }
-    for (auto partialWinding : group.get_partial_windings()) {
-        auto parallelsProportion = partialWinding.get_parallels_proportion();
-        totalParallelsProportionPerWinding.push_back(parallelsProportion);
-        remainingParallelsProportionPerWinding.push_back(parallelsProportion);
-    }
 
     std::vector<double> sectionWidthPerWinding;
     std::vector<double> sectionHeightPerWinding;
