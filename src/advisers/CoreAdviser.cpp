@@ -4,6 +4,7 @@
 #include "constructive_models/Bobbin.h"
 #include "physical_models/CoreTemperature.h"
 #include "physical_models/ComplexPermeability.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "support/CoilMesher.h"
 #include "constructive_models/NumberTurns.h"
 #include "constructive_models/Wire.h"
@@ -1039,15 +1040,13 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
         }
         if (core.get_shape_family() != CoreShapeFamily::T) {
             // Use realistic ferrite Bsat (~350 mT) instead of dummy material's 500 mT
-            // This ensures gap is calculated correctly for actual ferrite materials
             double realisticBsat = defaults.ferriteSaturationFluxDensity;
             double bSatTarget = realisticBsat * 0.9; // Use 90% of Bsat for safety margin
             
             // Calculate gap based on energy storage requirement
             double gapEnergy = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
             
-            // Calculate gap based on saturation constraint
-            double targetInductance = resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
+            // Get magnetizing current (will be updated by pre_process_inputs later)
             double magnetizingCurrentPeak = 0;
             for (auto& op : inputs.get_operating_points()) {
                 auto excitation = Inputs::get_primary_excitation(op);
@@ -1056,9 +1055,16 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
                 }
             }
             
+            // Apply safety factor: actual current tends to be ~2x higher than initial estimate
+            // due to voltage/current recalculation in later stages
+            double currentSafetyFactor = 2.0;
+            double adjustedCurrentPeak = magnetizingCurrentPeak * currentSafetyFactor;
+            
+            // Calculate gap based on saturation constraint with adjusted current
+            double targetInductance = resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
             double gapSaturation = 0;
-            if (magnetizingCurrentPeak > 0) {
-                gapSaturation = roundFloat(magneticEnergy.calculate_gap_length_by_saturation_constraint(core.get_gapping()[0], core, bSatTarget, targetInductance, magnetizingCurrentPeak), 5);
+            if (adjustedCurrentPeak > 0) {
+                gapSaturation = roundFloat(magneticEnergy.calculate_gap_length_by_saturation_constraint(core.get_gapping()[0], core, bSatTarget, targetInductance, adjustedCurrentPeak), 5);
             }
             
             // Use the maximum of both gaps (dual-constraint approach)
@@ -1068,6 +1074,8 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
                       << " | Gap (energy): " << gapEnergy * 1e6 << " um"
                       << " | Gap (saturation): " << gapSaturation * 1e6 << " um"
                       << " | Gap (final): " << gapLength * 1e6 << " um"
+                      << " | Imag: " << magnetizingCurrentPeak << " A"
+                      << " | Imag (adjusted): " << adjustedCurrentPeak << " A"
                       << " | Bsat target: " << bSatTarget * 1e3 << " mT"
                       << std::endl;
             core.set_ground_gapping(gapLength);

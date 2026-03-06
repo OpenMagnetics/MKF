@@ -1440,7 +1440,15 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
         scoring += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
         
         bool isSaturated = magneticFluxDensityPeak > magneticFluxDensitySaturation;
+        int turns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
+        double magnetizingCurrentPeak = 0;
+        auto excitation = Inputs::get_primary_excitation(operatingPoint);
+        if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_processed() && excitation.get_magnetizing_current()->get_processed()->get_peak()) {
+            magnetizingCurrentPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
+        }
         std::cerr << "[Saturation Filter] Core: " << magnetic->get_core().get_name().value_or("unnamed")
+                  << " | Turns: " << turns
+                  << " | Imag_peak: " << magnetizingCurrentPeak << " A"
                   << " | Bpeak: " << magneticFluxDensityPeak * 1000 << " mT"
                   << " | Bsat: " << magneticFluxDensitySaturation * 1000 << " mT"
                   << " | Ratio: " << (magneticFluxDensityPeak / magneticFluxDensitySaturation) * 100 << "%"
