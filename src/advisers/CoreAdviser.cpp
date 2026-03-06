@@ -1044,9 +1044,11 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
             double bSatTarget = realisticBsat * 0.9; // Use 90% of Bsat for safety margin
             
             // Calculate gap based on energy storage requirement
-            double gapEnergy = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
+            double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
+            double gapEnergy = gapLength;
             
-            // Get magnetizing current (will be updated by pre_process_inputs later)
+            // Iterative refinement to find gap that prevents saturation
+            double targetInductance = resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
             double magnetizingCurrentPeak = 0;
             for (auto& op : inputs.get_operating_points()) {
                 auto excitation = Inputs::get_primary_excitation(op);
@@ -1055,27 +1057,32 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
                 }
             }
             
-            // Apply safety factor: actual current tends to be ~2x higher than initial estimate
-            // due to voltage/current recalculation in later stages
-            double currentSafetyFactor = 2.0;
-            double adjustedCurrentPeak = magnetizingCurrentPeak * currentSafetyFactor;
-            
-            // Calculate gap based on saturation constraint with adjusted current
-            double targetInductance = resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
-            double gapSaturation = 0;
-            if (adjustedCurrentPeak > 0) {
-                gapSaturation = roundFloat(magneticEnergy.calculate_gap_length_by_saturation_constraint(core.get_gapping()[0], core, bSatTarget, targetInductance, adjustedCurrentPeak), 5);
+            // Get the actual current from primary excitation (this is what saturation filter will use)
+            double actualCurrentPeak = 0;
+            for (auto& op : inputs.get_operating_points()) {
+                auto excitation = Inputs::get_primary_excitation(op);
+                if (excitation.get_current() && excitation.get_current()->get_processed() && excitation.get_current()->get_processed()->get_peak()) {
+                    actualCurrentPeak = std::max(actualCurrentPeak, excitation.get_current()->get_processed()->get_peak().value());
+                }
             }
             
-            // Use the maximum of both gaps (dual-constraint approach)
-            double gapLength = std::max(gapEnergy, gapSaturation);
+            // Use the larger of magnetizing current or actual current
+            double currentForCalculation = std::max(magnetizingCurrentPeak, actualCurrentPeak);
+            
+            if (currentForCalculation > 0) {
+                // Use the proper method to calculate gap from saturation constraint
+                MagnetizingInductance magnetizingInductance;
+                double gapFromSaturation = magnetizingInductance.calculate_gap_from_saturation_constraint(
+                    core, &inputs, bSatTarget, currentForCalculation);
+                
+                // Use the maximum of energy gap and saturation gap
+                gapLength = std::max(gapEnergy, gapFromSaturation);
+            }
             
             std::cerr << "[add_gapping] Core: " << core.get_name().value_or("unnamed")
                       << " | Gap (energy): " << gapEnergy * 1e6 << " um"
-                      << " | Gap (saturation): " << gapSaturation * 1e6 << " um"
                       << " | Gap (final): " << gapLength * 1e6 << " um"
                       << " | Imag: " << magnetizingCurrentPeak << " A"
-                      << " | Imag (adjusted): " << adjustedCurrentPeak << " A"
                       << " | Bsat target: " << bSatTarget * 1e3 << " mT"
                       << std::endl;
             core.set_ground_gapping(gapLength);

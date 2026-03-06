@@ -53,6 +53,23 @@ class MagnetizingInductance {
 
     int calculate_number_turns_from_gapping_and_inductance(Core core, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
+    /**
+     * @brief Calculate gap length to prevent saturation given current and target B-field
+     * 
+     * Iteratively determines the gap length required to keep B-field below target
+     * for given operating current. Similar structure to calculate_number_turns_from_gapping_and_inductance.
+     * 
+     * @param core The core to gap
+     * @param inputs Design inputs with operating points
+     * @param targetMagneticFluxDensity Maximum allowed B-field (e.g., 0.9 * Bsat)
+     * @param magnetizingCurrentPeak Peak magnetizing current from operating point
+     * @return double The calculated gap length in meters
+     */
+    double calculate_gap_from_saturation_constraint(Core core,
+                                                   Inputs* inputs,
+                                                   double targetMagneticFluxDensity,
+                                                   double magnetizingCurrentPeak);
+
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
         Core core,
         Coil coil,

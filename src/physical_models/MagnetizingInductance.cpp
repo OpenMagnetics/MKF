@@ -336,6 +336,82 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     return std::max(1, numberTurnsPrimary);
 }
 
+double MagnetizingInductance::calculate_gap_from_saturation_constraint(Core core,
+                                                                       Inputs* inputs,
+                                                                       double targetMagneticFluxDensity,
+                                                                       double magnetizingCurrentPeak) {
+    double desiredMagnetizingInductance = resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
+    
+    // Start with energy-based gap as initial guess
+    auto constants = OpenMagnetics::Constants();
+    double initialGap = (2 * desiredMagnetizingInductance * pow(magnetizingCurrentPeak, 2) * constants.vacuumPermeability) / 
+                        (effectiveArea * pow(targetMagneticFluxDensity, 2));
+    
+    double gapLength = initialGap;
+    const double gapStepFactor = 1.5;  // Increase gap by 50% per iteration
+    const int maxIterations = 15;
+    
+    for (int iteration = 0; iteration < maxIterations; ++iteration) {
+        // Create core with current gap
+        Core testCore = core;
+        auto columns = testCore.get_processed_description().value().get_columns();
+        
+        auto basicCentralGap = CoreGap();
+        basicCentralGap.set_type(GapType::SUBTRACTIVE);
+        basicCentralGap.set_length(gapLength);
+        basicCentralGap.set_area(columns[0].get_area());
+        
+        auto basicLateralGap = CoreGap();
+        basicLateralGap.set_type(GapType::RESIDUAL);
+        basicLateralGap.set_length(constants.residualGap);
+        
+        std::vector<CoreGap> gapping;
+        gapping.push_back(basicCentralGap);
+        for (size_t i = 1; i < columns.size(); ++i) {
+            auto lateralGap = basicLateralGap;
+            lateralGap.set_area(columns[i].get_area());
+            gapping.push_back(lateralGap);
+        }
+        testCore.get_mutable_functional_description().set_gapping(gapping);
+        testCore.process_gap();
+        
+        // Calculate total reluctance manually (classic formula)
+        // Core reluctance: R_core = l_e / (μ₀ * μ_r * A_e)
+        double effectiveLength = testCore.get_processed_description()->get_effective_parameters().get_effective_length();
+        double coreReluctance = effectiveLength / (constants.vacuumPermeability * 2000 * effectiveArea);
+        
+        // Gap reluctance: R_gap = l_gap / (μ₀ * A_gap)
+        double gapArea = columns[0].get_area();
+        double gapReluctance = gapLength / (constants.vacuumPermeability * gapArea);
+        
+        double totalReluctance = coreReluctance + gapReluctance;
+        
+        // Calculate turns for this gap to achieve target inductance
+        int numberTurns = std::round(sqrt(desiredMagnetizingInductance * totalReluctance));
+        numberTurns = std::max(1, numberTurns);
+        
+        // Calculate B-field: B = (N * I) / (R_total * A_e)
+        double magneticFlux = numberTurns * magnetizingCurrentPeak / totalReluctance;
+        double bPeak = magneticFlux / effectiveArea;
+        
+        // Check convergence
+        if (bPeak <= targetMagneticFluxDensity) {
+            return gapLength;
+        }
+        
+        // Increase gap for next iteration
+        gapLength *= gapStepFactor;
+    }
+    
+    // Return last calculated gap even if not converged
+    return gapLength;
+}
+
 Core get_core_with_ground_gapping(Core core, double gapLength) {
     auto constants = OpenMagnetics::Constants();
     auto basicCentralGap = CoreGap();
