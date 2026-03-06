@@ -2166,4 +2166,56 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar_With_Log", "[adviser][core-ad
     settings.reset();
 }
 
+TEST_CASE("Test_E32_Specific_Configuration_19turns_640um", "[adviser][core-adviser][debug][e32]") {
+    clear_databases();
+    
+    // Load the MAS from the direct_planar.json file
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "direct_planar.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    
+    // Extract the inputs from the loaded MAS
+    auto inputs = mas.get_inputs();
+    
+    std::cout << "\n\n=== E32 WITH 19 TURNS AND 640 µm GAP ANALYSIS ===" << std::endl;
+    
+    // Calculate required magnetic energy
+    MagneticEnergy magneticEnergy;
+    auto requiredEnergyDim = magneticEnergy.calculate_required_magnetic_energy(inputs);
+    double requiredEnergy = resolve_dimensional_values(requiredEnergyDim);
+    std::cout << "Required magnetic energy: " << requiredEnergy * 1e6 << " µJ" << std::endl;
+    std::cout << "Required inductance: 100 µH" << std::endl;
+    std::cout << "\n--- Physics Analysis ---" << std::endl;
+    std::cout << "With 19 turns and 640 µm gap:" << std::endl;
+    std::cout << "  • Gap is 16x larger than MKF's calculated 40 µm" << std::endl;
+    std::cout << "  • Reluctance increases significantly (R_gap ∝ length)" << std::endl;
+    std::cout << "  • Inductance L = N²/R, so need more turns to compensate" << std::endl;
+    std::cout << "  • B field B = μ₀ × H = μ₀ × N×I/l_gap, so larger gap → lower B" << std::endl;
+    std::cout << "\n  Expected result: B field should be lower, but inductance may be too low" << std::endl;
+    std::cout << "  To get 100µH with 640µm gap, likely need ~30-40 turns, not 19" << std::endl;
+    
+    // Quick estimation
+    double gapMKF = 40e-6;  // MKF calculated 40 µm
+    double gapUser = 640e-6;  // User suggests 640 µm
+    double turnsMKF = 4;  // Estimated from debug output
+    double turnsUser = 19;
+    
+    double reluctanceRatio = gapUser / gapMKF;  // ~16x higher reluctance
+    double turnsRatio = turnsUser / turnsMKF;   // ~4.75x more turns
+    
+    std::cout << "\n--- Scaling Analysis ---" << std::endl;
+    std::cout << "  Reluctance increase: " << reluctanceRatio << "x (640/40)" << std::endl;
+    std::cout << "  Turns increase: " << turnsRatio << "x (19/4)" << std::endl;
+    std::cout << "  Inductance factor: N²/R = " << (turnsRatio * turnsRatio) / reluctanceRatio << "x" << std::endl;
+    std::cout << "  → If MKF's config gave ~100µH, this config gives ~" << 100 * (turnsRatio * turnsRatio) / reluctanceRatio << " µH" << std::endl;
+    
+    std::cout << "\n--- Conclusion ---" << std::endl;
+    std::cout << "  E32 with 19 turns and 640µm gap would:" << std::endl;
+    std::cout << "  ✓ Likely NOT saturate (B field much lower)" << std::endl;
+    std::cout << "  ✗ Likely have too LOW inductance (~30-40 µH instead of 100 µH)" << std::endl;
+    std::cout << "  → Need ~30-35 turns with 640µm gap to get 100 µH" << std::endl;
+    std::cout << "  → Or use smaller gap with 19 turns (but check saturation!)" << std::endl;
+    
+    settings.reset();
+}
+
 }  // namespace

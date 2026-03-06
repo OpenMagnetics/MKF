@@ -1041,11 +1041,34 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
             // Use realistic ferrite Bsat (~350 mT) instead of dummy material's 500 mT
             // This ensures gap is calculated correctly for actual ferrite materials
             double realisticBsat = defaults.ferriteSaturationFluxDensity;
-            double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
+            double bSatTarget = realisticBsat * 0.9; // Use 90% of Bsat for safety margin
+            
+            // Calculate gap based on energy storage requirement
+            double gapEnergy = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
+            
+            // Calculate gap based on saturation constraint
+            double targetInductance = resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
+            double magnetizingCurrentPeak = 0;
+            for (auto& op : inputs.get_operating_points()) {
+                auto excitation = Inputs::get_primary_excitation(op);
+                if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_processed() && excitation.get_magnetizing_current()->get_processed()->get_peak()) {
+                    magnetizingCurrentPeak = std::max(magnetizingCurrentPeak, excitation.get_magnetizing_current()->get_processed()->get_peak().value());
+                }
+            }
+            
+            double gapSaturation = 0;
+            if (magnetizingCurrentPeak > 0) {
+                gapSaturation = roundFloat(magneticEnergy.calculate_gap_length_by_saturation_constraint(core.get_gapping()[0], core, bSatTarget, targetInductance, magnetizingCurrentPeak), 5);
+            }
+            
+            // Use the maximum of both gaps (dual-constraint approach)
+            double gapLength = std::max(gapEnergy, gapSaturation);
+            
             std::cerr << "[add_gapping] Core: " << core.get_name().value_or("unnamed")
-                      << " | Gap calculated: " << gapLength * 1000 << " um"
-                      << " | Required Energy: " << requiredMagneticEnergy * 1e6 << " uJ"
-                      << " | Bsat used: " << realisticBsat * 1000 << " mT"
+                      << " | Gap (energy): " << gapEnergy * 1e6 << " um"
+                      << " | Gap (saturation): " << gapSaturation * 1e6 << " um"
+                      << " | Gap (final): " << gapLength * 1e6 << " um"
+                      << " | Bsat target: " << bSatTarget * 1e3 << " mT"
                       << std::endl;
             core.set_ground_gapping(gapLength);
             core.process_gap();
