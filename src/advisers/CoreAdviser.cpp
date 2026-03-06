@@ -483,6 +483,52 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMagnetic
     return filteredMagneticsWithScoring;
 }
 
+std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterSaturation::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
+    if (weight <= 0) {
+        return *unfilteredMagnetics;
+    }
+    std::vector<std::pair<Magnetic, double>> filteredMagneticsWithScoring;
+    std::vector<double> newScoring;
+
+    std::list<size_t> listOfIndexesToErase;
+    for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex){
+        Magnetic magnetic = (*unfilteredMagnetics)[magneticIndex].first;
+
+        auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, &inputs);
+
+        if (valid) {
+            (*unfilteredMagnetics)[magneticIndex].first = magnetic;
+            newScoring.push_back(scoring);
+        }
+        else {
+            listOfIndexesToErase.push_back(magneticIndex);
+        }
+    }
+
+    for (size_t i = 0; i < (*unfilteredMagnetics).size(); ++i) {
+        if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
+            listOfIndexesToErase.pop_front();
+        }
+        else {
+            filteredMagneticsWithScoring.push_back((*unfilteredMagnetics)[i]);
+        }
+    }
+
+    if (filteredMagneticsWithScoring.size() != newScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering saturation, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    }
+
+    if (filteredMagneticsWithScoring.size() > 0 && !firstFilter) {
+        auto normalizedScoring = normalize_scoring(&filteredMagneticsWithScoring, newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::EFFICIENCY]);
+        for (size_t i = 0; i < filteredMagneticsWithScoring.size(); ++i) {
+            add_scoring(filteredMagneticsWithScoring[i].first.get_reference(), CoreAdviser::CoreAdviserFilters::EFFICIENCY, normalizedScoring[i]);
+        }
+        sort_magnetics_by_scoring(&filteredMagneticsWithScoring);
+    }
+
+    return filteredMagneticsWithScoring;
+}
+
 Coil get_dummy_coil(Inputs inputs) {
     double frequency = 0; 
     double temperature = 0; 
@@ -1378,6 +1424,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
 
+    // Add saturation filter to reject cores that exceed magnetic flux density saturation
+    MagneticCoreFilterSaturation filterSaturationAvailable;
+    filterSaturationAvailable.set_scorings(&_scorings);
+    filterSaturationAvailable.set_filter_configuration(&_filterConfiguration);
+    magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Saturation filter.", "CoreAdviser");
+
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Cost filter.", "CoreAdviser");
 
@@ -1555,6 +1608,15 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0.1, true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Magnetizing Inductance filter.", "CoreAdviser");
+
+    // Add saturation filter to reject cores that exceed magnetic flux density saturation
+    MagneticCoreFilterSaturation filterSaturation;
+    filterSaturation.set_scorings(&_scorings);
+    filterSaturation.set_filter_configuration(&_filterConfiguration);
+    filterSaturation.set_cache_usage(false);
+    magneticsWithScoring = filterSaturation.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Saturation filter.", "CoreAdviser");
+
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Losses filter.", "CoreAdviser");
 

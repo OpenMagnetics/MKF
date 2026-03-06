@@ -114,7 +114,7 @@ class CoreAdviser {
         MagneticSimulator _magneticSimulator;
         WindingOhmicLosses _windingOhmicLosses;
         Application _application = Application::POWER;
-        CoreAdviserModes _mode = CoreAdviserModes::AVAILABLE_CORES;
+        CoreAdviserModes _mode = CoreAdviserModes::STANDARD_CORES;
 
 
     public:
@@ -331,6 +331,13 @@ class CoreAdviser {
     class MagneticCoreFilterMagneticInductance : public MagneticCoreFilter {
         private:
             MagneticFilterMagnetizingInductance _filter;
+        public:
+            std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
+    };
+
+    class MagneticCoreFilterSaturation : public MagneticCoreFilter {
+        private:
+            MagneticFilterSaturation _filter;
         public:
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };

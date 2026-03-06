@@ -91,7 +91,9 @@ namespace OpenMagnetics {
  * ```cpp
  * MagneticAdviser adviser;
  * adviser.set_application(Application::POWER);
- * adviser.set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+ * // Uses STANDARD_CORES mode by default (calculates optimal gaps)
+ * // To use existing catalog cores instead:
+ * // adviser.set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
  *
  * // With custom weights
  * std::map<MagneticFilters, double> weights = {
@@ -134,7 +136,7 @@ class MagneticAdviser{
         bool _simulateResults = true;
         bool _uniqueCoreShapes = false;
         Application _application = Application::POWER;
-        CoreAdviser::CoreAdviserModes _coreAdviserMode = CoreAdviser::CoreAdviserModes::AVAILABLE_CORES;
+        CoreAdviser::CoreAdviserModes _coreAdviserMode = CoreAdviser::CoreAdviserModes::STANDARD_CORES;
 
         MagneticAdviser() {
         }
