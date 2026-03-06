@@ -34,6 +34,7 @@ struct Defaults {
     const int maximumNumberParallels = 5;
     const double magneticFluxDensitySaturation = 0.5;
     const double ferriteInitialPermeability = 2000;
+    const double ferriteSaturationFluxDensity = 0.35;  // Typical ferrite Bsat ~350 mT (e.g., 3C95, N95)
     const double magnetizingInductanceThresholdValidity = 0.25;
     const double selfResonantFrequencyMargin = 0.25;  // Maximum operating frequency as fraction of SRF (e.g., 0.25 = f_op < 0.25 * SRF)
     const double harmonicAmplitudeThreshold = 0.05;

@@ -165,6 +165,7 @@ class CoreAdviser {
         Application get_application();
         void set_mode(CoreAdviserModes value);
         CoreAdviserModes get_mode();
+        void set_weights(std::map<CoreAdviserFilters, double> weights);
 
         /**
          * @brief Main entry point for core recommendation.

@@ -306,6 +306,11 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
     bool valid = areaProductCore >= maximumAreaProductRequired * defaults.coreAdviserThresholdValidity;
     double scoring = fabs(areaProductCore - maximumAreaProductRequired);
 
+    std::cerr << "[AreaProduct Filter] Core: " << core.get_name().value_or("unnamed") 
+              << " | AreaProduct: " << areaProductCore 
+              << " | Required: " << maximumAreaProductRequired 
+              << " | Valid: " << (valid ? "YES" : "NO") << std::endl;
+
     return {valid, scoring};
 }
 
@@ -1433,7 +1438,15 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
 
         auto magneticFluxDensitySaturation = magnetic->get_mutable_core().get_magnetic_flux_density_saturation(operatingPoint.get_conditions().get_ambient_temperature());
         scoring += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
-        if (magneticFluxDensityPeak > magneticFluxDensitySaturation) {
+        
+        bool isSaturated = magneticFluxDensityPeak > magneticFluxDensitySaturation;
+        std::cerr << "[Saturation Filter] Core: " << magnetic->get_core().get_name().value_or("unnamed")
+                  << " | Bpeak: " << magneticFluxDensityPeak * 1000 << " mT"
+                  << " | Bsat: " << magneticFluxDensitySaturation * 1000 << " mT"
+                  << " | Ratio: " << (magneticFluxDensityPeak / magneticFluxDensitySaturation) * 100 << "%"
+                  << " | Valid: " << (isSaturated ? "NO (SATURATED)" : "YES") << std::endl;
+        
+        if (isSaturated) {
             return {false, 0.0};
         }
     }
@@ -1615,7 +1628,12 @@ std::pair<bool, double> MagneticFilterFringingFactor::evaluate_magnetic(Magnetic
     else {
         double maximumGapLength = _reluctanceModel->get_gapping_by_fringing_factor(core, _fringingFactorLitmit);
         double gapLength = core.get_gapping()[0].get_length();
-        if (gapLength > maximumGapLength) {
+        bool valid = gapLength <= maximumGapLength;
+        std::cerr << "[FringingFactor Filter] Core: " << core.get_name().value_or("unnamed")
+                  << " | Gap: " << gapLength * 1000 << " mm"
+                  << " | MaxGap: " << maximumGapLength * 1000 << " mm"
+                  << " | Valid: " << (valid ? "YES" : "NO") << std::endl;
+        if (!valid) {
             return {false, 1};
         }
         else {

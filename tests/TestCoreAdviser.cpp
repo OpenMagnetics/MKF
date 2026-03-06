@@ -2102,4 +2102,68 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
     settings.reset();
 }
 
+TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar_With_Log", "[adviser][core-adviser][standard-cores][debug]") {
+    clear_databases();
+    
+    // Load the MAS from the direct_planar.json file
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "direct_planar.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    
+    // Extract the inputs from the loaded MAS
+    auto inputs = mas.get_inputs();
+    
+    std::cout << "\n\n=== STANDARD_CORES MODE WITH FRONTEND WEIGHTS ===" << std::endl;
+    std::cout << "Weights: Efficiency=40, Dimensions=30, Cost=30" << std::endl;
+    
+    load_core_shapes();
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    
+    // Set up weights like the frontend (40/30/30)
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 40;  // Losses weight
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 30;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 30;
+    coreAdviser.set_weights(weights);
+    
+    std::vector<MAS::CoreShape> shapes;
+    for (auto [name, shape] : coreShapeDatabase) {
+        shapes.push_back(shape);
+    }
+    
+    // Get advised cores
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
+    
+    // Read and print the log
+    auto log = read_log();
+    std::cout << "\n=== MKF FILTER LOG ===" << std::endl;
+    std::cout << log << std::endl;
+    
+    // Print all results with their losses
+    std::cout << "\n=== ALL RESULTS WITH LOSSES ===" << std::endl;
+    for (size_t i = 0; i < masMagnetics.size(); ++i) {
+        auto& result = masMagnetics[i].first;
+        auto& magnetic = result.get_magnetic();
+        auto& core = magnetic.get_core();
+        double totalLosses = 0;
+        
+        // Calculate losses from outputs
+        if (result.get_outputs().size() > 0) {
+            for (auto& output : result.get_outputs()) {
+                if (output.get_core_losses()) {
+                    totalLosses += output.get_core_losses()->get_core_losses();
+                }
+            }
+        }
+        
+        std::cout << "Rank " << (i+1) << ": " << core.get_name().value_or("N/A");
+        std::cout << " - Score: " << masMagnetics[i].second;
+        std::cout << " - Core Losses: " << totalLosses << " W";
+        std::cout << " - Turns: " << magnetic.get_coil().get_functional_description()[0].get_number_turns();
+        std::cout << std::endl;
+    }
+    
+    settings.reset();
+}
+
 }  // namespace

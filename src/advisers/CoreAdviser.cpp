@@ -54,6 +54,10 @@ CoreAdviser::CoreAdviserModes CoreAdviser::get_mode() {
     return _mode;
 }
 
+void CoreAdviser::set_weights(std::map<CoreAdviserFilters, double> weights) {
+    _weights = weights;
+}
+
 std::map<std::string, std::map<CoreAdviser::CoreAdviserFilters, double>> CoreAdviser::get_scorings(bool weighted){
     std::map<std::string, std::map<CoreAdviser::CoreAdviserFilters, double>> swappedScorings;
     for (auto& [filter, aux] : _scorings) {
@@ -1034,7 +1038,15 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
             core.process_data();
         }
         if (core.get_shape_family() != CoreShapeFamily::T) {
-            double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], core.get_magnetic_flux_density_saturation(), requiredMagneticEnergy), 5);
+            // Use realistic ferrite Bsat (~350 mT) instead of dummy material's 500 mT
+            // This ensures gap is calculated correctly for actual ferrite materials
+            double realisticBsat = defaults.ferriteSaturationFluxDensity;
+            double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
+            std::cerr << "[add_gapping] Core: " << core.get_name().value_or("unnamed")
+                      << " | Gap calculated: " << gapLength * 1000 << " um"
+                      << " | Required Energy: " << requiredMagneticEnergy * 1e6 << " uJ"
+                      << " | Bsat used: " << realisticBsat * 1000 << " mT"
+                      << std::endl;
             core.set_ground_gapping(gapLength);
             core.process_gap();
             std::stringstream ss;
@@ -1584,7 +1596,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     }
 
     add_gapping(&magneticsWithScoring, inputs);
+    std::cerr << "[DEBUG] Before Fringing Factor: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     magneticsWithScoring = filterFringingFactor.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    std::cerr << "[DEBUG] After Fringing Factor: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " ferrite magnetics after the Fringing Factor filter.", "CoreAdviser");
 
     if (usingPowderCores) {
@@ -1596,17 +1610,23 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
 
 
+    std::cerr << "[DEBUG] Before Dimensions: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, 1, true);
+    std::cerr << "[DEBUG] After Dimensions: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Dimension filter.", "CoreAdviser");
 
     magneticsWithScoring = add_ferrite_materials_by_losses(&magneticsWithScoring, inputs);
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after assigning concrete ferrite material.", "CoreAdviser");
 
+    std::cerr << "[DEBUG] Before Area Product: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    std::cerr << "[DEBUG] After Area Product: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Area Product filter.", "CoreAdviser");
 
+    std::cerr << "[DEBUG] Before Magnetizing Inductance: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0.1, true);
+    std::cerr << "[DEBUG] After Magnetizing Inductance: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Magnetizing Inductance filter.", "CoreAdviser");
 
     // Add saturation filter to reject cores that exceed magnetic flux density saturation
@@ -1614,10 +1634,14 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     filterSaturation.set_scorings(&_scorings);
     filterSaturation.set_filter_configuration(&_filterConfiguration);
     filterSaturation.set_cache_usage(false);
+    std::cerr << "[DEBUG] Before Saturation: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     magneticsWithScoring = filterSaturation.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    std::cerr << "[DEBUG] After Saturation: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Saturation filter.", "CoreAdviser");
 
+    std::cerr << "[DEBUG] Before Losses: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    std::cerr << "[DEBUG] After Losses: " << magneticsWithScoring.size() << " magnetics" << std::endl;
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Losses filter.", "CoreAdviser");
 
     if (magneticsWithScoring.size() == 0) {
