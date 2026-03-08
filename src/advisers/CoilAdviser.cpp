@@ -195,6 +195,18 @@ namespace OpenMagnetics {
             masesWithoutScoring.push_back(mas);
         }
 
+        // Fallback: If all designs were filtered out but we had valid windings, return the best available
+        if (masesWithoutScoring.empty() && !masesWithCoil.empty()) {
+            logEntry("WARNING: All " + std::to_string(masesWithCoil.size()) + " designs were filtered out by criteria. " +
+                     "Returning best available design as fallback.", "CoilAdviser", 1);
+            
+            // Return up to maximumNumberResults from the original unfiltered designs
+            size_t numToReturn = std::min(masesWithCoil.size(), maximumNumberResults);
+            for (size_t i = 0; i < numToReturn; ++i) {
+                masesWithoutScoring.push_back(masesWithCoil[i]);
+            }
+        }
+
         if (masesWithoutScoring.size() > maximumNumberResults) {
             masesWithoutScoring = std::vector<Mas>(masesWithoutScoring.begin(), masesWithoutScoring.end() - (masesWithoutScoring.size() - maximumNumberResults));
         }
