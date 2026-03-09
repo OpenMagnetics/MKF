@@ -67,10 +67,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     // Check if high voltage requirements make toroids impractical
     // High voltage (>600V) with strict insulation requirements rarely works with toroids
     double maxVoltage = 0;
-    if (inputs.get_design_requirements().get_insulation()) {
-        auto insulation = inputs.get_design_requirements().get_insulation().value();
-        if (insulation.get_main_supply_voltage()) {
-            auto voltages = insulation.get_main_supply_voltage().value();
+    auto insulationOpt = inputs.get_design_requirements().get_insulation();
+    if (insulationOpt) {
+        auto mainSupplyVoltageOpt = insulationOpt.value().get_main_supply_voltage();
+        if (mainSupplyVoltageOpt) {
+            auto voltages = mainSupplyVoltageOpt.value();
             maxVoltage = std::max({voltages.get_nominal().value_or(0), 
                                    voltages.get_minimum().value_or(0), 
                                    voltages.get_maximum().value_or(0)});
@@ -141,11 +142,17 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         previouslyObtainedCores = masMagneticsWithCore.size();
         
         for (auto& [mas, coreScoring] : masMagneticsWithCore) {
-            if (std::find(evaluatedCores.begin(), evaluatedCores.end(), mas.get_magnetic().get_core().get_name().value()) != evaluatedCores.end()) {
+            auto coreNameOpt = mas.get_magnetic().get_core().get_name();
+            if (!coreNameOpt) {
+                continue;
+            }
+            std::string coreName = coreNameOpt.value();
+            
+            if (std::find(evaluatedCores.begin(), evaluatedCores.end(), coreName) != evaluatedCores.end()) {
                 continue;
             }
             else {
-                evaluatedCores.push_back(mas.get_magnetic().get_core().get_name().value());
+                evaluatedCores.push_back(coreName);
             }
 
             // Check performance limit
@@ -154,7 +161,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 break;
             }
 
-            logEntry("core: " + mas.get_magnetic().get_core().get_name().value(), "MagneticAdviser", 2);
+            logEntry("core: " + coreName, "MagneticAdviser", 2);
             logEntry("Getting coil", "MagneticAdviser", 2);
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
@@ -166,11 +173,15 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             size_t processedCoils = 0;
             for (auto mas : masMagneticsWithCoreAndCoil) {
 
-                size_t numberSections = mas.get_magnetic().get_coil().get_sections_description()->size();
+                auto sectionsOpt = mas.get_magnetic().get_coil().get_sections_description();
+                if (!sectionsOpt || sectionsOpt->empty()) {
+                    continue;
+                }
+                size_t numberSections = sectionsOpt->size();
 
                 double margin = 0;
-                if (mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin()) {
-                    margin = Coil::resolve_margin(mas.get_magnetic().get_coil().get_sections_description().value()[0])[0];
+                if ((*sectionsOpt)[0].get_margin()) {
+                    margin = Coil::resolve_margin((*sectionsOpt)[0])[0];
                 }
                 std::pair<size_t, double> numberSectionsAndMarginCombination = {numberSections, margin};
                 if (std::find(usedNumberSectionsAndMargin.begin(), usedNumberSectionsAndMargin.end(), numberSectionsAndMarginCombination) != usedNumberSectionsAndMargin.end()) {
@@ -233,11 +244,17 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             previouslyObtainedCores = masMagneticsWithCore.size();
             
             for (auto& [mas, coreScoring] : masMagneticsWithCore) {
-                if (std::find(evaluatedCores.begin(), evaluatedCores.end(), mas.get_magnetic().get_core().get_name().value()) != evaluatedCores.end()) {
+                auto coreNameOpt = mas.get_magnetic().get_core().get_name();
+                if (!coreNameOpt) {
+                    continue;
+                }
+                std::string coreName = coreNameOpt.value();
+                
+                if (std::find(evaluatedCores.begin(), evaluatedCores.end(), coreName) != evaluatedCores.end()) {
                     continue;
                 }
                 else {
-                    evaluatedCores.push_back(mas.get_magnetic().get_core().get_name().value());
+                    evaluatedCores.push_back(coreName);
                 }
 
                 if (evaluatedCores.size() >= maxEvaluatedCores) {
@@ -245,7 +262,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                     break;
                 }
 
-                logEntry("core: " + mas.get_magnetic().get_core().get_name().value(), "MagneticAdviser", 2);
+                logEntry("core: " + coreName, "MagneticAdviser", 2);
                 logEntry("Getting coil", "MagneticAdviser", 2);
                 std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
                 auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));

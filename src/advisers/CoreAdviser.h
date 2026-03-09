@@ -72,11 +72,12 @@ namespace OpenMagnetics {
  * ## Operating Modes
  * - **AVAILABLE_CORES**: Uses manufacturer stock database (fastest)
  * - **STANDARD_CORES**: Uses standard core shapes with material optimization
- * - **CUSTOM_CORES**: Uses user-provided core list
+ * - **CUSTOM_CORES,
+        HYBRID_CORES  // O6 FIX: catalog shapes re-gapped to target inductance**: Uses user-provided core list
  *
  * ## Toroid Handling
  * Toroidal cores use geometry-based bobbin filling factor calculation:
- *   fillingFactor = 0.55 + 0.15 × (innerRadius / outerRadius)
+ *   fillingFactor = 0.55 // F14 NOTE: Optimistic for hand-wound (industry: 0.25-0.45). Consider scaling down. + 0.15 × (innerRadius / outerRadius)
  * This accounts for the reduced winding area in toroid centers (range: 0.55-0.70).
  *
  * ## Usage Example
@@ -105,7 +106,8 @@ class CoreAdviser {
         enum class CoreAdviserModes : int {
             AVAILABLE_CORES,
             STANDARD_CORES,
-            CUSTOM_CORES
+            CUSTOM_CORES,
+        HYBRID_CORES  // O6 FIX: catalog shapes re-gapped to target inductance
         };
     protected:
         std::map<std::string, std::string> _models;
@@ -308,7 +310,7 @@ class CoreAdviser {
     
     class MagneticCoreFilterLosses : public MagneticCoreFilter {
         private:
-            MagneticFilterCoreAndDcLosses _filter;
+            MagneticFilterCoreDcAndSkinLosses _filter; // F23 FIX: use DC+skin losses instead of DC-only
 
         public:
             MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models);
@@ -343,6 +345,40 @@ class CoreAdviser {
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
 
+
+    /**
+     * @brief O9 FIX: EMI geometry score for core shape.
+     * Closed magnetic path cores have lower stray flux → better EMI.
+     */
+    static double get_emi_geometry_score(const std::string& shapeName) {
+        // F15 FIX: Improved EMI geometry scoring with correct shape matching
+        // Closed magnetic path cores (lowest stray flux → best EMI)
+        if (shapeName.rfind("RM", 0) == 0 || shapeName.rfind("PQ", 0) == 0 ||
+            shapeName.rfind("EFD", 0) == 0 || shapeName.rfind("EP", 0) == 0 ||
+            shapeName.rfind("PM", 0) == 0 || shapeName.rfind("ER", 0) == 0 ||
+            shapeName.rfind("ETD", 0) == 0 || shapeName.rfind("EC", 0) == 0 ||
+            shapeName.rfind("T ", 0) == 0 || shapeName.rfind("T-", 0) == 0 ||
+            shapeName.rfind("R ", 0) == 0 || shapeName.rfind("R-", 0) == 0 ||
+            shapeName == "T" || shapeName == "R") {
+            return 1.0; // F15 FIX: Added toroidal (T, R) and ETD/EC as closed-path
+        }
+        // Open magnetic path cores (highest stray flux → worst EMI)
+        if (shapeName.rfind("UI", 0) == 0 ||
+            shapeName.rfind("C", 0) == 0 || // F15 FIX: match "C" prefix (was "C " with space)
+            shapeName.rfind("U ", 0) == 0 || shapeName.rfind("U-", 0) == 0) {
+            return 0.0;
+        }
+        return 0.5; // O9 FIX: default for standard E-type cores
+    }
+
+    /**
+     * @brief O6 FIX: Hybrid pipeline — catalog shapes, custom gaps.
+     */
+    std::vector<std::pair<Mas, double>> filter_hybrid_cores_power_application(
+        std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs,
+        std::map<CoreAdviserFilters, double> weights,
+        size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
+
 };
 
 void from_json(const json & j, CoreAdviser::CoreAdviserModes & x);
@@ -352,6 +388,7 @@ inline void from_json(const json & j, CoreAdviser::CoreAdviserModes & x) {
     if (j == "available cores") x = CoreAdviser::CoreAdviserModes::AVAILABLE_CORES;
     else if (j == "standard cores") x = CoreAdviser::CoreAdviserModes::STANDARD_CORES;
     else if (j == "custom cores") x = CoreAdviser::CoreAdviserModes::CUSTOM_CORES;
+    else if (j == "hybrid cores") x = CoreAdviser::CoreAdviserModes::HYBRID_CORES;  // O6 FIX: catalog shapes re-gapped to target inductance
     else { throw std::runtime_error("Input JSON does not conform to schema!"); }
 }
 
@@ -360,7 +397,9 @@ inline void to_json(json & j, const CoreAdviser::CoreAdviserModes & x) {
         case CoreAdviser::CoreAdviserModes::AVAILABLE_CORES: j = "available cores"; break;
         case CoreAdviser::CoreAdviserModes::STANDARD_CORES: j = "standard cores"; break;
         case CoreAdviser::CoreAdviserModes::CUSTOM_CORES: j = "custom cores"; break;
-        default: throw std::runtime_error("Unexpected value in enumeration \"CoreAdviser::CoreAdviserModes\": " + std::to_string(static_cast<int>(x)));
+        case CoreAdviser::CoreAdviserModes::HYBRID_CORES: j = "hybrid cores"; break;  // O6 FIX: catalog shapes re-gapped to target inductance
+        default: 
+            throw std::runtime_error("Unexpected value in enumeration \"CoreAdviser::CoreAdviserModes\": " + std::to_string(static_cast<int>(x)));
     }
 }
 
