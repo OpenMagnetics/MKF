@@ -50,7 +50,7 @@ requiring no additional material characterization.
 
 **Validation Error:** 35.8% mean deviation
 
-**Reference:** [Li, Abdallah, Sullivan. 'Accurate Prediction of Ferrite Core Loss with Nonsinusoidal Waveforms.' IEEE COMPEL, 2001](http://inductor.thayerschool.org/papers/IGSE.pdf)
+**Reference:** [Li, Abdallah, Sullivan. 'Accurate Prediction of Ferrite Core Loss with Nonsinusoidal Waveforms.' IEEE COMPEL, 2001](https://inductor.thayerschool.org/papers/IGSE.pdf)
 
 ### Barg
 
@@ -162,17 +162,17 @@ It handles non-sinusoidal waveforms well and uses readily available Steinmetz pa
 #include "physical_models/CoreLosses.h"
 
 // Create a specific model
-auto model = OpenMagnetics::CoreLossesModel::factory(
-    OpenMagnetics::CoreLossesModels::STEINMETZ
+auto model = OpenMagnetics::RoshenHysteresisModel::factory(
+    OpenMagnetics::RoshenHysteresisModels::STEINMETZ
 );
 
 // Or use the default model
-auto model = OpenMagnetics::CoreLossesModel::factory();
+auto model = OpenMagnetics::RoshenHysteresisModel::factory();
 ```
 
 ## Configuring Default Model
 
 ```cpp
 auto& settings = OpenMagnetics::Settings::GetInstance();
-// settings.set_corelosses_model(OpenMagnetics::CoreLossesModels::...);
+// settings.set_corelosses_model(OpenMagnetics::RoshenHysteresisModels::...);
 ```
