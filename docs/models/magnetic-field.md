@@ -1,7 +1,5 @@
 # Magnetic Field
 
-*Comprehensive documentation for magnetic field distribution models*
-
 Accurate magnetic field distribution calculations are essential for:
 - Winding loss predictions (proximity effect depends on local field)
 - Leakage inductance calculations
@@ -71,7 +69,8 @@ $$H_{fringe}(r) = H_g \cdot \frac{2}{\pi} \arctan\left(\frac{l_g}{2r}\right)$$
 
 Where $r$ is the distance from gap edge.
 
-**Reference:** [Roshen, W. "Fringing Field Formulas and Winding Loss Due to Fringing Field." IEEE Trans. Magnetics, 2007](https://ieeexplore.ieee.org/document/4276863)
+**Reference:** Roshen, W. "Fringing Field Formulas and Winding Loss Due to Fringing Field."
+IEEE Trans. Magnetics, 2007. [IEEE](https://ieeexplore.ieee.org/document/4276863)
 
 ### Albach Fringing Model
 
@@ -80,6 +79,11 @@ providing smooth transitions between gap and non-gap regions.
 
 **Design Tip:** Keep conductors at least 2-3 gap lengths away from the air gap to
 minimize fringing-induced losses.
+
+## Model Comparison
+
+| Model | Error | Reference |
+|-------|-------|-----------|
 
 ## Model Selection Guide
 
@@ -90,56 +94,8 @@ minimize fringing-induced losses.
 | Planar magnetics | Wang or Albach | Handle wide, flat windings |
 | Near air gaps | Include fringing models | Critical for loss accuracy |
 
-## Grid Resolution Settings
+**Grid Resolution Settings:**
+- `magnetic_field_number_points_x`: X-axis grid points (default: 20)
+- `magnetic_field_number_points_y`: Y-axis grid points (default: 20)
 
-The field is computed on a discrete grid. Higher resolution improves accuracy
-but increases computation time:
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `magnetic_field_number_points_x` | X-axis grid points | 20 |
-| `magnetic_field_number_points_y` | Y-axis grid points | 20 |
-| `magnetic_field_include_fringing` | Include gap fringing | true |
-
-Increase resolution for more accurate leakage inductance calculations.
-
-## Usage
-
-```cpp
-#include "physical_models/MagneticField.h"
-
-// Configure magnetic field model
-auto& settings = OpenMagnetics::Settings::GetInstance();
-settings.set_magnetic_field_strength_model(
-    OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON
-);
-
-// Configure fringing model
-settings.set_magnetic_field_strength_fringing_effect_model(
-    OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN
-);
-
-// Set grid resolution
-settings.set_magnetic_field_number_points_x(30);
-settings.set_magnetic_field_number_points_y(30);
-settings.set_magnetic_field_include_fringing(true);
-
-// Create and use the model
-auto model = OpenMagnetics::MagneticFieldStrengthModel::factory();
-auto field = model->calculate_magnetic_field(magnetic, operatingPoint);
-```
-
-## Field Visualization
-
-MKF can export field data for visualization:
-
-```cpp
-auto& settings = OpenMagnetics::Settings::GetInstance();
-settings.set_painter_mode(OpenMagnetics::PainterModes::CONTOUR);
-settings.set_painter_include_fringing(true);
-
-// Use Painter class to generate field plots
-```
-
-The painter uses gnuplot to generate contour plots showing field magnitude
-distribution in the winding window.
+Increase for more accurate leakage inductance; decrease for faster computation.

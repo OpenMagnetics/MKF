@@ -31,7 +31,11 @@ settings.set_reluctance_model(OpenMagnetics::ReluctanceModels::ZHANG);
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
+| `circuit_simulator_curve_fitting_mode` | `int` | N/A |  |
+| `effective_parameter_standard` | `EffectiveParameterStandard` | N/A |  |
+| `electric_field_output_unit` | `ElectricFieldOutputUnit` | N/A |  |
 | `magnetizing_inductance_include_air_inductance` | `bool` | N/A | Include air-core inductance in calculations |
+| `nanocrystalline_stacking_factor` | `double` | N/A |  |
 | `verbose` | `bool` | `false` | Enable verbose logging output |
 
 ## Physical Models
@@ -58,6 +62,7 @@ settings.set_reluctance_model(OpenMagnetics::ReluctanceModels::ZHANG);
 | `preferred_core_material_powder_manufacturer` | `string` | N/A | Preferred powder core manufacturer |
 | `use_concentric_cores` | `bool` | N/A | Include concentric (E, U, etc.) cores in searches |
 | `use_only_cores_in_stock` | `bool` | N/A | Only use cores marked as in stock |
+| `use_powder_cores` | `bool` | N/A |  |
 | `use_toroidal_cores` | `bool` | N/A | Include toroidal cores in searches |
 | `wire_adviser_allow_rectangular_in_toroidal_cores` | `bool` | N/A | Allow rectangular wire in toroids |
 
@@ -69,6 +74,7 @@ settings.set_reluctance_model(OpenMagnetics::ReluctanceModels::ZHANG);
 | `coil_allow_insulated_wire` | `bool` | N/A | Allow pre-insulated wire |
 | `coil_allow_margin_tape` | `bool` | N/A | Allow margin tape in coil designs |
 | `coil_delimit_and_compact` | `bool` | N/A | Delimit sections and compact windings |
+| `coil_enable_user_winding_losses_models` | `bool` | N/A |  |
 | `coil_equalize_margins` | `bool` | N/A | Equalize margins on both sides |
 | `coil_fill_sections_with_margin_tape` | `bool` | N/A | Fill empty sections with margin tape |
 | `coil_include_additional_coordinates` | `bool` | N/A | Include detailed turn coordinates |

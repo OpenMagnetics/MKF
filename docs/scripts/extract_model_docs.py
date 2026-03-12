@@ -1135,6 +1135,57 @@ def _generate_usage_section(categories: List[ModelCategory]) -> List[str]:
     return lines
 
 
+def _generate_detailed_only_content(detailed: dict) -> List[str]:
+    """Generate content from DETAILED_DOCS when no categories were extracted."""
+    lines = []
+
+    # Render models section
+    detailed_models = detailed.get("models", {})
+    if detailed_models:
+        lines.append("## Available Models")
+        lines.append("")
+        for name, dm in detailed_models.items():
+            lines.append(f"### {name}")
+            lines.append("")
+            lines.append(dm["description"].strip())
+            lines.append("")
+            if dm.get("reference"):
+                lines.append(
+                    f"**Reference:** [{dm['reference_text']}]({dm['reference']})")
+                lines.append("")
+
+    # Skin effect intro
+    if "skin_effect_intro" in detailed:
+        lines.append(detailed["skin_effect_intro"].strip())
+        lines.append("")
+
+    # Proximity effect section
+    if "proximity_effect_intro" in detailed:
+        lines.append(detailed["proximity_effect_intro"].strip())
+        lines.append("")
+        for name, pm in detailed.get("proximity_models", {}).items():
+            lines.append(f"### {name}")
+            lines.append("")
+            lines.append(pm["description"].strip())
+            lines.append("")
+            if pm.get("reference"):
+                lines.append(
+                    f"**Reference:** [{pm['reference_text']}]({pm['reference']})")
+                lines.append("")
+
+    # Fringing section
+    if "fringing_section" in detailed:
+        lines.append(detailed["fringing_section"].strip())
+        lines.append("")
+
+    # Leakage section
+    if "leakage_section" in detailed:
+        lines.append(detailed["leakage_section"].strip())
+        lines.append("")
+
+    return lines
+
+
 def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]) -> str:
     """Generate enhanced Markdown using DETAILED_DOCS plus extracted data."""
     detailed = DETAILED_DOCS.get(output_name, {})
@@ -1148,6 +1199,10 @@ def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]
     for cat in categories:
         lines.extend(_generate_category_content(cat, detailed, show_category_header))
 
+    # When no categories extracted, generate from detailed docs alone
+    if not categories:
+        lines.extend(_generate_detailed_only_content(detailed))
+
     # Add model comparison table
     lines.extend(_generate_comparison_table(categories))
 
@@ -1158,43 +1213,6 @@ def generate_enhanced_markdown(output_name: str, categories: List[ModelCategory]
 
     # Add usage section
     lines.extend(_generate_usage_section(categories))
-
-    # Add usage section
-    if categories:
-        cat = categories[0]
-        lines.extend([
-            "## Usage",
-            "",
-            CODE_BLOCK_CPP,
-            f"#include \"physical_models/{cat.source_file}\"",
-            "",
-            "// Create a specific model",
-            f"auto model = OpenMagnetics::{cat.class_name}::factory(",
-        ])
-
-        if cat.models:
-            enum_name = cat.class_name.replace("Model", "Models")
-            model_enum = cat.models[0].name.upper().replace(" ", "_").replace("-", "_")
-            lines.append(f"    OpenMagnetics::{enum_name}::{model_enum}")
-
-        lines.extend([
-            ");",
-            "",
-            "// Or use the default model",
-            f"auto model = OpenMagnetics::{cat.class_name}::factory();",
-            "```",
-            "",
-            "## Configuring Default Model",
-            "",
-            CODE_BLOCK_CPP,
-            "auto& settings = OpenMagnetics::Settings::GetInstance();",
-        ])
-
-        setting_name = cat.name.lower().replace(" ", "_")
-        lines.extend([
-            f"// settings.set_{setting_name}_model(OpenMagnetics::{cat.class_name.replace('Model', 'Models')}::...);",
-            "```",
-        ])
 
     return "\n".join(lines)
 
@@ -1343,9 +1361,8 @@ def main():
 
     # Generate files from DETAILED_DOCS that weren't covered by extraction
     for output_name, detailed in DETAILED_DOCS.items():
-        output_path = docs_dir / output_name
-        if not output_path.exists():
-            # Generate from detailed docs alone
+        if output_name not in categories:
+            output_path = docs_dir / output_name
             content = generate_enhanced_markdown(output_name, [])
             output_path.write_text(content)
             print(f"Generated {output_path} from detailed docs")

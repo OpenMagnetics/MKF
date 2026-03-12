@@ -25,15 +25,15 @@ MKF follows a **multi-model approach**:
 
 | Category | Models | Default |
 |----------|--------|---------|
-| [Skin Effect](winding-losses.md#skin-effect) | Dowell, Wojda, Albach, Payne, Kutkut, Ferreira | Wire-dependent |
-| [Proximity Effect](winding-losses.md#proximity-effect) | Rossmanith, Wang, Ferreira, Lammeraner, Albach, Dowell | Wire-dependent |
+| [Skin Effect](winding-losses.md#skin-effect-models) | Dowell, Wojda, Albach, Payne, Kutkut, Ferreira | Wire-dependent |
+| [Proximity Effect](winding-losses.md#proximity-effect-models) | Rossmanith, Wang, Ferreira, Lammeraner, Albach, Dowell | Wire-dependent |
 
 ### Field Models
 
 | Category | Models | Default |
 |----------|--------|---------|
 | [Magnetic Field](magnetic-field.md) | Binns-Lawrenson, Lammeraner, Dowell, Wang, Albach | Binns-Lawrenson |
-| [Fringing Field](magnetic-field.md#fringing-effect) | Roshen, Albach | Roshen |
+| [Fringing Field](magnetic-field.md#fringing-field-models) | Roshen, Albach | Roshen |
 
 ### Other Models
 
