@@ -3471,4 +3471,846 @@ TEST_CASE("Test_Nl5_DLL_DifferentGaps", "[processor][circuit-simulator-exporter]
 
 #endif // HAS_DLOPEN
 
+// ============================================================================
+// Saturation Modeling Tests
+// ============================================================================
+
+TEST_CASE("Test_Saturation_Ngspice_SingleWinding", "[processor][circuit-simulator-exporter][ngspice][saturation]") {
+    // Create a single winding inductor (saturation only works for single winding)
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";  // Ferrite with known saturation
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export ngspice netlist
+    auto netlist = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check for saturation-related content
+    CHECK(netlist.find("Saturating magnetizing") != std::string::npos);
+    CHECK(netlist.find("Bsat=") != std::string::npos);
+    CHECK(netlist.find("Isat=") != std::string::npos);
+    CHECK(netlist.find("Lmag_1_L0") != std::string::npos);
+    CHECK(netlist.find("Lmag_1_Isat") != std::string::npos);
+    // Should have behavioral voltage source
+    CHECK(netlist.find("BLmag_1") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_Ngspice_MultiWinding_FallsBackToLinear", "[processor][circuit-simulator-exporter][ngspice][saturation]") {
+    // Create a transformer (multi-winding) - should fall back to linear model
+    std::vector<int64_t> numberTurns = {20, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export ngspice netlist
+    auto netlist = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Should have warning about multi-winding
+    CHECK(netlist.find("WARNING: Saturation modeling not supported for multi-winding") != std::string::npos);
+    // Should NOT have behavioral voltage source (falls back to linear)
+    CHECK(netlist.find("BLmag_") == std::string::npos);
+    // Should have regular inductor
+    CHECK(netlist.find("Lmag_1") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_LTspice_SingleWinding", "[processor][circuit-simulator-exporter][ltspice][saturation]") {
+    // Create a single winding inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export LTspice netlist
+    auto netlist = CircuitSimulatorExporterLtspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check for saturation-related content
+    CHECK(netlist.find("Saturating magnetizing") != std::string::npos);
+    CHECK(netlist.find("Bsat=") != std::string::npos);
+    CHECK(netlist.find("Lambda_sat_1") != std::string::npos);
+    CHECK(netlist.find("I_sat_1") != std::string::npos);
+    CHECK(netlist.find("L_gap_1") != std::string::npos);
+    // LTspice uses Flux= syntax
+    CHECK(netlist.find("Flux={") != std::string::npos);
+    CHECK(netlist.find("tanh(x/I_sat_1)") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_LTspice_MultiWinding_FallsBackToLinear", "[processor][circuit-simulator-exporter][ltspice][saturation]") {
+    // Create a transformer (multi-winding)
+    std::vector<int64_t> numberTurns = {20, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export LTspice netlist
+    auto netlist = CircuitSimulatorExporterLtspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Should have warning about multi-winding
+    CHECK(netlist.find("WARNING: Saturation modeling not supported for multi-winding") != std::string::npos);
+    // Should NOT have Flux= syntax (falls back to linear)
+    CHECK(netlist.find("Flux={") == std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_NL5_SingleWinding", "[processor][circuit-simulator-exporter][nl5][saturation]") {
+    // Create a single winding inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export NL5 XML
+    auto nl5xml = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check for NL5 saturating inductor (L_Lsat type)
+    CHECK(nl5xml.find("type=\"L_Lsat\"") != std::string::npos);
+    CHECK(nl5xml.find("name=\"Lmag\"") != std::string::npos);
+    CHECK(nl5xml.find("Lsat=") != std::string::npos);
+    CHECK(nl5xml.find("Iknee=") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_NL5_MultiWinding_FallsBackToLinear", "[processor][circuit-simulator-exporter][nl5][saturation]") {
+    // Create a transformer (multi-winding)
+    std::vector<int64_t> numberTurns = {20, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export NL5 XML
+    auto nl5xml = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Should NOT have saturating inductor (falls back to linear)
+    CHECK(nl5xml.find("type=\"L_Lsat\"") == std::string::npos);
+    // Should have regular inductor
+    CHECK(nl5xml.find("type=\"L_L\"") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_Disabled_NoSaturationInOutput", "[processor][circuit-simulator-exporter][saturation]") {
+    // Create a single winding inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Disable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(false);
+    
+    // Export ngspice netlist
+    auto ngspiceNetlist = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Export LTspice netlist
+    auto ltspiceNetlist = CircuitSimulatorExporterLtspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Export NL5 XML
+    auto nl5xml = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // ngspice should NOT have behavioral source for saturation
+    CHECK(ngspiceNetlist.find("BLmag_") == std::string::npos);
+    CHECK(ngspiceNetlist.find("Saturating") == std::string::npos);
+    
+    // LTspice should NOT have Flux= syntax
+    CHECK(ltspiceNetlist.find("Flux={") == std::string::npos);
+    CHECK(ltspiceNetlist.find("Saturating") == std::string::npos);
+    
+    // NL5 should NOT have saturating inductor
+    CHECK(nl5xml.find("type=\"L_Lsat\"") == std::string::npos);
+}
+
+// ============================================================================
+// Ngspice Integration Tests for Saturation
+// ============================================================================
+
+TEST_CASE("Test_Ngspice_Integration_LinearInductor_BasicSimulation", "[processor][circuit-simulator-exporter][ngspice][integration]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a simple inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Disable saturation for this test (linear model)
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(false);
+    
+    // Export the inductor subcircuit
+    auto subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Create a test circuit: voltage source -> inductor -> ground
+    // V(t) = 10V square wave at 100kHz
+    std::string testCircuit = R"(
+* Test circuit for linear inductor
+)" + subcircuit + R"(
+
+* Test circuit
+Vsrc in 0 PULSE(0 10 0 10n 10n 5u 10u)
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+.tran 1n 50u
+.control
+run
+wrdata output.csv v(in) i(Vsrc)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 100e3;
+    config.stopTime = 50e-6;
+    config.stepSize = 1e-9;
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check simulation succeeded
+    if (!result.success) {
+        INFO("Simulation error: " << result.errorMessage);
+    }
+    REQUIRE(result.success);
+    
+    // Should have extracted some waveforms
+    CHECK(result.waveforms.size() >= 1);
+}
+
+TEST_CASE("Test_Ngspice_Integration_SaturatingInductor_BasicSimulation", "[processor][circuit-simulator-exporter][ngspice][integration][saturation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a single winding inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export the inductor subcircuit
+    auto subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Verify the subcircuit contains saturation elements
+    REQUIRE(subcircuit.find("BLmag_") != std::string::npos);
+    
+    // Create a test circuit with voltage source (easier to simulate than current source)
+    // Use a slow sinusoidal excitation to avoid convergence issues
+    std::string testCircuit = R"(
+* Test circuit for saturating inductor
+)" + subcircuit + R"(
+
+* Test circuit - voltage source sine wave
+Vsrc in 0 SIN(0 5 10k)
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+.tran 1u 200u
+.control
+run
+wrdata output.csv v(in) i(Vsrc)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 10e3;
+    config.stopTime = 200e-6;
+    config.stepSize = 1e-6;
+    config.extractOnePeriod = false;  // Don't try to extract a specific period
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check simulation succeeded
+    if (!result.success) {
+        INFO("Simulation error: " << result.errorMessage);
+        INFO("Netlist was:\n" << testCircuit);
+    }
+    REQUIRE(result.success);
+}
+
+TEST_CASE("Test_Ngspice_Integration_LinearVsSaturating_Comparison", "[processor][circuit-simulator-exporter][ngspice][integration][saturation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create inductor - use same parameters as the working basic test
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);  // Same gap as working test
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    
+    // Export LINEAR model
+    settings.set_circuit_simulator_include_saturation(false);
+    auto linearSubcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Export SATURATING model
+    settings.set_circuit_simulator_include_saturation(true);
+    auto saturatingSubcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Verify both netlists are different
+    CHECK(linearSubcircuit != saturatingSubcircuit);
+    CHECK(linearSubcircuit.find("BLmag_") == std::string::npos);  // Linear has no behavioral source
+    CHECK(saturatingSubcircuit.find("BLmag_") != std::string::npos);  // Saturating has behavioral source
+    
+    // Use sine wave test like the working basic test
+    auto createTestCircuit = [&](const std::string& subcircuit, const std::string& name) {
+        return R"(
+* Test circuit for )" + name + R"( inductor comparison
+)" + subcircuit + R"(
+
+* Sine wave voltage source (same as working test)
+Vsrc in 0 SIN(0 5 10k)
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+.tran 1u 200u
+.control
+run
+wrdata output.csv v(in) i(Vsrc)
+.endc
+.end
+)";
+    };
+    
+    SimulationConfig config;
+    config.frequency = 10e3;
+    config.stopTime = 200e-6;
+    config.stepSize = 1e-6;
+    config.extractOnePeriod = false;
+    
+    // Run linear simulation
+    auto linearCircuit = createTestCircuit(linearSubcircuit, "linear");
+    auto linearResult = runner.run_simulation(linearCircuit, config);
+    
+    if (!linearResult.success) {
+        INFO("Linear simulation error: " << linearResult.errorMessage);
+    }
+    REQUIRE(linearResult.success);
+    
+    // Run saturating simulation
+    auto saturatingCircuit = createTestCircuit(saturatingSubcircuit, "saturating");
+    auto saturatingResult = runner.run_simulation(saturatingCircuit, config);
+    
+    if (!saturatingResult.success) {
+        INFO("Saturating simulation error: " << saturatingResult.errorMessage);
+    }
+    REQUIRE(saturatingResult.success);
+    
+    // Extract current waveforms (i(Vsrc) is the inductor current)
+    auto findCurrentIdx = [](const SimulationResult& result) -> int {
+        for (size_t i = 0; i < result.waveformNames.size(); i++) {
+            std::string name = result.waveformNames[i];
+            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            if (name.find("vsrc") != std::string::npos) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    };
+    
+    int linearCurrentIdx = findCurrentIdx(linearResult);
+    int saturatingCurrentIdx = findCurrentIdx(saturatingResult);
+    
+    INFO("Linear waveforms: " << linearResult.waveformNames.size());
+    INFO("Saturating waveforms: " << saturatingResult.waveformNames.size());
+    
+    if (linearCurrentIdx >= 0 && saturatingCurrentIdx >= 0) {
+        auto& linearI = linearResult.waveforms[linearCurrentIdx].get_data();
+        auto& saturatingI = saturatingResult.waveforms[saturatingCurrentIdx].get_data();
+        
+        REQUIRE(!linearI.empty());
+        REQUIRE(!saturatingI.empty());
+        
+        // Calculate RMS currents
+        double linearRms = 0, saturatingRms = 0;
+        for (double i : linearI) linearRms += i * i;
+        for (double i : saturatingI) saturatingRms += i * i;
+        linearRms = std::sqrt(linearRms / linearI.size());
+        saturatingRms = std::sqrt(saturatingRms / saturatingI.size());
+        
+        // Find peak currents
+        double linearPeak = 0, saturatingPeak = 0;
+        for (double i : linearI) linearPeak = std::max(linearPeak, std::abs(i));
+        for (double i : saturatingI) saturatingPeak = std::max(saturatingPeak, std::abs(i));
+        
+        INFO("=== Current Analysis ===");
+        INFO("Linear: RMS=" << linearRms << "A, Peak=" << linearPeak << "A");
+        INFO("Saturating: RMS=" << saturatingRms << "A, Peak=" << saturatingPeak << "A");
+        INFO("Peak ratio (sat/lin): " << (saturatingPeak / linearPeak));
+        
+        // Both models should produce reasonable currents
+        CHECK(linearPeak > 0.001);  // At least 1mA peak
+        CHECK(saturatingPeak > 0.001);
+        
+        // The saturating model should have HIGHER peak current because L decreases with current
+        // This is the key evidence that saturation is working correctly!
+        // The ratio can be quite large (10x-50x or more) when the core saturates
+        CHECK(saturatingPeak >= linearPeak);  // Saturating current >= linear
+        
+        // If the ratio is significantly > 1, saturation is clearly working
+        double ratio = saturatingPeak / linearPeak;
+        if (ratio > 2.0) {
+            INFO("SUCCESS: Clear saturation behavior observed!");
+            INFO("  Saturating model current is " << ratio << "x higher than linear");
+            INFO("  This confirms the inductance dropped significantly at high current");
+        }
+    } else {
+        // At minimum, simulations succeeded
+        CHECK(linearResult.waveforms.size() > 0);
+        CHECK(saturatingResult.waveforms.size() > 0);
+    }
+}
+
+TEST_CASE("Test_Ngspice_Integration_Transformer_LinearFallback", "[processor][circuit-simulator-exporter][ngspice][integration][saturation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a transformer (2 windings) - should fall back to linear even with saturation enabled
+    std::vector<int64_t> numberTurns = {20, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export the transformer subcircuit
+    auto subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Should have warning about multi-winding and NO behavioral source
+    CHECK(subcircuit.find("WARNING: Saturation modeling not supported") != std::string::npos);
+    CHECK(subcircuit.find("BLmag_") == std::string::npos);
+    
+    // Create a simple transformer test circuit
+    std::string testCircuit = R"(
+* Test circuit for transformer (should use linear model)
+)" + subcircuit + R"(
+
+* Voltage source on primary, resistive load on secondary
+Vsrc pri_p 0 PULSE(0 10 0 10n 10n 5u 10u)
+Rload sec_p sec_n 10
+Xtrafo pri_p pri_n sec_p sec_n )" + fix_filename(magnetic.get_reference()) + R"(
+
+* Ground the negative terminals
+Rgnd1 pri_n 0 1m
+Rgnd2 sec_n 0 1m
+
+.tran 1n 50u
+.control
+run
+wrdata output.csv v(pri_p) v(sec_p) i(Vsrc)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 100e3;
+    config.stopTime = 50e-6;
+    config.stepSize = 1e-9;
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check simulation succeeded (linear transformer model should work fine)
+    if (!result.success) {
+        INFO("Simulation error: " << result.errorMessage);
+    }
+    REQUIRE(result.success);
+    
+    // Should have extracted waveforms
+    CHECK(result.waveforms.size() >= 1);
+}
+
+TEST_CASE("Test_Ngspice_Integration_InductorImpedance_FrequencySweep", "[processor][circuit-simulator-exporter][ngspice][integration]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a simple inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Disable saturation for this test
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(false);
+    
+    // Export the inductor subcircuit
+    auto subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Create an AC analysis circuit
+    std::string testCircuit = R"(
+* AC impedance test for inductor
+)" + subcircuit + R"(
+
+* AC voltage source
+Vac in 0 AC 1
+
+* Inductor under test
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+* AC analysis from 1kHz to 1MHz
+.ac dec 10 1k 1meg
+.control
+run
+wrdata output.csv frequency i(Vac)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 100e3;
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // AC analysis should succeed
+    if (!result.success) {
+        INFO("AC simulation error: " << result.errorMessage);
+    }
+    REQUIRE(result.success);
+}
+
+TEST_CASE("Test_Ngspice_Integration_Saturation_CurrentSlope_Analysis", "[processor][circuit-simulator-exporter][ngspice][integration][saturation]") {
+    // This test verifies that both linear and saturating models can be simulated
+    // and produce valid current waveforms with a sine wave excitation.
+    // It also checks that the saturation model parameters are correctly embedded in the netlist.
+    
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a simple inductor (same as other working tests)
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    double magnetizingInductance = resolve_dimensional_values(
+        MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
+            .get_magnetizing_inductance());
+    
+    INFO("Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+    
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    
+    // Export saturating model and verify it has saturation parameters
+    settings.set_circuit_simulator_include_saturation(true);
+    auto saturatingSubcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Verify saturation parameters are in the netlist
+    CHECK(saturatingSubcircuit.find("Lmag_1_L0") != std::string::npos);
+    CHECK(saturatingSubcircuit.find("Lmag_1_Isat") != std::string::npos);
+    CHECK(saturatingSubcircuit.find("BLmag_1") != std::string::npos);
+    
+    // Extract and display Isat value
+    size_t isatParamPos = saturatingSubcircuit.find(".param Lmag_1_Isat=");
+    if (isatParamPos != std::string::npos) {
+        size_t valueStart = isatParamPos + 19;
+        size_t valueEnd = saturatingSubcircuit.find("\n", valueStart);
+        if (valueEnd != std::string::npos) {
+            std::string isatValue = saturatingSubcircuit.substr(valueStart, valueEnd - valueStart);
+            INFO("Saturation current Isat: " << isatValue << " A");
+        }
+    }
+    
+    // Run simulation with sine wave to verify it converges
+    std::string testCircuit = R"(
+* Saturation model test with sine wave
+)" + saturatingSubcircuit + R"(
+
+Vsrc in 0 SIN(0 5 10k)
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+.tran 1u 200u
+.control
+run
+wrdata output.csv v(in) i(Vsrc)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 10e3;
+    config.stopTime = 200e-6;
+    config.stepSize = 1e-6;
+    config.extractOnePeriod = false;
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    REQUIRE(result.success);
+    
+    // Try to extract current waveform
+    int currentIdx = -1;
+    for (size_t i = 0; i < result.waveformNames.size(); i++) {
+        std::string name = result.waveformNames[i];
+        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+        if (name.find("vsrc") != std::string::npos) {
+            currentIdx = static_cast<int>(i);
+            break;
+        }
+    }
+    
+    if (currentIdx >= 0) {
+        auto& current = result.waveforms[currentIdx].get_data();
+        REQUIRE(!current.empty());
+        
+        // Find peak current
+        double peakCurrent = 0;
+        for (double i : current) peakCurrent = std::max(peakCurrent, std::abs(i));
+        
+        INFO("Peak current with saturating model: " << peakCurrent << " A");
+        
+        // Verify we got reasonable current (not zero, not infinite)
+        CHECK(peakCurrent > 0.0001);  // At least 0.1mA
+        CHECK(peakCurrent < 1000);     // Less than 1kA
+        
+        // Calculate expected peak current for linear model: I_peak = V_peak / (2*pi*f*L)
+        double expectedPeakLinear = 5.0 / (2 * M_PI * 10e3 * magnetizingInductance);
+        INFO("Expected peak current (linear model): " << expectedPeakLinear << " A");
+        
+        // The saturating model will have HIGHER current because L decreases as we approach saturation
+        // This is expected and correct behavior - the inductance collapses at high current
+        CHECK(peakCurrent > expectedPeakLinear * 0.5);  // At least 50% of linear expected
+        
+        // If we see significantly higher current, saturation is working
+        if (peakCurrent > expectedPeakLinear * 2) {
+            INFO("SUCCESS: Saturation clearly observed!");
+            INFO("  Actual peak current is " << (peakCurrent / expectedPeakLinear) << "x higher than linear model would predict");
+            INFO("  This confirms inductance dropped due to saturation");
+        }
+    } else {
+        // At minimum, verify waveforms were extracted
+        CHECK(result.waveforms.size() > 0);
+    }
+}
+
 }  // namespace

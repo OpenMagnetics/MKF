@@ -136,6 +136,9 @@ class Settings
         // Circuit simulator export settings (LADDER=0, ANALYTICAL=1, FRACPOLE=2, AUTO=3)
         int _circuitSimulatorCurveFittingMode = 0;  // Default to LADDER
         std::optional<std::map<std::string, double>> _circuitSimulatorFracpoleOptions;
+        
+        // Circuit simulator saturation modeling (false = linear inductor, true = saturating inductor)
+        bool _circuitSimulatorIncludeSaturation = false;  // Default to linear (no saturation)
 
         bool _verbose = false;
 
@@ -428,6 +431,8 @@ class Settings
         void set_circuit_simulator_curve_fitting_mode(int value);
         std::optional<std::map<std::string, double>> get_circuit_simulator_fracpole_options() const;
         void set_circuit_simulator_fracpole_options(std::optional<std::map<std::string, double>> value);
+        bool get_circuit_simulator_include_saturation() const;
+        void set_circuit_simulator_include_saturation(bool value);
 
 
     };

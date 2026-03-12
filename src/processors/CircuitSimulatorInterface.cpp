@@ -14,8 +14,73 @@
 #include <float.h>
 #include "support/Exceptions.h"
 #include "physical_models/CoreLosses.h"
+#include "physical_models/InitialPermeability.h"
 
 namespace OpenMagnetics {
+
+// Saturation model parameters for circuit simulation
+struct SaturationParameters {
+    double Bsat;           // Saturation flux density [T]
+    double mu_r;           // Relative permeability (initial)
+    double Ae;             // Effective core area [m²]
+    double le;             // Effective magnetic path length [m]
+    double primaryTurns;   // Number of primary turns
+    double Lmag;           // Magnetizing inductance [H]
+    bool valid;            // Whether parameters are valid
+    
+    // Derived parameters for circuit models
+    double Isat() const {
+        // Current at which core saturates: I = H_sat * le / N
+        // H_sat = B_sat / (mu_0 * mu_r)
+        const double mu0 = 4e-7 * M_PI;
+        double Hsat = Bsat / (mu0 * mu_r);
+        return Hsat * le / primaryTurns;
+    }
+    
+    double fluxLinkageSat() const {
+        // Lambda_sat = N * Ae * Bsat
+        return primaryTurns * Ae * Bsat;
+    }
+};
+
+// Extract saturation parameters from a magnetic component
+static SaturationParameters get_saturation_parameters(const Magnetic& magnetic, double temperature) {
+    SaturationParameters params;
+    params.valid = false;
+    
+    try {
+        auto core = magnetic.get_core();
+        auto coil = magnetic.get_coil();
+        
+        // Get saturation flux density
+        params.Bsat = core.get_magnetic_flux_density_saturation(temperature, true);
+        
+        // Get initial permeability
+        params.mu_r = core.get_initial_permeability(temperature);
+        
+        // Get effective parameters
+        params.Ae = core.get_effective_area();
+        params.le = core.get_effective_length();
+        
+        // Get primary turns
+        params.primaryTurns = coil.get_functional_description()[0].get_number_turns();
+        
+        // Get magnetizing inductance
+        params.Lmag = resolve_dimensional_values(
+            MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
+                .get_magnetizing_inductance());
+        
+        // Validate
+        if (params.Bsat > 0 && params.mu_r > 0 && params.Ae > 0 && 
+            params.le > 0 && params.primaryTurns > 0 && params.Lmag > 0) {
+            params.valid = true;
+        }
+    } catch (...) {
+        params.valid = false;
+    }
+    
+    return params;
+}
 
 template<typename T> std::vector<T> convolution_valid(std::vector<T> const &f, std::vector<T> const &g) {
     int const nf = f.size();
@@ -839,10 +904,11 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     if (resolvedMode_sb == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
         fracpoleNets_sb = CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(magnetic, temperature);
     }
-    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+    // Core losses using R-L ladder (calculate coefficients for positioning)
+    auto coreResistanceCoefficients_sb = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
     double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
     int numberLadderPairElements = acResistanceCoefficientsPerWinding[0].size() / 2 - 1;
-    int numberCoreLadderPairElements = coreResistanceCoefficients.size() / 2 + 1;
+    int numberCoreLadderPairElements = static_cast<int>(coreResistanceCoefficients_sb.size() / 2) + 1;
 
     for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
         auto column = columns[columnIndex];
@@ -985,55 +1051,42 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     }
 
 
-    // Magnetizing current and core losses
+    // Magnetizing current and core losses using R-L ladder
+    // The R-L ladder provides impedance that INCREASES with frequency, matching core loss behavior.
     {
-        auto winding = coil.get_functional_description()[0];
+        auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+        int numberCoreLadderPairElements = static_cast<int>(coreResistanceCoefficients.size() / 2);
+        
         std::vector<int> coordinates = windingCoordinates;
-        ordered_json windingJson;
         std::vector<ordered_json> ladderJsons;
         std::vector<ordered_json> ladderConnectorsJsons;
         coordinates[1] += numberCoreLadderPairElements * 6 - 5;
 
-        windingJson = create_winding(winding.get_number_turns(), coordinates, 0, winding.get_name());
-        // {
-        //     std::vector<int> connectorTopCoordinates = {coordinates[0], coordinates[1] + 1};
-        //     std::vector<int> connectorBottomCoordinates = {coordinates[0] - 6, coordinates[1] + 1};
-
-        //     auto connectorJson = create_connector(connectorBottomCoordinates, connectorTopCoordinates, "Top connector core losses");
-        //     device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
-        // }
-        // {
-        //     std::vector<int> connectorTopCoordinates = {coordinates[0], coordinates[1] + 5};
-        //     std::vector<int> connectorBottomCoordinates = {coordinates[0] - 12, coordinates[1] + 1};
-
-        //     auto connectorJson = create_connector(connectorTopCoordinates, connectorBottomCoordinates, "Bottom connector core losses");
-        //     device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
-        // }
         {
             std::vector<int> connectorTopCoordinates = {windingCoordinates[0] + 2, windingCoordinates[1]};
-            // std::vector<int> connectorBottomCoordinates = {coordinates[0] + 2, coordinates[1] + 1};
             std::vector<int> connectorBottomCoordinates = {coordinates[0] + 2, coordinates[1] + 5};
 
             auto connectorJson = create_connector(connectorTopCoordinates, connectorBottomCoordinates, "Central column connector to core losses");
             device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
         }
 
-        // coordinates[0] -= 6;
-        // auto aux = create_ladder(coreResistanceCoefficients, coordinates, winding.get_name());
-        // if (coreResistanceCoefficients.size() > 0) {
-        //     coordinates[0] -= 6;
-        // }
-        // ladderJsons = aux.first;
-        // ladderConnectorsJsons = aux.second;
+        // Add core loss R-L ladder using create_ladder
+        if (!coreResistanceCoefficients.empty()) {
+            coordinates[0] -= 6;
+            auto aux = create_ladder(coreResistanceCoefficients, coordinates, "Core losses");
+            if (coreResistanceCoefficients.size() > 0) {
+                coordinates[0] -= 6;
+            }
+            ladderJsons = aux.first;
+            ladderConnectorsJsons = aux.second;
 
-        // device["SubcircuitDefinition"]["Devices"].push_back(windingJson);
-
-        // for (auto ladderJson : ladderJsons) {
-        //     device["SubcircuitDefinition"]["Devices"].push_back(ladderJson);
-        // }
-        // for (auto ladderConnectorsJson : ladderConnectorsJsons) {
-        //     device["SubcircuitDefinition"]["Connectors"].push_back(ladderConnectorsJson);
-        // }
+            for (auto ladderJson : ladderJsons) {
+                device["SubcircuitDefinition"]["Devices"].push_back(ladderJson);
+            }
+            for (auto ladderConnectorsJson : ladderConnectorsJsons) {
+                device["SubcircuitDefinition"]["Connectors"].push_back(ladderConnectorsJson);
+            }
+        }
     }
 
     for (auto deviceJson : device["SubcircuitDefinition"]["Devices"]) {
@@ -1153,32 +1206,37 @@ static std::string emit_fracpole_winding_spice(
     std::string s;
     const std::string fp_name = "fracpole_w" + is;
     const std::string sk_name = "skin_effect_w" + is;
+    double coef = net.opts.coef;
 
-    // Fracpole subcircuit definition (R/C stages)
+    // Fracpole subcircuit definition (R/C stages) - pre-computed values for ngspice compatibility
     s += "* Winding " + is + " skin-effect fracpole (alpha=0.5, "
        + std::to_string(net.stages.size()) + " stages)\n";
     s += ".subckt " + fp_name + " p n\n";
-    s += ".param coef=" + to_string(net.opts.coef, 12) + "\n";
     for (size_t k = 0; k < net.stages.size(); ++k) {
         std::string kk = std::to_string(k + 1);
-        s += "R" + kk + " p " + kk + " r=" + to_string(net.stages[k].R, 12) + "*coef\n";
-        s += "C" + kk + " " + kk + " n c=" + to_string(net.stages[k].C, 12) + "/coef\n";
+        double R_scaled = net.stages[k].R * coef;
+        double C_scaled = net.stages[k].C / coef;
+        s += "R" + kk + " p " + kk + " " + to_string(R_scaled, 12) + "\n";
+        s += "C" + kk + " " + kk + " n " + to_string(C_scaled, 12) + "\n";
     }
-    if (net.Cinf > 0.0)
-        s += "Cinf p n c=" + to_string(net.Cinf, 12) + "/coef\n";
-    if (net.Rinf > 0.0)
-        s += "Rinf p n r=" + to_string(net.Rinf, 12) + "*coef\n";
+    if (net.Cinf > 0.0) {
+        double Cinf_scaled = net.Cinf / coef;
+        s += "Cinf p n " + to_string(Cinf_scaled, 12) + "\n";
+    }
+    if (net.Rinf > 0.0) {
+        double Rinf_scaled = net.Rinf * coef;
+        s += "Rinf p n " + to_string(Rinf_scaled, 12) + "\n";
+    }
     s += ".ends " + fp_name + "\n\n";
 
     // Skin-effect subcircuit definition (fracpole + gyrator)
     // The gyrator converts impedance fracpole -> admittance fracpole
     // so resistance increases with frequency (skin effect)
     s += ".subckt " + sk_name + " 1 2\n";
-    s += ".param scaling=1MEG gmin=1e-12\n";
     s += "* Gyrator: converts impedance fracpole to admittance fracpole\n";
     s += "Eg1 3 0 1 2 1\n";          // VCVS sense: input port voltage
     s += "Gg1 1 2 3 0 1\n";          // VCCS: drives port with gyrator current
-    s += "Rg1 3 0 r={1/gmin}\n";     // Termination
+    s += "Rg1 3 0 1e12\n";           // High impedance termination (gmin^-1)
     s += "Xfp 3 0 " + fp_name + "\n";
     s += ".ends " + sk_name + "\n\n";
 
@@ -1193,29 +1251,198 @@ static std::string emit_fracpole_winding_spice(
 // Emit the fracpole subcircuit for core losses.
 // Core loss is represented as a frequency-dependent resistance in parallel
 // with the magnetizing inductance.
+// Uses pre-computed values (coef already applied) for ngspice compatibility.
+//
+// IMPORTANT: For core losses, we do NOT include Cinf or Rinf terminal elements.
+// - Cinf would short-circuit the magnetizing inductance at high frequencies
+// - Rinf would provide a DC path that doesn't exist for core losses
+// The R-C stages alone provide the frequency-dependent loss behavior we need.
 static std::string emit_fracpole_core_spice(
     const FractionalPoleNetwork& net, size_t numWindings) {
     std::string s;
     const std::string fp_name = "fracpole_core";
+    double coef = net.opts.coef;
 
     s += "* Core loss fracpole (alpha=" + to_string(net.opts.alpha, 3) + ", "
        + std::to_string(net.stages.size()) + " stages)\n";
     s += ".subckt " + fp_name + " p n\n";
-    s += ".param coef=" + to_string(net.opts.coef, 12) + "\n";
     for (size_t k = 0; k < net.stages.size(); ++k) {
         std::string kk = std::to_string(k + 1);
-        s += "R" + kk + " p " + kk + " r=" + to_string(net.stages[k].R, 12) + "*coef\n";
-        s += "C" + kk + " " + kk + " n c=" + to_string(net.stages[k].C, 12) + "/coef\n";
+        // Apply coef scaling directly to values for ngspice compatibility
+        double R_scaled = net.stages[k].R * coef;
+        double C_scaled = net.stages[k].C / coef;
+        s += "R" + kk + " p " + kk + " " + to_string(R_scaled, 12) + "\n";
+        s += "C" + kk + " " + kk + " n " + to_string(C_scaled, 12) + "\n";
     }
-    if (net.Cinf > 0.0)
-        s += "Cinf p n c=" + to_string(net.Cinf, 12) + "/coef\n";
-    if (net.Rinf > 0.0)
-        s += "Rinf p n r=" + to_string(net.Rinf, 12) + "*coef\n";
+    // NOTE: Cinf and Rinf are intentionally omitted for core losses.
+    // Cinf would short-circuit Lmag at high frequencies, causing simulation failure.
+    // Rinf would provide an unphysical DC path through the core loss network.
     s += ".ends " + fp_name + "\n\n";
 
     // Instantiate in parallel with the magnetizing inductance node
     s += "Xcore_loss Node_R_Lmag_1 P1- " + fp_name + "\n";
 
+    return s;
+}
+
+// Emit core loss network using R-L ladder topology for SPICE.
+// The R-L ladder provides impedance that INCREASES with frequency:
+// - At low frequency: L shorts out R, so total Z is low
+// - At high frequency: L is open, so R dominates, Z is high
+// This matches the behavior needed for core losses (higher losses at higher frequency).
+// Coefficients are [R1, L1, R2, L2, R3, L3] from calculate_core_resistance_coefficients().
+static std::string emit_core_ladder_spice(
+    const std::vector<double>& coeffs, size_t numWindings) {
+    
+    if (coeffs.size() < 2) {
+        return "";  // Not enough coefficients
+    }
+    
+    std::string s;
+    s += "* Core loss R-L ladder (" + std::to_string(coeffs.size()/2) + " stages)\n";
+    
+    // Build ladder: series of (L || R) stages
+    // Z = L1 || (R1 + L2 || (R2 + L3 || R3))
+    // Start from innermost stage and work outward
+    std::string lastNode = "P1-";
+    int stageCount = static_cast<int>(coeffs.size() / 2);
+    
+    for (int k = stageCount - 1; k >= 0; --k) {
+        double R = coeffs[k * 2];
+        double L = coeffs[k * 2 + 1];
+        std::string kk = std::to_string(k + 1);
+        std::string thisNode = (k == 0) ? "Node_R_Lmag_1" : ("Node_Rcore_" + std::to_string(k));
+        
+        // Validate values
+        if (R <= 0 || L <= 0 || R > 1e6 || L > 1) {
+            continue;  // Skip invalid stage
+        }
+        
+        // R in series path
+        s += "Rcore" + kk + " " + thisNode + " Node_Lcore_" + kk + " " + to_string(R, 12) + "\n";
+        // L in parallel with the rest (connects to lastNode)
+        s += "Lcore" + kk + " " + thisNode + " " + lastNode + " " + to_string(L, 12) + "\n";
+        
+        lastNode = "Node_Lcore_" + kk;
+    }
+    
+    // Connect the final node to ground (P1-)
+    if (lastNode != "P1-") {
+        s += "Rcore_final " + lastNode + " P1- 1e-6\n";  // Near-zero resistance to close the circuit
+    }
+    
+    return s;
+}
+
+// Emit saturating magnetizing inductance for ngspice using behavioral modeling.
+// Uses a tanh-based flux linkage model: Lambda(I) = Lambda_sat * tanh(I/I_sat) + L_linear * I
+// where L_linear accounts for the air gap contribution.
+static std::string emit_saturating_inductor_ngspice(
+    const SaturationParameters& sat,
+    const std::string& windingIndex,
+    const std::string& nodeIn,
+    const std::string& nodeOut) {
+    
+    if (!sat.valid) {
+        return "";  // Fall back to linear inductor
+    }
+    
+    std::string s;
+    const double mu0 = 4e-7 * M_PI;
+    
+    // Calculate saturation current and flux linkage
+    double Isat = sat.Isat();
+    double lambdaSat = sat.fluxLinkageSat();
+    
+    // The model uses: V = d(Lambda)/dt where Lambda = Lambda_sat * tanh(I/I_sat) + L_gap * I
+    // L_gap is the linear component (from air gap), approximately L_mag * (1 - 1/effective_permeability)
+    // For a typical gapped core, most inductance comes from the gap, so L_gap ≈ L_mag
+    double effectiveMuR = sat.Lmag / (mu0 * sat.primaryTurns * sat.primaryTurns * sat.Ae / sat.le);
+    double gapFactor = 1.0 / effectiveMuR;  // Fraction of reluctance from gap
+    double Lgap = sat.Lmag * gapFactor;  // Linear (gap) component
+    double Lcore = sat.Lmag * (1 - gapFactor);  // Saturable (core) component
+    
+    // Ensure reasonable values
+    if (Isat < 1e-6) Isat = 1e-6;
+    if (lambdaSat < 1e-9) lambdaSat = 1e-9;
+    if (Lgap < 1e-12) Lgap = sat.Lmag * 0.5;  // Fallback
+    
+    s += "* Saturating magnetizing inductance (winding " + windingIndex + ")\n";
+    s += "* Bsat=" + to_string(sat.Bsat, 4) + "T, Isat=" + to_string(Isat, 4) + "A\n";
+    
+    // ngspice behavioral inductor using flux linkage
+    // V = dLambda/dt = dLambda/dI * dI/dt
+    // For Lambda = Lsat*tanh(I/Isat) + Lgap*I:
+    // dLambda/dI = Lsat/Isat * sech²(I/Isat) + Lgap
+    //            = Lsat/Isat * (1 - tanh²(I/Isat)) + Lgap
+    // We use the GVALUE element with Laplace to model this
+    
+    // Simpler approach: Use the inductor with polynomial current dependence
+    // L(I) = L0 / (1 + (I/Isat)^2) gives smooth saturation
+    double L0 = sat.Lmag;
+    
+    s += ".param Lmag_" + windingIndex + "_L0=" + to_string(L0, 12) + "\n";
+    s += ".param Lmag_" + windingIndex + "_Isat=" + to_string(Isat, 6) + "\n";
+    
+    // Use behavioral source: V = L(I) * dI/dt
+    // L(I) = L0 / (1 + (abs(I)/Isat)^2)
+    // Note: ngspice behavioral sources use I() for current through voltage source
+    std::string senseName = "Vmag_sense_" + windingIndex;
+    std::string fluxName = "Lmag_flux_" + windingIndex;
+    
+    // Current sense (zero volt source)
+    s += senseName + " " + nodeIn + " " + fluxName + " 0\n";
+    
+    // Behavioral inductor: V = L(I) * dI/dt
+    // Using EL (behavioral voltage source) with ddt() function
+    s += "BLmag_" + windingIndex + " " + fluxName + " " + nodeOut;
+    s += " V='Lmag_" + windingIndex + "_L0/(1+pow(abs(I(" + senseName + "))/Lmag_" + windingIndex + "_Isat,2))*ddt(I(" + senseName + "))'\n";
+    
+    return s;
+}
+
+// Emit saturating magnetizing inductance for LTspice using Flux= syntax.
+// LTspice supports nonlinear inductors with Flux={expression} directly.
+static std::string emit_saturating_inductor_ltspice(
+    const SaturationParameters& sat,
+    const std::string& windingIndex,
+    const std::string& nodeIn,
+    const std::string& nodeOut) {
+    
+    if (!sat.valid) {
+        return "";  // Fall back to linear inductor
+    }
+    
+    std::string s;
+    const double mu0 = 4e-7 * M_PI;
+    
+    // Calculate saturation current and flux linkage
+    double Isat = sat.Isat();
+    double lambdaSat = sat.fluxLinkageSat();
+    
+    // Calculate gap contribution
+    double effectiveMuR = sat.Lmag / (mu0 * sat.primaryTurns * sat.primaryTurns * sat.Ae / sat.le);
+    double gapFactor = std::min(0.99, 1.0 / effectiveMuR);
+    double Lgap = sat.Lmag * gapFactor;
+    
+    // Ensure reasonable values  
+    if (Isat < 1e-6) Isat = 1e-6;
+    if (lambdaSat < 1e-9) lambdaSat = 1e-9;
+    
+    s += "* Saturating magnetizing inductance (winding " + windingIndex + ")\n";
+    s += "* Bsat=" + to_string(sat.Bsat, 4) + "T, Isat=" + to_string(Isat, 4) + "A\n";
+    
+    // LTspice flux linkage model: Lambda = Lambda_sat * tanh(I/I_sat) + L_gap * I
+    // The tanh term models core saturation, L_gap*I models the linear air gap
+    s += ".param Lambda_sat_" + windingIndex + "=" + to_string(lambdaSat, 12) + "\n";
+    s += ".param I_sat_" + windingIndex + "=" + to_string(Isat, 6) + "\n";
+    s += ".param L_gap_" + windingIndex + "=" + to_string(Lgap, 12) + "\n";
+    
+    // Use LTspice Flux= syntax for nonlinear inductor
+    // x is the current through the inductor
+    s += "Lmag_" + windingIndex + " " + nodeIn + " " + nodeOut;
+    s += " Flux={Lambda_sat_" + windingIndex + "*tanh(x/I_sat_" + windingIndex + ")+L_gap_" + windingIndex + "*x}\n";
+    
     return s;
 }
 
@@ -1246,6 +1473,21 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
     
+    // Check if saturation modeling is enabled
+    auto& settings = Settings::GetInstance();
+    bool includeSaturation = settings.get_circuit_simulator_include_saturation();
+    SaturationParameters satParams;
+    if (includeSaturation) {
+        satParams = get_saturation_parameters(magnetic, temperature);
+        // Saturation only supported for single winding (inductor) - K coupling doesn't work with behavioral sources
+        if (satParams.valid && coil.get_functional_description().size() > 1) {
+            // For transformers, fall back to linear model with warning comment
+            circuitString += "* WARNING: Saturation modeling not supported for multi-winding transformers in ngspice\n";
+            circuitString += "* K coupling requires linear inductors. Using linear model.\n";
+            includeSaturation = false;
+        }
+    }
+    
     // Store coupling coefficients for each pair (indexed from winding 1)
     std::vector<double> couplingCoeffs;
     size_t numWindings = coil.get_functional_description().size();
@@ -1275,7 +1517,12 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             } else {
                 circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             }
-            circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+            // Emit magnetizing inductance (saturating or linear)
+            if (includeSaturation && satParams.valid) {
+                circuitString += emit_saturating_inductor_ngspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
+            } else {
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+            }
         }
         else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
             throw std::invalid_argument("Analytical mode not supported in NgSpice");
@@ -1307,7 +1554,12 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             } else {
                 circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             }
-            circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+            // Emit magnetizing inductance (saturating or linear)
+            if (includeSaturation && satParams.valid) {
+                circuitString += emit_saturating_inductor_ngspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
+            } else {
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+            }
         }
 
         headerString += " P" + is + "+ P" + is + "-";
@@ -1359,9 +1611,13 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         }
     }
 
-    // FRACPOLE: append core loss fracpole subcircuit if available
-    if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && coreFracNet.has_value()) {
-        circuitString += emit_fracpole_core_spice(coreFracNet.value(), numWindings);
+    // Core losses: Use R-L ladder network
+    // The R-L ladder provides impedance that INCREASES with frequency, which matches
+    // the physical behavior of core losses (higher losses at higher frequencies).
+    // This is opposite to the R-C fracpole network which decreases with frequency.
+    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+    if (!coreResistanceCoefficients.empty()) {
+        circuitString += emit_core_ladder_spice(coreResistanceCoefficients, numWindings);
     }
 
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
@@ -1393,6 +1649,22 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
 
     parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
+    
+    // Check if saturation modeling is enabled
+    auto& settings = Settings::GetInstance();
+    bool includeSaturation = settings.get_circuit_simulator_include_saturation();
+    SaturationParameters satParams;
+    if (includeSaturation) {
+        satParams = get_saturation_parameters(magnetic, temperature);
+        // Saturation only supported for single winding (inductor) - K coupling doesn't work with nonlinear inductors
+        if (satParams.valid && coil.get_functional_description().size() > 1) {
+            // For transformers, fall back to linear model with warning comment
+            circuitString += "* WARNING: Saturation modeling not supported for multi-winding transformers in LTspice\n";
+            circuitString += "* K coupling requires linear inductors. Using linear model.\n";
+            includeSaturation = false;
+        }
+    }
+    
     for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
         auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, 0.1, temperature);
         std::string is = std::to_string(index + 1);
@@ -1417,11 +1689,21 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
             } else {
                 circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             }
-            circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+            // Emit magnetizing inductance (saturating or linear)
+            if (includeSaturation && satParams.valid) {
+                circuitString += emit_saturating_inductor_ltspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
+            } else {
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+            }
         }
         else if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
             circuitString += "E" + is + " P" + is + "+ Node_R_Lmag_" + is + " P" + is + "+ Node_R_Lmag_" + is + " Laplace = 1 /(" + c[0] + " + " + c[1] + " * sqrt(abs(s)/(2*pi)) + " + c[2] + " * abs(s)/(2*pi))\n";
-            circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+            // Emit magnetizing inductance (saturating or linear)
+            if (includeSaturation && satParams.valid) {
+                circuitString += emit_saturating_inductor_ltspice(satParams, is, "P" + is + "-", "Node_R_Lmag_" + is);
+            } else {
+                circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+            }
         }
         else {
             // LADDER mode (default)
@@ -1455,7 +1737,12 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
                 // Ladder fitting failed - use simplified model with just DC resistance
                 circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
             }
-            circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+            // Emit magnetizing inductance (saturating or linear)
+            if (includeSaturation && satParams.valid) {
+                circuitString += emit_saturating_inductor_ltspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
+            } else {
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+            }
         }
         if (index > 0) {
             // Each K statement needs a unique name in LTspice (K1, K2, etc.)
@@ -1466,9 +1753,10 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
 
     }
 
-    // FRACPOLE: append core loss fracpole subcircuit if available
-    if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && coreFracNet_lt.has_value()) {
-        circuitString += emit_fracpole_core_spice(coreFracNet_lt.value(), coil.get_functional_description().size());
+    // Core losses: Use R-L ladder network (same as ngspice)
+    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+    if (!coreResistanceCoefficients.empty()) {
+        circuitString += emit_core_ladder_spice(coreResistanceCoefficients, coil.get_functional_description().size());
     }
 
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
@@ -2447,6 +2735,20 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
 
     // Get primary turns for reference
     double primaryTurns = static_cast<double>(coil.get_functional_description()[0].get_number_turns());
+    
+    // Check if saturation modeling is enabled
+    auto& settings = Settings::GetInstance();
+    bool includeSaturation = settings.get_circuit_simulator_include_saturation();
+    SaturationParameters satParams;
+    if (includeSaturation) {
+        satParams = get_saturation_parameters(magnetic, temperature);
+        // Saturation only supported for single winding (inductor) - coupled windings can't use saturating inductors
+        if (satParams.valid && numWindings > 1) {
+            // For transformers, fall back to linear model with warning
+            // (NL5 XML comment not easily added, so just disable saturation)
+            includeSaturation = false;
+        }
+    }
 
     // ---- NL5 XML generation ----
     // Node numbering scheme:
@@ -2481,6 +2783,22 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
     auto add_C = [&](const std::string& name, int n0, int n1, double val, int px, int py, int angle=0) {
         Nl5Cmp c; c.type="C_C"; c.id=nextId++; c.name=name;
         c.node0=n0; c.node1=n1; c.valParam="c"; c.valStr=to_string(val,12);
+        c.px=px; c.py=py; c.angle=angle;
+        cmps += nl5_cmp_to_xml(c);
+    };
+    // NL5 saturating inductor using L_Lsat model
+    // Parameters: l=initial inductance, Lsat=saturated inductance, Iknee=knee current
+    auto add_Lsat = [&](const std::string& name, int n0, int n1, double L0, double Lsat, double Iknee,
+                        int px, int py, int angle=0) {
+        Nl5Cmp c; c.type="L_Lsat"; c.id=nextId++; c.name=name;
+        c.node0=n0; c.node1=n1; c.valParam="l"; c.valStr=to_string(L0, 12);
+        // Lsat is the saturated (minimum) inductance
+        c.extra["Lsat"] = to_string(Lsat, 12);
+        c.extra["Lsat_txt"] = nl5_to_eng(Lsat);
+        // Iknee is the current at knee point (where saturation starts)
+        c.extra["Iknee"] = to_string(Iknee, 6);
+        c.extra["Iknee_txt"] = nl5_to_eng(Iknee);
+        c.extra["model"] = "Lsat";
         c.px=px; c.py=py; c.angle=angle;
         cmps += nl5_cmp_to_xml(c);
     };
@@ -2592,33 +2910,45 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
 
     // 5. Magnetizing inductance (from core to ground)
     // This represents the magnetic energy storage in the core
-    add_L("Lmag", node_core, 0, magnetizingInductance, 160, static_cast<int>(numWindings) * 40);
+    if (includeSaturation && satParams.valid) {
+        // Use saturating inductor model
+        const double mu0 = 4e-7 * M_PI;
+        double Isat = satParams.Isat();
+        // Calculate gap contribution for saturated inductance
+        double effectiveMuR = satParams.Lmag / (mu0 * satParams.primaryTurns * satParams.primaryTurns * satParams.Ae / satParams.le);
+        double gapFactor = std::min(0.99, 1.0 / effectiveMuR);
+        double Lsat = satParams.Lmag * gapFactor;  // Saturated inductance (just the gap)
+        // Ensure reasonable minimum values
+        if (Isat < 1e-6) Isat = 1e-6;
+        if (Lsat < 1e-12) Lsat = magnetizingInductance * 0.01;
+        // NL5 Lsat model: L0 is initial inductance, Lsat is saturated inductance, Iknee is knee current
+        add_Lsat("Lmag", node_core, 0, magnetizingInductance, Lsat, Isat,
+                 160, static_cast<int>(numWindings) * 40);
+    } else {
+        add_L("Lmag", node_core, 0, magnetizingInductance, 160, static_cast<int>(numWindings) * 40);
+    }
 
-    // 6. Core loss network in parallel with Lmag (from core node to ground)
-    if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && coreFracNet.has_value()) {
-        const auto& net = coreFracNet.value();
-        int node_prev = node_core;
-        for (size_t k = 0; k < net.stages.size(); ++k) {
-            int node_stage = 900 + static_cast<int>(k);
-            add_R("Rcore"+std::to_string(k), node_prev, node_stage,
-                  net.stages[k].R * net.opts.coef, 180, static_cast<int>(numWindings)*40 + static_cast<int>(k)*16);
-            add_C("Ccore"+std::to_string(k), node_stage, 0,
-                  net.stages[k].C / net.opts.coef, 184, static_cast<int>(numWindings)*40 + static_cast<int>(k)*16 + 20, 90);
-            node_prev = node_stage;
-        }
-        if (net.Cinf > 0.0)
-            add_C("Ccore_inf", node_core, 0, net.Cinf / net.opts.coef,
-                  200, static_cast<int>(numWindings)*40 + static_cast<int>(net.stages.size())*16, 90);
-    } else if (!coreCoeffs.empty()) {
-        // Ladder-style core loss: series R/C pairs from core to ground
-        size_t coreStages = coreCoeffs.size() / 2;
-        int node_prev = node_core;
-        for (size_t k = 0; k < coreStages; ++k) {
-            int node_stage = 900 + static_cast<int>(k);
-            add_R("Rcore"+std::to_string(k), node_prev, node_stage,
-                  coreCoeffs[2*k], 180, static_cast<int>(numWindings)*40 + static_cast<int>(k)*16);
-            add_C("Ccore"+std::to_string(k), node_stage, 0,
-                  coreCoeffs[2*k+1], 184, static_cast<int>(numWindings)*40 + static_cast<int>(k)*16 + 20, 90);
+    // 6. Core loss network in parallel with Lmag using R-L ladder
+    // The R-L ladder provides impedance that INCREASES with frequency, matching core loss behavior.
+    // coreCoeffs already calculated earlier in this function
+    if (!coreCoeffs.empty()) {
+        // Build R-L ladder: series of (L || R) stages from node_core to ground
+        // Z = L1 || (R1 + L2 || (R2 + L3 || R3))
+        int node_prev = 0;  // ground
+        int stageCount = static_cast<int>(coreCoeffs.size() / 2);
+        for (int k = stageCount - 1; k >= 0; --k) {
+            double R = coreCoeffs[k * 2];
+            double L = coreCoeffs[k * 2 + 1];
+            // Validate values
+            if (R <= 0 || L <= 0 || R > 1e6 || L > 1) {
+                continue;  // Skip invalid stage
+            }
+            int node_stage = 900 + k;
+            int y_offset = static_cast<int>(numWindings) * 40 + k * 16;
+            // R in series, L in parallel
+            add_R("Rcore" + std::to_string(k), node_stage, node_prev, R, 180, y_offset);
+            int node_next = (k == 0) ? node_core : (900 + k - 1);
+            add_L("Lcore" + std::to_string(k), node_next, node_prev, L, 184, y_offset + 8);
             node_prev = node_stage;
         }
     }

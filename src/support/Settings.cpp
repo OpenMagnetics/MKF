@@ -35,6 +35,7 @@ namespace OpenMagnetics {
         // Circuit simulator export settings (0=LADDER, 1=ANALYTICAL, 2=FRACPOLE, 3=AUTO)
         _circuitSimulatorCurveFittingMode = 0;  // Default to LADDER for backward compatibility
         _circuitSimulatorFracpoleOptions = std::nullopt;
+        _circuitSimulatorIncludeSaturation = false;  // Default to linear (no saturation)
     }
 
 
@@ -791,6 +792,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_circuit_simulator_fracpole_options(std::optional<std::map<std::string, double>> value) {
         _circuitSimulatorFracpoleOptions = value;
+    }
+
+    bool Settings::get_circuit_simulator_include_saturation() const {
+        return _circuitSimulatorIncludeSaturation;
+    }
+    void Settings::set_circuit_simulator_include_saturation(bool value) {
+        _circuitSimulatorIncludeSaturation = value;
     }
 
 } // namespace OpenMagnetics

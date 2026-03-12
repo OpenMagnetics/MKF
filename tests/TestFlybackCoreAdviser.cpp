@@ -41,7 +41,7 @@ TEST_CASE("Flyback Core Adviser - Default Values", "[core-adviser][flyback][defa
     flybackJson["insulation"]["standards"] = json::array({"IEC 60664-1"});
     
     // Create Flyback object
-    Flyback flyback(flybackJson);
+    OpenMagnetics::Flyback flyback(flybackJson);
     
     // Process to get Inputs
     auto inputs = flyback.process();
@@ -119,7 +119,7 @@ TEST_CASE("Flyback Inputs - Frequency Validation", "[flyback][frequency][validat
     flybackJson["insulationType"] = "Basic";
     flybackJson["efficiency"] = 0.85;
     
-    Flyback flyback(flybackJson);
+    OpenMagnetics::Flyback flyback(flybackJson);
     auto inputs = flyback.process();
     
     // Serialize to JSON and check frequency
