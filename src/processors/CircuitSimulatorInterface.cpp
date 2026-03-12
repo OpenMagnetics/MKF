@@ -2402,6 +2402,13 @@ static std::string nl5_wire_to_xml(int id, int node0, int node1, int x0, int y0,
 // ============================================================================
 // CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit
 // ============================================================================
+// Uses NL5 Winding (W) components as documented in NL5 Reference:
+// - Each winding is a W_Winding component with turns ratio
+// - All winding "core" pins connect to a common core node
+// - Magnetizing inductance connects from core node to ground
+// - Leakage is modeled via series inductors
+// - DC resistance and AC losses via series R/L/C networks
+// ============================================================================
 std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
     Magnetic magnetic,
     double frequency,
@@ -2438,18 +2445,26 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         .calculate_leakage_inductance(magnetic, Defaults().measurementFrequency)
         .get_leakage_inductance_per_winding();
 
+    // Get primary turns for reference
+    double primaryTurns = static_cast<double>(coil.get_functional_description()[0].get_number_turns());
+
     // ---- NL5 XML generation ----
     // Node numbering scheme:
     //   0          = ground
     //   1..N       = winding positive terminal Pi+  (external)
     //   N+1..2N    = winding negative terminal Pi-  (external)
+    //   50         = core node (common for all windings via ideal transformer)
     //   100+i      = internal node after Rdc (before ladder/fracpole), winding i
-    //   200+i      = internal node after ladder/fracpole (connects to Lmag), winding i
+    //   200+i      = internal node after ladder/fracpole (before leakage L), winding i
+    //   250+i      = internal node after leakage (connects to winding), winding i
     //   300+i*20+k = internal nodes within fracpole/ladder stages for winding i, stage k
-    //   900        = internal node for core loss network (parallel with Lmag1)
+    //   900+k      = internal nodes for core loss network
 
     int nextId = 1;   // component id counter
     std::string cmps; // accumulated <Cmp> XML
+
+    // Core node where all windings connect via ideal transformers
+    const int node_core = 50;
 
     auto add_R = [&](const std::string& name, int n0, int n1, double val, int px, int py, int angle=0) {
         Nl5Cmp c; c.type="R_R"; c.id=nextId++; c.name=name;
@@ -2469,18 +2484,19 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         c.px=px; c.py=py; c.angle=angle;
         cmps += nl5_cmp_to_xml(c);
     };
-    auto add_K = [&](const std::string& name, int Lid1, int Lid2, double k, int px, int py) {
-        Nl5Cmp c; c.type="K_K"; c.id=nextId++; c.name=name;
-        c.node0=Lid1; c.node1=Lid2;  // NL5 uses node0/node1 as inductor IDs for K
-        c.valParam="k"; c.valStr=to_string(k,8);
+    // NL5 Winding component (W_Winding): ideal transformer with turns ratio
+    // node0 = winding +, node1 = winding -, node2 = core
+    auto add_Winding = [&](const std::string& name, int n_plus, int n_minus, int n_core, 
+                           double turns, int px, int py) {
+        Nl5Cmp c; c.type="W_Winding"; c.id=nextId++; c.name=name;
+        c.node0=n_plus; c.node1=n_minus; c.node2=n_core;
+        c.valParam="n"; c.valStr=to_string(turns, 6);
+        c.extra["model"] = "Winding";
         c.px=px; c.py=py;
         cmps += nl5_cmp_to_xml(c);
     };
 
-    // Stores the NL5 component id of each winding's Lmag (needed for K elements)
-    std::vector<int> lmag_ids(numWindings, -1);
-
-    // Layout: each winding is 80 units wide, 60 units tall, stacked vertically
+    // Layout: each winding is 80 units wide, stacked vertically
     for (size_t wi = 0; wi < numWindings; ++wi) {
         int base_y = static_cast<int>(wi) * 80;
         int is = static_cast<int>(wi) + 1;
@@ -2490,22 +2506,30 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         int node_Pminus = static_cast<int>(numWindings) + is;  // Pi-  external
         int node_after_rdc  = 100 + is;                        // after Rdc
         int node_after_net  = 200 + is;                        // after ladder/fracpole
+        int node_after_leak = 250 + is;                        // after leakage inductance
 
         double Rdc = WindingLosses::calculate_effective_resistance_of_winding(magnetic, wi, 0.1, temperature);
         double numTurns = static_cast<double>(coil.get_functional_description()[wi].get_number_turns());
-        double Lmag_i = magnetizingInductance * (numTurns * numTurns) /
-                        (static_cast<double>(coil.get_functional_description()[0].get_number_turns()) *
-                         static_cast<double>(coil.get_functional_description()[0].get_number_turns()));
+        
+        // Get leakage inductance for this winding (referred to primary)
+        double leakageL = 0.0;
+        if (wi > 0 && wi <= leakageInductances.size()) {
+            leakageL = resolve_dimensional_values(leakageInductances[wi-1]);
+            // Scale leakage to this winding's turns
+            double turnsRatio = numTurns / primaryTurns;
+            leakageL *= turnsRatio * turnsRatio;
+        }
 
         // Add port wire labels (external terminals)
         cmps += nl5_wire_to_xml(nextId++, node_Pplus, node_Pplus, 0, base_y, -20, base_y, "P"+ws+"+");
-        cmps += nl5_wire_to_xml(nextId++, node_Pminus, node_Pminus, 160, base_y+40, 180, base_y+40, "P"+ws+"-");
+        cmps += nl5_wire_to_xml(nextId++, node_Pminus, node_Pminus, 180, base_y+40, 200, base_y+40, "P"+ws+"-");
 
-        // 1. Rdc
+        // 1. Rdc (DC resistance)
         add_R("Rdc"+ws, node_Pplus, node_after_rdc, Rdc, 20, base_y);
 
         int node_last = node_after_rdc;
 
+        // 2. AC loss network (FRACPOLE or LADDER)
         if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && wi < fracNets.size()) {
             // FRACPOLE: R/C stages
             const auto& net = fracNets[wi];
@@ -2524,8 +2548,11 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
                 add_C("Cfpinf"+ws, node_last, 0, net.Cinf / net.opts.coef,
                       40 + static_cast<int>(net.stages.size())*16, base_y+20, 90);
             }
-            add_R("Rdc_fp_term"+ws, node_last, node_after_net, 1e-9, // short circuit wire
-                  40 + static_cast<int>(net.stages.size())*16 + 4, base_y);
+            // Wire to next stage
+            cmps += nl5_wire_to_xml(nextId++, node_last, node_after_net,
+                  40 + static_cast<int>(net.stages.size())*16 + 4, base_y, 
+                  60 + static_cast<int>(net.stages.size())*16, base_y);
+            node_last = node_after_net;
         } else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::LADDER
                    && !acCoeffs.empty() && wi < acCoeffs.size()) {
             // LADDER: R/L stages
@@ -2538,60 +2565,61 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
                 add_R("Rl"+ws+"_"+std::to_string(k), node_stage, 0, c[2*k+1], px+4, base_y+20, 90);
                 node_last = node_stage;
             }
-            add_R("Rl_term"+ws, node_last, node_after_net, 1e-9, 40+static_cast<int>(acCoeffs[wi].size()/2)*16, base_y);
+            // Wire to next stage
+            cmps += nl5_wire_to_xml(nextId++, node_last, node_after_net,
+                  40 + static_cast<int>(stages)*16, base_y, 60 + static_cast<int>(stages)*16, base_y);
+            node_last = node_after_net;
         } else {
             // ANALYTICAL or fallback: just wire node_after_rdc to node_after_net
             cmps += nl5_wire_to_xml(nextId++, node_after_rdc, node_after_net,
                                     40, base_y, 80, base_y);
+            node_last = node_after_net;
         }
 
-        // 2. Lmag_i (magnetizing inductance)
-        lmag_ids[wi] = nextId;
-        add_L("Lmag"+ws, node_after_net, node_Pminus, Lmag_i, 100, base_y);
+        // 3. Leakage inductance (series with winding)
+        if (leakageL > 0.0 && wi > 0) {
+            add_L("Lleak"+ws, node_last, node_after_leak, leakageL, 100, base_y);
+            node_last = node_after_leak;
+        } else {
+            // No leakage for primary or if leakage is zero
+            node_after_leak = node_last;
+        }
+
+        // 4. Winding (ideal transformer to core)
+        // NL5 Winding: node0=+, node1=-, node2=core
+        add_Winding("W"+ws, node_after_leak, node_Pminus, node_core, numTurns, 130, base_y);
     }
 
-    // 3. Core loss network in parallel with Lmag1 (between node 201 and node N+1)
-    int node_core_p = 200 + 1;
-    int node_core_n = static_cast<int>(numWindings) + 1;
+    // 5. Magnetizing inductance (from core to ground)
+    // This represents the magnetic energy storage in the core
+    add_L("Lmag", node_core, 0, magnetizingInductance, 160, static_cast<int>(numWindings) * 40);
 
+    // 6. Core loss network in parallel with Lmag (from core node to ground)
     if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE && coreFracNet.has_value()) {
         const auto& net = coreFracNet.value();
+        int node_prev = node_core;
         for (size_t k = 0; k < net.stages.size(); ++k) {
             int node_stage = 900 + static_cast<int>(k);
-            add_R("Rcore"+std::to_string(k), node_core_p, node_stage,
-                  net.stages[k].R * net.opts.coef, 100, static_cast<int>(numWindings)*80 + static_cast<int>(k)*16);
-            add_C("Ccore"+std::to_string(k), node_stage, node_core_n,
-                  net.stages[k].C / net.opts.coef, 104, static_cast<int>(numWindings)*80 + static_cast<int>(k)*16 + 20, 90);
+            add_R("Rcore"+std::to_string(k), node_prev, node_stage,
+                  net.stages[k].R * net.opts.coef, 180, static_cast<int>(numWindings)*40 + static_cast<int>(k)*16);
+            add_C("Ccore"+std::to_string(k), node_stage, 0,
+                  net.stages[k].C / net.opts.coef, 184, static_cast<int>(numWindings)*40 + static_cast<int>(k)*16 + 20, 90);
+            node_prev = node_stage;
         }
         if (net.Cinf > 0.0)
-            add_C("Ccore_inf", node_core_p, node_core_n, net.Cinf / net.opts.coef,
-                  100, static_cast<int>(numWindings)*80 + static_cast<int>(net.stages.size())*16 + 20, 90);
+            add_C("Ccore_inf", node_core, 0, net.Cinf / net.opts.coef,
+                  200, static_cast<int>(numWindings)*40 + static_cast<int>(net.stages.size())*16, 90);
     } else if (!coreCoeffs.empty()) {
-        // Ladder-style core loss: series R/C pairs
+        // Ladder-style core loss: series R/C pairs from core to ground
         size_t coreStages = coreCoeffs.size() / 2;
-        int node_prev = node_core_p;
+        int node_prev = node_core;
         for (size_t k = 0; k < coreStages; ++k) {
             int node_stage = 900 + static_cast<int>(k);
             add_R("Rcore"+std::to_string(k), node_prev, node_stage,
-                  coreCoeffs[2*k], 100, static_cast<int>(numWindings)*80 + static_cast<int>(k)*16);
-            add_C("Ccore"+std::to_string(k), node_stage, node_core_n,
-                  coreCoeffs[2*k+1], 104, static_cast<int>(numWindings)*80 + static_cast<int>(k)*16 + 20, 90);
+                  coreCoeffs[2*k], 180, static_cast<int>(numWindings)*40 + static_cast<int>(k)*16);
+            add_C("Ccore"+std::to_string(k), node_stage, 0,
+                  coreCoeffs[2*k+1], 184, static_cast<int>(numWindings)*40 + static_cast<int>(k)*16 + 20, 90);
             node_prev = node_stage;
-        }
-    }
-
-    // 4. Mutual coupling K elements between all winding pairs
-    for (size_t i = 0; i < numWindings; ++i) {
-        for (size_t j = i+1; j < numWindings; ++j) {
-            if (lmag_ids[i] < 0 || lmag_ids[j] < 0) continue;
-            double leakage = (j <= leakageInductances.size())
-                ? resolve_dimensional_values(leakageInductances[j-1]) : 0.0;
-            double Lmag_val = magnetizingInductance;
-            if (leakage >= Lmag_val) leakage = Lmag_val * 0.1;
-            double k_coupling = std::sqrt((Lmag_val - leakage) / Lmag_val);
-            add_K("K"+std::to_string(i+1)+std::to_string(j+1),
-                  lmag_ids[i], lmag_ids[j], k_coupling,
-                  140, static_cast<int>(i+j)*20);
         }
     }
 
