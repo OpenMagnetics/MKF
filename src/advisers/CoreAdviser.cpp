@@ -968,19 +968,25 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
         if (initialNumberTurns == 1) {
             if (isTransformer) {
                 // For transformers, calculate turns from voltage using MagnetizingInductance method
+                // Use MAXIMUM voltage peak across all operating points to ensure no saturation
                 double frequency = 100000; // default
                 double voltagePeak = 0;
                 double temperature = 25.0;
                 
-                if (inputs.get_operating_points().size() > 0) {
-                    auto op = inputs.get_operating_point(0);
-                    temperature = op.get_conditions().get_ambient_temperature();
+                for (size_t opIdx = 0; opIdx < inputs.get_operating_points().size(); ++opIdx) {
+                    auto op = inputs.get_operating_point(opIdx);
+                    temperature = std::max(temperature, op.get_conditions().get_ambient_temperature());
                     auto excitation = Inputs::get_primary_excitation(op);
-                    frequency = excitation.get_frequency();
+                    // Use minimum frequency for worst-case saturation (lower freq = higher B for same V)
+                    if (opIdx == 0) {
+                        frequency = excitation.get_frequency();
+                    } else {
+                        frequency = std::min(frequency, excitation.get_frequency());
+                    }
                     
                     if (excitation.get_voltage() && excitation.get_voltage()->get_processed() && 
                         excitation.get_voltage()->get_processed()->get_peak()) {
-                        voltagePeak = excitation.get_voltage()->get_processed()->get_peak().value();
+                        voltagePeak = std::max(voltagePeak, excitation.get_voltage()->get_processed()->get_peak().value());
                     }
                 }
                 

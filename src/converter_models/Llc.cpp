@@ -522,6 +522,10 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     // Primary voltage depends on Ls topology:
     //   SEPARATE Ls:   Vpri = VLm(t) — flat clamp + soft hill (magnetizing only)
     //   INTEGRATED Ls: Vpri = Vi - Vc(t) — bridge voltage with Cr ripple
+    //
+    // IMPORTANT: The simulation was done over Thalf_eff (half period minus dead time),
+    // but the waveform must span exactly one full period for correct sampling/FFT.
+    // We scale the time vector so it spans from 0 to period.
     // =====================================================================
 
     int totalSamples = 2 * N + 1;
@@ -531,8 +535,12 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     std::vector<double> Vpri_full(totalSamples);  // Primary voltage (topology-dependent)
     std::vector<double> VLm_full(totalSamples);   // Magnetizing voltage (for core loss & secondary)
 
+    // Scale time so waveform spans exactly one period
+    // Simulation dt was based on Thalf_eff, but we need to scale to full Thalf
+    double dt_output = Thalf / N;  // Time step for output waveform (spans full half-period)
+
     for (int k = 0; k <= N; ++k) {
-        time_full[k] = k * dt;
+        time_full[k] = k * dt_output;
         ILs_full[k] = std::isfinite(ILs_pos[k]) ? ILs_pos[k] : ILs0;
         IL_full[k]  = std::isfinite(IL_pos[k])  ? IL_pos[k]  : IL0;
 
@@ -548,7 +556,7 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     }
 
     for (int k = 1; k <= N; ++k) {
-        time_full[N + k] = Thalf_eff + k * dt;
+        time_full[N + k] = Thalf + k * dt_output;  // Second half starts at Thalf, not Thalf_eff
         ILs_full[N + k] = std::isfinite(ILs_pos[k]) ? -ILs_pos[k] : -ILs0;
         IL_full[N + k]  = std::isfinite(IL_pos[k])  ? -IL_pos[k]  : -IL0;
 
