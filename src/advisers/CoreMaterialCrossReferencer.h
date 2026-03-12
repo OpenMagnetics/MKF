@@ -45,6 +45,9 @@ class CoreMaterialCrossReferencer {
                 _models["coreTemperature"] = to_string(defaults.coreTemperatureModelDefault);
             }
 
+            // CMCR-LOGIC-1 NOTE: These weights are optimized for power applications.
+            // For interference suppression, permeability and high-freq losses matter more.
+            // TODO: Make weights application-dependent.
             _weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0.5;
             _weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0.01;
             _weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0.01;
@@ -150,6 +153,8 @@ class CoreMaterialCrossReferencer {
             std::vector<std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>> _coreLossesModels;
 
             std::vector<double> _magneticFluxDensities = {0.01, 0.025, 0.05, 0.1, 0.2};
+            // LOGIC-4 NOTE: Fixed frequency points (20k-500kHz). For MHz-range GaN converters,
+            // these are irrelevant. TODO: Use actual operating frequency from inputs.
             std::vector<double> _frequencies = {20000, 50000, 100000, 250000, 500000};
         public:
             MagneticCoreFilterVolumetricLosses(std::optional<CoreLossesModels> preferredModel = std::nullopt) {

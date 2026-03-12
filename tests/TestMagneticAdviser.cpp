@@ -24,6 +24,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <vector>
+#include <chrono>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -31,6 +32,8 @@ using namespace OpenMagnetics;
 namespace {
     bool plot = false;
     std::string file_path = std::source_location::current().file_name();
+
+
 
     TEST_CASE("Test_MagneticAdviser_Filter_Available_Cores", "[adviser][magnetic-adviser]") {
         SKIP("Test needs investigation");
@@ -3269,7 +3272,7 @@ TEST_CASE("Test_Planar_CoilAdviser_From_Full_MAS", "[adviser][planar][coil][full
 TEST_CASE("Test_MagneticAdviserFromConverter_Flyback", "[adviser][from-converter][flyback]") {
     // Simplified for speed: single input voltage, single output
     json converterJson;
-    converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 120}};  // Same min/max = 1 op point
+    converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 375}};  // Same min/max = 1 op point
     converterJson["diodeVoltageDrop"] = 0.7;
     converterJson["maximumDrainSourceVoltage"] = 600;
     converterJson["maximumDutyCycle"] = 0.5;
@@ -3278,7 +3281,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback", "[adviser][from-converter
     converterJson["operatingPoints"] = json::array({
         {
             {"outputVoltages", {12}},
-            {"outputCurrents", {3}},
+            {"outputCurrents", {5}},
             {"switchingFrequency", 100000},
             {"ambientTemperature", 25}
         }
@@ -3289,11 +3292,16 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback", "[adviser][from-converter
 
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
-    REQUIRE(results.size() > 0);
-
-    auto& [mas, score] = results[0];
-    REQUIRE(score > 0);
-    std::cout << "Flyback result score: " << score << std::endl;
+        REQUIRE(results.size() > 0);
+        
+        auto& [mas, score] = results[0];
+        REQUIRE(score > 0);
+        std::cout << "Flyback result score: " << score << std::endl;
+        
+        std::cout << "Recommended core: " << mas.get_magnetic().get_core().get_name().value_or("Unknown") << std::endl;
+        std::cout << "Primary turns: " << mas.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() << std::endl;
+        std::cout << "Secondary turns: " << mas.get_magnetic().get_coil().get_functional_description()[1].get_number_turns() << std::endl;
+        std::cout << "Magnetizing inductance: " << resolve_dimensional_values(mas.get_inputs().get_design_requirements().get_magnetizing_inductance()) * 1e6 << " uH" << std::endl;
 }
 
 // ============================================================================
@@ -3302,7 +3310,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback", "[adviser][from-converter
 TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_WithWeights", "[adviser][from-converter][flyback]") {
     // Simplified for speed: single input voltage, single output
     json converterJson;
-    converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 120}};
+    converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 375}};
     converterJson["diodeVoltageDrop"] = 0.7;
     converterJson["maximumDrainSourceVoltage"] = 600;
     converterJson["maximumDutyCycle"] = 0.5;
@@ -3311,7 +3319,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_WithWeights", "[adviser][fr
     converterJson["operatingPoints"] = json::array({
         {
             {"outputVoltages", {12}},
-            {"outputCurrents", {3}},
+            {"outputCurrents", {5}},
             {"switchingFrequency", 100000},
             {"ambientTemperature", 25}
         }
@@ -3625,4 +3633,643 @@ TEST_CASE("Test_MagneticAdviserFromConverter_LLC", "[adviser][from-converter][ll
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
     std::cout << "LLC result score: " << score << std::endl;
+
+    // Plot waveforms using BasicPainter for visual verification
+    auto& inputs = mas.get_inputs();
+    if (inputs.get_operating_points().size() > 0) {
+        auto& operatingPoint = inputs.get_operating_points()[0];
+        BasicPainter painter;
+        std::string svg = painter.paint_operating_point_waveforms(
+            operatingPoint,
+            "LLC Converter Waveforms",
+            1200,  // width
+            800    // height
+        );
+        
+        // Save to file for visual inspection
+        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
+        std::string outFile = outputFilePath.string() + "/Test_LLC_Waveforms.svg";
+        std::ofstream file(outFile);
+        file << svg;
+        file.close();
+        std::cout << "LLC waveforms saved to: " << outFile << std::endl;
+    }
 }
+
+TEST_CASE("Test_MagneticAdviser_WebFrontend_Defaults", "[adviser][magnetic-adviser][web-frontend]") {
+    // This test uses the EXACT default values from the web frontend defaults.js
+    // No mocks, no fallbacks - just real data like the web frontend sends
+    std::cout << "\n=== Test Magnetic Adviser Web Frontend Defaults ===" << std::endl;
+    
+    clear_databases();
+    settings.set_use_concentric_cores(false);
+    settings.set_use_toroidal_cores(true);
+    settings.set_use_only_cores_in_stock(false);
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_coil_include_additional_coordinates(false);
+    
+    // EXACT values from WebFrontend/WebSharedComponents/assets/js/defaults.js:
+    // defaultOperatingPointExcitation
+    double frequency = 100000;  // 100 kHz
+    double magnetizingInductance = 100e-6;  // 100 uH (from powerMas.magnetizingInductance.nominal)
+    double temperature = 25;  // 25°C (from defaultOperatingPointExcitation)
+    WaveformLabel waveShape = WaveformLabel::TRIANGULAR;  // "Triangular"
+    double peakToPeak = 10;  // 10 A (from defaultOperatingPointExcitation.current.processed.peakToPeak)
+    double dutyCycle = 0.5;  // 0.5 (50%)
+    double dcCurrent = 0;  // 0 A offset (from defaultOperatingPointExcitation.current.processed.offset)
+    std::vector<double> turnsRatios;  // Empty like defaultDesignRequirements.turnsRatios
+    
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, magnetizingInductance, temperature, waveShape, 
+        peakToPeak, dutyCycle, dcCurrent, turnsRatios);
+    
+    // EXACT design requirements from defaults.js: defaultDesignRequirements
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(magnetizingInductance);
+    
+    // Add minimum impedance like in defaults.js
+    ImpedancePoint impedancePoint;
+    impedancePoint.set_magnitude(1000);  // 1000 ohms
+    ImpedanceAtFrequency impedanceAtFrequency;
+    impedanceAtFrequency.set_frequency(100000);  // 100 kHz
+    impedanceAtFrequency.set_impedance(impedancePoint);
+    inputs.get_mutable_design_requirements().set_minimum_impedance(std::vector<ImpedanceAtFrequency>{impedanceAtFrequency});
+    
+    // Skip complex insulation setup - the defaults.js values aren't directly applicable
+    // The key is testing with the basic inputs that cause bad_optional_access
+    
+    inputs.process();
+    
+    std::cout << "Inputs created with web frontend defaults" << std::endl;
+    
+    // EXACT weights from WebFrontend/WebSharedComponents/assets/js/defaults.js: magneticAdviserWeights
+    // Note: We transform from Title Case to match MKF's expected format
+    std::map<std::string, double> weightsKeysString;
+    weightsKeysString["Losses"] = 40;  // 40% weight
+    weightsKeysString["Dimensions"] = 30;  // 30% weight
+    weightsKeysString["Cost"] = 30;  // 30% weight
+    
+    std::map<OpenMagnetics::MagneticFilters, double> weights;
+    double externalSum = 0;
+    for (auto const& pair : weightsKeysString) {
+        externalSum += pair.second;
+    }
+    
+    for (auto const& [filterName, weight] : weightsKeysString) {
+        OpenMagnetics::MagneticFilters filter;
+        OpenMagnetics::from_json(filterName, filter);
+        weights[filter] = weight / externalSum;
+    }
+    
+    std::cout << "Weights created: Losses=" << weights[MagneticFilters::LOSSES] 
+              << ", Dimensions=" << weights[MagneticFilters::DIMENSIONS] 
+              << ", Cost=" << weights[MagneticFilters::COST] << std::endl;
+    
+    // Create magnetic adviser with "standard cores" mode (from web frontend)
+    OpenMagnetics::MagneticAdviser magneticAdviser;
+    magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    magneticAdviser.set_application(MAS::Application::POWER);
+    
+    std::cout << "Calling get_advised_magnetic with web frontend defaults..." << std::endl;
+    
+    try {
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, weights, 6);
+        
+        std::cout << "SUCCESS: get_advised_magnetic returned " << masMagnetics.size() << " results" << std::endl;
+        
+        // Verify we can access all results without bad_optional_access
+        for (auto& [masMagnetic, scoring] : masMagnetics) {
+            std::cout << "Processing result with score: " << scoring << std::endl;
+            
+            // This should NOT throw bad_optional_access if our fixes work
+            auto& magnetic = masMagnetic.get_magnetic();
+            auto coreName = magnetic.get_core().get_name();
+            auto coilSections = magnetic.get_coil().get_sections_description();
+            
+            if (coreName) {
+                std::cout << "  Core: " << coreName.value() << std::endl;
+            }
+            if (coilSections && !coilSections->empty()) {
+                std::cout << "  Coil sections: " << coilSections->size() << std::endl;
+            }
+            
+            // Verify outputs exist
+            if (masMagnetic.get_outputs().size() > 0) {
+                auto& output = masMagnetic.get_outputs()[0];
+                if (output.get_core_losses()) {
+                    std::cout << "  Core losses: " << output.get_core_losses().value().get_core_losses() << " W" << std::endl;
+                }
+                if (output.get_winding_losses()) {
+                    std::cout << "  Winding losses: " << output.get_winding_losses().value().get_winding_losses() << " W" << std::endl;
+                }
+            }
+        }
+        
+        REQUIRE(masMagnetics.size() > 0);
+        std::cout << "TEST PASSED: Web frontend defaults work correctly" << std::endl;
+        
+    } catch (const std::bad_optional_access& e) {
+        std::cout << "FAILED - BAD OPTIONAL ACCESS: " << e.what() << std::endl;
+        std::cout << "This reproduces the web frontend bug!" << std::endl;
+        throw;
+    } catch (const std::exception& e) {
+        std::cout << "FAILED - ERROR: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+// ============================================================================
+// ANALYTICAL MODEL TESTS (non-ngspice) for all converter topologies
+// ============================================================================
+
+/**
+ * Helper function to run magnetic adviser with analytical operating points
+ * This bypasses ngspice simulation and uses analytical models instead
+ */
+template<typename ConverterType>
+std::vector<std::pair<OpenMagnetics::Mas, double>> get_advised_magnetic_from_converter_analytical(
+    ConverterType& converter,
+    size_t maximumNumberResults = 1) {
+    
+    // Step 1: Get design requirements from converter
+    MAS::DesignRequirements designReqs = converter.process_design_requirements();
+
+    // Step 2: Extract turns ratios and inductance
+    std::vector<double> turnsRatios;
+    for (const auto& turnsRatio : designReqs.get_turns_ratios()) {
+        turnsRatios.push_back(resolve_dimensional_values(turnsRatio));
+    }
+    double magnetizingInductance = resolve_dimensional_values(designReqs.get_magnetizing_inductance());
+
+    // Step 3: Use analytical process_operating_points instead of ngspice simulation
+    std::vector<MAS::OperatingPoint> operatingPoints = converter.process_operating_points(turnsRatios, magnetizingInductance);
+
+    // Step 4: Build Inputs object
+    OpenMagnetics::Inputs inputs;
+    inputs.set_design_requirements(designReqs);
+    inputs.set_operating_points(operatingPoints);
+
+    // Step 5: Process inputs
+    inputs.process();
+
+    // Step 6: Get magnetics from adviser
+    OpenMagnetics::MagneticAdviser adviser;
+    return adviser.get_advised_magnetic(inputs, maximumNumberResults);
+}
+
+// ============================================================================
+// Flyback - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_Analytical", "[adviser][from-converter][flyback][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 120}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumDrainSourceVoltage"] = 600;
+    converterJson["maximumDutyCycle"] = 0.5;
+    converterJson["currentRippleRatio"] = 1.0;
+    converterJson["efficiency"] = 0.85;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltages", {12}},
+            {"outputCurrents", {3}},
+            {"switchingFrequency", 100000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::Flyback converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "Flyback (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// Buck - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_Buck_Analytical", "[adviser][from-converter][buck][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 12}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumSwitchCurrent"] = 8;
+    converterJson["currentRippleRatio"] = 0.4;
+    converterJson["efficiency"] = 0.85;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltage", 5},
+            {"outputCurrent", 2},
+            {"switchingFrequency", 100000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::Buck converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "Buck (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// Boost - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_Boost_Analytical", "[adviser][from-converter][boost][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 24}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumSwitchCurrent"] = 8;
+    converterJson["currentRippleRatio"] = 0.4;
+    converterJson["efficiency"] = 0.85;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltage", 50},
+            {"outputCurrent", 1},
+            {"switchingFrequency", 100000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::Boost converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "Boost (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// SingleSwitchForward - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward_Analytical", "[adviser][from-converter][forward][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumSwitchCurrent"] = 1;
+    converterJson["currentRippleRatio"] = 0.3;
+    converterJson["dutyCycle"] = 0.42;
+    converterJson["efficiency"] = 0.9;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltages", {5}},
+            {"outputCurrents", {5}},
+            {"switchingFrequency", 200000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::SingleSwitchForward converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "SingleSwitchForward (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// TwoSwitchForward - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward_Analytical", "[adviser][from-converter][forward][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumSwitchCurrent"] = 1;
+    converterJson["currentRippleRatio"] = 0.3;
+    converterJson["dutyCycle"] = 0.42;
+    converterJson["efficiency"] = 0.9;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltages", {5}},
+            {"outputCurrents", {5}},
+            {"switchingFrequency", 200000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::TwoSwitchForward converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "TwoSwitchForward (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// ActiveClampForward - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward_Analytical", "[adviser][from-converter][forward][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumSwitchCurrent"] = 1;
+    converterJson["currentRippleRatio"] = 0.3;
+    converterJson["dutyCycle"] = 0.42;
+    converterJson["efficiency"] = 0.9;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltages", {5}},
+            {"outputCurrents", {5}},
+            {"switchingFrequency", 200000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::ActiveClampForward converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "ActiveClampForward (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// PushPull - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_PushPull_Analytical", "[adviser][from-converter][push-pull][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 20}, {"maximum", 30}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumSwitchCurrent"] = 1;
+    converterJson["currentRippleRatio"] = 0.3;
+    converterJson["dutyCycle"] = 0.45;
+    converterJson["efficiency"] = 0.9;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltages", {48}},
+            {"outputCurrents", {0.7}},
+            {"switchingFrequency", 100000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::PushPull converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "PushPull (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// IsolatedBuck - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck_Analytical", "[adviser][from-converter][isolated-buck][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 36}, {"maximum", 72}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumSwitchCurrent"] = 1;
+    converterJson["currentRippleRatio"] = 0.4;
+    converterJson["efficiency"] = 0.9;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltages", {10, 10}},
+            {"outputCurrents", {0.02, 0.1}},
+            {"switchingFrequency", 750000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::IsolatedBuck converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "IsolatedBuck (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// IsolatedBuckBoost - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost_Analytical", "[adviser][from-converter][isolated-buck-boost][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 30}};
+    converterJson["diodeVoltageDrop"] = 0.7;
+    converterJson["maximumSwitchCurrent"] = 2.5;
+    converterJson["currentRippleRatio"] = 0.4;
+    converterJson["efficiency"] = 0.9;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltages", {6, 5, 5}},
+            {"outputCurrents", {0.01, 1, 0.3}},
+            {"switchingFrequency", 400000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::IsolatedBuckBoost converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "IsolatedBuckBoost (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// LLC Resonant Converter - Analytical Model
+// ============================================================================
+TEST_CASE("Test_MagneticAdviserFromConverter_LLC_Analytical", "[adviser][from-converter][llc][analytical]") {
+    json converterJson;
+    converterJson["inputVoltage"] = {{"nominal", 400}, {"minimum", 370}, {"maximum", 410}};
+    converterJson["bridgeType"] = "Half Bridge";
+    converterJson["minSwitchingFrequency"] = 80000;
+    converterJson["maxSwitchingFrequency"] = 200000;
+    converterJson["inductanceRatio"] = 5.0;
+    converterJson["qualityFactor"] = 0.4;
+    converterJson["efficiency"] = 0.95;
+    converterJson["integratedResonantInductor"] = false;
+    converterJson["operatingPoints"] = json::array({
+        {
+            {"outputVoltages", {12}},
+            {"outputCurrents", {10}},
+            {"switchingFrequency", 100000},
+            {"ambientTemperature", 25}
+        }
+    });
+
+    OpenMagnetics::Llc converter(converterJson);
+    converter._assertErrors = true;
+
+    auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
+    REQUIRE(results.size() > 0);
+
+    auto& [mas, score] = results[0];
+    REQUIRE(score > 0);
+    std::cout << "LLC (analytical) result score: " << score << std::endl;
+}
+
+// ============================================================================
+// Flyback Converter Bug Test - Test for MAS that gets stuck in frontend
+// ============================================================================
+TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyback][bug]") {
+    clear_databases();
+    settings.reset();
+    
+    auto json_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "magnetic_adviser_flyback_bug.json");
+    std::ifstream json_file(json_path);
+    json masJson = json::parse(json_file);
+    
+    OpenMagnetics::Inputs inputs(masJson["inputs"]);
+    
+    std::cout << "\n=== Testing Flyback Bug MAS ===" << std::endl;
+    
+    // Debug topology - the JSON has "Flyback" but MAS expects "Flyback Converter"
+    auto topologyOpt = inputs.get_design_requirements().get_topology();
+    if (topologyOpt.has_value()) {
+        auto topology = topologyOpt.value();
+        std::cout << "Topology enum value: " << static_cast<int>(topology) << std::endl;
+        std::cout << "Topology name: " << magic_enum::enum_name(topology) << std::endl;
+        if (topology == MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER) {
+            std::cout << "WARNING: Topology not parsed correctly from JSON (expected Flyback Converter, got Active Clamp Forward)" << std::endl;
+            std::cout << "The JSON has 'Flyback' but MAS library expects 'Flyback Converter'" << std::endl;
+        }
+    } else {
+        std::cout << "Topology: NOT SET (will use default)" << std::endl;
+    }
+    
+    std::cout << "Min Magnetizing Inductance: " << inputs.get_design_requirements().get_magnetizing_inductance().get_minimum().value() << " H" << std::endl;
+    std::cout << "Turns Ratio: " << inputs.get_design_requirements().get_turns_ratios()[0].get_nominal().value() << std::endl;
+    
+    MagneticAdviser magneticAdviser;
+    magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    
+    std::cout << "Calling get_advised_magnetic..." << std::endl;
+    
+    auto start = std::chrono::high_resolution_clock::now();
+    auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto runtime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    
+    std::cout << "SUCCESS: Returned " << masMagnetics.size() << " results in " << runtime << " ms" << std::endl;
+    
+    REQUIRE(masMagnetics.size() > 0);
+    
+    // Print details of all recommendations
+    for (size_t i = 0; i < masMagnetics.size(); ++i) {
+        auto& mas = masMagnetics[i].first;
+        double scoring = masMagnetics[i].second;
+        
+        std::cout << "\n--- Recommendation " << (i + 1) << " ---" << std::endl;
+        std::cout << "Scoring: " << scoring << std::endl;
+        
+        auto coreName = mas.get_magnetic().get_core().get_name();
+        if (coreName.has_value()) {
+            std::cout << "Core: " << coreName.value() << std::endl;
+        }
+        
+        auto numStacksOpt = mas.get_magnetic().get_core().get_functional_description().get_number_stacks();
+        if (numStacksOpt.has_value()) {
+            std::cout << "Stacks: " << numStacksOpt.value() << std::endl;
+        }
+        
+        auto& coil = mas.get_magnetic().get_coil();
+        auto windings = coil.get_functional_description();
+        std::cout << "Windings: " << windings.size() << std::endl;
+        for (size_t w = 0; w < windings.size(); ++w) {
+            std::cout << "  Winding " << (w + 1) << ": " 
+                      << windings[w].get_number_turns() << " turns" << std::endl;
+        }
+        
+        if (!mas.get_outputs().empty()) {
+            auto& outputs = mas.get_outputs()[0];
+            auto inductance = outputs.get_inductance();
+            if (inductance.has_value()) {
+                auto magInd = inductance.value().get_magnetizing_inductance().get_magnetizing_inductance().get_nominal();
+                if (magInd.has_value()) {
+                    std::cout << "Magnetizing Inductance: " << magInd.value() << " H" << std::endl;
+                }
+            }
+        }
+    }
+    
+    std::cout << "\nTEST PASSED: Flyback MAS processed successfully" << std::endl;
+}
+
+TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug]") {
+    clear_databases();
+    settings.reset();
+    
+    auto json_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "magnetic_adviser_flyback_bug.json");
+    std::ifstream json_file(json_path);
+    json masJson = json::parse(json_file);
+    
+    OpenMagnetics::Inputs inputs(masJson["inputs"]);
+    inputs.process();
+    
+    std::cout << "\n=== Tracing E55 vs E102 through filters ===" << std::endl;
+    
+    // Load core shapes
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    
+    // Find E55 and E102 cores
+    std::cout << "\nCore Shape Database entries (alphabetical):" << std::endl;
+    int count = 0;
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if (count < 20 || name.find("E 55") != std::string::npos || name.find("E 65") != std::string::npos || name.find("E 102") != std::string::npos) {
+            std::cout << "  " << count << ": " << name << std::endl;
+        }
+        count++;
+    }
+    std::cout << "  ... (total: " << count << " cores)" << std::endl;
+    
+    // Create magnetics for specific cores
+    std::vector<MAS::CoreShape> shapes;
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if (name.find("E 55") != std::string::npos || name.find("E 65") != std::string::npos || 
+            name.find("E 102") != std::string::npos || name.find("E 114") != std::string::npos) {
+            shapes.push_back(shape);
+            std::cout << "\nAdded core: " << name << std::endl;
+        }
+    }
+    
+    // Now test these specific cores through CoreAdviser
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    coreAdviser.set_application(MAS::Application::POWER);
+    
+    std::cout << "\n=== Testing specific cores through CoreAdviser ===" << std::endl;
+    auto results = coreAdviser.get_advised_core(inputs, &shapes, 10);
+    
+    std::cout << "\nResults: " << results.size() << " cores passed all filters" << std::endl;
+    for (auto& [mas, scoring] : results) {
+        auto coreName = mas.get_magnetic().get_core().get_name();
+        if (coreName.has_value()) {
+            std::cout << "  - " << coreName.value() << " (scoring: " << scoring << ")" << std::endl;
+        }
+    }
+    
+    REQUIRE(results.size() > 0);
+}
+
+

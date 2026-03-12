@@ -196,8 +196,10 @@ class WireAdviser {
                                                                                  SignalDescriptor current,
                                                                                  double temperature);
         std::vector<std::pair<Winding, double>> create_planar_dataset(Winding winding,
-                                                                                        Section section,
-                                                                                        uint8_t numberSections);
+                                                                                          Section section,
+                                                                                          SignalDescriptor current,
+                                                                                          double temperature,
+                                                                                          uint8_t numberSections);
         void expand_wires_dataset_with_parallels(std::vector<Winding>* windings);
         void set_maximum_area_proportion(std::vector<std::pair<Winding, double>>* unfilteredCoils, Section section, uint8_t numberSections);
     

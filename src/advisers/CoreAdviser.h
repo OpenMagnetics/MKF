@@ -70,10 +70,9 @@ namespace OpenMagnetics {
  * 5. **filterLosses**: Scores by total losses
  *
  * ## Operating Modes
- * - **AVAILABLE_CORES**: Uses manufacturer stock database (fastest)
- * - **STANDARD_CORES**: Uses standard core shapes with material optimization
- * - **CUSTOM_CORES,
-        HYBRID_CORES  // O6 FIX: catalog shapes re-gapped to target inductance**: Uses user-provided core list
+ * - **AVAILABLE_CORES**: Uses manufacturer stock database (cores.ndjson) with existing gapping
+ * - **STANDARD_CORES**: Uses standard core shapes with calculated optimal gapping
+ * - **CUSTOM_CORES**: Uses user-provided custom core shapes (not yet implemented)
  *
  * ## Toroid Handling
  * Toroidal cores use geometry-based bobbin filling factor calculation:
@@ -106,9 +105,18 @@ class CoreAdviser {
         enum class CoreAdviserModes : int {
             AVAILABLE_CORES,
             STANDARD_CORES,
-            CUSTOM_CORES,
-        HYBRID_CORES  // O6 FIX: catalog shapes re-gapped to target inductance
+            CUSTOM_CORES
         };
+
+        /**
+         * @brief Structure to hold gap constraint calculations for STANDARD_CORES mode.
+         */
+        struct GappingConstraints {
+            double minGap;      //!< Gap required for energy storage
+            double maxGap;      //!< Maximum gap: min(30% column width, gap for 25% fringing)
+            double optimalGap;  //!< Optimal gap between min and max
+        };
+
     protected:
         std::map<std::string, std::string> _models;
         bool _uniqueCoreShapes = false;
@@ -192,7 +200,107 @@ class CoreAdviser {
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults=1);
 
         Mas post_process_core(Magnetic magnetic, Inputs inputs);
-        
+
+        /**
+         * @brief Calculate gap constraints for STANDARD_CORES mode.
+         * @param inputs Operating conditions with design requirements.
+         * @param core Core to calculate gaps for.
+         * @return GappingConstraints struct with min, max, and optimal gap values.
+         */
+        GappingConstraints calculate_gapping_constraints(Inputs inputs, Core core);
+
+        /**
+         * @brief Calculate the maximum gap for a given fringing factor target.
+         * Uses the reluctance model to find the gap length that produces the target fringing factor.
+         * @param targetFringingFactor Target fringing factor (e.g., 0.25 for 25%).
+         * @param core Core to calculate gap for.
+         * @return Maximum allowable gap length.
+         */
+        double calculate_gap_for_fringing_factor(double targetFringingFactor, Core core);
+
+        /**
+         * @brief Optimize gap using golden-section search to minimize core losses.
+         * @param minGap Minimum gap constraint (for energy storage).
+         * @param maxGap Maximum gap constraint (for fringing/column width).
+         * @param inputs Operating conditions.
+         * @param core Core to optimize gap for.
+         * @return Optimal gap length that minimizes core losses while avoiding saturation.
+         */
+        double optimize_gap_golden_section(double minGap, double maxGap, Inputs inputs, Core core);
+
+        /**
+         * @brief Calculate core losses for a given gap using Steinmetz model.
+         * @param gap Gap length to evaluate.
+         * @param inputs Operating conditions.
+         * @param core Core with material properties.
+         * @return Total core losses in Watts.
+         */
+        double calculate_core_losses_for_gap(double gap, Inputs inputs, Core core);
+
+        /**
+         * @brief Get peak current from inputs for saturation calculations.
+         * @param inputs Operating conditions.
+         * @return Peak current value.
+         */
+        double get_peak_current(Inputs inputs);
+
+        /**
+         * @brief Add optimized gapping to magnetics for STANDARD_CORES mode.
+         * Calculates optimal gap based on energy requirements, fringing limits, and loss minimization.
+         * @param magneticsWithScoring Vector of magnetics to add gapping to.
+         * @param inputs Operating conditions.
+         */
+        void add_gapping_standard_cores(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
+
+        /**
+         * @brief Iteratively refine gaps to achieve target saturation (70% of Bsat).
+         * Must be called AFTER materials and turns are assigned.
+         * @param magneticsWithScoring Vector of magnetics to refine.
+         * @param inputs Operating conditions.
+         */
+        void refine_gaps_for_saturation(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
+
+        /**
+         * @brief Calculate optimal gap and turns using binary search with analytical cost function (Option 2).
+         * 
+         * Uses golden section search on gap, with analytical calculation of turns and flux density
+         * for each candidate gap. Much faster than simulation-based refinement.
+         * 
+         * @param inputs Operating conditions with design requirements.
+         * @param core Core to optimize (modified in place with optimal gap).
+         * @return std::pair<double, double> {optimal_gap, optimal_turns}, or {-1, -1} if no valid solution.
+         */
+        std::pair<double, double> optimize_gap_and_turns_binary_search(Inputs& inputs, Core& core);
+
+        /**
+         * @brief Analytical cost function for gap optimization.
+         * 
+         * For a given gap, calculates turns analytically and evaluates:
+         * - Saturation constraint (returns infinity if violated)
+         * - Core losses estimate
+         * - Fringing factor penalty
+         * 
+         * @param gap Gap length to evaluate.
+         * @param inputs Operating conditions.
+         * @param core Core with material properties.
+         * @param magnetizingInductance Reference to MagnetizingInductance for calculations.
+         * @return double Cost value (lower is better), or infinity if constraints violated.
+         */
+        double calculate_gap_cost_analytical(double gap, Inputs& inputs, Core& core, 
+                                             MagnetizingInductance& magnetizingInductance);
+
+        /**
+         * @brief Add optimized gapping and turns using binary search approach.
+         * 
+         * Replaces the iterative simulation-based approach with analytical optimization.
+         * For each core, finds optimal (gap, turns) pair using golden section search.
+         * 
+         * @param magneticsWithScoring Vector of magnetics to optimize.
+         * @param inputs Operating conditions.
+         */
+        void add_gapping_and_turns_analytical(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
+                                               Inputs inputs);
+
         /**
          * @brief Filter pipeline for power inductor/transformer applications.
          *
@@ -371,14 +479,6 @@ class CoreAdviser {
         return 0.5; // O9 FIX: default for standard E-type cores
     }
 
-    /**
-     * @brief O6 FIX: Hybrid pipeline — catalog shapes, custom gaps.
-     */
-    std::vector<std::pair<Mas, double>> filter_hybrid_cores_power_application(
-        std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs,
-        std::map<CoreAdviserFilters, double> weights,
-        size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
-
 };
 
 void from_json(const json & j, CoreAdviser::CoreAdviserModes & x);
@@ -388,7 +488,6 @@ inline void from_json(const json & j, CoreAdviser::CoreAdviserModes & x) {
     if (j == "available cores") x = CoreAdviser::CoreAdviserModes::AVAILABLE_CORES;
     else if (j == "standard cores") x = CoreAdviser::CoreAdviserModes::STANDARD_CORES;
     else if (j == "custom cores") x = CoreAdviser::CoreAdviserModes::CUSTOM_CORES;
-    else if (j == "hybrid cores") x = CoreAdviser::CoreAdviserModes::HYBRID_CORES;  // O6 FIX: catalog shapes re-gapped to target inductance
     else { throw std::runtime_error("Input JSON does not conform to schema!"); }
 }
 
@@ -397,7 +496,6 @@ inline void to_json(json & j, const CoreAdviser::CoreAdviserModes & x) {
         case CoreAdviser::CoreAdviserModes::AVAILABLE_CORES: j = "available cores"; break;
         case CoreAdviser::CoreAdviserModes::STANDARD_CORES: j = "standard cores"; break;
         case CoreAdviser::CoreAdviserModes::CUSTOM_CORES: j = "custom cores"; break;
-        case CoreAdviser::CoreAdviserModes::HYBRID_CORES: j = "hybrid cores"; break;  // O6 FIX: catalog shapes re-gapped to target inductance
         default: 
             throw std::runtime_error("Unexpected value in enumeration \"CoreAdviser::CoreAdviserModes\": " + std::to_string(static_cast<int>(x)));
     }

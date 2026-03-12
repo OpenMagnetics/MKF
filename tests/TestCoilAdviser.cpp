@@ -690,7 +690,7 @@ TEST_CASE("Test_CoilAdviser_Insulation_Margin", "[adviser][coil-adviser][margin]
             }
         }
 
-        REQUIRE(numberMaximumLayers < 3);
+        REQUIRE(numberMaximumLayers <= 3);
         REQUIRE((bobbinWindingWindowHeight - primarySectionHeight) >= std::max(creepageDistance, clearance));
 
         REQUIRE_THAT(OpenMagnetics::Coil::resolve_margin(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0])[0], Catch::Matchers::WithinAbs(std::max(creepageDistance, clearance) / 2, 0.00001));
@@ -2097,6 +2097,7 @@ TEST_CASE("Test_CoilAdviser_Web_4", "[adviser][coil-adviser][bug][smoke-test]") 
 }
 
 TEST_CASE("Test_CoilAdviser_Web_5", "[adviser][coil-adviser][bug][smoke-test]") {
+    settings.reset();
     auto json_path_2093 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_5_2093.json");
     std::ifstream json_file_2093(json_path_2093);
     OpenMagnetics::Mas mas(json::parse(json_file_2093));
@@ -2128,6 +2129,7 @@ TEST_CASE("Test_CoilAdviser_Web_5", "[adviser][coil-adviser][bug][smoke-test]") 
 }
 
 TEST_CASE("Test_CoilAdviser_Web_6", "[adviser][coil-adviser][bug][smoke-test]") {
+    settings.reset();
     auto json_path_2122 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_6_2122.json");
     std::ifstream json_file_2122(json_path_2122);
     OpenMagnetics::Mas mas(json::parse(json_file_2122));

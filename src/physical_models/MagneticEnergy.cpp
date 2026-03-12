@@ -104,15 +104,6 @@ double MagneticEnergy::calculate_gap_length_by_saturation_constraint(CoreGap gap
     // Get core effective area
     double effectiveArea = core.get_effective_area();
 
-    // DEBUG: Print all input values
-    std::cerr << "[DEBUG saturation_constraint] Core: " << core.get_name().value_or("unnamed") << std::endl;
-    std::cerr << "[DEBUG saturation_constraint]   L = " << inductance * 1e6 << " µH" << std::endl;
-    std::cerr << "[DEBUG saturation_constraint]   I_peak = " << magnetizingCurrentPeak << " A" << std::endl;
-    std::cerr << "[DEBUG saturation_constraint]   Bsat_target = " << magneticFluxDensitySaturationTarget * 1e3 << " mT" << std::endl;
-    std::cerr << "[DEBUG saturation_constraint]   A_gap = " << gapArea * 1e6 << " mm²" << std::endl;
-    std::cerr << "[DEBUG saturation_constraint]   A_e = " << effectiveArea * 1e6 << " mm²" << std::endl;
-    std::cerr << "[DEBUG saturation_constraint]   F_fringe = " << fringingFactor << std::endl;
-
     // Calculate gap needed to ensure B_peak <= Bsat_target
     // From: B = (N * I) / (R_total * A_e) <= Bsat_target
     // And: N = sqrt(L * R_total)
@@ -121,10 +112,6 @@ double MagneticEnergy::calculate_gap_length_by_saturation_constraint(CoreGap gap
     double numerator = inductance * pow(magnetizingCurrentPeak, 2) * constants.vacuumPermeability * gapArea * fringingFactor;
     double denominator = pow(magneticFluxDensitySaturationTarget, 2) * pow(effectiveArea, 2);
     double gapLength = numerator / denominator;
-
-    std::cerr << "[DEBUG saturation_constraint]   gap_saturation = " << gapLength * 1e6 << " µm" << std::endl;
-    std::cerr << "[DEBUG saturation_constraint]   numerator = " << numerator << std::endl;
-    std::cerr << "[DEBUG saturation_constraint]   denominator = " << denominator << std::endl;
 
     return gapLength;
 

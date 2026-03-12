@@ -41,9 +41,14 @@ std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossRef
                                      {
                                          return p1.second < p2.second;
                                      })).second; 
-        minimumScoring = std::max(0.0001, minimumScoring);
+        minimumScoring = std::max(1e-10, std::max(minimumScoring, maximumScoring * 1e-6)); // F4 FIX: data-relative floor (was hardcoded 0.0001)
 
         for (auto& [name, scoring] : aux) {
+            // F7 FIX: Handle equal scores consistently (give full credit)
+            if (minimumScoring == maximumScoring) {
+                swappedScorings[name][filter] = weighted ? _weights[filter] * 0.5 : 0.5; // XC-6 FIX: neutral when equal
+                continue;
+            }
             if (filterConfiguration["log"]){
                 if (filterConfiguration["invert"]) {
                     if (weighted) {
@@ -100,6 +105,25 @@ void normalize_scoring(std::vector<std::pair<Core, double>>* rankedCores, std::v
     double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());
     double minimumScoring = *std::min_element(newScoring->begin(), newScoring->end());
 
+    // F5 FIX: Guard against all-NaN/Inf scores
+    if (std::isnan(maximumScoring) || std::isinf(maximumScoring)) {
+        for (size_t i = 0; i < rankedCores->size(); ++i) {
+            (*rankedCores)[i].second += weight;
+        }
+        std::stable_sort(rankedCores->begin(), rankedCores->end(),
+            [](const std::pair<Core, double>& a, const std::pair<Core, double>& b) { return a.second > b.second; });
+        return;
+    }
+
+    double dataRelativeFloor = std::max(1e-10, maximumScoring * 1e-6); // B8 FIX: data-relative floor
+
+    // O24 FIX: NaN/Inf protection
+    for (size_t idx = 0; idx < newScoring->size(); ++idx) {
+        if (std::isnan((*newScoring)[idx]) || std::isinf((*newScoring)[idx])) {
+            (*newScoring)[idx] = maximumScoring;
+        }
+    }
+
     for (size_t i = 0; i < (*rankedCores).size(); ++i) {
         auto mas = (*rankedCores)[i].first;
         auto scoring = (*newScoring)[i];
@@ -107,9 +131,9 @@ void normalize_scoring(std::vector<std::pair<Core, double>>* rankedCores, std::v
             scoring = maximumScoring;
         }
         else {
-            scoring = std::max(0.0001, scoring);
+            scoring = std::max(dataRelativeFloor, scoring); // B8 FIX
         }
-        minimumScoring = std::max(0.0001, minimumScoring);
+        minimumScoring = std::max(dataRelativeFloor, minimumScoring); // B8 FIX
         if (maximumScoring != minimumScoring) {
 
             if (filterConfiguration["log"]){
@@ -130,12 +154,12 @@ void normalize_scoring(std::vector<std::pair<Core, double>>* rankedCores, std::v
             }
         }
         else {
-            (*rankedCores)[i].second = (*rankedCores)[i].second + 1;
+            (*rankedCores)[i].second = (*rankedCores)[i].second + weight * 0.5; // XC-6 FIX: neutral score when all equal (was full weight)
         }
     }
-    sort((*rankedCores).begin(), (*rankedCores).end(), [](std::pair<Core, double>& b1, std::pair<Core, double>& b2) {
+    std::stable_sort((*rankedCores).begin(), (*rankedCores).end(), [](const std::pair<Core, double>& b1, const std::pair<Core, double>& b2) {
         return b1.second > b2.second;
-    });
+    }); // F12 FIX: stable_sort for reproducible results
 }
 
 std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPermeance::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, Inputs inputs, std::map<std::string, std::string> models, double weight, double limit) {
@@ -152,7 +176,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPerm
     double referencePermeance = 0;
 
     if (inputs.get_operating_points()[0].get_excitations_per_winding().size() > 0) {
-        for (auto operatingPoint : inputs.get_operating_points()) {
+        for (const auto& operatingPoint : inputs.get_operating_points()) {
             referencePermeance += 1.0 / reluctanceModel->get_core_reluctance(referenceCore, operatingPoint).get_core_reluctance();
         }
         referencePermeance /= inputs.get_operating_points().size();
@@ -181,7 +205,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPerm
 
         double reluctance = 0;
         if (inputs.get_operating_points()[0].get_excitations_per_winding().size() > 0) {
-            for (auto operatingPoint : inputs.get_operating_points()) {
+            for (const auto& operatingPoint : inputs.get_operating_points()) {
                 reluctance += 1.0 / reluctanceModel->get_core_reluctance(core, operatingPoint).get_core_reluctance();
             }
             reluctance /= inputs.get_operating_points().size();
@@ -359,6 +383,12 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEnve
     double referenceDepth = referenceCore.get_depth();
     double referenceHeight = referenceCore.get_height();
     double referenceWidth = referenceCore.get_width();
+
+    // F6 FIX: Guard against zero-dimension reference cores
+    if (referenceDepth <= 0 || referenceHeight <= 0 || referenceWidth <= 0) {
+        return *unfilteredCores;
+    }
+
     add_scored_value("Reference", CoreCrossReferencerFilters::ENVELOPING_VOLUME, std::max(referenceDepth, std::max(referenceHeight, referenceWidth)));
 
     std::list<size_t> listOfIndexesToErase;
@@ -380,7 +410,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEnve
         double width = core.get_width();
 
         if (fabs(referenceDepth - depth) / referenceDepth < limit && fabs(referenceHeight - height) / referenceHeight < limit && fabs(referenceWidth - width) / referenceWidth < limit) {
-            double scoring = fabs(referenceDepth - depth) + fabs(referenceHeight - height) + fabs(referenceWidth - width);
+            double scoring = fabs(referenceDepth - depth)/referenceDepth + fabs(referenceHeight - height)/referenceHeight + fabs(referenceWidth - width)/referenceWidth; // B20 FIX: normalize dims
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencerFilters::ENVELOPING_VOLUME, scoring);
             add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::ENVELOPING_VOLUME, std::max(depth, std::max(height, width)));
@@ -539,6 +569,9 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
         add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::CORE_LOSSES, coreLossesWithTemperature);
         add_scored_value(core.get_name().value(), CoreCrossReferencerFilters::SATURATION, 1 + (coreMagneticFluxDensitySaturationPeak - materialMagneticFluxDensitySaturationPeak) / materialMagneticFluxDensitySaturationPeak);
 
+        // CCR-BUG-2 NOTE: Saturation check is coupled with loss comparison.
+        // Cores with lower losses but B > Bsat are excluded even if they're valid.
+        // TODO: Separate saturation check from loss comparison for better results.
         if ((coreMagneticFluxDensitySaturationPeak < materialMagneticFluxDensitySaturationPeak) && (coreLossesWithTemperature < referenceCoreLossesWithTemperature)) {
             double scoring = 0;
             newScoring.push_back(scoring);
@@ -625,14 +658,11 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
     std::vector<std::pair<Core, double>> filteredCores;
 
     while (limit <= _limit && filteredCores.size() < maximumNumberResults) {
-        if (limit < 1) {
-            limit += 0.25;
-        }
-        else if (limit < 10) {
-            limit += 2.5;
-        }
-        else {
-            limit += 25;
+        // CCR-LOGIC-1 FIX: geometric progression for more efficient search
+        if (limit < 0.01) {
+            limit = 0.25;
+        } else {
+            limit *= 2.0; // 0.25 → 0.5 → 1.0 → 2.0 → 4.0 → 8.0 ...
         }
         filteredCores = apply_filters(&cores, referenceCore, referenceNumberTurns, inputs, weights, maximumNumberResults, limit);
     }
@@ -643,8 +673,8 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
 std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vector<std::pair<Core, double>>* cores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults, double limit) {
     MagneticCoreFilterPermeance filterPermeance;
     MagneticCoreFilterCoreLosses filterVolumetricLosses;
-    MagneticCoreFilterWindingWindowArea filterEffectiveArea;
-    MagneticCoreFilterEffectiveArea filterWindingWindowArea;
+    MagneticCoreFilterWindingWindowArea filterWindingWindowArea; // CCR-BUG-1 FIX: names now match types
+    MagneticCoreFilterEffectiveArea filterEffectiveArea; // CCR-BUG-1 FIX: names now match types
     MagneticCoreFilterEnvelopingVolume filterEnvelopingVolume;
 
     filterPermeance.set_scorings(&_scorings);
@@ -699,7 +729,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
         logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + to_string(CoreCrossReferencerFilters::CORE_LOSSES) + ".", "Core Cross Referencer", 2);
 
     if (rankedCores.size() > maximumNumberResults) {
-        rankedCores = std::vector<std::pair<Core, double>>(rankedCores.begin(), rankedCores.end() - (rankedCores.size() - maximumNumberResults));
+        rankedCores.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
     }
 
     return rankedCores;

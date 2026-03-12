@@ -106,7 +106,7 @@ namespace OpenMagnetics {
         _leakageInductanceGridPrecisionLevelPlanar = 3;
         _leakageInductanceGridPrecisionLevelWound = 1;
         
-        _coilAdviserMaximumNumberWires = 100;
+        _coilAdviserMaximumNumberWires = 30;  // OPTIMIZATION: Reduced from 100 to 30 for web frontend performance
         _coreAdviserIncludeStacks = true;
         _coreAdviserIncludeDistributedGaps = true;
         _coreAdviserIncludeMargin = false;
@@ -607,6 +607,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_adviser_maximum_magnetics_after_filtering(size_t value) {
         _coreAdviserMaximumMagneticsAfterFiltering = value;
+    }
+
+    GappingOptimizationStrategy Settings::get_gapping_strategy() const {
+        return _gappingStrategy;
+    }
+    void Settings::set_gapping_strategy(GappingOptimizationStrategy value) {
+        _gappingStrategy = value;
     }
 
     bool Settings::get_wire_adviser_include_planar() const {

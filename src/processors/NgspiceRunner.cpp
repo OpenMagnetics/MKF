@@ -871,6 +871,10 @@ OperatingPoint NgspiceRunner::extract_operating_point(
     double ambientTemperature,
     const std::vector<bool>& flipCurrentSign) {
     
+    if (frequency <= 0 || !std::isfinite(frequency)) {
+        throw std::invalid_argument("NgspiceRunner::extract_operating_point: Invalid frequency: " + std::to_string(frequency));
+    }
+
     OperatingPoint operatingPoint;
     
     // Build a map from waveform names to indices for quick lookup

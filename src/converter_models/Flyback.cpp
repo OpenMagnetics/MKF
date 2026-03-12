@@ -124,6 +124,10 @@ namespace OpenMagnetics {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.resolve_switching_frequency(inputVoltage, get_diode_voltage_drop(), inductance, turnsRatios, get_efficiency());
+        
+        if (switchingFrequency <= 0 || !std::isfinite(switchingFrequency)) {
+            throw std::invalid_argument("Invalid switchingFrequency calculated: " + std::to_string(switchingFrequency));
+        }
 
         double deadTime = 0;
         double maximumReflectedOutputVoltage = 0;
@@ -462,7 +466,7 @@ namespace OpenMagnetics {
                     windingNames,
                     flybackOpPoint.get_ambient_temperature(),
                     flipCurrentSign);
-                
+
                 // Set name
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt. (simulated)";
                 if (get_operating_points().size() > 1) {

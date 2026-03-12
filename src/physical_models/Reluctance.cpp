@@ -138,9 +138,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
             }
             maximumFringingFactor = std::max(maximumFringingFactor, gapReluctance.get_fringing_factor());
             maximumStorableMagneticEnergyGapping += gapReluctance.get_maximum_storable_magnetic_energy();
-            if (gapReluctance.get_fringing_factor() < 1) {
-                std::cerr << "fringing_factor " << gapReluctance.get_fringing_factor() << std::endl;
-            }
+
         }
         calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
     }

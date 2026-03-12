@@ -14,6 +14,9 @@
 
 namespace OpenMagnetics {
 
+// F41 NOTE: This is one of 4 separate normalize_scoring implementations in the codebase.
+// They should be unified into a single templated utility function.
+// This version (WireAdviser) is the most complete with B7+B8+O24 fixes.
 void normalize_scoring(std::vector<std::pair<Winding, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true, const std::string& filterName="") {
     // Debug: Check for NaN values before normalization
     for (size_t i = 0; i < newScoring->size(); ++i) {
@@ -46,9 +49,9 @@ void normalize_scoring(std::vector<std::pair<Winding, double>>* coilsWithScoring
     for (size_t i = 0; i < (*coilsWithScoring).size(); ++i) {
         (*coilsWithScoring)[i].second += normalizedScorings[i];
     }
-    sort((*coilsWithScoring).begin(), (*coilsWithScoring).end(), [](std::pair<Winding, double>& b1, std::pair<Winding, double>& b2) {
+    std::stable_sort((*coilsWithScoring).begin(), (*coilsWithScoring).end(), [](const std::pair<Winding, double>& b1, const std::pair<Winding, double>& b2) {
         return b1.second > b2.second;
-    });
+    }); // F12 FIX: stable_sort for reproducible results
 }
 
 std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_no_parallels(std::vector<std::pair<Winding, double>>* unfilteredCoils,
@@ -341,55 +344,66 @@ std::vector<std::pair<OpenMagnetics::Winding, double>> WireAdviser::get_advised_
 }
 
 std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Winding winding,
-                                                                                             Section section,
-                                                                                             uint8_t numberSections) {
+                                                                                       Section section,
+                                                                                       SignalDescriptor current,
+                                                                                       double temperature,
+                                                                                       uint8_t numberSections) {
     std::vector<std::pair<Winding, double>> windings;
     auto planarWires = get_wires(WireType::PLANAR);
 
-    // No paralells
+    // WA-LOGIC-1 NOTE: Parallels are tried first, biasing toward complex designs.
+    // Consider generating no-parallels first for simpler/cheaper solutions,
+    // or let scoring handle the preference between simple and parallel designs.
+    // Parallels (FIRST - tried first in CoilAdviser)
+    {
+        auto maximumNumberTurnsPerSection = winding.get_number_turns();
+        auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
+        if (maximumAvailableWidthForCopper < 0) {
+            return windings;
+        }
+        auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / winding.get_number_turns();
+        size_t maximumNumberParallels = _maximumNumberParallels;
+
+        for (auto wire : planarWires) {
+            if (resolve_dimensional_values(wire.get_conducting_height().value()) < section.get_dimensions()[1]) {
+                wire.set_nominal_value_outer_height(resolve_dimensional_values(wire.get_conducting_height().value()));
+                // Set conducting_width FIRST before calculating parallels needed
+                wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
+                int minParallelsNeeded = Wire::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
+                size_t startParallels = std::max(size_t(2), static_cast<size_t>(minParallelsNeeded));
+                for (size_t numberParallels = startParallels; numberParallels <= maximumNumberParallels; ++numberParallels) {
+                    wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
+                    wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
+                    wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
+                    winding.set_wire(wire);
+                    winding.set_number_parallels(numberParallels);
+                    windings.push_back(std::pair<Winding, double>{winding, 0});
+                }
+            }
+        }
+    }
+
+    // No parallels (SECOND - only add if single parallel meets current density requirements)
     {
         auto maximumNumberTurnsPerSection = ceil(double(winding.get_number_turns()) / numberSections);
         auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
         if (maximumAvailableWidthForCopper < 0) {
             return windings;
-            // throw std::runtime_error("maximumAvailableWidthForCopper cannot be negative");
         }
         auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / maximumNumberTurnsPerSection;
 
         for (auto wire : planarWires) {
             if (resolve_dimensional_values(wire.get_conducting_height().value()) < section.get_dimensions()[1]) {
                 wire.set_nominal_value_outer_height(resolve_dimensional_values(wire.get_conducting_height().value()));
+                // Set conducting_width FIRST before calculating parallels needed
                 wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
-                wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
-                wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
-                winding.set_wire(wire);
-                winding.set_number_parallels(1);
-                windings.push_back(std::pair<Winding, double>{winding, 0});
-            }
-        }
-    }
-
-    // Paralells
-    {
-        auto maximumNumberTurnsPerSection = winding.get_number_turns();
-        auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
-        if (maximumAvailableWidthForCopper < 0) {
-            return windings;
-            // throw std::runtime_error("maximumAvailableWidthForCopper cannot be negative");
-        }
-        auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / winding.get_number_turns();
-        // Use the configurable maximum number of parallels, but not more than numberSections
-        size_t maximumNumberParallels = std::min(static_cast<size_t>(_maximumNumberParallels), static_cast<size_t>(numberSections));
-
-        for (auto wire : planarWires) {
-            if (resolve_dimensional_values(wire.get_conducting_height().value()) < section.get_dimensions()[1]) {
-                wire.set_nominal_value_outer_height(resolve_dimensional_values(wire.get_conducting_height().value()));
-                for (size_t numberParallels = 2; numberParallels <= maximumNumberParallels; ++numberParallels) {
+                int minParallelsNeeded = Wire::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
+                if (minParallelsNeeded <= 1) {
                     wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
                     wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
                     wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
                     winding.set_wire(wire);
-                    winding.set_number_parallels(numberParallels);
+                    winding.set_number_parallels(1);
                     windings.push_back(std::pair<Winding, double>{winding, 0});
                 }
             }
@@ -485,15 +499,18 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Win
                                                                                                double temperature,
                                                                                                uint8_t numberSections,
                                                                                                size_t maximumNumberResults) {
-    auto coilsWithScoring = create_planar_dataset(winding, section, numberSections);
+    auto coilsWithScoring = create_planar_dataset(winding, section, current, temperature, numberSections);
 
     logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires");
 
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by effective resistance.");
 
-    coilsWithScoring = filter_by_skin_losses_density(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by skin losses density.");
+    // WA-BUG-1 FIX: guard with harmonics check (matches get_advised_wire)
+    if (current.get_harmonics()) {
+        coilsWithScoring = filter_by_skin_losses_density(&coilsWithScoring, current, temperature);
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by skin losses density.");
+    }
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by proximity factor.");

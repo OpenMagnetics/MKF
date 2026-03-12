@@ -4600,9 +4600,6 @@ ThermalResult Temperature::solveThermalCircuit() {
         for (size_t i = 0; i < n; ++i) {
             if (!std::isfinite(temperatures[i])) {
                 hasInvalidTemps = true;
-                if (THERMAL_DEBUG) {
-                    std::cerr << "Invalid temperature at node " << i << " (" << _nodes[i].name << "): " << temperatures[i] << std::endl;
-                }
             }
         }
         if (hasInvalidTemps) {

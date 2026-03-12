@@ -1576,6 +1576,15 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     bgColor = std::regex_replace(std::string(bgColor), std::regex("0x"), "#");
     _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", bgColor);
 
+    // Determine label based on output unit
+    // Both LEGACY and SDF_PHYSICS now output J/m³ (volumetric energy density)
+    std::string unitLabel;
+    if (outputUnit == ElectricFieldOutputUnit::VOLTS_PER_METER) {
+        unitLabel = " V/m";
+    } else {
+        unitLabel = " J/m^3";
+    }
+
     if (family != MAS::CoreShapeFamily::T) {
         // Rectangular cores - use winding window
         if (windingWindow.get_width() && windingWindow.get_coordinates() && windingWindow.get_height()) {
@@ -1587,16 +1596,9 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     } else {
         // Toroidal cores - paint background using full image size (includes extra space for additional turns)
         // _imageWidth and _imageHeight are already set by set_image_size(magnetic) which includes extraDimension
-        paint_rectangle(0, 0, _imageWidth, _imageHeight, cssClassName);
-    }
-
-    // Determine label based on output unit
-    // Both LEGACY and SDF_PHYSICS now output J/m³ (volumetric energy density)
-    std::string unitLabel;
-    if (outputUnit == ElectricFieldOutputUnit::VOLTS_PER_METER) {
-        unitLabel = " V/m";
-    } else {
-        unitLabel = " J/m^3";
+        // Add 15% margin to ensure background covers the full viewBox even after autoscale adjustments
+        double margin = 1.15;
+        paint_rectangle(0, 0, _imageWidth * margin, _imageHeight * margin, cssClassName, nullptr, 0, {0, 0}, "0" + unitLabel);
     }
 
     for (auto datum : field.get_data()) {

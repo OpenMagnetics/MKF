@@ -582,10 +582,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
         auto excitation = complete_excitation(currentWaveform, voltageWaveform,
                                               fsw, "Primary");
-        auto nameOpt = excitation.get_name();
-        std::cerr << "DEBUG LLC Primary excitation name: '" 
-                  << (nameOpt.has_value() ? nameOpt.value() : "NULL") 
-                  << "'" << std::endl;
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 
@@ -646,10 +642,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
             std::string windingName = "Secondary " + std::to_string(outputIdx) + " Half " + std::to_string(halfIdx + 1);
             auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
-            auto nameOpt = excitation.get_name();
-            std::cerr << "DEBUG LLC Secondary excitation name: '" 
-                      << (nameOpt.has_value() ? nameOpt.value() : "NULL") 
-                      << "'" << std::endl;
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
     }
@@ -745,18 +737,24 @@ std::string Llc::generate_ngspice_circuit(
         // Secondary windings with sense nodes for current measurement
         circuit << "Lsec1 sec_top_sec sec_ct " << std::scientific << Lsec_half << "\n";
         circuit << "Lsec2 sec_ct sec_bot_sec " << std::scientific << Lsec_half << "\n";
-        circuit << "K1 Lpri Lsec1 Lsec2 " << k_int << "\n\n";
+        // Use pairwise K statements - ngspice has a bug with 3+ inductor K statements
+        circuit << "K12 Lpri Lsec1 " << k_int << "\n";
+        circuit << "K13 Lpri Lsec2 " << k_int << "\n";
+        circuit << "K23 Lsec1 Lsec2 " << k_int << "\n\n";
     } else {
         double Lsec_half = L / (n * n);
         circuit << "* Resonant tank (separate inductor)\n";
         circuit << "Cr lr_in cr_ls " << std::scientific << Cr << "\n";
         circuit << "Lr cr_ls pri_top " << std::scientific << Ls << "\n\n";
-        circuit << "* Transformer (k=0.999)\n";
+        circuit << "* Transformer (k~1, using pairwise K statements for ngspice compatibility)\n";
         circuit << "Lpri pri_top pri_bot " << std::scientific << L << "\n";
         // Secondary windings with sense nodes for current measurement
         circuit << "Lsec1 sec_top_sec sec_ct " << std::scientific << Lsec_half << "\n";
         circuit << "Lsec2 sec_ct sec_bot_sec " << std::scientific << Lsec_half << "\n";
-        circuit << "K1 Lpri Lsec1 Lsec2 0.999\n\n";
+        // Use pairwise K statements - ngspice has a bug with 3+ inductor K statements
+        circuit << "K12 Lpri Lsec1 0.999\n";
+        circuit << "K13 Lpri Lsec2 0.999\n";
+        circuit << "K23 Lsec1 Lsec2 0.999\n\n";
     }
 
     if (isFullBridge) circuit << "Rpri_ret pri_bot bridge_b 0.001\n\n";

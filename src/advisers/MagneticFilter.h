@@ -266,12 +266,16 @@ class MagneticFilterFringingFactor : public MagneticFilter {
         double _requiredMagneticEnergy;
         double _fringingFactorLitmit = 1.2;
         std::shared_ptr<ReluctanceModel> _reluctanceModel;
+        // OPTIMIZATION: Cache for fringing factor calculations to avoid redundant computation
+        static std::map<std::string, double> _fringingFactorCache;
 
     public:
         MagneticFilterFringingFactor() {};
         MagneticFilterFringingFactor(Inputs inputs);
         MagneticFilterFringingFactor(Inputs inputs, std::map<std::string, std::string> models);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        // OPTIMIZATION: Clear cache when needed (e.g., between different design runs)
+        static void clear_cache();
 };
 
 class MagneticFilterVolume : public MagneticFilter {

@@ -279,7 +279,42 @@ double PainterInterface::sdf_turn(double px, double py, const Turn& turn) {
 double PainterInterface::energy_density_bipolar(double px, double py,
                                                  const Turn& t1, const Turn& t2,
                                                  double voltageDrop, double epsilonEff) {
-    auto params = StrayCapacitance::compute_bipolar_params(t1, t2);
+    // For toroidal turns with additional coordinates (outer half), we need to use the appropriate
+    // coordinate set based on which part of the turn the pixel is closest to.
+    // This ensures energy density is correctly calculated for both inner and outer turn regions.
+
+    auto get_effective_coords = [](const Turn& t, double px, double py) -> std::vector<double> {
+        auto& mainCoords = t.get_coordinates();
+        if (mainCoords.size() < 2) return mainCoords;
+
+        // Check if there's an additional coordinate (outer half for toroidal turns)
+        if (t.get_additional_coordinates()) {
+            auto additionalCoords = t.get_additional_coordinates().value();
+            for (const auto& addCoord : additionalCoords) {
+                if (addCoord.size() >= 2) {
+                    double distMain = hypot(mainCoords[0] - px, mainCoords[1] - py);
+                    double distAdd = hypot(addCoord[0] - px, addCoord[1] - py);
+                    // If closer to additional coordinate, use it as the effective center
+                    if (distAdd < distMain) {
+                        return addCoord;
+                    }
+                }
+            }
+        }
+        return mainCoords;
+    };
+
+    // Get effective coordinates for both turns based on pixel position
+    auto effCoords1 = get_effective_coords(t1, px, py);
+    auto effCoords2 = get_effective_coords(t2, px, py);
+
+    // Create temporary turns with effective coordinates for bipolar parameter calculation
+    Turn effTurn1 = t1;
+    Turn effTurn2 = t2;
+    effTurn1.set_coordinates(effCoords1);
+    effTurn2.set_coordinates(effCoords2);
+
+    auto params = StrayCapacitance::compute_bipolar_params(effTurn1, effTurn2);
     double energy = StrayCapacitance::bipolar_energy_density_at_point(px, py, params, voltageDrop, epsilonEff);
     // Prevent infinity/NaN
     if (!std::isfinite(energy) || energy < 0) return 0;
@@ -290,12 +325,33 @@ double PainterInterface::energy_density_bipolar(double px, double py,
 double PainterInterface::energy_density_parallel_plate(double px, double py,
                                                          const Turn& t1, const Turn& t2,
                                                          double voltageDrop, double epsilonEff) {
-    auto& coords1 = t1.get_coordinates();
-    auto& coords2 = t2.get_coordinates();
-    if (coords1.size() < 2 || coords2.size() < 2) return 0;
+    // For toroidal turns, use effective coordinates based on pixel position
+    auto get_effective_coords = [](const Turn& t, double px, double py) -> std::vector<double> {
+        auto& mainCoords = t.get_coordinates();
+        if (mainCoords.size() < 2) return mainCoords;
 
-    double cx1 = coords1[0], cy1 = coords1[1];
-    double cx2 = coords2[0], cy2 = coords2[1];
+        if (t.get_additional_coordinates()) {
+            auto additionalCoords = t.get_additional_coordinates().value();
+            for (const auto& addCoord : additionalCoords) {
+                if (addCoord.size() >= 2) {
+                    double distMain = hypot(mainCoords[0] - px, mainCoords[1] - py);
+                    double distAdd = hypot(addCoord[0] - px, addCoord[1] - py);
+                    if (distAdd < distMain) {
+                        return addCoord;
+                    }
+                }
+            }
+        }
+        return mainCoords;
+    };
+
+    auto effCoords1 = get_effective_coords(t1, px, py);
+    auto effCoords2 = get_effective_coords(t2, px, py);
+
+    if (effCoords1.size() < 2 || effCoords2.size() < 2) return 0;
+
+    double cx1 = effCoords1[0], cy1 = effCoords1[1];
+    double cx2 = effCoords2[0], cy2 = effCoords2[1];
     double centerDist = hypot(cx2 - cx1, cy2 - cy1);
     if (centerDist < 1e-15) return 0;
 

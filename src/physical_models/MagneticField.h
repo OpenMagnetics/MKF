@@ -25,6 +25,8 @@ namespace OpenMagnetics {
 class MagneticFieldStrengthModel {
     public:
         std::vector<Wire> _wirePerWinding;
+        std::vector<double> _wireMaxOuterWidth;  // Precomputed for performance
+        std::vector<double> _wireMaxOuterHeight; // Precomputed for performance
         virtual ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) = 0;
 };
 
@@ -43,6 +45,8 @@ class MagneticField {
         std::shared_ptr<MagneticFieldStrengthFringingEffectModel>  _fringingEffectModel;
     public:
         std::vector<Wire> _wirePerWinding;
+        std::vector<double> _wireMaxOuterWidth;  // Precomputed for performance
+        std::vector<double> _wireMaxOuterHeight; // Precomputed for performance
 
         MagneticField(MagneticFieldStrengthModels magneticFieldStrengthModel = Defaults().magneticFieldStrengthModelDefault,
                       MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModel = Defaults().magneticFieldStrengthFringingEffectModelDefault) {

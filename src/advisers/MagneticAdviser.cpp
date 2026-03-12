@@ -130,7 +130,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     size_t previouslyObtainedCores = SIZE_MAX;
     size_t whileIteration = 0;
     const size_t maxWhileIterations = 2;  // Limit exponential growth
-    const size_t maxEvaluatedCores = 50;  // Performance limit: stop after evaluating this many cores
+    const size_t maxEvaluatedCores = 40;  // OPTIMIZATION: Balanced - 40 cores to capture variety including medium-sized
     while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores) {
         whileIteration++;
         requestedCores += 20;  // Linear growth instead of exponential
@@ -167,7 +167,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             if (masMagneticsWithCoreAndCoil.size() > 0) {
                 logEntry("Core wound!", "MagneticAdviser", 2);
-
                 coresWound++;
             }
             size_t processedCoils = 0;
@@ -479,15 +478,27 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::vector<MagneticFilterOperation> filterFlow) {
     std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
+
+    // Return early if no magnetics to score
+    if (masMagnetics.empty()) {
+        return masMagneticsWithScoring;
+    }
+
     for (auto mas : masMagnetics) {
         masMagneticsWithScoring.push_back({mas, 0.0});
     }
     for (auto filterConfiguration : filterFlow) {
         MagneticFilters filterEnum = filterConfiguration.get_filter();
-        
+
+        // Check if filter exists in the map before accessing
+        auto filterIt = _filters.find(filterEnum);
+        if (filterIt == _filters.end() || !filterIt->second) {
+            continue;  // Skip filters that aren't loaded
+        }
+
         std::vector<double> scorings;
         for (auto mas : masMagnetics) {
-            auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs());
+            auto [valid, scoring] = filterIt->second->evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs());
             scorings.push_back(scoring);
             add_scoring(mas.get_mutable_magnetic().get_reference(), filterEnum, scoring);
         }
@@ -495,6 +506,17 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
             normalize_scoring(&masMagneticsWithScoring, scorings, filterConfiguration);
         }
     }
+    
+    // OPTIMIZATION: Apply stack penalty - prioritize single stack designs
+    // Penalty increases with number of stacks: 1 stack = 0%, 2 stacks = 15%, 3 stacks = 30%, etc.
+    for (auto& [mas, scoring] : masMagneticsWithScoring) {
+        auto numStacksOpt = mas.get_magnetic().get_core().get_functional_description().get_number_stacks();
+        if (numStacksOpt && numStacksOpt.value() > 1) {
+            double stackPenalty = (numStacksOpt.value() - 1) * 0.15;  // 15% penalty per additional stack
+            scoring *= (1.0 - stackPenalty);
+        }
+    }
+    
     return masMagneticsWithScoring;
 }
 
@@ -507,7 +529,10 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
     if (mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_gapping().size() > 0) {
         text += "Core gap: " + std::to_string(mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_gapping()[0].get_length()) + "\n";
     }
-    text += "Core stacks: " + std::to_string(mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_number_stacks().value()) + "\n";
+    auto numberStacksOpt = mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_number_stacks();
+    if (numberStacksOpt) {
+        text += "Core stacks: " + std::to_string(numberStacksOpt.value()) + "\n";
+    }
     for (size_t windingIndex = 0; windingIndex < mas.get_mutable_magnetic().get_mutable_coil().get_functional_description().size(); ++windingIndex) {
         auto winding = mas.get_mutable_magnetic().get_mutable_coil().get_functional_description()[windingIndex];
         auto wire = OpenMagnetics::Coil::resolve_wire(winding);
@@ -528,34 +553,70 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
         auto output = mas.get_outputs()[operatingPointIndex];
         text += "Operating Point: " + std::to_string(operatingPointIndex + 1) + "\n";
         text += "\tMagnetizing Inductance: " + std::to_string(resolve_dimensional_values(output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance())) + "\n";
-        text += "\tCore losses: " + std::to_string(output.get_core_losses().value().get_core_losses()) + "\n";
-        text += "\tMagnetic flux density: " + std::to_string(output.get_core_losses().value().get_magnetic_flux_density()->get_processed()->get_peak().value()) + "\n";
-        text += "\tCore temperature: " + std::to_string(output.get_core_losses().value().get_temperature().value()) + "\n";
-        text += "\tWinding losses: " + std::to_string(output.get_winding_losses().value().get_winding_losses()) + "\n";
-        for (size_t windingIndex = 0; windingIndex < output.get_winding_losses().value().get_winding_losses_per_winding().value().size(); ++windingIndex) {
-            auto winding = mas.get_mutable_magnetic().get_mutable_coil().get_functional_description()[windingIndex];
-            auto windingLosses = output.get_winding_losses().value().get_winding_losses_per_winding().value()[windingIndex];
-            text += "\t\tLosses for winding: " + winding.get_name() + "\n";
-            double skinEffectLosses = 0;
-            double proximityEffectLosses = 0;
-            for (size_t i = 0; i < windingLosses.get_skin_effect_losses().value().get_losses_per_harmonic().size(); ++i)
-            {
-                skinEffectLosses += windingLosses.get_skin_effect_losses().value().get_losses_per_harmonic()[i];
+        
+        if (output.get_core_losses()) {
+            auto coreLosses = output.get_core_losses().value();
+            text += "\tCore losses: " + std::to_string(coreLosses.get_core_losses()) + "\n";
+            
+            auto fluxDensity = coreLosses.get_magnetic_flux_density();
+            if (fluxDensity && fluxDensity->get_processed() && fluxDensity->get_processed()->get_peak()) {
+                text += "\tMagnetic flux density: " + std::to_string(fluxDensity->get_processed()->get_peak().value()) + "\n";
             }
-            for (size_t i = 0; i < windingLosses.get_proximity_effect_losses().value().get_losses_per_harmonic().size(); ++i)
-            {
-                proximityEffectLosses += windingLosses.get_proximity_effect_losses().value().get_losses_per_harmonic()[i];
+            
+            if (coreLosses.get_temperature()) {
+                text += "\tCore temperature: " + std::to_string(coreLosses.get_temperature().value()) + "\n";
             }
+        }
+        
+        if (output.get_winding_losses()) {
+            auto windingLosses = output.get_winding_losses().value();
+            text += "\tWinding losses: " + std::to_string(windingLosses.get_winding_losses()) + "\n";
+            
+            if (windingLosses.get_winding_losses_per_winding()) {
+                auto lossesPerWinding = windingLosses.get_winding_losses_per_winding().value();
+                for (size_t windingIndex = 0; windingIndex < lossesPerWinding.size(); ++windingIndex) {
+                    auto winding = mas.get_mutable_magnetic().get_mutable_coil().get_functional_description()[windingIndex];
+                    auto windingLoss = lossesPerWinding[windingIndex];
+                    text += "\t\tLosses for winding: " + winding.get_name() + "\n";
+                    double skinEffectLosses = 0;
+                    double proximityEffectLosses = 0;
+                    
+                    if (windingLoss.get_skin_effect_losses()) {
+                        auto skinLosses = windingLoss.get_skin_effect_losses().value();
+                        for (size_t i = 0; i < skinLosses.get_losses_per_harmonic().size(); ++i) {
+                            skinEffectLosses += skinLosses.get_losses_per_harmonic()[i];
+                        }
+                    }
+                    
+                    if (windingLoss.get_proximity_effect_losses()) {
+                        auto proximityLosses = windingLoss.get_proximity_effect_losses().value();
+                        for (size_t i = 0; i < proximityLosses.get_losses_per_harmonic().size(); ++i) {
+                            proximityEffectLosses += proximityLosses.get_losses_per_harmonic()[i];
+                        }
+                    }
 
-            text += "\t\t\tDC resistance: " + std::to_string(output.get_winding_losses().value().get_dc_resistance_per_winding().value()[windingIndex]) + "\n";
-            text += "\t\t\tOhmic losses: " + std::to_string(windingLosses.get_ohmic_losses().value().get_losses()) + "\n";
-            text += "\t\t\tSkin effect losses: " + std::to_string(skinEffectLosses) + "\n";
-            text += "\t\t\tProximity effect losses: " + std::to_string(proximityEffectLosses) + "\n";
+                    if (windingLosses.get_dc_resistance_per_winding() && windingIndex < windingLosses.get_dc_resistance_per_winding().value().size()) {
+                        text += "\t\t\tDC resistance: " + std::to_string(windingLosses.get_dc_resistance_per_winding().value()[windingIndex]) + "\n";
+                    }
+                    
+                    if (windingLoss.get_ohmic_losses()) {
+                        text += "\t\t\tOhmic losses: " + std::to_string(windingLoss.get_ohmic_losses().value().get_losses()) + "\n";
+                    }
+                    
+                    text += "\t\t\tSkin effect losses: " + std::to_string(skinEffectLosses) + "\n";
+                    text += "\t\t\tProximity effect losses: " + std::to_string(proximityEffectLosses) + "\n";
 
-            if (windingIndex > 0) {
-                // output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding();
-                double value = output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding()[windingIndex - 1].get_nominal().value();
-                text += "\t\t\tLeakage inductance referred to primary: " + std::to_string(value) + "\n";
+                    if (windingIndex > 0) {
+                        auto leakageInductance = output.get_inductance()->get_leakage_inductance();
+                        if (leakageInductance && windingIndex - 1 < leakageInductance->get_leakage_inductance_per_winding().size()) {
+                            auto nominalOpt = leakageInductance->get_leakage_inductance_per_winding()[windingIndex - 1].get_nominal();
+                            if (nominalOpt) {
+                                double value = nominalOpt.value();
+                                text += "\t\t\tLeakage inductance referred to primary: " + std::to_string(value) + "\n";
+                            }
+                        }
+                    }
+                }
             }
         }
     }

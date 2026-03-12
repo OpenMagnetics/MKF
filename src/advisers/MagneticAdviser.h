@@ -77,6 +77,25 @@ namespace OpenMagnetics {
  * auto results = adviser.get_advised_magnetic(inputs, 5);
  * ```
  *
+ *
+ * ## Known Limitations & Future Improvements
+ *
+ * **LOGIC-1: No Thermal Coupling** — Core temperature affects winding resistance
+ * which affects losses which affects temperature. Current system evaluates independently.
+ * TODO: Add 2-3 iteration thermal-electromagnetic coupling loop.
+ *
+ * **LOGIC-2: No Loss Balance Optimization** — Industry best practice targets 50/50
+ * core-to-copper loss ratio. TODO: Add loss-balance metric to scoring.
+ *
+ * **LOGIC-3: Linear Scalarization Only** — Cannot find solutions on non-convex
+ * Pareto fronts. TODO: For small result sets, add epsilon-constraint or NSGA-II.
+ *
+ * **LOGIC-5: No DC Bias in Material Selection** — Permeability drops significantly
+ * under DC bias for powder cores. TODO: Include DC bias in material comparison.
+ *
+ * **LOGIC-6: No Proximity Effect in CoreAdviser** — Multi-layer proximity losses
+ * can dominate but aren't estimated during core selection, leading to undersized cores.
+ *
  * ## Weight Guidelines
  *
  * | Application          | COST | LOSSES | DIMENSIONS |
@@ -317,11 +336,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_from_c
     inputs.process();
     
     // Step 6: Get magnetics from adviser
+    std::vector<std::pair<Mas, double>> results;
     if (weights.empty()) {
-        return get_advised_magnetic(inputs, maximumNumberResults);
+        results = get_advised_magnetic(inputs, maximumNumberResults);
     } else {
-        return get_advised_magnetic(inputs, weights, maximumNumberResults);
+        results = get_advised_magnetic(inputs, weights, maximumNumberResults);
     }
+    return results;
 }
 
 } // namespace OpenMagnetics

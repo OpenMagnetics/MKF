@@ -14,6 +14,11 @@ enum class EffectiveParameterStandard {
     IEC_63182    // Simplified geometric method (powder-core convention)
 };
 
+enum class GappingOptimizationStrategy {
+    SIMPLE,         // Pick gap closest to min that avoids saturation
+    GOLDEN_SECTION  // Optimize for minimum core losses using golden-section search
+};
+
 
 using namespace MAS;
 
@@ -98,6 +103,7 @@ class Settings
         bool _coreAdviserIncludeMargin = false;
         bool _coreAdviserEnableIntermediatePruning = true;
         size_t _coreAdviserMaximumMagneticsAfterFiltering;
+        GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
         bool _wireAdviserIncludePlanar = false;
@@ -343,6 +349,9 @@ class Settings
 
         size_t get_core_adviser_maximum_magnetics_after_filtering() const;
         void set_core_adviser_maximum_magnetics_after_filtering(size_t value);
+
+        GappingOptimizationStrategy get_gapping_strategy() const;
+        void set_gapping_strategy(GappingOptimizationStrategy value);
 
         bool get_wire_adviser_include_planar() const;
         void set_wire_adviser_include_planar(bool value);

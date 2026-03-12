@@ -234,8 +234,8 @@ class Coil : public MAS::Coil {
         Winding get_winding_by_name(std::string name);
 
 
-        size_t get_winding_index_by_name(std::string name);
-        static size_t get_winding_index_by_name(std::vector<Winding> functionalDescription, std::string name);
+        size_t get_winding_index_by_name(const std::string& name);
+        static size_t get_winding_index_by_name(const std::vector<Winding>& functionalDescription, const std::string& name);
         size_t get_turn_index_by_name(std::string name);
         size_t get_layer_index_by_name(std::string name);
         size_t get_section_index_by_name(std::string name);

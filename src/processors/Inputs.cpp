@@ -235,7 +235,7 @@ bool Inputs::include_dc_offset_into_magnetizing_current(OperatingPoint operating
 }
 
 
-double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label) {
+double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label, double frequency) {
     if (label != WaveformLabel::CUSTOM) {
         switch(label) {
             case WaveformLabel::TRIANGULAR: {
@@ -290,7 +290,13 @@ double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label) {
 
     Waveform sampledWaveform;
     if (!is_waveform_sampled(waveform)) {
-        sampledWaveform = Inputs::calculate_sampled_waveform(waveform, 0);
+        if (frequency > 0) {
+            sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
+        }
+        else {
+            // Cannot sample without frequency, return default duty cycle
+            return 0.5;
+        }
     }
     else {
         sampledWaveform = waveform;
@@ -571,6 +577,7 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
     waveform.set_ancillary_label(label);
     waveform.set_data(data);
     waveform.set_time(time);
+
     if (skew > 0) {
         auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
         auto timeStep = period / sampledWaveform.get_data().size();
@@ -716,7 +723,8 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
         dutyCycle = processed.get_duty_cycle().value();
     } else if (excitation.get_current()->get_waveform()) {
         dutyCycle = try_guess_duty_cycle(excitation.get_current()->get_waveform().value(),
-                                          processed.get_label());
+                                          processed.get_label(),
+                                          excitation.get_frequency());
     }
 
     // Build a continuous triangular magnetizing current with the correct offset,
@@ -777,6 +785,15 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
     std::vector<double> time;
     auto data = waveform.get_data();
 
+    // Validate input data
+    if (data.size() < 2) {
+        throw std::invalid_argument("Waveform must have at least 2 data points");
+    }
+    
+    if (!std::isfinite(frequency) || frequency <= 0) {
+        throw std::invalid_argument("Invalid frequency: " + std::to_string(frequency));
+    }
+
     if (!waveform.get_time()) { // This means the waveform is equidistant
         time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), data.size());
     }
@@ -814,19 +831,25 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
     for (size_t i = 0; i < numberPointsForSampling; i++) {
         bool found = false;
         for (size_t interpIndex = 0; interpIndex < data.size() - 1; interpIndex++) {
-            if ((sampledTime[i] > time[interpIndex + 1]) && (interpIndex + 1) != time.size() - 1) {
+            // Skip zero-length segments (where time[i] == time[i+1])
+            // These occur in waveforms like FLYBACK_PRIMARY: time = {0, 0, dc, dc, period}
+            if (time[interpIndex + 1] == time[interpIndex]) {
+                // If sampled time is exactly at this zero-length segment, use the data value
+                if (sampledTime[i] == time[interpIndex]) {
+                    sampledData.push_back(data[interpIndex]);
+                    found = true;
+                    break;
+                }
+                // Otherwise skip this zero-length segment
                 continue;
             }
 
-            if (time[interpIndex] <= sampledTime[i]) {
-                if (time[interpIndex + 1] == time[interpIndex]) {
-                    sampledData.push_back(data[interpIndex]);
-                }
-                else {
-                    double proportion = (sampledTime[i] - time[interpIndex]) / (time[interpIndex + 1] - time[interpIndex]);
-                    double interpPoint = std::lerp(data[interpIndex], data[interpIndex + 1], proportion);
-                    sampledData.push_back(interpPoint);
-                }
+            // For non-zero-length segments, check if sampled time falls within [start, end]
+            // Use inclusive checks to handle edge cases properly
+            if (time[interpIndex] <= sampledTime[i] && sampledTime[i] <= time[interpIndex + 1]) {
+                double proportion = (sampledTime[i] - time[interpIndex]) / (time[interpIndex + 1] - time[interpIndex]);
+                double interpPoint = std::lerp(data[interpIndex], data[interpIndex + 1], proportion);
+                sampledData.push_back(interpPoint);
                 found = true;
                 break;
             }
@@ -1378,8 +1401,6 @@ Processed Inputs::calculate_processed_data(Waveform waveform,
                                             std::optional<double> frequency,
                                             bool includeAdvancedData,
                                             std::optional<Processed> processed) {
-
-
     double frequencyValue;
     if (frequency) {
         frequencyValue = frequency.value();
@@ -1760,7 +1781,7 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
 }
 
 
-Waveform Inputs::compress_waveform(Waveform waveform) {
+Waveform Inputs::compress_waveform(const Waveform& waveform) {
     Waveform compressedWaveform;
     auto data = waveform.get_data();
     data.push_back(data[0]);
@@ -1801,15 +1822,21 @@ Waveform Inputs::compress_waveform(Waveform waveform) {
     }
     compressedData.push_back(data.back());
     compressedTime.push_back(time.back());
-    waveform.set_data(compressedData);
-    waveform.set_time(compressedTime);
-    return waveform;
+    compressedWaveform.set_data(compressedData);
+    compressedWaveform.set_time(compressedTime);
+    return compressedWaveform;
 }
 
-double get_ac_ripple(Waveform waveform) {
+double get_ac_ripple(Waveform waveform, double frequency) {
     Waveform sampledWaveform;
     if (!Inputs::is_waveform_sampled(waveform)) {
-        sampledWaveform = Inputs::calculate_sampled_waveform(waveform, 0);
+        if (frequency > 0) {
+            sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
+        }
+        else {
+            // Cannot calculate ripple without frequency
+            return 0.0;
+        }
     }
     else {
         sampledWaveform = waveform;
@@ -1854,7 +1881,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
         }
 
         if (excitation.get_current()->get_waveform()) {
-            double acRipple = get_ac_ripple(excitation.get_current()->get_waveform().value());
+            double acRipple = get_ac_ripple(excitation.get_current()->get_waveform().value(), excitation.get_frequency());
             if (!excitation.get_current()->get_processed()->get_peak()) {
                 auto currentExcitation = excitation.get_current().value();
                 auto processed = calculate_processed_data(excitation.get_current()->get_waveform().value());

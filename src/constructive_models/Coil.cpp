@@ -974,14 +974,17 @@ Winding Coil::get_winding_by_name(std::string name) {
     throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a winding name: " + name);
 }
 
-size_t Coil::get_winding_index_by_name(std::string name) {
-    if (_windingIndexByName.count(name) == 0) {
-        _windingIndexByName[name] = get_winding_index_by_name(get_functional_description(), name);
+size_t Coil::get_winding_index_by_name(const std::string& name) {
+    auto it = _windingIndexByName.find(name);
+    if (it != _windingIndexByName.end()) {
+        return it->second;
     }
-    return _windingIndexByName[name];
+    size_t index = get_winding_index_by_name(get_functional_description(), name);
+    _windingIndexByName[name] = index;
+    return index;
 }
 
-size_t Coil::get_winding_index_by_name(std::vector<Winding> functionalDescription, std::string name) {
+size_t Coil::get_winding_index_by_name(const std::vector<Winding>& functionalDescription, const std::string& name) {
     for (size_t i=0; i<functionalDescription.size(); ++i) {
         if (functionalDescription[i].get_name() == name) {
             return i;

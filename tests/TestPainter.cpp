@@ -5512,4 +5512,114 @@ namespace {
         REQUIRE(fileSize > 0);
     }
 
+    TEST_CASE("Test_Painter_Bug_Toroidal_One_Turn_H_Field", "[support][painter][magnetic-field-painter][toroidal][h-field][bug]") {
+        // Test case for plotting H field in a toroidal inductor with one turn
+        // This test loads a MAS file and plots the magnetic field strength (H field)
+        auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_toroidal_several_turns_e_field.json");
+        
+        // Load the MAS data
+        auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+        
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Bug_Toroidal_One_Turn_H_Field.svg");
+        std::filesystem::remove(outFile);
+        
+        Painter painter(outFile, true);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_include_fringing(false);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        settings.set_painter_number_points_x(200);
+        settings.set_painter_number_points_y(200);
+        
+        // Plot the electric field using SDF_PHYSICS model
+        // painter.paint_electric_field(inputs.get_operating_point(0), magnetic, 1, std::nullopt, ElectricFieldVisualizationModel::SDF_PHYSICS, ColorPalette::VIRIDIS);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        
+        REQUIRE(std::filesystem::exists(outFile));
+        
+        // Log file size for debugging
+        auto fileSize = std::filesystem::file_size(outFile);
+        std::cout << "Bug toroidal one turn H field SVG size: " << fileSize << " bytes" << std::endl;
+        
+        // Check that the file was created and has content
+        REQUIRE(fileSize > 0);
+        
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Painter_Toroidal_Electric_Field_Multiple_Turns", "[support][painter][electric-field-painter][toroidal][bug]") {
+        // Test electric field visualization for toroidal cores with multiple turns
+        // to verify energy is plotted correctly on both inner and outer parts of turns
+        clear_databases();
+        
+        std::vector<int64_t> numberTurns = {10};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 1000;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97";
+
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, 
+                                                         interleavingLevel, sectionOrientation, layersOrientation, 
+                                                         turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, json::array(), numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 0.001, 25, 
+                                                                           WaveformLabel::SINUSOIDAL, 
+                                                                           voltagePeakToPeak, 0.5, 0, turnsRatios);
+        
+        // Ensure coil is processed (wound) to generate turn coordinates and additionalCoordinates
+        coil.wind();
+        
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        
+        auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+        
+        // Test electric field with BasicPainter using SDF_PHYSICS model
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Toroidal_Electric_Field_Multiple_Turns.svg");
+            std::filesystem::remove(outFile);
+            
+            // Use BasicPainter (useAdvancedPainter = false)
+            Painter painter(outFile, false, false, false);
+            
+            // High resolution grid to see both inner and outer turn energy
+            settings.set_painter_number_points_x(200);
+            settings.set_painter_number_points_y(200);
+            settings.set_painter_include_fringing(false);
+            settings.set_painter_logarithmic_scale(false);
+            
+            painter.paint_electric_field(inputs.get_operating_point(0), magnetic, 1, std::nullopt,
+                                         ElectricFieldVisualizationModel::SDF_PHYSICS, ColorPalette::VIRIDIS);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+
+            REQUIRE(std::filesystem::exists(outFile));
+            
+            // Verify the SVG file has content (field was actually painted)
+            auto fileSize = std::filesystem::file_size(outFile);
+            REQUIRE(fileSize > 1000);  // Should be at least 1KB if field was painted
+            
+            std::cout << "Toroidal electric field (multiple turns) SVG size: " << fileSize << " bytes" << std::endl;
+        }
+        settings.reset();
+    }
+
 }  // namespace

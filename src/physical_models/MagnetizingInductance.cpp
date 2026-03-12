@@ -313,7 +313,8 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
             auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
             auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
 
-            modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, magneticFieldStrength.get_processed().value().get_mutable_offset(), frequency);
+            auto Hoffset = magneticFieldStrength.get_processed().value().get_mutable_offset();
+            modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, Hoffset, frequency);
 
             if (fabs(currentInitialPermeability - modifiedInitialPermeability) < 1 || timeout == 0) {
                 break;
@@ -624,6 +625,195 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         default:
             throw GapException("Unknown type of gap, options are {GROUND, SPACER, RESIDUAL, DISTRIBUTED}");
     }
+}
+
+double MagnetizingInductance::calculate_turns_for_gap(
+    Core& core,
+    double targetInductance,
+    double temperature,
+    double frequency) 
+{
+    OpenMagnetics::InitialPermeability initialPermeability;
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
+    
+    double currentInitialPermeability = initialPermeability.get_initial_permeability(
+        core.resolve_material(), temperature, std::nullopt, frequency);
+    
+    auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+    double totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
+    
+    double turns = sqrt(targetInductance * totalReluctance);
+    return std::max(1.0, std::round(turns));
+}
+
+double MagnetizingInductance::calculate_flux_density_peak(
+    Core& core,
+    double numberTurns,
+    double peakCurrent,
+    double temperature,
+    double frequency) 
+{
+    OpenMagnetics::InitialPermeability initialPermeability;
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
+    
+    double currentInitialPermeability = initialPermeability.get_initial_permeability(
+        core.resolve_material(), temperature, std::nullopt, frequency);
+    
+    auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+    double totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    
+    // B = Φ / A = (N * I / R) / A
+    double magneticFlux = numberTurns * peakCurrent / totalReluctance;
+    double bPeak = magneticFlux / effectiveArea;
+    
+    return bPeak;
+}
+
+double MagnetizingInductance::calculate_flux_density_peak_from_voltage(
+    Core& core,
+    double numberTurns,
+    double voltagePeak,
+    double frequency) 
+{
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    
+    // Faraday's Law: V = N * Ae * dB/dt
+    // For sinusoidal: V_peak = N * Ae * ω * B_peak
+    // Therefore: B_peak = V_peak / (N * Ae * ω)
+    double omega = 2 * std::numbers::pi * frequency;
+    
+    if (numberTurns <= 0 || effectiveArea <= 0 || omega <= 0) {
+        return 0.0;
+    }
+    
+    double bPeak = voltagePeak / (numberTurns * effectiveArea * omega);
+    return bPeak;
+}
+
+double MagnetizingInductance::calculate_turns_from_voltage_and_max_flux_density(
+    Core& core,
+    double voltagePeak,
+    double frequency,
+    double maxFluxDensity)
+{
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    
+    // From Faraday's Law: B_peak = V_peak / (N * Ae * ω)
+    // Therefore: N = V_peak / (Ae * ω * B_max)
+    double omega = 2 * std::numbers::pi * frequency;
+    
+    if (effectiveArea <= 0 || omega <= 0 || maxFluxDensity <= 0) {
+        return 1.0;
+    }
+    
+    double turns = voltagePeak / (effectiveArea * omega * maxFluxDensity);
+    return std::max(1.0, std::ceil(turns));
+}
+
+std::pair<double, double> MagnetizingInductance::calculate_optimal_gap_and_turns(
+    const Core& core,
+    Inputs* inputs,
+    double maxFluxDensity,
+    double peakCurrent) 
+{
+    auto constants = OpenMagnetics::Constants();
+    double targetInductance = resolve_dimensional_values(
+        inputs->get_design_requirements().get_magnetizing_inductance(), 
+        DimensionalValues::NOMINAL);
+    
+    double temperature = Defaults().ambientTemperature;
+    double frequency = Defaults().coreAdviserFrequencyReference;
+    if (inputs->get_operating_points().size() > 0) {
+        temperature = inputs->get_operating_point(0).get_conditions().get_ambient_temperature();
+        frequency = inputs->get_operating_point(0).get_excitations_per_winding()[0].get_frequency();
+    }
+    
+    // Create a mutable copy for processing
+    Core tempCore = core;
+    if (!tempCore.get_processed_description()) {
+        tempCore.process_data();
+    }
+    
+    double effectiveArea = tempCore.get_processed_description()->get_effective_parameters().get_effective_area();
+    
+    // Step 1: Calculate minimum turns from saturation constraint
+    // B_max = L * I_peak / (N * A)  =>  N_min = L * I_peak / (B_max * A)
+    double turnsFromSaturation = (targetInductance * peakCurrent) / (maxFluxDensity * effectiveArea);
+    double minTurns = std::max(1.0, std::ceil(turnsFromSaturation));
+    
+    // Step 2: Calculate required reluctance for these turns
+    // L = N² / R  =>  R = N² / L
+    double requiredReluctance = (minTurns * minTurns) / targetInductance;
+    
+    // Step 3: Get core reluctance (ungapped) to determine needed gap reluctance
+    OpenMagnetics::InitialPermeability initialPermeability;
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
+    
+    double currentInitialPermeability = initialPermeability.get_initial_permeability(
+        tempCore.resolve_material(), temperature, std::nullopt, frequency);
+    
+    // Estimate core reluctance from effective parameters
+    double effectiveLength = tempCore.get_processed_description()->get_effective_parameters().get_effective_length();
+    double coreReluctance = effectiveLength / (constants.vacuumPermeability * currentInitialPermeability * effectiveArea);
+    
+    // Step 4: Calculate needed gap reluctance
+    double neededGapReluctance = requiredReluctance - coreReluctance;
+    
+    if (neededGapReluctance <= 0) {
+        // No gap needed - core reluctance alone is enough
+        // But verify saturation constraint is met
+        double actualTurns = sqrt(targetInductance * coreReluctance);
+        return {0.0, std::max(1.0, std::round(actualTurns))};
+    }
+    
+    // Step 5: Calculate gap length from gap reluctance
+    // R_gap = g / (μ₀ * A_gap)  =>  g = R_gap * μ₀ * A_gap
+    // Note: This is simplified - doesn't account for fringing
+    double gapArea = tempCore.get_processed_description()->get_columns()[0].get_area();
+    double gapLength = neededGapReluctance * constants.vacuumPermeability * gapArea;
+    
+    // Step 6: Validate gap is practical
+    double columnWidth = tempCore.get_columns()[0].get_width();
+    double maxGap = 0.4 * columnWidth;  // 40% of column width max
+    double minGap = constants.residualGap;
+    
+    if (gapLength > maxGap) {
+        // Gap too large - core is too small for this application
+        return {-1.0, -1.0};
+    }
+    
+    gapLength = std::max(minGap, gapLength);
+    
+    // Step 7: Refine turns with actual gap (accounts for fringing via reluctance model)
+    Core gappedCore = tempCore;
+    gappedCore.set_ground_gapping(gapLength);
+    gappedCore.process_gap();
+    
+    double finalTurns = calculate_turns_for_gap(gappedCore, targetInductance, temperature, frequency);
+    
+    // Step 8: Verify saturation constraint with final values
+    double finalBpeak = calculate_flux_density_peak(gappedCore, finalTurns, peakCurrent, temperature, frequency);
+    
+    if (finalBpeak > maxFluxDensity * 1.05) {  // Allow 5% tolerance
+        // Need to increase turns to reduce B
+        finalTurns = std::ceil((targetInductance * peakCurrent) / (maxFluxDensity * effectiveArea));
+        // Recalculate gap for new turns
+        double newRequiredReluctance = (finalTurns * finalTurns) / targetInductance;
+        double newNeededGapReluctance = newRequiredReluctance - coreReluctance;
+        if (newNeededGapReluctance > 0) {
+            gapLength = newNeededGapReluctance * constants.vacuumPermeability * gapArea;
+            gapLength = std::min(maxGap, std::max(minGap, gapLength));
+        }
+    }
+    
+    return {gapLength, finalTurns};
 }
 
 } // namespace OpenMagnetics

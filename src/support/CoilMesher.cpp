@@ -343,7 +343,6 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
     for (auto& inducingFieldPoint : fieldPerHarmonic[0].get_data()) {
 
         if (std::isnan(inducingFieldPoint.get_value())) {
-            std::cerr << "inducingFieldPoint.get_value(): " << inducingFieldPoint.get_value() << std::endl;
             throw NaNResultException("NaN found in inducingFieldPoint value");
         }
     }

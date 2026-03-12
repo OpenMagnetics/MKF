@@ -13,8 +13,13 @@ namespace OpenMagnetics {
     }
 
     OperatingPointExcitation Topology::complete_excitation(Waveform currentWaveform, Waveform voltageWaveform, double switchingFrequency, std::string name) {
+        if (switchingFrequency <= 0 || !std::isfinite(switchingFrequency)) {
+            throw std::invalid_argument("complete_excitation: Invalid switchingFrequency: " + std::to_string(switchingFrequency));
+        }
+
         OperatingPointExcitation excitation;
         excitation.set_frequency(switchingFrequency);
+        
         SignalDescriptor current;
         current.set_waveform(currentWaveform);
         auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true);
