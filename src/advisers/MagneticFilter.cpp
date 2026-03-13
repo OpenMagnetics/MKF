@@ -1506,6 +1506,16 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             if (excitation.get_voltage() && excitation.get_voltage()->get_processed() && 
                 excitation.get_voltage()->get_processed()->get_peak()) {
                 voltagePeak = excitation.get_voltage()->get_processed()->get_peak().value();
+            } else if (excitation.get_current() && excitation.get_current()->get_waveform()) {
+                // If voltage not provided but current is, derive voltage from V = L * di/dt
+                auto magnetizingInductance = resolve_dimensional_values(
+                    inputs->get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
+                if (magnetizingInductance > 0) {
+                    auto inducedVoltage = Inputs::calculate_induced_voltage(excitation, magnetizingInductance);
+                    if (inducedVoltage.get_processed() && inducedVoltage.get_processed()->get_peak()) {
+                        voltagePeak = inducedVoltage.get_processed()->get_peak().value();
+                    }
+                }
             }
             
             double numberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
