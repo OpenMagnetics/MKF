@@ -825,11 +825,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(Inputs inputs, std::vector<CoreShape>* shapes, bool includeStacks) {
     std::vector<std::pair<Magnetic, double>> magnetics;
-    std::cout << "[CoreAdviser] create_magnetic_dataset called with " << shapes->size() << " shapes" << std::endl;
     Coil coil = get_dummy_coil(inputs);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
     auto includeConcentricCores = settings.get_use_concentric_cores();
-    std::cout << "[CoreAdviser] includeToroidalCores=" << includeToroidalCores << ", includeConcentricCores=" << includeConcentricCores << std::endl;
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
     auto globalIncludeDistributedGaps = settings.get_core_adviser_include_distributed_gaps();
     double maximumHeight = DBL_MAX;
@@ -2429,7 +2427,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
     logEntry("Starting with " + std::to_string(magneticsWithScoring.size()) + " magnetics", "CoreAdviser");
-    std::cout << "[CoreAdviser] Starting with " << magneticsWithScoring.size() << " magnetics" << std::endl;
 
     bool usingPowderCores = should_include_powder(inputs);
 
@@ -2438,7 +2435,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // ========================================================================
     magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     logEntry("After AreaProduct: " + std::to_string(magneticsWithScoring.size()), "CoreAdviser");
-    std::cout << "[CoreAdviser] After AreaProduct: " << magneticsWithScoring.size() << std::endl;
 
     // ========================================================================
     // STEP 2: Separate ferrite (gappable) and powder/toroidal cores
@@ -2459,7 +2455,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         ferriteCores.resize(ferriteLimit);
     }
     logEntry("Ferrite cores after pruning: " + std::to_string(ferriteCores.size()), "CoreAdviser");
-    std::cout << "[CoreAdviser] Ferrite cores after pruning: " << ferriteCores.size() << std::endl;
 
     // ========================================================================
     // STEP 3: Process FERRITE cores (gapped)
@@ -2468,41 +2463,33 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         // Add gaps to ferrite cores
         add_gapping_standard_cores(&ferriteCores, inputs);
         logEntry("After gapping ferrite: " + std::to_string(ferriteCores.size()), "CoreAdviser");
-        std::cout << "[CoreAdviser] After gapping: " << ferriteCores.size() << std::endl;
         
         // Filter by fringing factor
         ferriteCores = filterFringingFactor.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After FringingFactor: " + std::to_string(ferriteCores.size()), "CoreAdviser");
-        std::cout << "[CoreAdviser] After FringingFactor: " << ferriteCores.size() << std::endl;
         
         // Filter by dimensions
         ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, 1, true);
         logEntry("After Dimensions (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
-        std::cout << "[CoreAdviser] After Dimensions: " << ferriteCores.size() << std::endl;
         
         // Assign concrete ferrite materials
         ferriteCores = add_ferrite_materials_by_losses(&ferriteCores, inputs);
         logEntry("After materials (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
-        std::cout << "[CoreAdviser] After materials: " << ferriteCores.size() << std::endl;
         
         // Calculate turns
         add_initial_turns_by_inductance(&ferriteCores, inputs);
-        std::cout << "[CoreAdviser] After add_initial_turns: " << ferriteCores.size() << std::endl;
         
         // Filter by inductance
         ferriteCores = filterMagneticInductance.filter_magnetics(&ferriteCores, inputs, 0.1, true);
         logEntry("After Inductance (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
-        std::cout << "[CoreAdviser] After Inductance: " << ferriteCores.size() << std::endl;
         
         // Filter by saturation
         ferriteCores = filterSaturation.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Saturation (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
-        std::cout << "[CoreAdviser] After Saturation: " << ferriteCores.size() << std::endl;
         
         // Filter by losses
         ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Losses (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
-        std::cout << "[CoreAdviser] After Losses: " << ferriteCores.size() << std::endl;
     }
 
     // ========================================================================
