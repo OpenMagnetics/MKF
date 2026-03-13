@@ -642,17 +642,9 @@ namespace {
             }
 
                 for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
-                    std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
                 }
                 for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
-                    std::cout << "isolationSides: " << magic_enum::enum_name(isolationSides[windingIndex]) << std::endl;
                 }
-                std::cout << "frequency: " << frequency << std::endl;
-                std::cout << "peakToPeak: " << peakToPeak << std::endl;
-                std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
-                std::cout << "dutyCycle: " << dutyCycle << std::endl;
-                std::cout << "dcCurrent: " << dcCurrent << std::endl;
-                std::cout << "waveShape: " << magic_enum::enum_name(waveShape) << std::endl;
 
             auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                                   magnetizingInductance,
@@ -673,17 +665,9 @@ namespace {
             }
             catch (...) {
                 for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
-                    std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
                 }
                 for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
-                    std::cout << "isolationSides: " << magic_enum::enum_name(isolationSides[windingIndex]) << std::endl;
                 }
-                std::cout << "frequency: " << frequency << std::endl;
-                std::cout << "peakToPeak: " << peakToPeak << std::endl;
-                std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
-                std::cout << "dutyCycle: " << dutyCycle << std::endl;
-                std::cout << "dcCurrent: " << dcCurrent << std::endl;
-                std::cout << "waveShape: " << magic_enum::enum_name(waveShape) << std::endl;
                 REQUIRE(false);
                 return;
             }
@@ -2659,10 +2643,8 @@ namespace {
 
         auto testStart = std::chrono::high_resolution_clock::now();
         auto printElapsed = [&testStart](const std::string& msg) {
-            auto now = std::chrono::high_resolution_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - testStart);
-            std::cout << "[" << elapsed.count() << " ms] " << msg << std::endl;
-            std::cout.flush();
+            (void)msg;
+            (void)testStart;
         };
 
         printElapsed("Test started");
@@ -2801,7 +2783,6 @@ namespace {
         printElapsed("MagneticAdviser returned " + std::to_string(masMagnetics.size()) + " magnetics");
 
         for (auto& [mas, scoring] : masMagnetics) {
-            std::cout << "  Magnetic: " << mas.get_magnetic().get_core().get_name().value() << " - Score: " << scoring << std::endl;
         }
 
         printElapsed("Test completed");
@@ -2884,36 +2865,22 @@ namespace {
         MagneticAdviser magneticAdviser;
         magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
         
-        std::cout << "\n=== Colin Tuck Flyback Design Challenge ===" << std::endl;
-        std::cout << "Input: 150VDC" << std::endl;
-        std::cout << "Output: 20V @ 1.5A (30W)" << std::endl;
-        std::cout << "Frequency: 100kHz" << std::endl;
-        std::cout << "Magnetizing Inductance: " << desiredInductance * 1e6 << " uH" << std::endl;
-        std::cout << "Turns Ratio (Np:Ns): " << turnsRatio << std::endl;
-        std::cout << "Duty Cycle: " << dutyCycle << std::endl;
-        std::cout << "\nSearching for lowest loss design..." << std::endl;
         
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
         
         REQUIRE(masMagnetics.size() > 0);
         
-        std::cout << "\nTop 5 lowest loss designs:" << std::endl;
         int rank = 1;
         for (auto [masMagnetic, scoring] : masMagnetics) {
             auto& core = masMagnetic.get_mutable_magnetic().get_core();
             auto& coil = masMagnetic.get_mutable_magnetic().get_coil();
             
-            std::cout << "\n" << rank << ". Score: " << scoring << std::endl;
-            std::cout << "   Core: " << core.get_name().value_or("Unknown");
             // Core material is a variant type - simplified output
-            std::cout << std::endl;
             
             // Print turns from functional description
             auto& funcDesc = coil.get_functional_description();
             if (!funcDesc.empty()) {
-                std::cout << "   Primary Turns: " << funcDesc[0].get_number_turns() << std::endl;
                 if (funcDesc.size() > 1) {
-                    std::cout << "   Secondary Turns: " << funcDesc[1].get_number_turns() << std::endl;
                 }
             }
             
@@ -2950,8 +2917,6 @@ namespace {
             rank++;
         }
         
-        std::cout << "\n=== Design Challenge Complete ===" << std::endl;
-        std::cout << "Compare results with Preston Consulting's design!" << std::endl;
     }
 
     TEST_CASE("Test_PlanarAdvise_Flow", "[adviser][planar][integration]") {
@@ -2970,13 +2935,8 @@ namespace {
         // Process inputs like the frontend does
         inputs.process();
         
-        std::cout << "=== Test Planar Advise Flow ===" << std::endl;
-            std::cout << "Magnetizing Inductance: " << inputs.get_design_requirements().get_magnetizing_inductance().get_nominal().value() << " H" << std::endl;
-            std::cout << "Wiring Technology: " << magic_enum::enum_name(inputs.get_design_requirements().get_wiring_technology().value()) << std::endl;
-            std::cout << "Number of Operating Points: " << inputs.get_operating_points().size() << std::endl;
             
         // Step 1: Run Core Adviser to get core (like "Advise Core" button)
-        std::cout << "\n=== Step 1: Core Adviser ===" << std::endl;
         
         CoreAdviser coreAdviser;
         coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
@@ -2992,131 +2952,96 @@ namespace {
             
             auto& masWithCore = coreResults[0].first;
             auto& magnetic = masWithCore.get_mutable_magnetic();
-            std::cout << "Selected Core: " << (magnetic.get_core().get_name() ? magnetic.get_core().get_name().value() : "unnamed") << std::endl;
-            std::cout << "Number of Windings: " << magnetic.get_coil().get_functional_description().size() << std::endl;
             
             for (size_t i = 0; i < magnetic.get_coil().get_functional_description().size(); ++i) {
-                std::cout << "Winding " << i << " turns: " << magnetic.get_coil().get_functional_description()[i].get_number_turns() << std::endl;
             }
         
         // Step 2: Run Coil Adviser (like "Advise Wires" button)
-        std::cout << "\n=== Step 2: Coil Adviser ===" << std::endl;
         
         CoilAdviser coilAdviser;
         auto masWithCoils = coilAdviser.get_advised_coil(masWithCore, 5);
         
-        std::cout << "Number of coil results: " << masWithCoils.size() << std::endl;
         
         // Analyze all coil results to compare with frontend
         for (size_t resultIndex = 0; resultIndex < masWithCoils.size(); ++resultIndex) {
-            std::cout << "\n=== Coil Result " << resultIndex << " ===" << std::endl;
             auto& masWithCoil = masWithCoils[resultIndex];
             auto& advisedMagnetic = masWithCoil.get_mutable_magnetic();
             auto& advisedCoil = advisedMagnetic.get_mutable_coil();
             
-            std::cout << "Coil has turns_description: " << (advisedCoil.get_turns_description() ? "yes" : "no") << std::endl;
             
             if (advisedCoil.get_turns_description()) {
                 auto turns = advisedCoil.get_turns_description().value();
-                std::cout << "Total turns: " << turns.size() << std::endl;
             }
             
             // Check layers
             auto wires = advisedCoil.get_wires();
-            std::cout << "\nWires per winding:" << std::endl;
             for (size_t i = 0; i < wires.size(); ++i) {
-                std::cout << "  Winding " << i << " wire type: " << magic_enum::enum_name(wires[i].get_type()) << std::endl;
             }
             
             // Check if turns fit
-            std::cout << "\n=== Checking Turns Fit ===" << std::endl;
             
             // Get bobbin info from coil
             auto bobbin = advisedCoil.resolve_bobbin();
-            std::cout << "Bobbin has processed_description: " << (bobbin.get_processed_description() ? "yes" : "no") << std::endl;
             
             if (bobbin.get_processed_description()) {
                 auto procDesc = bobbin.get_processed_description().value();
-                std::cout << "Number of winding windows: " << procDesc.get_winding_windows().size() << std::endl;
                 
                 for (size_t i = 0; i < procDesc.get_winding_windows().size(); ++i) {
                     auto& ww = procDesc.get_winding_windows()[i];
-                    std::cout << "Winding Window " << i << ":" << std::endl;
                     if (ww.get_height()) {
-                        std::cout << "  Height: " << ww.get_height().value() << std::endl;
                     }
                     if (ww.get_width()) {
-                        std::cout << "  Width: " << ww.get_width().value() << std::endl;
                     }
                     if (ww.get_area()) {
-                        std::cout << "  Area: " << ww.get_area().value() << std::endl;
                     }
                     if (ww.get_sections_alignment()) {
-                        std::cout << "  Sections alignment: " << magic_enum::enum_name(ww.get_sections_alignment().value()) << std::endl;
                     }
                 }
             }
             
             // Check layers information
             auto functionalDesc = advisedCoil.get_functional_description();
-            std::cout << "\n=== Layer Information ===" << std::endl;
             
             // Check if we have sections and layers descriptions
             if (advisedCoil.get_sections_description()) {
                 auto sections = advisedCoil.get_sections_description().value();
-                std::cout << "Total sections: " << sections.size() << std::endl;
                 for (size_t i = 0; i < sections.size(); ++i) {
-                    std::cout << "  Section " << i << ": " << sections[i].get_name() << std::endl;
                 }
             }
             
             if (advisedCoil.get_layers_description()) {
                 auto layers = advisedCoil.get_layers_description().value();
-                std::cout << "Total layers: " << layers.size() << std::endl;
                 for (size_t i = 0; i < layers.size(); ++i) {
-                    std::cout << "  Layer " << i << ": " << layers[i].get_name() << std::endl;
                 }
             }
             
             // Check layers per winding
             for (size_t i = 0; i < functionalDesc.size(); ++i) {
-                std::cout << "\nWinding " << i << ":" << std::endl;
-                std::cout << "  Number of turns: " << functionalDesc[i].get_number_turns() << std::endl;
-                std::cout << "  Number of parallels: " << advisedCoil.get_number_parallels(i) << std::endl;
 
                 auto windingLayers = advisedCoil.get_layers_by_winding_index(i);
-                std::cout << "  Number of layers: " << windingLayers.size() << std::endl;
                 for (size_t j = 0; j < windingLayers.size(); ++j) {
-                    std::cout << "    Layer " << j << ": " << windingLayers[j].get_name() << std::endl;
                 }
             }
 
             // Check wire dimensions
-            std::cout << "\n=== Wire Dimensions ===" << std::endl;
             for (size_t i = 0; i < wires.size(); ++i) {
-                std::cout << "Winding " << i << " wire:" << std::endl;
                 auto wire = wires[i];
                 double conductingWidth = 0;
                 double conductingHeight = 0;
                 if (wire.get_conducting_width()) {
                     conductingWidth = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_width().value());
-                    std::cout << "  Conducting width: " << conductingWidth << " m" << std::endl;
                 }
                 if (wire.get_conducting_height()) {
                     conductingHeight = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value());
-                    std::cout << "  Conducting height: " << conductingHeight << " m" << std::endl;
                 }
                 if (wire.get_outer_width()) {
-                    std::cout << "  Outer width: " << OpenMagnetics::resolve_dimensional_values(wire.get_outer_width().value()) << " m" << std::endl;
                 }
                 if (wire.get_outer_height()) {
-                    std::cout << "  Outer height: " << OpenMagnetics::resolve_dimensional_values(wire.get_outer_height().value()) << " m" << std::endl;
                 }
                 
                 // Calculate current density
                 if (conductingWidth > 0 && conductingHeight > 0) {
                     double crossSectionalArea = conductingWidth * conductingHeight;
-                    std::cout << "  Cross-sectional area: " << crossSectionalArea << " m²" << std::endl;
                     
                     // Get current from operating point
                     if (inputs.get_operating_points().size() > 0) {
@@ -3126,9 +3051,6 @@ namespace {
                             if (excitation.get_current() && excitation.get_current().value().get_processed() && excitation.get_current().value().get_processed().value().get_rms()) {
                                 double currentRms = excitation.get_current().value().get_processed().value().get_rms().value();
                                 double currentDensity = currentRms / crossSectionalArea;
-                                std::cout << "  Current (RMS): " << currentRms << " A" << std::endl;
-                                std::cout << "  Current Density: " << currentDensity << " A/m²" << std::endl;
-                                std::cout << "  Current Density: " << (currentDensity / 1e6) << " A/mm²" << std::endl;
                             }
                         }
                     }
@@ -3136,7 +3058,6 @@ namespace {
             }
         }
         
-        std::cout << "\n=== Test Complete ===" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "Test failed with exception: " << e.what() << std::endl;
             throw;
@@ -3175,85 +3096,63 @@ TEST_CASE("Test_Planar_CoilAdviser_From_Full_MAS", "[adviser][planar][coil][full
         REQUIRE(coreResults.size() > 0);
         auto mas = coreResults[0].first;
         
-        std::cout << "\n=== Test Planar Coil Adviser from Full MAS ===" << std::endl;
-        std::cout << "Core: " << (mas.get_magnetic().get_core().get_name() ? mas.get_magnetic().get_core().get_name().value() : "unnamed") << std::endl;
-        std::cout << "Number of Windings: " << mas.get_magnetic().get_coil().get_functional_description().size() << std::endl;
         
         for (size_t i = 0; i < mas.get_magnetic().get_coil().get_functional_description().size(); ++i) {
-            std::cout << "Winding " << i << " turns: " << mas.get_magnetic().get_coil().get_functional_description()[i].get_number_turns() << std::endl;
         }
         
         // Run Coil Adviser
-        std::cout << "\n=== Running Coil Adviser ===" << std::endl;
         
         CoilAdviser coilAdviser;
         auto masWithCoils = coilAdviser.get_advised_coil(mas, 5);
         
-        std::cout << "Number of coil results: " << masWithCoils.size() << std::endl;
         
         // Show all results
         for (size_t resultIndex = 0; resultIndex < masWithCoils.size(); ++resultIndex) {
-            std::cout << "\n=== Coil Result " << resultIndex << " ===" << std::endl;
             auto& masWithCoil = masWithCoils[resultIndex];
             auto& advisedMagnetic = masWithCoil.get_mutable_magnetic();
             auto& advisedCoil = advisedMagnetic.get_mutable_coil();
             
             // Check section dimensions
-            std::cout << "\n  Section info:" << std::endl;
             auto sections = advisedCoil.get_sections_description();
             if (sections && sections->size() > 0) {
                 for (size_t i = 0; i < sections->size(); ++i) {
                     auto sectionDims = (*sections)[i].get_dimensions();
-                    std::cout << "    Section " << i << " dimensions: " << sectionDims.size() << std::endl;
                     if (sectionDims.size() >= 2) {
-                        std::cout << "      Width: " << sectionDims[0] * 1000 << " mm" << std::endl;
-                        std::cout << "      Height: " << sectionDims[1] * 1000 << " mm" << std::endl;
                     }
                 }
             }
             
             auto wires = advisedCoil.get_wires();
             for (size_t i = 0; i < wires.size(); ++i) {
-                std::cout << "Winding " << i << " wire:" << std::endl;
                 auto wire = wires[i];
                 if (wire.get_conducting_width()) {
-                    std::cout << "  Conducting width: " << OpenMagnetics::resolve_dimensional_values(wire.get_conducting_width().value()) * 1000 << " mm" << std::endl;
                 }
                 if (wire.get_conducting_height()) {
-                    std::cout << "  Conducting height: " << OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value()) * 1000 << " mm" << std::endl;
                 }
             }
             
             // Check bobbin and layers
-            std::cout << "\n  Bobbin info:" << std::endl;
             auto bobbin = advisedCoil.resolve_bobbin();
             if (bobbin.get_processed_description()) {
                 auto procDesc = bobbin.get_processed_description().value();
-                std::cout << "    Winding windows: " << procDesc.get_winding_windows().size() << std::endl;
                 for (size_t i = 0; i < procDesc.get_winding_windows().size(); ++i) {
                     auto& ww = procDesc.get_winding_windows()[i];
                     if (ww.get_width()) {
-                        std::cout << "    Window width: " << ww.get_width().value() * 1000 << " mm" << std::endl;
                     }
                     if (ww.get_height()) {
-                        std::cout << "    Window height: " << ww.get_height().value() * 1000 << " mm" << std::endl;
                     }
                 }
             }
             
             // Check layers
             auto functionalDesc = advisedCoil.get_functional_description();
-            std::cout << "\n  Layers per winding:" << std::endl;
             for (size_t i = 0; i < functionalDesc.size(); ++i) {
                 auto windingLayers = advisedCoil.get_layers_by_winding_index(i);
-                std::cout << "    Winding " << i << ": " << windingLayers.size() << " layers" << std::endl;
                 for (size_t j = 0; j < windingLayers.size(); ++j) {
-                    std::cout << "      - " << windingLayers[j].get_name() << std::endl;
                 }
             }
         }
         
-        std::cout << "\n=== Test Complete ===" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Test failed with exception: " << e.what() << std::endl;
         throw;
@@ -3296,12 +3195,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback", "[adviser][from-converter
         
         auto& [mas, score] = results[0];
         REQUIRE(score > 0);
-        std::cout << "Flyback result score: " << score << std::endl;
         
-        std::cout << "Recommended core: " << mas.get_magnetic().get_core().get_name().value_or("Unknown") << std::endl;
-        std::cout << "Primary turns: " << mas.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() << std::endl;
-        std::cout << "Secondary turns: " << mas.get_magnetic().get_coil().get_functional_description()[1].get_number_turns() << std::endl;
-        std::cout << "Magnetizing inductance: " << resolve_dimensional_values(mas.get_inputs().get_design_requirements().get_magnetizing_inductance()) * 1e6 << " uH" << std::endl;
 }
 
 // ============================================================================
@@ -3335,7 +3229,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_WithWeights", "[adviser][fr
     auto results = adviser.get_advised_magnetic_from_converter(converter, weights, 1);
     REQUIRE(results.size() > 0);
     REQUIRE(results[0].second > 0);
-    std::cout << "Flyback (weighted) result score: " << results[0].second << std::endl;
 }
 
 // ============================================================================
@@ -3367,7 +3260,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Buck", "[adviser][from-converter][b
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "Buck result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -3399,7 +3291,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Boost", "[adviser][from-converter][
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "Boost result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -3432,7 +3323,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward", "[adviser][fr
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "SingleSwitchForward result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -3467,7 +3357,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward", "[adviser][from-
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "TwoSwitchForward result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -3500,7 +3389,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward", "[adviser][fro
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "ActiveClampForward result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -3533,7 +3421,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_PushPull", "[adviser][from-converte
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "PushPull result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -3565,7 +3452,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck", "[adviser][from-conv
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "IsolatedBuck result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -3597,7 +3483,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost", "[adviser][from
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "IsolatedBuckBoost result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -3632,7 +3517,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_LLC", "[adviser][from-converter][ll
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "LLC result score: " << score << std::endl;
 
     // Plot waveforms using BasicPainter for visual verification
     auto& inputs = mas.get_inputs();
@@ -3652,7 +3536,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_LLC", "[adviser][from-converter][ll
         std::ofstream file(outFile);
         file << svg;
         file.close();
-        std::cout << "LLC waveforms saved to: " << outFile << std::endl;
     }
 }
 
@@ -3682,44 +3565,31 @@ TEST_CASE("Test_LLC_Separate_CoreAdviser_CoilAdviser", "[adviser][from-converter
     OpenMagnetics::Llc converter(converterJson);
     auto llcInputs = converter.process();
     
-    std::cout << "\n=== LLC Separate Advisers Test ===" << std::endl;
-    std::cout << "Number of windings: " << llcInputs.get_operating_points()[0].get_excitations_per_winding().size() << std::endl;
     
     auto isolationSides = llcInputs.get_design_requirements().get_isolation_sides().value();
-    std::cout << "Isolation sides: ";
     for (auto& side : isolationSides) {
-        std::cout << to_string(side) << " ";
     }
-    std::cout << std::endl;
     
     // Step 1: CoreAdviser alone
-    std::cout << "Running CoreAdviser..." << std::endl;
     CoreAdviser coreAdviser;
     auto coreResults = coreAdviser.get_advised_core(llcInputs, 3);
-    std::cout << "CoreAdviser returned " << coreResults.size() << " results" << std::endl;
     REQUIRE(coreResults.size() > 0);
     
     // Step 2: CoilAdviser with first core result
     OpenMagnetics::Mas coreMas = coreResults[0].first;
     double coreScore = coreResults[0].second;
-    std::cout << "Using core with score: " << coreScore << std::endl;
     
-    std::cout << "Running CoilAdviser..." << std::endl;
     CoilAdviser coilAdviser;
     auto coilResults = coilAdviser.get_advised_coil(coreMas, 3);
-    std::cout << "CoilAdviser returned " << coilResults.size() << " results" << std::endl;
     REQUIRE(coilResults.size() > 0);
     
     OpenMagnetics::Mas finalMas = coilResults[0];
-    std::cout << "CoilAdviser succeeded" << std::endl;
     
-    std::cout << "LLC separate advisers test PASSED" << std::endl;
 }
 
 TEST_CASE("Test_MagneticAdviser_WebFrontend_Defaults", "[adviser][magnetic-adviser][web-frontend]") {
     // This test uses the EXACT default values from the web frontend defaults.js
     // No mocks, no fallbacks - just real data like the web frontend sends
-    std::cout << "\n=== Test Magnetic Adviser Web Frontend Defaults ===" << std::endl;
     
     clear_databases();
     settings.set_use_concentric_cores(false);
@@ -3759,7 +3629,6 @@ TEST_CASE("Test_MagneticAdviser_WebFrontend_Defaults", "[adviser][magnetic-advis
     
     inputs.process();
     
-    std::cout << "Inputs created with web frontend defaults" << std::endl;
     
     // EXACT weights from WebFrontend/WebSharedComponents/assets/js/defaults.js: magneticAdviserWeights
     // Note: We transform from Title Case to match MKF's expected format
@@ -3780,25 +3649,18 @@ TEST_CASE("Test_MagneticAdviser_WebFrontend_Defaults", "[adviser][magnetic-advis
         weights[filter] = weight / externalSum;
     }
     
-    std::cout << "Weights created: Losses=" << weights[MagneticFilters::LOSSES] 
-              << ", Dimensions=" << weights[MagneticFilters::DIMENSIONS] 
-              << ", Cost=" << weights[MagneticFilters::COST] << std::endl;
-    
     // Create magnetic adviser with "standard cores" mode (from web frontend)
     OpenMagnetics::MagneticAdviser magneticAdviser;
     magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
     magneticAdviser.set_application(MAS::Application::POWER);
     
-    std::cout << "Calling get_advised_magnetic with web frontend defaults..." << std::endl;
     
     try {
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, weights, 6);
         
-        std::cout << "SUCCESS: get_advised_magnetic returned " << masMagnetics.size() << " results" << std::endl;
         
         // Verify we can access all results without bad_optional_access
         for (auto& [masMagnetic, scoring] : masMagnetics) {
-            std::cout << "Processing result with score: " << scoring << std::endl;
             
             // This should NOT throw bad_optional_access if our fixes work
             auto& magnetic = masMagnetic.get_magnetic();
@@ -3806,33 +3668,25 @@ TEST_CASE("Test_MagneticAdviser_WebFrontend_Defaults", "[adviser][magnetic-advis
             auto coilSections = magnetic.get_coil().get_sections_description();
             
             if (coreName) {
-                std::cout << "  Core: " << coreName.value() << std::endl;
             }
             if (coilSections && !coilSections->empty()) {
-                std::cout << "  Coil sections: " << coilSections->size() << std::endl;
             }
             
             // Verify outputs exist
             if (masMagnetic.get_outputs().size() > 0) {
                 auto& output = masMagnetic.get_outputs()[0];
                 if (output.get_core_losses()) {
-                    std::cout << "  Core losses: " << output.get_core_losses().value().get_core_losses() << " W" << std::endl;
                 }
                 if (output.get_winding_losses()) {
-                    std::cout << "  Winding losses: " << output.get_winding_losses().value().get_winding_losses() << " W" << std::endl;
                 }
             }
         }
         
         REQUIRE(masMagnetics.size() > 0);
-        std::cout << "TEST PASSED: Web frontend defaults work correctly" << std::endl;
         
     } catch (const std::bad_optional_access& e) {
-        std::cout << "FAILED - BAD OPTIONAL ACCESS: " << e.what() << std::endl;
-        std::cout << "This reproduces the web frontend bug!" << std::endl;
         throw;
     } catch (const std::exception& e) {
-        std::cout << "FAILED - ERROR: " << e.what() << std::endl;
         throw;
     }
 }
@@ -3991,7 +3845,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_Analytical", "[adviser][fro
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "Flyback (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4021,7 +3874,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Buck_Analytical", "[adviser][from-c
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "Buck (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4051,7 +3903,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Boost_Analytical", "[adviser][from-
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "Boost (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4082,7 +3933,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward_Analytical", "[
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "SingleSwitchForward (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4113,7 +3963,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward_Analytical", "[adv
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "TwoSwitchForward (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4144,7 +3993,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward_Analytical", "[a
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "ActiveClampForward (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4175,7 +4023,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_PushPull_Analytical", "[adviser][fr
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "PushPull (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4205,7 +4052,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck_Analytical", "[adviser
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "IsolatedBuck (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4235,7 +4081,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost_Analytical", "[ad
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "IsolatedBuckBoost (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4268,7 +4113,6 @@ TEST_CASE("Test_MagneticAdviserFromConverter_LLC_Analytical", "[adviser][from-co
 
     auto& [mas, score] = results[0];
     REQUIRE(score > 0);
-    std::cout << "LLC (analytical) result score: " << score << std::endl;
 }
 
 // ============================================================================
@@ -4301,7 +4145,6 @@ TEST_CASE("Test_Flyback_Analytical_MagneticAdviser", "[adviser][topology-matrix]
     OpenMagnetics::Flyback converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Flyback Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_Flyback_Analytical_SeparateAdvisers", "[adviser][topology-matrix][flyback][analytical][separate-advisers]") {
@@ -4323,7 +4166,6 @@ TEST_CASE("Test_Flyback_Analytical_SeparateAdvisers", "[adviser][topology-matrix
     auto inputs = get_inputs_from_converter_analytical(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Flyback Analytical+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 TEST_CASE("Test_Flyback_Simulated_MagneticAdviser", "[adviser][topology-matrix][flyback][simulated][magnetic-adviser]") {
@@ -4345,7 +4187,6 @@ TEST_CASE("Test_Flyback_Simulated_MagneticAdviser", "[adviser][topology-matrix][
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Flyback Simulated+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_Flyback_Simulated_SeparateAdvisers", "[adviser][topology-matrix][flyback][simulated][separate-advisers]") {
@@ -4367,7 +4208,6 @@ TEST_CASE("Test_Flyback_Simulated_SeparateAdvisers", "[adviser][topology-matrix]
     auto inputs = get_inputs_from_converter_simulated(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Flyback Simulated+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 // ============================================================================
@@ -4390,7 +4230,6 @@ TEST_CASE("Test_Buck_Analytical_MagneticAdviser", "[adviser][topology-matrix][bu
     OpenMagnetics::Buck converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Buck Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_Buck_Analytical_SeparateAdvisers", "[adviser][topology-matrix][buck][analytical][separate-advisers]") {
@@ -4411,7 +4250,6 @@ TEST_CASE("Test_Buck_Analytical_SeparateAdvisers", "[adviser][topology-matrix][b
     auto inputs = get_inputs_from_converter_analytical(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Buck Analytical+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 TEST_CASE("Test_Buck_Simulated_MagneticAdviser", "[adviser][topology-matrix][buck][simulated][magnetic-adviser]") {
@@ -4432,7 +4270,6 @@ TEST_CASE("Test_Buck_Simulated_MagneticAdviser", "[adviser][topology-matrix][buc
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Buck Simulated+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_Buck_Simulated_SeparateAdvisers", "[adviser][topology-matrix][buck][simulated][separate-advisers]") {
@@ -4453,7 +4290,6 @@ TEST_CASE("Test_Buck_Simulated_SeparateAdvisers", "[adviser][topology-matrix][bu
     auto inputs = get_inputs_from_converter_simulated(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Buck Simulated+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 // ============================================================================
@@ -4476,7 +4312,6 @@ TEST_CASE("Test_Boost_Analytical_MagneticAdviser", "[adviser][topology-matrix][b
     OpenMagnetics::Boost converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Boost Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_Boost_Analytical_SeparateAdvisers", "[adviser][topology-matrix][boost][analytical][separate-advisers]") {
@@ -4497,7 +4332,6 @@ TEST_CASE("Test_Boost_Analytical_SeparateAdvisers", "[adviser][topology-matrix][
     auto inputs = get_inputs_from_converter_analytical(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Boost Analytical+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 TEST_CASE("Test_Boost_Simulated_MagneticAdviser", "[adviser][topology-matrix][boost][simulated][magnetic-adviser]") {
@@ -4518,7 +4352,6 @@ TEST_CASE("Test_Boost_Simulated_MagneticAdviser", "[adviser][topology-matrix][bo
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Boost Simulated+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_Boost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][boost][simulated][separate-advisers]") {
@@ -4539,7 +4372,6 @@ TEST_CASE("Test_Boost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][b
     auto inputs = get_inputs_from_converter_simulated(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "Boost Simulated+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 // ============================================================================
@@ -4565,7 +4397,6 @@ TEST_CASE("Test_SingleSwitchForward_Analytical_MagneticAdviser", "[adviser][topo
     OpenMagnetics::SingleSwitchForward converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "SingleSwitchForward Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_SingleSwitchForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward][analytical][separate-advisers]") {
@@ -4587,7 +4418,6 @@ TEST_CASE("Test_SingleSwitchForward_Analytical_SeparateAdvisers", "[adviser][top
     auto inputs = get_inputs_from_converter_analytical(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "SingleSwitchForward Analytical+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 TEST_CASE("Test_SingleSwitchForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward][simulated][magnetic-adviser]") {
@@ -4609,7 +4439,6 @@ TEST_CASE("Test_SingleSwitchForward_Simulated_MagneticAdviser", "[adviser][topol
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "SingleSwitchForward Simulated+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_SingleSwitchForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward][simulated][separate-advisers]") {
@@ -4631,7 +4460,6 @@ TEST_CASE("Test_SingleSwitchForward_Simulated_SeparateAdvisers", "[adviser][topo
     auto inputs = get_inputs_from_converter_simulated(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "SingleSwitchForward Simulated+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 // ============================================================================
@@ -4657,7 +4485,6 @@ TEST_CASE("Test_TwoSwitchForward_Analytical_MagneticAdviser", "[adviser][topolog
     OpenMagnetics::TwoSwitchForward converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "TwoSwitchForward Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_TwoSwitchForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward][analytical][separate-advisers]") {
@@ -4679,7 +4506,6 @@ TEST_CASE("Test_TwoSwitchForward_Analytical_SeparateAdvisers", "[adviser][topolo
     auto inputs = get_inputs_from_converter_analytical(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "TwoSwitchForward Analytical+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 TEST_CASE("Test_TwoSwitchForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward][simulated][magnetic-adviser]") {
@@ -4701,7 +4527,6 @@ TEST_CASE("Test_TwoSwitchForward_Simulated_MagneticAdviser", "[adviser][topology
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "TwoSwitchForward Simulated+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_TwoSwitchForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward][simulated][separate-advisers]") {
@@ -4723,7 +4548,6 @@ TEST_CASE("Test_TwoSwitchForward_Simulated_SeparateAdvisers", "[adviser][topolog
     auto inputs = get_inputs_from_converter_simulated(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "TwoSwitchForward Simulated+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 // ============================================================================
@@ -4749,7 +4573,6 @@ TEST_CASE("Test_ActiveClampForward_Analytical_MagneticAdviser", "[adviser][topol
     OpenMagnetics::ActiveClampForward converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "ActiveClampForward Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_ActiveClampForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward][analytical][separate-advisers]") {
@@ -4771,7 +4594,6 @@ TEST_CASE("Test_ActiveClampForward_Analytical_SeparateAdvisers", "[adviser][topo
     auto inputs = get_inputs_from_converter_analytical(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "ActiveClampForward Analytical+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 TEST_CASE("Test_ActiveClampForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward][simulated][magnetic-adviser]") {
@@ -4793,7 +4615,6 @@ TEST_CASE("Test_ActiveClampForward_Simulated_MagneticAdviser", "[adviser][topolo
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "ActiveClampForward Simulated+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_ActiveClampForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward][simulated][separate-advisers]") {
@@ -4815,7 +4636,6 @@ TEST_CASE("Test_ActiveClampForward_Simulated_SeparateAdvisers", "[adviser][topol
     auto inputs = get_inputs_from_converter_simulated(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "ActiveClampForward Simulated+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 // ============================================================================
@@ -4844,7 +4664,6 @@ TEST_CASE("Test_PushPull_Analytical_MagneticAdviser", "[adviser][topology-matrix
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "PushPull Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_PushPull_Analytical_SeparateAdvisers", "[adviser][topology-matrix][push-pull][analytical][separate-advisers]") {
@@ -4869,7 +4688,6 @@ TEST_CASE("Test_PushPull_Analytical_SeparateAdvisers", "[adviser][topology-matri
     CoreAdviser coreAdviser;
     auto coreResults = coreAdviser.get_advised_core(inputs, 3);
     REQUIRE(coreResults.size() > 0);
-    std::cout << "PushPull Analytical+SeparateAdvisers: " << coreResults.size() << " cores found" << std::endl;
 }
 
 TEST_CASE("Test_PushPull_Simulated_MagneticAdviser", "[adviser][topology-matrix][push-pull][simulated][magnetic-adviser]") {
@@ -4891,13 +4709,11 @@ TEST_CASE("Test_PushPull_Simulated_MagneticAdviser", "[adviser][topology-matrix]
     
     // Get simulated inputs
     auto inputs = get_inputs_from_converter_simulated(converter);
-    std::cout << "PushPull simulated inputs ready" << std::endl;
     
     // Just test CoreAdviser since full MagneticAdviser is too slow
     CoreAdviser coreAdviser;
     auto coreResults = coreAdviser.get_advised_core(inputs, 3);
     REQUIRE(coreResults.size() > 0);
-    std::cout << "PushPull Simulated+CoreAdviser: " << coreResults.size() << " cores found" << std::endl;
 }
 
 TEST_CASE("Test_PushPull_Simulated_SeparateAdvisers", "[adviser][topology-matrix][push-pull][simulated][separate-advisers]") {
@@ -4922,7 +4738,6 @@ TEST_CASE("Test_PushPull_Simulated_SeparateAdvisers", "[adviser][topology-matrix
     CoreAdviser coreAdviser;
     auto coreResults = coreAdviser.get_advised_core(inputs, 3);
     REQUIRE(coreResults.size() > 0);
-    std::cout << "PushPull Simulated+SeparateAdvisers: " << coreResults.size() << " cores found" << std::endl;
 }
 
 // ============================================================================
@@ -4949,7 +4764,6 @@ TEST_CASE("Test_IsolatedBuck_Analytical_MagneticAdviser", "[adviser][topology-ma
     OpenMagnetics::IsolatedBuck converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "IsolatedBuck Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_IsolatedBuck_Analytical_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck][analytical][separate-advisers]") {
@@ -4970,7 +4784,6 @@ TEST_CASE("Test_IsolatedBuck_Analytical_SeparateAdvisers", "[adviser][topology-m
     auto inputs = get_inputs_from_converter_analytical(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "IsolatedBuck Analytical+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 TEST_CASE("Test_IsolatedBuck_Simulated_MagneticAdviser", "[adviser][topology-matrix][isolated-buck][simulated][magnetic-adviser]") {
@@ -4991,7 +4804,6 @@ TEST_CASE("Test_IsolatedBuck_Simulated_MagneticAdviser", "[adviser][topology-mat
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "IsolatedBuck Simulated+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_IsolatedBuck_Simulated_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck][simulated][separate-advisers]") {
@@ -5012,7 +4824,6 @@ TEST_CASE("Test_IsolatedBuck_Simulated_SeparateAdvisers", "[adviser][topology-ma
     auto inputs = get_inputs_from_converter_simulated(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "IsolatedBuck Simulated+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 // ============================================================================
@@ -5039,7 +4850,6 @@ TEST_CASE("Test_IsolatedBuckBoost_Analytical_MagneticAdviser", "[adviser][topolo
     OpenMagnetics::IsolatedBuckBoost converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "IsolatedBuckBoost Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_IsolatedBuckBoost_Analytical_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-boost][analytical][separate-advisers]") {
@@ -5063,7 +4873,6 @@ TEST_CASE("Test_IsolatedBuckBoost_Analytical_SeparateAdvisers", "[adviser][topol
     CoreAdviser coreAdviser;
     auto coreResults = coreAdviser.get_advised_core(inputs, 3);
     REQUIRE(coreResults.size() > 0);
-    std::cout << "IsolatedBuckBoost Analytical+SeparateAdvisers: " << coreResults.size() << " cores found" << std::endl;
 }
 
 TEST_CASE("Test_IsolatedBuckBoost_Simulated_MagneticAdviser", "[adviser][topology-matrix][isolated-buck-boost][simulated][magnetic-adviser]") {
@@ -5089,7 +4898,6 @@ TEST_CASE("Test_IsolatedBuckBoost_Simulated_MagneticAdviser", "[adviser][topolog
     CoreAdviser coreAdviser;
     auto coreResults = coreAdviser.get_advised_core(inputs, 3);
     REQUIRE(coreResults.size() > 0);
-    std::cout << "IsolatedBuckBoost Simulated+CoreAdviser: " << coreResults.size() << " cores found" << std::endl;
 }
 
 TEST_CASE("Test_IsolatedBuckBoost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-boost][simulated][separate-advisers]") {
@@ -5113,7 +4921,6 @@ TEST_CASE("Test_IsolatedBuckBoost_Simulated_SeparateAdvisers", "[adviser][topolo
     CoreAdviser coreAdviser;
     auto coreResults = coreAdviser.get_advised_core(inputs, 3);
     REQUIRE(coreResults.size() > 0);
-    std::cout << "IsolatedBuckBoost Simulated+SeparateAdvisers: " << coreResults.size() << " cores found" << std::endl;
 }
 
 // ============================================================================
@@ -5139,7 +4946,6 @@ TEST_CASE("Test_LLC_Analytical_MagneticAdviser", "[adviser][topology-matrix][llc
     OpenMagnetics::Llc converter(converterJson);
     auto results = get_advised_magnetic_from_converter_analytical(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "LLC Analytical+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_LLC_Analytical_SeparateAdvisers", "[adviser][topology-matrix][llc][analytical][separate-advisers]") {
@@ -5163,7 +4969,6 @@ TEST_CASE("Test_LLC_Analytical_SeparateAdvisers", "[adviser][topology-matrix][ll
     auto inputs = get_inputs_from_converter_analytical(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "LLC Analytical+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 TEST_CASE("Test_LLC_Simulated_MagneticAdviser", "[adviser][topology-matrix][llc][simulated][magnetic-adviser]") {
@@ -5187,7 +4992,6 @@ TEST_CASE("Test_LLC_Simulated_MagneticAdviser", "[adviser][topology-matrix][llc]
     MagneticAdviser adviser;
     auto results = adviser.get_advised_magnetic_from_converter(converter, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "LLC Simulated+MagneticAdviser: score=" << results[0].second << std::endl;
 }
 
 TEST_CASE("Test_LLC_Simulated_SeparateAdvisers", "[adviser][topology-matrix][llc][simulated][separate-advisers]") {
@@ -5211,7 +5015,6 @@ TEST_CASE("Test_LLC_Simulated_SeparateAdvisers", "[adviser][topology-matrix][llc
     auto inputs = get_inputs_from_converter_simulated(converter);
     auto results = run_separate_advisers(inputs, 1);
     REQUIRE(results.size() > 0);
-    std::cout << "LLC Simulated+SeparateAdvisers: returned " << results.size() << " results" << std::endl;
 }
 
 // ============================================================================
@@ -5227,36 +5030,26 @@ TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyba
     
     OpenMagnetics::Inputs inputs(masJson["inputs"]);
     
-    std::cout << "\n=== Testing Flyback Bug MAS ===" << std::endl;
     
     // Debug topology - the JSON has "Flyback" but MAS expects "Flyback Converter"
     auto topologyOpt = inputs.get_design_requirements().get_topology();
     if (topologyOpt.has_value()) {
         auto topology = topologyOpt.value();
-        std::cout << "Topology enum value: " << static_cast<int>(topology) << std::endl;
-        std::cout << "Topology name: " << magic_enum::enum_name(topology) << std::endl;
         if (topology == MAS::Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER) {
-            std::cout << "WARNING: Topology not parsed correctly from JSON (expected Flyback Converter, got Active Clamp Forward)" << std::endl;
-            std::cout << "The JSON has 'Flyback' but MAS library expects 'Flyback Converter'" << std::endl;
         }
     } else {
-        std::cout << "Topology: NOT SET (will use default)" << std::endl;
     }
     
-    std::cout << "Min Magnetizing Inductance: " << inputs.get_design_requirements().get_magnetizing_inductance().get_minimum().value() << " H" << std::endl;
-    std::cout << "Turns Ratio: " << inputs.get_design_requirements().get_turns_ratios()[0].get_nominal().value() << std::endl;
     
     MagneticAdviser magneticAdviser;
     magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
     
-    std::cout << "Calling get_advised_magnetic..." << std::endl;
     
     auto start = std::chrono::high_resolution_clock::now();
     auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
     auto end = std::chrono::high_resolution_clock::now();
     auto runtime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     
-    std::cout << "SUCCESS: Returned " << masMagnetics.size() << " results in " << runtime << " ms" << std::endl;
     
     REQUIRE(masMagnetics.size() > 0);
     
@@ -5265,25 +5058,19 @@ TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyba
         auto& mas = masMagnetics[i].first;
         double scoring = masMagnetics[i].second;
         
-        std::cout << "\n--- Recommendation " << (i + 1) << " ---" << std::endl;
-        std::cout << "Scoring: " << scoring << std::endl;
         
         auto coreName = mas.get_magnetic().get_core().get_name();
         if (coreName.has_value()) {
-            std::cout << "Core: " << coreName.value() << std::endl;
         }
         
         auto numStacksOpt = mas.get_magnetic().get_core().get_functional_description().get_number_stacks();
         if (numStacksOpt.has_value()) {
-            std::cout << "Stacks: " << numStacksOpt.value() << std::endl;
         }
         
         auto& coil = mas.get_magnetic().get_coil();
         auto windings = coil.get_functional_description();
-        std::cout << "Windings: " << windings.size() << std::endl;
         for (size_t w = 0; w < windings.size(); ++w) {
-            std::cout << "  Winding " << (w + 1) << ": " 
-                      << windings[w].get_number_turns() << " turns" << std::endl;
+            (void)w;
         }
         
         if (!mas.get_outputs().empty()) {
@@ -5292,13 +5079,11 @@ TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyba
             if (inductance.has_value()) {
                 auto magInd = inductance.value().get_magnetizing_inductance().get_magnetizing_inductance().get_nominal();
                 if (magInd.has_value()) {
-                    std::cout << "Magnetizing Inductance: " << magInd.value() << " H" << std::endl;
                 }
             }
         }
     }
     
-    std::cout << "\nTEST PASSED: Flyback MAS processed successfully" << std::endl;
 }
 
 TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug]") {
@@ -5312,7 +5097,6 @@ TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug
     OpenMagnetics::Inputs inputs(masJson["inputs"]);
     inputs.process();
     
-    std::cout << "\n=== Tracing E55 vs E102 through filters ===" << std::endl;
     
     // Load core shapes
     if (coreShapeDatabase.empty()) {
@@ -5323,15 +5107,12 @@ TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug
     }
     
     // Find E55 and E102 cores
-    std::cout << "\nCore Shape Database entries (alphabetical):" << std::endl;
     int count = 0;
     for (auto& [name, shape] : coreShapeDatabase) {
         if (count < 20 || name.find("E 55") != std::string::npos || name.find("E 65") != std::string::npos || name.find("E 102") != std::string::npos) {
-            std::cout << "  " << count << ": " << name << std::endl;
         }
         count++;
     }
-    std::cout << "  ... (total: " << count << " cores)" << std::endl;
     
     // Create magnetics for specific cores
     std::vector<MAS::CoreShape> shapes;
@@ -5339,7 +5120,6 @@ TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug
         if (name.find("E 55") != std::string::npos || name.find("E 65") != std::string::npos || 
             name.find("E 102") != std::string::npos || name.find("E 114") != std::string::npos) {
             shapes.push_back(shape);
-            std::cout << "\nAdded core: " << name << std::endl;
         }
     }
     
@@ -5348,14 +5128,11 @@ TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
     coreAdviser.set_application(MAS::Application::POWER);
     
-    std::cout << "\n=== Testing specific cores through CoreAdviser ===" << std::endl;
     auto results = coreAdviser.get_advised_core(inputs, &shapes, 10);
     
-    std::cout << "\nResults: " << results.size() << " cores passed all filters" << std::endl;
     for (auto& [mas, scoring] : results) {
         auto coreName = mas.get_magnetic().get_core().get_name();
         if (coreName.has_value()) {
-            std::cout << "  - " << coreName.value() << " (scoring: " << scoring << ")" << std::endl;
         }
     }
     

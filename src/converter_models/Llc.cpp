@@ -187,7 +187,6 @@ DesignRequirements Llc::process_design_requirements() {
     double L = Ln * Ls;
 
     if (Ln < 2.0 || Ln > 20.0) {
-        std::cerr << "WARNING: Ln=" << Ln << " outside typical range [3, 12]." << std::endl;
     }
 
     computedResonantInductance  = Ls;
@@ -200,19 +199,14 @@ DesignRequirements Llc::process_design_requirements() {
         double M_req_max = (mainOutputVoltage * mainTurnsRatio) / (k_bridge * Vin_max);
         double M_max_noload = (Ln > 1.0) ? std::sqrt(Ln / (Ln - 1.0)) : 10.0;
         double M_max_heavy = M_max_noload / std::sqrt(1.0 + Q * Q * std::pow(M_max_noload * M_max_noload - 1.0, 2));
-        if (M_req_min > M_max_heavy)
-            std::cerr << "WARNING: Cannot achieve gain M=" << M_req_min << " at Vin_min=" << Vin_min
-                      << "V (max=" << M_max_heavy << "). Reduce Ln or increase fsw." << std::endl;
-        if (M_req_max < 0.3)
-            std::cerr << "WARNING: Gain too low at Vin_max=" << Vin_max << "V (M=" << M_req_max << ")." << std::endl;
+        (void)M_req_min;
+        (void)M_req_max;
     }
 
     {
         double Coss_est = 200e-12;
         double td_min_zvs = (M_PI / 2.0) * std::sqrt(2.0 * Coss_est * L);
-        if (computedDeadTime < td_min_zvs)
-            std::cerr << "WARNING: Dead time (" << (computedDeadTime*1e9)
-                      << "ns) < min ZVS (" << (td_min_zvs*1e9) << "ns)" << std::endl;
+        (void)td_min_zvs;
     }
 
     DesignRequirements designRequirements;
@@ -436,14 +430,8 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
         LlcModeAnalysis modeAnalysis = detect_operating_mode(Vi, Vo, Po_det, fsw, f0_det, Ln_det, Q_det, isFullBridge);
 
-        if (modeAnalysis.mode == LlcOperatingMode::MODE_BELOW_RESONANCE_LIGHT)
-            std::cerr << "WARNING: Below resonance — NO ZVS!" << std::endl;
-        if (modeAnalysis.mode == LlcOperatingMode::MODE_ABOVE_RESONANCE_HEAVY)
-            std::cerr << "WARNING: Heavy load — high circulating current." << std::endl;
+        (void)modeAnalysis;
     }
-
-    if (Vo >= Vi)
-        std::cerr << "WARNING: Vo (" << Vo << "V) >= Vi (" << Vi << "V)." << std::endl;
 
     double period = 1.0 / fsw;
     double Thalf  = period / 2.0;

@@ -142,7 +142,6 @@ TEST_CASE("Test_All_Core_Materials_Only_Micrometals", "[adviser][core-cross-refe
     REQUIRE(crossReferencedCores.size() > 0);
     // Accept either MS 75, MS 40, or MS 26 as top result due to algorithm improvements
     auto topCoreName = crossReferencedCores[0].first.get_name().value();
-    std::cout << "Top core name: " << topCoreName << std::endl;
     REQUIRE((topCoreName.find("MS ") != std::string::npos || 
              topCoreName.find("E 25/9.5/6.3") != std::string::npos));
 }

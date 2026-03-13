@@ -1120,29 +1120,17 @@ namespace TestWindingLossesModelComparison {
         };
         std::vector<ModelResult> allResults;
 
-        std::cout << "\n==================================================================================" << std::endl;
-        std::cout << "COMPREHENSIVE MODEL COMPARISON WITH EXPECTED VALUE VALIDATION" << std::endl;
-        std::cout << "==================================================================================\n" << std::endl;
 
         // Get all test configurations from shared data
         auto testConfigs = getAllTestConfigs();
 
         // Helper lambda to run comparison with expected values
         auto runComparisonWithExpected = [&](const TestConfig& config) {
-            std::cout << "\n-----------------------------------------------------------" << std::endl;
-            std::cout << "TEST: " << config.name << " [" << wireTypeToString(config.wireType) << "]" << std::endl;
-            std::cout << "-----------------------------------------------------------" << std::endl;
-            std::cout << "Fringing: " << (config.includeFringing ? "YES" : "NO") << std::endl;
 
             // Create the magnetic once
             auto magnetic = config.createMagnetic();
 
             // Print header
-            std::cout << std::setw(12) << "Model" << " | " << std::setw(10) << "Freq";
-            std::cout << " | " << std::setw(12) << "Expected";
-            std::cout << " | " << std::setw(12) << "Actual";
-            std::cout << " | " << std::setw(10) << "Error%" << std::endl;
-            std::cout << std::string(65, '-') << std::endl;
 
             for (auto& [fieldModel, fieldModelName] : fieldModels) {
                 double totalError = 0;
@@ -1167,29 +1155,16 @@ namespace TestWindingLossesModelComparison {
                         totalError += errorPct;
                         validCount++;
 
-                        std::cout << std::setw(12) << fieldModelName;
-                        std::cout << " | " << std::setw(10) << std::fixed << std::setprecision(0) << frequency;
-                        std::cout << " | " << std::setw(12) << std::scientific << std::setprecision(4) << expectedValue;
-                        std::cout << " | " << std::setw(12) << std::scientific << std::setprecision(4) << actual;
                         if (errorPct < 15) {
-                            std::cout << " | " << std::setw(9) << std::fixed << std::setprecision(1) << errorPct << "%";
                         } else if (errorPct < 50) {
-                            std::cout << " | " << std::setw(9) << std::fixed << std::setprecision(1) << errorPct << "% *";
                         } else {
-                            std::cout << " | " << std::setw(9) << std::fixed << std::setprecision(1) << errorPct << "% **";
                         }
-                        std::cout << std::endl;
 
                         allResults.push_back({config.name, wireTypeToString(config.wireType), fieldModelName, frequency, expectedValue, actual, errorPct});
                     } catch (std::exception& e) {
-                        std::cout << std::setw(12) << fieldModelName;
-                        std::cout << " | " << std::setw(10) << std::fixed << std::setprecision(0) << frequency;
-                        std::cout << " | " << std::setw(12) << "ERROR: " << e.what() << std::endl;
                     }
                 }
                 if (validCount > 0) {
-                    std::cout << std::setw(12) << fieldModelName << " AVG ERROR: " 
-                              << std::fixed << std::setprecision(1) << (totalError / validCount) << "%" << std::endl;
                 }
             }
         };
@@ -1201,9 +1176,6 @@ namespace TestWindingLossesModelComparison {
         }
 
         for (const auto& [wireType, testNames] : wireTypeGroups) {
-            std::cout << "\n==================================================================================" << std::endl;
-            std::cout << wireTypeToString(wireType) << " WIRE TESTS" << std::endl;
-            std::cout << "==================================================================================\n" << std::endl;
 
             for (const auto& testName : testNames) {
                 runComparisonWithExpected(testConfigs.at(testName));
@@ -1213,9 +1185,6 @@ namespace TestWindingLossesModelComparison {
         // ==================================================================================
         // PRINT SUMMARY BY WIRE TYPE
         // ==================================================================================
-        std::cout << "\n==================================================================================" << std::endl;
-        std::cout << "SUMMARY BY WIRE TYPE" << std::endl;
-        std::cout << "==================================================================================" << std::endl;
         
         // Calculate average error per wire type per model
         std::map<std::string, std::map<std::string, std::pair<double, int>>> wireTypeModelErrors;
@@ -1225,29 +1194,18 @@ namespace TestWindingLossesModelComparison {
         }
         
         // Print header
-        std::cout << std::setw(15) << "Wire Type" << " | ";
-        std::cout << std::setw(12) << "ALBACH" << " | ";
-        std::cout << std::setw(12) << "BINNS" << " | ";
-        std::cout << std::setw(12) << "LAMMERANER" << std::endl;
-        std::cout << std::string(60, '-') << std::endl;
         
         for (const auto& [wireType, modelMap] : wireTypeModelErrors) {
-            std::cout << std::setw(15) << wireType << " | ";
             for (const auto& modelName : {"ALBACH", "BINNS", "LAMMERANER"}) {
                 auto it = modelMap.find(modelName);
                 if (it != modelMap.end()) {
                     double avgError = it->second.first / it->second.second;
-                    std::cout << std::setw(10) << std::fixed << std::setprecision(1) << avgError << "% | ";
                 } else {
-                    std::cout << std::setw(10) << "N/A" << " | ";
                 }
             }
-            std::cout << std::endl;
         }
         
         // Overall summary
-        std::cout << "\n" << std::string(60, '-') << std::endl;
-        std::cout << "OVERALL AVERAGE:" << std::endl;
         std::map<std::string, std::pair<double, int>> modelErrors;
         for (const auto& r : allResults) {
             modelErrors[r.modelName].first += r.errorPct;
@@ -1255,14 +1213,11 @@ namespace TestWindingLossesModelComparison {
         }
         
         for (const auto& [model, errors] : modelErrors) {
+            (void)model;
             double avgError = errors.first / errors.second;
-            std::cout << std::setw(15) << model << ": " 
-                      << std::fixed << std::setprecision(1) << avgError << "% "
-                      << "(" << errors.second << " tests)" << std::endl;
+            (void)avgError;
         }
 
-        std::cout << "\nLegend: * = error 15-50%, ** = error >50%" << std::endl;
-        std::cout << "==================================================================================\n" << std::endl;
 
         settings.reset();
     }
@@ -1300,20 +1255,12 @@ namespace TestWindingLossesModelComparison {
         };
         std::vector<ModelResult> allResults;
 
-        std::cout << "\n======================================================================================" << std::endl;
-        std::cout << "COMPREHENSIVE MODEL COMPARISON: ALL H-FIELD MODELS x ALL FRINGING MODELS" << std::endl;
-        std::cout << "======================================================================================\n" << std::endl;
 
         // Get all test configurations from shared data
         auto testConfigs = getAllTestConfigs();
 
         // Helper lambda to run comparison with expected values
         auto runComparisonWithExpected = [&](const TestConfig& config) {
-            std::cout << "\n-----------------------------------------------------------" << std::endl;
-            std::cout << "TEST: " << config.name << " [" << wireTypeToString(config.wireType) << "]" << std::endl;
-            std::cout << "-----------------------------------------------------------" << std::endl;
-            std::cout << "Fringing Enabled: " << (config.includeFringing ? "YES" : "NO") << std::endl;
-            std::cout << "Mirroring Dimension: " << config.mirroringDimension << std::endl;
 
             // Create the magnetic once (if possible)
             OpenMagnetics::Magnetic magnetic;
@@ -1322,7 +1269,6 @@ namespace TestWindingLossesModelComparison {
                 magnetic = config.createMagnetic();
                 magneticCreated = true;
             } catch (const std::exception& e) {
-                std::cout << "ERROR creating magnetic: " << e.what() << std::endl;
                 return;
             }
 
@@ -1346,13 +1292,6 @@ namespace TestWindingLossesModelComparison {
             }
 
             // Print header
-            std::cout << std::setw(15) << "H-Field Model" << " | ";
-            std::cout << std::setw(10) << "Fringing" << " | ";
-            std::cout << std::setw(10) << "Freq" << " | ";
-            std::cout << std::setw(12) << "Expected" << " | ";
-            std::cout << std::setw(12) << "Actual" << " | ";
-            std::cout << std::setw(8) << "Error%" << std::endl;
-            std::cout << std::string(85, '-') << std::endl;
 
             for (const auto& [fieldModel, fieldModelName] : fieldModels) {
                 // WANG model should only be used for RECTANGULAR, FOIL, and PLANAR wire types
@@ -1414,33 +1353,13 @@ namespace TestWindingLossesModelComparison {
                             validCount++;
                         }
 
-                        // Print result
-                        std::cout << std::setw(15) << fieldModelName << " | ";
-                        std::cout << std::setw(10) << fringingModelName << " | ";
-                        std::cout << std::setw(10) << frequency << " | ";
-                        std::cout << std::setw(12) << std::fixed << std::setprecision(4) << expectedValue << " | ";
                         if (crashed) {
-                            std::cout << std::setw(12) << "CRASH" << " | ";
-                            std::cout << std::setw(8) << "N/A" << std::endl;
-                        } else {
-                            std::cout << std::setw(12) << std::fixed << std::setprecision(4) << actual << " | ";
-                            std::cout << std::setw(6) << std::fixed << std::setprecision(1) << errorPct << "%";
-                            if (errorPct > 50) std::cout << " **";
-                            else if (errorPct > 15) std::cout << " *";
-                            std::cout << std::endl;
                         }
                     }
 
                     // Print average for this model combination
                     if (validCount > 0) {
-                        std::cout << std::setw(15) << "" << " | ";
-                        std::cout << std::setw(10) << "" << " | ";
-                        std::cout << std::setw(10) << "AVG" << " | ";
-                        std::cout << std::setw(12) << "" << " | ";
-                        std::cout << std::setw(12) << "" << " | ";
-                        std::cout << std::fixed << std::setprecision(1) << (totalError / validCount) << "%" << std::endl;
                     }
-                    std::cout << std::string(85, '-') << std::endl;
                 }
             }
         };
@@ -1452,9 +1371,6 @@ namespace TestWindingLossesModelComparison {
         }
 
         for (const auto& [wireType, testNames] : wireTypeGroups) {
-            std::cout << "\n======================================================================================" << std::endl;
-            std::cout << wireTypeToString(wireType) << " WIRE TESTS" << std::endl;
-            std::cout << "======================================================================================\n" << std::endl;
 
             for (const auto& testName : testNames) {
                 runComparisonWithExpected(testConfigs.at(testName));
@@ -1464,9 +1380,6 @@ namespace TestWindingLossesModelComparison {
         // ==================================================================================
         // PRINT SUMMARY BY MODEL COMBINATION
         // ==================================================================================
-        std::cout << "\n======================================================================================" << std::endl;
-        std::cout << "SUMMARY BY H-FIELD MODEL + FRINGING MODEL COMBINATION" << std::endl;
-        std::cout << "======================================================================================\n" << std::endl;
 
         // Calculate stats per model combination
         struct ModelStats {
@@ -1493,13 +1406,6 @@ namespace TestWindingLossesModelComparison {
         }
 
         // Print header
-        std::cout << std::setw(25) << "Model Combination" << " | ";
-        std::cout << std::setw(10) << "Avg Error" << " | ";
-        std::cout << std::setw(10) << "Max Error" << " | ";
-        std::cout << std::setw(8) << "Tests" << " | ";
-        std::cout << std::setw(8) << "Crashes" << " | ";
-        std::cout << "Max Error Test" << std::endl;
-        std::cout << std::string(100, '-') << std::endl;
 
         // Sort by average error
         std::vector<std::pair<std::string, ModelStats>> sortedStats(modelStats.begin(), modelStats.end());
@@ -1511,20 +1417,11 @@ namespace TestWindingLossesModelComparison {
 
         for (const auto& [modelName, stats] : sortedStats) {
             double avgError = stats.validCount > 0 ? stats.totalError / stats.validCount : 0;
-            std::cout << std::setw(25) << modelName << " | ";
-            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avgError << "%" << " | ";
-            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << stats.maxError << "%" << " | ";
-            std::cout << std::setw(8) << stats.validCount << " | ";
-            std::cout << std::setw(8) << stats.crashCount << " | ";
-            std::cout << stats.maxErrorTest << std::endl;
         }
 
         // ==================================================================================
         // PRINT DETAILED SUMMARY BY WIRE TYPE x MODEL COMBINATION (with Avg and Std)
         // ==================================================================================
-        std::cout << "\n======================================================================================" << std::endl;
-        std::cout << "ERROR BY WIRE TYPE AND MODEL COMBINATION (Average ± StdDev)" << std::endl;
-        std::cout << "======================================================================================\n" << std::endl;
 
         // Build wire type -> model -> list of errors for std calculation
         struct WireTypeModelStats {
@@ -1560,14 +1457,6 @@ namespace TestWindingLossesModelComparison {
 
         // Print one table per wire type for better readability
         for (const auto& wireType : allWireTypes) {
-            std::cout << "\n--- " << wireType << " WIRE ---" << std::endl;
-            std::cout << std::setw(25) << "Model Combination" << " | ";
-            std::cout << std::setw(10) << "Avg Error" << " | ";
-            std::cout << std::setw(10) << "Std Dev" << " | ";
-            std::cout << std::setw(10) << "Min" << " | ";
-            std::cout << std::setw(10) << "Max" << " | ";
-            std::cout << std::setw(6) << "N" << std::endl;
-            std::cout << std::string(85, '-') << std::endl;
 
             // Collect results for this wire type and sort by avg error
             std::vector<std::tuple<std::string, double, double, double, double, int>> wireResults;
@@ -1593,21 +1482,12 @@ namespace TestWindingLossesModelComparison {
                 [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); });
 
             for (const auto& [model, avg, stdDev, minErr, maxErr, n] : wireResults) {
-                std::cout << std::setw(25) << model << " | ";
-                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avg << "%" << " | ";
-                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << stdDev << "%" << " | ";
-                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << minErr << "%" << " | ";
-                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << maxErr << "%" << " | ";
-                std::cout << std::setw(6) << n << std::endl;
             }
         }
 
         // ==================================================================================
         // OVERALL RANKING
         // ==================================================================================
-        std::cout << "\n======================================================================================" << std::endl;
-        std::cout << "OVERALL MODEL RANKING (Lower Error = Better)" << std::endl;
-        std::cout << "======================================================================================\n" << std::endl;
 
         // Recalculate with std dev
         struct OverallStats {
@@ -1636,24 +1516,11 @@ namespace TestWindingLossesModelComparison {
         std::sort(overallRanking.begin(), overallRanking.end(),
             [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); });
 
-        std::cout << std::setw(4) << "Rank" << " | ";
-        std::cout << std::setw(25) << "Model Combination" << " | ";
-        std::cout << std::setw(12) << "Avg ± Std" << " | ";
-        std::cout << std::setw(8) << "Tests" << " | ";
-        std::cout << std::setw(8) << "Crashes" << std::endl;
-        std::cout << std::string(75, '-') << std::endl;
 
         int rank = 1;
         for (const auto& [model, avg, stdDev, tests, crashes] : overallRanking) {
-            std::cout << std::setw(4) << rank++ << " | ";
-            std::cout << std::setw(25) << model << " | ";
-            std::cout << std::fixed << std::setprecision(1) << avg << " ± " << std::setw(5) << stdDev << "%" << " | ";
-            std::cout << std::setw(8) << tests << " | ";
-            std::cout << std::setw(8) << crashes << std::endl;
         }
 
-        std::cout << "\nLegend: * = error 15-50%, ** = error >50%" << std::endl;
-        std::cout << "======================================================================================\n" << std::endl;
 
         settings.reset();
     }
@@ -1696,41 +1563,20 @@ TEST_CASE("Test_WindingLosses_NaN_Detection", "[winding-losses][nan-detection][d
                 nanTurnNames.push_back(turnName);
                 
                 // Debug output
-                std::cout << "NaN detected in turn: " << turnName << std::endl;
                 
                 if (lossesPerTurn[i].get_ohmic_losses()) {
-                    std::cout << "  Ohmic losses: " << lossesPerTurn[i].get_ohmic_losses()->get_losses() << std::endl;
                 } else {
-                    std::cout << "  Ohmic losses: not set" << std::endl;
                 }
                 
-                if (lossesPerTurn[i].get_skin_effect_losses()) {
-                    auto skinLosses = lossesPerTurn[i].get_skin_effect_losses()->get_losses_per_harmonic();
-                    std::cout << "  Skin effect losses per harmonic: ";
-                    for (auto l : skinLosses) std::cout << l << " ";
-                    std::cout << std::endl;
-                } else {
-                    std::cout << "  Skin effect losses: not set" << std::endl;
-                }
-                
-                if (lossesPerTurn[i].get_proximity_effect_losses()) {
-                    auto proxLosses = lossesPerTurn[i].get_proximity_effect_losses()->get_losses_per_harmonic();
-                    std::cout << "  Proximity effect losses per harmonic: ";
-                    for (auto l : proxLosses) std::cout << l << " ";
-                    std::cout << std::endl;
-                } else {
-                    std::cout << "  Proximity effect losses: not set" << std::endl;
-                }
+                (void)i;
             }
             
             // Also check for zero or negative values which can cause issues with log scale
             if (totalLoss <= 0 && !std::isnan(totalLoss)) {
-                std::cout << "Warning: Turn " << i << " has non-positive loss: " << totalLoss << std::endl;
             }
         }
         
         if (foundNaN) {
-            std::cout << "\nTotal turns with NaN: " << nanTurnNames.size() << "/" << lossesPerTurn.size() << std::endl;
         }
         
         CHECK_FALSE(foundNaN);
@@ -1759,11 +1605,6 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     // Uses the best H-field model (ALBACH) and best fringing model (ALBACH) as determined
     // from previous comprehensive testing
     
-    std::cout << "\n======================================================================================" << std::endl;
-    std::cout << "COMPREHENSIVE SKIN & PROXIMITY EFFECT MODEL COMPARISON" << std::endl;
-    std::cout << "======================================================================================" << std::endl;
-    std::cout << "H-Field Model: ALBACH | Fringing Model: ALBACH" << std::endl;
-    std::cout << "======================================================================================\n" << std::endl;
     
     // Helper function to convert enum to string using JSON serialization
     auto enumToString = [](auto enumValue) -> std::string {
@@ -1913,16 +1754,12 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
         for (const auto& proximityModel : proximityModels) {
             std::string proximityModelName = enumToString(proximityModel);
             currentCombination++;
-            std::cout << "\n[" << currentCombination << "/" << totalCombinations << "] " 
-                      << skinModelName << " + " << proximityModelName << std::endl;
             
             int configIdx = 0;
             for (const auto& [name, config] : testConfigs) {
                 configIdx++;
-                std::cout << "  [" << configIdx << "/" << testConfigs.size() << "] " << name << "..." << std::flush;
                 runTestWithModels(config, skinModel, proximityModel, skinModelName, proximityModelName);
                 completedTests += (config.expectedValues.size() > 2) ? 2 : config.expectedValues.size();
-                std::cout << " (" << completedTests << "/" << totalTests << " total)" << std::endl;
             }
         }
     }
@@ -1930,9 +1767,6 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     // ==================================================================================
     // PRINT SUMMARY BY MODEL COMBINATION
     // ==================================================================================
-    std::cout << "\n======================================================================================" << std::endl;
-    std::cout << "SUMMARY BY SKIN + PROXIMITY MODEL COMBINATION" << std::endl;
-    std::cout << "======================================================================================\n" << std::endl;
     
     struct ModelStats {
         double totalError = 0;
@@ -1958,13 +1792,6 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     }
     
     // Print header
-    std::cout << std::setw(30) << "Model Combination" << " | ";
-    std::cout << std::setw(10) << "Avg Error" << " | ";
-    std::cout << std::setw(10) << "Max Error" << " | ";
-    std::cout << std::setw(8) << "Tests" << " | ";
-    std::cout << std::setw(8) << "Crashes" << " | ";
-    std::cout << "Max Error Test" << std::endl;
-    std::cout << std::string(110, '-') << std::endl;
     
     // Sort by average error
     std::vector<std::pair<std::string, ModelStats>> sortedStats(modelStats.begin(), modelStats.end());
@@ -1976,20 +1803,11 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     
     for (const auto& [modelName, stats] : sortedStats) {
         double avgError = stats.validCount > 0 ? stats.totalError / stats.validCount : 0;
-        std::cout << std::setw(30) << modelName << " | ";
-        std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avgError << "%" << " | ";
-        std::cout << std::setw(8) << std::fixed << std::setprecision(1) << stats.maxError << "%" << " | ";
-        std::cout << std::setw(8) << stats.validCount << " | ";
-        std::cout << std::setw(8) << stats.crashCount << " | ";
-        std::cout << stats.maxErrorTest << std::endl;
     }
     
     // ==================================================================================
     // BREAKDOWN BY WIRE TYPE AND MODEL COMBINATION
     // ==================================================================================
-    std::cout << "\n======================================================================================" << std::endl;
-    std::cout << "BREAKDOWN BY WIRE TYPE AND MODEL COMBINATION" << std::endl;
-    std::cout << "======================================================================================\n" << std::endl;
     
     // Helper to calculate std dev
     auto calcStdDev = [](const std::vector<double>& values, double mean) -> double {
@@ -2033,14 +1851,6 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     
     // Print one table per wire type
     for (const auto& wireType : allWireTypes) {
-        std::cout << "\n--- " << wireType << " WIRE ---" << std::endl;
-        std::cout << std::setw(30) << "Model Combination" << " | ";
-        std::cout << std::setw(10) << "Avg Error" << " | ";
-        std::cout << std::setw(10) << "Std Dev" << " | ";
-        std::cout << std::setw(10) << "Max Error" << " | ";
-        std::cout << std::setw(6) << "N" << " | ";
-        std::cout << "Worst Test" << std::endl;
-        std::cout << std::string(100, '-') << std::endl;
         
         // Collect and sort results for this wire type
         std::vector<std::tuple<std::string, double, double, double, int, int, std::string>> wireResults;
@@ -2066,13 +1876,7 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
         int count = 0;
         for (const auto& [model, avg, stdDev, maxErr, n, crashes, worst] : wireResults) {
             if (count++ >= 10) break;  // Only show top 10
-            std::cout << std::setw(30) << model << " | ";
-            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avg << "%" << " | ";
-            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << stdDev << "%" << " | ";
-            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << maxErr << "%" << " | ";
-            std::cout << std::setw(4) << n;
-            if (crashes > 0) std::cout << " (" << crashes << " crashes)";
-            std::cout << " | " << worst << std::endl;
+            (void)crashes;
         }
         
         // Show models with >1000% error (likely broken)
@@ -2080,14 +1884,8 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
         for (const auto& [model, avg, stdDev, maxErr, n, crashes, worst] : wireResults) {
             if (maxErr > 1000.0) {
                 if (!hasBroken) {
-                    std::cout << "\n*** BROKEN MODELS (>1000% max error) ***" << std::endl;
                     hasBroken = true;
                 }
-                std::cout << std::setw(30) << model << " | ";
-                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avg << "%" << " | ";
-                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << stdDev << "%" << " | ";
-                std::cout << std::setw(8) << std::fixed << std::setprecision(1) << maxErr << "%" << " | ";
-                std::cout << std::setw(4) << n << " | " << worst << std::endl;
             }
         }
     }
@@ -2095,9 +1893,6 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     // ==================================================================================
     // OVERALL RANKING
     // ==================================================================================
-    std::cout << "\n======================================================================================" << std::endl;
-    std::cout << "OVERALL MODEL RANKING (Lower Error = Better)" << std::endl;
-    std::cout << "======================================================================================\n" << std::endl;
     
     std::map<std::string, std::vector<double>> modelErrors;
     std::map<std::string, int> modelCrashes;
@@ -2124,38 +1919,18 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     std::sort(overallRanking.begin(), overallRanking.end(),
         [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); });
     
-    std::cout << std::setw(4) << "Rank" << " | ";
-    std::cout << std::setw(30) << "Model Combination" << " | ";
-    std::cout << std::setw(12) << "Avg ± Std" << " | ";
-    std::cout << std::setw(8) << "Tests" << " | ";
-    std::cout << std::setw(8) << "Crashes" << std::endl;
-    std::cout << std::string(85, '-') << std::endl;
     
     int rank = 1;
     for (const auto& [model, avg, stdDev, tests, crashes] : overallRanking) {
-        std::cout << std::setw(4) << rank++ << " | ";
-        std::cout << std::setw(30) << model << " | ";
-        std::cout << std::fixed << std::setprecision(1) << avg << " ± " << std::setw(5) << stdDev << "%" << " | ";
-        std::cout << std::setw(8) << tests << " | ";
-        std::cout << std::setw(8) << crashes << std::endl;
     }
     
     // BEST MODEL RECOMMENDATION
     if (!overallRanking.empty()) {
-        std::cout << "\n======================================================================================" << std::endl;
-        std::cout << "RECOMMENDATION" << std::endl;
-        std::cout << "======================================================================================" << std::endl;
         auto [bestModel, bestAvg, bestStd, bestTests, bestCrashes] = overallRanking[0];
-        std::cout << "Best Skin + Proximity Model Combination: " << bestModel << std::endl;
-        std::cout << "Average Error: " << std::fixed << std::setprecision(1) << bestAvg << "%" << std::endl;
-        std::cout << "Standard Deviation: " << std::fixed << std::setprecision(1) << bestStd << "%" << std::endl;
-        std::cout << "Total Tests: " << bestTests << std::endl;
         if (bestCrashes > 0) {
-            std::cout << "WARNING: " << bestCrashes << " crashes occurred" << std::endl;
         }
     }
     
-    std::cout << "\n======================================================================================\n" << std::endl;
     
     settings.reset();
 }
@@ -2168,12 +1943,6 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
     // 4. Proximity effect model (11 options)
     // Total: 5 × 3 × 12 × 11 = 1,980 combinations per test case
     
-    std::cout << "\n======================================================================================" << std::endl;
-    std::cout << "ULTIMATE MODEL COMBINATION COMPARISON - ALL 4 MODEL TYPES" << std::endl;
-    std::cout << "======================================================================================" << std::endl;
-    std::cout << "Testing: H-field × Fringing × Skin × Proximity models" << std::endl;
-    std::cout << "Total combinations per test: 1,980" << std::endl;
-    std::cout << "======================================================================================\n" << std::endl;
     
     // Define all model types
     std::vector<std::pair<MagneticFieldStrengthModels, std::string>> hFieldModels = {
@@ -2251,11 +2020,9 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
         std::string wireType = WindingLossesTestData::wireTypeToString(config.wireType);
         if (selectedConfigs.find(wireType) == selectedConfigs.end()) {
             selectedConfigs[wireType] = config;
-            std::cout << "Selected test for " << wireType << ": " << name << std::endl;
         }
     }
     
-    std::cout << "\nTesting " << selectedConfigs.size() << " wire types...\n" << std::endl;
     
     int totalCombinations = hFieldModels.size() * fringingModels.size() * 
                            skinModels.size() * proximityModels.size();
@@ -2270,11 +2037,6 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
                     std::string proximityName = enumToString(proximityModel);
                     
                     currentCombo++;
-                    if (currentCombo % 100 == 1) {
-                        std::cout << "[" << currentCombo << "/" << totalCombinations 
-                                  << "] Testing: " << hFieldName << "+" << fringingName 
-                                  << "+" << skinName << "+" << proximityName << std::endl;
-                    }
                     
                     // Test this combination on all wire types
                     for (const auto& [wireType, config] : selectedConfigs) {
@@ -2345,9 +2107,6 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
         }
     }
     
-    std::cout << "\n======================================================================================" << std::endl;
-    std::cout << "RESULTS BY WIRE TYPE - BEST COMBINATIONS" << std::endl;
-    std::cout << "======================================================================================\n" << std::endl;
     
     // Group results by wire type and find best for each
     std::map<std::string, std::vector<ModelResult>> resultsByWireType;
@@ -2356,12 +2115,6 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
     }
     
     for (const auto& [wireType, results] : resultsByWireType) {
-        std::cout << "\n--- " << wireType << " WIRE ---" << std::endl;
-        std::cout << std::setw(60) << "H+Fringing+Skin+Proximity" << " | ";
-        std::cout << std::setw(10) << "Avg Error" << " | ";
-        std::cout << std::setw(8) << "Tests" << " | ";
-        std::cout << std::setw(8) << "Crashes" << std::endl;
-        std::cout << std::string(100, '-') << std::endl;
         
         // Sort by average error
         std::vector<ModelResult> sortedResults = results;
@@ -2376,17 +2129,10 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
         for (const auto& result : sortedResults) {
             if (count++ >= 5) break;
             double avgError = result.validCount > 0 ? result.totalError / result.validCount : 0;
-            std::cout << std::setw(60) << result.combinedName << " | ";
-            std::cout << std::setw(8) << std::fixed << std::setprecision(1) << avgError << "%" << " | ";
-            std::cout << std::setw(8) << result.validCount << " | ";
-            std::cout << std::setw(8) << result.crashCount << std::endl;
         }
     }
     
     // Overall best across all wire types
-    std::cout << "\n======================================================================================" << std::endl;
-    std::cout << "OVERALL BEST COMBINATIONS (All Wire Types Combined)" << std::endl;
-    std::cout << "======================================================================================\n" << std::endl;
     
     // Aggregate results by combination across all wire types
     std::map<std::string, ModelResult> aggregatedResults;
@@ -2414,30 +2160,14 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
         return avgA < avgB;
     });
     
-    std::cout << std::setw(5) << "Rank" << " | ";
-    std::cout << std::setw(60) << "H+Fringing+Skin+Proximity" << " | ";
-    std::cout << std::setw(12) << "Avg Error" << " | ";
-    std::cout << std::setw(10) << "Max Error" << " | ";
-    std::cout << std::setw(8) << "Tests" << " | ";
-    std::cout << std::setw(8) << "Crashes" << std::endl;
-    std::cout << std::string(120, '-') << std::endl;
     
     int rank = 1;
     for (const auto& result : overallResults) {
         if (rank > 20) break;
         double avgError = result.validCount > 0 ? result.totalError / result.validCount : 0;
-        std::cout << std::setw(5) << rank++ << " | ";
-        std::cout << std::setw(60) << result.combinedName << " | ";
-        std::cout << std::setw(10) << std::fixed << std::setprecision(1) << avgError << "%" << " | ";
-        std::cout << std::setw(10) << std::fixed << std::setprecision(1) << result.maxError << "%" << " | ";
-        std::cout << std::setw(8) << result.validCount << " | ";
-        std::cout << std::setw(8) << result.crashCount << std::endl;
     }
     
     // Best by wire type summary
-    std::cout << "\n======================================================================================" << std::endl;
-    std::cout << "SUMMARY: BEST COMBINATION BY WIRE TYPE" << std::endl;
-    std::cout << "======================================================================================\n" << std::endl;
     
     for (const auto& [wireType, results] : resultsByWireType) {
         if (!results.empty()) {
@@ -2447,13 +2177,10 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
                 return avgA < avgB;
             });
             double avgError = best.validCount > 0 ? best.totalError / best.validCount : 0;
-            std::cout << std::setw(15) << wireType << ": " << best.combinedName << std::endl;
-            std::cout << std::setw(15) << "" << "  Error: " << std::fixed << std::setprecision(1) 
-                      << avgError << "%, Tests: " << best.validCount << ", Crashes: " << best.crashCount << "\n" << std::endl;
+            (void)avgError;
         }
     }
     
-    std::cout << "\n======================================================================================\n" << std::endl;
     
     settings.reset();
 }

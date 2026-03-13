@@ -620,8 +620,8 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
             }
         }
     }
-    std::cout << text << std::endl;
 }
+
 
 std::map<std::string, std::map<MagneticFilters, double>> MagneticAdviser::get_scorings(){
     std::map<std::string, std::map<MagneticFilters, double>> swappedScorings;

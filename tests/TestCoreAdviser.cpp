@@ -639,7 +639,6 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Redo_Culling", "[adviser][c
         }
         // Debug: print what cores we got
         auto stacks = mas.get_magnetic().get_core().get_functional_description().get_number_stacks();
-        std::cout << "Result: " << coreName << " (stacks: " << (stacks ? std::to_string(stacks.value()) : "N/A") << ")" << std::endl;
     }
     REQUIRE(foundValidCore);
     settings.reset();
@@ -1403,14 +1402,11 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes_Medium_Dc_Current", "[advise
     auto scorings = coreAdviser.get_scorings();
     
     // Debug: Print all returned cores
-    std::cout << "\n=== Cores recommended for 25A DC current ===" << std::endl;
     for (size_t i = 0; i < masMagnetics.size(); ++i) {
         auto name = masMagnetics[i].first.get_magnetic().get_core().get_name().value_or("unnamed");
         auto stacksOpt = masMagnetics[i].first.get_magnetic().get_core().get_functional_description().get_number_stacks();
         int64_t stacks = stacksOpt ? stacksOpt.value() : 1;
-        std::cout << "Core[" << i << "]: " << name << " stacks=" << stacks << " score=" << masMagnetics[i].second << std::endl;
     }
-    std::cout << "Total cores: " << masMagnetics.size() << "\n" << std::endl;
     
     {
         // Verify results contain large E-cores suitable for medium DC current
@@ -1451,9 +1447,6 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes_High_Dc_Current", "[adviser]
     settings.set_use_powder_cores(true);
     settings.set_core_adviser_include_stacks(true);
     
-    std::cout << "Powder cores enabled: " << settings.get_use_powder_cores() << std::endl;
-    std::cout << "Stacks enabled: " << settings.get_core_adviser_include_stacks() << std::endl;
-    std::cout << "Max DC bias: " << inputs.get_maximum_current_dc_bias() << std::endl;
     
     CoreAdviser coreAdviser;
     std::vector<MAS::CoreShape> shapes;
@@ -1464,12 +1457,9 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes_High_Dc_Current", "[adviser]
     auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
     // Debug: Print all returned cores
-    std::cout << "\n=== Cores recommended for 80A DC current ===" << std::endl;
     for (size_t i = 0; i < masMagnetics.size(); ++i) {
         auto name = masMagnetics[i].first.get_magnetic().get_core().get_name().value_or("unnamed");
-        std::cout << "Core[" << i << "]: " << name << " score=" << masMagnetics[i].second << std::endl;
     }
-    std::cout << "Total cores: " << masMagnetics.size() << "\n" << std::endl;
 
     // Verify that the adviser returns cores suitable for high DC current
     // (large E-cores or powder cores with big windows)
@@ -1490,11 +1480,8 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes_High_Dc_Current", "[adviser]
             name.find("HF ") != std::string::npos ||  // High Flux
             name.find("GX ") != std::string::npos) {  // another powder series
             foundPowderCore = true;
-            std::cout << "Found powder core: " << name << std::endl;
         }
     }
-    std::cout << "Found large E-core: " << (foundLargeCore ? "YES" : "NO") << std::endl;
-    std::cout << "Found powder core: " << (foundPowderCore ? "YES" : "NO") << std::endl;
     REQUIRE(foundLargeCore);
     settings.reset();
 }
@@ -1921,7 +1908,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
     weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
     
     // Test AVAILABLE_CORES mode (default)
-    std::cout << "\n\n=== AVAILABLE_CORES MODE ===" << std::endl;
     CoreAdviser coreAdviser;
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 10);
@@ -1935,50 +1921,28 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
     auto& topCore = topMagnetic.get_core();
     auto& topCoil = topMagnetic.get_coil();
     
-    std::cout << "\n=== Top Recommended Core ===" << std::endl;
-    std::cout << "Core Name: " << topCore.get_name().value_or("N/A") << std::endl;
     // Material is a variant, so we need to check which type it is
     auto& material = topCore.get_functional_description().get_material();
     if (std::holds_alternative<std::string>(material)) {
-        std::cout << "Core Material: " << std::get<std::string>(material) << std::endl;
     } else {
-        std::cout << "Core Material: [Material Object]" << std::endl;
     }
     auto numberStacks = topCore.get_functional_description().get_number_stacks();
-    std::cout << "Number of Stacks: " << (numberStacks ? static_cast<int>(*numberStacks) : 1) << std::endl;
     
     // Print gapping information
-    std::cout << "\nGapping:" << std::endl;
     if (topCore.get_functional_description().get_gapping().size() > 0) {
         for (size_t i = 0; i < topCore.get_functional_description().get_gapping().size(); ++i) {
-            auto& gap = topCore.get_functional_description().get_gapping()[i];
-            std::cout << "  Gap " << i << ": " << gap.get_length() * 1000 << " mm (" 
-                      << std::string(magic_enum::enum_name(gap.get_type())) << ")" << std::endl;
+            (void)i;
         }
-    } else {
-        std::cout << "  Ungapped" << std::endl;
-    }
-    
-    // Print turns information
-    std::cout << "\nTurns:" << std::endl;
-    for (size_t i = 0; i < topCoil.get_functional_description().size(); ++i) {
-        auto& winding = topCoil.get_functional_description()[i];
-        std::cout << "  Winding " << i << " (" << winding.get_name() << "): " 
-                  << static_cast<int>(winding.get_number_turns()) << " turns" << std::endl;
     }
     
     // Debug: Check required magnetic energy
-    std::cout << "\nDebug Info:" << std::endl;
     OpenMagnetics::MagneticEnergy magneticEnergy;
     auto requiredEnergyDim = magneticEnergy.calculate_required_magnetic_energy(inputs);
     double requiredEnergy = resolve_dimensional_values(requiredEnergyDim);
-    std::cout << "Required magnetic energy: " << requiredEnergy * 1e6 << " µJ" << std::endl;
     auto inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
     double targetL = resolve_dimensional_values(inductanceReq);
-    std::cout << "Target inductance: " << targetL * 1e6 << " µH" << std::endl;
     
     // Calculate and print B field from the magnetic parameters
-    std::cout << "\nMagnetic Flux Density (B field):" << std::endl;
     auto& resultInputs = topResult.get_inputs();
     double estimatedBPeak = 0;
     if (resultInputs.get_operating_points().size() > 0) {
@@ -1991,9 +1955,7 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
             auto bField = excitation.get_magnetic_flux_density();
             if (bField && bField->get_processed() && bField->get_processed()->get_peak()) {
                 double bPeak = *bField->get_processed()->get_peak();
-                std::cout << "  Peak B: " << bPeak * 1000 << " mT" << std::endl;
                 if (bField->get_processed()->get_peak_to_peak()) {
-                    std::cout << "  Peak-to-Peak B: " << *bField->get_processed()->get_peak_to_peak() * 1000 << " mT" << std::endl;
                 }
             } else {
                 // Calculate estimated B field from the voltage and core parameters
@@ -2007,7 +1969,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
                         
                         // B = Vpeak / (2 * pi * f * N * Ae) for sinusoidal, simplified estimate
                         estimatedBPeak = voltagePeak / (2 * M_PI * frequency * turns * effectiveArea);
-                        std::cout << "  Peak B (estimated from voltage): " << estimatedBPeak * 1000 << " mT" << std::endl;
                     }
                 }
                 
@@ -2018,13 +1979,11 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
                     auto magnetizingInductanceDim = magnetizingInductanceOutput.get_magnetizing_inductance();
                     if (magnetizingInductanceDim.get_nominal()) {
                         double magnetizingInductance = *magnetizingInductanceDim.get_nominal();
-                        std::cout << "  Magnetizing Inductance: " << magnetizingInductance * 1000 << " mH" << std::endl;
                     }
                 }
             }
         }
     }
-    std::cout << "===========================\n" << std::endl;
     
     // Verify that results are sorted by score (best first)
     double bestScoring = masMagnetics[0].second;
@@ -2039,7 +1998,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
     }
     
     // Test STANDARD_CORES mode
-    std::cout << "\n\n=== STANDARD_CORES MODE ===" << std::endl;
     load_core_shapes();
     CoreAdviser coreAdviserStandard;
     coreAdviserStandard.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
@@ -2052,15 +2010,12 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
     auto masMagneticsStandard = coreAdviserStandard.get_advised_core(inputs, &shapes, 20);
     
     // Print all results to see what's available
-    std::cout << "\n=== All Standard Cores Results (top 10) ===" << std::endl;
     for (size_t i = 0; i < std::min(size_t(10), masMagneticsStandard.size()); ++i) {
         auto& result = masMagneticsStandard[i].first;
         auto& magnetic = result.get_magnetic();
         auto& core = magnetic.get_core();
         auto& coil = magnetic.get_coil();
         
-        std::cout << "\nRank " << (i+1) << ": " << core.get_name().value_or("N/A") << std::endl;
-        std::cout << "  Turns: " << coil.get_functional_description()[0].get_number_turns() << std::endl;
         
         // Calculate B field
         auto resultInputsLocal = result.get_inputs();
@@ -2072,17 +2027,14 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
                 double bPeak = *bField.get_processed()->get_peak();
                 auto coreCopy = core;
                 double bSat = coreCopy.get_magnetic_flux_density_saturation(op.get_conditions().get_ambient_temperature());
-                std::cout << "  Peak B: " << bPeak * 1000 << " mT (" << (bPeak/bSat)*100 << "% of Bsat)" << std::endl;
             }
         }
         
         // Print gapping
-        std::cout << "  Gaps: ";
         double totalGap = 0;
         for (auto& gap : core.get_functional_description().get_gapping()) {
             totalGap += gap.get_length();
         }
-        std::cout << totalGap * 1000 << " mm total" << std::endl;
     }
     
     // Print details of the top recommended core in STANDARD_CORES mode
@@ -2092,39 +2044,20 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
         auto& topCoreStd = topMagneticStd.get_core();
         auto& topCoilStd = topMagneticStd.get_coil();
         
-        std::cout << "\n=== Top Recommended Core (STANDARD_CORES) ===" << std::endl;
-        std::cout << "Core Name: " << topCoreStd.get_name().value_or("N/A") << std::endl;
         auto& materialStd = topCoreStd.get_functional_description().get_material();
         if (std::holds_alternative<std::string>(materialStd)) {
-            std::cout << "Core Material: " << std::get<std::string>(materialStd) << std::endl;
         } else {
-            std::cout << "Core Material: [Material Object]" << std::endl;
         }
         auto numberStacksStd = topCoreStd.get_functional_description().get_number_stacks();
-        std::cout << "Number of Stacks: " << (numberStacksStd ? static_cast<int>(*numberStacksStd) : 1) << std::endl;
         
         // Print gapping information
-        std::cout << "\nGapping:" << std::endl;
         if (topCoreStd.get_functional_description().get_gapping().size() > 0) {
             for (size_t i = 0; i < topCoreStd.get_functional_description().get_gapping().size(); ++i) {
-                auto& gap = topCoreStd.get_functional_description().get_gapping()[i];
-                std::cout << "  Gap " << i << ": " << gap.get_length() * 1000 << " mm (" 
-                          << std::string(magic_enum::enum_name(gap.get_type())) << ")" << std::endl;
+                (void)i;
             }
-        } else {
-            std::cout << "  Ungapped" << std::endl;
-        }
-        
-        // Print turns information
-        std::cout << "\nTurns:" << std::endl;
-        for (size_t i = 0; i < topCoilStd.get_functional_description().size(); ++i) {
-            auto& winding = topCoilStd.get_functional_description()[i];
-            std::cout << "  Winding " << i << " (" << winding.get_name() << "): " 
-                      << static_cast<int>(winding.get_number_turns()) << " turns" << std::endl;
         }
         
         // Calculate B field for the standard core and check saturation
-        std::cout << "\nMagnetic Flux Density Check:" << std::endl;
         auto& resultInputsStd = topResultStd.get_inputs();
         if (resultInputsStd.get_operating_points().size() > 0) {
             auto operatingPoint = resultInputsStd.get_operating_points()[0];
@@ -2138,16 +2071,11 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
                 auto coreCopy = topCoreStd;
                 double bSaturation = coreCopy.get_magnetic_flux_density_saturation(temperature);
                 
-                std::cout << "  Peak B: " << bPeak * 1000 << " mT" << std::endl;
-                std::cout << "  Saturation B: " << bSaturation * 1000 << " mT" << std::endl;
-                std::cout << "  Ratio (B/Bsat): " << (bPeak / bSaturation) * 100 << "%" << std::endl;
                 
                 if (bPeak > bSaturation) {
-                    std::cout << "  WARNING: B field EXCEEDS saturation! Core should be filtered out!" << std::endl;
                 }
             }
         }
-        std::cout << "===========================\n" << std::endl;
     }
     
     settings.reset();
@@ -2163,8 +2091,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar_With_Log", "[adviser][core-ad
     // Extract the inputs from the loaded MAS
     auto inputs = mas.get_inputs();
     
-    std::cout << "\n\n=== STANDARD_CORES MODE WITH FRONTEND WEIGHTS ===" << std::endl;
-    std::cout << "Weights: Efficiency=40, Dimensions=30, Cost=30" << std::endl;
     
     load_core_shapes();
     CoreAdviser coreAdviser;
@@ -2187,11 +2113,8 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar_With_Log", "[adviser][core-ad
     
     // Read and print the log
     auto log = read_log();
-    std::cout << "\n=== MKF FILTER LOG ===" << std::endl;
-    std::cout << log << std::endl;
     
     // Print all results with their losses
-    std::cout << "\n=== ALL RESULTS WITH LOSSES ===" << std::endl;
     for (size_t i = 0; i < masMagnetics.size(); ++i) {
         auto& result = masMagnetics[i].first;
         auto& magnetic = result.get_magnetic();
@@ -2207,11 +2130,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar_With_Log", "[adviser][core-ad
             }
         }
         
-        std::cout << "Rank " << (i+1) << ": " << core.get_name().value_or("N/A");
-        std::cout << " - Score: " << masMagnetics[i].second;
-        std::cout << " - Core Losses: " << totalLosses << " W";
-        std::cout << " - Turns: " << magnetic.get_coil().get_functional_description()[0].get_number_turns();
-        std::cout << std::endl;
     }
     
     settings.reset();
@@ -2227,22 +2145,11 @@ TEST_CASE("Test_E32_Specific_Configuration_19turns_640um", "[adviser][core-advis
     // Extract the inputs from the loaded MAS
     auto inputs = mas.get_inputs();
     
-    std::cout << "\n\n=== E32 WITH 19 TURNS AND 640 µm GAP ANALYSIS ===" << std::endl;
     
     // Calculate required magnetic energy
     MagneticEnergy magneticEnergy;
     auto requiredEnergyDim = magneticEnergy.calculate_required_magnetic_energy(inputs);
     double requiredEnergy = resolve_dimensional_values(requiredEnergyDim);
-    std::cout << "Required magnetic energy: " << requiredEnergy * 1e6 << " µJ" << std::endl;
-    std::cout << "Required inductance: 100 µH" << std::endl;
-    std::cout << "\n--- Physics Analysis ---" << std::endl;
-    std::cout << "With 19 turns and 640 µm gap:" << std::endl;
-    std::cout << "  • Gap is 16x larger than MKF's calculated 40 µm" << std::endl;
-    std::cout << "  • Reluctance increases significantly (R_gap ∝ length)" << std::endl;
-    std::cout << "  • Inductance L = N²/R, so need more turns to compensate" << std::endl;
-    std::cout << "  • B field B = μ₀ × H = μ₀ × N×I/l_gap, so larger gap → lower B" << std::endl;
-    std::cout << "\n  Expected result: B field should be lower, but inductance may be too low" << std::endl;
-    std::cout << "  To get 100µH with 640µm gap, likely need ~30-40 turns, not 19" << std::endl;
     
     // Quick estimation
     double gapMKF = 40e-6;  // MKF calculated 40 µm
@@ -2253,18 +2160,7 @@ TEST_CASE("Test_E32_Specific_Configuration_19turns_640um", "[adviser][core-advis
     double reluctanceRatio = gapUser / gapMKF;  // ~16x higher reluctance
     double turnsRatio = turnsUser / turnsMKF;   // ~4.75x more turns
     
-    std::cout << "\n--- Scaling Analysis ---" << std::endl;
-    std::cout << "  Reluctance increase: " << reluctanceRatio << "x (640/40)" << std::endl;
-    std::cout << "  Turns increase: " << turnsRatio << "x (19/4)" << std::endl;
-    std::cout << "  Inductance factor: N²/R = " << (turnsRatio * turnsRatio) / reluctanceRatio << "x" << std::endl;
-    std::cout << "  → If MKF's config gave ~100µH, this config gives ~" << 100 * (turnsRatio * turnsRatio) / reluctanceRatio << " µH" << std::endl;
     
-    std::cout << "\n--- Conclusion ---" << std::endl;
-    std::cout << "  E32 with 19 turns and 640µm gap would:" << std::endl;
-    std::cout << "  ✓ Likely NOT saturate (B field much lower)" << std::endl;
-    std::cout << "  ✗ Likely have too LOW inductance (~30-40 µH instead of 100 µH)" << std::endl;
-    std::cout << "  → Need ~30-35 turns with 640µm gap to get 100 µH" << std::endl;
-    std::cout << "  → Or use smaller gap with 19 turns (but check saturation!)" << std::endl;
     
     settings.reset();
 }
@@ -2440,14 +2336,6 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     
     inputs.get_mutable_operating_points().push_back(operatingPoint2);
 
-    std::cout << "\n\n=== FLYBACK FRONTEND TEST ===" << std::endl;
-    std::cout << "Inductance: min=" << inputs.get_design_requirements().get_magnetizing_inductance().get_minimum().value_or(0) * 1e6 
-              << " µH, nom=" << inputs.get_design_requirements().get_magnetizing_inductance().get_nominal().value_or(0) * 1e6 
-              << " µH, max=" << inputs.get_design_requirements().get_magnetizing_inductance().get_maximum().value_or(0) * 1e6 << " µH" << std::endl;
-    std::cout << "Topology: " << magic_enum::enum_name(inputs.get_design_requirements().get_topology().value()) << std::endl;
-    std::cout << "Turns ratio: " << inputs.get_design_requirements().get_turns_ratios()[0].get_nominal().value() << std::endl;
-    std::cout << "Frequency: " << inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_frequency() << " Hz" << std::endl;
-
     std::map<CoreAdviser::CoreAdviserFilters, double> weights;
     weights[CoreAdviser::CoreAdviserFilters::COST] = 0.3;
     weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0.4;
@@ -2463,8 +2351,6 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
 
     auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 5);
 
-    std::cout << "\n--- Results ---" << std::endl;
-    std::cout << "Number of recommended cores: " << masMagnetics.size() << std::endl;
 
     REQUIRE(masMagnetics.size() > 0);
 
@@ -2474,19 +2360,11 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
         auto core = magnetic.get_mutable_core();
         auto coil = magnetic.get_coil();
 
-        std::cout << "\nCore " << i << ": " << core.get_name().value_or("unnamed") << std::endl;
-        std::cout << "  Shape: " << core.get_shape_name() << std::endl;
-        std::cout << "  Material: " << core.get_material_name() << std::endl;
-        std::cout << "  Turns: " << coil.get_functional_description()[0].get_number_turns() << std::endl;
 
         // Check gapping
         auto gapping = core.get_functional_description().get_gapping();
-        std::cout << "  Gapping entries: " << gapping.size() << std::endl;
         for (size_t g = 0; g < gapping.size(); ++g) {
-            auto gap = gapping[g];
-            double gapLength = gap.get_length();
-            std::cout << "    Gap " << g << ": type=" << magic_enum::enum_name(gap.get_type())
-                      << ", length=" << gapLength * 1e6 << " µm" << std::endl;
+            (void)gapping[g];
         }
     }
 

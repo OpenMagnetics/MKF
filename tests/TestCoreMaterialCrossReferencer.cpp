@@ -181,7 +181,6 @@ namespace {
 
         // Accept any Kool Mμ material as top result due to algorithm improvements
         auto topMaterialName = crossReferencedCoreMaterials[0].first.get_name();
-        std::cout << "Top material name: " << topMaterialName << std::endl;
         REQUIRE((topMaterialName.find("Kool M") != std::string::npos || 
                  topMaterialName.find("MAX") != std::string::npos ||
                  topMaterialName.find("HF") != std::string::npos ||
