@@ -95,6 +95,49 @@ void sort_magnetics_by_scoring(std::vector<std::pair<Magnetic, double>>* magneti
     }); // F12 FIX: stable_sort for reproducible results
 }
 
+// Helper function to determine if a topology stores energy in the magnetic field
+// Energy-storing topologies need gapped cores for DC bias handling
+// Non-energy-storing (transformer) topologies transfer energy without storage
+bool is_energy_storing_topology(std::optional<Topologies> topology) {
+    if (!topology.has_value()) {
+        return false; // Unknown topology, caller should use other heuristics
+    }
+    
+    switch (topology.value()) {
+        // Energy-storing topologies (inductors, flyback-derived)
+        // These store energy in the magnetic field each switching cycle
+        case Topologies::FLYBACK_CONVERTER:
+        case Topologies::BUCK_CONVERTER:
+        case Topologies::BOOST_CONVERTER:
+        case Topologies::INVERTING_BUCK_BOOST_CONVERTER:
+        case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
+        case Topologies::CUK_CONVERTER:
+        case Topologies::SEPIC:
+        case Topologies::ZETA_CONVERTER:
+            return true;
+            
+        // Transformer topologies (forward-derived)
+        // These transfer energy directly without storing it
+        case Topologies::SINGLE_SWITCH_FORWARD_CONVERTER:
+        case Topologies::TWO_SWITCH_FORWARD_CONVERTER:
+        case Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER:
+        case Topologies::PUSH_PULL_CONVERTER:
+        case Topologies::HALF_BRIDGE_CONVERTER:
+        case Topologies::FULL_BRIDGE_CONVERTER:
+        case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case Topologies::ISOLATED_BUCK_CONVERTER:
+        case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
+        case Topologies::LLC_RESONANT_CONVERTER:
+        case Topologies::CLLC_RESONANT_CONVERTER:
+        case Topologies::WEINBERG_CONVERTER:
+        case Topologies::CURRENT_TRANSFORMER:
+            return false;
+            
+        default:
+            return false; // Unknown, treat as transformer (safer - no gap)
+    }
+}
+
 CoreAdviser::MagneticCoreFilterAreaProduct::MagneticCoreFilterAreaProduct(Inputs inputs) {
     _filter = MagneticFilterAreaProduct(inputs);
 }
@@ -782,9 +825,11 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(Inputs inputs, std::vector<CoreShape>* shapes, bool includeStacks) {
     std::vector<std::pair<Magnetic, double>> magnetics;
+    std::cout << "[CoreAdviser] create_magnetic_dataset called with " << shapes->size() << " shapes" << std::endl;
     Coil coil = get_dummy_coil(inputs);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
     auto includeConcentricCores = settings.get_use_concentric_cores();
+    std::cout << "[CoreAdviser] includeToroidalCores=" << includeToroidalCores << ", includeConcentricCores=" << includeConcentricCores << std::endl;
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
     auto globalIncludeDistributedGaps = settings.get_core_adviser_include_distributed_gaps();
     double maximumHeight = DBL_MAX;
@@ -931,30 +976,42 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
 void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     MagnetizingInductance magnetizingInductance;
     
-    // Transformer vs Inductor Detection
-    // ==================================
-    // We distinguish between transformers and inductors based on how the magnetizing
-    // inductance requirement is specified:
+    // Transformer vs Inductor/Energy-Storing Detection
+    // =================================================
+    // We need to determine if this application stores energy (needs gap) or transfers it (no gap).
     //
-    // TRANSFORMER (minimum-only inductance):
-    //   - Topologies: Forward, PushPull, Half-Bridge, Full-Bridge, Isolated Buck, etc.
-    //   - Energy is transferred directly, not stored in the magnetic field
-    //   - Magnetizing inductance should be HIGH to minimize magnetizing current (parasitic)
-    //   - Specifying only a MINIMUM means "at least this much, but more is better"
-    //   - Core should NOT be gapped (high permeability = high inductance)
-    //   - Turns calculated from voltage/frequency to avoid saturation (Faraday's Law)
-    //
-    // INDUCTOR (nominal or nominal+tolerance inductance):
-    //   - Topologies: Buck, Boost, Flyback, etc.
+    // ENERGY-STORING (inductor/flyback-like):
+    //   - Topologies: Flyback, Buck, Boost, Buck-Boost, SEPIC, Cuk, Zeta, etc.
     //   - Energy is stored in the magnetic field each switching cycle
-    //   - Magnetizing inductance must be a SPECIFIC value for proper operation
-    //   - Specifying NOMINAL (with optional min/max tolerance) means "I need this exact value"
     //   - Core typically needs a gap to store the required energy without saturating
     //   - Turns calculated from inductance requirement and gap
     //
-    bool isTransformer = inputs.get_design_requirements().get_magnetizing_inductance().get_minimum() &&
-                         !inputs.get_design_requirements().get_magnetizing_inductance().get_nominal() &&
-                         !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum();
+    // TRANSFORMER (forward-like):
+    //   - Topologies: Forward, PushPull, Half-Bridge, Full-Bridge, DAB, LLC, etc.
+    //   - Energy is transferred directly, not stored in the magnetic field
+    //   - Magnetizing inductance should be HIGH to minimize magnetizing current (parasitic)
+    //   - Core should NOT be gapped (high permeability = high inductance)
+    //   - Turns calculated from voltage/frequency to avoid saturation (Faraday's Law)
+    //
+    // Detection priority:
+    // 1. Use topology if specified (most reliable)
+    // 2. Fall back to inductance field heuristic (minimum-only = transformer)
+    //
+    auto topology = inputs.get_design_requirements().get_topology();
+    bool isEnergyStoring = is_energy_storing_topology(topology);
+    
+    // If topology is not set, use the old heuristic based on inductance specification
+    // minimum-only inductance suggests transformer (want high inductance, no specific value)
+    // nominal or min+max suggests inductor (need specific value for energy storage)
+    bool isTransformer;
+    if (topology.has_value()) {
+        isTransformer = !isEnergyStoring;
+    } else {
+        // Legacy heuristic: minimum-only = transformer
+        isTransformer = inputs.get_design_requirements().get_magnetizing_inductance().get_minimum() &&
+                        !inputs.get_design_requirements().get_magnetizing_inductance().get_nominal() &&
+                        !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum();
+    }
     
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
 
@@ -1359,12 +1416,20 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
         return;
     }
 
-    // Transformer vs Inductor Detection (see add_initial_turns_by_inductance for full explanation)
-    // Transformers: minimum-only inductance → no gap needed, high permeability preferred
-    // Inductors: nominal inductance → gap needed for energy storage
-    bool isTransformer = inputs.get_design_requirements().get_magnetizing_inductance().get_minimum() &&
-                         !inputs.get_design_requirements().get_magnetizing_inductance().get_nominal() &&
-                         !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum();
+    // Transformer vs Energy-Storing Detection (see add_initial_turns_by_inductance for full explanation)
+    // Use topology if available, otherwise fall back to inductance field heuristic
+    auto topology = inputs.get_design_requirements().get_topology();
+    bool isEnergyStoring = is_energy_storing_topology(topology);
+    
+    bool isTransformer;
+    if (topology.has_value()) {
+        isTransformer = !isEnergyStoring;
+    } else {
+        // Legacy heuristic: minimum-only inductance = transformer
+        isTransformer = inputs.get_design_requirements().get_magnetizing_inductance().get_minimum() &&
+                        !inputs.get_design_requirements().get_magnetizing_inductance().get_nominal() &&
+                        !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum();
+    }
     
     if (isTransformer) {
         // Transformers should NOT be gapped - they transfer energy, not store it
@@ -2364,6 +2429,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
     logEntry("Starting with " + std::to_string(magneticsWithScoring.size()) + " magnetics", "CoreAdviser");
+    std::cout << "[CoreAdviser] Starting with " << magneticsWithScoring.size() << " magnetics" << std::endl;
 
     bool usingPowderCores = should_include_powder(inputs);
 
@@ -2372,6 +2438,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // ========================================================================
     magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     logEntry("After AreaProduct: " + std::to_string(magneticsWithScoring.size()), "CoreAdviser");
+    std::cout << "[CoreAdviser] After AreaProduct: " << magneticsWithScoring.size() << std::endl;
 
     // ========================================================================
     // STEP 2: Separate ferrite (gappable) and powder/toroidal cores
@@ -2392,6 +2459,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         ferriteCores.resize(ferriteLimit);
     }
     logEntry("Ferrite cores after pruning: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+    std::cout << "[CoreAdviser] Ferrite cores after pruning: " << ferriteCores.size() << std::endl;
 
     // ========================================================================
     // STEP 3: Process FERRITE cores (gapped)
@@ -2400,39 +2468,47 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         // Add gaps to ferrite cores
         add_gapping_standard_cores(&ferriteCores, inputs);
         logEntry("After gapping ferrite: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After gapping: " << ferriteCores.size() << std::endl;
         
         // Filter by fringing factor
         ferriteCores = filterFringingFactor.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After FringingFactor: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After FringingFactor: " << ferriteCores.size() << std::endl;
         
         // Filter by dimensions
         ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, 1, true);
         logEntry("After Dimensions (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Dimensions: " << ferriteCores.size() << std::endl;
         
         // Assign concrete ferrite materials
         ferriteCores = add_ferrite_materials_by_losses(&ferriteCores, inputs);
         logEntry("After materials (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After materials: " << ferriteCores.size() << std::endl;
         
         // Calculate turns
         add_initial_turns_by_inductance(&ferriteCores, inputs);
+        std::cout << "[CoreAdviser] After add_initial_turns: " << ferriteCores.size() << std::endl;
         
         // Filter by inductance
         ferriteCores = filterMagneticInductance.filter_magnetics(&ferriteCores, inputs, 0.1, true);
         logEntry("After Inductance (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Inductance: " << ferriteCores.size() << std::endl;
         
         // Filter by saturation
         ferriteCores = filterSaturation.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Saturation (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Saturation: " << ferriteCores.size() << std::endl;
         
         // Filter by losses
         ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Losses (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Losses: " << ferriteCores.size() << std::endl;
     }
 
     // ========================================================================
-    // STEP 4: Process POWDER cores (ungapped toroidal) - only if appropriate
+    // STEP 4: Process POWDER cores (ungapped toroidal) - if appropriate or if toroidal cores explicitly requested
     // ========================================================================
-    if (usingPowderCores) {
+    if (usingPowderCores || settings.get_use_toroidal_cores()) {
         // Get toroidal cores from original set
         for (const auto& [mag, score] : magneticsWithScoring) {
             if (mag.get_core().get_functional_description().get_type() == CoreType::TOROIDAL) {

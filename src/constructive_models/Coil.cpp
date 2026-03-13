@@ -584,6 +584,14 @@ std::vector<WindingStyle> Coil::wind_by_consecutive_turns(std::vector<uint64_t> 
             throw InvalidInputException("Number of slots cannot be less than 1, please verify your isolation sides requirement");
         }
         
+        // When turns < slots, we MUST use CONSECUTIVE_TURNS to distribute physical turns (parallels)
+        // across slots. CONSECUTIVE_PARALLELS would put all turns in the first slots, leaving rest empty.
+        if (numberTurns[i] < numberSlots[i] && numberParallels[i] > 1) {
+            windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
+            log("Winding " + std::to_string(i) + ": CONSECUTIVE_TURNS (turns < slots, must distribute parallels across slots).");
+            continue;
+        }
+
         // Case 1: Perfect fit - one turn per slot
         if (numberTurns[i] == numberSlots[i]) {
             windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
@@ -649,6 +657,13 @@ std::vector<WindingStyle> Coil::wind_by_consecutive_turns(std::vector<uint64_t> 
  * for better current sharing and reduced proximity effect.
  */
 WindingStyle Coil::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots) {
+    // When turns < slots, we MUST use CONSECUTIVE_TURNS to distribute physical turns (parallels)
+    // across slots. CONSECUTIVE_PARALLELS would put all turns in the first slots, leaving rest empty.
+    if (numberTurns < numberSlots && numberParallels > 1) {
+        log("Layer: CONSECUTIVE_TURNS (turns < slots, must distribute parallels across slots).");
+        return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+    }
+
     // Perfect fit cases
     if (numberTurns == numberSlots) {
         log("Layer: CONSECUTIVE_PARALLELS (turns == slots).");
@@ -2331,11 +2346,12 @@ Layer Coil::devirtualize_layer(Layer layer) {
     return layer;
 }
 
-Turn Coil::devirtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName) {
+Turn Coil::devirtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName, size_t newParallelIndex) {
     auto name = turn.get_name();
     name = std::regex_replace(name, std::regex(virtualWindingName), windingName);
     turn.set_name(name);
     turn.set_winding(windingName);
+    turn.set_parallel(newParallelIndex);
     return turn;
 }
 
@@ -2446,6 +2462,7 @@ void Coil::devirtualize_turns_description() {
         auto turnsInVirtualWinding = get_turns_by_winding(_virtualWindingNames[virtualWindingIndex]);
         
         std::map<size_t, int64_t> remainingNumberTurnsPerWoundTogetherWinding;
+        std::map<size_t, int64_t> assignedTurnsPerWinding;  // Track how many turns assigned to each winding
         int64_t minimumNumberTurns = std::numeric_limits<int64_t>::max();
         int64_t totalNumberTurns = 0;
         for (auto windingIndex : windingIndexes) {
@@ -2453,6 +2470,7 @@ void Coil::devirtualize_turns_description() {
             minimumNumberTurns = std::min(minimumNumberTurns, numberTurns);
             totalNumberTurns += numberTurns;
             remainingNumberTurnsPerWoundTogetherWinding[windingIndex] = numberTurns;
+            assignedTurnsPerWinding[windingIndex] = 0;
         }
 
         if (size_t(totalNumberTurns) != turnsInVirtualWinding.size()) {
@@ -2476,11 +2494,24 @@ void Coil::devirtualize_turns_description() {
             size_t timeout = devirtualizingPattern.size() + 1;
             while (timeout > 0) {
                 if (remainingNumberTurnsPerWoundTogetherWinding[devirtualizingPattern[devirtualizingPatternIndex]] > 0) {
-                    auto newWindingName = get_functional_description()[devirtualizingPattern[devirtualizingPatternIndex]].get_name();
+                    auto targetWindingIndex = devirtualizingPattern[devirtualizingPatternIndex];
+                    auto newWindingName = get_functional_description()[targetWindingIndex].get_name();
                     auto oldWindingName = _virtualWindingNames[virtualWindingIndex];
-                    remainingNumberTurnsPerWoundTogetherWinding[devirtualizingPattern[devirtualizingPatternIndex]]--;
+                    
+                    // Calculate the correct parallel index for this winding
+                    // Each winding has numberTurns turns per parallel
+                    auto numberTurnsPerWinding = get_functional_description()[targetWindingIndex].get_number_turns();
+                    auto numberParallels = get_functional_description()[targetWindingIndex].get_number_parallels();
+                    size_t newParallelIndex = assignedTurnsPerWinding[targetWindingIndex] / numberTurnsPerWinding;
+                    // Clamp to valid range in case of rounding issues
+                    if (newParallelIndex >= size_t(numberParallels)) {
+                        newParallelIndex = numberParallels - 1;
+                    }
+                    
+                    remainingNumberTurnsPerWoundTogetherWinding[targetWindingIndex]--;
+                    assignedTurnsPerWinding[targetWindingIndex]++;
                     devirtualizingPatternIndex = (devirtualizingPatternIndex + 1) % devirtualizingPattern.size();
-                    auto newTurn = devirtualize_turn(turn, oldWindingName, newWindingName);
+                    auto newTurn = devirtualize_turn(turn, oldWindingName, newWindingName, newParallelIndex);
                     newTurnsDescription.push_back(newTurn);
                     break;
                 }
@@ -4187,6 +4218,7 @@ bool Coil::wind_by_rectangular_turns() {
     if (!get_layers_description()) {
         return false;
     }
+    bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
     auto wirePerWinding = get_wires();
     std::vector<std::vector<int64_t>> currentTurnIndex;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -4269,7 +4301,7 @@ bool Coil::wind_by_rectangular_turns() {
             } 
             else {
                 totalLayerWidth = roundFloat(physicalTurnsInLayer * wireWidth, 9);
-                if (totalLayerWidth > std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows()[0].get_width().value()) {
+                if (!windEvenIfNotFit && totalLayerWidth > std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows()[0].get_width().value()) {
                     return false;
                 }
                 totalLayerHeight = layer.get_dimensions()[1];

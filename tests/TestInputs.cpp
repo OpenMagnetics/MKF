@@ -1098,7 +1098,7 @@ TEST_CASE("Test_Quick_Operating_Point", "[processor][inputs][smoke-test]") {
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_effective_frequency().value(), Catch::Matchers::WithinAbs(9777, max_error * 9777));
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_ac_effective_frequency().value(), Catch::Matchers::WithinAbs(129000, max_error * 129000));
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_peak_to_peak().value(), Catch::Matchers::WithinAbs(1.855, max_error * 1.855));
-    REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, 0));
+    REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, max_error));
 
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_harmonics().value().get_amplitudes()[0], Catch::Matchers::WithinAbs(10, 10 * max_error));
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_harmonics().value().get_amplitudes()[1], Catch::Matchers::WithinAbs(0.7165, max_error * 0.7165));

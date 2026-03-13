@@ -804,12 +804,20 @@ std::string Llc::generate_ngspice_circuit(
 // SPICE simulation wrappers
 // =====================================================================
 std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
-    const std::vector<double>& turnsRatios, double magnetizingInductance)
+    const std::vector<double>& turnsRatios, double magnetizingInductance,
+    size_t numberOfPeriods)
 {
     std::vector<OperatingPoint> operatingPoints;
     NgspiceRunner runner;
     if (!runner.is_available())
         return process_operating_points(turnsRatios, magnetizingInductance);
+
+    // If numberOfPeriods is specified, use it; otherwise use the member variable
+    int numPeriods = (numberOfPeriods > 0) ? static_cast<int>(numberOfPeriods) : get_num_periods_to_extract();
+    
+    // Save original value and set the requested number of periods
+    int originalNumPeriodsToExtract = get_num_periods_to_extract();
+    set_num_periods_to_extract(numPeriods);
 
     std::vector<double> inputVoltages;
     if (get_input_voltage().get_nominal().has_value())
@@ -869,6 +877,9 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
             operatingPoints.push_back(operatingPoint);
         }
     }
+    
+    // Restore original value
+    set_num_periods_to_extract(originalNumPeriodsToExtract);
     return operatingPoints;
 }
 

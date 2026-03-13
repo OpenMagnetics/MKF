@@ -106,7 +106,8 @@ public:
 
     std::vector<OperatingPoint> simulate_and_extract_operating_points(
         const std::vector<double>& turnsRatios,
-        double magnetizingInductance);
+        double magnetizingInductance,
+        size_t numberOfPeriods = 0);
 
     std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
         const std::vector<double>& turnsRatios,

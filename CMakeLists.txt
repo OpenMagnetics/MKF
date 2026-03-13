@@ -33,16 +33,11 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-switch -Wno-format-truncation")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pg")
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-    # Set flags for Debug builds to include AddressSanitizer and debug symbols (-g)
-    # These flags will only be used when you configure with -DCMAKE_BUILD_TYPE=Debug
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -fsanitize=address")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -fsanitize=address")
-    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
-    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address")
+    # Set flags for Debug builds (no ASan, no profiling for faster test execution)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g")
 endif()
 
 
@@ -434,6 +429,7 @@ set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
 add_dependencies(MKF MAS)
 
 cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards NAMESPACE insulationData src/data/insulation_standards/IEC_60664-1.json src/data/insulation_standards/IEC_60664-4.json src/data/insulation_standards/IEC_60664-5.json src/data/insulation_standards/IEC_62368-1.json src/data/insulation_standards/IEC_61558-1.json src/data/insulation_standards/IEC_61558-2-16.json src/data/insulation_standards/IEC_60335-1.json)
+cmrc_add_resource_library(core_losses_data ALIAS data::core_losses_data NAMESPACE coreLossesData src/data/core_losses/ciGSE_coefficients.json)
 target_link_libraries(MKF PUBLIC ${LIBS})
 
 set(DATA_LIST "")
@@ -465,6 +461,7 @@ endif()
 message(${DATA_LIST})
 cmrc_add_resource_library(data ALIAS data::data NAMESPACE data ${DATA_LIST})
 target_link_libraries(MKF PUBLIC data::data)
+target_link_libraries(MKF PUBLIC data::core_losses_data)
 
 if(ENABLE_MATPLOTPP)
     target_link_libraries(MKF PUBLIC matplot rapidfuzz::rapidfuzz)

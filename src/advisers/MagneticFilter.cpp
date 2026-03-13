@@ -1606,18 +1606,30 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
                          !inputs->get_design_requirements().get_magnetizing_inductance().get_nominal() &&
                          !inputs->get_design_requirements().get_magnetizing_inductance().get_maximum();
 
+    static bool firstCall = true;
+    if (firstCall) {
+        std::cout << "[InductanceFilter] isTransformer=" << isTransformer 
+                  << ", numOperatingPoints=" << inputs->get_operating_points().size() << std::endl;
+        firstCall = false;
+    }
+
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
         OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
 
         // For transformers, calculate inductance without operating point to use initial permeability
         MagnetizingInductanceOutput aux;
-        if (isTransformer) {
-            aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-                magnetic->get_mutable_core(), magnetic->get_mutable_coil(), nullptr);
-        } else {
-            aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-                magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
+        try {
+            if (isTransformer) {
+                aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                    magnetic->get_mutable_core(), magnetic->get_mutable_coil(), nullptr);
+            } else {
+                aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                    magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
+            }
+        } catch (const std::exception& e) {
+            std::cout << "[InductanceFilter] Exception: " << e.what() << std::endl;
+            return {false, 0};
         }
         double magnetizingInductance = resolve_dimensional_values(aux.get_magnetizing_inductance());
         double requiredInductance = resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance());

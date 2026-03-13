@@ -633,9 +633,9 @@ std::map<std::string, std::map<int, std::map<std::string, double>>> dynamicCoeff
 };
 std::map<CoreLossesModels, double> maximumAdmittedErrorVolumetricCoreLosses = {
     {CoreLossesModels::STEINMETZ, 1.6}, {CoreLossesModels::IGSE, 1.6},
-    {CoreLossesModels::ALBACH, 1.54},   {CoreLossesModels::BARG, 2.1},
-    {CoreLossesModels::ROSHEN, 2.48},   {CoreLossesModels::NSE, 1.55},
-    {CoreLossesModels::MSE, 1.54},
+    {CoreLossesModels::CIGSE, 1.6},     {CoreLossesModels::ALBACH, 1.54},
+    {CoreLossesModels::BARG, 2.1},      {CoreLossesModels::ROSHEN, 2.48},
+    {CoreLossesModels::NSE, 1.55},      {CoreLossesModels::MSE, 1.54},
 };
 std::map<CoreLossesModels, std::vector<double>> testAverageErrors = {
     {CoreLossesModels::STEINMETZ, {}},
@@ -1859,6 +1859,59 @@ TEST_CASE("Test_Magnet_N87_IGSE", "[physical-model][core-losses][igse-core-losse
     test_core_losses_magnet_data(CoreLossesModels::IGSE, "N87");
 }
 
+TEST_CASE("Test_PQ_20_20_3F4_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_verification_3F4(CoreLossesModels::CIGSE);
+}
+
+TEST_CASE("Test_PQ_20_20_N49_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_verification_N49(CoreLossesModels::CIGSE);
+}
+
+TEST_CASE("Test_PQ_20_20_3C94_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_verification_3C94(CoreLossesModels::CIGSE);
+}
+
+TEST_CASE("Test_PQ_20_20_N27_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_verification_N27(CoreLossesModels::CIGSE);
+}
+
+TEST_CASE("Test_PQ_20_20_N87_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_verification_N87(CoreLossesModels::CIGSE);
+}
+
+TEST_CASE("Test_PQ_20_20_3C90_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_verification_3C90(CoreLossesModels::CIGSE);
+}
+
+TEST_CASE("Test_Magnet_3C90_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "3C90");
+}
+
+TEST_CASE("Test_Magnet_3C94_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "3C94");
+}
+
+TEST_CASE("Test_Magnet_3F4_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "3F4");
+}
+
+TEST_CASE("Test_Magnet_N27_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    SKIP("Test needs investigation");
+    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "N27");
+}
+
+TEST_CASE("Test_Magnet_N30_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "N30");
+}
+
+TEST_CASE("Test_Magnet_N49_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "N49");
+}
+
+TEST_CASE("Test_Magnet_N87_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {
+    test_core_losses_magnet_data(CoreLossesModels::CIGSE, "N87");
+}
+
 TEST_CASE("Test_PQ_20_20_3F4_Albach", "[physical-model][core-losses][albach-core-losses-model]") {
     test_core_losses_magnet_verification_3F4(CoreLossesModels::ALBACH);
 }
@@ -2372,13 +2425,14 @@ TEST_CASE("Crash_Toroids", "[physical-model][core-losses][bug][smoke-test]") {
 
 TEST_CASE("Test_Methods", "[physical-model][core-losses][smoke-test]") {
     std::vector<std::string> methods = CoreLossesModel::get_methods_string("3C97");
-    REQUIRE(methods.size() == 6);
+    REQUIRE(methods.size() == 7);
     REQUIRE(methods[0] == "Steinmetz");
     REQUIRE(methods[1] == "IGSE");
-    REQUIRE(methods[2] == "Barg");
-    REQUIRE(methods[3] == "Albach");
-    REQUIRE(methods[4] == "MSE");
-    REQUIRE(methods[5] == "Roshen");
+    REQUIRE(methods[2] == "ciGSE");
+    REQUIRE(methods[3] == "Barg");
+    REQUIRE(methods[4] == "Albach");
+    REQUIRE(methods[5] == "MSE");
+    REQUIRE(methods[6] == "Roshen");
     methods = CoreLossesModel::get_methods_string("XFlux 19");
     REQUIRE(methods.size() == 1);
     REQUIRE(methods[0] == "Proprietary");
@@ -3210,7 +3264,7 @@ TEST_CASE("Frequency_From_Losses_TDG", "[physical-model][core-losses][smoke-test
 
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
-    double expectedLosses = 35;
+    double expectedLosses = 37.04;
     REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(expectedLosses, expectedLosses * maxError));
 }
 

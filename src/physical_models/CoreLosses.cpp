@@ -24,6 +24,8 @@
 #include <vector>
 // levmar.h removed - using Eigen LevenbergMarquardt
 
+#include <cmrc/cmrc.hpp>
+CMRC_DECLARE(coreLossesData);
 
 namespace OpenMagnetics {
 
@@ -56,6 +58,7 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
         if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::STEINMETZ)) {
             models.push_back(CoreLossesModels::STEINMETZ);
             models.push_back(CoreLossesModels::IGSE);
+            models.push_back(CoreLossesModels::CIGSE);
             models.push_back(CoreLossesModels::BARG);
             models.push_back(CoreLossesModels::ALBACH);
             models.push_back(CoreLossesModels::MSE);
@@ -151,6 +154,9 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels model
     else if (modelName == CoreLossesModels::IGSE) {
         return std::make_shared<CoreLossesIGSEModel>();
     }
+    else if (modelName == CoreLossesModels::CIGSE) {
+        return std::make_shared<CoreLossesciGSEModel>();
+    }
     else if (modelName == CoreLossesModels::MSE) {
         return std::make_shared<CoreLossesMSEModel>();
     }
@@ -174,7 +180,7 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels model
     }
 
     else
-        throw ModelNotAvailableException("Unknown Core losses mode, available options are: {STEINMETZ, IGSE, BARG, ALBACH, "
+        throw ModelNotAvailableException("Unknown Core losses mode, available options are: {STEINMETZ, IGSE, ciGSE, BARG, ALBACH, "
                                  "ROSHEN, OUYANG, NSE, MSE, PROPRIETARY, LOSS_FACTOR}");
 }
 
@@ -837,6 +843,286 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     // double volumetricLosses = ki * pow(mainHarmonicMagneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
     double volumetricLosses = ki * pow(magneticFluxDensityAcPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
+}
+
+// ============================================================================
+// ciGSE (Composite Improved Generalized Steinmetz Equation) Implementation
+// ============================================================================
+//
+// Based on: "The Composite Improved Generalized Steinmetz Equation (ciGSE):
+// An Accurate Model Combining the Composite Waveform Hypothesis With Classical Approaches"
+// by A. Arruti, J. Anzola, F.J. Pérez-Cebolla, I. Aizpuru, and M. Mazuela
+// IEEE Transactions on Power Electronics, vol. 39, no. 1, pp. 1162-1173, Jan. 2024
+// DOI: 10.1109/TPEL.2023.3323577
+//
+// The ciGSE model uses the Composite Waveform Hypothesis (CWH) which states that
+// the total losses of an asymmetric waveform can be calculated by summing the
+// weighted losses of each segment:
+//
+//   P_AB = D * P_AA + (1-D) * P_BB   (Eq. 6)
+//
+// where D is the duty cycle, and P_AA, P_BB are the losses for symmetric waveforms
+// formed by each segment.
+//
+// The losses for each segment are evaluated using an "expanded loss space" - a
+// 5th degree polynomial surface fitted to experimental data:
+//
+//   ln(Pv) = [X^0 ... X^5] * P * [Y^0 ... Y^5]^T   (Eq. 7)
+//
+// where X = ln(|dB/dt|), Y = ln(ΔB), and P is a 6x6 coefficient matrix.
+//
+// The coefficients in Table V of the paper are organized as p[row][col] where:
+// - row index corresponds to powers of X = ln(|dB/dt|)
+// - col index corresponds to powers of Y = ln(ΔB)
+// ============================================================================
+
+// Static member initialization
+std::vector<ciGSECoefficients> CoreLossesciGSEModel::_coefficientsCache;
+bool CoreLossesciGSEModel::_coefficientsLoaded = false;
+
+/**
+ * @brief Load ciGSE coefficients from embedded JSON resource
+ */
+void CoreLossesciGSEModel::load_coefficients() {
+    if (_coefficientsLoaded) {
+        return;
+    }
+    
+    try {
+        auto fs = cmrc::coreLossesData::get_filesystem();
+        auto data = fs.open("src/data/core_losses/ciGSE_coefficients.json");
+        std::string jsonStr(data.begin(), data.end());
+        json jsonData = json::parse(jsonStr);
+        
+        if (!jsonData.contains("coefficients")) {
+            _coefficientsLoaded = true;
+            return;
+        }
+        
+        auto& coeffsJson = jsonData["coefficients"];
+        
+        // Iterate over materials
+        for (auto& [materialName, tempData] : coeffsJson.items()) {
+            // Iterate over temperatures
+            for (auto& [tempStr, coeffData] : tempData.items()) {
+                ciGSECoefficients coeff;
+                coeff.materialName = materialName;
+                coeff.temperature = std::stod(tempStr);
+                
+                // Initialize all coefficients to zero
+                for (int i = 0; i < 6; ++i) {
+                    for (int j = 0; j < 6; ++j) {
+                        coeff.p[i][j] = 0.0;
+                    }
+                }
+                
+                // Load coefficients p00 through p55
+                for (int i = 0; i < 6; ++i) {
+                    for (int j = 0; j < 6; ++j) {
+                        std::string key = "p" + std::to_string(i) + std::to_string(j);
+                        if (coeffData.contains(key)) {
+                            coeff.p[i][j] = coeffData[key].get<double>();
+                        }
+                    }
+                }
+                
+                _coefficientsCache.push_back(coeff);
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        // Silently fail - will fall back to iGSE
+    }
+    
+    _coefficientsLoaded = true;
+}
+
+/**
+ * @brief Find the expanded loss space coefficients for a given material and temperature.
+ * 
+ * If exact temperature match is not found, returns the closest available temperature.
+ * 
+ * @param materialName Name of the core material (e.g., "N87", "N27", "3C94")
+ * @param temperature Operating temperature in °C
+ * @return Pointer to the coefficients, or nullptr if material not found
+ */
+const ciGSECoefficients* 
+CoreLossesciGSEModel::get_expanded_loss_space_coefficients(const std::string& materialName, double temperature) {
+    // Ensure coefficients are loaded
+    load_coefficients();
+    
+    const ciGSECoefficients* bestMatch = nullptr;
+    double bestTempDiff = std::numeric_limits<double>::max();
+    
+    for (const auto& coeff : _coefficientsCache) {
+        if (coeff.materialName == materialName) {
+            double tempDiff = std::abs(coeff.temperature - temperature);
+            if (tempDiff < bestTempDiff) {
+                bestTempDiff = tempDiff;
+                bestMatch = &coeff;
+            }
+        }
+    }
+    
+    return bestMatch;
+}
+
+/**
+ * @brief Check if ciGSE coefficients are available for a material.
+ */
+bool CoreLossesciGSEModel::has_cigse_coefficients(const std::string& materialName, double temperature) {
+    return get_expanded_loss_space_coefficients(materialName, temperature) != nullptr;
+}
+
+/**
+ * @brief Evaluate the expanded loss space polynomial to get volumetric losses.
+ * 
+ * Implements Equation (7) from the paper:
+ *   ln(Pv) = [X^0 ... X^5] * P * [Y^0 ... Y^5]^T
+ * where X = ln(|dB/dt|), Y = ln(ΔB)
+ * 
+ * @param coeffs The polynomial coefficients for the material/temperature
+ * @param dBdt Rate of change of magnetic flux density [T/s]
+ * @param deltaB Peak-to-peak flux density [T]
+ * @return Volumetric losses [W/m³]
+ */
+double CoreLossesciGSEModel::evaluate_expanded_loss_space(
+    const ciGSECoefficients& coeffs,
+    double dBdt, double deltaB) {
+    
+    // Compute X = ln(|dB/dt|) and Y = ln(ΔB)
+    // Paper uses dB/dt in T/s and ΔB in T
+    double X = log(fabs(dBdt));
+    double Y = log(deltaB);
+    
+    // Build the power vectors [X^0, X^1, ..., X^5] and [Y^0, Y^1, ..., Y^5]
+    double Xpow[6], Ypow[6];
+    Xpow[0] = 1.0;
+    Ypow[0] = 1.0;
+    for (int i = 1; i < 6; ++i) {
+        Xpow[i] = Xpow[i-1] * X;
+        Ypow[i] = Ypow[i-1] * Y;
+    }
+    
+    // Compute ln(Pv) = [Xpow] * P * [Ypow]^T
+    // This is a bilinear form: sum over i,j of p[i][j] * X^i * Y^j
+    // According to Eq. (7): p[i][j] corresponds to ln(|dB/dt|)^i * ln(ΔB)^j
+    double lnPv = 0.0;
+    for (int i = 0; i < 6; ++i) {
+        for (int j = 0; j < 6; ++j) {
+            lnPv += coeffs.p[i][j] * Xpow[i] * Ypow[j];
+        }
+    }
+    
+    // Return Pv = exp(ln(Pv))
+    return exp(lnPv);
+}
+
+/**
+ * @brief Calculates core volumetric losses using the ciGSE model.
+ * 
+ * Based on: "The Composite Improved Generalized Steinmetz Equation (ciGSE):
+ * An Accurate Model Combining the Composite Waveform Hypothesis With Classical Approaches"
+ * IEEE TPEL, vol. 39, no. 1, Jan. 2024
+ * 
+ * The ciGSE applies the Composite Waveform Hypothesis (CWH) to calculate losses
+ * for asymmetric waveforms by treating each segment separately:
+ * 
+ *   P_total = Σ (D_n * P_n)
+ * 
+ * where D_n is the duty cycle of segment n, and P_n is the volumetric loss
+ * evaluated from the expanded loss space for that segment's |dB/dt| and ΔB.
+ * 
+ * For waveforms where ciGSE coefficients are not available, falls back to iGSE.
+ * 
+ * @param coreMaterial Core material with Steinmetz coefficients
+ * @param excitation Operating point with arbitrary flux density waveform
+ * @param temperature Core temperature [°C]
+ * @return Volumetric core losses [W/m³]
+ */
+double CoreLossesciGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                                        OperatingPointExcitation excitation,
+                                                        double temperature) {
+    
+    std::string materialName = coreMaterial.get_name();
+    
+    // Check if we have ciGSE coefficients for this material
+    const ciGSECoefficients* coeffs = get_expanded_loss_space_coefficients(materialName, temperature);
+    
+    if (coeffs == nullptr) {
+        // Fall back to iGSE if no ciGSE coefficients available
+        // This provides backward compatibility
+        CoreLossesIGSEModel igseModel;
+        return igseModel.get_core_volumetric_losses(coreMaterial, excitation, temperature);
+    }
+    
+    // Get waveform data
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+    double frequency = Inputs::get_switching_frequency(excitation);
+    double magneticFluxDensityAcPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
+    
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
+    auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
+    
+    std::vector<double> magneticFluxDensityTime;
+    if (magneticFluxDensity.get_waveform().value().get_time()) {
+        magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
+    }
+    
+    double period = 1.0 / frequency;
+    size_t numberPoints = magneticFluxDensityWaveform.size();
+    
+    if (frequency / excitation.get_frequency() > 1) {
+        numberPoints = round(numberPoints / (frequency / excitation.get_frequency()));
+    }
+    
+    // Apply the Composite Waveform Hypothesis:
+    // Calculate losses for each segment of the waveform separately,
+    // then sum them weighted by their duty cycle (time fraction)
+    double totalVolumetricLosses = 0.0;
+    
+    for (size_t i = 0; i < numberPoints - 1; ++i) {
+        double timeDifference;
+        if (magneticFluxDensity.get_waveform().value().get_time()) {
+            timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
+        }
+        else {
+            timeDifference = period / settings.get_inputs_number_points_sampled_waveforms();
+        }
+        
+        // Calculate |dB/dt| for this segment
+        double deltaB_segment = fabs(magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]);
+        
+        // Skip segments with negligible change
+        if (deltaB_segment < 1e-12) {
+            continue;
+        }
+        
+        double dBdt = deltaB_segment / timeDifference;
+        
+        // The duty cycle for this segment
+        double dutyCycle = timeDifference / period;
+        
+        // Evaluate the expanded loss space for this segment
+        // Note: We use the overall peak-to-peak ΔB, not the segment's ΔB
+        // This is consistent with the CWH where P_AA and P_BB use the same ΔB as the original waveform
+        double segmentLoss = evaluate_expanded_loss_space(*coeffs, dBdt, magneticFluxDensityAcPeakToPeak);
+        
+        // Apply CWH: weight by duty cycle
+        totalVolumetricLosses += dutyCycle * segmentLoss;
+    }
+    
+    // Apply temperature correction if the coefficients are for a different temperature
+    // The expanded loss space already accounts for temperature (different coefficients per temp),
+    // but we may want to interpolate between temperature points
+    if (std::abs(coeffs->temperature - temperature) > 1.0) {
+        // Simple linear correction factor based on temperature difference
+        // This is a rough approximation; ideally we'd interpolate between coefficient sets
+        double tempRatio = 1.0;  // No correction for now - coefficients already per-temperature
+        totalVolumetricLosses *= tempRatio;
+    }
+    
+    return totalVolumetricLosses;
 }
 
 /**

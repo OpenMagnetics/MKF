@@ -293,6 +293,31 @@ double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label, doub
         if (frequency > 0) {
             sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
         }
+        else if (waveform.get_time() && waveform.get_time()->size() >= 3) {
+            // Can compute duty cycle directly from the waveform time points without sampling
+            auto timeVec = waveform.get_time().value();
+            auto dataVec = waveform.get_data();
+            double totalPeriod = timeVec.back() - timeVec.front();
+            if (totalPeriod <= 0) {
+                return 0.5;
+            }
+            if (dataVec.size() == 3) {
+                // 3-point triangular: peak at middle time point
+                return roundFloat((timeVec[1] - timeVec[0]) / totalPeriod, 2);
+            }
+            else if (dataVec.size() == 4) {
+                // 4-point waveform: duty cycle from average of middle two points
+                return roundFloat(((timeVec[1] + timeVec[2]) / 2 - timeVec[0]) / totalPeriod, 2);
+            }
+            else if (dataVec.size() == 5) {
+                // 5-point rectangular: time from point 0 to 2 over total
+                return roundFloat((timeVec[2] - timeVec[0]) / totalPeriod, 2);
+            }
+            else {
+                // Cannot compute duty cycle without frequency for arbitrary waveforms
+                return 0.5;
+            }
+        }
         else {
             // Cannot sample without frequency, return default duty cycle
             return 0.5;
@@ -789,25 +814,35 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
     if (data.size() < 2) {
         throw std::invalid_argument("Waveform must have at least 2 data points");
     }
-    
-    if (!std::isfinite(frequency) || frequency <= 0) {
-        throw std::invalid_argument("Invalid frequency: " + std::to_string(frequency));
-    }
 
     if (!waveform.get_time()) { // This means the waveform is equidistant
+        // Without time data, frequency must be provided
+        if (!std::isfinite(frequency) || frequency <= 0) {
+            throw std::invalid_argument("Invalid frequency: " + std::to_string(frequency));
+        }
+        // Reject unreasonably small frequencies (likely uninitialized garbage values)
+        // Minimum reasonable frequency is 1 Hz (period = 1 second)
+        if (frequency < 1.0) {
+            throw std::invalid_argument("Frequency too small (likely uninitialized): " + std::to_string(frequency));
+        }
         time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), data.size());
     }
     else {
         time = waveform.get_time().value();
-        // Check if we need to guess the frequency from the time vector
+        // The waveform time data defines the actual period to sample over
+        // Always use the frequency derived from the waveform time data for sampling
+        // This ensures the sampled time points fall within the waveform's time range
         double period = (time.back() - time.front());
-        if (frequency == 0) {
-            frequency = 1.0 / period;
+        if (period <= 0) {
+            throw std::invalid_argument("Invalid waveform period: " + std::to_string(period));
         }
-        // else {
-        //     if (fabs((1.0 / period) - frequency) / frequency > 0.01)
-        //         throw std::invalid_argument("Frequency: " + std::to_string(frequency) + " is not matching waveform time info with calculated frequency of: " + std::to_string(1.0 / period));
-        // }
+        // Use frequency from waveform time data for sampling purposes
+        // The passed frequency parameter is only used as fallback when time data is missing
+        frequency = 1.0 / period;
+        // Validate frequency after inference
+        if (!std::isfinite(frequency) || frequency <= 0) {
+            throw std::invalid_argument("Invalid frequency derived from waveform: " + std::to_string(frequency));
+        }
     }
 
     size_t numberPointsForSampling = settings.get_inputs_number_points_sampled_waveforms();
@@ -1824,6 +1859,9 @@ Waveform Inputs::compress_waveform(const Waveform& waveform) {
     compressedTime.push_back(time.back());
     compressedWaveform.set_data(compressedData);
     compressedWaveform.set_time(compressedTime);
+    if (waveform.get_ancillary_label()) {
+        compressedWaveform.set_ancillary_label(waveform.get_ancillary_label().value());
+    }
     return compressedWaveform;
 }
 
@@ -2036,8 +2074,18 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 
     magnetizingCurrentExcitation.set_harmonics(
         calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
-    magnetizingCurrentExcitation.set_processed(
-        calculate_processed_data(magnetizingCurrentExcitation, sampledMagnetizingCurrentWaveform));
+    {
+        auto processedData = calculate_processed_data(magnetizingCurrentExcitation, sampledMagnetizingCurrentWaveform);
+        // The 'offset' field represents the AC mean of the magnetizing current (DC bias is captured in harmonics[0]).
+        // We need to calculate the actual midpoint of the waveform (not rely on label-based offset which may return 0).
+        // After subtracting dcCurrent, the result should be the offset of the underlying AC component.
+        double waveformMidpoint = (*max_element(sampledMagnetizingCurrentWaveform.get_data().begin(), 
+                                                 sampledMagnetizingCurrentWaveform.get_data().end()) +
+                                   *min_element(sampledMagnetizingCurrentWaveform.get_data().begin(), 
+                                                 sampledMagnetizingCurrentWaveform.get_data().end())) / 2;
+        processedData.set_offset(waveformMidpoint - dcCurrent);
+        magnetizingCurrentExcitation.set_processed(processedData);
+    }
 
     return magnetizingCurrentExcitation;
 }
@@ -3389,13 +3437,27 @@ SignalDescriptor Inputs::get_current_with_effective_maximum(size_t windingIndex)
 }
 
 std::vector<IsolationSide> Inputs::get_isolation_sides_used() {
+    size_t numWindings = get_design_requirements().get_turns_ratios().size() + 1;
+    
     if (!get_design_requirements().get_isolation_sides()) {
+        // No isolation sides specified - auto-generate for all windings
         std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
-        for (size_t windingIndex = 1; windingIndex < get_design_requirements().get_turns_ratios().size() + 1; ++windingIndex) {
-            // isolationSides.push_back(IsolationSide::SECONDARY);
+        for (size_t windingIndex = 1; windingIndex < numWindings; ++windingIndex) {
             isolationSides.push_back(get_isolation_side_from_index(windingIndex));
         }
         get_mutable_design_requirements().set_isolation_sides(isolationSides);
+    }
+    else {
+        // Isolation sides are provided - validate and extend if necessary
+        auto isolationSides = get_design_requirements().get_isolation_sides().value();
+        if (isolationSides.size() < numWindings) {
+            // Extend isolation sides array for remaining windings
+            // Assign them to SECONDARY side by default (most common case for multi-secondary transformers)
+            for (size_t windingIndex = isolationSides.size(); windingIndex < numWindings; ++windingIndex) {
+                isolationSides.push_back(get_isolation_side_from_index(windingIndex));
+            }
+            get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        }
     }
 
     std::vector<IsolationSide> isolationSidesUsed;

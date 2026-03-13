@@ -36,6 +36,7 @@ enum class CoreLossesModels : int {
     PROPRIETARY,
     STEINMETZ,
     IGSE,
+    CIGSE,
     BARG,
     ROSHEN,
     ALBACH,

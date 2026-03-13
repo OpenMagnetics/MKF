@@ -22,7 +22,7 @@ using WireDataOrNameUnion = std::variant<Wire, std::string>;
 
 class Winding : public MAS::CoilFunctionalDescription {
     private:
-        WireDataOrNameUnion wire;
+        WireDataOrNameUnion wire = std::string("Dummy");  // Initialize with valid default
 
     public:
         const WireDataOrNameUnion & get_wire() const { return wire; }
@@ -30,15 +30,14 @@ class Winding : public MAS::CoilFunctionalDescription {
         void set_wire(const WireDataOrNameUnion & value) { this->wire = value; }
 
         void set_isolation_side_from_index(size_t windingIndex);
-        Winding(const MAS::CoilFunctionalDescription winding) {
-
+        Winding(const MAS::CoilFunctionalDescription& winding) {
             if (winding.get_connections()) {
                 set_connections(winding.get_connections());
             }
 
             set_isolation_side(winding.get_isolation_side());
             set_name(winding.get_name());
-            set_number_parallels(winding.get_number_parallels());
+            set_number_parallels(winding.get_number_parallels() > 0 ? winding.get_number_parallels() : 1);
             set_number_turns(winding.get_number_turns());
             set_wound_with(winding.get_wound_with());
             auto wireVariant = winding.get_wire();
@@ -49,7 +48,41 @@ class Winding : public MAS::CoilFunctionalDescription {
                 set_wire(std::get<MAS::Wire>(wireVariant));
             }
         };
-        Winding() = default;
+        
+        // Default constructor - initialize all members
+        Winding() : MAS::CoilFunctionalDescription() {
+            set_isolation_side(IsolationSide::PRIMARY);
+            set_name("");
+            set_number_parallels(1);
+            set_number_turns(1);
+            // Parent's wire is set via base class, child's wire is default-initialized above
+            MAS::CoilFunctionalDescription::set_wire(std::string("Dummy"));
+        }
+        
+        // Copy constructor
+        Winding(const Winding& other) : MAS::CoilFunctionalDescription(other), wire(other.wire) {}
+        
+        // Move constructor
+        Winding(Winding&& other) noexcept : MAS::CoilFunctionalDescription(std::move(other)), wire(std::move(other.wire)) {}
+        
+        // Copy assignment
+        Winding& operator=(const Winding& other) {
+            if (this != &other) {
+                MAS::CoilFunctionalDescription::operator=(other);
+                wire = other.wire;
+            }
+            return *this;
+        }
+        
+        // Move assignment
+        Winding& operator=(Winding&& other) noexcept {
+            if (this != &other) {
+                MAS::CoilFunctionalDescription::operator=(std::move(other));
+                wire = std::move(other.wire);
+            }
+            return *this;
+        }
+        
         virtual ~Winding() = default;
 
         Wire resolve_wire();
@@ -310,7 +343,7 @@ class Coil : public MAS::Coil {
         std::vector<double> virtualize_proportion_per_winding(std::vector<double> proportionPerWinding);
         Section devirtualize_section(Section section);
         Layer devirtualize_layer(Layer layer);
-        Turn devirtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName);
+        Turn devirtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName, size_t newParallelIndex);
         Section virtualize_section(Section section);
         Layer virtualize_layer(Layer layer);
         Turn virtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName);
