@@ -16,6 +16,46 @@
 
 namespace OpenMagnetics {
 
+// Helper function to determine if a topology stores energy in the magnetic field
+// Energy-storing topologies need gapped cores for DC bias handling
+// Non-energy-storing (transformer) topologies transfer energy without storage
+static bool is_energy_storing_topology(std::optional<Topologies> topology) {
+    if (!topology.has_value()) {
+        return false; // Unknown topology, caller should use other heuristics
+    }
+    
+    switch (topology.value()) {
+        // Energy-storing topologies (inductors, flyback-derived)
+        case Topologies::FLYBACK_CONVERTER:
+        case Topologies::BUCK_CONVERTER:
+        case Topologies::BOOST_CONVERTER:
+        case Topologies::INVERTING_BUCK_BOOST_CONVERTER:
+        case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
+        case Topologies::CUK_CONVERTER:
+        case Topologies::SEPIC:
+        case Topologies::ZETA_CONVERTER:
+            return true;
+            
+        // Transformer topologies (forward-derived)
+        case Topologies::SINGLE_SWITCH_FORWARD_CONVERTER:
+        case Topologies::TWO_SWITCH_FORWARD_CONVERTER:
+        case Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER:
+        case Topologies::PUSH_PULL_CONVERTER:
+        case Topologies::HALF_BRIDGE_CONVERTER:
+        case Topologies::FULL_BRIDGE_CONVERTER:
+        case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case Topologies::ISOLATED_BUCK_CONVERTER:
+        case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
+        case Topologies::LLC_RESONANT_CONVERTER:
+        case Topologies::CLLC_RESONANT_CONVERTER:
+        case Topologies::WEINBERG_CONVERTER:
+        case Topologies::CURRENT_TRANSFORMER:
+            return false;
+            
+        default:
+            return false; // Unknown, treat as transformer (safer - no gap)
+    }
+}
 
 std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterName, std::optional<Inputs> inputs) {
     switch(filterName) {
@@ -1428,16 +1468,28 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
 
     // Transformer vs Inductor Detection
     // ==================================
-    // Transformers (minimum-only inductance): B is determined by applied VOLTAGE (Faraday's Law)
+    // Transformers: B is determined by applied VOLTAGE (Faraday's Law)
     //   - B_peak = V_peak / (N × Ae × ω)
     //   - No permeability iteration needed since magnetizing current is ideally small
     //
-    // Inductors (nominal inductance): B is determined by CURRENT and permeability
+    // Inductors/Energy-storing: B is determined by CURRENT and permeability
     //   - Uses iterative calculation accounting for permeability rolloff with DC bias
     //
-    bool isTransformer = inputs->get_design_requirements().get_magnetizing_inductance().get_minimum() &&
+    // Detection priority:
+    // 1. Use topology if specified (most reliable)
+    // 2. Fall back to inductance field heuristic (minimum-only = transformer)
+    //
+    auto topology = inputs->get_design_requirements().get_topology();
+    bool isTransformer;
+    if (topology.has_value()) {
+        // Use topology-based detection
+        isTransformer = !is_energy_storing_topology(topology);
+    } else {
+        // Legacy heuristic: minimum-only inductance = transformer
+        isTransformer = inputs->get_design_requirements().get_magnetizing_inductance().get_minimum() &&
                          !inputs->get_design_requirements().get_magnetizing_inductance().get_nominal() &&
                          !inputs->get_design_requirements().get_magnetizing_inductance().get_maximum();
+    }
 
     for (auto operatingPoint : inputs->get_operating_points()) {
         double magneticFluxDensityPeak;
@@ -1593,18 +1645,29 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     bool valid = true;
     double scoring = 0;
 
-    // Transformer vs Inductor Detection (see CoreAdviser::add_initial_turns_by_inductance for full explanation)
+    // Transformer vs Inductor Detection
     // ==================================
-    // Transformers (minimum-only inductance): Use initial permeability without DC bias iteration
+    // Transformers: Use initial permeability without DC bias iteration
     //   - Skip operating point to avoid feedback loop where magnetizing current causes permeability collapse
     //   - Ungapped high-permeability ferrite will naturally exceed minimum inductance requirement
     //
-    // Inductors (nominal inductance): Use full iterative calculation with DC bias
+    // Inductors/Energy-storing: Use full iterative calculation with DC bias
     //   - Account for permeability rolloff with magnetizing current DC offset
     //
-    bool isTransformer = inputs->get_design_requirements().get_magnetizing_inductance().get_minimum() &&
+    // Detection priority:
+    // 1. Use topology if specified (most reliable)
+    // 2. Fall back to inductance field heuristic (minimum-only = transformer)
+    //
+    auto topology = inputs->get_design_requirements().get_topology();
+    bool isTransformer;
+    if (topology.has_value()) {
+        isTransformer = !is_energy_storing_topology(topology);
+    } else {
+        // Legacy heuristic: minimum-only inductance = transformer
+        isTransformer = inputs->get_design_requirements().get_magnetizing_inductance().get_minimum() &&
                          !inputs->get_design_requirements().get_magnetizing_inductance().get_nominal() &&
                          !inputs->get_design_requirements().get_magnetizing_inductance().get_maximum();
+    }
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];

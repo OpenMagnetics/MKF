@@ -1137,15 +1137,29 @@ void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneti
 
 void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     MagneticEnergy magneticEnergy;
-    if (inputs.get_design_requirements().get_magnetizing_inductance().get_minimum() &&
-        !inputs.get_design_requirements().get_magnetizing_inductance().get_nominal() &&
-        !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum())
+    
+    // Gapping Decision Logic (same as add_gapping_standard_cores):
+    // - Skip gapping only if we have minimum-only inductance (want maximum L, no specific target)
+    // - Energy-storing topologies or specific inductance targets need gap calculation
+    auto inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
+    bool hasNominalInductance = inductanceReq.get_nominal().has_value();
+    bool hasMaxInductance = inductanceReq.get_maximum().has_value();
+    bool needsSpecificInductance = hasNominalInductance || hasMaxInductance;
+    
+    auto topology = inputs.get_design_requirements().get_topology();
+    bool isEnergyStoring = is_energy_storing_topology(topology);
+    bool isTransformer = topology.has_value() ? !isEnergyStoring : 
+        (inductanceReq.get_minimum() && !hasNominalInductance && !hasMaxInductance);
+    
+    bool skipGapping = isTransformer && !needsSpecificInductance;
+    
+    if (skipGapping)
     {
         for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i) {
-        Core core = (*magneticsWithScoring)[i].first.get_core();
-        core.set_name(core.get_name().value_or("unnamed") + " ungapped");
-        (*magneticsWithScoring)[i].first.set_core(core);
-    }
+            Core core = (*magneticsWithScoring)[i].first.get_core();
+            core.set_name(core.get_name().value_or("unnamed") + " ungapped");
+            (*magneticsWithScoring)[i].first.set_core(core);
+        }
 
         return;
     }
@@ -1414,23 +1428,36 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
         return;
     }
 
-    // Transformer vs Energy-Storing Detection (see add_initial_turns_by_inductance for full explanation)
-    // Use topology if available, otherwise fall back to inductance field heuristic
+    // Gapping Decision Logic:
+    //
+    // The decision to gap depends on TWO factors:
+    // 1. Whether the topology stores energy (needs gap for DC bias)
+    // 2. Whether a specific inductance value is required (needs gap to control AL)
+    //
+    // Cases:
+    // - Energy-storing (Flyback, Buck, etc.): ALWAYS needs gap for energy storage
+    // - Transformer with nominal/max inductance: MAY need gap to hit specific L value
+    //   (e.g., LLC resonant converter needs controlled magnetizing inductance)
+    // - Transformer with minimum-only inductance: NO gap needed (want maximum L)
+    //
     auto topology = inputs.get_design_requirements().get_topology();
     bool isEnergyStoring = is_energy_storing_topology(topology);
     
-    bool isTransformer;
-    if (topology.has_value()) {
-        isTransformer = !isEnergyStoring;
-    } else {
-        // Legacy heuristic: minimum-only inductance = transformer
-        isTransformer = inputs.get_design_requirements().get_magnetizing_inductance().get_minimum() &&
-                        !inputs.get_design_requirements().get_magnetizing_inductance().get_nominal() &&
-                        !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum();
-    }
+    // Check if inductance requirement needs a specific value (nominal or bounded)
+    auto inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
+    bool hasNominalInductance = inductanceReq.get_nominal().has_value();
+    bool hasMaxInductance = inductanceReq.get_maximum().has_value();
+    bool needsSpecificInductance = hasNominalInductance || hasMaxInductance;
     
-    if (isTransformer) {
-        // Transformers should NOT be gapped - they transfer energy, not store it
+    // Determine if we should skip gapping:
+    // Only skip if it's a transformer topology AND we don't need a specific inductance value
+    bool isTransformer = topology.has_value() ? !isEnergyStoring : 
+        (inductanceReq.get_minimum() && !hasNominalInductance && !hasMaxInductance);
+    
+    bool skipGapping = isTransformer && !needsSpecificInductance;
+    
+    if (skipGapping) {
+        // Transformer with minimum-only inductance: no gap needed (want maximum L)
         for (size_t i = 0; i < magneticsWithScoring->size(); ++i) {
             Core core = (*magneticsWithScoring)[i].first.get_core();
             core.set_name(core.get_name().value_or("unnamed") + " ungapped");
@@ -2427,6 +2454,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
     logEntry("Starting with " + std::to_string(magneticsWithScoring.size()) + " magnetics", "CoreAdviser");
+    std::cout << "[CoreAdviser] Starting with " << magneticsWithScoring.size() << " magnetics" << std::endl;
 
     bool usingPowderCores = should_include_powder(inputs);
 
@@ -2435,6 +2463,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // ========================================================================
     magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     logEntry("After AreaProduct: " + std::to_string(magneticsWithScoring.size()), "CoreAdviser");
+    std::cout << "[CoreAdviser] After AreaProduct: " << magneticsWithScoring.size() << std::endl;
 
     // ========================================================================
     // STEP 2: Separate ferrite (gappable) and powder/toroidal cores
@@ -2455,6 +2484,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         ferriteCores.resize(ferriteLimit);
     }
     logEntry("Ferrite cores after pruning: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+    std::cout << "[CoreAdviser] Ferrite cores after pruning: " << ferriteCores.size() << std::endl;
 
     // ========================================================================
     // STEP 3: Process FERRITE cores (gapped)
@@ -2463,18 +2493,22 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         // Add gaps to ferrite cores
         add_gapping_standard_cores(&ferriteCores, inputs);
         logEntry("After gapping ferrite: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After gapping: " << ferriteCores.size() << std::endl;
         
         // Filter by fringing factor
         ferriteCores = filterFringingFactor.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After FringingFactor: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After FringingFactor: " << ferriteCores.size() << std::endl;
         
         // Filter by dimensions
         ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, 1, true);
         logEntry("After Dimensions (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Dimensions: " << ferriteCores.size() << std::endl;
         
         // Assign concrete ferrite materials
         ferriteCores = add_ferrite_materials_by_losses(&ferriteCores, inputs);
         logEntry("After materials (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After materials: " << ferriteCores.size() << std::endl;
         
         // Calculate turns
         add_initial_turns_by_inductance(&ferriteCores, inputs);
@@ -2482,14 +2516,17 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         // Filter by inductance
         ferriteCores = filterMagneticInductance.filter_magnetics(&ferriteCores, inputs, 0.1, true);
         logEntry("After Inductance (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Inductance: " << ferriteCores.size() << std::endl;
         
         // Filter by saturation
         ferriteCores = filterSaturation.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Saturation (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Saturation: " << ferriteCores.size() << std::endl;
         
         // Filter by losses
         ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Losses (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Losses: " << ferriteCores.size() << std::endl;
     }
 
     // ========================================================================
