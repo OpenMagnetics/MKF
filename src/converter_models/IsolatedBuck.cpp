@@ -31,7 +31,7 @@ namespace OpenMagnetics {
         double primaryOutputCurrent = outputOperatingPoint.get_output_currents()[0];
         double diodeVoltageDrop = get_diode_voltage_drop();
         double totalReflectedSecondaryCurrent = 0;
-        for (size_t secondaryIndex = 0; secondaryIndex < outputOperatingPoint.get_output_voltages().size() - 1; ++secondaryIndex) {
+        for (size_t secondaryIndex = 0; secondaryIndex + 1 < outputOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
             totalReflectedSecondaryCurrent += outputOperatingPoint.get_output_currents()[secondaryIndex + 1] / turnsRatios[secondaryIndex];
         }
 
@@ -67,7 +67,7 @@ namespace OpenMagnetics {
         }
 
         // Secondaries
-        for (size_t secondaryIndex = 0; secondaryIndex < outputOperatingPoint.get_output_voltages().size() - 1; ++secondaryIndex) {
+        for (size_t secondaryIndex = 0; secondaryIndex + 1 < outputOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
             Waveform currentWaveform;
             Waveform voltageWaveform;
             double secondaryOutputCurrent = outputOperatingPoint.get_output_currents()[secondaryIndex + 1];
@@ -166,10 +166,14 @@ namespace OpenMagnetics {
         }
 
         // Turns ratio calculation
-        std::vector<double> turnsRatios(get_operating_points()[0].get_output_voltages().size() - 1, 0);
+        size_t numOutputVoltages = get_operating_points()[0].get_output_voltages().size();
+        if (numOutputVoltages < 2) {
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "IsolatedBuck requires at least 2 output voltages (primary + secondary)");
+        }
+        std::vector<double> turnsRatios(numOutputVoltages - 1, 0);
         for (auto isolatedbuckOperatingPoint : get_operating_points()) {
             double primaryVoltage = isolatedbuckOperatingPoint.get_output_voltages()[0];
-            for (size_t secondaryIndex = 0; secondaryIndex < isolatedbuckOperatingPoint.get_output_voltages().size() - 1; ++secondaryIndex) {
+            for (size_t secondaryIndex = 0; secondaryIndex + 1 < isolatedbuckOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
                 auto turnsRatio = primaryVoltage / (isolatedbuckOperatingPoint.get_output_voltages()[secondaryIndex + 1] + get_diode_voltage_drop());
                 turnsRatios[secondaryIndex] = std::max(turnsRatios[secondaryIndex], turnsRatio);
             }
@@ -186,7 +190,7 @@ namespace OpenMagnetics {
                 auto isolatedbuckOperatingPoint = get_operating_points()[isolatedbuckOperatingPointIndex];
                 auto totalCurrentInPoint = isolatedbuckOperatingPoint.get_output_currents()[0];
                 double totalReflectedSecondaryCurrent = 0;
-                for (size_t secondaryIndex = 0; secondaryIndex < isolatedbuckOperatingPoint.get_output_currents().size() - 1; ++secondaryIndex) {
+                for (size_t secondaryIndex = 0; secondaryIndex + 1 < isolatedbuckOperatingPoint.get_output_currents().size(); ++secondaryIndex) {
                     totalReflectedSecondaryCurrent += isolatedbuckOperatingPoint.get_output_currents()[secondaryIndex + 1] / turnsRatios[secondaryIndex];
                 }
                 totalCurrentInPoint += totalReflectedSecondaryCurrent;
@@ -200,7 +204,7 @@ namespace OpenMagnetics {
             for (auto isolatedbuckOperatingPoint : get_operating_points()) {
                 auto primaryCurrent = isolatedbuckOperatingPoint.get_output_currents()[0];
                 double totalReflectedSecondaryCurrent = 0;
-                for (size_t secondaryIndex = 0; secondaryIndex < isolatedbuckOperatingPoint.get_output_currents().size() - 1; ++secondaryIndex) {
+                for (size_t secondaryIndex = 0; secondaryIndex + 1 < isolatedbuckOperatingPoint.get_output_currents().size(); ++secondaryIndex) {
                     totalReflectedSecondaryCurrent += isolatedbuckOperatingPoint.get_output_currents()[secondaryIndex + 1] / turnsRatios[secondaryIndex];
                 }
 

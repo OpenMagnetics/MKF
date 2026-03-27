@@ -103,21 +103,19 @@ double Inputs::calculate_waveform_average(Waveform waveform) {
 }
 
 Waveform Inputs::multiply_waveform(Waveform waveform, double scalarValue){
-    Waveform scaledWaveform = waveform;
-    scaledWaveform.get_mutable_data().clear();
-    for (auto& datum : waveform.get_data()) {
-        scaledWaveform.get_mutable_data().push_back(datum * scalarValue);
+    auto& data = waveform.get_mutable_data();
+    for (auto& datum : data) {
+        datum *= scalarValue;
     }
-    return scaledWaveform;
+    return waveform;
 }
 
 Waveform Inputs::sum_waveform(Waveform waveform, double scalarValue){
-    Waveform scaledWaveform = waveform;
-    scaledWaveform.get_mutable_data().clear();
-    for (auto& datum : waveform.get_data()) {
-        scaledWaveform.get_mutable_data().push_back(datum + scalarValue);
+    auto& data = waveform.get_mutable_data();
+    for (auto& datum : data) {
+        datum += scalarValue;
     }
-    return scaledWaveform;
+    return waveform;
 }
 
 bool is_close_enough(double x, double y, double error){
@@ -223,7 +221,9 @@ bool is_instantaneously_conducting_power(OperatingPoint operatingPoint) {
 }
 
 bool Inputs::include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios) {
-    bool onlyOneWinding = turnsRatios.size() == 0;
+    // Determine if this is truly a single-winding component (inductor) by checking both
+    // the turns ratios and the actual number of excitations in the operating point
+    bool onlyOneWinding = turnsRatios.size() == 0 && operatingPoint.get_excitations_per_winding().size() <= 1;
 
     auto excitationPerWinding = operatingPoint.get_excitations_per_winding();
     auto voltageWaveform = excitationPerWinding[0].get_voltage()->get_waveform().value();
@@ -1819,8 +1819,14 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
 Waveform Inputs::compress_waveform(const Waveform& waveform) {
     Waveform compressedWaveform;
     auto data = waveform.get_data();
+    if (data.size() < 2) {
+        return waveform;
+    }
     data.push_back(data[0]);
     auto time = waveform.get_time().value();
+    if (time.size() < 2) {
+        return waveform;
+    }
     time.push_back(time[time.size() - 1] + (time[time.size() - 1] - time[time.size() - 2]));
     std::vector<double> compressedData;
     std::vector<double> compressedTime;

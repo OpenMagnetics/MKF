@@ -16,6 +16,9 @@ double ResistivityCoreMaterialModel::get_resistivity(ResistivityMaterial materia
     auto resistivityData = std::get<CoreMaterial>(materialData).get_resistivity();
     double resistivity = -1;
 
+    if (resistivityData.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "No resistivity data available for core material");
+    }
     if (resistivityData.size() < 2) {
         resistivity = resistivityData[0].get_value();
     }
@@ -24,7 +27,7 @@ double ResistivityCoreMaterialModel::get_resistivity(ResistivityMaterial materia
         std::vector<double> x, y;
 
         for (size_t i = 0; i < n; i++) {
-            if (x.size() == 0 || resistivityData[i].get_temperature().value() != x.back()) {
+            if (x.empty() || fabs(resistivityData[i].get_temperature().value() - x.back()) > 1e-9) {
                 x.push_back(resistivityData[i].get_temperature().value());
                 y.push_back(resistivityData[i].get_value());
             }

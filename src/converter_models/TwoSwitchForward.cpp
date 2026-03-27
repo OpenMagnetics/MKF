@@ -47,8 +47,6 @@ namespace OpenMagnetics {
         double mainSecondaryTurnsRatio = turnsRatios[0];
         double diodeVoltageDrop = get_diode_voltage_drop();
 
-        auto dutyCycle = get_maximum_duty_cycle();
-
         // Assume CCM
         auto period = 1.0 / switchingFrequency;
         auto t1 = period / 2 * (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
@@ -179,6 +177,8 @@ namespace OpenMagnetics {
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
+        // Use actual duty cycle (t1/period) for secondary waveforms, not the fixed maximum
+        double actualDutyCycle = t1 / period;
         for (size_t secondaryIndex = 0; secondaryIndex < outputOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
 
             double secondaryCurrentPeakToPeak = maximumSecondaryCurrents[secondaryIndex] - minimumSecondaryCurrents[secondaryIndex];
@@ -188,8 +188,8 @@ namespace OpenMagnetics {
             double secondaryVoltagePeakToPeak = maximumSecondaryVoltage - minimumSecondaryVoltage;
             double secondaryVoltageOffset = maximumSecondaryVoltage + minimumSecondaryVoltage;
 
-            auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, secondaryCurrentPeakToPeak, switchingFrequency, dutyCycle, minimumSecondaryCurrents[secondaryIndex], 0);
-            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeakToPeak, switchingFrequency, dutyCycle, secondaryVoltageOffset, deadTime);
+            auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, secondaryCurrentPeakToPeak, switchingFrequency, actualDutyCycle, minimumSecondaryCurrents[secondaryIndex], 0);
+            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeakToPeak, switchingFrequency, actualDutyCycle, secondaryVoltageOffset, deadTime);
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Secondary " + std::to_string(secondaryIndex));
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
@@ -404,13 +404,18 @@ namespace OpenMagnetics {
         auto opPoint = get_operating_points()[operatingPointIndex];
         
         double switchingFrequency = opPoint.get_switching_frequency();
-        double dutyCycle = get_maximum_duty_cycle();
-        
+        double diodeVoltageDrop = get_diode_voltage_drop();
+
         size_t numSecondaries = turnsRatios.size();
-        
+
         // Build netlist
         std::ostringstream circuit;
         double period = 1.0 / switchingFrequency;
+        // Compute actual duty cycle from voltage balance: D = (Vout + Vd) / (Vin / n)
+        double mainOutputVoltage = opPoint.get_output_voltages()[0];
+        double mainSecondaryTurnsRatio = turnsRatios[0];
+        double dutyCycle = std::min(get_maximum_duty_cycle(),
+            (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio));
         double tOn = period * dutyCycle;
         
         // Simulation timing

@@ -261,6 +261,7 @@ namespace OpenMagnetics {
         size_t totalNumberLayers = settings.get_coil_maximum_layers_planar();
         for (size_t repetitionIndex = 0; repetitionIndex < repetitions; ++repetitionIndex) {
             for (auto windingIndex : pattern) {
+                if (windingIndex >= numberTurnsPerWinding.size()) continue;
                 for (size_t layerIndex = 0; layerIndex < floor(totalNumberLayers / repetitions / pattern.size()); ++layerIndex) {
                     if (numberTurnsPerWinding[windingIndex] > 0) {
                         stackUp.push_back(windingIndex);
@@ -549,9 +550,6 @@ namespace OpenMagnetics {
             }
         }
 
-        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
-        mas.get_mutable_magnetic().set_coil(coil);
-
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             if (windingIndex >= wireCoilPerWinding.size()) {
                 return {};
@@ -560,6 +558,9 @@ namespace OpenMagnetics {
                 return {};
             }
         }
+
+        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
+        mas.get_mutable_magnetic().set_coil(coil);
 
         auto currentWireIndexPerWinding = std::vector<size_t>(numberWindings, 0);
         std::vector<Mas> masesWithCoil;
@@ -764,9 +765,6 @@ namespace OpenMagnetics {
 
         }
 
-        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
-        mas.get_mutable_magnetic().set_coil(coil);
-
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             if (windingIndex >= wireCoilPerWinding.size()) {
                 return {};
@@ -775,6 +773,9 @@ namespace OpenMagnetics {
                 return {};
             }
         }
+
+        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
+        mas.get_mutable_magnetic().set_coil(coil);
 
         auto currentWireIndexPerWinding = std::vector<size_t>(numberWindings, 0);
         std::vector<Mas> masesWithCoil;

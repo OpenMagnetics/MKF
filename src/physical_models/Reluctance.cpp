@@ -140,7 +140,11 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
             maximumStorableMagneticEnergyGapping += gapReluctance.get_maximum_storable_magnetic_energy();
 
         }
-        calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
+        if (calculatedLateralReluctance > 0) {
+            calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
+        } else {
+            calculatedReluctance = calculatedCentralReluctance;
+        }
     }
 
     MagnetizingInductanceOutput magnetizingInductanceOutput;

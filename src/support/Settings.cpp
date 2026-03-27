@@ -801,4 +801,11 @@ namespace OpenMagnetics {
         _circuitSimulatorIncludeSaturation = value;
     }
 
+    bool Settings::get_circuit_simulator_include_mutual_resistance() const {
+        return _circuitSimulatorIncludeMutualResistance;
+    }
+    void Settings::set_circuit_simulator_include_mutual_resistance(bool value) {
+        _circuitSimulatorIncludeMutualResistance = value;
+    }
+
 } // namespace OpenMagnetics

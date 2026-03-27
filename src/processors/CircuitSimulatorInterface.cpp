@@ -215,7 +215,8 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
 
         auto valuePoints = windingAcResistanceData.get_y_points();
         double acResistances[numberElements];
-        for (size_t index = 0; index < valuePoints.size(); ++index) {
+        size_t numPoints = std::min(valuePoints.size(), numberElements);
+        for (size_t index = 0; index < numPoints; ++index) {
             acResistances[index] = valuePoints[index];
         }
 
@@ -242,7 +243,8 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
             double dcResistanceAndfrequencies[numberElementsPlusOne];
             dcResistanceAndfrequencies[0] = acResistances[0];
             coefficients[1] = 1e-9;
-            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+            size_t numFreqs = std::min(frequenciesVector.size(), numberElements);
+            for (size_t index = 0; index < numFreqs; ++index) {
                 dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
             }
 
@@ -290,7 +292,8 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
 
     auto valuePoints = coreResistanceData.get_y_points();
     double coreResistances[numberElements];
-    for (size_t index = 0; index < valuePoints.size(); ++index) {
+    size_t numPoints = std::min(valuePoints.size(), numberElements);
+    for (size_t index = 0; index < numPoints; ++index) {
         coreResistances[index] = valuePoints[index];
     }
 
@@ -360,7 +363,8 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
 
         auto points = windingAcResistanceData.get_y_points();
         double acResistances[numberElements];
-        for (size_t index = 0; index < points.size(); ++index) {
+        size_t numPoints = std::min(points.size(), numberElements);
+        for (size_t index = 0; index < numPoints; ++index) {
             acResistances[index] = points[index];
         }
 
@@ -381,7 +385,8 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
         opts[4]= lmDiffDelta;
 
         double frequencies[numberElements];
-        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+        size_t numFreqs = std::min(frequenciesVector.size(), numberElements);
+        for (size_t index = 0; index < numFreqs; ++index) {
             frequencies[index] = frequenciesVector[index];
         }
 
@@ -481,13 +486,15 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
         auto valuePoints = windingAcResistanceData.get_y_points();
 
         double acResistances[numberElements];
-        for (size_t index = 0; index < valuePoints.size(); ++index) {
+        size_t numPoints = std::min(valuePoints.size(), numberElements);
+        for (size_t index = 0; index < numPoints; ++index) {
             acResistances[index] = valuePoints[index];
         }
 
         double dcResistanceAndFrequencies[numberElementsPlusOne];
         dcResistanceAndFrequencies[0] = acResistances[0]; // DC resistance
-        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+        size_t numFreqs = std::min(frequenciesVector.size(), numberElements);
+        for (size_t index = 0; index < numFreqs; ++index) {
             dcResistanceAndFrequencies[index + 1] = frequenciesVector[index];
         }
 
@@ -530,6 +537,185 @@ std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistan
     else {
         return calculate_ac_resistance_coefficients_per_winding_analytical(magnetic, temperature);
     }
+}
+
+// =============================================================================
+// MUTUAL RESISTANCE LADDER FITTING
+// Based on Hesterman (2020) "Mutual Resistance" paper.
+//
+// The mutual resistance R_ij represents cross-coupling losses between windings.
+// It can be positive (reduces losses when currents oppose) or negative
+// (increases losses). The sign typically changes with frequency.
+//
+// We fit an R-L ladder network to model the frequency dependence:
+//   R_mutual(f) = R0 + parallel(L1, R1 + parallel(L2, R2 + ...))
+//
+// This is similar to the self-resistance ladder but R0 can be negative.
+// =============================================================================
+
+// Ladder model for mutual resistance - allows negative values
+static double mutual_resistance_ladder_model(double x[], double frequency, double dcResistance) {
+    double w = 2 * std::numbers::pi * frequency;
+    auto R0 = std::complex<double>(dcResistance);
+    auto R1 = std::complex<double>(x[0], 0);
+    auto L1 = std::complex<double>(0, w * x[1]);
+    auto R2 = std::complex<double>(x[2], 0);
+    auto L2 = std::complex<double>(0, w * x[3]);
+    auto R3 = std::complex<double>(x[4], 0);
+    auto L3 = std::complex<double>(0, w * x[5]);
+
+    // For mutual resistance, parameters can be negative (except inductances)
+    // Only check inductances are positive
+    if (x[1] < 0 || x[3] < 0 || x[5] < 0) {
+        return 1e30;  // Large penalty
+    }
+
+    return (R0 + parallel(L1, R1 + parallel(L2, R2 + parallel(L3, R3)))).real();
+}
+
+// Data structure for mutual resistance fitting
+struct MutualResistanceFitData {
+    double dcMutualResistance;
+    std::vector<double> frequencies;
+};
+
+static void mutual_resistance_ladder_func(double *p, double *x, int m, int n, void *data) {
+    MutualResistanceFitData* fitData = static_cast<MutualResistanceFitData*>(data);
+    double dcResistance = fitData->dcMutualResistance;
+    
+    for(int i = 0; i < n; ++i) {
+        x[i] = mutual_resistance_ladder_model(p, fitData->frequencies[i], dcResistance);
+    }
+}
+
+std::vector<CircuitSimulatorExporter::MutualResistanceCoefficients> 
+CircuitSimulatorExporter::calculate_mutual_resistance_coefficients(Magnetic magnetic, double temperature) {
+    const size_t numberUnknowns = 6;  // 3 R-L pairs for mutual resistance
+    const size_t numberElements = 20;
+    const size_t loopIterations = 10;
+    double startingFrequency = 100;
+    double endingFrequency = 1000000;
+    
+    auto coil = magnetic.get_coil();
+    size_t numWindings = coil.get_functional_description().size();
+    
+    std::vector<MutualResistanceCoefficients> allMutualCoeffs;
+    
+    // Only calculate for multi-winding components
+    if (numWindings < 2) {
+        return allMutualCoeffs;
+    }
+    
+    // Get resistance matrix at multiple frequencies
+    auto resistanceMatrices = Sweeper::sweep_resistance_matrix_over_frequency(
+        magnetic, startingFrequency, endingFrequency, numberElements, temperature, "log");
+    
+    if (resistanceMatrices.empty()) {
+        return allMutualCoeffs;
+    }
+    
+    // Extract frequencies
+    std::vector<double> frequencies;
+    for (const auto& matrix : resistanceMatrices) {
+        frequencies.push_back(matrix.get_frequency());
+    }
+    
+    // Get winding names
+    auto& functionalDescription = coil.get_functional_description();
+    std::vector<std::string> windingNames;
+    for (const auto& winding : functionalDescription) {
+        windingNames.push_back(winding.get_name());
+    }
+    
+    // Calculate coefficients for each winding pair
+    for (size_t i = 0; i < numWindings; ++i) {
+        for (size_t j = i + 1; j < numWindings; ++j) {
+            MutualResistanceCoefficients mutualCoeffs;
+            mutualCoeffs.windingIndex1 = i;
+            mutualCoeffs.windingIndex2 = j;
+            
+            // Extract mutual resistance values at each frequency
+            std::vector<double> mutualResistances(numberElements);
+            for (size_t k = 0; k < numberElements; ++k) {
+                auto& magnitude = resistanceMatrices[k].get_magnitude();
+                auto it_i = magnitude.find(windingNames[i]);
+                if (it_i != magnitude.end()) {
+                    auto it_j = it_i->second.find(windingNames[j]);
+                    if (it_j != it_i->second.end()) {
+                        mutualResistances[k] = it_j->second.get_nominal().value();
+                    }
+                }
+            }
+            
+            // DC mutual resistance (from lowest frequency)
+            mutualCoeffs.dcMutualResistance = mutualResistances[0];
+            
+            // Prepare data for fitting
+            MutualResistanceFitData fitData;
+            fitData.dcMutualResistance = mutualCoeffs.dcMutualResistance;
+            fitData.frequencies = frequencies;
+            
+            double bestError = DBL_MAX;
+            double initialState = 1.0;
+            std::vector<double> bestCoeffs;
+            
+            for (size_t loopIndex = 0; loopIndex < loopIterations; ++loopIndex) {
+                double coefficients[numberUnknowns];
+                for (size_t idx = 0; idx < numberUnknowns; ++idx) {
+                    coefficients[idx] = initialState;
+                }
+                // Initialize inductances to small positive values
+                coefficients[1] = 1e-7;
+                coefficients[3] = 1e-8;
+                coefficients[5] = 1e-9;
+                
+                double opts[5], info[10];
+                opts[0] = 1e-03;
+                opts[1] = 1e-20;
+                opts[2] = 1e-20;
+                opts[3] = 1e-20;
+                opts[4] = 1e-17;
+                
+                double targetValues[numberElements];
+                for (size_t idx = 0; idx < numberElements; ++idx) {
+                    targetValues[idx] = mutualResistances[idx];
+                }
+                
+                eigen_levmar_dif(mutual_resistance_ladder_func, coefficients, targetValues, 
+                                 numberUnknowns, numberElements, 5000, opts, info, NULL, NULL,
+                                 static_cast<void*>(&fitData));
+                
+                // Calculate fitting error
+                double errorAverage = 0;
+                for (size_t idx = 0; idx < numberElements; ++idx) {
+                    double modeled = mutual_resistance_ladder_model(coefficients, frequencies[idx], 
+                                                                    mutualCoeffs.dcMutualResistance);
+                    double target = mutualResistances[idx];
+                    // Use relative error for non-zero values, absolute for near-zero
+                    if (std::abs(target) > 1e-6) {
+                        errorAverage += std::abs(target - modeled) / std::abs(target);
+                    } else {
+                        errorAverage += std::abs(target - modeled);
+                    }
+                }
+                errorAverage /= numberElements;
+                initialState /= 10;
+                
+                if (errorAverage < bestError) {
+                    bestError = errorAverage;
+                    bestCoeffs.clear();
+                    for (size_t idx = 0; idx < numberUnknowns; ++idx) {
+                        bestCoeffs.push_back(coefficients[idx]);
+                    }
+                }
+            }
+            
+            mutualCoeffs.coefficients = bestCoeffs;
+            allMutualCoeffs.push_back(mutualCoeffs);
+        }
+    }
+    
+    return allMutualCoeffs;
 }
 
 CircuitSimulatorExporterSimbaModel::CircuitSimulatorExporterSimbaModel() {
@@ -1446,6 +1632,115 @@ static std::string emit_saturating_inductor_ltspice(
     return s;
 }
 
+// =============================================================================
+// MUTUAL RESISTANCE AUXILIARY WINDING NETWORK
+// Based on Hesterman (2020) "Mutual Resistance" paper.
+//
+// Implements the mutual resistance model using auxiliary windings coupled
+// to the physical windings. Each winding pair has an auxiliary winding
+// network that models the cross-coupling AC losses.
+//
+// Circuit topology for each winding pair (i, j):
+//   Physical winding i (Lmag_i) is coupled to auxiliary winding LA_ij
+//   Physical winding j (Lmag_j) is coupled to auxiliary winding LA_ij
+//   Shunt resistor RA_ij on auxiliary winding dissipates mutual losses
+//
+// The coupling coefficients determine how the mutual resistance varies
+// with frequency based on the fitted R-L ladder coefficients.
+// =============================================================================
+
+static std::string emit_mutual_resistance_network_spice(
+    const std::vector<CircuitSimulatorExporter::MutualResistanceCoefficients>& mutualCoeffs,
+    double magnetizingInductance,
+    size_t numWindings) {
+    
+    if (mutualCoeffs.empty() || numWindings < 2) {
+        return "";  // No mutual resistance to model
+    }
+    
+    std::string s;
+    s += "\n* ==== MUTUAL RESISTANCE NETWORK ====\n";
+    s += "* Based on Hesterman (2020) - Auxiliary windings for cross-coupling losses\n";
+    s += "* Power: P = R11*I1^2 + R22*I2^2 + 2*R12*I1*I2*cos(theta)\n\n";
+    
+    for (const auto& mc : mutualCoeffs) {
+        size_t i = mc.windingIndex1 + 1;  // 1-indexed
+        size_t j = mc.windingIndex2 + 1;
+        std::string ij = std::to_string(i) + std::to_string(j);
+        
+        // Check if we have valid coefficients
+        if (mc.coefficients.size() < 2) {
+            continue;
+        }
+        
+        // Determine the coupling polarity based on DC mutual resistance sign
+        // Positive R12: reduces losses when currents oppose (typical transformer)
+        // Negative R12: increases losses
+        double sign = (mc.dcMutualResistance >= 0) ? 1.0 : -1.0;
+        
+        s += "* Mutual resistance R" + ij + " (dc=" + to_string(mc.dcMutualResistance, 6) + " Ohm)\n";
+        
+        // Create auxiliary winding network with R-L ladder
+        // The auxiliary winding models the frequency-dependent mutual resistance
+        // Topology: series of (L || R) stages
+        size_t numStages = mc.coefficients.size() / 2;
+        
+        // First, create the auxiliary winding with the same inductance as Lmag
+        // This auxiliary winding is coupled to both physical windings
+        s += "LA_" + ij + " Node_LA_" + ij + "_in Node_LA_" + ij + "_out " + to_string(magnetizingInductance, 12) + "\n";
+        
+        // Add shunt resistor network on auxiliary winding to model losses
+        std::string lastNode = "Node_LA_" + ij + "_out";
+        for (size_t stage = 0; stage < numStages; ++stage) {
+            double R = std::abs(mc.coefficients[stage * 2]);
+            double L = mc.coefficients[stage * 2 + 1];
+            std::string sk = std::to_string(stage);
+            
+            // Validate values
+            if (R <= 0 || R > 1e6 || L <= 0 || L > 1) {
+                continue;
+            }
+            
+            std::string nodeR = "Node_Rmut_" + ij + "_" + sk;
+            
+            // L in parallel with R-chain
+            s += "Lmut_" + ij + "_" + sk + " " + lastNode + " " + nodeR + " " + to_string(L, 12) + "\n";
+            // R in series to next stage
+            if (stage == numStages - 1) {
+                // Last stage connects to ground
+                s += "Rmut_" + ij + "_" + sk + " " + nodeR + " 0 " + to_string(R, 12) + "\n";
+            } else {
+                s += "Rmut_" + ij + "_" + sk + " " + nodeR + " Node_Rmut_" + ij + "_" + std::to_string(stage + 1) + " " + to_string(R, 12) + "\n";
+            }
+            
+            lastNode = nodeR;
+        }
+        
+        // Connect auxiliary winding input to ground (forms the load)
+        s += "Rmut_" + ij + "_gnd Node_LA_" + ij + "_in 0 1e9\n";  // High-Z to avoid DC path
+        
+        // Coupling coefficients for auxiliary winding
+        // The auxiliary winding is loosely coupled to both physical windings
+        // The coupling determines how current in each winding induces loss in the auxiliary
+        double kBase = 0.1;  // Base coupling - small for loose coupling
+        
+        // Scale by sqrt of ratio to balance energy transfer
+        double k_i_aux = sign * kBase;
+        double k_j_aux = sign * kBase;
+        
+        // Clamp coupling to valid range (-1, 1)
+        k_i_aux = std::max(-0.99, std::min(0.99, k_i_aux));
+        k_j_aux = std::max(-0.99, std::min(0.99, k_j_aux));
+        
+        s += "KA_" + std::to_string(i) + "_" + ij + " Lmag_" + std::to_string(i) + " LA_" + ij + " " + to_string(k_i_aux, 6) + "\n";
+        s += "KA_" + std::to_string(j) + "_" + ij + " Lmag_" + std::to_string(j) + " LA_" + ij + " " + to_string(k_j_aux, 6) + "\n";
+        
+        s += "\n";
+    }
+    
+    return s;
+}
+
 std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     std::string headerString = "* Magnetic model made with OpenMagnetics\n";
     headerString += "* " + magnetic.get_reference() + "\n\n";
@@ -1620,6 +1915,16 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         circuitString += emit_core_ladder_spice(coreResistanceCoefficients, numWindings);
     }
 
+    // Mutual resistance: auxiliary winding network for cross-coupling losses (Hesterman 2020)
+    // Only for multi-winding transformers when setting is enabled
+    bool includeMutualResistance = settings.get_circuit_simulator_include_mutual_resistance();
+    if (includeMutualResistance && numWindings >= 2) {
+        auto mutualResistanceCoeffs = CircuitSimulatorExporter::calculate_mutual_resistance_coefficients(magnetic, temperature);
+        if (!mutualResistanceCoeffs.empty()) {
+            circuitString += emit_mutual_resistance_network_spice(mutualResistanceCoeffs, magnetizingInductance, numWindings);
+        }
+    }
+
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
 }
 
@@ -1757,6 +2062,17 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
     auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
     if (!coreResistanceCoefficients.empty()) {
         circuitString += emit_core_ladder_spice(coreResistanceCoefficients, coil.get_functional_description().size());
+    }
+
+    // Mutual resistance: auxiliary winding network for cross-coupling losses (Hesterman 2020)
+    // Only for multi-winding transformers when setting is enabled
+    size_t numWindings = coil.get_functional_description().size();
+    bool includeMutualResistance = settings.get_circuit_simulator_include_mutual_resistance();
+    if (includeMutualResistance && numWindings >= 2) {
+        auto mutualResistanceCoeffs = CircuitSimulatorExporter::calculate_mutual_resistance_coefficients(magnetic, temperature);
+        if (!mutualResistanceCoeffs.empty()) {
+            circuitString += emit_mutual_resistance_network_spice(mutualResistanceCoeffs, magnetizingInductance, numWindings);
+        }
     }
 
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;

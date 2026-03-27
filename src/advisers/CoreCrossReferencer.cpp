@@ -27,7 +27,8 @@ namespace OpenMagnetics {
 std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossReferencer::get_scorings(bool weighted){
     std::map<std::string, std::map<CoreCrossReferencerFilters, double>> swappedScorings;
     for (auto& [filter, aux] : _scorings) {
-        auto filterConfiguration = _filterConfiguration[filter];
+        if (aux.empty()) continue;
+        auto& filterConfiguration = _filterConfiguration[filter];
 
         double maximumScoring = (*std::max_element(aux.begin(), aux.end(),
                                      [](const std::pair<std::string, double> &p1,
@@ -45,7 +46,7 @@ std::map<std::string, std::map<CoreCrossReferencerFilters, double>> CoreCrossRef
 
         for (auto& [name, scoring] : aux) {
             // F7 FIX: Handle equal scores consistently (give full credit)
-            if (minimumScoring == maximumScoring) {
+            if (std::abs(minimumScoring - maximumScoring) < 1e-10) {
                 swappedScorings[name][filter] = weighted ? _weights[filter] * 0.5 : 0.5; // XC-6 FIX: neutral when equal
                 continue;
             }
@@ -214,7 +215,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPerm
             reluctance = 1.0 / reluctanceModel->get_core_reluctance(core).get_core_reluctance();
         }
 
-        if (fabs(referencePermeance - reluctance) / referencePermeance < limit) {
+        if (referencePermeance != 0 && fabs(referencePermeance - reluctance) / referencePermeance < limit) {
             double scoring = fabs(referencePermeance - reluctance);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencerFilters::PERMEANCE, scoring);
@@ -278,7 +279,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterWind
         }
         double windingWindowArea = core.get_winding_windows()[0].get_area().value();
 
-        if (fabs(referenceWindingWindowArea - windingWindowArea) / referenceWindingWindowArea < limit) {
+        if (referenceWindingWindowArea != 0 && fabs(referenceWindingWindowArea - windingWindowArea) / referenceWindingWindowArea < limit) {
             double scoring = fabs(referenceWindingWindowArea - windingWindowArea);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencerFilters::WINDING_WINDOW_AREA, scoring);
@@ -342,7 +343,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
         }
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
 
-        if (fabs(referenceEffectiveArea - effectiveArea) / referenceEffectiveArea < limit) {
+        if (referenceEffectiveArea != 0 && fabs(referenceEffectiveArea - effectiveArea) / referenceEffectiveArea < limit) {
             double scoring = fabs(referenceEffectiveArea - effectiveArea);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencerFilters::EFFECTIVE_AREA, scoring);
@@ -409,7 +410,8 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEnve
         double height = core.get_height();
         double width = core.get_width();
 
-        if (fabs(referenceDepth - depth) / referenceDepth < limit && fabs(referenceHeight - height) / referenceHeight < limit && fabs(referenceWidth - width) / referenceWidth < limit) {
+        if (referenceDepth != 0 && referenceHeight != 0 && referenceWidth != 0 &&
+            fabs(referenceDepth - depth) / referenceDepth < limit && fabs(referenceHeight - height) / referenceHeight < limit && fabs(referenceWidth - width) / referenceWidth < limit) {
             double scoring = fabs(referenceDepth - depth)/referenceDepth + fabs(referenceHeight - height)/referenceHeight + fabs(referenceWidth - width)/referenceWidth; // B20 FIX: normalize dims
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencerFilters::ENVELOPING_VOLUME, scoring);

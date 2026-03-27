@@ -98,14 +98,17 @@ namespace OpenMagnetics {
         double pinAvg = _outputPower / _efficiency;
         
         // Calculate average input current at minimum voltage
+        if (vinRmsMin <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "PFC: minimum RMS input voltage must be positive");
+        }
         double iinAvg = pinAvg / vinRmsMin;
-        
+
         // Peak inductor current at line peak
         double iLpeak = iinAvg * std::sqrt(2);
-        
+
         // Calculate ripple current based on ratio
         double deltaI = iLpeak * _currentRippleRatio;
-        
+
         // CCM inductance formula: L = Vin * D / (deltaI * fsw)
         // At the peak of the line: Vin_peak * D / (deltaI * fsw)
         double L = vinPeakMin * D / (deltaI * _switchingFrequency);

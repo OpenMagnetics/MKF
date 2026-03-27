@@ -91,12 +91,12 @@ double InitialPermeability::has_temperature_dependency(CoreMaterial coreMaterial
     }
     else {
         auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
-        for (auto point : permeabilityPoints) {
+        for (const auto& point : permeabilityPoints) {
             if (point.get_temperature()) {
                 if (firstTemperatureValue == DBL_MAX) {
                     firstTemperatureValue = point.get_temperature().value();
                 }
-                else if (firstTemperatureValue != point.get_temperature().value()) {
+                else if (fabs(firstTemperatureValue - point.get_temperature().value()) > 1e-9) {
                     return true;
                 }
             }

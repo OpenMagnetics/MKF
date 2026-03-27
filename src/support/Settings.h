@@ -139,6 +139,10 @@ class Settings
         
         // Circuit simulator saturation modeling (false = linear inductor, true = saturating inductor)
         bool _circuitSimulatorIncludeSaturation = false;  // Default to linear (no saturation)
+        
+        // Circuit simulator mutual resistance modeling (false = no mutual resistance, true = include mutual resistance)
+        // Based on Hesterman (2020) "Mutual Resistance" - models cross-coupling AC losses between windings
+        bool _circuitSimulatorIncludeMutualResistance = false;  // Default to disabled
 
         bool _verbose = false;
 
@@ -433,6 +437,9 @@ class Settings
         void set_circuit_simulator_fracpole_options(std::optional<std::map<std::string, double>> value);
         bool get_circuit_simulator_include_saturation() const;
         void set_circuit_simulator_include_saturation(bool value);
+        
+        bool get_circuit_simulator_include_mutual_resistance() const;
+        void set_circuit_simulator_include_mutual_resistance(bool value);
 
 
     };

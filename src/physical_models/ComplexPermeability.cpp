@@ -64,6 +64,10 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
     auto realPart = complexPermeabilityData.get_real();
     auto imaginaryPart = complexPermeabilityData.get_imaginary();
 
+    if (!std::holds_alternative<std::vector<PermeabilityPoint>>(realPart) ||
+        !std::holds_alternative<std::vector<PermeabilityPoint>>(imaginaryPart)) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Complex permeability data is not in expected format for " + coreMaterial.get_name());
+    }
     auto realPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(realPart);
     auto imaginaryPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(imaginaryPart);
 
@@ -83,7 +87,7 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
 
 
         for (int i = 0; i < n; i++) {
-            if (x.size() == 0 || (*realPermeabilityPoints[i].get_frequency()) != x.back()) {
+            if (x.empty() || fabs(*realPermeabilityPoints[i].get_frequency() - x.back()) > 1e-9) {
                 x.push_back(*realPermeabilityPoints[i].get_frequency());
                 y.push_back(realPermeabilityPoints[i].get_value());
             }
@@ -109,7 +113,7 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
 
 
         for (int i = 0; i < n; i++) {
-            if (x.size() == 0 || (*imaginaryPermeabilityPoints[i].get_frequency()) != x.back()) {
+            if (x.empty() || fabs(*imaginaryPermeabilityPoints[i].get_frequency() - x.back()) > 1e-9) {
                 x.push_back(*imaginaryPermeabilityPoints[i].get_frequency());
                 y.push_back(imaginaryPermeabilityPoints[i].get_value());
             }

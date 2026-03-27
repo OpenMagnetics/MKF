@@ -797,7 +797,8 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
-                core.scale_to_stacks(1 + i);
+                // process_data() resets processed description to base values, then calls scale_to_stacks internally
+                core.process_data();
                 core.process_gap(); // CA-OPT-2 FIX: reprocess gap data after stacking (was commented out)
                 magnetic.set_core(core);
                 MagneticManufacturerInfo magneticmanufacturerinfo;
@@ -893,7 +894,8 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U || core.get_shape_family() == CoreShapeFamily::C)) {
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i) {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
-                core.scale_to_stacks(1 + i);
+                // process_data() resets processed description to base values, then calls scale_to_stacks internally
+                core.process_data();
                 core.process_gap(); // CA-OPT-2 FIX: reprocess gap data after stacking (was commented out)
                 magnetic.set_core(core);
                 MagneticManufacturerInfo magneticManufacturerInfo;
@@ -953,7 +955,8 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
             for (size_t i = 1; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
-                core.scale_to_stacks(1 + i);
+                // process_data() resets processed description to base values, then calls scale_to_stacks internally
+                core.process_data();
                 core.process_gap(); // CA-OPT-2 FIX: reprocess gap data after stacking (was commented out)
                 MagneticManufacturerInfo magneticManufacturerInfo;
                 if (i!=0) {

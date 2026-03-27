@@ -14,14 +14,17 @@ std::optional<double> AmplitudePermeability::get_amplitude_permeability(CoreMate
     // This uses the average slope of the loop, not the instantaneous derivative
     
     double amplitudePermeability = 1;
-    if (!(magneticFieldStrengthPeak && !magneticFluxDensityPeak)) {
+    if (!magneticFieldStrengthPeak && !magneticFluxDensityPeak) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Either H or B must be specified");
     }
     if (magneticFieldStrengthPeak) {
         auto [upperPath, lowerPath] = BHLoopRoshenModel().get_hysteresis_loop(coreMaterial, temperature, std::nullopt, magneticFieldStrengthPeak.value());
         if (upperPath.get_x_points().size() > 1){
-            // Calculate slope between first two points on upper branch
-            amplitudePermeability = fabs(upperPath.get_y_points()[1] - upperPath.get_y_points()[0]) / fabs(upperPath.get_x_points()[1] - upperPath.get_x_points()[0]) / constants.vacuumPermeability;
+            double dx = fabs(upperPath.get_x_points()[1] - upperPath.get_x_points()[0]);
+            if (dx < 1e-12) {
+                return std::nullopt;
+            }
+            amplitudePermeability = fabs(upperPath.get_y_points()[1] - upperPath.get_y_points()[0]) / dx / constants.vacuumPermeability;
         }
         else {
             return std::nullopt;
@@ -30,7 +33,11 @@ std::optional<double> AmplitudePermeability::get_amplitude_permeability(CoreMate
     else {
         auto [upperPath, lowerPath] = BHLoopRoshenModel().get_hysteresis_loop(coreMaterial, temperature, magneticFluxDensityPeak.value(), std::nullopt);
         if (upperPath.get_x_points().size() > 1){
-            amplitudePermeability = fabs(upperPath.get_y_points()[1] - upperPath.get_y_points()[0]) / fabs(upperPath.get_x_points()[1] - upperPath.get_x_points()[0]) / constants.vacuumPermeability;
+            double dx = fabs(upperPath.get_x_points()[1] - upperPath.get_x_points()[0]);
+            if (dx < 1e-12) {
+                return std::nullopt;
+            }
+            amplitudePermeability = fabs(upperPath.get_y_points()[1] - upperPath.get_y_points()[0]) / dx / constants.vacuumPermeability;
         }
         else {
             return std::nullopt;
