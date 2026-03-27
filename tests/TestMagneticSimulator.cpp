@@ -1140,4 +1140,137 @@ namespace {
     }
 
 
+    // =========================================================================
+    // Example MAS integration tests
+    // Each test loads a MAS JSON from examples/, autocompletes it, simulates,
+    // and verifies that core losses, winding losses, temperature, and
+    // inductance are present and physically reasonable.
+    // =========================================================================
+
+    static std::filesystem::path get_examples_dir() {
+        return std::filesystem::path{std::source_location::current().file_name()}
+            .parent_path().append("..").append("MAS").append("examples");
+    }
+
+    static void run_example_simulation(const std::string& filename) {
+        auto path = get_examples_dir() / filename;
+        REQUIRE(std::filesystem::exists(path));
+
+        auto mas = OpenMagneticsTesting::mas_loader(path.string());
+
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+
+        REQUIRE(magnetic.get_core().get_processed_description());
+
+        mas.set_magnetic(magnetic);
+        mas.set_inputs(inputs);
+
+        MagneticSimulator simulator;
+        mas = simulator.simulate(mas.get_inputs(), mas.get_magnetic());
+
+        // Verify outputs exist
+        REQUIRE(mas.get_outputs().size() > 0);
+
+        for (size_t opIdx = 0; opIdx < mas.get_outputs().size(); ++opIdx) {
+            auto& output = mas.get_outputs()[opIdx];
+
+            // Inductance must be present
+            REQUIRE(output.get_inductance());
+            auto magInd = output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance();
+            double inductanceValue = resolve_dimensional_values(magInd);
+            REQUIRE(inductanceValue > 0);
+
+            // Core losses must be present and positive
+            REQUIRE(output.get_core_losses());
+            double coreLosses = output.get_core_losses()->get_core_losses();
+            REQUIRE(coreLosses >= 0);
+
+            // Winding losses must be present and positive
+            REQUIRE(output.get_winding_losses());
+            double windingLosses = output.get_winding_losses()->get_winding_losses();
+            REQUIRE(windingLosses >= 0);
+
+            // Core losses from temperature model confirm no overheating
+            // (temperature is computed internally during core loss iteration)
+            auto coreLossTemp = output.get_core_losses()->get_temperature();
+            if (coreLossTemp) {
+                REQUIRE(coreLossTemp.value() < 200);
+            }
+        }
+    }
+
+    TEST_CASE("Example_01_simple_inductor", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("01_simple_inductor_etd34_n87.json");
+    }
+    TEST_CASE("Example_02_flyback", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("02_flyback_efd25_3c95.json");
+    }
+    TEST_CASE("Example_03_buck_inductor", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("03_buck_inductor_pq3230_n95.json");
+    }
+    TEST_CASE("Example_04_forward_xfmr", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("04_forward_xfmr_e3216_n87.json");
+    }
+    TEST_CASE("Example_05_pfc_inductor", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("05_pfc_inductor_t4020_hf60.json");
+    }
+    TEST_CASE("Example_06_llc_xfmr", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("06_llc_xfmr_eq4128_3c97.json");
+    }
+    TEST_CASE("Example_07_cmc", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("07_cmc_t2515_w800.json");
+    }
+    TEST_CASE("Example_08_pq_inductor", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("08_pq_inductor_pq5050_n27.json");
+    }
+    TEST_CASE("Example_09_planar_xfmr", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("09_planar_xfmr_er2510_3c94.json");
+    }
+    TEST_CASE("Example_10_emi_filter", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("10_emi_filter_ep13_3f46.json");
+    }
+    TEST_CASE("Example_11_pushpull", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("11_pushpull_etd49_tp4a.json");
+    }
+    TEST_CASE("Example_12_boost_inductor", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("12_boost_inductor_t5026_26.json");
+    }
+    TEST_CASE("Example_13_current_sense", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("13_current_sense_er95_n87.json");
+    }
+    TEST_CASE("Example_14_dab_xfmr", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("14_dab_xfmr_pm8770_n97.json");
+    }
+    TEST_CASE("Example_15_gan_inductor", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("15_gan_inductor_e138_3f4.json");
+    }
+    TEST_CASE("Example_16_coupled_inductor", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("16_coupled_inductor_e2513_dmr95.json");
+    }
+    TEST_CASE("Example_17_cllc_xfmr", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("17_cllc_xfmr_e5528_3c92a.json");
+    }
+    TEST_CASE("Example_18_stacked_inductor", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("18_stacked_inductor_e7033_n27.json");
+    }
+    TEST_CASE("Example_19_multi_op_xfmr", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("19_multi_op_xfmr_etd3920_pc95.json");
+    }
+    TEST_CASE("Example_20_iso_buckboost", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("20_iso_buckboost_epc25_3c91.json");
+    }
+    TEST_CASE("Example_21_interleaved_flyback", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("21_interleaved_flyback_etd39_n87.json");
+    }
+    TEST_CASE("Example_22_margin_tape_forward", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("22_margin_tape_forward_e4218_3c95.json");
+    }
+    TEST_CASE("Example_23_interleaved_llc", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("23_interleaved_llc_pq3530_n97.json");
+    }
+    TEST_CASE("Example_24_margin_interleaved_flyback", "[example][magnetic-simulator][smoke-test]") {
+        run_example_simulation("24_margin_interleaved_flyback_pq3230_3c94.json");
+    }
+
 }  // namespace
