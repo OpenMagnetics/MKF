@@ -197,8 +197,6 @@ DesignRequirements Llc::process_design_requirements() {
         double Vin_max = inputVoltage.get_maximum().value();
         double M_req_min = (mainOutputVoltage * mainTurnsRatio) / (k_bridge * Vin_min);
         double M_req_max = (mainOutputVoltage * mainTurnsRatio) / (k_bridge * Vin_max);
-        double M_max_noload = (Ln > 1.0) ? std::sqrt(Ln / (Ln - 1.0)) : 10.0;
-        double M_max_heavy = M_max_noload / std::sqrt(1.0 + Q * Q * std::pow(M_max_noload * M_max_noload - 1.0, 2));
         (void)M_req_min;
         (void)M_req_max;
     }
@@ -559,10 +557,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         }
     }
 
-    if (integratedLs) {
-        double Vpmax = *std::max_element(Vpri_full.begin(), Vpri_full.end());
-        double Vpmin = *std::min_element(Vpri_full.begin(), Vpri_full.end());
-    } 
 
     // --- Primary excitation ---
     {
@@ -945,14 +939,6 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
         }
         wf.set_input_current(iin);
         if (!iin.get_data().empty()) {
-            // Check if data is all zeros
-            bool allZero = true;
-            for (size_t i = 0; i < std::min(size_t(10), iin.get_data().size()); ++i) {
-                if (std::abs(iin.get_data()[i]) > 1e-12) {
-                    allZero = false;
-                    break;
-                }
-            }
         }
 
         if (!turnsRatios.empty()) {

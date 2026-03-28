@@ -1199,7 +1199,7 @@ namespace TestWindingLossesModelComparison {
             for (const auto& modelName : {"ALBACH", "BINNS", "LAMMERANER"}) {
                 auto it = modelMap.find(modelName);
                 if (it != modelMap.end()) {
-                    double avgError = it->second.first / it->second.second;
+                    [[maybe_unused]] double avgError = it->second.first / it->second.second;
                 } else {
                 }
             }
@@ -1264,7 +1264,7 @@ namespace TestWindingLossesModelComparison {
 
             // Create the magnetic once (if possible)
             OpenMagnetics::Magnetic magnetic;
-            bool magneticCreated = false;
+            [[maybe_unused]] bool magneticCreated = false;
             try {
                 magnetic = config.createMagnetic();
                 magneticCreated = true;
@@ -1306,7 +1306,7 @@ namespace TestWindingLossesModelComparison {
                     std::string combinedName = fieldModelName + "+" + fringingModelName;
                     double totalError = 0;
                     int validCount = 0;
-                    bool anyCrashed = false;
+                    [[maybe_unused]] bool anyCrashed = false;
 
                     for (const auto& [frequency, expectedValue] : testPoints) {
                         settings.reset();
@@ -1416,7 +1416,7 @@ namespace TestWindingLossesModelComparison {
         });
 
         for (const auto& [modelName, stats] : sortedStats) {
-            double avgError = stats.validCount > 0 ? stats.totalError / stats.validCount : 0;
+            [[maybe_unused]] double avgError = stats.validCount > 0 ? stats.totalError / stats.validCount : 0;
         }
 
         // ==================================================================================
@@ -1481,7 +1481,7 @@ namespace TestWindingLossesModelComparison {
             std::sort(wireResults.begin(), wireResults.end(), 
                 [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); });
 
-            for (const auto& [model, avg, stdDev, minErr, maxErr, n] : wireResults) {
+            for ([[maybe_unused]] const auto& [model, avg, stdDev, minErr, maxErr, n] : wireResults) {
             }
         }
 
@@ -1517,8 +1517,8 @@ namespace TestWindingLossesModelComparison {
             [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); });
 
 
-        int rank = 1;
-        for (const auto& [model, avg, stdDev, tests, crashes] : overallRanking) {
+        [[maybe_unused]] int rank = 1;
+        for ([[maybe_unused]] const auto& [model, avg, stdDev, tests, crashes] : overallRanking) {
         }
 
 
@@ -1802,9 +1802,9 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
     });
     
     for (const auto& [modelName, stats] : sortedStats) {
-        double avgError = stats.validCount > 0 ? stats.totalError / stats.validCount : 0;
+        [[maybe_unused]] double avgError = stats.validCount > 0 ? stats.totalError / stats.validCount : 0;
     }
-    
+
     // ==================================================================================
     // BREAKDOWN BY WIRE TYPE AND MODEL COMBINATION
     // ==================================================================================
@@ -1920,10 +1920,10 @@ TEST_CASE("Comprehensive_Winding_Losses_Model_Comparison_Skin_And_Proximity", "[
         [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); });
     
     
-    int rank = 1;
-    for (const auto& [model, avg, stdDev, tests, crashes] : overallRanking) {
+    [[maybe_unused]] int rank = 1;
+    for ([[maybe_unused]] const auto& [model, avg, stdDev, tests, crashes] : overallRanking) {
     }
-    
+
     // BEST MODEL RECOMMENDATION
     if (!overallRanking.empty()) {
         auto [bestModel, bestAvg, bestStd, bestTests, bestCrashes] = overallRanking[0];
@@ -2024,7 +2024,7 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
     }
     
     
-    int totalCombinations = hFieldModels.size() * fringingModels.size() * 
+    [[maybe_unused]] int totalCombinations = hFieldModels.size() * fringingModels.size() *
                            skinModels.size() * proximityModels.size();
     int currentCombo = 0;
     
@@ -2128,10 +2128,10 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
         int count = 0;
         for (const auto& result : sortedResults) {
             if (count++ >= 5) break;
-            double avgError = result.validCount > 0 ? result.totalError / result.validCount : 0;
+            [[maybe_unused]] double avgError = result.validCount > 0 ? result.totalError / result.validCount : 0;
         }
     }
-    
+
     // Overall best across all wire types
     
     // Aggregate results by combination across all wire types
@@ -2161,12 +2161,12 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
     });
     
     
-    int rank = 1;
+    [[maybe_unused]] int rank = 1;
     for (const auto& result : overallResults) {
         if (rank > 20) break;
-        double avgError = result.validCount > 0 ? result.totalError / result.validCount : 0;
+        [[maybe_unused]] double avgError = result.validCount > 0 ? result.totalError / result.validCount : 0;
     }
-    
+
     // Best by wire type summary
     
     for (const auto& [wireType, results] : resultsByWireType) {

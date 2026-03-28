@@ -1443,6 +1443,8 @@ static std::string emit_fracpole_winding_spice(
 // - Cinf would short-circuit the magnetizing inductance at high frequencies
 // - Rinf would provide a DC path that doesn't exist for core losses
 // The R-C stages alone provide the frequency-dependent loss behavior we need.
+// NOTE: emit_fracpole_core_spice is currently unused; kept for reference.
+#if 0
 static std::string emit_fracpole_core_spice(
     const FractionalPoleNetwork& net, size_t numWindings) {
     std::string s;
@@ -1471,6 +1473,7 @@ static std::string emit_fracpole_core_spice(
     return s;
 }
 
+#endif
 // Emit core loss network using R-L ladder topology for SPICE.
 // The R-L ladder provides impedance that INCREASES with frequency:
 // - At low frequency: L shorts out R, so total Z is low
@@ -1546,7 +1549,6 @@ static std::string emit_saturating_inductor_ngspice(
     double effectiveMuR = sat.Lmag / (mu0 * sat.primaryTurns * sat.primaryTurns * sat.Ae / sat.le);
     double gapFactor = 1.0 / effectiveMuR;  // Fraction of reluctance from gap
     double Lgap = sat.Lmag * gapFactor;  // Linear (gap) component
-    double Lcore = sat.Lmag * (1 - gapFactor);  // Saturable (core) component
     
     // Ensure reasonable values
     if (Isat < 1e-6) Isat = 1e-6;

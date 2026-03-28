@@ -321,7 +321,6 @@ double get_value_or(T&& val, double default_val) {
         // But at the moment of peak resonant current, Im ≈ 0 (at midpoint)
         // So secondary peak ≈ n · Ip_resonant_peak (approximately)
         // More precisely, Isec_peak = n · Ip_resonant_peak when Im is small
-        double Isec_peak = n * Ip_resonant_peak;
 
         // Number of sample points for waveform construction
         const int numPoints = 200;

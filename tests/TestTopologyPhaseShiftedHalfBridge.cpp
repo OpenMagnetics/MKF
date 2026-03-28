@@ -21,7 +21,6 @@ using namespace OpenMagnetics;
 namespace {
 auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}
     .parent_path().append("..").append("output");
-double maximumError = 0.1;
 
 
 // =========================================================================

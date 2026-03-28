@@ -343,8 +343,6 @@ namespace OpenMagnetics {
         Topology::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
         
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            double inputVoltage = inputVoltages[inputVoltageIndex];
-            
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
                 auto boostOpPoint = get_operating_points()[opIndex];
                 

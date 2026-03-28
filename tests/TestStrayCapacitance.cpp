@@ -1117,8 +1117,6 @@ TEST_CASE("Investigate capacitance calculation from bug_capacitance_error_2.json
     auto magnetic = mas.get_mutable_magnetic();
     auto coil = magnetic.get_mutable_coil();
     
-    for (const auto& winding : coil.get_functional_description()) {
-    }
     
     if (coil.get_turns_description()) {
     } else {
@@ -1141,7 +1139,7 @@ TEST_CASE("Investigate capacitance calculation from bug_capacitance_error_2.json
             for (const auto& entry : matrix) {
                 for (const auto& [winding1, innerMap] : entry.get_magnitude()) {
                     for (const auto& [winding2, capacitance] : innerMap) {
-                        auto value = OpenMagnetics::resolve_dimensional_values(capacitance);
+                        (void)OpenMagnetics::resolve_dimensional_values(capacitance);
                     }
                 }
             }
@@ -1154,7 +1152,7 @@ TEST_CASE("Investigate capacitance calculation from bug_capacitance_error_2.json
                     // ScalarMatrixAtFrequency contains magnitude which is map<string, map<string, DimensionWithTolerance>>
                     for (const auto& [sub1, subMap] : scalarMatrix.get_magnitude()) {
                         for (const auto& [sub2, dimWithTol] : subMap) {
-                            auto value = OpenMagnetics::resolve_dimensional_values(dimWithTol);
+                            (void)OpenMagnetics::resolve_dimensional_values(dimWithTol);
                         }
                     }
                 }
@@ -1186,8 +1184,6 @@ TEST_CASE("Investigate negative C3 in bug_capacitance_error_3", "[physical-model
     auto magnetic = mas.get_mutable_magnetic();
     auto coil = magnetic.get_mutable_coil();
     
-    for (const auto& winding : coil.get_functional_description()) {
-    }
     
     StrayCapacitance strayCapacitance;
     auto output = strayCapacitance.calculate_capacitance(coil);
@@ -1221,8 +1217,8 @@ TEST_CASE("Investigate negative C3 in bug_capacitance_error_3", "[physical-model
         }
         
         
-        double C1 = C11 + C12;
-        double C2 = C22 + C12;
+        [[maybe_unused]] double C1 = C11 + C12;
+        [[maybe_unused]] double C2 = C22 + C12;
         double C3 = -C12;
         
         
@@ -1273,7 +1269,7 @@ TEST_CASE("Calculate capacitance for toroidal core", "[physical-model][stray-cap
     // Print the capacitance values for debugging
     for (auto [firstKey, aux] : maxwellCapacitanceMatrix.value()[0].get_magnitude()) {
         for (auto [secondKey, capacitanceWithTolerance] : aux) {
-            auto capacitance = OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
+            (void)OpenMagnetics::resolve_dimensional_values(capacitanceWithTolerance);
         }
     }
 
@@ -1324,8 +1320,6 @@ TEST_CASE("Investigate missing energy between Tertiary and Secondary turns", "[p
     auto magnetic = mas.get_mutable_magnetic();
     auto coil = magnetic.get_mutable_coil();
     
-    for (const auto& winding : coil.get_functional_description()) {
-    }
     
     // Get turns description
     auto turns = coil.get_turns_description().value();
@@ -1363,13 +1357,13 @@ TEST_CASE("Investigate missing energy between Tertiary and Secondary turns", "[p
         
         double maxDim1 = std::max(dx1, dy1);
         double maxDim2 = std::max(dx2, dy2);
-        double minDimension = std::min(maxDim1, maxDim2);
-        
+        [[maybe_unused]] double minDimension = std::min(maxDim1, maxDim2);
+
         double centerDist = hypot(x2 - x1, y2 - y1);
-        double surfaceGap = centerDist - maxDim1 / 2 - maxDim2 / 2;
-        
+        [[maybe_unused]] double surfaceGap = centerDist - maxDim1 / 2 - maxDim2 / 2;
+
     }
-    
+
     // Now calculate capacitance and check energies
     StrayCapacitance strayCapacitance;
     auto output = strayCapacitance.calculate_capacitance(coil);
@@ -1401,7 +1395,7 @@ TEST_CASE("Investigate missing energy between Tertiary and Secondary turns", "[p
         
         // Print all energies for Tertiary turn 0
         if (it1 != energyMap->end()) {
-            for (const auto& [otherTurn, energy] : it1->second) {
+            for ([[maybe_unused]] const auto& [otherTurn, energy] : it1->second) {
             }
         }
         
@@ -1410,7 +1404,7 @@ TEST_CASE("Investigate missing energy between Tertiary and Secondary turns", "[p
         if (capacitanceMap) {
             auto itCap = capacitanceMap->find(tertiaryTurn0Name);
             if (itCap != capacitanceMap->end()) {
-                for (const auto& [otherTurn, cap] : itCap->second) {
+                for ([[maybe_unused]] const auto& [otherTurn, cap] : itCap->second) {
                 }
             }
         }
@@ -1441,7 +1435,7 @@ TEST_CASE("Investigate missing energy between Tertiary and Secondary turns", "[p
     // Check surrounding turns
     if (tertiaryTurn0Idx >= 0) {
         auto surrounding = StrayCapacitance::get_surrounding_turns(turns[tertiaryTurn0Idx], turns, -1.0);
-        for (const auto& [surroundingTurn, idx] : surrounding) {
+        for ([[maybe_unused]] const auto& [surroundingTurn, idx] : surrounding) {
         }
     }
     
@@ -1486,19 +1480,19 @@ TEST_CASE("Debug primary-primary intrawinding capacitance", "[physical-model][st
     
     double maxDim0 = std::max(dx0, dy0);
     double maxDim1 = std::max(dx1, dy1);
-    double minDimension = std::min(maxDim0, maxDim1);
-    
+    [[maybe_unused]] double minDimension = std::min(maxDim0, maxDim1);
+
     double centerDist = hypot(x1 - x0, y1 - y0);
-    double surfaceGap = centerDist - maxDim0 / 2 - maxDim1 / 2;
+    [[maybe_unused]] double surfaceGap = centerDist - maxDim0 / 2 - maxDim1 / 2;
     
     
     // Check surrounding turns for turn 0
     auto surroundingForTurn0 = StrayCapacitance::get_surrounding_turns(turn0, turns, -1.0);
-    for (const auto& [surroundingTurn, idx] : surroundingForTurn0) {
+    for ([[maybe_unused]] const auto& [surroundingTurn, idx] : surroundingForTurn0) {
     }
     
     // Check if turn 1 is in the surrounding turns
-    bool foundTurn1 = false;
+    [[maybe_unused]] bool foundTurn1 = false;
     for (const auto& [surroundingTurn, idx] : surroundingForTurn0) {
         if (idx == 1) {
             foundTurn1 = true;
@@ -1512,8 +1506,8 @@ TEST_CASE("Debug primary-primary intrawinding capacitance", "[physical-model][st
     
     auto capacitanceAmongWindings = output.get_capacitance_among_windings();
     if (capacitanceAmongWindings) {
-        for (const auto& [winding1, inner] : *capacitanceAmongWindings) {
-            for (const auto& [winding2, cap] : inner) {
+        for ([[maybe_unused]] const auto& [winding1, inner] : *capacitanceAmongWindings) {
+            for ([[maybe_unused]] const auto& [winding2, cap] : inner) {
             }
         }
     }

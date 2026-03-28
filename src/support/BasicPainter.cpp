@@ -1408,7 +1408,6 @@ void BasicPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic 
         // For toroidal cores: plot internal field inside, external field outside
         auto processedDesc = core.get_processed_description();
         double coreRadius = processedDesc->get_width() / 2.0;
-        double innerRadius = coreRadius - core.get_columns()[0].get_width();
         
         // Plot internal field only for points inside the core
         for (size_t i = 0; i < internalField.get_data().size(); ++i) {
@@ -2212,22 +2211,14 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                 // Use bobbin's own coordinate system (not winding window coordinates)
                 auto windingWindow = core.get_winding_window();
                 if (windingWindow.get_width()) {
-                    double wwX = windingWindow.get_coordinates().value()[0];
                     double wwY = windingWindow.get_coordinates().value()[1];
-                    double wwWidth = windingWindow.get_width().value();
                     double wwHeight = windingWindow.get_height().value();
                     
                     // Get bobbin processed description for actual dimensions
                     auto bobbinProcessed = std::get<Bobbin>(bobbinVariant).get_processed_description();
-                    double wallThickness = 0.002;  // Default 2mm
                     double columnThickness = 0.002;  // Default 2mm
-                    double columnWidth = 0.005;  // Default 5mm (bobbin depth)
                     if (bobbinProcessed) {
-                        wallThickness = bobbinProcessed->get_wall_thickness();
                         columnThickness = bobbinProcessed->get_column_thickness();
-                        if (bobbinProcessed->get_column_width()) {
-                            columnWidth = bobbinProcessed->get_column_width().value();
-                        }
                     }
                     
                     // Calculate bobbin column position
@@ -2239,8 +2230,6 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                     
                     // Calculate bobbin yoke vertical positions
                     // Yokes sit on top/bottom of the core column (where core yokes end)
-                    double coreColumnTopY = mainColumnHeight / 2;
-                    double coreColumnBottomY = -mainColumnHeight / 2;
                     
                     // First pass: draw the bobbin column wall
                     if (name.find("CentralColumn") != std::string::npos) {
@@ -2273,17 +2262,12 @@ void BasicPainter::paint_temperature_field(Magnetic magnetic, const std::map<std
                 
                 auto windingWindow = core.get_winding_window();
                 if (windingWindow.get_width()) {
-                    double wwX = windingWindow.get_coordinates().value()[0];
-                    double wwY = windingWindow.get_coordinates().value()[1];
                     double wwWidth = windingWindow.get_width().value();
-                    double wwHeight = windingWindow.get_height().value();
                     
                     auto bobbinProcessed = std::get<Bobbin>(bobbinVariant2).get_processed_description();
                     double wallThickness = 0.002;
-                    double columnThickness = 0.002;
                     if (bobbinProcessed) {
                         wallThickness = bobbinProcessed->get_wall_thickness();
-                        columnThickness = bobbinProcessed->get_column_thickness();
                     }
                     
                     double columnLeftEdge = showingMainColumnWidth;
@@ -3242,7 +3226,6 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     
     // Layout parameters
     double defaultNodeRadius = 8;  // Default size for core/ambient nodes
-    double groundY = height - 60;
     
     // === GEOMETRIC LAYOUT ===
     // Nodes positioned based on their physical coordinates
@@ -3702,7 +3685,7 @@ std::string BasicPainter::paint_thermal_circuit_schematic(
     for (const auto* node : coreNodesForQuadrants) {
         if (node->part != ThermalNodePartType::INSULATION_LAYER) continue;
         
-        auto [x, y] = mapNodeToSvg(*node);
+        [[maybe_unused]] auto [x, y] = mapNodeToSvg(*node);
         
         // Draw black dots at quadrant limit coordinates
         for (const auto& quadrant : node->quadrants) {

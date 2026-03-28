@@ -2782,7 +2782,7 @@ namespace {
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
         printElapsed("MagneticAdviser returned " + std::to_string(masMagnetics.size()) + " magnetics");
 
-        for (auto& [mas, scoring] : masMagnetics) {
+        for ([[maybe_unused]] auto& [mas, scoring] : masMagnetics) {
         }
 
         printElapsed("Test completed");
@@ -2872,7 +2872,6 @@ namespace {
         
         int rank = 1;
         for (auto [masMagnetic, scoring] : masMagnetics) {
-            auto& core = masMagnetic.get_mutable_magnetic().get_core();
             auto& coil = masMagnetic.get_mutable_magnetic().get_coil();
             
             // Core material is a variant type - simplified output
@@ -3041,16 +3040,15 @@ namespace {
                 
                 // Calculate current density
                 if (conductingWidth > 0 && conductingHeight > 0) {
-                    double crossSectionalArea = conductingWidth * conductingHeight;
-                    
+                    [[maybe_unused]] double crossSectionalArea = conductingWidth * conductingHeight;
+
                     // Get current from operating point
                     if (inputs.get_operating_points().size() > 0) {
                         auto opPoint = inputs.get_operating_point(0);
                         if (opPoint.get_excitations_per_winding().size() > i) {
                             auto excitation = opPoint.get_excitations_per_winding()[i];
                             if (excitation.get_current() && excitation.get_current().value().get_processed() && excitation.get_current().value().get_processed().value().get_rms()) {
-                                double currentRms = excitation.get_current().value().get_processed().value().get_rms().value();
-                                double currentDensity = currentRms / crossSectionalArea;
+                                [[maybe_unused]] double currentRms = excitation.get_current().value().get_processed().value().get_rms().value();
                             }
                         }
                     }
@@ -3566,9 +3564,6 @@ TEST_CASE("Test_LLC_Separate_CoreAdviser_CoilAdviser", "[adviser][from-converter
     auto llcInputs = converter.process();
     
     
-    auto isolationSides = llcInputs.get_design_requirements().get_isolation_sides().value();
-    for (auto& side : isolationSides) {
-    }
     
     // Step 1: CoreAdviser alone
     CoreAdviser coreAdviser;
@@ -3577,7 +3572,6 @@ TEST_CASE("Test_LLC_Separate_CoreAdviser_CoilAdviser", "[adviser][from-converter
     
     // Step 2: CoilAdviser with first core result
     OpenMagnetics::Mas coreMas = coreResults[0].first;
-    double coreScore = coreResults[0].second;
     
     CoilAdviser coilAdviser;
     auto coilResults = coilAdviser.get_advised_coil(coreMas, 3);
@@ -5045,10 +5039,7 @@ TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyba
     magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
     
     
-    auto start = std::chrono::high_resolution_clock::now();
     auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
-    auto end = std::chrono::high_resolution_clock::now();
-    auto runtime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     
     
     REQUIRE(masMagnetics.size() > 0);
@@ -5056,7 +5047,6 @@ TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyba
     // Print details of all recommendations
     for (size_t i = 0; i < masMagnetics.size(); ++i) {
         auto& mas = masMagnetics[i].first;
-        double scoring = masMagnetics[i].second;
         
         
         auto coreName = mas.get_magnetic().get_core().get_name();

@@ -196,7 +196,7 @@ public:
         const double r = std::pow(f1 / f0, 1.0 / N);
         const double r_pz = std::pow(r, alpha);
 
-        double f_zero_start;
+        double f_zero_start = 0.0;
         switch (profile) {
             case FracpoleProfile::DD:
             case FracpoleProfile::DF:

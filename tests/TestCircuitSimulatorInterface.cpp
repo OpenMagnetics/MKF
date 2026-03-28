@@ -1528,15 +1528,10 @@ void compare_ideal_vs_parasitic(
     
     // Calculate winding resistances
     double primaryResistance = 0;
-    double secondaryResistance = 0;
     auto coil = magnetic.get_coil();
     if (coil.get_functional_description().size() > 0) {
         primaryResistance = WindingLosses::calculate_effective_resistance_of_winding(
             magnetic, 0, opPoint.get_switching_frequency().value_or(100000), 100);
-    }
-    if (coil.get_functional_description().size() > 1) {
-        secondaryResistance = WindingLosses::calculate_effective_resistance_of_winding(
-            magnetic, 1, opPoint.get_switching_frequency().value_or(100000), 100);
     }
     
     INFO(converterName << " - Turns ratio: " << turnsRatio);

@@ -2106,7 +2106,6 @@ double CorePiece::get_yoke_exterior_face_area(bool isTopYoke) {
     
     double totalWidth = get_width();
     double centralColumnWidth = (columns.size() > 0) ? columns[0].get_width() : 0;
-    double lateralColumnWidth = (columns.size() > 1) ? columns[1].get_width() : 0;
     double depth = get_depth();
     
     // For E-cores: total width minus central column gives the yoke span

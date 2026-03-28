@@ -637,8 +637,6 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Redo_Culling", "[adviser][c
         if (coreName.find("E 22/6/16") != std::string::npos) {
             foundValidCore = true;
         }
-        // Debug: print what cores we got
-        auto stacks = mas.get_magnetic().get_core().get_functional_description().get_number_stacks();
     }
     REQUIRE(foundValidCore);
     settings.reset();
@@ -1410,9 +1408,6 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes_Medium_Dc_Current", "[advise
     
     // Debug: Print all returned cores
     for (size_t i = 0; i < masMagnetics.size(); ++i) {
-        auto name = masMagnetics[i].first.get_magnetic().get_core().get_name().value_or("unnamed");
-        auto stacksOpt = masMagnetics[i].first.get_magnetic().get_core().get_functional_description().get_number_stacks();
-        int64_t stacks = stacksOpt ? stacksOpt.value() : 1;
     }
     
     {
@@ -1939,14 +1934,13 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
     auto& topResult = masMagnetics[0].first;
     auto& topMagnetic = topResult.get_magnetic();
     auto& topCore = topMagnetic.get_core();
-    auto& topCoil = topMagnetic.get_coil();
+    [[maybe_unused]] auto& topCoil = topMagnetic.get_coil();
     
     // Material is a variant, so we need to check which type it is
     auto& material = topCore.get_functional_description().get_material();
     if (std::holds_alternative<std::string>(material)) {
     } else {
     }
-    auto numberStacks = topCore.get_functional_description().get_number_stacks();
     
     // Print gapping information
     if (topCore.get_functional_description().get_gapping().size() > 0) {
@@ -1958,23 +1952,17 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
     // Debug: Check required magnetic energy
     OpenMagnetics::MagneticEnergy magneticEnergy;
     auto requiredEnergyDim = magneticEnergy.calculate_required_magnetic_energy(inputs);
-    double requiredEnergy = resolve_dimensional_values(requiredEnergyDim);
-    auto inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
-    double targetL = resolve_dimensional_values(inductanceReq);
     
     // Calculate and print B field from the magnetic parameters
     auto& resultInputs = topResult.get_inputs();
-    double estimatedBPeak = 0;
     if (resultInputs.get_operating_points().size() > 0) {
         auto& operatingPoint = resultInputs.get_operating_points()[0];
         if (operatingPoint.get_excitations_per_winding().size() > 0) {
             auto& excitation = operatingPoint.get_excitations_per_winding()[0];
-            double frequency = excitation.get_frequency();
             
             // Check if B field is already calculated in the result
             auto bField = excitation.get_magnetic_flux_density();
             if (bField && bField->get_processed() && bField->get_processed()->get_peak()) {
-                double bPeak = *bField->get_processed()->get_peak();
                 if (bField->get_processed()->get_peak_to_peak()) {
                 }
             } else {
@@ -1983,12 +1971,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
                 if (excitation.get_voltage() && excitation.get_voltage()->get_processed()) {
                     auto voltageProcessed = *excitation.get_voltage()->get_processed();
                     if (voltageProcessed.get_peak()) {
-                        double voltagePeak = *voltageProcessed.get_peak();
-                        int turns = static_cast<int>(topCoil.get_functional_description()[0].get_number_turns());
-                        double effectiveArea = topCore.get_processed_description()->get_effective_parameters().get_effective_area();
-                        
-                        // B = Vpeak / (2 * pi * f * N * Ae) for sinusoidal, simplified estimate
-                        estimatedBPeak = voltagePeak / (2 * M_PI * frequency * turns * effectiveArea);
                     }
                 }
                 
@@ -1998,7 +1980,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
                     auto magnetizingInductanceOutput = inductanceOutput.get_magnetizing_inductance();
                     auto magnetizingInductanceDim = magnetizingInductanceOutput.get_magnetizing_inductance();
                     if (magnetizingInductanceDim.get_nominal()) {
-                        double magnetizingInductance = *magnetizingInductanceDim.get_nominal();
                     }
                 }
             }
@@ -2034,7 +2015,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
         auto& result = masMagneticsStandard[i].first;
         auto& magnetic = result.get_magnetic();
         auto& core = magnetic.get_core();
-        auto& coil = magnetic.get_coil();
         
         
         // Calculate B field
@@ -2044,9 +2024,6 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
             OpenMagnetics::MagnetizingInductance miModel;
             auto [indOut, bField] = miModel.calculate_inductance_and_magnetic_flux_density(magnetic, &op);
             if (bField.get_processed() && bField.get_processed()->get_peak()) {
-                double bPeak = *bField.get_processed()->get_peak();
-                auto coreCopy = core;
-                double bSat = coreCopy.get_magnetic_flux_density_saturation(op.get_conditions().get_ambient_temperature());
             }
         }
         
@@ -2062,13 +2039,11 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar", "[adviser][core-adviser][av
         auto& topResultStd = masMagneticsStandard[0].first;
         auto& topMagneticStd = topResultStd.get_magnetic();
         auto& topCoreStd = topMagneticStd.get_core();
-        auto& topCoilStd = topMagneticStd.get_coil();
         
         auto& materialStd = topCoreStd.get_functional_description().get_material();
         if (std::holds_alternative<std::string>(materialStd)) {
         } else {
         }
-        auto numberStacksStd = topCoreStd.get_functional_description().get_number_stacks();
         
         // Print gapping information
         if (topCoreStd.get_functional_description().get_gapping().size() > 0) {
@@ -2137,8 +2112,7 @@ TEST_CASE("Test_CoreAdviser_Load_MAS_Direct_Planar_With_Log", "[adviser][core-ad
     // Print all results with their losses
     for (size_t i = 0; i < masMagnetics.size(); ++i) {
         auto& result = masMagnetics[i].first;
-        auto& magnetic = result.get_magnetic();
-        auto& core = magnetic.get_core();
+        [[maybe_unused]] auto& magnetic = result.get_magnetic();
         double totalLosses = 0;
         
         // Calculate losses from outputs
@@ -2169,16 +2143,9 @@ TEST_CASE("Test_E32_Specific_Configuration_19turns_640um", "[adviser][core-advis
     // Calculate required magnetic energy
     MagneticEnergy magneticEnergy;
     auto requiredEnergyDim = magneticEnergy.calculate_required_magnetic_energy(inputs);
-    double requiredEnergy = resolve_dimensional_values(requiredEnergyDim);
     
     // Quick estimation
-    double gapMKF = 40e-6;  // MKF calculated 40 µm
-    double gapUser = 640e-6;  // User suggests 640 µm
-    double turnsMKF = 4;  // Estimated from debug output
-    double turnsUser = 19;
     
-    double reluctanceRatio = gapUser / gapMKF;  // ~16x higher reluctance
-    double turnsRatio = turnsUser / turnsMKF;   // ~4.75x more turns
     
     
     

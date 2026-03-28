@@ -1197,7 +1197,6 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
             double gapEnergy = gapLength;
             
             // Iterative refinement to find gap that prevents saturation
-            double targetInductance = resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
             double magnetizingCurrentPeak = 0;
             for (auto& op : inputs.get_operating_points()) {
                 auto excitation = Inputs::get_primary_excitation(op);
@@ -1575,8 +1574,6 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
             core.set_ground_gapping(currentGap);
             core.process_gap();
 
-            // Get current turns
-            double numTurns = (*magneticsWithScoring)[i].first.get_coil().get_functional_description()[0].get_number_turns();
 
             // Simulate to get actual Bpeak
             bool gotBpeak = false;
@@ -1693,7 +1690,7 @@ double CoreAdviser::calculate_gap_cost_analytical(double gap, Inputs& inputs, Co
     
     // Get target inductance
     double targetInductance = resolve_dimensional_values(
-        inputs.get_design_requirements().get_magnetizing_inductance(), 
+        inputs.get_design_requirements().get_magnetizing_inductance(),
         DimensionalValues::NOMINAL);
     
     // Calculate turns for this gap using MagnetizingInductance method
@@ -1758,7 +1755,7 @@ std::pair<double, double> CoreAdviser::optimize_gap_and_turns_binary_search(Inpu
     }
     
     double targetInductance = resolve_dimensional_values(
-        inputs.get_design_requirements().get_magnetizing_inductance(), 
+        inputs.get_design_requirements().get_magnetizing_inductance(),
         DimensionalValues::NOMINAL);
     double peakCurrent = get_peak_current(inputs);
     double bSat = core.get_magnetic_flux_density_saturation(temperature, false);

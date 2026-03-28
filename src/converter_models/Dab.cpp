@@ -485,7 +485,6 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
     // ---- Secondary winding excitation(s) ----
     for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
         double n = turnsRatios[secIdx];
-        double Vout = dabOpPoint.get_output_voltages()[secIdx];
 
         std::vector<double> iSecData(totalSamples);
         std::vector<double> vSecData(totalSamples);
@@ -570,7 +569,6 @@ std::string Dab::generate_ngspice_circuit(
     double tOn = halfPeriod - deadTime;
 
     double V2 = dabOp.get_output_voltages()[0];
-    double Iout = dabOp.get_output_currents()[0];
     double N = turnsRatios[0];
 
     double L = computedSeriesInductance;

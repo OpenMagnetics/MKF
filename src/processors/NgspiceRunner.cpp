@@ -613,22 +613,13 @@ SimulationResult NgspiceRunner::parse_raw_file(const std::string& rawFilePath, c
     
     std::string line;
     std::vector<std::string> variableNames;
-    size_t numPoints = 0;
     size_t numVariables = 0;
     bool inValues = false;
-    bool isReal = false;
-    bool isComplex = false;
     
     // Parse header
     while (std::getline(file, line)) {
         if (line.find("No. Variables:") != std::string::npos) {
             numVariables = std::stoul(line.substr(line.find(":") + 1));
-        } else if (line.find("No. Points:") != std::string::npos) {
-            numPoints = std::stoul(line.substr(line.find(":") + 1));
-        } else if (line.find("Flags: real") != std::string::npos) {
-            isReal = true;
-        } else if (line.find("Flags: complex") != std::string::npos) {
-            isComplex = true;
         } else if (line.find("Variables:") != std::string::npos) {
             // Read variable names
             for (size_t i = 0; i < numVariables; ++i) {

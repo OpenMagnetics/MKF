@@ -47,7 +47,6 @@ using namespace OpenMagnetics;
 namespace {
     auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}
                               .parent_path().append("..").append("output");
-    double maximumError = 0.15;
 
     // =========================================================================
     // Helper: Create a standard CLLC converter specification
@@ -706,7 +705,6 @@ namespace {
         REQUIRE(!operatingPoints.empty());
 
         auto& primaryExcitation = operatingPoints[0].get_excitations_per_winding()[0];
-        auto& secondaryExcitation = operatingPoints[0].get_excitations_per_winding()[1];
 
         REQUIRE(primaryExcitation.get_voltage().has_value());
         REQUIRE(primaryExcitation.get_voltage()->get_waveform().has_value());

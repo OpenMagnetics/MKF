@@ -280,7 +280,6 @@ OperatingPoint Pshb::process_operating_point_for_input_voltage(
     double Fs = pshbOpPoint.get_switching_frequency();
     double Vin = inputVoltage;
     double Vhb = Vin * BRIDGE_VOLTAGE_FACTOR;  // Vin/2
-    double Vo = pshbOpPoint.get_output_voltages()[0];
     double Io = pshbOpPoint.get_output_currents()[0];
     double n = turnsRatios[0];
     double Lm = magnetizingInductance;
@@ -291,7 +290,6 @@ OperatingPoint Pshb::process_operating_point_for_input_voltage(
     double period = 1.0 / Fs;
     double Thalf = period / 2.0;
     double t_power = Deff * Thalf;
-    double t_free = Thalf - t_power;
 
     // Primary reflected load current
     double Io_ref = Io / n;

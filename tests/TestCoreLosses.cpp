@@ -2895,7 +2895,6 @@ TEST_CASE("Test_Core_Losses_Nanoperm_8000", "[physical-model][core-losses][smoke
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
     auto calculatedMassCoreLosses = coreLosses.get_mass_losses().value();
-    auto expectedMassLosses = 561;
 
     REQUIRE_THAT(magneticFluxDensity.get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, 0.0001));
     REQUIRE_THAT(calculatedMassCoreLosses, Catch::Matchers::WithinAbs(869, 869 * 0.05));

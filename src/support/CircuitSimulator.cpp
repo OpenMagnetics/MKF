@@ -373,7 +373,7 @@ struct Voltage : Component<2, 1>
         m.stampStatic(+1, nets[2], nets[0], "+1");
         m.stampStatic(-1, nets[2], nets[1], "-1");
 
-        char buf[16];
+        char buf[64];
         sprintf(buf, "%+.2gV", v);
         m.b[nets[2]].g = v;
         m.b[nets[2]].txt = buf;

@@ -640,20 +640,6 @@ void Temperature::createConcentricCoreNodes() {
         std::vector<double>({coreWidth / 2, 0, -coreDepth / 2}));
     
     // Helper to count gaps in a column
-    auto countGapsInColumn = [&](const ColumnElement& col) -> int {
-        int count = 0;
-        for (const auto& gap : gaps) {
-            if (!gap.get_coordinates()) continue;
-            auto gapCoords = gap.get_coordinates().value();
-            // Check if gap is in this column (by x-coordinate proximity)
-            double colX = (col.get_type() == ColumnType::CENTRAL) ? 0 : 
-                         (col.get_coordinates()[0] > 0 ? coreWidth/2 : -coreWidth/2);
-            if (std::abs(gapCoords[0] - colX) < coreWidth * 0.25) {
-                count++;
-            }
-        }
-        return count;
-    };
     
 
     // =========================================================================
@@ -680,7 +666,6 @@ void Temperature::createConcentricCoreNodes() {
     //   to account for the other symmetric half
     // =========================================================================
     // Create central column node(s) - using HALF depth for symmetry (left half only)
-    int mainColGaps = countGapsInColumn(mainColumn);
     double halfDepth = mainColumn.get_depth() / 2.0;  // Model half the core
     // Always create a single central column node with standard name for painter compatibility
     // (Chunked nodes would require painter support for matching)
@@ -718,7 +703,6 @@ void Temperature::createConcentricCoreNodes() {
     
     // Create lateral column node (RIGHT side only for symmetry - half core model)
     if (columns.size() > 1) {
-        int latColGaps = countGapsInColumn(rightColumn);
         double latHalfDepth = rightColumn.get_depth() / 2.0; // Model half the core
         
         double offset = coreWidth / 2 - rightColumn.get_width() / 2;
@@ -769,7 +753,6 @@ void Temperature::createBobbinNodes() {
     }
     
     double coreWidth = processedCore->get_width();
-    double coreHeight = processedCore->get_height();
     double coreDepth = processedCore->get_depth();
     
     auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
@@ -1282,14 +1265,7 @@ void Temperature::createTurnNodes() {
     }
     
     if (_isToroidal) {
-        auto core = _magnetic.get_core();
-        auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
         
-        double outerDiameter = dimensions["A"];
-        double innerDiameter = dimensions["B"];
-        double windingWindowInnerRadius = innerDiameter / 2.0;
-        double windingWindowOuterRadius = outerDiameter / 2.0;
-        double meanRadius = (windingWindowInnerRadius + windingWindowOuterRadius) / 2.0;
         
         // Per-turn losses are already calculated above in turnLosses vector
         // For toroidal cores, per-turn losses are strictly required
@@ -1318,7 +1294,6 @@ void Temperature::createTurnNodes() {
                 throw std::runtime_error("Temperature::createToroidalTurnNodes: Turn " + turn.get_name() + 
                                          " has fewer than 2 coordinates. Valid coordinates are required for thermal analysis.");
             }
-            double angle = std::atan2(coords[1], coords[0]);
             double turnCenterRadius = std::sqrt(coords[0]*coords[0] + coords[1]*coords[1]);
             
             // Get wire dimensions from turn (use turn-specific if available, otherwise use defaults)
@@ -1596,10 +1571,6 @@ void Temperature::createConcentricCoreConnections() {
     auto getColumnCrossSection = [&](size_t idx) -> double {
         // For columns, use the area perpendicular to the column axis (x-axis for central, y for lateral)
         return _nodes[idx].dimensions.height * _nodes[idx].dimensions.depth;
-    };
-    auto getYokeCrossSection = [&](size_t idx) -> double {
-        // For yokes, use width * depth
-        return _nodes[idx].dimensions.width * _nodes[idx].dimensions.depth;
     };
     
     // Helper to find closest node in a list
@@ -2616,7 +2587,6 @@ void Temperature::createTurnToInsulationConnections() {
                   << " insulation layers, " << turnNodeIndices.size() << " turns" << std::endl;
     }
     
-    double minConductionDist = getMinimumDistanceForConduction();
 
     // Get already-connected quadrants to prevent multiple connections on same face
     auto connectedQuadrants = getConnectedQuadrants();
@@ -2792,7 +2762,6 @@ void Temperature::createTurnToInsulationConnections() {
         // Get core dimensions for inner/outer region detection
         auto core = _magnetic.get_core();
         auto coreDims = flatten_dimensions(core.resolve_shape().get_dimensions().value());
-        double windingWindowInnerRadius = coreDims["B"] / 2.0;
         
         // Group insulation nodes by layer index
         std::map<int, std::vector<size_t>> insNodesByLayer;
@@ -3332,11 +3301,7 @@ void Temperature::createConvectionConnections() {
     // Extract wire properties locally for convection calculations
     // IMP-3: Use cached member variables
     double wireWidth = _wireWidth;
-    double wireHeight = _wireHeight;
-    bool isRound = _isRoundWire;
     
-    double maxConvectionDist = getMaximumDistanceForConvection();
-    double minConductionDist = getMinimumDistanceForConduction();
     
     // Get convection coefficient
     double surfaceTemp = _config.ambientTemperature + kConvection_InitialDeltaT;
@@ -3368,9 +3333,7 @@ void Temperature::createConvectionConnections() {
 
 // IMP-4: Toroidal convection connections
 void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double h_conv) {
-    // IMP-4: Local variables (from original preamble)
     double maxConvectionDist = getMaximumDistanceForConvection();
-    double minConductionDist = getMinimumDistanceForConduction();
 
     auto core = _magnetic.get_core();
     auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());

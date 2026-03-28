@@ -284,11 +284,9 @@ OperatingPoint Psfb::process_operating_point_for_input_voltage(
 
     double Fs = psfbOpPoint.get_switching_frequency();
     double Vin = inputVoltage;
-    double Vo = psfbOpPoint.get_output_voltages()[0];
     double Io = psfbOpPoint.get_output_currents()[0];
     double n = turnsRatios[0];
     double Lm = magnetizingInductance;
-    double Lr = computedSeriesInductance;
 
     double phi_deg = psfbOpPoint.get_phase_shift();
     double Deff = (phi_deg > 1e-6) ? compute_effective_duty_cycle(phi_deg) : computedEffectiveDutyCycle;
@@ -296,7 +294,6 @@ OperatingPoint Psfb::process_operating_point_for_input_voltage(
     double period = 1.0 / Fs;
     double Thalf = period / 2.0;
     double t_power = Deff * Thalf;     // Power transfer time per half-cycle
-    double t_free = Thalf - t_power;   // Freewheeling time per half-cycle
 
     // Primary reflected load current
     double Io_ref = Io / n;
@@ -317,13 +314,10 @@ OperatingPoint Psfb::process_operating_point_for_input_voltage(
     std::vector<double> Ipri_full(totalSamples);
 
     int n_power = (int)(t_power / dt);
-    if (n_power > N_samples) n_power = N_samples;
-    int n_free = N_samples - n_power;
 
     // Positive half-cycle:
     //   0..t_power: power transfer, Vpri = +Vin
     //   t_power..Thalf: freewheeling, Vpri = 0
-    double Im_slope = Vin / Lm;  // Mag current slope during power transfer
 
     // Current at start of positive half (by symmetry):
     // i_pri(0) = Io_ref + (-Im_peak) if continuous
@@ -379,8 +373,6 @@ OperatingPoint Psfb::process_operating_point_for_input_voltage(
     // ---- Secondary winding excitation(s) ----
     for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
         double ni = turnsRatios[secIdx];
-        double Voi = psfbOpPoint.get_output_voltages()[secIdx];
-        double Ioi = psfbOpPoint.get_output_currents()[secIdx];
 
         std::vector<double> iSecData(totalSamples);
         std::vector<double> vSecData(totalSamples);
