@@ -463,10 +463,9 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    // Updated after coil toroidal additional turn redistribution fix (commit ee7eb10)
-    // Old expected: 0.00143 (calculated with buggy coil geometry)
-    // New expected: 0.00464 (calculated with correct coil geometry)
-    double expectedLeakageInductance = 0.00464;
+    // Updated for Kelvin mirroring of toroidal boundaries (Mühlethaler 2026)
+    // TODO: verify against FEM simulation
+    double expectedLeakageInductance = 0.02514;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -516,10 +515,9 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     magnetic.set_coil(coil);
 
     double frequency = 100000;
-    // Updated after coil toroidal additional turn redistribution fix (commit ee7eb10)
-    // Old expected: 7e-6 (calculated with buggy coil geometry)
-    // New expected: 1.037e-5 (calculated with correct coil geometry)
-    double expectedLeakageInductance = 1.037e-5;
+    // Updated for Kelvin mirroring of toroidal boundaries (Mühlethaler 2026)
+    // TODO: verify against FEM simulation
+    double expectedLeakageInductance = 3.652e-5;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));

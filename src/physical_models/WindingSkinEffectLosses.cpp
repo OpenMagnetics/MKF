@@ -324,7 +324,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
     double penetrationRatio;
     switch(wire.get_type()) {
         case WireType::ROUND: {
-            penetrationRatio = pow(std::numbers::pi / 4, 3 / 4) * resolve_dimensional_values(wire.get_conducting_diameter().value()) / skinDepth * sqrt(resolve_dimensional_values(wire.get_conducting_diameter().value()) / resolve_dimensional_values(wire.get_outer_diameter().value()));
+            penetrationRatio = pow(std::numbers::pi / 4.0, 3.0 / 4.0) * resolve_dimensional_values(wire.get_conducting_diameter().value()) / skinDepth * sqrt(resolve_dimensional_values(wire.get_conducting_diameter().value()) / resolve_dimensional_values(wire.get_outer_diameter().value()));
             break;
         }
         case WireType::LITZ: {
@@ -332,7 +332,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
                 throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Litz wire is missing strand information");
 
             auto strand = Wire::resolve_strand(wire);
-            penetrationRatio = pow(std::numbers::pi / 4, 3 / 4) * resolve_dimensional_values(strand.get_conducting_diameter()) / skinDepth * sqrt(resolve_dimensional_values(strand.get_conducting_diameter()) / resolve_dimensional_values(strand.get_outer_diameter().value()));
+            penetrationRatio = pow(std::numbers::pi / 4.0, 3.0 / 4.0) * resolve_dimensional_values(strand.get_conducting_diameter()) / skinDepth * sqrt(resolve_dimensional_values(strand.get_conducting_diameter()) / resolve_dimensional_values(strand.get_outer_diameter().value()));
             break;
         }
         case WireType::PLANAR:
@@ -527,18 +527,18 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
     if (alpha2Mag > MAX_ALPHA_MAGNITUDE) {
         alpha2Capped *= MAX_ALPHA_MAGNITUDE / alpha2Mag;
     }
-    
+
     std::complex<double> bessel0_2 = modified_bessel_first_kind(0, alpha2Capped);
     std::complex<double> bessel1_2 = modified_bessel_first_kind(1, alpha2Capped);
-    
-    if (std::isnan(bessel0_2.real()) || std::isnan(bessel0_2.imag()) || 
+
+    if (std::isnan(bessel0_2.real()) || std::isnan(bessel0_2.imag()) ||
         std::isnan(bessel1_2.real()) || std::isnan(bessel1_2.imag()) ||
-        std::isinf(bessel0_2.real()) || std::isinf(bessel0_2.imag()) || 
+        std::isinf(bessel0_2.real()) || std::isinf(bessel0_2.imag()) ||
         std::isinf(bessel1_2.real()) || std::isinf(bessel1_2.imag())) {
         bessel0_2 = std::complex<double>(1e100, 0);
         bessel1_2 = std::complex<double>(1e100, 0);
     }
-    
+
     std::complex<double> besselRatio2 = bessel1_2 / bessel0_2;
     
     if (!wire.get_number_conductors()) {
@@ -638,7 +638,7 @@ double WindingSkinEffectLossesPayneModel::calculate_turn_losses(Wire wire, doubl
     double x = (2.0 * skinDepth / thickDimension * (1.0 + thickDimension / thinDimension) + 8.0 * pow(skinDepth / thickDimension, 3) / (thinDimension / thickDimension)) / (pow(thinDimension / thickDimension, 0.33) * exp(-3.5 * thickDimension / skinDepth) + 1.0);
     // double acResistanceFactor =  (Kc / (1.0 - exp(-x))) - 1.0;
     double acResistanceFactor =  (Kc / (1.0 - exp(-x)));
-    auto turnLosses = dcLossTurn * acResistanceFactor;
+    auto turnLosses = dcLossTurn * (acResistanceFactor - 1);
     return turnLosses;
 }
 
@@ -766,8 +766,11 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[may
 
     double acResistance = resistivity / (pow(std::numbers::pi, 2) * skinDepth * b) * comp_ellint_1(c / b) * (1 - exp(-2 * a / skinDepth));
 
-    auto turnLosses = acResistance * pow(currentRms / sqrt(2), 2);
-    return turnLosses;
+    // Lotfi gives total Rac per meter. Convert to extra loss beyond DC:
+    // P_skin = Rac * Irms^2 - Rdc * Irms^2 = (Rac - Rdc) * Irms^2
+    // Since dcLossTurn = Rdc * Irms^2, and Rac * Irms^2 = acResistance * currentRms^2:
+    auto turnLosses = acResistance * pow(currentRms, 2) - dcLossTurn;
+    return (turnLosses > 0) ? turnLosses : 0.0;
 }
 
 

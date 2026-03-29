@@ -858,15 +858,16 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 1;
         
-        // Use correct expected values including AC effects
+        // Expected values with Kelvin-mirrored boundary conditions (Mühlethaler 2026)
+        // TODO: verify these values against FEM simulation for T 40/24/16 toroid
         config.expectedValues = {
-            {0.01, 0.0213484},
-            {25000, 0.0217045},
-            {50000, 0.0227473},
-            {100000, 0.0265887},
-            {200000, 0.0409422},
-            {250000, 0.0460606},
-            {500000, 0.0658813}
+            {0.01, 0.02119087},
+            {25000, 0.02436939},
+            {50000, 0.03212591},
+            {100000, 0.04997908},
+            {200000, 0.07561326},
+            {250000, 0.08518898},
+            {500000, 0.12237422}
         };
         
         config.createMagnetic = []() {

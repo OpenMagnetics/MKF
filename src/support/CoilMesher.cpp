@@ -489,13 +489,25 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
         }
     }
     else {
-        auto mainColumn = processedDescription.get_columns()[0];
+        // Toroidal cores: use Kelvin transformation (circle inversion) to enforce
+        // high-μ boundary conditions at inner and outer core walls.
+        // Based on Mühlethaler (2026) "Winding Loss Model for Toroidal Core Magnetics
+        // Using the Mirroring Method", extending the classical method of images with
+        // Kelvin inversion for circular boundaries.
+        //
+        // For a conductor at position z_k inside a circle of radius R:
+        //   z_image = R² / conj(z_k) = (R²/r_k) * exp(j*θ_k)
+        // Image current has SAME sign (magnetostatics, not electrostatics).
 
-        // For toroidal cores, generate field points for both main coordinates and additional coordinates (outer half)
+        auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+        double R_inner = dimensions["B"] / 2.0;  // Inner boundary (winding window wall)
+        double R_outer = dimensions["A"] / 2.0;  // Outer boundary (core outer wall)
+        double attenuation = (corePermeability - 1.0) / (corePermeability + 1.0);
+
+        // Collect all conductor coordinates (main + outer half for toroidal turns)
         std::vector<std::vector<double>> coordinatesToProcess;
         coordinatesToProcess.push_back({turn.get_coordinates()[0], turn.get_coordinates()[1]});
-        
-        // Add additional coordinates if present (outer half of toroidal turns)
+
         if (turn.get_additional_coordinates()) {
             auto additionalCoords = turn.get_additional_coordinates().value();
             for (const auto& coord : additionalCoords) {
@@ -505,30 +517,65 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
             }
         }
 
-        for (const auto& coords : coordinatesToProcess) {
-            FieldPoint fieldPoint;
-            fieldPoint.set_value(1);  // Will be multiplied later
-            if (!turn.get_rotation()) {
-                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal cores should have rotation in the turn, even if it is 0");
-            }
+        if (!turn.get_rotation()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal cores should have rotation in the turn, even if it is 0");
+        }
+        if (!turn.get_coordinate_system()) {
+            throw CoilNotProcessedException("Turn is missing coordinate system");
+        }
+        if (turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
+            throw CoilNotProcessedException("CoilMesher: Turn coordinates are not in cartesian");
+        }
 
-            fieldPoint.set_rotation(turn.get_rotation().value());
+        for (const auto& coords : coordinatesToProcess) {
+            double x = coords[0];
+            double y = coords[1];
+            double r_k_sq = x * x + y * y;
+
+            // Real conductor
+            FieldPoint realPoint;
+            realPoint.set_value(1.0);
+            realPoint.set_rotation(turn.get_rotation().value());
             if (turnLength) {
-                fieldPoint.set_turn_length(turnLength.value());
+                realPoint.set_turn_length(turnLength.value());
             }
             if (turnIndex) {
-                fieldPoint.set_turn_index(turnIndex.value());
+                realPoint.set_turn_index(turnIndex.value());
             }
+            realPoint.set_point({x, y});
+            fieldPoints.push_back(realPoint);
 
-            if (!turn.get_coordinate_system()) {
-                throw CoilNotProcessedException("Turn is missing coordinate system");
-            }
-            if (turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
-                throw CoilNotProcessedException("CoilMesher: Turn coordinates are not in cartesian");
-            }
+            // Kelvin images (only if mirroring is enabled and conductor is not at origin)
+            if (mirroringDimension >= 1 && r_k_sq > 1e-24) {
+                // Inner boundary image: z_img = R_inner² / conj(z_k)
+                // In Cartesian: scale = R_inner² / |z_k|²
+                double scale_inner = (R_inner * R_inner) / r_k_sq;
+                FieldPoint innerImage;
+                innerImage.set_value(attenuation);
+                innerImage.set_rotation(turn.get_rotation().value());
+                if (turnLength) {
+                    innerImage.set_turn_length(turnLength.value());
+                }
+                if (turnIndex) {
+                    innerImage.set_turn_index(turnIndex.value());
+                }
+                innerImage.set_point({x * scale_inner, y * scale_inner});
+                fieldPoints.push_back(innerImage);
 
-            fieldPoint.set_point({coords[0], coords[1]});
-            fieldPoints.push_back(fieldPoint);
+                // Outer boundary image: z_img = R_outer² / conj(z_k)
+                double scale_outer = (R_outer * R_outer) / r_k_sq;
+                FieldPoint outerImage;
+                outerImage.set_value(attenuation);
+                outerImage.set_rotation(turn.get_rotation().value());
+                if (turnLength) {
+                    outerImage.set_turn_length(turnLength.value());
+                }
+                if (turnIndex) {
+                    outerImage.set_turn_index(turnIndex.value());
+                }
+                outerImage.set_point({x * scale_outer, y * scale_outer});
+                fieldPoints.push_back(outerImage);
+            }
         }
     }
 
