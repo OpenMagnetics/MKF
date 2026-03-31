@@ -408,7 +408,8 @@ enum class CircuitSimulatorExporterModels : int {
     SIMBA,
     NGSPICE,
     LTSPICE,
-    NL5
+    NL5,
+    PLECS
 };
 
 void from_json(const json & j, CircuitSimulatorExporterModels & x);
@@ -419,6 +420,7 @@ inline void from_json(const json & j, CircuitSimulatorExporterModels & x) {
     else if (j == "NgSpice") x = CircuitSimulatorExporterModels::NGSPICE;
     else if (j == "LtSpice") x = CircuitSimulatorExporterModels::LTSPICE;
     else if (j == "NL5") x = CircuitSimulatorExporterModels::NL5;
+    else if (j == "PLECS") x = CircuitSimulatorExporterModels::PLECS;
     else { throw std::runtime_error("Input JSON does not conform to schema!"); }
 }
 
@@ -428,6 +430,7 @@ inline void to_json(json & j, const CircuitSimulatorExporterModels & x) {
         case CircuitSimulatorExporterModels::NGSPICE: j = "NgSpice"; break;
         case CircuitSimulatorExporterModels::LTSPICE: j = "LtSpice"; break;
         case CircuitSimulatorExporterModels::NL5: j = "NL5"; break;
+        case CircuitSimulatorExporterModels::PLECS: j = "PLECS"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
     }
 }
@@ -523,6 +526,35 @@ class CircuitSimulatorExporterLtspiceModel : public CircuitSimulatorExporterMode
         std::string programName = "Ltspice";
         std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = defaults.measurementFrequency, double temperature = defaults.ambientTemperature, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
         std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
+};
+
+class CircuitSimulatorExporterPlecsModel : public CircuitSimulatorExporterModel {
+    public:
+        std::string programName = "PLECS";
+        double _modelSize = 400;
+        size_t _precision = 6;
+
+        CircuitSimulatorExporterPlecsModel() = default;
+
+        std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
+        std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = defaults.measurementFrequency, double temperature = defaults.ambientTemperature, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode = CircuitSimulatorExporterCurveFittingModes::LADDER);
+
+    private:
+        std::string encode_init_commands(const std::string& plainText);
+        std::string emit_header(const std::string& name);
+        std::string emit_footer();
+        std::string emit_schematic_header();
+        std::string emit_schematic_footer();
+        std::string emit_magnetic_interface(const std::string& name, const std::string& turnsVar, int polarity, std::vector<int> position, const std::string& direction, bool flipped);
+        std::string emit_p_sat(const std::string& name, const std::string& areaVar, const std::string& lengthVar, const std::string& muRVar, const std::string& bSatVar, std::vector<int> position, const std::string& direction, bool flipped);
+        std::string emit_p_air(const std::string& name, const std::string& areaVar, const std::string& lengthVar, std::vector<int> position, const std::string& direction, bool flipped);
+        std::string emit_ac_voltage_source(const std::string& name, std::vector<int> position);
+        std::string emit_resistor(const std::string& name, const std::string& valueVar, std::vector<int> position);
+        std::string emit_scope(const std::string& name, std::vector<int> position);
+        std::string emit_probe(const std::string& name, std::vector<int> position, const std::vector<std::pair<std::string, std::string>>& probes);
+        std::string emit_magnetic_connection(const std::string& srcComponent, int srcTerminal, const std::string& dstComponent, int dstTerminal, std::vector<std::vector<int>> points = {});
+        std::string emit_wire_connection(const std::string& srcComponent, int srcTerminal, const std::string& dstComponent, int dstTerminal, std::vector<std::vector<int>> points = {});
+        std::string emit_signal_connection(const std::string& srcComponent, int srcTerminal, const std::string& dstComponent, int dstTerminal);
 };
 
 class CircuitSimulationReader {
