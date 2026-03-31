@@ -1,0 +1,392 @@
+Plecs {
+  Name          "transformer"
+  Version       "4.7"
+  CircuitModel  "ContStateSpace"
+  StartTime     "0.0"
+  TimeSpan      "tsim"
+  Timeout       ""
+  Solver        "dopri"
+  MaxStep       "1"
+  InitStep      "1"
+  FixedStep     "1e-3"
+  Refine        "1"
+  ZCStepSize    "1e-9"
+  RelTol        "1e-3"
+  AbsTol        "-1"
+  TurnOnThreshold "0"
+  SyncFixedStepTasks "2"
+  UseSingleCommonBaseRate "2"
+  LossVariableLimitExceededMsg "3"
+  NegativeSwitchLossMsg "2"
+  DivisionByZeroMsg "2"
+  StiffnessDetectionMsg "2"
+  MaxConsecutiveZCs "10000"
+  AlgebraicLoopWithStateMachineMsg "2"
+  AssertionAction "1"
+  InitializationCommands base64 "JSUgRmlsZSAyOiB0cmFuc2Zvcm1lci5wbGVjcwolJSBUb"
+"3BvbG9neTogVHdvLXdpbmRpbmcgdHJhbnNmb3JtZXIgd2l0aCBjb3JlIGxvc3Nlcywgbm8gYWlyIG"
+"dhcAolJSAKJSUgUGFyYW1ldGVyCVZhbHVlCiUlIENvcmUgc2hhcGUJRTQyLzIxLzE1IChzaW1wbGl"
+"maWVkIGFzIHNpbmdsZSBtYWduZXRpYyBwYXRoKQolJSBDb3JlIG1hdGVyaWFsCU44NywgzrzhtaMg"
+"PSAyMjAwCiUlIENvcmUgY3Jvc3Mtc2VjdGlvbglBID0gMTc4IG1twrIgPSAxNzhlLTYgbcKyCiUlI"
+"ENvcmUgbWFnbmV0aWMgcGF0aCBsZW5ndGgJbF9jb3JlID0gOTcuMiBtbSA9IDk3LjJlLTMgbQolJS"
+"BBaXIgZ2FwCU5vbmUgKHVuZ2FwcGVkKQolJSBQcmltYXJ5IHdpbmRpbmcJTuKCgSA9IDI0IHR1cm5"
+"zCiUlIFNlY29uZGFyeSB3aW5kaW5nCU7igoIgPSAxMiB0dXJucwolJSBDb3JlIGxvc3MgZXF1aXZh"
+"bGVudAlSbSA9IDUuMGU2IEHCt3TCt3MvV2IKCgolJSBTaW11bGF0aW9uCnRzaW0gPSAwLjE7ICAgI"
+"CAgICUgW3NdIC0gc2ltdWxhdGlvbiB0aW1lCgolJSBFbGVjdHJpY2FsClZfcCA9IDE7ICAgICAgIC"
+"AgJSBbVl0gLSBwZWFrIHNpbmUKZl9zaW4gPSAxMDBlMwpuX3ByaW0gPSAyNDsgICAgICAgICAlIFt"
+"dIC0gcHJpbWFyeSBzaWRlIHR1cm4gbnVtYmVyCm5fc25kcnkgPSAxMjsgICAgICAgICUgW10gLSBz"
+"ZWNvbmRhcnkgc2lkZSB0dXJuIG51bWJlcgpSTD0xZTM7CgolJSBUcmFuc2Zvcm1lciBjb3JlIHBhc"
+"mFtZXRlcnMKQV9lID0gMTc4ZS02OwkJICAlIFttXjJdIC0gZWZmZWN0aXZlIGNyb3NzLXNlY3Rpb2"
+"5hbCBhcmVhIG9mIHRoZSB0cmFuc2Zvcm1lciBjb3JlCmxfZSA9IDk3LjJlLTM7CQkgICUgW21dIC0"
+"gZWZmZWN0aXZlIG1hZ25ldGljIHBhdGggbGVuZ3RoIG9mIHRoZSB0cmFuc2Zvcm1lciBjb3JlCm11"
+"X3IgPSAyMjAwOwkJICAlIFtdIC0gcmVsYXRpdmUgcGVybWVhYmlsaXR5IG9mIHRoZSB0cmFuc2Zvc"
+"m1lciBjb3JlCm11XzAgPSA0KnBpKjFlLTc7CSAgJSBbSC9tXSAtIHBlcm1lYWJpbGl0eSBvZiBmcm"
+"VlIHNwYWNlCkJfc2F0ID0gMC40OTsJCSAgJSBbVF0gLSBzYXR1cmF0aW9uIGZsdXggZGVuc2l0eSB"
+"vZiB0aGUgdHJhbnNmb3JtZXIgY29yZQ=="
+  InitialState  "1"
+  SystemState   ""
+  TaskingMode   "1"
+  TaskConfigurations ""
+  CodeGenParameterInlining "2"
+  CodeGenFloatingPointFormat "2"
+  CodeGenAbsTimeUsageMsg "3"
+  CodeGenBaseName ""
+  CodeGenOutputDir ""
+  CodeGenExtraOpts ""
+  CodeGenTarget "Generic"
+  CodeGenTargetSettings ""
+  ExtendedMatrixPrecision "1"
+  MatrixSignificanceCheck "2"
+  EnableStateSpaceSplitting "2"
+  DisplayStateSpaceSplitting "1"
+  DiscretizationMethod "2"
+  ExternalModeSettings ""
+  AlgebraicLoopMethod "1"
+  AlgebraicLoopTolerance "1e-6"
+  ScriptsDialogGeometry ""
+  ScriptsDialogSplitterPos "0"
+  Schematic {
+    Location      [531, 279; 1266, 854]
+    ZoomFactor    1
+    SliderPosition [0, 0]
+    ShowBrowser   off
+    BrowserWidth  100
+    Component {
+      Type          MagneticInterface
+      Name          "MagInt5"
+      Show          off
+      Position      [440, 320]
+      Direction     up
+      Flipped       off
+      LabelPosition east
+      Parameter {
+        Variable      "n"
+        Value         "n_prim"
+        Show          off
+      }
+      Parameter {
+        Variable      "Polarity"
+        Value         "1"
+        Show          off
+      }
+    }
+    Component {
+      Type          MagneticInterface
+      Name          "MagInt6"
+      Show          off
+      Position      [440, 260]
+      Direction     down
+      Flipped       on
+      LabelPosition west
+      Parameter {
+        Variable      "n"
+        Value         "n_sndry"
+        Show          off
+      }
+      Parameter {
+        Variable      "Polarity"
+        Value         "1"
+        Show          off
+      }
+    }
+    Component {
+      Type          Reference
+      SrcComponent  "Components/Magnetic/Components/P_sat"
+      Name          "P_satTr"
+      Show          off
+      Position      [405, 240]
+      Direction     up
+      Flipped       off
+      LabelPosition east
+      Frame         [-8, -15; 8, 15]
+      Parameter {
+        Variable      "fitting"
+        Value         "1"
+        Show          off
+      }
+      Parameter {
+        Variable      "A"
+        Value         "A_e"
+        Show          off
+      }
+      Parameter {
+        Variable      "l"
+        Value         "l_e"
+        Show          off
+      }
+      Parameter {
+        Variable      "mu_r_unsat"
+        Value         "mu_r"
+        Show          off
+      }
+      Parameter {
+        Variable      "mu_r_sat"
+        Value         "1"
+        Show          off
+      }
+      Parameter {
+        Variable      "B_sat"
+        Value         "B_sat"
+        Show          off
+      }
+      Parameter {
+        Variable      "F_init"
+        Value         "0"
+        Show          off
+      }
+      Terminal {
+        Type          MagneticPort
+        Position      [0, -20]
+        Direction     up
+      }
+      Terminal {
+        Type          MagneticPort
+        Position      [0, 20]
+        Direction     down
+      }
+    }
+    Component {
+      Type          Reference
+      SrcComponent  "Components/Magnetic/Components/P_air"
+      Name          "P_air2"
+      Show          off
+      Position      [440, 355]
+      Direction     up
+      Flipped       on
+      LabelPosition east
+      Frame         [-8, -10; 8, 10]
+      Parameter {
+        Variable      "A"
+        Value         "A_e"
+        Show          off
+      }
+      Parameter {
+        Variable      "l"
+        Value         "l_e"
+        Show          off
+      }
+      Parameter {
+        Variable      "F_init"
+        Value         "0"
+        Show          off
+      }
+      Terminal {
+        Type          MagneticPort
+        Position      [0, -15]
+        Direction     up
+      }
+      Terminal {
+        Type          MagneticPort
+        Position      [0, 15]
+        Direction     down
+      }
+    }
+    Component {
+      Type          ACVoltageSource
+      Name          "V_ac"
+      Show          on
+      Position      [305, 320]
+      Direction     down
+      Flipped       on
+      LabelPosition east
+      Parameter {
+        Variable      "V"
+        Value         "V_p"
+        Show          off
+      }
+      Parameter {
+        Variable      "w"
+        Value         "2*pi*f_sin"
+        Show          off
+      }
+      Parameter {
+        Variable      "phi"
+        Value         "0"
+        Show          off
+      }
+    }
+    Component {
+      Type          Resistor
+      Name          "R1"
+      Show          on
+      Position      [535, 260]
+      Direction     up
+      Flipped       off
+      LabelPosition east
+      Parameter {
+        Variable      "R"
+        Value         "RL"
+        Show          off
+      }
+    }
+    Component {
+      Type          Scope
+      Name          "Scope"
+      Show          on
+      Position      [605, 170]
+      Direction     up
+      Flipped       off
+      LabelPosition south
+      Location      [588, 348; 938, 595]
+      State         "AAAA/wAAAAD9AAAAAgAAAAEAAAAAAAAAAPwCAAAAA/sAAAAQAFoAbwBvA"
+"G0AQQByAGUAYQAAAAAA/////wAAADQA////+wAAABQAUwBhAHYAZQBkAFYAaQBlAHcAcwAAAAAA//"
+"///wAAAGYA////+wAAAAwAVAByAGEAYwBlAHMAAAAAAP////8AAABmAP///wAAAAMAAAAAAAAAAPw"
+"BAAAAAfsAAAAUAEQAYQB0AGEAVwBpAGQAZwBlAHQAAAAAAP////8AAABQAP///wAAAV4AAADcAAAA"
+"BAAAAAQAAAAIAAAACPwAAAABAAAAAgAAAAEAAAAOAFQAbwBvAGwAQgBhAHIBAAAAAP////8AAAAAA"
+"AAAAA=="
+      SavedViews    "AAAAAgAAAAA="
+      HeaderState   "AAAA/wAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAL/gMAAAAJAAAAB"
+"AAAAGQAAAAFAAAAZAAAAAYAAABkAAAABwAAAGQAAAABAAAAZAAAAAIAAABkAAAAAwAAAGQAAAAIAA"
+"AAZAAAAAkAAABkAAAAygAAAAsBAAABAAAAAAAAAAAAAAAAZP////8AAACBAAAAAAAAAAsAAACmAAA"
+"AAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAA"
+"AAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAA"
+"AAkAAAAAQAAAAAAAAPoAAAAACQ="
+      PlotPalettes  "AAAAAQAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      Axes          "1"
+      TimeRange     "0.0"
+      ScrollingMode "1"
+      SingleTimeAxis "1"
+      Open          "0"
+      Ts            "-1"
+      SampleLimit   "0"
+      XAxisLabel    "Time / s"
+      ShowLegend    "1"
+      Axis {
+        Name          ""
+        AutoScale     1
+        MinValue      0
+        MaxValue      1
+        Signals       {}
+        SignalTypes   [ ]
+        Untangle      0
+        KeepBaseline  off
+        BaselineValue 0
+      }
+      Fourier {
+        SingleXAxis       on
+        AxisLabel         "Frequency / Hz"
+        Scaling           0
+        PhaseDisplay      0
+        ShowFourierLegend off
+        Axis {
+          Name          ""
+          AutoScale     1
+          MinValue      0
+          MaxValue      1
+          Signals       {}
+          Untangle      0
+          KeepBaseline  off
+          BaselineValue 0
+        }
+      }
+    }
+    Component {
+      Type          PlecsProbe
+      Name          "Probe"
+      Show          on
+      Position      [545, 170]
+      Direction     right
+      Flipped       off
+      LabelPosition south
+      Probe {
+        Component     "R1"
+        Path          ""
+        Signals       {"Resistor voltage"}
+      }
+      Probe {
+        Component     "V_ac"
+        Path          ""
+        Signals       {"Source voltage"}
+      }
+    }
+    Connection {
+      Type          Magnetic
+      SrcComponent  "MagInt5"
+      SrcTerminal   3
+      DstComponent  "MagInt6"
+      DstTerminal   4
+    }
+    Connection {
+      Type          Magnetic
+      SrcComponent  "P_satTr"
+      SrcTerminal   1
+      Points        [405, 210; 440, 210]
+      DstComponent  "MagInt6"
+      DstTerminal   3
+    }
+    Connection {
+      Type          Magnetic
+      SrcComponent  "P_air2"
+      SrcTerminal   2
+      DstComponent  "MagInt5"
+      DstTerminal   4
+    }
+    Connection {
+      Type          Magnetic
+      SrcComponent  "P_air2"
+      SrcTerminal   1
+      Points        [440, 375; 405, 375]
+      DstComponent  "P_satTr"
+      DstTerminal   2
+    }
+    Connection {
+      Type          Wire
+      SrcComponent  "MagInt5"
+      SrcTerminal   1
+      Points        [365, 305; 365, 295; 305, 295]
+      DstComponent  "V_ac"
+      DstTerminal   1
+    }
+    Connection {
+      Type          Wire
+      SrcComponent  "MagInt5"
+      SrcTerminal   2
+      Points        [365, 335; 365, 345; 305, 345]
+      DstComponent  "V_ac"
+      DstTerminal   2
+    }
+    Connection {
+      Type          Wire
+      SrcComponent  "MagInt6"
+      SrcTerminal   1
+      Points        [505, 245; 505, 240]
+      DstComponent  "R1"
+      DstTerminal   1
+    }
+    Connection {
+      Type          Wire
+      SrcComponent  "MagInt6"
+      SrcTerminal   2
+      Points        [505, 275; 505, 280]
+      DstComponent  "R1"
+      DstTerminal   2
+    }
+    Connection {
+      Type          Signal
+      SrcComponent  "Probe"
+      SrcTerminal   1
+      DstComponent  "Scope"
+      DstTerminal   1
+    }
+  }
+}
