@@ -4,6 +4,7 @@
 #include "constructive_models/Bobbin.h"
 #include "physical_models/CoreTemperature.h"
 #include "physical_models/ComplexPermeability.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "support/CoilMesher.h"
 #include "constructive_models/NumberTurns.h"
 #include "constructive_models/Wire.h"
@@ -13,8 +14,10 @@
 #include <cctype>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <cfloat>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 #include <execution>
@@ -54,6 +57,10 @@ CoreAdviser::CoreAdviserModes CoreAdviser::get_mode() {
     return _mode;
 }
 
+void CoreAdviser::set_weights(std::map<CoreAdviserFilters, double> weights) {
+    _weights = weights;
+}
+
 std::map<std::string, std::map<CoreAdviser::CoreAdviserFilters, double>> CoreAdviser::get_scorings(bool weighted){
     std::map<std::string, std::map<CoreAdviser::CoreAdviserFilters, double>> swappedScorings;
     for (auto& [filter, aux] : _scorings) {
@@ -75,7 +82,7 @@ std::vector<double> normalize_scoring(std::vector<std::pair<Magnetic, double>>* 
         (*magneticsWithScoring)[i].second += normalizedScorings[i];
     }
 
-    // sort((*magneticsWithScoring).begin(), (*magneticsWithScoring).end(), [](std::pair<Magnetic, double>& b1, std::pair<Magnetic, double>& b2) {
+    // stable_sort((*magneticsWithScoring).begin(), (*magneticsWithScoring).end(), [](std::pair<Magnetic, double>& b1, std::pair<Magnetic, double>& b2) {
     //     return b1.second > b2.second;
     // });
 
@@ -83,9 +90,52 @@ std::vector<double> normalize_scoring(std::vector<std::pair<Magnetic, double>>* 
 }
 
 void sort_magnetics_by_scoring(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring) {
-    sort((*magneticsWithScoring).begin(), (*magneticsWithScoring).end(), [](std::pair<Magnetic, double>& b1, std::pair<Magnetic, double>& b2) {
+    stable_sort((*magneticsWithScoring).begin(), (*magneticsWithScoring).end(), [](const std::pair<Magnetic, double>& b1, const std::pair<Magnetic, double>& b2) {
         return b1.second > b2.second;
-    });
+    }); // F12 FIX: stable_sort for reproducible results
+}
+
+// Helper function to determine if a topology stores energy in the magnetic field
+// Energy-storing topologies need gapped cores for DC bias handling
+// Non-energy-storing (transformer) topologies transfer energy without storage
+bool is_energy_storing_topology(std::optional<Topologies> topology) {
+    if (!topology.has_value()) {
+        return false; // Unknown topology, caller should use other heuristics
+    }
+    
+    switch (topology.value()) {
+        // Energy-storing topologies (inductors, flyback-derived)
+        // These store energy in the magnetic field each switching cycle
+        case Topologies::FLYBACK_CONVERTER:
+        case Topologies::BUCK_CONVERTER:
+        case Topologies::BOOST_CONVERTER:
+        case Topologies::INVERTING_BUCK_BOOST_CONVERTER:
+        case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
+        case Topologies::CUK_CONVERTER:
+        case Topologies::SEPIC:
+        case Topologies::ZETA_CONVERTER:
+            return true;
+            
+        // Transformer topologies (forward-derived)
+        // These transfer energy directly without storing it
+        case Topologies::SINGLE_SWITCH_FORWARD_CONVERTER:
+        case Topologies::TWO_SWITCH_FORWARD_CONVERTER:
+        case Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER:
+        case Topologies::PUSH_PULL_CONVERTER:
+        case Topologies::HALF_BRIDGE_CONVERTER:
+        case Topologies::FULL_BRIDGE_CONVERTER:
+        case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case Topologies::ISOLATED_BUCK_CONVERTER:
+        case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
+        case Topologies::LLC_RESONANT_CONVERTER:
+        case Topologies::CLLC_RESONANT_CONVERTER:
+        case Topologies::WEINBERG_CONVERTER:
+        case Topologies::CURRENT_TRANSFORMER:
+            return false;
+            
+        default:
+            return false; // Unknown, treat as transformer (safer - no gap)
+    }
 }
 
 CoreAdviser::MagneticCoreFilterAreaProduct::MagneticCoreFilterAreaProduct(Inputs inputs) {
@@ -295,7 +345,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterCost::fi
 }
 
 CoreAdviser::MagneticCoreFilterLosses::MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models) {
-    _filter = MagneticFilterCoreAndDcLosses(inputs, models);
+    _filter = MagneticFilterCoreDcAndSkinLosses(inputs, models); // F23 FIX: DC+skin effect losses
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
@@ -620,7 +670,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         std::move(partialResult.begin(), partialResult.end(), std::back_inserter(results));
     }
 
-    sort(results.begin(), results.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
+    stable_sort(results.begin(), results.end(), [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
         return b1.second > b2.second;
     });
 
@@ -656,16 +706,17 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         logEntry("First attempt produced not enough results, so now we are searching again with " + std::to_string(magnetics.size()) + " magnetics, including up to " + std::to_string(defaults.coreAdviserMaximumNumberStacks) + " cores stacked when possible.", "CoreAdviser");
         maximumMagneticsAfterFiltering = magnetics.size();
         filteredMagnetics = filter_available_cores_power_application(&magnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
+        return filteredMagnetics;
     }
     else {
         filteredMagnetics = filter_available_cores_suppression_application(&magnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
-
+        return filteredMagnetics;
     }
-    return filteredMagnetics;
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults) {
-    auto magnetics = create_magnetic_dataset(inputs, shapes, false);
+    auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
+    auto magnetics = create_magnetic_dataset(inputs, shapes, globalIncludeStacks);
 
     size_t maximumMagneticsAfterFiltering = settings.get_core_adviser_maximum_magnetics_after_filtering();
     if (get_application() == Application::POWER) {
@@ -746,15 +797,16 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
-                core.scale_to_stacks(1 + i);
-                // core.process_gap();
+                // process_data() resets processed description to base values, then calls scale_to_stacks internally
+                core.process_data();
+                core.process_gap(); // CA-OPT-2 FIX: reprocess gap data after stacking (was commented out)
                 magnetic.set_core(core);
                 MagneticManufacturerInfo magneticmanufacturerinfo;
                 if (i != 0) {
-                    magneticmanufacturerinfo.set_reference(core.get_name().value() + " " + std::to_string(1 + i) + " stacks" );
+                    magneticmanufacturerinfo.set_reference(core.get_name().value_or("unnamed") + " " + std::to_string(1 + i) + " stacks" );
                 }
                 else{
-                    magneticmanufacturerinfo.set_reference(core.get_name().value());
+                    magneticmanufacturerinfo.set_reference(core.get_name().value_or("unnamed"));
                 }
                 magnetic.set_manufacturer_info(magneticmanufacturerinfo);
                 magnetics.push_back(std::pair<Magnetic, double>{magnetic, 0});
@@ -763,7 +815,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         else {
             magnetic.set_core(core);
             MagneticManufacturerInfo magneticmanufacturerinfo;
-            magneticmanufacturerinfo.set_reference(core.get_name().value());
+            magneticmanufacturerinfo.set_reference(core.get_name().value_or("unnamed"));
             magnetic.set_manufacturer_info(magneticmanufacturerinfo);
             magnetics.push_back(std::pair<Magnetic, double>{magnetic, 0});
         }
@@ -842,15 +894,16 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U || core.get_shape_family() == CoreShapeFamily::C)) {
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i) {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
-                core.scale_to_stacks(1 + i);
-                // core.process_gap();
+                // process_data() resets processed description to base values, then calls scale_to_stacks internally
+                core.process_data();
+                core.process_gap(); // CA-OPT-2 FIX: reprocess gap data after stacking (was commented out)
                 magnetic.set_core(core);
                 MagneticManufacturerInfo magneticManufacturerInfo;
                 if (i!=0) {
-                    magneticManufacturerInfo.set_reference(core.get_name().value() + " " + std::to_string(1 + i) + " stacks" );
+                    magneticManufacturerInfo.set_reference(core.get_name().value_or("unnamed") + " " + std::to_string(1 + i) + " stacks" );
                 }
                 else{
-                    magneticManufacturerInfo.set_reference(core.get_name().value());
+                    magneticManufacturerInfo.set_reference(core.get_name().value_or("unnamed"));
                 }
                 magnetic.set_manufacturer_info(magneticManufacturerInfo);
                 magnetics.push_back(std::pair<Magnetic, double>{magnetic, 0});
@@ -859,7 +912,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         else {
             magnetic.set_core(core);
             MagneticManufacturerInfo magneticManufacturerInfo;
-            magneticManufacturerInfo.set_reference(core.get_name().value());
+            magneticManufacturerInfo.set_reference(core.get_name().value_or("unnamed"));
             magnetic.set_manufacturer_info(magneticManufacturerInfo);
             magnetics.push_back(std::pair<Magnetic, double>{magnetic, 0});
         }
@@ -902,14 +955,15 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
             for (size_t i = 1; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
-                core.scale_to_stacks(1 + i);
-                // core.process_gap();
+                // process_data() resets processed description to base values, then calls scale_to_stacks internally
+                core.process_data();
+                core.process_gap(); // CA-OPT-2 FIX: reprocess gap data after stacking (was commented out)
                 MagneticManufacturerInfo magneticManufacturerInfo;
                 if (i!=0) {
-                    std::string name = core.get_name().value();
+                    std::string name = core.get_name().value_or("unnamed");
                     name = std::regex_replace(std::string(name), std::regex(" [0-9] stacks"), "");
                     core.set_name(name + " " + std::to_string(1 + i) + " stacks" );
-                    magneticManufacturerInfo.set_reference(core.get_name().value());
+                    magneticManufacturerInfo.set_reference(core.get_name().value_or("unnamed"));
                 }
                 magnetic.set_manufacturer_info(magneticManufacturerInfo);
                 magnetic.set_core(core);
@@ -922,6 +976,44 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
 
 void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     MagnetizingInductance magnetizingInductance;
+    
+    // Transformer vs Inductor/Energy-Storing Detection
+    // =================================================
+    // We need to determine if this application stores energy (needs gap) or transfers it (no gap).
+    //
+    // ENERGY-STORING (inductor/flyback-like):
+    //   - Topologies: Flyback, Buck, Boost, Buck-Boost, SEPIC, Cuk, Zeta, etc.
+    //   - Energy is stored in the magnetic field each switching cycle
+    //   - Core typically needs a gap to store the required energy without saturating
+    //   - Turns calculated from inductance requirement and gap
+    //
+    // TRANSFORMER (forward-like):
+    //   - Topologies: Forward, PushPull, Half-Bridge, Full-Bridge, DAB, LLC, etc.
+    //   - Energy is transferred directly, not stored in the magnetic field
+    //   - Magnetizing inductance should be HIGH to minimize magnetizing current (parasitic)
+    //   - Core should NOT be gapped (high permeability = high inductance)
+    //   - Turns calculated from voltage/frequency to avoid saturation (Faraday's Law)
+    //
+    // Detection priority:
+    // 1. Use topology if specified (most reliable)
+    // 2. Fall back to inductance field heuristic (minimum-only = transformer)
+    //
+    auto topology = inputs.get_design_requirements().get_topology();
+    bool isEnergyStoring = is_energy_storing_topology(topology);
+    
+    // If topology is not set, use the old heuristic based on inductance specification
+    // minimum-only inductance suggests transformer (want high inductance, no specific value)
+    // nominal or min+max suggests inductor (need specific value for energy storage)
+    bool isTransformer;
+    if (topology.has_value()) {
+        isTransformer = !isEnergyStoring;
+    } else {
+        // Legacy heuristic: minimum-only = transformer
+        isTransformer = inputs.get_design_requirements().get_magnetizing_inductance().get_minimum() &&
+                        !inputs.get_design_requirements().get_magnetizing_inductance().get_nominal() &&
+                        !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum();
+    }
+    
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
 
         Core core = (*magneticsWithScoring)[i].first.get_core();
@@ -932,7 +1024,44 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
         double initialNumberTurns = (*magneticsWithScoring)[i].first.get_coil().get_functional_description()[0].get_number_turns();
 
         if (initialNumberTurns == 1) {
-            initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+            if (isTransformer) {
+                // For transformers, calculate turns from voltage using MagnetizingInductance method
+                // Use MAXIMUM voltage peak across all operating points to ensure no saturation
+                double frequency = 100000; // default
+                double voltagePeak = 0;
+                double temperature = 25.0;
+                
+                for (size_t opIdx = 0; opIdx < inputs.get_operating_points().size(); ++opIdx) {
+                    auto op = inputs.get_operating_point(opIdx);
+                    temperature = std::max(temperature, op.get_conditions().get_ambient_temperature());
+                    auto excitation = Inputs::get_primary_excitation(op);
+                    // Use minimum frequency for worst-case saturation (lower freq = higher B for same V)
+                    if (opIdx == 0) {
+                        frequency = excitation.get_frequency();
+                    } else {
+                        frequency = std::min(frequency, excitation.get_frequency());
+                    }
+                    
+                    if (excitation.get_voltage() && excitation.get_voltage()->get_processed() && 
+                        excitation.get_voltage()->get_processed()->get_peak()) {
+                        voltagePeak = std::max(voltagePeak, excitation.get_voltage()->get_processed()->get_peak().value());
+                    }
+                }
+                
+                double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
+                double bMax = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+                
+                if (voltagePeak > 0) {
+                    initialNumberTurns = magnetizingInductance.calculate_turns_from_voltage_and_max_flux_density(
+                        core, voltagePeak, frequency, bMax);
+                } else {
+                    // Fallback to small number for transformer
+                    initialNumberTurns = 5;
+                }
+            } else {
+                // For inductors/flybacks, calculate from inductance requirement
+                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+            }
         }
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
             NumberTurns numberTurns(initialNumberTurns, inputs.get_design_requirements());
@@ -971,7 +1100,7 @@ std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vec
                 continue;
             }
         }
-        catch (...) {
+        catch (...) { // XC-3 NOTE: consider catching std::exception for diagnostics
             continue;
         }
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
@@ -1011,15 +1140,29 @@ void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneti
 
 void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     MagneticEnergy magneticEnergy;
-    if (inputs.get_design_requirements().get_magnetizing_inductance().get_minimum() &&
-        !inputs.get_design_requirements().get_magnetizing_inductance().get_nominal() &&
-        !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum())
+    
+    // Gapping Decision Logic (same as add_gapping_standard_cores):
+    // - Skip gapping only if we have minimum-only inductance (want maximum L, no specific target)
+    // - Energy-storing topologies or specific inductance targets need gap calculation
+    auto inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
+    bool hasNominalInductance = inductanceReq.get_nominal().has_value();
+    bool hasMaxInductance = inductanceReq.get_maximum().has_value();
+    bool needsSpecificInductance = hasNominalInductance || hasMaxInductance;
+    
+    auto topology = inputs.get_design_requirements().get_topology();
+    bool isEnergyStoring = is_energy_storing_topology(topology);
+    bool isTransformer = topology.has_value() ? !isEnergyStoring : 
+        (inductanceReq.get_minimum() && !hasNominalInductance && !hasMaxInductance);
+    
+    bool skipGapping = isTransformer && !needsSpecificInductance;
+    
+    if (skipGapping)
     {
         for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i) {
-        Core core = (*magneticsWithScoring)[i].first.get_core();
-        core.set_name(core.get_name().value() + " ungapped");
-        (*magneticsWithScoring)[i].first.set_core(core);
-    }
+            Core core = (*magneticsWithScoring)[i].first.get_core();
+            core.set_name(core.get_name().value_or("unnamed") + " ungapped");
+            (*magneticsWithScoring)[i].first.set_core(core);
+        }
 
         return;
     }
@@ -1034,20 +1177,739 @@ void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring,
             core.process_data();
         }
         if (core.get_shape_family() != CoreShapeFamily::T) {
-            double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], core.get_magnetic_flux_density_saturation(), requiredMagneticEnergy), 5);
+            // Use realistic ferrite Bsat (~350 mT) instead of dummy material's 500 mT
+// CA-LOGIC-3 FIX: Use actual material Bsat instead of hardcoded ferrite default
+            double realisticBsat = defaults.ferriteSaturationFluxDensity; // fallback
+            try {
+                auto coreMat = core.resolve_material();
+                double opTemp = 25.0;
+                for (auto& op : inputs.get_operating_points()) {
+                    opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
+                }
+                realisticBsat = Core::get_magnetic_flux_density_saturation(coreMat, opTemp);
+            } catch (...) { // XC-3 NOTE: consider catching std::exception for diagnostics
+                // CA-LOGIC-3: fallback to ferrite default if material data unavailable
+            }
+            double bSatTarget = realisticBsat * defaults.maximumProportionMagneticFluxDensitySaturation; // Use configured proportion of Bsat for safety margin
+            
+            // Calculate gap based on energy storage requirement
+            double gapLength = roundFloat(magneticEnergy.calculate_gap_length_by_magnetic_energy(core.get_gapping()[0], realisticBsat, requiredMagneticEnergy), 5);
+            double gapEnergy = gapLength;
+            
+            // Iterative refinement to find gap that prevents saturation
+            double targetInductance = resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance(), DimensionalValues::NOMINAL);
+            double magnetizingCurrentPeak = 0;
+            for (auto& op : inputs.get_operating_points()) {
+                auto excitation = Inputs::get_primary_excitation(op);
+                if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_processed() && excitation.get_magnetizing_current()->get_processed()->get_peak()) {
+                    magnetizingCurrentPeak = std::max(magnetizingCurrentPeak, excitation.get_magnetizing_current()->get_processed()->get_peak().value());
+                }
+            }
+            
+            // Get the actual current from primary excitation (this is what saturation filter will use)
+            double actualCurrentPeak = 0;
+            for (auto& op : inputs.get_operating_points()) {
+                auto excitation = Inputs::get_primary_excitation(op);
+                if (excitation.get_current() && excitation.get_current()->get_processed() && excitation.get_current()->get_processed()->get_peak()) {
+                    actualCurrentPeak = std::max(actualCurrentPeak, excitation.get_current()->get_processed()->get_peak().value());
+                }
+            }
+            
+            // Use the larger of magnetizing current or actual current
+            double currentForCalculation = std::max(magnetizingCurrentPeak, actualCurrentPeak);
+            
+            if (currentForCalculation > 0) {
+                // Use the proper method to calculate gap from saturation constraint
+                MagnetizingInductance magnetizingInductance;
+                double gapFromSaturation = magnetizingInductance.calculate_gap_from_saturation_constraint(
+                    core, &inputs, bSatTarget, currentForCalculation);
+                
+                // Use the maximum of energy gap and saturation gap
+                gapLength = std::max(gapEnergy, gapFromSaturation);
+            }
+
             core.set_ground_gapping(gapLength);
             core.process_gap();
             std::stringstream ss;
             ss << roundFloat(gapLength * 1000, 2);
             if (gapLength > 0) {
-                core.set_name(core.get_name().value() + " gapped " + ss.str()  + " mm");
+                core.set_name(core.get_name().value_or("unnamed") + " gapped " + ss.str()  + " mm");
             }
             else {
-                core.set_name(core.get_name().value() + " ungapped");
+                core.set_name(core.get_name().value_or("unnamed") + " ungapped");
             }
         }
 
         (*magneticsWithScoring)[i].first.set_core(core);
+    }
+}
+
+// ============================================================================
+// New Gapping Algorithm for STANDARD_CORES Mode
+// ============================================================================
+
+CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Inputs inputs, Core core) {
+    GappingConstraints constraints;
+
+    // Get required magnetic energy
+    MagneticEnergy magneticEnergy;
+    auto requiredMagneticEnergy = resolve_dimensional_values(
+        magneticEnergy.calculate_required_magnetic_energy(inputs),
+        DimensionalValues::MAXIMUM);
+
+    // Account for stacked cores - each stack shares the energy
+    auto numStacksOpt = core.get_functional_description().get_number_stacks();
+    int64_t numStacks = numStacksOpt ? numStacksOpt.value() : 1;
+    if (numStacks > 1) {
+        requiredMagneticEnergy /= numStacks;
+    }
+
+    // Get realistic Bsat for the material at operating temperature
+    double opTemp = 25.0;
+    for (auto& op : inputs.get_operating_points()) {
+        opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
+    }
+    double realisticBsat = core.get_magnetic_flux_density_saturation(opTemp, false);
+
+    // 1. Calculate minimum gap: energy storage requirement
+    // Use the maximum allowed flux density (proportional to Bsat) for energy calculation
+    double maxAllowedB = realisticBsat * defaults.maximumProportionMagneticFluxDensitySaturation;
+    double minGap = magneticEnergy.calculate_gap_length_by_magnetic_energy(
+        core.get_gapping()[0], maxAllowedB, requiredMagneticEnergy);
+    constraints.minGap = minGap;
+
+    // 2. Calculate maximum gap constraints
+    // 2a. Maximum gap based on column width (30%)
+    double columnWidth = core.get_columns()[0].get_width();
+    double maxGapByColumn = 0.30 * columnWidth;
+
+    // 2b. Maximum gap based on fringing factor (25%)
+    double maxGapByFringing = calculate_gap_for_fringing_factor(0.25, core);
+
+    // Use the more restrictive limit
+    constraints.maxGap = std::min(maxGapByColumn, maxGapByFringing);
+
+    // Ensure maxGap >= minGap (sanity check)
+    if (constraints.maxGap < constraints.minGap) {
+        constraints.maxGap = constraints.minGap;
+    }
+
+    // 3. Calculate saturation constraint gap (ensure we don't exceed 70% Bsat)
+    MagnetizingInductance magnetizingInductance;
+    double targetB = realisticBsat * defaults.maximumProportionMagneticFluxDensitySaturation;
+    double peakCurrent = get_peak_current(inputs);
+    
+    // Account for stacked cores - current is divided among stacks
+    if (numStacks > 1) {
+        peakCurrent /= numStacks;
+    }
+    
+    double saturationGap = magnetizingInductance.calculate_gap_from_saturation_constraint(
+        core, &inputs, targetB, peakCurrent);
+    
+    // The minimum gap must satisfy BOTH energy storage AND saturation constraints
+    double effectiveMinGap = std::max(constraints.minGap, saturationGap);
+    
+    // 4. Check if we can satisfy both saturation and fringing constraints
+    if (effectiveMinGap > constraints.maxGap) {
+        // Cannot satisfy both - prioritize saturation constraint
+        // This core will have higher fringing but won't saturate
+        constraints.maxGap = effectiveMinGap * 1.5;  // Allow some margin for optimization
+    }
+    
+    // 5. Find optimal gap
+    if (settings.get_gapping_strategy() == GappingOptimizationStrategy::GOLDEN_SECTION) {
+        constraints.optimalGap = optimize_gap_golden_section(
+            effectiveMinGap, constraints.maxGap, inputs, core);
+    } else {
+        // SIMPLE strategy: use effective minimum gap
+        constraints.optimalGap = effectiveMinGap;
+    }
+
+    return constraints;
+}
+
+double CoreAdviser::calculate_gap_for_fringing_factor(double targetFringingFactor, Core core) {
+    // Use the reluctance model to find gap length for target fringing factor
+    auto reluctanceModel = ReluctanceModel::factory(_models);
+    return reluctanceModel->get_gapping_by_fringing_factor(core, targetFringingFactor);
+}
+
+double CoreAdviser::get_peak_current(Inputs inputs) {
+    double peakCurrent = 0.0;
+
+    for (auto& op : inputs.get_operating_points()) {
+        auto excitation = Inputs::get_primary_excitation(op);
+
+        // Check magnetizing current
+        if (excitation.get_magnetizing_current() &&
+            excitation.get_magnetizing_current()->get_processed() &&
+            excitation.get_magnetizing_current()->get_processed()->get_peak()) {
+            peakCurrent = std::max(peakCurrent,
+                excitation.get_magnetizing_current()->get_processed()->get_peak().value());
+        }
+
+        // Check actual current
+        if (excitation.get_current() &&
+            excitation.get_current()->get_processed() &&
+            excitation.get_current()->get_processed()->get_peak()) {
+            peakCurrent = std::max(peakCurrent,
+                excitation.get_current()->get_processed()->get_peak().value());
+        }
+    }
+
+    return peakCurrent;
+}
+
+double CoreAdviser::calculate_core_losses_for_gap(double gap, Inputs inputs, Core core) {
+    try {
+        // Set the gap temporarily
+        core.set_ground_gapping(gap);
+        core.process_gap();
+
+        // Create Steinmetz model
+        auto coreLossesModel = CoreLossesModel::factory(
+            std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
+
+        // Calculate losses for each operating point
+        double totalLosses = 0.0;
+        for (auto& op : inputs.get_operating_points()) {
+            auto excitation = Inputs::get_primary_excitation(op);
+            double temperature = op.get_conditions().get_ambient_temperature();
+            auto losses = coreLossesModel->get_core_losses(core, excitation, temperature);
+            totalLosses += losses.get_core_losses();
+        }
+
+        return totalLosses;
+    } catch (const std::exception& e) {
+        // If we can't calculate losses (e.g., missing Steinmetz data), return a large value
+        // This will make this gap less attractive during optimization
+        return std::numeric_limits<double>::max();
+    }
+}
+
+double CoreAdviser::optimize_gap_golden_section(double minGap, double maxGap, Inputs inputs, Core core) {
+    const double PHI = 1.618033988749895;  // Golden ratio
+    const double RESPHI = 2.0 - PHI;       // 1/phi^2
+    const int MAX_ITERATIONS = 10;
+
+    double a = minGap;
+    double b = maxGap;
+
+    // Initial points
+    double c = a + RESPHI * (b - a);
+    double d = b - RESPHI * (b - a);
+
+    double fc = calculate_core_losses_for_gap(c, inputs, core);
+    double fd = calculate_core_losses_for_gap(d, inputs, core);
+
+    for (int i = 0; i < MAX_ITERATIONS && (b - a) > 1e-6; ++i) {
+        if (fc < fd) {
+            // Minimum is in [a, d]
+            b = d;
+            d = c;
+            fd = fc;
+            c = a + RESPHI * (b - a);
+            fc = calculate_core_losses_for_gap(c, inputs, core);
+        } else {
+            // Minimum is in [c, b]
+            a = c;
+            c = d;
+            fc = fd;
+            d = b - RESPHI * (b - a);
+            fd = calculate_core_losses_for_gap(d, inputs, core);
+        }
+    }
+
+    // Return the midpoint of the final interval
+    return (a + b) / 2.0;
+}
+
+void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
+                                              Inputs inputs) {
+    if (magneticsWithScoring->empty()) {
+        return;
+    }
+
+    // Gapping Decision Logic:
+    //
+    // The decision to gap depends on TWO factors:
+    // 1. Whether the topology stores energy (needs gap for DC bias)
+    // 2. Whether a specific inductance value is required (needs gap to control AL)
+    //
+    // Cases:
+    // - Energy-storing (Flyback, Buck, etc.): ALWAYS needs gap for energy storage
+    // - Transformer with nominal/max inductance: MAY need gap to hit specific L value
+    //   (e.g., LLC resonant converter needs controlled magnetizing inductance)
+    // - Transformer with minimum-only inductance: NO gap needed (want maximum L)
+    //
+    auto topology = inputs.get_design_requirements().get_topology();
+    bool isEnergyStoring = is_energy_storing_topology(topology);
+    
+    // Check if inductance requirement needs a specific value (nominal or bounded)
+    auto inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
+    bool hasNominalInductance = inductanceReq.get_nominal().has_value();
+    bool hasMaxInductance = inductanceReq.get_maximum().has_value();
+    bool needsSpecificInductance = hasNominalInductance || hasMaxInductance;
+    
+    // Determine if we should skip gapping:
+    // Only skip if it's a transformer topology AND we don't need a specific inductance value
+    bool isTransformer = topology.has_value() ? !isEnergyStoring : 
+        (inductanceReq.get_minimum() && !hasNominalInductance && !hasMaxInductance);
+    
+    bool skipGapping = isTransformer && !needsSpecificInductance;
+    
+    if (skipGapping) {
+        // Transformer with minimum-only inductance: no gap needed (want maximum L)
+        for (size_t i = 0; i < magneticsWithScoring->size(); ++i) {
+            Core core = (*magneticsWithScoring)[i].first.get_core();
+            core.set_name(core.get_name().value_or("unnamed") + " ungapped");
+            (*magneticsWithScoring)[i].first.set_core(core);
+        }
+        return;
+    }
+
+    for (size_t i = 0; i < magneticsWithScoring->size(); ++i) {
+        Core core = (*magneticsWithScoring)[i].first.get_core();
+
+        if (core.get_shape_family() == CoreShapeFamily::T) {
+            // Toroidal cores don't have gaps
+            core.set_name(core.get_name().value_or("unnamed") + " ungapped");
+            (*magneticsWithScoring)[i].first.set_core(core);
+            continue;
+        }
+
+        // Process core data if needed
+        if (!core.get_processed_description()) {
+            core.process_data();
+        }
+
+        // Calculate gapping constraints
+        auto constraints = calculate_gapping_constraints(inputs, core);
+
+        // Apply the optimal gap
+        core.set_ground_gapping(constraints.optimalGap);
+        core.process_gap();
+
+        // Update name with gap info (avoid duplicates)
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(2) << (constraints.optimalGap * 1000);
+        auto currentName = core.get_name().value_or("unnamed");
+        // Remove existing gap info if present to avoid duplicates
+        size_t gappedPos = currentName.find(" gapped ");
+        if (gappedPos != std::string::npos) {
+            currentName = currentName.substr(0, gappedPos);
+        }
+        size_t ungappedPos = currentName.find(" ungapped");
+        if (ungappedPos != std::string::npos) {
+            currentName = currentName.substr(0, ungappedPos);
+        }
+        if (constraints.optimalGap > 0) {
+            core.set_name(currentName + " gapped " + ss.str() + " mm");
+        } else {
+            core.set_name(currentName + " ungapped");
+        }
+
+        (*magneticsWithScoring)[i].first.set_core(core);
+    }
+}
+
+void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
+                                              Inputs inputs) {
+    if (magneticsWithScoring->empty()) {
+        return;
+    }
+
+    MagnetizingInductance magnetizingInductance;
+    MagneticSimulator magneticSimulator;
+    const int MAX_ITERATIONS = 5;  // Reduced from 10 to improve performance
+    const double TARGET_B_RATIO = defaults.maximumProportionMagneticFluxDensitySaturation;
+
+    for (size_t i = 0; i < magneticsWithScoring->size();) {
+        Core core = (*magneticsWithScoring)[i].first.get_core();
+        
+        if (core.get_shape_family() == CoreShapeFamily::T) {
+            // Toroidal cores don't have gaps to refine
+            ++i;
+            continue;
+        }
+
+        // Skip powder cores - they have distributed gaps and are designed for high DC current
+        // Powder cores are identified by their material type
+        auto materialName = core.get_material_name();
+        std::string mat = materialName;
+        if (mat.find("Kool M") != std::string::npos || 
+            mat.find("High Flux") != std::string::npos ||
+            mat.find("XFlux") != std::string::npos ||
+            mat.find("Edge") != std::string::npos ||
+            mat.find("Fluxsan") != std::string::npos ||
+            mat.find("FS ") == 0 ||  // Fluxsan prefix
+            mat.find("HF ") == 0 ||  // High Flux prefix
+            mat.find("GX ") == 0) {  // Another powder series
+            // Powder core - skip gap refinement, keep as-is
+            ++i;
+            continue;
+        }
+
+        // Get Bsat for this core
+        double opTemp = 25.0;
+        for (auto& op : inputs.get_operating_points()) {
+            opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
+        }
+        double realisticBsat = core.get_magnetic_flux_density_saturation(opTemp, false);
+
+        // Get current gap
+        double currentGap = 0;
+        if (!core.get_functional_description().get_gapping().empty()) {
+            currentGap = core.get_functional_description().get_gapping()[0].get_length();
+        }
+
+        // Iterative refinement to achieve target saturation
+        int iteration = 0;
+        double bPeak = 0;
+        bool converged = false;
+        bool shouldRemove = false;
+
+        while (iteration < MAX_ITERATIONS && !converged && !shouldRemove) {
+            // Apply current gap
+            core.set_ground_gapping(currentGap);
+            core.process_gap();
+
+            // Get current turns
+            double numTurns = (*magneticsWithScoring)[i].first.get_coil().get_functional_description()[0].get_number_turns();
+
+            // Simulate to get actual Bpeak
+            bool gotBpeak = false;
+            try {
+                // Wind the coil first
+                auto magnetic = (*magneticsWithScoring)[i].first;
+                magnetic.get_mutable_coil().wind();
+                
+                auto tempMas = Mas();
+                tempMas.set_magnetic(magnetic);
+                tempMas.set_inputs(inputs);
+                auto simulatedMas = magneticSimulator.simulate(tempMas, true);  // fastMode = true
+                
+                // Get Bpeak from the excitation after simulation
+                if (!simulatedMas.get_inputs().get_operating_points().empty()) {
+                    auto& op = simulatedMas.get_inputs().get_operating_points()[0];
+                    auto excitation = Inputs::get_primary_excitation(op);
+                    if (excitation.get_magnetic_flux_density().has_value()) {
+                        auto bField = excitation.get_magnetic_flux_density().value();
+                        if (bField.get_processed().has_value() && 
+                            bField.get_processed()->get_peak().has_value()) {
+                            bPeak = bField.get_processed()->get_peak().value();
+                            gotBpeak = true;
+                        }
+                    }
+                }
+            } catch (const std::exception& e) {
+                converged = true;
+            }
+            
+            if (!gotBpeak) {
+                converged = true;
+                break;
+            }
+
+            double bRatio = bPeak / realisticBsat;
+
+            // Check if we're at or below target
+            if (bRatio <= TARGET_B_RATIO * 1.01) {  // Allow 1% tolerance
+                converged = true;
+            } else {
+                // Increase gap to reduce B
+                double newGap = currentGap * (bRatio / TARGET_B_RATIO) * 1.1;  // 10% margin
+                
+                // Check practical limits
+                double columnWidth = core.get_columns()[0].get_width();
+                double maxPracticalGap = columnWidth * 0.5;  // 50% of column width
+                
+                if (newGap > maxPracticalGap) {
+                    shouldRemove = true;
+                } else {
+                    currentGap = newGap;
+                    // Recalculate turns for the new gap to maintain inductance
+                    double newTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
+                        core, &inputs, DimensionalValues::MINIMUM);
+                    (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(newTurns);
+                }
+            }
+
+            iteration++;
+        }
+
+        if (shouldRemove) {
+            // Remove this core from the list
+            magneticsWithScoring->erase(magneticsWithScoring->begin() + i);
+        } else {
+            // Apply final gap and update name (avoid duplicates)
+            core.set_ground_gapping(currentGap);
+            core.process_gap();
+            
+            std::stringstream ss;
+            ss << std::fixed << std::setprecision(2) << (currentGap * 1000);
+            auto currentName = core.get_name().value_or("unnamed");
+            // Remove existing gap info if present to avoid duplicates
+            size_t gappedPos = currentName.find(" gapped ");
+            if (gappedPos != std::string::npos) {
+                currentName = currentName.substr(0, gappedPos);
+            }
+            size_t ungappedPos = currentName.find(" ungapped");
+            if (ungappedPos != std::string::npos) {
+                currentName = currentName.substr(0, ungappedPos);
+            }
+            if (currentGap > 0) {
+                core.set_name(currentName + " gapped " + ss.str() + " mm");
+            } else {
+                core.set_name(currentName + " ungapped");
+            }
+            
+            (*magneticsWithScoring)[i].first.set_core(core);
+            ++i;
+        }
+    }
+}
+
+// ============================================================================
+// Option 2: Binary Search Gap Optimization with Analytical Cost Function
+// ============================================================================
+
+double CoreAdviser::calculate_gap_cost_analytical(double gap, Inputs& inputs, Core& core, 
+                                                   MagnetizingInductance& magnetizingInductance) {
+    auto constants = OpenMagnetics::Constants();
+    
+    // Get operating conditions
+    double temperature = Defaults().ambientTemperature;
+    double frequency = Defaults().coreAdviserFrequencyReference;
+    if (inputs.get_operating_points().size() > 0) {
+        temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
+        frequency = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_frequency();
+    }
+    
+    // Set gap on core
+    core.set_ground_gapping(gap);
+    core.process_gap();
+    
+    // Get target inductance
+    double targetInductance = resolve_dimensional_values(
+        inputs.get_design_requirements().get_magnetizing_inductance(), 
+        DimensionalValues::NOMINAL);
+    
+    // Calculate turns for this gap using MagnetizingInductance method
+    double turns = magnetizingInductance.calculate_turns_for_gap(core, targetInductance, temperature, frequency);
+    
+    // Get peak current
+    double peakCurrent = get_peak_current(inputs);
+    
+    // Calculate flux density using MagnetizingInductance method
+    double bPeak = magnetizingInductance.calculate_flux_density_peak(core, turns, peakCurrent, temperature, frequency);
+    
+    // Get Bsat for this material
+    double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
+    double maxAllowedB = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+    
+    // Check saturation constraint
+    if (bPeak > maxAllowedB) {
+        return std::numeric_limits<double>::max();  // Constraint violation
+    }
+    
+    // Calculate fringing factor penalty using ReluctanceModel
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
+    
+    double fringingFactor = 0.0;
+    if (!core.get_gapping().empty()) {
+        auto gapReluctance = reluctanceModel->get_gap_reluctance(core.get_gapping()[0]);
+        fringingFactor = gapReluctance.get_fringing_factor();
+    }
+    
+    // Estimate core losses (simplified - just use volume and frequency as proxy)
+    // The actual losses depend on B, but we're already constraining B
+    double coreVolume = core.get_processed_description()->get_effective_parameters().get_effective_volume();
+    double lossProxy = coreVolume * frequency * bPeak * bPeak;  // Simplified Steinmetz-like estimate
+    
+    // Cost function: minimize losses while penalizing high fringing
+    // Fringing factor > 0.25 is considered excessive
+    double fringingPenalty = 0.0;
+    if (fringingFactor > 0.25) {
+        fringingPenalty = pow((fringingFactor - 0.25) * 10, 2);  // Quadratic penalty
+    }
+    
+    return lossProxy + fringingPenalty;
+}
+
+std::pair<double, double> CoreAdviser::optimize_gap_and_turns_binary_search(Inputs& inputs, Core& core) {
+    MagnetizingInductance magnetizingInductance(_models["gapReluctance"]);
+    auto constants = OpenMagnetics::Constants();
+    
+    // Ensure core is processed
+    if (!core.get_processed_description()) {
+        core.process_data();
+    }
+    
+    // Get operating conditions
+    double temperature = Defaults().ambientTemperature;
+    double frequency = Defaults().coreAdviserFrequencyReference;
+    if (inputs.get_operating_points().size() > 0) {
+        temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
+        frequency = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_frequency();
+    }
+    
+    double targetInductance = resolve_dimensional_values(
+        inputs.get_design_requirements().get_magnetizing_inductance(), 
+        DimensionalValues::NOMINAL);
+    double peakCurrent = get_peak_current(inputs);
+    double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
+    double maxAllowedB = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    
+    // Define gap search bounds
+    double columnWidth = core.get_columns()[0].get_width();
+    double gMin = constants.residualGap;
+    double gMax = 0.4 * columnWidth;  // 40% of column width
+    
+    // Quick check: can this core possibly work?
+    // Minimum turns from saturation: N_min = L * I / (B_max * A)
+    double minTurnsFromSaturation = (targetInductance * peakCurrent) / (maxAllowedB * effectiveArea);
+    if (minTurnsFromSaturation > 1000) {
+        // Unreasonable number of turns - core too small
+        return {-1.0, -1.0};
+    }
+    
+    // Golden section search for optimal gap
+    const double PHI = 1.618033988749895;
+    const double RESPHI = 2.0 - PHI;
+    const int MAX_ITERATIONS = 15;
+    
+    double a = gMin;
+    double b = gMax;
+    
+    // Initial points
+    double c = a + RESPHI * (b - a);
+    double d = b - RESPHI * (b - a);
+    
+    Core coreC = core;
+    Core coreD = core;
+    double fc = calculate_gap_cost_analytical(c, inputs, coreC, magnetizingInductance);
+    double fd = calculate_gap_cost_analytical(d, inputs, coreD, magnetizingInductance);
+    
+    for (int i = 0; i < MAX_ITERATIONS && (b - a) > 1e-6; ++i) {
+        if (fc < fd) {
+            b = d;
+            d = c;
+            fd = fc;
+            c = a + RESPHI * (b - a);
+            coreC = core;
+            fc = calculate_gap_cost_analytical(c, inputs, coreC, magnetizingInductance);
+        } else {
+            a = c;
+            c = d;
+            fc = fd;
+            d = b - RESPHI * (b - a);
+            coreD = core;
+            fd = calculate_gap_cost_analytical(d, inputs, coreD, magnetizingInductance);
+        }
+    }
+    
+    // Get optimal gap (midpoint of final interval)
+    double optimalGap = (a + b) / 2.0;
+    
+    // Verify this gap is valid
+    Core finalCore = core;
+    double finalCost = calculate_gap_cost_analytical(optimalGap, inputs, finalCore, magnetizingInductance);
+    
+    if (finalCost >= std::numeric_limits<double>::max() / 2) {
+        // No valid solution found in search range
+        // Try using the analytical method from Option 1 as fallback
+        double maxB = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+        auto [fallbackGap, fallbackTurns] = magnetizingInductance.calculate_optimal_gap_and_turns(
+            core, &inputs, maxB, peakCurrent);
+        return {fallbackGap, fallbackTurns};
+    }
+    
+    // Calculate final turns for optimal gap
+    core.set_ground_gapping(optimalGap);
+    core.process_gap();
+    double optimalTurns = magnetizingInductance.calculate_turns_for_gap(core, targetInductance, temperature, frequency);
+    
+    return {optimalGap, optimalTurns};
+}
+
+void CoreAdviser::add_gapping_and_turns_analytical(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
+                                                    Inputs inputs) {
+    if (magneticsWithScoring->empty()) {
+        return;
+    }
+    
+    MagnetizingInductance magnetizingInductance(_models["gapReluctance"]);
+    
+    // Get operating conditions
+    double temperature = Defaults().ambientTemperature;
+    if (inputs.get_operating_points().size() > 0) {
+        temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
+    }
+    double peakCurrent = get_peak_current(inputs);
+    
+    for (size_t i = 0; i < magneticsWithScoring->size();) {
+        Core core = (*magneticsWithScoring)[i].first.get_core();
+        
+        // Skip toroidal cores - they don't have gaps
+        if (core.get_shape_family() == CoreShapeFamily::T) {
+            core.set_name(core.get_name().value_or("unnamed") + " ungapped");
+            (*magneticsWithScoring)[i].first.set_core(core);
+            ++i;
+            continue;
+        }
+        
+        // Ensure core is processed
+        if (!core.get_processed_description()) {
+            core.process_data();
+        }
+        
+        // Get Bsat for this material
+        double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
+        double maxAllowedB = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+        
+        // Use Option 1: Direct analytical calculation (O(1) per core)
+        auto [optimalGap, optimalTurns] = magnetizingInductance.calculate_optimal_gap_and_turns(
+            core, &inputs, maxAllowedB, peakCurrent);
+        
+        if (optimalGap < 0 || optimalTurns < 0) {
+            // No valid solution - remove this core
+            magneticsWithScoring->erase(magneticsWithScoring->begin() + i);
+            continue;
+        }
+        
+        // Apply optimal gap
+        core.set_ground_gapping(optimalGap);
+        core.process_gap();
+        
+        // Update name with gap info
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(2) << (optimalGap * 1000);
+        auto currentName = core.get_name().value_or("unnamed");
+        // Remove existing gap info if present
+        size_t gappedPos = currentName.find(" gapped ");
+        if (gappedPos != std::string::npos) {
+            currentName = currentName.substr(0, gappedPos);
+        }
+        size_t ungappedPos = currentName.find(" ungapped");
+        if (ungappedPos != std::string::npos) {
+            currentName = currentName.substr(0, ungappedPos);
+        }
+        if (optimalGap > 0.0001) {
+            core.set_name(currentName + " gapped " + ss.str() + " mm");
+        } else {
+            core.set_name(currentName + " ungapped");
+        }
+        
+        // Apply optimal turns
+        (*magneticsWithScoring)[i].first.set_core(core);
+        (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(optimalTurns);
+        
+        ++i;
     }
 }
 
@@ -1118,10 +1980,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
             }
         }
         averageVolumetricCoreLosses /= inputs.get_operating_points().size();
-        evaluations.push_back({coreMaterial, 0});
+        evaluations.push_back({coreMaterial, averageVolumetricCoreLosses}); // NEW-BUG-FIX: was pushing 0, discarding computed losses
     }
 
-    sort((evaluations).begin(), (evaluations).end(), [](std::pair<CoreMaterial, double>& b1, std::pair<CoreMaterial, double>& b2) {
+    stable_sort((evaluations).begin(), (evaluations).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
         return b1.second < b2.second;
     });
 
@@ -1129,10 +1991,12 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
         for (size_t i = 0; i < numberCoreMaterialsTouse; ++i){
             auto [magnetic, scoring] = (*magneticsWithScoring)[magneticIndex];
             magnetic.get_mutable_core().set_material(evaluations[i].first);
-            magnetic.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + magnetic.get_core().get_name().value());
-            auto manufacturerInfo = magnetic.get_manufacturer_info().value();
-            manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magnetic.get_reference());
-            magnetic.set_manufacturer_info(manufacturerInfo);
+            magnetic.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + magnetic.get_core().get_name().value_or("unnamed"));
+            if (magnetic.get_manufacturer_info()) {
+                auto manufacturerInfo = magnetic.get_manufacturer_info().value();
+                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magnetic.get_reference());
+                magnetic.set_manufacturer_info(manufacturerInfo);
+            }
             magneticsWithMaterials.push_back({magnetic, scoring});
         }
     }
@@ -1193,7 +2057,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
         evaluations.push_back({coreMaterial, averageVolumetricCoreLosses});
     }
 
-    sort((evaluations).begin(), (evaluations).end(), [](std::pair<CoreMaterial, double>& b1, std::pair<CoreMaterial, double>& b2) {
+    stable_sort((evaluations).begin(), (evaluations).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
         return b1.second < b2.second;
     });
 
@@ -1205,13 +2069,16 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
                 continue;
             }
             magnetic.get_mutable_core().set_material(evaluations[i].first);
-            magnetic.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + magnetic.get_core().get_name().value());
-            auto manufacturerInfo = magnetic.get_manufacturer_info().value();
-            manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magnetic.get_reference());
-            magnetic.set_manufacturer_info(manufacturerInfo);
+            magnetic.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + (magnetic.get_core().get_name().value_or("unnamed")));
+            if (magnetic.get_manufacturer_info()) {
+                auto manufacturerInfo = magnetic.get_manufacturer_info().value();
+                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magnetic.get_reference());
+                magnetic.set_manufacturer_info(manufacturerInfo);
+            }
             magneticsWithMaterials.push_back({magnetic, scoring});
         }
     }
+
     return magneticsWithMaterials;
 }
 
@@ -1246,7 +2113,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
         evaluations.push_back({coreMaterial, totalComplexPermeability});
     }
 
-    sort((evaluations).begin(), (evaluations).end(), [](std::pair<CoreMaterial, double>& b1, std::pair<CoreMaterial, double>& b2) {
+    stable_sort((evaluations).begin(), (evaluations).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
         return b1.second > b2.second;
     });
 
@@ -1264,10 +2131,12 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
                 continue;
             }
             magnetic.get_mutable_core().set_material(evaluations[i].first);
-            magnetic.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + magnetic.get_core().get_name().value());
-            auto manufacturerInfo = magnetic.get_manufacturer_info().value();
-            manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magnetic.get_reference());
-            magnetic.set_manufacturer_info(manufacturerInfo);
+            magnetic.get_mutable_core().set_name(evaluations[i].first.get_name() + " " + magnetic.get_core().get_name().value_or("unnamed"));
+            if (magnetic.get_manufacturer_info()) {
+                auto manufacturerInfo = magnetic.get_manufacturer_info().value();
+                manufacturerInfo.set_reference(evaluations[i].first.get_name() + " " + magnetic.get_reference());
+                magnetic.set_manufacturer_info(manufacturerInfo);
+            }
             magneticsWithMaterials.push_back({magnetic, scoring});
         }
     }
@@ -1336,9 +2205,11 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
     }
 
     magnetic.get_reference();
-    auto manufacturerInfo = magnetic.get_manufacturer_info().value();
-    manufacturerInfo.set_reference(magnetic.get_core().get_name().value());
-    magnetic.set_manufacturer_info(manufacturerInfo);
+    if (magnetic.get_manufacturer_info()) {
+        auto manufacturerInfo = magnetic.get_manufacturer_info().value();
+        manufacturerInfo.set_reference(magnetic.get_core().get_name().value_or("unnamed"));
+        magnetic.set_manufacturer_info(manufacturerInfo);
+    }
 
     auto previousCoilDelimitAndCompact = settings.get_coil_delimit_and_compact();
     settings.set_coil_delimit_and_compact(false);
@@ -1415,7 +2286,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Area Product filter.", "CoreAdviser");
 
     if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
-        magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumMagneticsAfterFiltering));
+        magneticsWithScoring.resize(maximumMagneticsAfterFiltering); // F10 FIX: resize instead of copy-construct
         logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " after culling by the score on the first filter.", "CoreAdviser");
     }
 
@@ -1440,6 +2311,29 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Core Losses filter.", "CoreAdviser");
 
+    // Retry logic: if no cores found, try relaxing the saturation constraint
+    if (magneticsWithScoring.size() == 0) {
+        logEntry("No cores found with standard filters. Retrying with relaxed saturation constraint...", "CoreAdviser");
+        
+        // Start over with the original magnetics
+        magneticsWithScoring = *magnetics;
+        magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+        
+        if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
+            magneticsWithScoring.resize(maximumMagneticsAfterFiltering);
+        }
+        
+        magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+        add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+        
+        // Skip saturation filter - go directly to scoring filters
+        magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
+        magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS], true);
+        magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+        
+        logEntry("After retry with relaxed constraints: " + std::to_string(magneticsWithScoring.size()) + " magnetics", "CoreAdviser");
+    }
+
     if (magneticsWithScoring.size() == 0) {
         return {};
     }
@@ -1449,7 +2343,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
             magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
         }
         else {
-            magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumNumberResults));
+            magneticsWithScoring.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
         }
     }
 
@@ -1457,7 +2351,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
 
     std::vector<std::pair<Mas, double>> masWithScoring;
 
-    for (auto [magnetic, scoring] : magneticsWithScoring) {
+    for (const auto& [magnetic, scoring] : magneticsWithScoring) {
         auto mas = post_process_core(magnetic, inputs);
         masWithScoring.push_back({mas, scoring});
     }
@@ -1487,24 +2381,17 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
-    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " at the beginning." << std::endl;
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
-    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after adding turns for inductance." << std::endl;
 
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Minimum Impedance filter." << std::endl;
 
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
-    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Cost filter (weight=" << weights[CoreAdviserFilters::COST] << ")." << std::endl;
 
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS], true);
-    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Dimensions filter (weight=" << weights[CoreAdviserFilters::DIMENSIONS] << ")." << std::endl;
 
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
-    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Magnetizing Inductance filter (weight=" << weights[CoreAdviserFilters::EFFICIENCY] << ")." << std::endl;
 
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
-    std::cerr << "CoreAdviser: " << magneticsWithScoring.size() << " after Core Losses filter." << std::endl;
 
     if (magneticsWithScoring.size() == 0) {
         return {};
@@ -1515,7 +2402,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
             magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
         }
         else {
-            magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumNumberResults));
+            magneticsWithScoring.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
         }
     }
 
@@ -1523,7 +2410,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
 
     std::vector<std::pair<Mas, double>> masWithScoring;
 
-    for (auto [magnetic, scoring] : magneticsWithScoring) {
+    for (const auto& [magnetic, scoring] : magneticsWithScoring) {
         auto mas = post_process_core(magnetic, inputs);
         masWithScoring.push_back({mas, scoring});
     }
@@ -1541,6 +2428,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     MagneticCoreFilterDimensions filterDimensions;
     MagneticCoreFilterMagneticInductance filterMagneticInductance;
     MagneticCoreFilterFringingFactor filterFringingFactor(inputs, _models);
+    MagneticCoreFilterSaturation filterSaturation;
 
     filterAreaProduct.set_scorings(&_scorings);
     filterAreaProduct.set_filter_configuration(&_filterConfiguration);
@@ -1563,73 +2451,166 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     filterFringingFactor.set_scorings(&_scorings);
     filterFringingFactor.set_filter_configuration(&_filterConfiguration);
     filterFringingFactor.set_cache_usage(false);
-
-    std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
-
-    bool usingPowderCores = should_include_powder(inputs);
-    if (settings.get_core_adviser_enable_intermediate_pruning() && usingPowderCores) {
-        maximumMagneticsAfterFiltering /= 2;
-    }
-
-    if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
-        magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumMagneticsAfterFiltering));
-        logEntry("Reducing to " + std::to_string(magneticsWithScoring.size()) + " of ferrite material.", "CoreAdviser");
-    }
-
-    std::vector<std::pair<Magnetic, double>> ungappedmagneticsWithScoring;
-    if (should_include_powder(inputs)) {
-        std::copy(magneticsWithScoring.begin(), magneticsWithScoring.end(), std::back_inserter(ungappedmagneticsWithScoring));
-        ungappedmagneticsWithScoring = add_powder_materials(&ungappedmagneticsWithScoring, inputs);
-        logEntry("Adding " + std::to_string(ungappedmagneticsWithScoring.size()) + " magnetics with powder material.", "CoreAdviser");
-    }
-
-    add_gapping(&magneticsWithScoring, inputs);
-    magneticsWithScoring = filterFringingFactor.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " ferrite magnetics after the Fringing Factor filter.", "CoreAdviser");
-
-    if (usingPowderCores) {
-        ungappedmagneticsWithScoring = filterEnergyStored.filter_magnetics(&ungappedmagneticsWithScoring, inputs, 1, true);
-        logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " powder magnetics after the Energy Stored filter.", "CoreAdviser");
-
-        std::copy(ungappedmagneticsWithScoring.begin(), ungappedmagneticsWithScoring.end(), std::back_inserter(magneticsWithScoring));
-    }
-
-
-
-    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, 1, true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Dimension filter.", "CoreAdviser");
-
-    magneticsWithScoring = add_ferrite_materials_by_losses(&magneticsWithScoring, inputs);
-    add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after assigning concrete ferrite material.", "CoreAdviser");
-
-    magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Area Product filter.", "CoreAdviser");
-
-    magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0.1, true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Magnetizing Inductance filter.", "CoreAdviser");
-
-    // Add saturation filter to reject cores that exceed magnetic flux density saturation
-    MagneticCoreFilterSaturation filterSaturation;
     filterSaturation.set_scorings(&_scorings);
     filterSaturation.set_filter_configuration(&_filterConfiguration);
     filterSaturation.set_cache_usage(false);
-    magneticsWithScoring = filterSaturation.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Saturation filter.", "CoreAdviser");
 
-    magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Losses filter.", "CoreAdviser");
+    std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
+    logEntry("Starting with " + std::to_string(magneticsWithScoring.size()) + " magnetics", "CoreAdviser");
+    std::cout << "[CoreAdviser] Starting with " << magneticsWithScoring.size() << " magnetics" << std::endl;
+
+    bool usingPowderCores = should_include_powder(inputs);
+
+    // ========================================================================
+    // STEP 1: Area Product filter on all cores
+    // ========================================================================
+    magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    logEntry("After AreaProduct: " + std::to_string(magneticsWithScoring.size()), "CoreAdviser");
+    std::cout << "[CoreAdviser] After AreaProduct: " << magneticsWithScoring.size() << std::endl;
+
+    // ========================================================================
+    // STEP 2: Separate ferrite (gappable) and powder/toroidal cores
+    // Process them independently to avoid cross-contamination
+    // ========================================================================
+    std::vector<std::pair<Magnetic, double>> ferriteCores;
+    std::vector<std::pair<Magnetic, double>> powderCores;
+    
+    for (const auto& [mag, score] : magneticsWithScoring) {
+        if (mag.get_core().get_functional_description().get_type() != CoreType::TOROIDAL) {
+            ferriteCores.push_back({mag, score});
+        }
+    }
+    
+    // Prune ferrite cores if needed
+    size_t ferriteLimit = maximumMagneticsAfterFiltering;
+    if (settings.get_core_adviser_enable_intermediate_pruning() && ferriteCores.size() > ferriteLimit) {
+        ferriteCores.resize(ferriteLimit);
+    }
+    logEntry("Ferrite cores after pruning: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+    std::cout << "[CoreAdviser] Ferrite cores after pruning: " << ferriteCores.size() << std::endl;
+
+    // ========================================================================
+    // STEP 3: Process FERRITE cores (gapped)
+    // ========================================================================
+    if (!ferriteCores.empty()) {
+        // Add gaps to ferrite cores
+        add_gapping_standard_cores(&ferriteCores, inputs);
+        logEntry("After gapping ferrite: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After gapping: " << ferriteCores.size() << std::endl;
+        
+        // Filter by fringing factor
+        ferriteCores = filterFringingFactor.filter_magnetics(&ferriteCores, inputs, 1, true);
+        logEntry("After FringingFactor: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After FringingFactor: " << ferriteCores.size() << std::endl;
+        
+        // Filter by dimensions
+        ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, 1, true);
+        logEntry("After Dimensions (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Dimensions: " << ferriteCores.size() << std::endl;
+        
+        // Assign concrete ferrite materials
+        ferriteCores = add_ferrite_materials_by_losses(&ferriteCores, inputs);
+        logEntry("After materials (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After materials: " << ferriteCores.size() << std::endl;
+        
+        // Calculate turns
+        add_initial_turns_by_inductance(&ferriteCores, inputs);
+        
+        // Filter by inductance
+        ferriteCores = filterMagneticInductance.filter_magnetics(&ferriteCores, inputs, 0.1, true);
+        logEntry("After Inductance (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Inductance: " << ferriteCores.size() << std::endl;
+        
+        // Filter by saturation
+        ferriteCores = filterSaturation.filter_magnetics(&ferriteCores, inputs, 1, true);
+        logEntry("After Saturation (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Saturation: " << ferriteCores.size() << std::endl;
+        
+        // Filter by losses
+        ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1, true);
+        logEntry("After Losses (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        std::cout << "[CoreAdviser] After Losses: " << ferriteCores.size() << std::endl;
+    }
+
+    // ========================================================================
+    // STEP 4: Process POWDER cores (ungapped toroidal) - if appropriate or if toroidal cores explicitly requested
+    // ========================================================================
+    if (usingPowderCores || settings.get_use_toroidal_cores()) {
+        // Get toroidal cores from original set
+        for (const auto& [mag, score] : magneticsWithScoring) {
+            if (mag.get_core().get_functional_description().get_type() == CoreType::TOROIDAL) {
+                powderCores.push_back({mag, score});
+            }
+        }
+        
+        // Prune powder cores
+        size_t powderLimit = maximumMagneticsAfterFiltering;
+        if (settings.get_core_adviser_enable_intermediate_pruning() && powderCores.size() > powderLimit) {
+            powderCores.resize(powderLimit);
+        }
+        
+        if (!powderCores.empty()) {
+            // Add powder materials
+            powderCores = add_powder_materials(&powderCores, inputs);
+            logEntry("After powder materials: " + std::to_string(powderCores.size()), "CoreAdviser");
+            
+            // Filter by energy stored
+            powderCores = filterEnergyStored.filter_magnetics(&powderCores, inputs, 1, true);
+            logEntry("After EnergyStored (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
+            
+            // Filter by dimensions
+            powderCores = filterDimensions.filter_magnetics(&powderCores, 1, true);
+            logEntry("After Dimensions (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
+            
+            // Calculate turns
+            add_initial_turns_by_inductance(&powderCores, inputs);
+            
+            // Filter by inductance
+            powderCores = filterMagneticInductance.filter_magnetics(&powderCores, inputs, 0.1, true);
+            logEntry("After Inductance (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
+            
+            // Filter by saturation
+            powderCores = filterSaturation.filter_magnetics(&powderCores, inputs, 1, true);
+            logEntry("After Saturation (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
+            
+            // Filter by losses
+            powderCores = filterLosses.filter_magnetics(&powderCores, inputs, 1, true);
+            logEntry("After Losses (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
+        }
+    }
+
+    // ========================================================================
+    // STEP 5: Combine ferrite and powder results
+    // ========================================================================
+    magneticsWithScoring.clear();
+    
+    // Add ferrite cores first (they typically perform better for gapped applications)
+    for (const auto& core : ferriteCores) {
+        magneticsWithScoring.push_back(core);
+    }
+    
+    // Add powder cores
+    for (const auto& core : powderCores) {
+        magneticsWithScoring.push_back(core);
+    }
+    
+    logEntry("Combined results: " + std::to_string(magneticsWithScoring.size()) + 
+             " (ferrite: " + std::to_string(ferriteCores.size()) + 
+             ", powder: " + std::to_string(powderCores.size()) + ")", "CoreAdviser");
 
     if (magneticsWithScoring.size() == 0) {
         return {};
     }
 
+    // ========================================================================
+    // STEP 6: Final processing
+    // ========================================================================
     if (magneticsWithScoring.size() > maximumNumberResults) {
         if (get_unique_core_shapes()) {
             magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
         }
         else {
-            magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumNumberResults));
+            magneticsWithScoring.resize(maximumNumberResults);
         }
     }
 
@@ -1638,7 +2619,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     std::vector<std::pair<Mas, double>> masWithScoring;
 
-    for (auto [magnetic, scoring] : magneticsWithScoring) {
+    for (const auto& [magnetic, scoring] : magneticsWithScoring) {
         auto mas = post_process_core(magnetic, inputs);
         masWithScoring.push_back({mas, scoring});
     }
@@ -1675,7 +2656,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
     // if (magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
-    //     magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumMagneticsAfterFiltering));
+    //     magneticsWithScoring.resize(maximumMagneticsAfterFiltering); // F10 FIX: resize instead of copy-construct
     // }
 
 
@@ -1699,7 +2680,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
             magneticsWithScoring = cull_to_unique_core_shapes(magneticsWithScoring, maximumNumberResults);
         }
         else {
-            magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumNumberResults));
+            magneticsWithScoring.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
         }
     }
 
@@ -1708,7 +2689,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
 
     std::vector<std::pair<Mas, double>> masWithScoring;
 
-    for (auto [magnetic, scoring] : magneticsWithScoring) {
+    for (const auto& [magnetic, scoring] : magneticsWithScoring) {
         auto mas = post_process_core(magnetic, inputs);
         masWithScoring.push_back({mas, scoring});
     }
@@ -1716,4 +2697,4 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
     return masWithScoring;
 }
 
-} // namespace OpenMagnetics
+}

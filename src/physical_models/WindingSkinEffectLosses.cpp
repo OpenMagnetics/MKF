@@ -446,10 +446,19 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
     double wireOuterRadius;
 
     if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting dimensions for planar/rectangular/foil wire");
+        }
         wireRadius = std::min(resolve_dimensional_values(wire.get_conducting_width().value()), resolve_dimensional_values(wire.get_conducting_height().value())) / 2;
+        if (!wire.get_outer_width() || !wire.get_outer_height()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing outer dimensions for planar/rectangular/foil wire");
+        }
         wireOuterRadius = std::min(resolve_dimensional_values(wire.get_outer_width().value()), resolve_dimensional_values(wire.get_outer_height().value())) / 2;
     }
     else if (wire.get_type() == WireType::ROUND) {
+        if (!wire.get_conducting_diameter()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing conducting diameter for round wire");
+        }
         wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
         if (!wire.get_outer_diameter()) {
             wireOuterRadius = Wire::calculate_outer_diameter(wire, OpenMagnetics::DimensionalValues::NOMINAL) / 2;
@@ -460,7 +469,11 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
     else if (wire.get_type() == WireType::LITZ) {
         auto strand = Wire::resolve_strand(wire);
         wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
-        wireOuterRadius = resolve_dimensional_values(strand.get_outer_diameter().value()) / 2;
+        if (!strand.get_outer_diameter()) {
+            wireOuterRadius = Wire::calculate_outer_diameter(strand, OpenMagnetics::DimensionalValues::NOMINAL) / 2;
+        } else {
+            wireOuterRadius = resolve_dimensional_values(strand.get_outer_diameter().value()) / 2;
+        }
     }
     else {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
@@ -528,6 +541,9 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
     
     std::complex<double> besselRatio2 = bessel1_2 / bessel0_2;
     
+    if (!wire.get_number_conductors()) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of conductors for wire");
+    }
     double numConductors = wire.get_number_conductors().value();
     double geometricFactor = (numConductors * (numConductors - 1) * pow(wireRadius, 2)) / pow(wireOuterRadius, 2);
     

@@ -147,7 +147,7 @@ NgspiceRunner::NgspiceRunner(ExecutionMode mode, const std::string& ngspicePath)
 
 NgspiceRunner::~NgspiceRunner() {
 #ifdef ENABLE_NGSPICE
-    if (_mode == ExecutionMode::SHARED_LIBRARY && _instance == this) {
+    if (_mode == ExecutionMode::SHARED_LIBRARY) {
         _instance = nullptr;
     }
 #endif
@@ -497,7 +497,7 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
             size_t edgeIndex = 0;
             
             // Find the last rising edge before minEdgeTime
-            for (size_t i = time.size() - 1; i > 0; --i) {
+            for (size_t i = (time.size() > 1 ? time.size() - 1 : 0); i > 0; --i) {
                 if (time[i] <= minEdgeTime) {
                     // Look for rising edge crossing the threshold
                     if (voltageData[i] > threshold && voltageData[i-1] <= threshold) {
@@ -871,6 +871,10 @@ OperatingPoint NgspiceRunner::extract_operating_point(
     double ambientTemperature,
     const std::vector<bool>& flipCurrentSign) {
     
+    if (frequency <= 0 || !std::isfinite(frequency)) {
+        throw std::invalid_argument("NgspiceRunner::extract_operating_point: Invalid frequency: " + std::to_string(frequency));
+    }
+
     OperatingPoint operatingPoint;
     
     // Build a map from waveform names to indices for quick lookup

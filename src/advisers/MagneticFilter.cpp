@@ -16,6 +16,46 @@
 
 namespace OpenMagnetics {
 
+// Helper function to determine if a topology stores energy in the magnetic field
+// Energy-storing topologies need gapped cores for DC bias handling
+// Non-energy-storing (transformer) topologies transfer energy without storage
+static bool is_energy_storing_topology(std::optional<Topologies> topology) {
+    if (!topology.has_value()) {
+        return false; // Unknown topology, caller should use other heuristics
+    }
+    
+    switch (topology.value()) {
+        // Energy-storing topologies (inductors, flyback-derived)
+        case Topologies::FLYBACK_CONVERTER:
+        case Topologies::BUCK_CONVERTER:
+        case Topologies::BOOST_CONVERTER:
+        case Topologies::INVERTING_BUCK_BOOST_CONVERTER:
+        case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
+        case Topologies::CUK_CONVERTER:
+        case Topologies::SEPIC:
+        case Topologies::ZETA_CONVERTER:
+            return true;
+            
+        // Transformer topologies (forward-derived)
+        case Topologies::SINGLE_SWITCH_FORWARD_CONVERTER:
+        case Topologies::TWO_SWITCH_FORWARD_CONVERTER:
+        case Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER:
+        case Topologies::PUSH_PULL_CONVERTER:
+        case Topologies::HALF_BRIDGE_CONVERTER:
+        case Topologies::FULL_BRIDGE_CONVERTER:
+        case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case Topologies::ISOLATED_BUCK_CONVERTER:
+        case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
+        case Topologies::LLC_RESONANT_CONVERTER:
+        case Topologies::CLLC_RESONANT_CONVERTER:
+        case Topologies::WEINBERG_CONVERTER:
+        case Topologies::CURRENT_TRANSFORMER:
+            return false;
+            
+        default:
+            return false; // Unknown, treat as transformer (safer - no gap)
+    }
+}
 
 std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterName, std::optional<Inputs> inputs) {
     switch(filterName) {
@@ -1426,14 +1466,111 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
     bool valid = true;
     double scoring = 0;
 
-    for (auto operatingPoint : inputs->get_operating_points()) {
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
-        auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(magnetic->get_core(), magnetic->get_coil(), &operatingPoint).second;
-        auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    // Transformer vs Inductor Detection
+    // ==================================
+    // Transformers: B is determined by applied VOLTAGE (Faraday's Law)
+    //   - B_peak = V_peak / (N × Ae × ω)
+    //   - No permeability iteration needed since magnetizing current is ideally small
+    //
+    // Inductors/Energy-storing: B is determined by CURRENT and permeability
+    //   - Uses iterative calculation accounting for permeability rolloff with DC bias
+    //
+    // Detection priority:
+    // 1. Use topology if specified (most reliable)
+    // 2. Fall back to inductance field heuristic (minimum-only = transformer)
+    //
+    auto topology = inputs->get_design_requirements().get_topology();
+    bool isTransformer;
+    if (topology.has_value()) {
+        // Use topology-based detection
+        isTransformer = !is_energy_storing_topology(topology);
+    } else {
+        // Legacy heuristic: minimum-only inductance = transformer
+        isTransformer = inputs->get_design_requirements().get_magnetizing_inductance().get_minimum() &&
+                         !inputs->get_design_requirements().get_magnetizing_inductance().get_nominal() &&
+                         !inputs->get_design_requirements().get_magnetizing_inductance().get_maximum();
+    }
 
-        auto magneticFluxDensitySaturation = magnetic->get_mutable_core().get_magnetic_flux_density_saturation(operatingPoint.get_conditions().get_ambient_temperature());
+    for (auto operatingPoint : inputs->get_operating_points()) {
+        double magneticFluxDensityPeak;
+        auto magneticFluxDensitySaturation = magnetic->get_mutable_core().get_magnetic_flux_density_saturation(
+            operatingPoint.get_conditions().get_ambient_temperature());
+        
+        if (isTransformer) {
+            // For transformers, calculate B from voltage using MagnetizingInductance method
+            // This avoids the permeability iteration issue with current-based calculation
+            auto excitation = Inputs::get_primary_excitation(operatingPoint);
+            double frequency = excitation.get_frequency();
+            double voltagePeak = 0;
+            double actualInductance = 0;
+            
+            bool hasVoltage = excitation.get_voltage() && excitation.get_voltage()->get_processed() && 
+                excitation.get_voltage()->get_processed()->get_peak();
+            bool hasCurrentWaveform = excitation.get_current() && excitation.get_current()->get_waveform();
+            
+            if (hasVoltage) {
+                voltagePeak = excitation.get_voltage()->get_processed()->get_peak().value();
+                std::cout << "[SatFilter] Using provided voltage: " << voltagePeak << "V" << std::endl;
+            } else if (hasCurrentWaveform) {
+                // If voltage not provided but current is, derive voltage from V = L * di/dt
+                // IMPORTANT: Use the ACTUAL core inductance (after gapping), not the design requirement
+                // The gapped core has lower inductance, which means lower induced voltage for same di/dt
+                std::cout << "[SatFilter] Deriving voltage from current waveform..." << std::endl;
+                OpenMagnetics::MagnetizingInductance magnetizingInductanceCalc;
+                auto inductanceOutput = magnetizingInductanceCalc.calculate_inductance_from_number_turns_and_gapping(
+                    *magnetic, &operatingPoint);
+                
+                if (inductanceOutput.get_magnetizing_inductance().get_nominal()) {
+                    actualInductance = inductanceOutput.get_magnetizing_inductance().get_nominal().value();
+                    std::cout << "[SatFilter] Actual inductance: " << (actualInductance * 1e6) << " uH" << std::endl;
+                    if (actualInductance > 0) {
+                        auto inducedVoltage = Inputs::calculate_induced_voltage(excitation, actualInductance);
+                        if (inducedVoltage.get_processed() && inducedVoltage.get_processed()->get_peak()) {
+                            voltagePeak = inducedVoltage.get_processed()->get_peak().value();
+                            std::cout << "[SatFilter] Derived voltage peak: " << voltagePeak << "V" << std::endl;
+                        } else {
+                            std::cout << "[SatFilter] ERROR: Could not get processed voltage peak" << std::endl;
+                        }
+                    }
+                } else {
+                    std::cout << "[SatFilter] ERROR: Could not get nominal inductance" << std::endl;
+                }
+            } else {
+                std::cout << "[SatFilter] WARNING: No voltage or current waveform available!" << std::endl;
+            }
+            
+            double numberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
+            OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
+            magneticFluxDensityPeak = magnetizingInductanceObj.calculate_flux_density_peak_from_voltage(
+                magnetic->get_mutable_core(), numberTurns, voltagePeak, frequency);
+            
+            // DEBUG output
+            double effectiveArea = magnetic->get_mutable_core().get_processed_description()->get_effective_parameters().get_effective_area();
+            int64_t numStacks = magnetic->get_mutable_core().get_number_stacks();
+            std::cout << "[SatFilter] Core: " << magnetic->get_core().get_name().value_or("?") 
+                      << " stacks=" << numStacks
+                      << " Ae=" << (effectiveArea * 1e6) << "mm2"
+                      << " L=" << (actualInductance * 1e6) << "uH"
+                      << " Vpeak=" << voltagePeak << "V"
+                      << " N=" << numberTurns
+                      << " f=" << frequency << "Hz"
+                      << " Bpeak=" << magneticFluxDensityPeak << "T"
+                      << " Bsat=" << magneticFluxDensitySaturation << "T"
+                      << (magneticFluxDensityPeak > magneticFluxDensitySaturation ? " SATURATED" : " OK")
+                      << std::endl;
+        } else {
+            // For inductors/energy-storing converters, use the standard calculation
+            OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
+            auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(
+                magnetic->get_core(), magnetic->get_coil(), &operatingPoint).second;
+            magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+        }
+
         scoring += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
-        if (magneticFluxDensityPeak > magneticFluxDensitySaturation) {
+        
+        bool isSaturated = magneticFluxDensityPeak > magneticFluxDensitySaturation;
+        
+        if (isSaturated) {
             return {false, 0.0};
         }
     }
@@ -1554,19 +1691,52 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     bool valid = true;
     double scoring = 0;
 
+    // Transformer vs Inductor Detection
+    // ==================================
+    // Transformers: Use initial permeability without DC bias iteration
+    //   - Skip operating point to avoid feedback loop where magnetizing current causes permeability collapse
+    //   - Ungapped high-permeability ferrite will naturally exceed minimum inductance requirement
+    //
+    // Inductors/Energy-storing: Use full iterative calculation with DC bias
+    //   - Account for permeability rolloff with magnetizing current DC offset
+    //
+    // Detection priority:
+    // 1. Use topology if specified (most reliable)
+    // 2. Fall back to inductance field heuristic (minimum-only = transformer)
+    //
+    auto topology = inputs->get_design_requirements().get_topology();
+    bool isTransformer;
+    if (topology.has_value()) {
+        isTransformer = !is_energy_storing_topology(topology);
+    } else {
+        // Legacy heuristic: minimum-only inductance = transformer
+        isTransformer = inputs->get_design_requirements().get_magnetizing_inductance().get_minimum() &&
+                         !inputs->get_design_requirements().get_magnetizing_inductance().get_nominal() &&
+                         !inputs->get_design_requirements().get_magnetizing_inductance().get_maximum();
+    }
+
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
         OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
 
-        auto aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
+        // For transformers, calculate inductance without operating point to use initial permeability
+        MagnetizingInductanceOutput aux;
+        try {
+            if (isTransformer) {
+                aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                    magnetic->get_mutable_core(), magnetic->get_mutable_coil(), nullptr);
+            } else {
+                aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                    magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
+            }
+        } catch (const std::exception& e) {
+            return {false, 0};
+        }
         double magnetizingInductance = resolve_dimensional_values(aux.get_magnetizing_inductance());
-        scoring += fabs(resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) - magnetizingInductance);
+        double requiredInductance = resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance());
+        scoring += fabs(requiredInductance - magnetizingInductance);
 
         if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance)) {
-            std::cerr << "MagnetizingInductance filter: core " << magnetic->get_core().get_name().value_or("?") 
-                      << " N=" << magnetic->get_coil().get_functional_description()[0].get_number_turns()
-                      << " L=" << magnetizingInductance*1e6 << "uH required=" 
-                      << resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance())*1e6 << "uH" << std::endl;
             valid = false;
         }
         else {
@@ -1615,7 +1785,8 @@ std::pair<bool, double> MagneticFilterFringingFactor::evaluate_magnetic(Magnetic
     else {
         double maximumGapLength = _reluctanceModel->get_gapping_by_fringing_factor(core, _fringingFactorLitmit);
         double gapLength = core.get_gapping()[0].get_length();
-        if (gapLength > maximumGapLength) {
+        bool valid = gapLength <= maximumGapLength;
+        if (!valid) {
             return {false, 1};
         }
         else {

@@ -124,6 +124,10 @@ namespace OpenMagnetics {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.resolve_switching_frequency(inputVoltage, get_diode_voltage_drop(), inductance, turnsRatios, get_efficiency());
+        
+        if (switchingFrequency <= 0 || !std::isfinite(switchingFrequency)) {
+            throw std::invalid_argument("Invalid switchingFrequency calculated: " + std::to_string(switchingFrequency));
+        }
 
         double deadTime = 0;
         double maximumReflectedOutputVoltage = 0;
@@ -462,7 +466,7 @@ namespace OpenMagnetics {
                     windingNames,
                     flybackOpPoint.get_ambient_temperature(),
                     flipCurrentSign);
-                
+
                 // Set name
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt. (simulated)";
                 if (get_operating_points().size() > 1) {
@@ -974,17 +978,22 @@ namespace OpenMagnetics {
             designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
         }
         DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_minimum(roundFloat(globalNeededInductance, 10));
+        // Set nominal to the calculated inductance - this is the target value
+        inductanceWithTolerance.set_nominal(roundFloat(globalNeededInductance, 10));
+        // Set minimum slightly below nominal (allow 10% tolerance)
+        inductanceWithTolerance.set_minimum(roundFloat(globalNeededInductance * 0.9, 10));
 
         if (maximumInductance > 0) {
-            // Ensure maximum is not smaller than minimum (can happen in edge cases)
+            // Ensure maximum is not smaller than nominal (can happen in edge cases)
             if (maximumInductance >= globalNeededInductance) {
                 inductanceWithTolerance.set_maximum(roundFloat(maximumInductance, 10));
             } else {
-                // If max < min, swap them or just use minimum as max with tolerance
+                // If max < nominal, use nominal + 20% as max
                 inductanceWithTolerance.set_maximum(roundFloat(globalNeededInductance * 1.2, 10));
-                inductanceWithTolerance.set_minimum(roundFloat(maximumInductance, 10));
             }
+        } else {
+            // No DCM constraint, allow 20% above nominal
+            inductanceWithTolerance.set_maximum(roundFloat(globalNeededInductance * 1.2, 10));
         }
 
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);

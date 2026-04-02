@@ -475,6 +475,39 @@ class CircuitSimulatorExporter {
         static double fracpole_model(double x[], int numCoeffs, double frequency, double dcResistance);
 
         static std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding(Magnetic magnetic, double temperature, CircuitSimulatorExporterCurveFittingModes mode = CircuitSimulatorExporterCurveFittingModes::LADDER);
+        
+        /**
+         * @brief Structure to hold mutual resistance ladder coefficients for a winding pair.
+         * 
+         * Based on Hesterman (2020) "Mutual Resistance" paper.
+         * The mutual resistance R_ij represents the cross-coupling loss between windings.
+         * 
+         * Power dissipation: P = R11*I1² + R22*I2² + 2*R12*I1*I2*cos(θ)
+         * where θ is the phase angle between currents.
+         * 
+         * For transformers, currents are typically ~180° out of phase, so:
+         * - Positive R12: reduces total losses (cancellation)
+         * - Negative R12: increases total losses (reinforcement)
+         */
+        struct MutualResistanceCoefficients {
+            size_t windingIndex1;           // First winding index
+            size_t windingIndex2;           // Second winding index
+            std::vector<double> coefficients;  // R-L ladder coefficients [R1, L1, R2, L2, ...]
+            double dcMutualResistance;      // DC value of mutual resistance
+        };
+        
+        /**
+         * @brief Calculate mutual resistance ladder coefficients for all winding pairs.
+         * 
+         * Returns a vector of MutualResistanceCoefficients, one for each unique pair.
+         * For N windings, returns N*(N-1)/2 coefficient sets.
+         * 
+         * @param magnetic The magnetic component
+         * @param temperature Operating temperature in Celsius
+         * @return Vector of mutual resistance coefficients for each winding pair
+         */
+        static std::vector<MutualResistanceCoefficients> calculate_mutual_resistance_coefficients(
+            Magnetic magnetic, double temperature);
         static std::vector<FractionalPoleNetwork> calculate_fracpole_networks_per_winding(Magnetic magnetic, double temperature, FractionalPoleOptions opts={});
         static FractionalPoleNetwork calculate_core_fracpole_network(Magnetic magnetic, double temperature, FractionalPoleOptions opts={});
         static CircuitSimulatorExporterCurveFittingModes resolve_curve_fitting_mode(CircuitSimulatorExporterCurveFittingModes mode);

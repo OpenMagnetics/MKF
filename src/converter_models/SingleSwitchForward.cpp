@@ -49,8 +49,6 @@ namespace OpenMagnetics {
         double mainSecondaryTurnsRatio = turnsRatios[1];
         double diodeVoltageDrop = get_diode_voltage_drop();
 
-        auto dutyCycle = get_maximum_duty_cycle();
-
         // Assume CCM
         auto period = 1.0 / switchingFrequency;
         auto t1 = period / 2 * (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
@@ -79,7 +77,11 @@ namespace OpenMagnetics {
 
 
         if (minimumPrimaryCurrent < 0) { // DCM
-            t1 = sqrt(2 * mainOutputCurrent * mainOutputInductance * (mainOutputVoltage + diodeVoltageDrop) / (switchingFrequency * (inputVoltage / mainSecondaryTurnsRatio - diodeVoltageDrop - mainOutputVoltage) * (inputVoltage / mainSecondaryTurnsRatio)));
+            double sqrtArg = 2 * mainOutputCurrent * mainOutputInductance * (mainOutputVoltage + diodeVoltageDrop) / (switchingFrequency * (inputVoltage / mainSecondaryTurnsRatio - diodeVoltageDrop - mainOutputVoltage) * (inputVoltage / mainSecondaryTurnsRatio));
+            if (sqrtArg < 0) {
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "SingleSwitchForward: negative value under sqrt in DCM t1 calculation");
+            }
+            t1 = sqrt(sqrtArg);
             if (t1 > period / 2) {
                 throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "T1 cannot be larger than period/2, wrong topology configuration");
             }
@@ -97,21 +99,28 @@ namespace OpenMagnetics {
             }
         }
 
-        double deadTime = period - t1 * 2;
-        // Primary
+        double td = t1;  // Demagnetization time equals on-time for Nt=Np
+        double deadTime = period - t1 - td;
+        // Use actual duty cycle (t1/period) for secondary waveforms, not the fixed maximum
+        double actualDutyCycle = t1 / period;
+        // Primary — use custom waveform with explicit voltage levels (+Vin, -Vin, 0)
         {
             double primaryCurrentPeakToPeak = maximumPrimaryCurrent - minimumPrimaryCurrent;
-            double primaryVoltavePeaktoPeak = 2 * inputVoltage;
-            auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, minimumPrimaryCurrent, deadTime);
-            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+            auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, primaryCurrentPeakToPeak, switchingFrequency, actualDutyCycle, minimumPrimaryCurrent, deadTime);
+            Waveform voltageWaveform;
+            voltageWaveform.set_data(std::vector<double>{0, inputVoltage, inputVoltage, -inputVoltage, -inputVoltage, 0, 0});
+            voltageWaveform.set_time(std::vector<double>{0, 0, t1, t1, t1 + td, t1 + td, period});
+            voltageWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
-        // Demagnetization winding
+        // Demagnetization winding — same voltage shape but inverted polarity
         {
-            double primaryVoltavePeaktoPeak = 2 * inputVoltage;
-            auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME, magnetizationCurrent, switchingFrequency, dutyCycle, minimumPrimaryCurrent, deadTime);
-            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+            auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME, magnetizationCurrent, switchingFrequency, actualDutyCycle, minimumPrimaryCurrent, deadTime);
+            Waveform voltageWaveform;
+            voltageWaveform.set_data(std::vector<double>{0, -inputVoltage, -inputVoltage, inputVoltage, inputVoltage, 0, 0});
+            voltageWaveform.set_time(std::vector<double>{0, 0, t1, t1, t1 + td, t1 + td, period});
+            voltageWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Demagnetization winding");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
@@ -125,8 +134,8 @@ namespace OpenMagnetics {
             double secondaryVoltagePeakToPeak = maximumSecondaryVoltage - minimumSecondaryVoltage;
             double secondaryVoltageOffset = maximumSecondaryVoltage + minimumSecondaryVoltage;
 
-            auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, secondaryCurrentPeakToPeak, switchingFrequency, dutyCycle, minimumSecondaryCurrents[secondaryIndex], 0);
-            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeakToPeak, switchingFrequency, dutyCycle, secondaryVoltageOffset, deadTime);
+            auto currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, secondaryCurrentPeakToPeak, switchingFrequency, actualDutyCycle, minimumSecondaryCurrents[secondaryIndex], 0);
+            auto voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeakToPeak, switchingFrequency, actualDutyCycle, secondaryVoltageOffset, deadTime);
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Secondary " + std::to_string(secondaryIndex));
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
@@ -341,15 +350,23 @@ namespace OpenMagnetics {
         auto opPoint = get_operating_points()[operatingPointIndex];
         
         double switchingFrequency = opPoint.get_switching_frequency();
-        double dutyCycle = get_maximum_duty_cycle();
         double diodeVoltageDrop = get_diode_voltage_drop();
-        
+
         // Number of secondaries (turns ratios[0] is demagnetization winding)
+        if (turnsRatios.empty()) {
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "SingleSwitchForward: turnsRatios must not be empty");
+        }
         size_t numSecondaries = turnsRatios.size() - 1;
-        
+
         // Build netlist
         std::ostringstream circuit;
         double period = 1.0 / switchingFrequency;
+        // Compute actual duty cycle from voltage balance: D = (Vout + Vd) * n / Vin
+        // turnsRatios[0] is demagnetization winding, turnsRatios[1] is first secondary
+        double mainOutputVoltage = opPoint.get_output_voltages()[0];
+        double mainSecondaryTurnsRatio = (numSecondaries > 0) ? turnsRatios[1] : 1.0;
+        double dutyCycle = std::min(get_maximum_duty_cycle(),
+            (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio));
         double tOn = period * dutyCycle;
         
         // Simulation: run steady-state periods for settling, then extract the last N periods
@@ -486,8 +503,11 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
         
+        if (turnsRatios.empty()) {
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "SingleSwitchForward: turnsRatios must not be empty");
+        }
         size_t numSecondaries = turnsRatios.size() - 1;
-        
+
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
                 auto forwardOpPoint = get_operating_points()[opIndex];

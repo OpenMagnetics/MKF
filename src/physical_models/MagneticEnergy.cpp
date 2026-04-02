@@ -91,6 +91,32 @@ double MagneticEnergy::calculate_gap_length_by_magnetic_energy(CoreGap gapInfo, 
 
 }
 
+double MagneticEnergy::calculate_gap_length_by_saturation_constraint(CoreGap gapInfo, Core core, double magneticFluxDensitySaturationTarget, double inductance, double magnetizingCurrentPeak) {
+    auto constants = Constants();
+    auto gapArea = *(gapInfo.get_area());
+
+    ReluctanceModels reluctanceModelEnum;
+    from_json(_models["gapReluctance"], reluctanceModelEnum);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
+
+    double fringingFactor = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
+
+    // Get core effective area
+    double effectiveArea = core.get_effective_area();
+
+    // Calculate gap needed to ensure B_peak <= Bsat_target
+    // From: B = (N * I) / (R_total * A_e) <= Bsat_target
+    // And: N = sqrt(L * R_total)
+    // Combining: gap_saturation = (L * I^2 * mu0 * F_fringe) / (Bsat_target^2 * A_e^2) * A_gap
+    // Simplified: gap_saturation = (L * I^2 * mu0 * A_gap * F_fringe) / (Bsat_target^2 * A_e^2)
+    double numerator = inductance * pow(magnetizingCurrentPeak, 2) * constants.vacuumPermeability * gapArea * fringingFactor;
+    double denominator = pow(magneticFluxDensitySaturationTarget, 2) * pow(effectiveArea, 2);
+    double gapLength = numerator / denominator;
+
+    return gapLength;
+
+}
+
 double MagneticEnergy::calculate_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint, bool saturationProportion){
     double temperature = Defaults().ambientTemperature;
     if (operatingPoint) {

@@ -286,6 +286,7 @@ inline void to_json(json & j, const CoreLossesModels & x) {
         case CoreLossesModels::PROPRIETARY: j = "Proprietary"; break;
         case CoreLossesModels::STEINMETZ: j = "Steinmetz"; break;
         case CoreLossesModels::IGSE: j = "IGSE"; break;
+        case CoreLossesModels::CIGSE: j = "ciGSE"; break;
         case CoreLossesModels::BARG: j = "Barg"; break;
         case CoreLossesModels::ROSHEN: j = "Roshen"; break;
         case CoreLossesModels::ALBACH: j = "Albach"; break;
@@ -300,6 +301,7 @@ inline void from_json(const json & j, CoreLossesModels & x) {
     if (j == "Proprietary" || j == "proprietary" || j == "PROPRIETARY") x = CoreLossesModels::PROPRIETARY;
     else if (j == "Steinmetz" || j == "steinmetz" || j == "STEINMETZ") x = CoreLossesModels::STEINMETZ;
     else if (j == "Igse" || j == "igse" || j == "IGSE") x = CoreLossesModels::IGSE;
+    else if (j == "CiGSE" || j == "ciGSE" || j == "cigse" || j == "CIGSE") x = CoreLossesModels::CIGSE;
     else if (j == "Barg" || j == "barg" || j == "BARG") x = CoreLossesModels::BARG;
     else if (j == "Roshen" || j == "roshen" || j == "ROSHEN") x = CoreLossesModels::ROSHEN;
     else if (j == "Albach" || j == "albach" || j == "ALBACH") x = CoreLossesModels::ALBACH;
@@ -602,6 +604,7 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Losses No Proximity Times Volume") x = MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME;
     else if (j == "Losses No Proximity Times Volume Times Temperature Rise") x = MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
     else if (j == "MagnetomotiveForce") x = MagneticFilters::MAGNETOMOTIVE_FORCE;
+    else if (j == "Leakage Inductance") x = MagneticFilters::LEAKAGE_INDUCTANCE;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -641,7 +644,8 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME: j = "Losses No Proximity Times Volume"; break;
         case MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Losses No Proximity Times Volume Times Temperature Rise"; break;
         case MagneticFilters::MAGNETOMOTIVE_FORCE: j = "MagnetomotiveForce"; break;
-        default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
+        case MagneticFilters::LEAKAGE_INDUCTANCE: j = "Leakage Inductance"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFilters\": " + std::to_string(static_cast<int>(x)));
     }
 }
 

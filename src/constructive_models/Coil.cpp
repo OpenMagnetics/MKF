@@ -528,21 +528,10 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);
 
-            if (_inputs) {
-                if (_inputs->get_design_requirements().get_insulation()) {
-                    logEntry("Calculating Required Insulation", "Coil", 2);
-                    auto standardCoordinator = InsulationCoordinator();
-                    auto clearance = standardCoordinator.calculate_clearance(_inputs.value());
-                    if (!borderToWireDistance) {
-                        borderToWireDistance = std::max(defaults.minimumBorderToWireDistance, clearance);
-                    }
-                    for (size_t i = 0; i < get_functional_description().size(); ++i) {
-                        if (!wireToWireDistance.count(i)) {
-                            wireToWireDistance[i] = std::max(defaults.minimumWireToWireDistance, clearance);
-                        }
-                    }
-                }
-            }
+            // Note: Insulation clearance from InsulationCoordinator is for conductor-to-conductor
+            // isolation (primary-secondary), not for conductor-to-core or turn-to-turn spacing.
+            // Both borderToWireDistance and wireToWireDistance should use manufacturing defaults,
+            // not the insulation clearance which applies to inter-winding spacing.
 
             if (!borderToWireDistance) {
                 borderToWireDistance = defaults.minimumBorderToWireDistance;
@@ -575,57 +564,144 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
     return are_sections_and_layers_fitting() && get_turns_description();
 }
 
+/**
+ * @brief Determine optimal winding style for each winding based on geometry and AC performance.
+ *
+ * Winding styles:
+ * - WIND_BY_CONSECUTIVE_TURNS: Groups turns of same parallel together (P0T0, P0T1, ... P1T0, P1T1, ...)
+ * - WIND_BY_CONSECUTIVE_PARALLELS: Groups parallels of same turn together (P0T0, P1T0, ... P0T1, P1T1, ...)
+ *
+ * For AC performance, WIND_BY_CONSECUTIVE_PARALLELS is generally preferred when numberParallels > 1:
+ * 1. Current sharing: Parallels of same turn see similar flux linkage → better current balance
+ * 2. Proximity effect: Interleaved parallels reduce effective layer count → lower AC losses
+ *
+ * However, geometric constraints (divisibility) may override this preference.
+ */
 std::vector<WindingStyle> Coil::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots) {
     std::vector<WindingStyle> windByConsecutiveTurns;
     for (size_t i = 0; i < numberTurns.size(); ++i) {
         if (numberSlots[i] <= 0) {
             throw InvalidInputException("Number of slots cannot be less than 1, please verify your isolation sides requirement");
         }
+        
+        // When turns < slots, we MUST use CONSECUTIVE_TURNS to distribute physical turns (parallels)
+        // across slots. CONSECUTIVE_PARALLELS would put all turns in the first slots, leaving rest empty.
+        if (numberTurns[i] < numberSlots[i] && numberParallels[i] > 1) {
+            windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
+            log("Winding " + std::to_string(i) + ": CONSECUTIVE_TURNS (turns < slots, must distribute parallels across slots).");
+            continue;
+        }
+
+        // Case 1: Perfect fit - one turn per slot
         if (numberTurns[i] == numberSlots[i]) {
             windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
-            log("Winding winding " + std::to_string(i) + " by putting together parallels of the same turn, as the number of turns is equal to the number of sections.");
+            log("Winding " + std::to_string(i) + ": CONSECUTIVE_PARALLELS (turns == slots, groups parallels of same turn).");
             continue;
         }
+        
+        // Case 2: Perfect fit - one parallel per slot
         if (numberParallels[i] == numberSlots[i]) {
             windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
-            log("Winding winding " + std::to_string(i) + " by putting together turns of the same parallel, as the number of parallels is equal to the number of sections.");
+            log("Winding " + std::to_string(i) + ": CONSECUTIVE_TURNS (parallels == slots, groups turns of same parallel).");
             continue;
         }
+        
+        // Case 3: Multiple parallels - prefer CONSECUTIVE_PARALLELS for better current sharing
+        // unless geometric constraints prevent it
+        if (numberParallels[i] > 1) {
+            // Check if CONSECUTIVE_PARALLELS is geometrically feasible
+            // It works well when turns divide evenly into slots
+            if (numberTurns[i] % numberSlots[i] == 0) {
+                windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
+                log("Winding " + std::to_string(i) + ": CONSECUTIVE_PARALLELS (multiple parallels, turns divisible by slots - better current sharing).");
+                continue;
+            }
+            // Also prefer CONSECUTIVE_PARALLELS when parallels can be evenly distributed per turn group
+            if (numberSlots[i] > 1 && (numberTurns[i] * numberParallels[i]) % numberSlots[i] == 0) {
+                windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
+                log("Winding " + std::to_string(i) + ": CONSECUTIVE_PARALLELS (multiple parallels, physical turns divisible - better proximity effect).");
+                continue;
+            }
+        }
+        
+        // Case 4: Check divisibility for geometric fit
         if (numberParallels[i] % numberSlots[i] == 0) {
             windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
-            log("Winding winding " + std::to_string(i) + " by putting together turns of the same parallel, as the number of parallels is divisible by the number of sections.");
+            log("Winding " + std::to_string(i) + ": CONSECUTIVE_TURNS (parallels divisible by slots).");
             continue;
         }
         if (numberTurns[i] % numberSlots[i] == 0) {
             windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
-            log("Winding winding " + std::to_string(i) + " by putting together parallels of the same turn, as the number of turns is divisible by the number of sections.");
+            log("Winding " + std::to_string(i) + ": CONSECUTIVE_PARALLELS (turns divisible by slots).");
             continue;
         }
-        windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
-        log("Winding winding " + std::to_string(i) + " by putting together turns of the same parallel, as the number of parallels is smaller than the number of turns.");
-
+        
+        // Case 5: Default - use CONSECUTIVE_PARALLELS if multiple parallels (for current sharing),
+        // otherwise CONSECUTIVE_TURNS
+        if (numberParallels[i] > 1) {
+            windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
+            log("Winding " + std::to_string(i) + ": CONSECUTIVE_PARALLELS (default for multiple parallels - prioritizes current sharing).");
+        } else {
+            windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
+            log("Winding " + std::to_string(i) + ": CONSECUTIVE_TURNS (single parallel, default style).");
+        }
     }
     return windByConsecutiveTurns;
 }
 
+/**
+ * @brief Determine optimal winding style for a single winding/layer.
+ *
+ * See multi-winding version for detailed explanation of style tradeoffs.
+ * For AC performance with multiple parallels, CONSECUTIVE_PARALLELS is preferred
+ * for better current sharing and reduced proximity effect.
+ */
 WindingStyle Coil::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots) {
+    // When turns < slots, we MUST use CONSECUTIVE_TURNS to distribute physical turns (parallels)
+    // across slots. CONSECUTIVE_PARALLELS would put all turns in the first slots, leaving rest empty.
+    if (numberTurns < numberSlots && numberParallels > 1) {
+        log("Layer: CONSECUTIVE_TURNS (turns < slots, must distribute parallels across slots).");
+        return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+    }
+
+    // Perfect fit cases
     if (numberTurns == numberSlots) {
-        log("Winding layer by putting together parallels of the same turn, as the number of turns is equal to the number of layers.");
+        log("Layer: CONSECUTIVE_PARALLELS (turns == slots).");
         return WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
     }
     if (numberParallels == numberSlots) {
-        log("Winding layer by putting together turns of the same parallel, as the number of parallels is equal to the number of layers.");
+        log("Layer: CONSECUTIVE_TURNS (parallels == slots).");
         return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
     }
+    
+    // Multiple parallels - prefer CONSECUTIVE_PARALLELS for current sharing
+    if (numberParallels > 1) {
+        if (numberTurns % numberSlots == 0) {
+            log("Layer: CONSECUTIVE_PARALLELS (multiple parallels, turns divisible - better current sharing).");
+            return WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
+        }
+        if ((numberTurns * numberParallels) % numberSlots == 0) {
+            log("Layer: CONSECUTIVE_PARALLELS (multiple parallels, physical turns divisible - better proximity).");
+            return WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
+        }
+    }
+    
+    // Divisibility-based selection
     if (numberParallels % numberSlots == 0) {
-        log("Winding layer by putting together turns of the same parallel, as the number of parallels is divisible by the number of layers.");
+        log("Layer: CONSECUTIVE_TURNS (parallels divisible by slots).");
         return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
     }
     if (numberTurns % numberSlots == 0) {
-        log("Winding layer by putting together parallels of the same turn, as the number of turns is divisible by the number of layers.");
+        log("Layer: CONSECUTIVE_PARALLELS (turns divisible by slots).");
         return WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
     }
-    log("Winding layer by putting together turns of the same parallel, as neither the number of parallels nor the number of turns is divisible by the number of turns.");
+    
+    // Default: prefer CONSECUTIVE_PARALLELS for multiple parallels, otherwise CONSECUTIVE_TURNS
+    if (numberParallels > 1) {
+        log("Layer: CONSECUTIVE_PARALLELS (default for multiple parallels - current sharing priority).");
+        return WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
+    }
+    log("Layer: CONSECUTIVE_TURNS (single parallel, default).");
     return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
 }
 
@@ -974,14 +1050,17 @@ Winding Coil::get_winding_by_name(std::string name) {
     throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a winding name: " + name);
 }
 
-size_t Coil::get_winding_index_by_name(std::string name) {
-    if (_windingIndexByName.count(name) == 0) {
-        _windingIndexByName[name] = get_winding_index_by_name(get_functional_description(), name);
+size_t Coil::get_winding_index_by_name(const std::string& name) {
+    auto it = _windingIndexByName.find(name);
+    if (it != _windingIndexByName.end()) {
+        return it->second;
     }
-    return _windingIndexByName[name];
+    size_t index = get_winding_index_by_name(get_functional_description(), name);
+    _windingIndexByName[name] = index;
+    return index;
 }
 
-size_t Coil::get_winding_index_by_name(std::vector<Winding> functionalDescription, std::string name) {
+size_t Coil::get_winding_index_by_name(const std::vector<Winding>& functionalDescription, const std::string& name) {
     for (size_t i=0; i<functionalDescription.size(); ++i) {
         if (functionalDescription[i].get_name() == name) {
             return i;
@@ -2267,11 +2346,12 @@ Layer Coil::devirtualize_layer(Layer layer) {
     return layer;
 }
 
-Turn Coil::devirtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName) {
+Turn Coil::devirtualize_turn(Turn turn, std::string virtualWindingName, std::string windingName, size_t newParallelIndex) {
     auto name = turn.get_name();
     name = std::regex_replace(name, std::regex(virtualWindingName), windingName);
     turn.set_name(name);
     turn.set_winding(windingName);
+    turn.set_parallel(newParallelIndex);
     return turn;
 }
 
@@ -2382,6 +2462,7 @@ void Coil::devirtualize_turns_description() {
         auto turnsInVirtualWinding = get_turns_by_winding(_virtualWindingNames[virtualWindingIndex]);
         
         std::map<size_t, int64_t> remainingNumberTurnsPerWoundTogetherWinding;
+        std::map<size_t, int64_t> assignedTurnsPerWinding;  // Track how many turns assigned to each winding
         int64_t minimumNumberTurns = std::numeric_limits<int64_t>::max();
         int64_t totalNumberTurns = 0;
         for (auto windingIndex : windingIndexes) {
@@ -2389,6 +2470,7 @@ void Coil::devirtualize_turns_description() {
             minimumNumberTurns = std::min(minimumNumberTurns, numberTurns);
             totalNumberTurns += numberTurns;
             remainingNumberTurnsPerWoundTogetherWinding[windingIndex] = numberTurns;
+            assignedTurnsPerWinding[windingIndex] = 0;
         }
 
         if (size_t(totalNumberTurns) != turnsInVirtualWinding.size()) {
@@ -2412,11 +2494,24 @@ void Coil::devirtualize_turns_description() {
             size_t timeout = devirtualizingPattern.size() + 1;
             while (timeout > 0) {
                 if (remainingNumberTurnsPerWoundTogetherWinding[devirtualizingPattern[devirtualizingPatternIndex]] > 0) {
-                    auto newWindingName = get_functional_description()[devirtualizingPattern[devirtualizingPatternIndex]].get_name();
+                    auto targetWindingIndex = devirtualizingPattern[devirtualizingPatternIndex];
+                    auto newWindingName = get_functional_description()[targetWindingIndex].get_name();
                     auto oldWindingName = _virtualWindingNames[virtualWindingIndex];
-                    remainingNumberTurnsPerWoundTogetherWinding[devirtualizingPattern[devirtualizingPatternIndex]]--;
+                    
+                    // Calculate the correct parallel index for this winding
+                    // Each winding has numberTurns turns per parallel
+                    auto numberTurnsPerWinding = get_functional_description()[targetWindingIndex].get_number_turns();
+                    auto numberParallels = get_functional_description()[targetWindingIndex].get_number_parallels();
+                    size_t newParallelIndex = assignedTurnsPerWinding[targetWindingIndex] / numberTurnsPerWinding;
+                    // Clamp to valid range in case of rounding issues
+                    if (newParallelIndex >= size_t(numberParallels)) {
+                        newParallelIndex = numberParallels - 1;
+                    }
+                    
+                    remainingNumberTurnsPerWoundTogetherWinding[targetWindingIndex]--;
+                    assignedTurnsPerWinding[targetWindingIndex]++;
                     devirtualizingPatternIndex = (devirtualizingPatternIndex + 1) % devirtualizingPattern.size();
-                    auto newTurn = devirtualize_turn(turn, oldWindingName, newWindingName);
+                    auto newTurn = devirtualize_turn(turn, oldWindingName, newWindingName, newParallelIndex);
                     newTurnsDescription.push_back(newTurn);
                     break;
                 }
@@ -3246,11 +3341,6 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     for (auto winding : group.get_partial_windings()) {
         totalParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
         remainingParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
-    }
-    for (auto partialWinding : group.get_partial_windings()) {
-        auto parallelsProportion = partialWinding.get_parallels_proportion();
-        totalParallelsProportionPerWinding.push_back(parallelsProportion);
-        remainingParallelsProportionPerWinding.push_back(parallelsProportion);
     }
 
     std::vector<double> sectionWidthPerWinding;
@@ -4128,6 +4218,7 @@ bool Coil::wind_by_rectangular_turns() {
     if (!get_layers_description()) {
         return false;
     }
+    bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
     auto wirePerWinding = get_wires();
     std::vector<std::vector<int64_t>> currentTurnIndex;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -4210,7 +4301,7 @@ bool Coil::wind_by_rectangular_turns() {
             } 
             else {
                 totalLayerWidth = roundFloat(physicalTurnsInLayer * wireWidth, 9);
-                if (totalLayerWidth > std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows()[0].get_width().value()) {
+                if (!windEvenIfNotFit && totalLayerWidth > std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows()[0].get_width().value()) {
                     return false;
                 }
                 totalLayerHeight = layer.get_dimensions()[1];
@@ -6873,6 +6964,15 @@ std::vector<double> Coil::get_maximum_dimensions() {
 }
 
 
+/**
+ * @brief Generate winding section patterns for coil construction.
+ *
+ * For multi-secondary transformers, explores different orderings:
+ * - Primary-Secondary ordering variations (P-S1-S2 vs P-S2-S1)
+ * - Sandwich configurations for reduced leakage (S1-P-S2)
+ *
+ * Patterns are limited by defaults.maximumCoilPattern to bound runtime.
+ */
 std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType coreType) {
     auto isolationSidesRequired = inputs.get_isolation_sides_used();
 
@@ -6881,23 +6981,96 @@ std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType cor
     }
 
     auto isolationSidesRequirement = inputs.get_design_requirements().get_isolation_sides().value();
+    size_t numWindings = inputs.get_mutable_design_requirements().get_turns_ratios().size() + 1;
 
     std::vector<std::vector<size_t>> sectionPatterns;
+    
+    // Generate patterns based on isolation side permutations
     for(size_t i = 0; i < tgamma(isolationSidesRequired.size() + 1) / 2; ++i) {
         std::vector<size_t> sectionPattern;
         for (auto isolationSide : isolationSidesRequired) {
-            for (size_t windingIndex = 0; windingIndex < inputs.get_mutable_design_requirements().get_turns_ratios().size() + 1; ++windingIndex) {
+            for (size_t windingIndex = 0; windingIndex < numWindings; ++windingIndex) {
                 if (isolationSidesRequirement[windingIndex] == isolationSide) {
                     sectionPattern.push_back(windingIndex);
                 }
             }
         }
         sectionPatterns.push_back(sectionPattern);
-        if (sectionPatterns.size() > defaults.maximumCoilPattern) {
+        if (sectionPatterns.size() >= defaults.maximumCoilPattern) {
             break;
         }
 
         std::next_permutation(isolationSidesRequired.begin(), isolationSidesRequired.end());
+    }
+    
+    // For multi-secondary (3+ windings), add secondary ordering variations
+    // This helps find better configurations for leakage inductance and coupling
+    if (numWindings >= 3 && sectionPatterns.size() < defaults.maximumCoilPattern) {
+        // Find windings on the secondary isolation side
+        std::vector<size_t> secondaryWindings;
+        for (size_t windingIndex = 1; windingIndex < numWindings; ++windingIndex) {
+            if (isolationSidesRequirement[windingIndex] != isolationSidesRequirement[0]) {
+                secondaryWindings.push_back(windingIndex);
+            }
+        }
+        
+        // If we have multiple secondaries on the same side, try reversed order
+        if (secondaryWindings.size() >= 2 && sectionPatterns.size() < defaults.maximumCoilPattern) {
+            // Take the first pattern and reverse the secondary ordering
+            auto basePattern = sectionPatterns[0];
+            std::vector<size_t> reversedPattern;
+            std::vector<size_t> secondariesInPattern;
+            
+            // Extract secondaries positions
+            for (auto windingIndex : basePattern) {
+                if (std::find(secondaryWindings.begin(), secondaryWindings.end(), windingIndex) != secondaryWindings.end()) {
+                    secondariesInPattern.push_back(windingIndex);
+                }
+            }
+            
+            // Reverse and rebuild pattern
+            if (secondariesInPattern.size() >= 2) {
+                std::reverse(secondariesInPattern.begin(), secondariesInPattern.end());
+                size_t secIdx = 0;
+                for (auto windingIndex : basePattern) {
+                    if (std::find(secondaryWindings.begin(), secondaryWindings.end(), windingIndex) != secondaryWindings.end()) {
+                        reversedPattern.push_back(secondariesInPattern[secIdx++]);
+                    } else {
+                        reversedPattern.push_back(windingIndex);
+                    }
+                }
+                
+                // Add if it's a new pattern
+                bool isNew = true;
+                for (const auto& existing : sectionPatterns) {
+                    if (existing == reversedPattern) {
+                        isNew = false;
+                        break;
+                    }
+                }
+                if (isNew) {
+                    sectionPatterns.push_back(reversedPattern);
+                }
+            }
+        }
+        
+        // Add sandwich pattern: S1-P-S2 (primary in middle, reduces leakage)
+        // Only for 3 windings with P on one side and S1,S2 on the other
+        if (numWindings == 3 && secondaryWindings.size() == 2 && 
+            sectionPatterns.size() < defaults.maximumCoilPattern) {
+            std::vector<size_t> sandwichPattern = {secondaryWindings[0], 0, secondaryWindings[1]};
+            
+            bool isNew = true;
+            for (const auto& existing : sectionPatterns) {
+                if (existing == sandwichPattern) {
+                    isNew = false;
+                    break;
+                }
+            }
+            if (isNew) {
+                sectionPatterns.push_back(sandwichPattern);
+            }
+        }
     }
 
     if (coreType == CoreType::TOROIDAL) {

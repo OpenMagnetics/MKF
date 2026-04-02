@@ -2382,4 +2382,1935 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ngspice_Ladder_vs_Fracpole_Comparison",
     // This test verifies the export mechanism works for both modes
 }
 
+// ============================================================================
+// NL5 Circuit Simulator Exporter Tests
+// ============================================================================
+
+TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Only_Magnetic", "[processor][circuit-simulator-exporter][nl5]") {
+    std::vector<int64_t> numberTurns = {30, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_CircuitSimulatorExporter_Nl5_Only_Magnetic.nl5");
+
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    // Read and validate the XML content
+    std::ifstream nl5Stream(nl5File);
+    std::string nl5Content((std::istreambuf_iterator<char>(nl5Stream)),
+                           std::istreambuf_iterator<char>());
+    nl5Stream.close();
+
+    // Check XML structure
+    CHECK(nl5Content.find("<?xml version=\"1.0\"?>") != std::string::npos);
+    CHECK(nl5Content.find("<NL5>") != std::string::npos);
+    CHECK(nl5Content.find("</NL5>") != std::string::npos);
+    CHECK(nl5Content.find("<Doc>") != std::string::npos);
+    CHECK(nl5Content.find("<Cir mode=\"2\">") != std::string::npos);
+    CHECK(nl5Content.find("<Cmps") != std::string::npos);
+
+    // Check for expected components (resistors, inductors, windings)
+    CHECK(nl5Content.find("type=\"R_R\"") != std::string::npos);  // Resistors
+    CHECK(nl5Content.find("type=\"L_L\"") != std::string::npos);  // Inductors
+    CHECK(nl5Content.find("type=\"W_Winding\"") != std::string::npos);  // Winding components
+
+    // Check for winding-related elements (Rdc, Lmag, Winding)
+    CHECK(nl5Content.find("Rdc") != std::string::npos);
+    CHECK(nl5Content.find("Lmag") != std::string::npos);  // Single magnetizing inductance
+    CHECK(nl5Content.find("name=\"W1\"") != std::string::npos);  // Winding 1
+    CHECK(nl5Content.find("name=\"W2\"") != std::string::npos);  // Winding 2
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Single_Winding", "[processor][circuit-simulator-exporter][nl5]") {
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_CircuitSimulatorExporter_Nl5_Single_Winding.nl5");
+
+    std::filesystem::remove(nl5File);
+    std::string result = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    // Validate returned string matches file content
+    std::ifstream nl5Stream(nl5File);
+    std::string nl5Content((std::istreambuf_iterator<char>(nl5Stream)),
+                           std::istreambuf_iterator<char>());
+    nl5Stream.close();
+    CHECK(result == nl5Content);
+
+    // Single winding should have Rdc, Lmag, and one Winding component
+    CHECK(nl5Content.find("Rdc1") != std::string::npos);
+    CHECK(nl5Content.find("Lmag") != std::string::npos);  // Single magnetizing inductance
+    CHECK(nl5Content.find("name=\"W1\"") != std::string::npos);  // Winding 1
+    CHECK(nl5Content.find("type=\"W_Winding\"") != std::string::npos);
+    // Only one winding component
+    CHECK(nl5Content.find("name=\"W2\"") == std::string::npos);
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Four_Windings", "[processor][circuit-simulator-exporter][nl5]") {
+    std::vector<int64_t> numberTurns = {30, 10, 5, 1};
+    std::vector<int64_t> numberParallels = {1, 1, 1, 2};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+    coil.get_mutable_functional_description()[3].set_isolation_side(MAS::IsolationSide::PRIMARY);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_CircuitSimulatorExporter_Nl5_Four_Windings.nl5");
+
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    std::ifstream nl5Stream(nl5File);
+    std::string nl5Content((std::istreambuf_iterator<char>(nl5Stream)),
+                           std::istreambuf_iterator<char>());
+    nl5Stream.close();
+
+    // Check for all four windings with DC resistance
+    CHECK(nl5Content.find("Rdc1") != std::string::npos);
+    CHECK(nl5Content.find("Rdc2") != std::string::npos);
+    CHECK(nl5Content.find("Rdc3") != std::string::npos);
+    CHECK(nl5Content.find("Rdc4") != std::string::npos);
+    
+    // Single magnetizing inductance (shared via Winding components)
+    CHECK(nl5Content.find("Lmag") != std::string::npos);
+
+    // Check for all four Winding components (ideal transformers)
+    CHECK(nl5Content.find("name=\"W1\"") != std::string::npos);
+    CHECK(nl5Content.find("name=\"W2\"") != std::string::npos);
+    CHECK(nl5Content.find("name=\"W3\"") != std::string::npos);
+    CHECK(nl5Content.find("name=\"W4\"") != std::string::npos);
+    CHECK(nl5Content.find("type=\"W_Winding\"") != std::string::npos);
+
+    // Check for leakage inductances (for non-primary windings)
+    CHECK(nl5Content.find("Lleak") != std::string::npos);
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Analytical_Mode", "[processor][circuit-simulator-exporter][nl5]") {
+    std::vector<int64_t> numberTurns = {30, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_CircuitSimulatorExporter_Nl5_Analytical.nl5");
+
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 10000, 100, nl5File.string(),
+        CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    std::ifstream nl5Stream(nl5File);
+    std::string nl5Content((std::istreambuf_iterator<char>(nl5Stream)),
+                           std::istreambuf_iterator<char>());
+    nl5Stream.close();
+
+    // Analytical mode should use simple wire connection (W_T2) between Rdc and Lmag
+    CHECK(nl5Content.find("type=\"W_T2\"") != std::string::npos);
+    CHECK(nl5Content.find("<NL5>") != std::string::npos);
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Ladder_Mode", "[processor][circuit-simulator-exporter][nl5]") {
+    std::vector<int64_t> numberTurns = {30, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_CircuitSimulatorExporter_Nl5_Ladder.nl5");
+
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 10000, 100, nl5File.string(),
+        CircuitSimulatorExporterCurveFittingModes::LADDER);
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    std::ifstream nl5Stream(nl5File);
+    std::string nl5Content((std::istreambuf_iterator<char>(nl5Stream)),
+                           std::istreambuf_iterator<char>());
+    nl5Stream.close();
+
+    // Ladder mode should contain ladder network elements (Ll_, Rl_)
+    CHECK(nl5Content.find("Ll") != std::string::npos);
+    CHECK(nl5Content.find("Rl") != std::string::npos);
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Return_String", "[processor][circuit-simulator-exporter][nl5]") {
+    std::vector<int64_t> numberTurns = {30, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    // Test that the method returns the XML string without writing to file
+    std::string result = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 10000, 100, std::nullopt);
+
+    // Verify the returned string is valid NL5 XML
+    CHECK(!result.empty());
+    CHECK(result.find("<?xml version=\"1.0\"?>") != std::string::npos);
+    CHECK(result.find("<NL5>") != std::string::npos);
+    CHECK(result.find("</NL5>") != std::string::npos);
+    CHECK(result.find("Generated by OpenMagnetics") != std::string::npos);
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Powder_Core", "[processor][circuit-simulator-exporter][nl5]") {
+    std::vector<int64_t> numberTurns = {30, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "GX 60";  // Powder core material
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_CircuitSimulatorExporter_Nl5_Powder_Core.nl5");
+
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    std::ifstream nl5Stream(nl5File);
+    std::string nl5Content((std::istreambuf_iterator<char>(nl5Stream)),
+                           std::istreambuf_iterator<char>());
+    nl5Stream.close();
+
+    // Basic structure validation
+    CHECK(nl5Content.find("<NL5>") != std::string::npos);
+    CHECK(nl5Content.find("Rdc") != std::string::npos);
+    CHECK(nl5Content.find("Lmag") != std::string::npos);
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Engineering_Notation", "[processor][circuit-simulator-exporter][nl5]") {
+    // This test validates that component values are properly formatted with engineering notation
+    std::vector<int64_t> numberTurns = {10};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    std::string result = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 10000, 100, std::nullopt);
+
+    // Check that _txt attributes exist (engineering notation display values)
+    CHECK(result.find("_txt=\"") != std::string::npos);
+    
+    // Check for typical engineering suffixes in the output
+    // (values will vary but format should include common suffixes)
+    bool hasEngineeringNotation = (result.find("u\"") != std::string::npos ||  // micro
+                                   result.find("m\"") != std::string::npos ||  // milli
+                                   result.find("n\"") != std::string::npos ||  // nano
+                                   result.find("k\"") != std::string::npos);   // kilo
+    CHECK(hasEngineeringNotation);
+}
+
+// ============================================================================
+// NL5 DLL Simulation Validation Tests
+// ============================================================================
+// These tests use the NL5 DLL to validate that generated circuits work correctly.
+// The tests will skip gracefully if the DLL is not available.
+//
+// To enable these tests, you need to obtain the NL5 DLL:
+//
+// 1. Download NL5 Circuit Simulator from: https://sidelinesoft.com/nl5/
+//    - For Linux: Download the Linux version (Ubuntu 22.04 or compatible)
+//    - The DLL is included in the download package
+//
+// 2. Place the DLL in one of these locations:
+//    - <project_root>/third_party/nl5/nl5_dll.so  (preferred)
+//    - Or ensure it's in the library search path
+//
+// 3. The DLL works without a license for:
+//    - Opening and parsing circuit files (NL5_Open)
+//    - Reading component values (NL5_GetValue)
+//    - Modifying component values (NL5_SetValue)
+//    - Saving modified circuits (NL5_SaveAs)
+//    - Running DC operating point analysis (NL5_Start, NL5_Simulate)
+//
+// Note: Full transient simulation and AC analysis may require a license.
+//
+// ============================================================================
+#if defined(__linux__) || defined(__APPLE__)
+#include <dlfcn.h>
+#define HAS_DLOPEN 1
+#endif
+
+#ifdef HAS_DLOPEN
+
+// NL5 DLL function pointers
+typedef char* (*NL5_GetInfo_t)();
+typedef char* (*NL5_GetError_t)();
+typedef int (*NL5_Open_t)(char*);
+typedef int (*NL5_Close_t)(int);
+typedef int (*NL5_Start_t)(int);
+typedef int (*NL5_SetStep_t)(int, double);
+typedef int (*NL5_Simulate_t)(int, double);
+typedef int (*NL5_AddVTrace_t)(int, char*);
+typedef int (*NL5_AddITrace_t)(int, char*);
+typedef int (*NL5_GetTrace_t)(int, char*);
+typedef int (*NL5_GetDataSize_t)(int, int);
+typedef int (*NL5_GetLastData_t)(int, int, double*, double*);
+typedef int (*NL5_GetValue_t)(int, char*, double*);
+typedef int (*NL5_SetValue_t)(int, char*, double);
+typedef int (*NL5_GetText_t)(int, char*, char*, int);
+typedef int (*NL5_SetText_t)(int, char*, char*);
+typedef int (*NL5_SaveAs_t)(int, char*);
+typedef int (*NL5_GetSimulationTime_t)(int, double*);
+typedef int (*NL5_GetTracesSize_t)(int);
+
+// Helper to check approximate equality
+inline bool approxEqual(double a, double b, double epsilon = 0.001) {
+    if (b == 0) return std::abs(a) < epsilon;
+    return std::abs(a - b) / std::abs(b) < epsilon;
+}
+
+// Helper class to manage NL5 DLL loading and function pointers
+class NL5DllHelper {
+public:
+    void* handle = nullptr;
+    NL5_GetInfo_t GetInfo = nullptr;
+    NL5_GetError_t GetError = nullptr;
+    NL5_Open_t Open = nullptr;
+    NL5_Close_t Close = nullptr;
+    NL5_Start_t Start = nullptr;
+    NL5_SetStep_t SetStep = nullptr;
+    NL5_Simulate_t Simulate = nullptr;
+    NL5_AddVTrace_t AddVTrace = nullptr;
+    NL5_AddITrace_t AddITrace = nullptr;
+    NL5_GetTrace_t GetTrace = nullptr;
+    NL5_GetDataSize_t GetDataSize = nullptr;
+    NL5_GetLastData_t GetLastData = nullptr;
+    NL5_GetValue_t GetValue = nullptr;
+    NL5_SetValue_t SetValue = nullptr;
+    NL5_GetText_t GetText = nullptr;
+    NL5_SetText_t SetText = nullptr;
+    NL5_SaveAs_t SaveAs = nullptr;
+    NL5_GetSimulationTime_t GetSimulationTime = nullptr;
+    NL5_GetTracesSize_t GetTracesSize = nullptr;
+
+    bool load() {
+        handle = dlopen("./third_party/nl5/nl5_dll.so", RTLD_NOW);
+        if (!handle) {
+            handle = dlopen("/home/alf/OpenMagnetics/MKF/third_party/nl5/nl5_dll.so", RTLD_NOW);
+        }
+        if (!handle) return false;
+
+        GetInfo = (NL5_GetInfo_t)dlsym(handle, "NL5_GetInfo");
+        GetError = (NL5_GetError_t)dlsym(handle, "NL5_GetError");
+        Open = (NL5_Open_t)dlsym(handle, "NL5_Open");
+        Close = (NL5_Close_t)dlsym(handle, "NL5_Close");
+        Start = (NL5_Start_t)dlsym(handle, "NL5_Start");
+        SetStep = (NL5_SetStep_t)dlsym(handle, "NL5_SetStep");
+        Simulate = (NL5_Simulate_t)dlsym(handle, "NL5_Simulate");
+        AddVTrace = (NL5_AddVTrace_t)dlsym(handle, "NL5_AddVTrace");
+        AddITrace = (NL5_AddITrace_t)dlsym(handle, "NL5_AddITrace");
+        GetTrace = (NL5_GetTrace_t)dlsym(handle, "NL5_GetTrace");
+        GetDataSize = (NL5_GetDataSize_t)dlsym(handle, "NL5_GetDataSize");
+        GetLastData = (NL5_GetLastData_t)dlsym(handle, "NL5_GetLastData");
+        GetValue = (NL5_GetValue_t)dlsym(handle, "NL5_GetValue");
+        SetValue = (NL5_SetValue_t)dlsym(handle, "NL5_SetValue");
+        GetText = (NL5_GetText_t)dlsym(handle, "NL5_GetText");
+        SetText = (NL5_SetText_t)dlsym(handle, "NL5_SetText");
+        SaveAs = (NL5_SaveAs_t)dlsym(handle, "NL5_SaveAs");
+        GetSimulationTime = (NL5_GetSimulationTime_t)dlsym(handle, "NL5_GetSimulationTime");
+        GetTracesSize = (NL5_GetTracesSize_t)dlsym(handle, "NL5_GetTracesSize");
+
+        return Open != nullptr && Close != nullptr;
+    }
+
+    ~NL5DllHelper() {
+        if (handle) dlclose(handle);
+    }
+};
+
+// ============================================================================
+// Test: Single winding inductor - verify all components exist and have correct values
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_SingleWinding_AllComponents", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create a single-winding inductor
+    std::vector<int64_t> numberTurns = {25};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    // Calculate expected values using the same methods as the exporter
+    double expectedLmag = OpenMagnetics::resolve_dimensional_values(
+        OpenMagnetics::MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
+            .get_magnetizing_inductance());
+    double expectedRdc = OpenMagnetics::WindingLosses::calculate_effective_resistance_of_winding(magnetic, 0, 0.1, 100);
+
+    // Export to NL5 file
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_SingleWinding_Components.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    // Open with NL5 DLL
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Verify Lmag
+    double lmag = 0;
+    int res = nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &lmag);
+    REQUIRE(res >= 0);
+    INFO("Lmag: expected=" << expectedLmag << " H, actual=" << lmag << " H");
+    CHECK(approxEqual(lmag, expectedLmag, 0.01));
+    
+    // Verify Rdc1
+    double rdc1 = 0;
+    res = nl5.GetValue(ncir, const_cast<char*>("Rdc1.R"), &rdc1);
+    REQUIRE(res >= 0);
+    INFO("Rdc1: expected=" << expectedRdc << " Ohm, actual=" << rdc1 << " Ohm");
+    CHECK(approxEqual(rdc1, expectedRdc, 0.01));
+    
+    // Verify W1 turns (this might not work for all NL5 versions)
+    double n1 = 0;
+    res = nl5.GetValue(ncir, const_cast<char*>("W1.n"), &n1);
+    if (res >= 0) {
+        CHECK(n1 == 25.0);
+    }
+    
+    // Verify core loss components exist (Rcore0, Ccore0)
+    double rcore0 = 0;
+    res = nl5.GetValue(ncir, const_cast<char*>("Rcore0.R"), &rcore0);
+    if (res >= 0) {
+        CHECK(rcore0 > 0);
+    }
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: Two-winding transformer - verify turns ratio and leakage
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_TwoWinding_TurnsRatio", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create a 2-winding transformer with 3:1 turns ratio
+    std::vector<int64_t> numberTurns = {30, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    // Calculate expected values
+    double expectedLmag = OpenMagnetics::resolve_dimensional_values(
+        OpenMagnetics::MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
+            .get_magnetizing_inductance());
+    double expectedRdc1 = OpenMagnetics::WindingLosses::calculate_effective_resistance_of_winding(magnetic, 0, 0.1, 100);
+    double expectedRdc2 = OpenMagnetics::WindingLosses::calculate_effective_resistance_of_winding(magnetic, 1, 0.1, 100);
+
+    // Export
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_TwoWinding_TurnsRatio.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Verify Lmag
+    double lmag = 0;
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &lmag) >= 0);
+    CHECK(approxEqual(lmag, expectedLmag, 0.01));
+    
+    // Verify Rdc values
+    double rdc1 = 0, rdc2 = 0;
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc1.R"), &rdc1) >= 0);
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc2.R"), &rdc2) >= 0);
+    CHECK(approxEqual(rdc1, expectedRdc1, 0.01));
+    CHECK(approxEqual(rdc2, expectedRdc2, 0.01));
+    
+    // Primary (30 turns) should have higher resistance than secondary (10 turns)
+    CHECK(rdc1 > rdc2);
+    
+    // Verify leakage inductance exists for secondary
+    double lleak2 = 0;
+    int res = nl5.GetValue(ncir, const_cast<char*>("Lleak2.L"), &lleak2);
+    if (res >= 0) {
+        CHECK(lleak2 > 0);
+        INFO("Lleak2: " << lleak2 << " H");
+    }
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: Three-winding transformer
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_ThreeWinding", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create a 3-winding transformer
+    std::vector<int64_t> numberTurns = {40, 20, 10};  // 4:2:1 ratio
+    std::vector<int64_t> numberParallels = {1, 1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_ThreeWinding.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Verify all three Rdc values exist
+    double rdc1 = 0, rdc2 = 0, rdc3 = 0;
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc1.R"), &rdc1) >= 0);
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc2.R"), &rdc2) >= 0);
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc3.R"), &rdc3) >= 0);
+    
+    // All should be positive
+    CHECK(rdc1 > 0);
+    CHECK(rdc2 > 0);
+    CHECK(rdc3 > 0);
+    
+    // Resistance should roughly scale with turns (more turns = more wire = more resistance)
+    CHECK(rdc1 > rdc2);
+    CHECK(rdc2 > rdc3);
+    
+    // Verify Lmag
+    double lmag = 0;
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &lmag) >= 0);
+    CHECK(lmag > 0);
+    
+    // Verify leakage inductances for secondaries
+    double lleak2 = 0, lleak3 = 0;
+    if (nl5.GetValue(ncir, const_cast<char*>("Lleak2.L"), &lleak2) >= 0) {
+        CHECK(lleak2 > 0);
+    }
+    if (nl5.GetValue(ncir, const_cast<char*>("Lleak3.L"), &lleak3) >= 0) {
+        CHECK(lleak3 > 0);
+    }
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: SetValue/GetValue round-trip
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_SetValue_GetValue_Roundtrip", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create a simple inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_SetValue_Roundtrip.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Test different values for Lmag
+    std::vector<double> testValues = {1e-6, 1e-4, 1e-3, 0.01, 0.1};
+    for (double testVal : testValues) {
+        int res = nl5.SetValue(ncir, const_cast<char*>("Lmag.L"), testVal);
+        REQUIRE(res >= 0);
+        
+        double readBack = 0;
+        res = nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &readBack);
+        REQUIRE(res >= 0);
+        CHECK(approxEqual(readBack, testVal, 0.01));
+    }
+    
+    // Test Rdc1
+    testValues = {0.001, 0.01, 0.1, 1.0, 10.0};
+    for (double testVal : testValues) {
+        int res = nl5.SetValue(ncir, const_cast<char*>("Rdc1.R"), testVal);
+        REQUIRE(res >= 0);
+        
+        double readBack = 0;
+        res = nl5.GetValue(ncir, const_cast<char*>("Rdc1.R"), &readBack);
+        REQUIRE(res >= 0);
+        CHECK(approxEqual(readBack, testVal, 0.01));
+    }
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: SaveAs and reload - verify file integrity
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_SaveAs_Reload", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create a transformer
+    std::vector<int64_t> numberTurns = {30, 15};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_SaveAs_Original.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    // Open original file
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Read original values
+    double origLmag = 0, origRdc1 = 0, origRdc2 = 0;
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &origLmag) >= 0);
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc1.R"), &origRdc1) >= 0);
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc2.R"), &origRdc2) >= 0);
+    
+    // Modify values
+    double newLmag = 0.001;
+    double newRdc1 = 0.5;
+    REQUIRE(nl5.SetValue(ncir, const_cast<char*>("Lmag.L"), newLmag) >= 0);
+    REQUIRE(nl5.SetValue(ncir, const_cast<char*>("Rdc1.R"), newRdc1) >= 0);
+    
+    // Save to new file
+    auto savedFile = outputFilePath;
+    savedFile.append("./Test_NL5_DLL_SaveAs_Modified.nl5");
+    std::filesystem::remove(savedFile);
+    REQUIRE(nl5.SaveAs(ncir, const_cast<char*>(savedFile.string().c_str())) >= 0);
+    
+    nl5.Close(ncir);
+    
+    // Reload the saved file
+    ncir = nl5.Open(const_cast<char*>(savedFile.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Verify modified values were saved
+    double loadedLmag = 0, loadedRdc1 = 0, loadedRdc2 = 0;
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &loadedLmag) >= 0);
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc1.R"), &loadedRdc1) >= 0);
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc2.R"), &loadedRdc2) >= 0);
+    
+    CHECK(approxEqual(loadedLmag, newLmag, 0.01));
+    CHECK(approxEqual(loadedRdc1, newRdc1, 0.01));
+    CHECK(approxEqual(loadedRdc2, origRdc2, 0.01));  // This one wasn't changed
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: Simulation can be started (DC operating point)
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_Simulation_Start", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create an inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_Simulation.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Add a current trace
+    int trace = nl5.AddITrace(ncir, const_cast<char*>("Lmag"));
+    CHECK(trace >= 0);
+    
+    // Set simulation step
+    REQUIRE(nl5.SetStep(ncir, 1e-7) >= 0);
+    
+    // Start simulation
+    int startRes = nl5.Start(ncir);
+    CHECK(startRes >= 0);
+    
+    // Run simulation
+    int simRes = nl5.Simulate(ncir, 10e-6);
+    CHECK(simRes >= 0);
+    
+    // Check simulation time
+    double simTime = 0;
+    if (nl5.GetSimulationTime(ncir, &simTime) >= 0) {
+        CHECK(simTime >= 10e-6);
+    }
+    
+    // Check data was generated
+    if (trace >= 0) {
+        int dataSize = nl5.GetDataSize(ncir, trace);
+        CHECK(dataSize >= 0);
+    }
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: Extreme values (very small and very large)
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_ExtremeValues", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create an inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_ExtremeValues.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Test very small values
+    std::vector<double> smallValues = {1e-12, 1e-9, 1e-6};
+    for (double val : smallValues) {
+        REQUIRE(nl5.SetValue(ncir, const_cast<char*>("Lmag.L"), val) >= 0);
+        double readBack = 0;
+        REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &readBack) >= 0);
+        CHECK(approxEqual(readBack, val, 0.05));
+    }
+    
+    // Test large values
+    std::vector<double> largeValues = {1.0, 10.0, 100.0};
+    for (double val : largeValues) {
+        REQUIRE(nl5.SetValue(ncir, const_cast<char*>("Lmag.L"), val) >= 0);
+        double readBack = 0;
+        REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &readBack) >= 0);
+        CHECK(approxEqual(readBack, val, 0.05));
+    }
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: Four-winding transformer (edge case)
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_FourWinding", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create a 4-winding transformer
+    std::vector<int64_t> numberTurns = {48, 24, 12, 6};  // 8:4:2:1 ratio
+    std::vector<int64_t> numberParallels = {1, 1, 1, 1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_FourWinding.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Verify all Rdc values
+    for (int i = 1; i <= 4; i++) {
+        std::string name = "Rdc" + std::to_string(i) + ".R";
+        double rdc = 0;
+        int res = nl5.GetValue(ncir, const_cast<char*>(name.c_str()), &rdc);
+        REQUIRE(res >= 0);
+        CHECK(rdc > 0);
+        INFO("Rdc" << i << ": " << rdc << " Ohm");
+    }
+    
+    // Verify Lmag
+    double lmag = 0;
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &lmag) >= 0);
+    CHECK(lmag > 0);
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: Verify core loss network components
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_CoreLossNetwork", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create an inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "PQ 35/35";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "95";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_CoreLoss.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Check for Rcore0 and Ccore0 (first stage of core loss network)
+    double rcore0 = 0, ccore0 = 0;
+    int resR = nl5.GetValue(ncir, const_cast<char*>("Rcore0.R"), &rcore0);
+    int resC = nl5.GetValue(ncir, const_cast<char*>("Ccore0.C"), &ccore0);
+    
+    if (resR >= 0 && resC >= 0) {
+        CHECK(rcore0 > 0);
+        CHECK(ccore0 > 0);
+        INFO("Rcore0: " << rcore0 << " Ohm");
+        INFO("Ccore0: " << ccore0 << " F");
+        
+        // Check for additional stages if they exist
+        for (int i = 1; i < 5; i++) {
+            std::string rName = "Rcore" + std::to_string(i) + ".R";
+            std::string cName = "Ccore" + std::to_string(i) + ".C";
+            double r = 0, c = 0;
+            if (nl5.GetValue(ncir, const_cast<char*>(rName.c_str()), &r) >= 0) {
+                CHECK(r > 0);
+                INFO("Rcore" << i << ": " << r << " Ohm");
+            }
+            if (nl5.GetValue(ncir, const_cast<char*>(cName.c_str()), &c) >= 0) {
+                CHECK(c > 0);
+                INFO("Ccore" << i << ": " << c << " F");
+            }
+        }
+    }
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: Powder core (different core type)
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_PowderCore", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    // Create a powder core inductor
+    std::vector<int64_t> numberTurns = {30};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 25/9.5/6.3";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "XFlux 60";
+    json gapping = json::array();  // No gap for powder core
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto nl5File = outputFilePath;
+    nl5File.append("./Test_NL5_DLL_PowderCore.nl5");
+    std::filesystem::remove(nl5File);
+    CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+    REQUIRE(std::filesystem::exists(nl5File));
+
+    int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+    REQUIRE(ncir >= 0);
+    
+    // Verify basic components exist
+    double lmag = 0, rdc1 = 0;
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &lmag) >= 0);
+    REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Rdc1.R"), &rdc1) >= 0);
+    
+    CHECK(lmag > 0);
+    CHECK(rdc1 > 0);
+    
+    nl5.Close(ncir);
+}
+
+// ============================================================================
+// Test: Different gap configurations
+// ============================================================================
+TEST_CASE("Test_Nl5_DLL_DifferentGaps", "[processor][circuit-simulator-exporter][nl5][nl5dll]") {
+    NL5DllHelper nl5;
+    if (!nl5.load()) {
+        WARN("NL5 DLL not available, skipping test");
+        return;
+    }
+    
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "PQ 35/35";
+    std::string coreMaterial = "95";
+    int64_t numberStacks = 1;
+
+    // Test different gap sizes
+    std::vector<double> gapSizes = {0.0001, 0.0003, 0.001};
+    
+    for (double gapSize : gapSizes) {
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(gapSize, 3);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto nl5File = outputFilePath;
+        nl5File.append("./Test_NL5_DLL_Gap_" + std::to_string(static_cast<int>(gapSize * 1e6)) + "um.nl5");
+        std::filesystem::remove(nl5File);
+        CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(magnetic, 10000, 100, nl5File.string());
+        REQUIRE(std::filesystem::exists(nl5File));
+
+        int ncir = nl5.Open(const_cast<char*>(nl5File.string().c_str()));
+        REQUIRE(ncir >= 0);
+        
+        double lmag = 0;
+        REQUIRE(nl5.GetValue(ncir, const_cast<char*>("Lmag.L"), &lmag) >= 0);
+        CHECK(lmag > 0);
+        INFO("Gap=" << gapSize*1e3 << "mm, Lmag=" << lmag*1e6 << "uH");
+        
+        nl5.Close(ncir);
+    }
+}
+
+#endif // HAS_DLOPEN
+
+// ============================================================================
+// Saturation Modeling Tests
+// ============================================================================
+
+TEST_CASE("Test_Saturation_Ngspice_SingleWinding", "[processor][circuit-simulator-exporter][ngspice][saturation]") {
+    // Create a single winding inductor (saturation only works for single winding)
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";  // Ferrite with known saturation
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export ngspice netlist
+    auto netlist = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check for saturation-related content
+    CHECK(netlist.find("Saturating magnetizing") != std::string::npos);
+    CHECK(netlist.find("Bsat=") != std::string::npos);
+    CHECK(netlist.find("Isat=") != std::string::npos);
+    CHECK(netlist.find("Lmag_1_L0") != std::string::npos);
+    CHECK(netlist.find("Lmag_1_Isat") != std::string::npos);
+    // Should have behavioral voltage source
+    CHECK(netlist.find("BLmag_1") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_Ngspice_MultiWinding_FallsBackToLinear", "[processor][circuit-simulator-exporter][ngspice][saturation]") {
+    // Create a transformer (multi-winding) - should fall back to linear model
+    std::vector<int64_t> numberTurns = {20, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export ngspice netlist
+    auto netlist = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Should have warning about multi-winding
+    CHECK(netlist.find("WARNING: Saturation modeling not supported for multi-winding") != std::string::npos);
+    // Should NOT have behavioral voltage source (falls back to linear)
+    CHECK(netlist.find("BLmag_") == std::string::npos);
+    // Should have regular inductor
+    CHECK(netlist.find("Lmag_1") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_LTspice_SingleWinding", "[processor][circuit-simulator-exporter][ltspice][saturation]") {
+    // Create a single winding inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export LTspice netlist
+    auto netlist = CircuitSimulatorExporterLtspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check for saturation-related content
+    CHECK(netlist.find("Saturating magnetizing") != std::string::npos);
+    CHECK(netlist.find("Bsat=") != std::string::npos);
+    CHECK(netlist.find("Lambda_sat_1") != std::string::npos);
+    CHECK(netlist.find("I_sat_1") != std::string::npos);
+    CHECK(netlist.find("L_gap_1") != std::string::npos);
+    // LTspice uses Flux= syntax
+    CHECK(netlist.find("Flux={") != std::string::npos);
+    CHECK(netlist.find("tanh(x/I_sat_1)") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_LTspice_MultiWinding_FallsBackToLinear", "[processor][circuit-simulator-exporter][ltspice][saturation]") {
+    // Create a transformer (multi-winding)
+    std::vector<int64_t> numberTurns = {20, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export LTspice netlist
+    auto netlist = CircuitSimulatorExporterLtspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Should have warning about multi-winding
+    CHECK(netlist.find("WARNING: Saturation modeling not supported for multi-winding") != std::string::npos);
+    // Should NOT have Flux= syntax (falls back to linear)
+    CHECK(netlist.find("Flux={") == std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_NL5_SingleWinding", "[processor][circuit-simulator-exporter][nl5][saturation]") {
+    // Create a single winding inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export NL5 XML
+    auto nl5xml = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check for NL5 saturating inductor (L_Lsat type)
+    CHECK(nl5xml.find("type=\"L_Lsat\"") != std::string::npos);
+    CHECK(nl5xml.find("name=\"Lmag\"") != std::string::npos);
+    CHECK(nl5xml.find("Lsat=") != std::string::npos);
+    CHECK(nl5xml.find("Iknee=") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_NL5_MultiWinding_FallsBackToLinear", "[processor][circuit-simulator-exporter][nl5][saturation]") {
+    // Create a transformer (multi-winding)
+    std::vector<int64_t> numberTurns = {20, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export NL5 XML
+    auto nl5xml = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Should NOT have saturating inductor (falls back to linear)
+    CHECK(nl5xml.find("type=\"L_Lsat\"") == std::string::npos);
+    // Should have regular inductor
+    CHECK(nl5xml.find("type=\"L_L\"") != std::string::npos);
+}
+
+TEST_CASE("Test_Saturation_Disabled_NoSaturationInOutput", "[processor][circuit-simulator-exporter][saturation]") {
+    // Create a single winding inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 55/28/21";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Disable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(false);
+    
+    // Export ngspice netlist
+    auto ngspiceNetlist = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Export LTspice netlist
+    auto ltspiceNetlist = CircuitSimulatorExporterLtspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Export NL5 XML
+    auto nl5xml = CircuitSimulatorExporterNl5Model().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // ngspice should NOT have behavioral source for saturation
+    CHECK(ngspiceNetlist.find("BLmag_") == std::string::npos);
+    CHECK(ngspiceNetlist.find("Saturating") == std::string::npos);
+    
+    // LTspice should NOT have Flux= syntax
+    CHECK(ltspiceNetlist.find("Flux={") == std::string::npos);
+    CHECK(ltspiceNetlist.find("Saturating") == std::string::npos);
+    
+    // NL5 should NOT have saturating inductor
+    CHECK(nl5xml.find("type=\"L_Lsat\"") == std::string::npos);
+}
+
+// ============================================================================
+// Ngspice Integration Tests for Saturation
+// ============================================================================
+
+TEST_CASE("Test_Ngspice_Integration_LinearInductor_BasicSimulation", "[processor][circuit-simulator-exporter][ngspice][integration]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a simple inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Disable saturation for this test (linear model)
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(false);
+    
+    // Export the inductor subcircuit
+    auto subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Create a test circuit: voltage source -> inductor -> ground
+    // V(t) = 10V square wave at 100kHz
+    std::string testCircuit = R"(
+* Test circuit for linear inductor
+)" + subcircuit + R"(
+
+* Test circuit
+Vsrc in 0 PULSE(0 10 0 10n 10n 5u 10u)
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+.tran 1n 50u
+.control
+run
+wrdata output.csv v(in) i(Vsrc)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 100e3;
+    config.stopTime = 50e-6;
+    config.stepSize = 1e-9;
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check simulation succeeded
+    if (!result.success) {
+        INFO("Simulation error: " << result.errorMessage);
+    }
+    REQUIRE(result.success);
+    
+    // Should have extracted some waveforms
+    CHECK(result.waveforms.size() >= 1);
+}
+
+TEST_CASE("Test_Ngspice_Integration_SaturatingInductor_BasicSimulation", "[processor][circuit-simulator-exporter][ngspice][integration][saturation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a single winding inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export the inductor subcircuit
+    auto subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Verify the subcircuit contains saturation elements
+    REQUIRE(subcircuit.find("BLmag_") != std::string::npos);
+    
+    // Create a test circuit with voltage source (easier to simulate than current source)
+    // Use a slow sinusoidal excitation to avoid convergence issues
+    std::string testCircuit = R"(
+* Test circuit for saturating inductor
+)" + subcircuit + R"(
+
+* Test circuit - voltage source sine wave
+Vsrc in 0 SIN(0 5 10k)
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+.tran 1u 200u
+.control
+run
+wrdata output.csv v(in) i(Vsrc)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 10e3;
+    config.stopTime = 200e-6;
+    config.stepSize = 1e-6;
+    config.extractOnePeriod = false;  // Don't try to extract a specific period
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check simulation succeeded
+    if (!result.success) {
+        INFO("Simulation error: " << result.errorMessage);
+        INFO("Netlist was:\n" << testCircuit);
+    }
+    REQUIRE(result.success);
+}
+
+TEST_CASE("Test_Ngspice_Integration_LinearVsSaturating_Comparison", "[processor][circuit-simulator-exporter][ngspice][integration][saturation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create inductor - use same parameters as the working basic test
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);  // Same gap as working test
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    
+    // Export LINEAR model
+    settings.set_circuit_simulator_include_saturation(false);
+    auto linearSubcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Export SATURATING model
+    settings.set_circuit_simulator_include_saturation(true);
+    auto saturatingSubcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Verify both netlists are different
+    CHECK(linearSubcircuit != saturatingSubcircuit);
+    CHECK(linearSubcircuit.find("BLmag_") == std::string::npos);  // Linear has no behavioral source
+    CHECK(saturatingSubcircuit.find("BLmag_") != std::string::npos);  // Saturating has behavioral source
+    
+    // Use sine wave test like the working basic test
+    auto createTestCircuit = [&](const std::string& subcircuit, const std::string& name) {
+        return R"(
+* Test circuit for )" + name + R"( inductor comparison
+)" + subcircuit + R"(
+
+* Sine wave voltage source (same as working test)
+Vsrc in 0 SIN(0 5 10k)
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+.tran 1u 200u
+.control
+run
+wrdata output.csv v(in) i(Vsrc)
+.endc
+.end
+)";
+    };
+    
+    SimulationConfig config;
+    config.frequency = 10e3;
+    config.stopTime = 200e-6;
+    config.stepSize = 1e-6;
+    config.extractOnePeriod = false;
+    
+    // Run linear simulation
+    auto linearCircuit = createTestCircuit(linearSubcircuit, "linear");
+    auto linearResult = runner.run_simulation(linearCircuit, config);
+    
+    if (!linearResult.success) {
+        INFO("Linear simulation error: " << linearResult.errorMessage);
+    }
+    REQUIRE(linearResult.success);
+    
+    // Run saturating simulation
+    auto saturatingCircuit = createTestCircuit(saturatingSubcircuit, "saturating");
+    auto saturatingResult = runner.run_simulation(saturatingCircuit, config);
+    
+    if (!saturatingResult.success) {
+        INFO("Saturating simulation error: " << saturatingResult.errorMessage);
+    }
+    REQUIRE(saturatingResult.success);
+    
+    // Extract current waveforms (i(Vsrc) is the inductor current)
+    auto findCurrentIdx = [](const SimulationResult& result) -> int {
+        for (size_t i = 0; i < result.waveformNames.size(); i++) {
+            std::string name = result.waveformNames[i];
+            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            if (name.find("vsrc") != std::string::npos) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    };
+    
+    int linearCurrentIdx = findCurrentIdx(linearResult);
+    int saturatingCurrentIdx = findCurrentIdx(saturatingResult);
+    
+    INFO("Linear waveforms: " << linearResult.waveformNames.size());
+    INFO("Saturating waveforms: " << saturatingResult.waveformNames.size());
+    
+    if (linearCurrentIdx >= 0 && saturatingCurrentIdx >= 0) {
+        auto& linearI = linearResult.waveforms[linearCurrentIdx].get_data();
+        auto& saturatingI = saturatingResult.waveforms[saturatingCurrentIdx].get_data();
+        
+        REQUIRE(!linearI.empty());
+        REQUIRE(!saturatingI.empty());
+        
+        // Calculate RMS currents
+        double linearRms = 0, saturatingRms = 0;
+        for (double i : linearI) linearRms += i * i;
+        for (double i : saturatingI) saturatingRms += i * i;
+        linearRms = std::sqrt(linearRms / linearI.size());
+        saturatingRms = std::sqrt(saturatingRms / saturatingI.size());
+        
+        // Find peak currents
+        double linearPeak = 0, saturatingPeak = 0;
+        for (double i : linearI) linearPeak = std::max(linearPeak, std::abs(i));
+        for (double i : saturatingI) saturatingPeak = std::max(saturatingPeak, std::abs(i));
+        
+        INFO("=== Current Analysis ===");
+        INFO("Linear: RMS=" << linearRms << "A, Peak=" << linearPeak << "A");
+        INFO("Saturating: RMS=" << saturatingRms << "A, Peak=" << saturatingPeak << "A");
+        INFO("Peak ratio (sat/lin): " << (saturatingPeak / linearPeak));
+        
+        // Both models should produce reasonable currents
+        CHECK(linearPeak > 0.001);  // At least 1mA peak
+        CHECK(saturatingPeak > 0.001);
+        
+        // The saturating model should have HIGHER peak current because L decreases with current
+        // This is the key evidence that saturation is working correctly!
+        // The ratio can be quite large (10x-50x or more) when the core saturates
+        CHECK(saturatingPeak >= linearPeak);  // Saturating current >= linear
+        
+        // If the ratio is significantly > 1, saturation is clearly working
+        double ratio = saturatingPeak / linearPeak;
+        if (ratio > 2.0) {
+            INFO("SUCCESS: Clear saturation behavior observed!");
+            INFO("  Saturating model current is " << ratio << "x higher than linear");
+            INFO("  This confirms the inductance dropped significantly at high current");
+        }
+    } else {
+        // At minimum, simulations succeeded
+        CHECK(linearResult.waveforms.size() > 0);
+        CHECK(saturatingResult.waveforms.size() > 0);
+    }
+}
+
+TEST_CASE("Test_Ngspice_Integration_Transformer_LinearFallback", "[processor][circuit-simulator-exporter][ngspice][integration][saturation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a transformer (2 windings) - should fall back to linear even with saturation enabled
+    std::vector<int64_t> numberTurns = {20, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Enable saturation
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(true);
+    
+    // Export the transformer subcircuit
+    auto subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Should have warning about multi-winding and NO behavioral source
+    CHECK(subcircuit.find("WARNING: Saturation modeling not supported") != std::string::npos);
+    CHECK(subcircuit.find("BLmag_") == std::string::npos);
+    
+    // Create a simple transformer test circuit
+    std::string testCircuit = R"(
+* Test circuit for transformer (should use linear model)
+)" + subcircuit + R"(
+
+* Voltage source on primary, resistive load on secondary
+Vsrc pri_p 0 PULSE(0 10 0 10n 10n 5u 10u)
+Rload sec_p sec_n 10
+Xtrafo pri_p pri_n sec_p sec_n )" + fix_filename(magnetic.get_reference()) + R"(
+
+* Ground the negative terminals
+Rgnd1 pri_n 0 1m
+Rgnd2 sec_n 0 1m
+
+.tran 1n 50u
+.control
+run
+wrdata output.csv v(pri_p) v(sec_p) i(Vsrc)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 100e3;
+    config.stopTime = 50e-6;
+    config.stepSize = 1e-9;
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Check simulation succeeded (linear transformer model should work fine)
+    if (!result.success) {
+        INFO("Simulation error: " << result.errorMessage);
+    }
+    REQUIRE(result.success);
+    
+    // Should have extracted waveforms
+    CHECK(result.waveforms.size() >= 1);
+}
+
+TEST_CASE("Test_Ngspice_Integration_InductorImpedance_FrequencySweep", "[processor][circuit-simulator-exporter][ngspice][integration]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a simple inductor
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    // Disable saturation for this test
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    settings.set_circuit_simulator_include_saturation(false);
+    
+    // Export the inductor subcircuit
+    auto subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    // Create an AC analysis circuit
+    std::string testCircuit = R"(
+* AC impedance test for inductor
+)" + subcircuit + R"(
+
+* AC voltage source
+Vac in 0 AC 1
+
+* Inductor under test
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+* AC analysis from 1kHz to 1MHz
+.ac dec 10 1k 1meg
+.control
+run
+wrdata output.csv frequency i(Vac)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 100e3;
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    // Restore original setting
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // AC analysis should succeed
+    if (!result.success) {
+        INFO("AC simulation error: " << result.errorMessage);
+    }
+    REQUIRE(result.success);
+}
+
+TEST_CASE("Test_Ngspice_Integration_Saturation_CurrentSlope_Analysis", "[processor][circuit-simulator-exporter][ngspice][integration][saturation]") {
+    // This test verifies that both linear and saturating models can be simulated
+    // and produce valid current waveforms with a sine wave excitation.
+    // It also checks that the saturation model parameters are correctly embedded in the netlist.
+    
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+    
+    // Create a simple inductor (same as other working tests)
+    std::vector<int64_t> numberTurns = {20};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/15";
+    
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
+    
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C95";
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    
+    double magnetizingInductance = resolve_dimensional_values(
+        MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
+            .get_magnetizing_inductance());
+    
+    INFO("Magnetizing inductance: " << (magnetizingInductance * 1e6) << " uH");
+    
+    auto& settings = Settings::GetInstance();
+    bool originalSaturation = settings.get_circuit_simulator_include_saturation();
+    
+    // Export saturating model and verify it has saturation parameters
+    settings.set_circuit_simulator_include_saturation(true);
+    auto saturatingSubcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
+        magnetic, 100000, 25, std::nullopt, CircuitSimulatorExporterCurveFittingModes::LADDER);
+    
+    settings.set_circuit_simulator_include_saturation(originalSaturation);
+    
+    // Verify saturation parameters are in the netlist
+    CHECK(saturatingSubcircuit.find("Lmag_1_L0") != std::string::npos);
+    CHECK(saturatingSubcircuit.find("Lmag_1_Isat") != std::string::npos);
+    CHECK(saturatingSubcircuit.find("BLmag_1") != std::string::npos);
+    
+    // Extract and display Isat value
+    size_t isatParamPos = saturatingSubcircuit.find(".param Lmag_1_Isat=");
+    if (isatParamPos != std::string::npos) {
+        size_t valueStart = isatParamPos + 19;
+        size_t valueEnd = saturatingSubcircuit.find("\n", valueStart);
+        if (valueEnd != std::string::npos) {
+            std::string isatValue = saturatingSubcircuit.substr(valueStart, valueEnd - valueStart);
+            INFO("Saturation current Isat: " << isatValue << " A");
+        }
+    }
+    
+    // Run simulation with sine wave to verify it converges
+    std::string testCircuit = R"(
+* Saturation model test with sine wave
+)" + saturatingSubcircuit + R"(
+
+Vsrc in 0 SIN(0 5 10k)
+Xinductor in 0 )" + fix_filename(magnetic.get_reference()) + R"(
+
+.tran 1u 200u
+.control
+run
+wrdata output.csv v(in) i(Vsrc)
+.endc
+.end
+)";
+    
+    SimulationConfig config;
+    config.frequency = 10e3;
+    config.stopTime = 200e-6;
+    config.stepSize = 1e-6;
+    config.extractOnePeriod = false;
+    
+    auto result = runner.run_simulation(testCircuit, config);
+    
+    REQUIRE(result.success);
+    
+    // Try to extract current waveform
+    int currentIdx = -1;
+    for (size_t i = 0; i < result.waveformNames.size(); i++) {
+        std::string name = result.waveformNames[i];
+        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+        if (name.find("vsrc") != std::string::npos) {
+            currentIdx = static_cast<int>(i);
+            break;
+        }
+    }
+    
+    if (currentIdx >= 0) {
+        auto& current = result.waveforms[currentIdx].get_data();
+        REQUIRE(!current.empty());
+        
+        // Find peak current
+        double peakCurrent = 0;
+        for (double i : current) peakCurrent = std::max(peakCurrent, std::abs(i));
+        
+        INFO("Peak current with saturating model: " << peakCurrent << " A");
+        
+        // Verify we got reasonable current (not zero, not infinite)
+        CHECK(peakCurrent > 0.0001);  // At least 0.1mA
+        CHECK(peakCurrent < 1000);     // Less than 1kA
+        
+        // Calculate expected peak current for linear model: I_peak = V_peak / (2*pi*f*L)
+        double expectedPeakLinear = 5.0 / (2 * M_PI * 10e3 * magnetizingInductance);
+        INFO("Expected peak current (linear model): " << expectedPeakLinear << " A");
+        
+        // The saturating model will have HIGHER current because L decreases as we approach saturation
+        // This is expected and correct behavior - the inductance collapses at high current
+        CHECK(peakCurrent > expectedPeakLinear * 0.5);  // At least 50% of linear expected
+        
+        // If we see significantly higher current, saturation is working
+        if (peakCurrent > expectedPeakLinear * 2) {
+            INFO("SUCCESS: Saturation clearly observed!");
+            INFO("  Actual peak current is " << (peakCurrent / expectedPeakLinear) << "x higher than linear model would predict");
+            INFO("  This confirms inductance dropped due to saturation");
+        }
+    } else {
+        // At minimum, verify waveforms were extracted
+        CHECK(result.waveforms.size() > 0);
+    }
+}
+
 }  // namespace

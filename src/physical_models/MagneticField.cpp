@@ -261,6 +261,16 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     double coreWidth = processedDescription.get_width();
     auto coreShapeFamily = core.get_shape_family();
 
+    // ALBACH model uses axisymmetric Biot-Savart (circular current loops), which produces
+    // radially symmetric fields. This is incorrect for toroidal cores where turns are placed
+    // at specific angular positions -- the field should be localized near the wire, not uniform
+    // around the toroid. Fall back to BINNS_LAWRENSON which works in 2D Cartesian and
+    // naturally handles the actual (x,y) positions of wire segments.
+    if (coreShapeFamily == CoreShapeFamily::T && _magneticFieldStrengthModel == MagneticFieldStrengthModels::ALBACH) {
+        _magneticFieldStrengthModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;
+        _model = factory(_magneticFieldStrengthModel);
+    }
+
     std::vector<int8_t> currentDirectionPerWinding;
     if (!customCurrentDirectionPerWinding) {
         currentDirectionPerWinding.push_back(1);
@@ -291,6 +301,19 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     }
     _wirePerWinding = magnetic.get_mutable_coil().get_wires();
     _model->_wirePerWinding = _wirePerWinding;
+    
+    // Precompute wire dimensions for performance (avoid repeated calculations)
+    _wireMaxOuterWidth.clear();
+    _wireMaxOuterHeight.clear();
+    _wireMaxOuterWidth.reserve(_wirePerWinding.size());
+    _wireMaxOuterHeight.reserve(_wirePerWinding.size());
+    for (auto& wire : _wirePerWinding) {
+        _wireMaxOuterWidth.push_back(wire.get_maximum_outer_width());
+        _wireMaxOuterHeight.push_back(wire.get_maximum_outer_height());
+    }
+    _model->_wireMaxOuterWidth = _wireMaxOuterWidth;
+    _model->_wireMaxOuterHeight = _wireMaxOuterHeight;
+    
     auto turns = magnetic.get_coil().get_turns_description().value();
 
     // Set up ALBACH model if being used
@@ -748,7 +771,8 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
             computeRectangularFiled = true;
         }
         else {
-            if (hypot(distanceX, distanceY) < _wirePerWinding[inducingWireIndex.value()].get_maximum_outer_width() / 2) {
+            double wireRadius = _wireMaxOuterWidth[inducingWireIndex.value()] / 2;
+            if (hypot(distanceX, distanceY) < wireRadius) {
                 Hx = 0;
                 Hy = 0;
             }
@@ -911,7 +935,8 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
         if (_wirePerWinding[inducingWireIndex.value()].get_type() != WireType::ROUND && _wirePerWinding[inducingWireIndex.value()].get_type() != WireType::LITZ) {
             return MagneticFieldStrengthBinnsLawrensonModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
         }
-        if (distance < _wirePerWinding[inducingWireIndex.value()].get_maximum_outer_width() / 2) {
+        double wireRadius = _wireMaxOuterWidth[inducingWireIndex.value()] / 2;
+        if (distance < wireRadius) {
             Hx = 0;
             Hy = 0;
         }

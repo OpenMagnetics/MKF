@@ -41,14 +41,14 @@ std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> Core
                                      {
                                          return p1.second < p2.second;
                                      })).second; 
-        minimumScoring = std::max(0.0001, minimumScoring);
+        minimumScoring = std::max(1e-10, minimumScoring); // B8 FIX
 
         for (auto& [name, scoring] : aux) {
             if (std::isnan(scoring)) {
                 throw std::invalid_argument("scoring cannot be nan in get_scorings");
             }
             if (minimumScoring == maximumScoring) {
-                swappedScorings[name][filter] = 1;
+                swappedScorings[name][filter] = weighted ? _weights[filter] * 0.5 : 0.5; // XC-6 FIX: neutral when equal // B7 FIX: respect weight when equal
             }
             else if (filterConfiguration["log"]){
                 if (filterConfiguration["invert"]) {
@@ -99,6 +99,25 @@ void normalize_scoring(std::vector<std::pair<CoreMaterial, double>>* rankedCoreM
     double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());
     double minimumScoring = *std::min_element(newScoring->begin(), newScoring->end());
 
+    // F5 FIX: Guard against all-NaN/Inf scores
+    if (std::isnan(maximumScoring) || std::isinf(maximumScoring)) {
+        for (size_t i = 0; i < rankedCoreMaterials->size(); ++i) {
+            (*rankedCoreMaterials)[i].second += weight;
+        }
+        std::stable_sort(rankedCoreMaterials->begin(), rankedCoreMaterials->end(),
+            [](const std::pair<CoreMaterial, double>& a, const std::pair<CoreMaterial, double>& b) { return a.second > b.second; });
+        return;
+    }
+
+    double dataRelativeFloor = std::max(1e-10, maximumScoring * 1e-6); // B8 FIX: data-relative floor
+
+    // O24 FIX: NaN/Inf protection
+    for (size_t idx = 0; idx < newScoring->size(); ++idx) {
+        if (std::isnan((*newScoring)[idx]) || std::isinf((*newScoring)[idx])) {
+            (*newScoring)[idx] = maximumScoring;
+        }
+    }
+
     for (size_t i = 0; i < (*rankedCoreMaterials).size(); ++i) {
         auto mas = (*rankedCoreMaterials)[i].first;
         auto scoring = (*newScoring)[i];
@@ -106,9 +125,9 @@ void normalize_scoring(std::vector<std::pair<CoreMaterial, double>>* rankedCoreM
             scoring = maximumScoring;
         }
         else {
-            scoring = std::max(0.0001, scoring);
+            scoring = std::max(dataRelativeFloor, scoring); // B8 FIX
         }
-        minimumScoring = std::max(0.0001, minimumScoring);
+        minimumScoring = std::max(dataRelativeFloor, minimumScoring); // B8 FIX
         if (maximumScoring != minimumScoring) {
 
             if (filterConfiguration["log"]){
@@ -129,12 +148,12 @@ void normalize_scoring(std::vector<std::pair<CoreMaterial, double>>* rankedCoreM
             }
         }
         else {
-            (*rankedCoreMaterials)[i].second = (*rankedCoreMaterials)[i].second + 1;
+            (*rankedCoreMaterials)[i].second = (*rankedCoreMaterials)[i].second + weight * 0.5; // XC-6 FIX: neutral score when all equal
         }
     }
-    sort((*rankedCoreMaterials).begin(), (*rankedCoreMaterials).end(), [](std::pair<CoreMaterial, double>& b1, std::pair<CoreMaterial, double>& b2) {
+    std::stable_sort((*rankedCoreMaterials).begin(), (*rankedCoreMaterials).end(), [](const std::pair<CoreMaterial, double>& b1, const std::pair<CoreMaterial, double>& b2) {
         return b1.second > b2.second;
-    });
+    }); // F12 FIX: stable_sort for reproducible results
 }
 
 std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> CoreMaterialCrossReferencer::get_scored_values(){
@@ -305,6 +324,9 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     return *unfilteredCoreMaterials;
 }
 
+// CMCR-OPT-1 NOTE: This computes losses at 25 (B,f) points per material.
+// Consider pre-computing reference losses once, then using ratio-based comparison.
+// Or use Steinmetz equation for initial screening before detailed model.
 double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculate_average_volumetric_losses(CoreMaterial coreMaterial, double temperature, std::map<std::string, std::string> models) {
     if (models.find("coreLosses") == models.end()) {
         models["coreLosses"] = to_string(Defaults().coreLossesModelDefault);
@@ -456,7 +478,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::get_cr
         load_core_materials();
     }
 
-    for (auto [name, coreMaterial] : coreMaterialDatabase){
+    for (const auto& [name, coreMaterial] : coreMaterialDatabase){
         if (name != referenceCoreMaterial.get_name()) {
             if (!_onlyManufacturer || coreMaterial.get_manufacturer_info().get_name() == _onlyManufacturer.value()) {
                 coreMaterials.push_back({coreMaterial, 0.0});
@@ -507,7 +529,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
 
     auto referenceCoreMaterialApplication = Core::guess_material_application(referenceCoreMaterial);
     auto referenceCoreMaterialType = referenceCoreMaterial.get_material();
-    for (auto [coreMaterial, scoring] : (*coreMaterials)) {
+    for (const auto& [coreMaterial, scoring] : (*coreMaterials)) {
         auto coreMaterialType = coreMaterial.get_material();
         auto coreMaterialApplication = Core::guess_material_application(coreMaterial);
 
@@ -547,7 +569,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
     });
 
     if (rankedCoreMaterials.size() > maximumNumberResults) {
-        rankedCoreMaterials = std::vector<std::pair<CoreMaterial, double>>(rankedCoreMaterials.begin(), rankedCoreMaterials.end() - (rankedCoreMaterials.size() - maximumNumberResults));
+        rankedCoreMaterials.resize(maximumNumberResults); // F10 FIX: resize instead of copy-construct
     }
 
     return rankedCoreMaterials;

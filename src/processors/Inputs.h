@@ -137,7 +137,7 @@ class Inputs : public MAS::Inputs {
     static Waveform create_waveform(Processed processed, double frequency);
     static Waveform create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle=0.5, double offset=0, double deadTime=0, double skew=0);
     static Processed calculate_basic_processed_data(Waveform waveform);
-    static Waveform compress_waveform(Waveform waveform);
+    static Waveform compress_waveform(const Waveform& waveform);
 
     static Waveform calculate_derivative_waveform(Waveform waveform);
     static Waveform calculate_integral_waveform(Waveform waveform, bool subtractAverage=false);
@@ -145,7 +145,7 @@ class Inputs : public MAS::Inputs {
     static Waveform multiply_waveform(Waveform waveform, double scalarValue);
     static Waveform sum_waveform(Waveform waveform, double scalarValue);
 
-    static double try_guess_duty_cycle(Waveform waveform, WaveformLabel label=WaveformLabel::CUSTOM);
+    static double try_guess_duty_cycle(Waveform waveform, WaveformLabel label=WaveformLabel::CUSTOM, double frequency=0);
     static double calculate_instantaneous_power(OperatingPointExcitation excitation);
 
     static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);

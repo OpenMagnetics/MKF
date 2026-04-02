@@ -154,6 +154,7 @@ class CoreCrossReferencer {
             std::vector<std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>> _coreLossesModels;
 
             std::vector<double> _magneticFluxDensities = {0.01, 0.025, 0.05, 0.1, 0.2};
+            // LOGIC-4 NOTE: Fixed frequency grid. TODO: Use actual operating frequency.
             std::vector<double> _frequencies = {20000, 50000, 100000, 250000, 500000};
         public:
             MagneticCoreFilterCoreLosses() {

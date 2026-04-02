@@ -569,7 +569,7 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
-void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
+void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     auto constants = Constants();
     Coil coil = magnetic.get_coil();
     auto wirePerWinding = coil.get_wires();
@@ -588,7 +588,8 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
         coilType = coil.get_groups_description().value()[0].get_type(); // TODO: take into account more groups
     }
 
-    if (coil.get_layers_description()) {
+    // Only paint insulation layers and margin if not skipped
+    if (!skipMarginAndLayers && coil.get_layers_description()) {
         auto layers = coil.get_layers_description().value();
         
         if (coilType == WiringTechnology::WOUND) {
@@ -659,7 +660,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
+void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
@@ -730,28 +731,31 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
         }
     }
 
-    auto layers = winding.get_layers_description().value();
+    // Only paint insulation layers and margin if not skipped
+    if (!skipMarginAndLayers) {
+        auto layers = winding.get_layers_description().value();
 
-    for (size_t i = 0; i < layers.size(); ++i){
-        if (layers[i].get_type() == ElectricalType::INSULATION) {
+        for (size_t i = 0; i < layers.size(); ++i){
+            if (layers[i].get_type() == ElectricalType::INSULATION) {
 
-            double strokeWidth = layers[i].get_dimensions()[0];
-            double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
-            double angleProportion = layers[i].get_dimensions()[1] / 360;
-            std::string termination = angleProportion < 1? "butt" : "round";
+                double strokeWidth = layers[i].get_dimensions()[0];
+                double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
+                double angleProportion = layers[i].get_dimensions()[1] / 360;
+                std::string termination = angleProportion < 1? "butt" : "round";
 
-            std::string cssClassName = generate_random_string();
-            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
-            paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
-
-            if (layers[i].get_additional_coordinates()) {
-                circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
+                std::string cssClassName = generate_random_string();
+                _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
                 paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
+
+                if (layers[i].get_additional_coordinates()) {
+                    circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
+                    paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, layers[i].get_dimensions()[1], -(layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2), {0, 0});
+                }
             }
         }
-    }
 
-    paint_toroidal_margin(magnetic);
+        paint_toroidal_margin(magnetic);
+    }
     // _root.autoscale();
 }
 
@@ -1233,17 +1237,17 @@ void BasicPainter::paint_coil_layers(Magnetic magnetic) {
     }
 }
 
-void BasicPainter::paint_coil_turns(Magnetic magnetic) {
+void BasicPainter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
     Core core = magnetic.get_core();
     CoreShape shape = core.resolve_shape();
     auto windingWindows = core.get_winding_windows();
     _imageHeight = core.get_processed_description()->get_height();
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
-            return paint_toroidal_coil_turns(magnetic);
+            return paint_toroidal_coil_turns(magnetic, skipMarginAndLayers);
             break;
         default:
-            return paint_two_piece_set_coil_turns(magnetic);
+            return paint_two_piece_set_coil_turns(magnetic, skipMarginAndLayers);
             break;
     }
 }
@@ -1576,6 +1580,15 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     bgColor = std::regex_replace(std::string(bgColor), std::regex("0x"), "#");
     _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", bgColor);
 
+    // Determine label based on output unit
+    // Both LEGACY and SDF_PHYSICS now output J/m³ (volumetric energy density)
+    std::string unitLabel;
+    if (outputUnit == ElectricFieldOutputUnit::VOLTS_PER_METER) {
+        unitLabel = " V/m";
+    } else {
+        unitLabel = " J/m^3";
+    }
+
     if (family != MAS::CoreShapeFamily::T) {
         // Rectangular cores - use winding window
         if (windingWindow.get_width() && windingWindow.get_coordinates() && windingWindow.get_height()) {
@@ -1587,16 +1600,9 @@ void BasicPainter::paint_electric_field(OperatingPoint operatingPoint, Magnetic 
     } else {
         // Toroidal cores - paint background using full image size (includes extra space for additional turns)
         // _imageWidth and _imageHeight are already set by set_image_size(magnetic) which includes extraDimension
-        paint_rectangle(0, 0, _imageWidth, _imageHeight, cssClassName);
-    }
-
-    // Determine label based on output unit
-    // Both LEGACY and SDF_PHYSICS now output J/m³ (volumetric energy density)
-    std::string unitLabel;
-    if (outputUnit == ElectricFieldOutputUnit::VOLTS_PER_METER) {
-        unitLabel = " V/m";
-    } else {
-        unitLabel = " J/m^3";
+        // Add 15% margin to ensure background covers the full viewBox even after autoscale adjustments
+        double margin = 1.15;
+        paint_rectangle(0, 0, _imageWidth * margin, _imageHeight * margin, cssClassName, nullptr, 0, {0, 0}, "0" + unitLabel);
     }
 
     for (auto datum : field.get_data()) {

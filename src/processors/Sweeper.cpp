@@ -357,5 +357,36 @@ Curve2D Sweeper::sweep_winding_losses_over_frequency(Magnetic magnetic, Operatin
     return Curve2D(frequencies, windingLossesPerFrequency, title);
 }
 
+std::vector<ScalarMatrixAtFrequency> Sweeper::sweep_resistance_matrix_over_frequency(
+    Magnetic magnetic, 
+    double start, 
+    double stop, 
+    size_t numberElements, 
+    double temperature, 
+    std::string mode) {
+    
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw ModelNotAvailableException("Unknown spaced array mode");
+    }
+
+    std::vector<ScalarMatrixAtFrequency> resistanceMatrices;
+    resistanceMatrices.reserve(numberElements);
+    
+    WindingLosses windingLossesModel;
+    
+    for (auto frequency : frequencies) {
+        auto resistanceMatrix = windingLossesModel.calculate_resistance_matrix(magnetic, temperature, frequency);
+        resistanceMatrices.push_back(resistanceMatrix);
+    }
+
+    return resistanceMatrices;
+}
 
 } // namespace OpenMagnetics

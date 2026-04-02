@@ -13,7 +13,7 @@ namespace OpenMagnetics {
         double totalReflectedSecondaryCurrent = 0;
         // Main secondary
         totalReflectedSecondaryCurrent += pushPullOperatingPoint.get_output_currents()[0] / turnsRatios[1];
-        for (size_t secondaryIndex = 0; secondaryIndex < pushPullOperatingPoint.get_output_voltages().size() - 1; ++secondaryIndex) {
+        for (size_t secondaryIndex = 0; secondaryIndex + 1 < pushPullOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
             totalReflectedSecondaryCurrent += pushPullOperatingPoint.get_output_currents()[secondaryIndex + 1] / turnsRatios[secondaryIndex + 3];
         }
 
@@ -880,7 +880,7 @@ namespace OpenMagnetics {
         turnsRatios.push_back(0);  // Second secondary
 
         // Remaining auxiliary secondaries
-        for (size_t secondaryIndex = 0; secondaryIndex < get_operating_points()[0].get_output_voltages().size() - 1; ++secondaryIndex) {
+        for (size_t secondaryIndex = 0; secondaryIndex + 1 < get_operating_points()[0].get_output_voltages().size(); ++secondaryIndex) {
             turnsRatios.push_back(0);
         }
 
@@ -889,7 +889,7 @@ namespace OpenMagnetics {
             double mainSecondaryTurnsRatio = dutyCycle * 2 * minimumInputVoltage / (mainSecondaryVoltage + diodeVoltageDrop);
             turnsRatios[1] = std::max(turnsRatios[1], mainSecondaryTurnsRatio);
             turnsRatios[2] = std::max(turnsRatios[2], mainSecondaryTurnsRatio);
-            for (size_t secondaryIndex = 0; secondaryIndex < pushPullOperatingPoint.get_output_voltages().size() - 1; ++secondaryIndex) {
+            for (size_t secondaryIndex = 0; secondaryIndex + 1 < pushPullOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
                 double auxiliarySecondaryVoltage = pushPullOperatingPoint.get_output_voltages()[secondaryIndex + 1];
                 auto turnsRatio = dutyCycle * 2 * minimumInputVoltage / (auxiliarySecondaryVoltage + diodeVoltageDrop);
                 turnsRatios[secondaryIndex + 3] = std::max(turnsRatios[secondaryIndex + 3], turnsRatio);

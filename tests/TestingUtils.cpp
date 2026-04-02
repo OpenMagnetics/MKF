@@ -548,7 +548,7 @@ void check_layers_description(OpenMagnetics::Coil coil,
             for (size_t i = 0; i < sectionParallelsProportion.size(); ++i){
                 CHECK(roundFloat(sectionParallelsProportion[i], 9) == roundFloat(sectionParallelsProportionExpected[i], 9));
             }
-            for (size_t i = 0; i < layers.size() - 1; ++i){
+            for (size_t i = 0; i + 1 < layers.size(); ++i){
                 if (layersOrientation == WindingOrientation::OVERLAPPING) {
                     CHECK(layers[i].get_coordinates()[0] < layers[i + 1].get_coordinates()[0]);
                     CHECK(layers[i].get_coordinates()[1] == layers[i + 1].get_coordinates()[1]);

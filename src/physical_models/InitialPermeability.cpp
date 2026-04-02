@@ -91,12 +91,12 @@ double InitialPermeability::has_temperature_dependency(CoreMaterial coreMaterial
     }
     else {
         auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
-        for (auto point : permeabilityPoints) {
+        for (const auto& point : permeabilityPoints) {
             if (point.get_temperature()) {
                 if (firstTemperatureValue == DBL_MAX) {
                     firstTemperatureValue = point.get_temperature().value();
                 }
-                else if (firstTemperatureValue != point.get_temperature().value()) {
+                else if (fabs(firstTemperatureValue - point.get_temperature().value()) > 1e-9) {
                     return true;
                 }
             }
@@ -857,11 +857,13 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
                 auxTemperatude = temperature.value();
             }
             if(hasMagneticFieldDcBiasRequirement) {
-                if (magneticFieldDcBias.value() <= 0) {
+                // Use absolute value of DC bias - both positive and negative bias cause saturation
+                double absDcBias = std::abs(magneticFieldDcBias.value());
+                if (absDcBias <= 0) {
                     amplitudePermeability = initialPermeabilityValueReference;
                 }
                 else {
-                    auto amplitudePermeabilityResult = AmplitudePermeability::get_amplitude_permeability(coreMaterial, std::nullopt, magneticFieldDcBias.value(), auxTemperatude);        
+                    auto amplitudePermeabilityResult = AmplitudePermeability::get_amplitude_permeability(coreMaterial, std::nullopt, absDcBias, auxTemperatude);        
                     if (amplitudePermeabilityResult) {
                         amplitudePermeability = amplitudePermeabilityResult.value();
                     }

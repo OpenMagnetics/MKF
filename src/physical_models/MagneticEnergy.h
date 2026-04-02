@@ -44,6 +44,7 @@ public:
     double calculate_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency = std::nullopt, bool saturationProportion = true);
     DimensionWithTolerance calculate_required_magnetic_energy(Inputs inputs);
     double calculate_gap_length_by_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, double energyStoredInGap);
+    double calculate_gap_length_by_saturation_constraint(CoreGap gapInfo, Core core, double magneticFluxDensitySaturationTarget, double inductance, double magnetizingCurrentPeak);
 };
 
 } // namespace OpenMagnetics

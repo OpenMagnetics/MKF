@@ -14,6 +14,11 @@ enum class EffectiveParameterStandard {
     IEC_63182    // Simplified geometric method (powder-core convention)
 };
 
+enum class GappingOptimizationStrategy {
+    SIMPLE,         // Pick gap closest to min that avoids saturation
+    GOLDEN_SECTION  // Optimize for minimum core losses using golden-section search
+};
+
 
 using namespace MAS;
 
@@ -98,6 +103,7 @@ class Settings
         bool _coreAdviserIncludeMargin = false;
         bool _coreAdviserEnableIntermediatePruning = true;
         size_t _coreAdviserMaximumMagneticsAfterFiltering;
+        GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
         bool _wireAdviserIncludePlanar = false;
@@ -130,6 +136,13 @@ class Settings
         // Circuit simulator export settings (LADDER=0, ANALYTICAL=1, FRACPOLE=2, AUTO=3)
         int _circuitSimulatorCurveFittingMode = 0;  // Default to LADDER
         std::optional<std::map<std::string, double>> _circuitSimulatorFracpoleOptions;
+        
+        // Circuit simulator saturation modeling (false = linear inductor, true = saturating inductor)
+        bool _circuitSimulatorIncludeSaturation = false;  // Default to linear (no saturation)
+        
+        // Circuit simulator mutual resistance modeling (false = no mutual resistance, true = include mutual resistance)
+        // Based on Hesterman (2020) "Mutual Resistance" - models cross-coupling AC losses between windings
+        bool _circuitSimulatorIncludeMutualResistance = false;  // Default to disabled
 
         bool _verbose = false;
 
@@ -344,6 +357,9 @@ class Settings
         size_t get_core_adviser_maximum_magnetics_after_filtering() const;
         void set_core_adviser_maximum_magnetics_after_filtering(size_t value);
 
+        GappingOptimizationStrategy get_gapping_strategy() const;
+        void set_gapping_strategy(GappingOptimizationStrategy value);
+
         bool get_wire_adviser_include_planar() const;
         void set_wire_adviser_include_planar(bool value);
 
@@ -419,6 +435,11 @@ class Settings
         void set_circuit_simulator_curve_fitting_mode(int value);
         std::optional<std::map<std::string, double>> get_circuit_simulator_fracpole_options() const;
         void set_circuit_simulator_fracpole_options(std::optional<std::map<std::string, double>> value);
+        bool get_circuit_simulator_include_saturation() const;
+        void set_circuit_simulator_include_saturation(bool value);
+        
+        bool get_circuit_simulator_include_mutual_resistance() const;
+        void set_circuit_simulator_include_mutual_resistance(bool value);
 
 
     };

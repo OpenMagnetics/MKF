@@ -35,6 +35,7 @@ namespace OpenMagnetics {
         // Circuit simulator export settings (0=LADDER, 1=ANALYTICAL, 2=FRACPOLE, 3=AUTO)
         _circuitSimulatorCurveFittingMode = 0;  // Default to LADDER for backward compatibility
         _circuitSimulatorFracpoleOptions = std::nullopt;
+        _circuitSimulatorIncludeSaturation = false;  // Default to linear (no saturation)
     }
 
 
@@ -106,7 +107,7 @@ namespace OpenMagnetics {
         _leakageInductanceGridPrecisionLevelPlanar = 3;
         _leakageInductanceGridPrecisionLevelWound = 1;
         
-        _coilAdviserMaximumNumberWires = 100;
+        _coilAdviserMaximumNumberWires = 30;  // OPTIMIZATION: Reduced from 100 to 30 for web frontend performance
         _coreAdviserIncludeStacks = true;
         _coreAdviserIncludeDistributedGaps = true;
         _coreAdviserIncludeMargin = false;
@@ -609,6 +610,13 @@ namespace OpenMagnetics {
         _coreAdviserMaximumMagneticsAfterFiltering = value;
     }
 
+    GappingOptimizationStrategy Settings::get_gapping_strategy() const {
+        return _gappingStrategy;
+    }
+    void Settings::set_gapping_strategy(GappingOptimizationStrategy value) {
+        _gappingStrategy = value;
+    }
+
     bool Settings::get_wire_adviser_include_planar() const {
         return _wireAdviserIncludePlanar;
     }
@@ -784,6 +792,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_circuit_simulator_fracpole_options(std::optional<std::map<std::string, double>> value) {
         _circuitSimulatorFracpoleOptions = value;
+    }
+
+    bool Settings::get_circuit_simulator_include_saturation() const {
+        return _circuitSimulatorIncludeSaturation;
+    }
+    void Settings::set_circuit_simulator_include_saturation(bool value) {
+        _circuitSimulatorIncludeSaturation = value;
+    }
+
+    bool Settings::get_circuit_simulator_include_mutual_resistance() const {
+        return _circuitSimulatorIncludeMutualResistance;
+    }
+    void Settings::set_circuit_simulator_include_mutual_resistance(bool value) {
+        _circuitSimulatorIncludeMutualResistance = value;
     }
 
 } // namespace OpenMagnetics

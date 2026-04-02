@@ -18,7 +18,7 @@ struct Defaults {
     // Lowest overall error: 9.6% ± 8.4% across 87 tests covering ROUND, LITZ, RECTANGULAR, and FOIL wires
     // See MKF/docs/WindingLossesModelValidation.md for full methodology and results
     const OpenMagnetics::MagneticFieldStrengthModels magneticFieldStrengthModelDefault = OpenMagnetics::MagneticFieldStrengthModels::ALBACH;
-    const OpenMagnetics::MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModelDefault = OpenMagnetics::MagneticFieldStrengthFringingEffectModels::SULLIVAN;
+    const OpenMagnetics::MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModelDefault = OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN;
     const OpenMagnetics::CoreThermalResistanceModels coreThermalResistanceModelDefault = OpenMagnetics::CoreThermalResistanceModels::MANIKTALA;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;
@@ -26,7 +26,7 @@ struct Defaults {
     const double coreAdviserThresholdValidity = 0.9;
     const double coreAdviserMaximumCoreTemperature = 150;
     const double coreAdviserMaximumPercentagePowerCoreLosses = 0.05;
-    const uint64_t coreAdviserMaximumMagneticsAfterFiltering = 500;
+    const uint64_t coreAdviserMaximumMagneticsAfterFiltering = 400;  // Higher limit to capture more single-stack options
     const uint64_t coreAdviserMaximumNumberStacks = 4;
     const double maximumCurrentDensity = 7000000;
     const double maximumCurrentDensityPlanar = 2000000;
@@ -34,6 +34,7 @@ struct Defaults {
     const int maximumNumberParallels = 5;
     const double magneticFluxDensitySaturation = 0.5;
     const double ferriteInitialPermeability = 2000;
+    const double ferriteSaturationFluxDensity = 0.35;  // Typical ferrite Bsat ~350 mT (e.g., 3C95, N95)
     const double magnetizingInductanceThresholdValidity = 0.25;
     const double selfResonantFrequencyMargin = 0.25;  // Maximum operating frequency as fraction of SRF (e.g., 0.25 = f_op < 0.25 * SRF)
     const double harmonicAmplitudeThreshold = 0.05;

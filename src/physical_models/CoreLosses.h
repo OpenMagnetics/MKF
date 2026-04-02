@@ -416,6 +416,8 @@ class CoreLossesModel {
         information["Steinmetz"] = R"(Based on "On the law of hysteresis" by Charles Proteus Steinmetz)";
         information["iGSE"] =
             R"(Based on "Accurate Prediction of Ferrite Core Loss with Nonsinusoidal Waveforms Using Only Steinmetz Parameters" by Charles R. Sullivan)";
+        information["ciGSE"] =
+            R"msg(Based on "Core Loss Prediction under Asymmetric Excitations using Composite Improved Generalized Steinmetz Equation (ciGSE)" by Asier Arruti)msg";
         information["Barg"] =
             R"(Based on "Core Loss Calculation of Symmetric Trapezoidal Magnetic Flux Density Waveform" by Sobhi Barg)";
         information["Roshen"] =
@@ -434,6 +436,7 @@ class CoreLossesModel {
         std::map<std::string, double> errors;
         errors["Steinmetz"] = 0.39353;
         errors["iGSE"] = 0.358237;
+        errors["ciGSE"] = 0.358237;  // Same error as iGSE since it uses same formula
         errors["Barg"] = 0.374326;
         errors["Roshen"] = 0.487881;
         errors["Albach"] = 0.357267;
@@ -445,6 +448,7 @@ class CoreLossesModel {
         std::map<std::string, std::string> external_links;
         external_links["Steinmetz"] = "https://ieeexplore.ieee.org/document/1457110";
         external_links["iGSE"] = "http://inductor.thayerschool.org/papers/IGSE.pdf";
+        external_links["ciGSE"] = "";
         external_links["Barg"] = "https://miun.diva-portal.org/smash/get/diva2:1622559/FULLTEXT01.pdf";
         external_links["Roshen"] = "https://ieeexplore.ieee.org/document/4052433";
         external_links["Albach"] = "https://ieeexplore.ieee.org/iel3/3925/11364/00548774.pdf";
@@ -456,6 +460,7 @@ class CoreLossesModel {
         std::map<std::string, std::string> internal_links;
         internal_links["Steinmetz"] = "";
         internal_links["iGSE"] = "";
+        internal_links["ciGSE"] = "";
         internal_links["Barg"] = "";
         internal_links["Roshen"] = "/musings/4_roshen_method_core_losses";
         internal_links["Albach"] = "";
@@ -522,6 +527,77 @@ class CoreLossesIGSEModel : public CoreLossesSteinmetzModel {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
     double get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum);
+};
+
+// Based on "The Composite Improved Generalized Steinmetz Equation (ciGSE): An Accurate Model
+// Combining the Composite Waveform Hypothesis With Classical Approaches" by Asier Arruti et al.
+// IEEE Transactions on Power Electronics, vol. 39, no. 1, pp. 1162-1173, Jan. 2024
+// DOI: 10.1109/TPEL.2023.3323577
+//
+// The ciGSE uses the Composite Waveform Hypothesis (CWH) to calculate losses for each segment
+// of the waveform separately using an "expanded loss space" - a 5th degree polynomial surface
+// fitted to experimental data in log(|dB/dt|) vs log(ΔB) vs log(Pv) coordinates.
+//
+// Key equations from the paper:
+// - Eq. (6): P_AB = D * P_AA + (1-D) * P_BB  (Composite Waveform Hypothesis)
+// - Eq. (7): Pv = exp([ln(|dB/dt|)^0 ... ln(|dB/dt|)^n] * P * [ln(ΔB)^0 ... ln(ΔB)^n]^T)
+// - Eq. (11): Pv = Σ D_n * ki_n * |dB/dt|^αn * ΔB^(βn-αn)  (ciGSE for triangular waveforms)
+
+// Structure to hold 5th degree polynomial coefficients for expanded loss space
+// The polynomial is evaluated as: ln(Pv) = [X^0 X^1 ... X^5] * P * [Y^0 Y^1 ... Y^5]^T
+// where X = ln(|dB/dt|), Y = ln(ΔB)
+struct ciGSECoefficients {
+    std::string materialName;
+    double temperature;
+    double p[6][6];  // 6x6 matrix for 5th degree polynomial (p_ij where i,j = 0..5)
+};
+
+class CoreLossesciGSEModel : public CoreLossesSteinmetzModel {
+  private:
+    std::string _modelName = "ciGSE";
+    
+    // Cache for loaded coefficients
+    static std::vector<ciGSECoefficients> _coefficientsCache;
+    static bool _coefficientsLoaded;
+    
+    // Load coefficients from JSON file
+    static void load_coefficients();
+    
+    // Get the expanded loss space coefficients for a material at a given temperature
+    static const ciGSECoefficients* get_expanded_loss_space_coefficients(
+        const std::string& materialName, double temperature);
+    
+    // Evaluate the expanded loss space to get volumetric losses for a segment
+    // dBdt: rate of change of magnetic flux density [T/s]
+    // deltaB: peak-to-peak flux density [T]
+    // Returns: volumetric losses [W/m³]
+    static double evaluate_expanded_loss_space(const ciGSECoefficients& coeffs,
+                                               double dBdt, double deltaB);
+    
+  public:
+    double get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
+    double get_core_mass_losses(CoreMaterial coreMaterial,
+                                      OperatingPointExcitation excitation,
+                                      double temperature) {
+        throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
+    }
+    double get_frequency_from_core_losses(Core core,
+                                          SignalDescriptor magneticFluxDensity,
+                                          double temperature,
+                                          double coreLosses) {
+        return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
+    }
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
+                                                                        double frequency,
+                                                                        double temperature,
+                                                                        double coreLosses) {
+        return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
+    }
+    
+    // Check if ciGSE coefficients are available for a material
+    static bool has_cigse_coefficients(const std::string& materialName, double temperature);
 };
 
 // Based on Core Loss Calculation of Symmetric Trapezoidal Magnetic Flux Density Waveform by Sobhi Barg

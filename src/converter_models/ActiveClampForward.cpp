@@ -79,7 +79,11 @@ namespace OpenMagnetics {
         }
 
         if (minimumPrimaryCurrent < 0) { // DCM
-            t1 = sqrt(2 * mainOutputCurrent * mainOutputInductance * (mainOutputVoltage + diodeVoltageDrop) / (switchingFrequency * (inputVoltage / mainSecondaryTurnsRatio - diodeVoltageDrop - mainOutputVoltage) * (inputVoltage / mainSecondaryTurnsRatio)));
+            double sqrtArg = 2 * mainOutputCurrent * mainOutputInductance * (mainOutputVoltage + diodeVoltageDrop) / (switchingFrequency * (inputVoltage / mainSecondaryTurnsRatio - diodeVoltageDrop - mainOutputVoltage) * (inputVoltage / mainSecondaryTurnsRatio));
+            if (sqrtArg < 0) {
+                throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "ActiveClampForward: negative value under sqrt in DCM t1 calculation");
+            }
+            t1 = sqrt(sqrtArg);
             if (t1 > period / 2) {
                 throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "T1 cannot be larger than period/2, wrong topology configuration");
             }
@@ -98,7 +102,11 @@ namespace OpenMagnetics {
             }
         }
 
-        auto clampVoltage = t1 * switchingFrequency / (1 - t1 * switchingFrequency) * inputVoltage;
+        double denom = 1 - t1 * switchingFrequency;
+        if (fabs(denom) < 1e-12) {
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "ActiveClampForward: clamp voltage undefined when duty cycle equals 1");
+        }
+        auto clampVoltage = t1 * switchingFrequency / denom * inputVoltage;
 
         double minimumPrimarySideTransformerCurrentT1 = minimumPrimaryCurrent;
         double maximumPrimarySideTransformerCurrentT1 = maximumPrimaryCurrent;

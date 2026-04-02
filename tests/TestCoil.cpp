@@ -7073,7 +7073,6 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contig
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-        settings.reset();
     }
 
     coil.set_intersection_insulation(0.0002, 1);

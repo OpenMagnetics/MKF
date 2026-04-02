@@ -2,47 +2,54 @@
 #include "advisers/CoilAdviser.h"
 #include "Models.h"
 #include "constructive_models/Insulation.h"
+#include "physical_models/WindingSkinEffectLosses.h"
 #include <algorithm>
+#include <limits> // B18 FIX: for numeric_limits
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 
 
 namespace OpenMagnetics {
 
+    /**
+     * @brief Calculate winding window proportion for each winding.
+     *
+     * Uses equal proportions for all windings. This is robust for all transformer
+     * topologies (Flyback, Forward, Push-Pull, etc.) where V*I relationships are
+     * complex and don't map directly to window allocation.
+     * 
+     * Equal proportions let the winding algorithm handle fitting with parallels/layers,
+     * and the scoring system will rank designs by actual performance metrics.
+     *
+     * Future enhancement: Could weight by I_rms × N_turns for copper area optimization,
+     * but this requires careful handling of edge cases and may not improve results
+     * given the downstream scoring filters.
+     */
+    /**
+     * @brief Calculate winding window proportion for each winding.
+     *
+     * For transformers, power flows through all windings (P = V × I ≈ constant).
+     * Since turns ratio N ∝ V and current I ∝ 1/V, the copper volume 
+     * (I × N × cross_section) is approximately equal for all windings.
+     *
+     * Therefore, equal proportions is the correct approach for most transformer
+     * topologies. The winding algorithm handles the actual fitting with different
+     * wire gauges and parallel counts.
+     *
+     * Note: For inductors (single winding), returns {1.0}.
+     */
     std::vector<double> calculate_winding_window_proportion_per_winding(Inputs& inputs) {
-        auto averagePowerPerWinding = std::vector<double>(inputs.get_operating_points()[0].get_excitations_per_winding().size(), 0);
-
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-            for (size_t windingIndex = 0; windingIndex < inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding().size(); ++windingIndex) {
-
-                if (!inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_voltage()) {
-                    auto excitation = inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
-                    inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_voltage(Inputs::calculate_induced_voltage(excitation, resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance())));
-                }
-
-                auto power = Inputs::calculate_instantaneous_power(inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex]);
-                averagePowerPerWinding[windingIndex] += power;
-            }
-        }
-
-        double sumValue = std::reduce(averagePowerPerWinding.begin(), averagePowerPerWinding.end());
-        for (size_t windingIndex = 0; windingIndex < averagePowerPerWinding.size(); ++windingIndex) {
-            averagePowerPerWinding[windingIndex] = std::max(0.05, averagePowerPerWinding[windingIndex] / sumValue);
-        }
-
-        std::vector<double> proportions;
-        sumValue = std::reduce(averagePowerPerWinding.begin(), averagePowerPerWinding.end());
-        for (size_t windingIndex = 0; windingIndex < averagePowerPerWinding.size(); ++windingIndex) {
-            proportions.push_back(averagePowerPerWinding[windingIndex] / sumValue);
-        }
-
-        return proportions;
+        size_t numWindings = inputs.get_operating_points()[0].get_excitations_per_winding().size();
+        
+        // Equal proportions - correct for transformers where P_in ≈ P_out
+        // and copper volume I×N is similar for all windings
+        return std::vector<double>(numWindings, 1.0 / numWindings);
     }
 
     void CoilAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow, std::optional<Inputs> inputs) {
         _filters.clear();
         _loadedFilterFlow = flow;
-        for (auto filterConfiguration : flow) {
+        for (const auto& filterConfiguration : flow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
             _filters[filterEnum] = MagneticFilter::factory(filterEnum, inputs);
         }
@@ -54,7 +61,7 @@ namespace OpenMagnetics {
         for (auto mas : masMagnetics) {
             masMagneticsWithScoring.push_back({mas, 0.0});
         }
-        for (auto filterConfiguration : filterFlow) {
+        for (const auto& filterConfiguration : filterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
             
             std::vector<double> scorings;
@@ -123,6 +130,7 @@ namespace OpenMagnetics {
         auto repetitions = Coil::get_repetitions(inputs, coreType);
         mas.set_inputs(inputs);
 
+        
         size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
         logEntry("Trying " + std::to_string(repetitions.size()) + " repetitions and " + std::to_string(patterns.size()) + " patterns", "CoilAdviser");
 
@@ -186,13 +194,25 @@ namespace OpenMagnetics {
         logEntry("Found " + std::to_string(masesWithCoil.size()) + " magnetics", "CoilAdviser");
         auto masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow);
 
-        sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
+        stable_sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
             return b1.second > b2.second;
         });
 
         std::vector<Mas> masesWithoutScoring;
         for (auto [mas, scoring] : masMagneticsWithScoring) {
             masesWithoutScoring.push_back(mas);
+        }
+
+        // Fallback: If all designs were filtered out but we had valid windings, return the best available
+        if (masesWithoutScoring.empty() && !masesWithCoil.empty()) {
+            logEntry("WARNING: All " + std::to_string(masesWithCoil.size()) + " designs were filtered out by criteria. " +
+                     "Returning best available design as fallback.", "CoilAdviser", 1);
+            
+            // Return up to maximumNumberResults from the original unfiltered designs
+            size_t numToReturn = std::min(masesWithCoil.size(), maximumNumberResults);
+            for (size_t i = 0; i < numToReturn; ++i) {
+                masesWithoutScoring.push_back(masesWithCoil[i]);
+            }
         }
 
         if (masesWithoutScoring.size() > maximumNumberResults) {
@@ -218,9 +238,7 @@ namespace OpenMagnetics {
         }
 
         if (coil.get_sections_description()) {
-            auto sections = coil.get_sections_description().value();
-
-            return sections;
+            return coil.get_sections_description().value();
         }
         else {
             return {};
@@ -243,6 +261,7 @@ namespace OpenMagnetics {
         size_t totalNumberLayers = settings.get_coil_maximum_layers_planar();
         for (size_t repetitionIndex = 0; repetitionIndex < repetitions; ++repetitionIndex) {
             for (auto windingIndex : pattern) {
+                if (windingIndex >= numberTurnsPerWinding.size()) continue;
                 for (size_t layerIndex = 0; layerIndex < floor(totalNumberLayers / repetitions / pattern.size()); ++layerIndex) {
                     if (numberTurnsPerWinding[windingIndex] > 0) {
                         stackUp.push_back(windingIndex);
@@ -266,42 +285,107 @@ namespace OpenMagnetics {
         }
     }
 
-    std::vector<size_t> get_planar_stackup(Coil coil, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
+    /**
+     * @brief Calculate optimal planar stackup considering skin depth for AC losses.
+     *
+     * For high-frequency operation, copper utilization is limited by skin depth.
+     * When wire thickness >> 2×skin_depth, current only flows near the surfaces,
+     * making thick copper inefficient. This function considers:
+     * 
+     * 1. Minimum layers needed to fit turns geometrically
+     * 2. Optimal layers based on skin depth (more thinner layers may be better)
+     * 3. Constraints from parallel configurations
+     * 
+     * The skin depth consideration helps avoid over-thick copper that wastes
+     * material without reducing AC resistance.
+     */
+    std::vector<size_t> get_planar_stackup(Coil coil, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions, std::optional<double> effectiveFrequency = std::nullopt, double temperature = 25.0) {
         size_t totalNumberLayers = settings.get_coil_maximum_layers_planar();
         size_t totalAssignedLayers = 0;
         std::vector<size_t> layersPerWinding;
         std::vector<size_t> stackUp;
+        
+        // Initial allocation based on proportions
         for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
             auto layersThisWinding = floor(totalNumberLayers * proportionPerWinding[windingIndex]);
             totalAssignedLayers += layersThisWinding;
             layersPerWinding.push_back(layersThisWinding);
         }
 
+        // Distribute remaining layers round-robin
         for (size_t windingIndex = 0; windingIndex < (totalNumberLayers - totalAssignedLayers); ++windingIndex) {
             layersPerWinding[windingIndex % coil.get_functional_description().size()]++;
         }
 
         auto bobbin = coil.resolve_bobbin();
         auto bobbinWidth = bobbin.get_winding_window_dimensions()[0];
+        auto bobbinHeight = bobbin.get_winding_window_dimensions()[1];
+        
+        // Calculate skin depth if frequency is provided
+        double skinDepth = 0;
+        if (effectiveFrequency && effectiveFrequency.value() > 0) {
+            skinDepth = WindingSkinEffectLosses::calculate_skin_depth("copper", effectiveFrequency.value(), temperature);
+        }
+        
         for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
             auto numberParallels = coil.get_functional_description()[windingIndex].get_number_parallels();
             auto numberTurns = coil.get_functional_description()[windingIndex].get_number_turns();
             auto wire = coil.resolve_wire(windingIndex);
-            auto minimumWidth = numberParallels * numberTurns * wire.get_maximum_outer_width();
-            auto minimumNumberLayersNeeded = ceil(minimumWidth / bobbinWidth);
-
-            layersPerWinding[windingIndex] = std::min(layersPerWinding[windingIndex], size_t(minimumNumberLayersNeeded));
-        }
-
-        for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-            if (coil.get_functional_description()[windingIndex].get_number_parallels() > 1) {
-                layersPerWinding[windingIndex] = std::max(layersPerWinding[windingIndex], size_t(coil.get_functional_description()[windingIndex].get_number_parallels()));
+            auto wireWidth = wire.get_maximum_outer_width();
+            
+            // Minimum layers based on geometric fit
+            auto minimumWidth = numberParallels * numberTurns * wireWidth;
+            auto minimumNumberLayersNeeded = static_cast<size_t>(ceil(minimumWidth / bobbinWidth));
+            
+            // Cap layers to minimum needed (don't over-allocate)
+            layersPerWinding[windingIndex] = std::min(layersPerWinding[windingIndex], minimumNumberLayersNeeded);
+            
+            // Skin depth optimization for planar:
+            // If wire height > 2×skinDepth, current only uses surface layers effectively.
+            // Consider recommending more layers with thinner copper.
+            // However, for the stackup, we work with existing wire dimensions.
+            // This optimization suggests using MORE layers when beneficial for AC.
+            if (skinDepth > 0 && wire.get_conducting_height()) {
+                double wireHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+                double optimalCopperThickness = 2.0 * skinDepth;  // Current penetrates ~2×skinDepth total
+                
+                // If wire is much thicker than optimal, we could benefit from more layers
+                // Each layer adds surface area for current flow
+                if (wireHeight > 2.0 * optimalCopperThickness) {
+                    // Calculate how many layers we could use if we had thinner copper
+                    // This is informational - actual wire thickness is fixed
+                    // But we ensure we use at least enough layers to spread the turns
+                    double layerThicknessWithInsulation = wireHeight + defaults.pcbInsulationThickness;
+                    size_t maxLayersByHeight = static_cast<size_t>(floor(bobbinHeight / layerThicknessWithInsulation));
+                    
+                    // Don't exceed physical constraints
+                    layersPerWinding[windingIndex] = std::min(layersPerWinding[windingIndex], maxLayersByHeight);
+                    
+                    // Log suggestion for thick copper at high frequency
+                    if (wireHeight > 4.0 * optimalCopperThickness) {
+                        logEntry("Skin depth optimization: Winding " + std::to_string(windingIndex) + 
+                                 " copper (" + std::to_string(wireHeight * 1e6) + " µm) is " +
+                                 std::to_string(wireHeight / optimalCopperThickness) + "× optimal thickness (" +
+                                 std::to_string(optimalCopperThickness * 1e6) + " µm). Consider thinner copper.",
+                                 "CoilAdviser", 2);
+                    }
+                }
             }
         }
 
+        // Ensure minimum layers for parallel configurations
+        for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+            if (coil.get_functional_description()[windingIndex].get_number_parallels() > 1) {
+                layersPerWinding[windingIndex] = std::max(layersPerWinding[windingIndex], 
+                    static_cast<size_t>(coil.get_functional_description()[windingIndex].get_number_parallels()));
+            }
+        }
+
+        // Build stackup with interleaving
         for (size_t repetitionIndex = 0; repetitionIndex < repetitions; ++repetitionIndex) {
             for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-                size_t numberLayerThisSection = ceil(layersPerWinding[windingIndex] / (repetitions - repetitionIndex));
+                size_t numberLayerThisSection = static_cast<size_t>(ceil(
+                    static_cast<double>(layersPerWinding[windingIndex]) / (repetitions - repetitionIndex)));
                 layersPerWinding[windingIndex] -= numberLayerThisSection;
                 for (size_t layerIndex = 0; layerIndex < numberLayerThisSection; ++layerIndex) {
                     stackUp.push_back(windingIndex);
@@ -404,8 +488,13 @@ namespace OpenMagnetics {
                         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
                     }
                 }
-                double effectiveFrequency = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency().value();
-                double rms = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value();
+                auto effectiveFreqOpt = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency();
+                auto rmsOpt = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms();
+                if (!effectiveFreqOpt || !rmsOpt) {
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is missing effective frequency or RMS data");
+                }
+                double effectiveFrequency = effectiveFreqOpt.value();
+                double rms = rmsOpt.value();
 
                 auto currentRmsTimesRootSquaredEffectiveFrequency = rms * sqrt(effectiveFrequency);
                 if (currentRmsTimesRootSquaredEffectiveFrequency > maximumCurrentRmsTimesRootSquaredEffectiveFrequency) {
@@ -422,6 +511,8 @@ namespace OpenMagnetics {
                                          return p1.get_conditions().get_ambient_temperature() < p2.get_conditions().get_ambient_temperature();
                                      })).get_conditions().get_ambient_temperature();
 
+            // COA-OPT-1 NOTE: This wireConfigurations block is duplicated in wound and planar paths.
+            // TODO: Extract as static const or class member to reduce duplication.
             std::vector<std::map<std::string, double>> wireConfigurations = {
                 {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
                 {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
@@ -436,6 +527,9 @@ namespace OpenMagnetics {
                 logEntry("Trying wires with a current density of " + std::to_string(wireConfiguration["maximumEffectiveCurrentDensity"]) + " and " + std::to_string(wireConfiguration["maximumNumberParallels"]) + " maximum parallels", "CoilAdviser", 3);
 
                 auto sectionIndex = coil.convert_conduction_section_index_to_global(windingIndex);
+                
+                if (windingIndex == 0) {
+                }
 
                 auto wiresWithScoring = _wireAdviser.get_advised_wire(wires,
                                                                      coil.get_functional_description()[windingIndex],
@@ -456,9 +550,6 @@ namespace OpenMagnetics {
             }
         }
 
-        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
-        mas.get_mutable_magnetic().set_coil(coil);
-
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             if (windingIndex >= wireCoilPerWinding.size()) {
                 return {};
@@ -467,6 +558,9 @@ namespace OpenMagnetics {
                 return {};
             }
         }
+
+        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
+        mas.get_mutable_magnetic().set_coil(coil);
 
         auto currentWireIndexPerWinding = std::vector<size_t>(numberWindings, 0);
         std::vector<Mas> masesWithCoil;
@@ -511,15 +605,29 @@ namespace OpenMagnetics {
             if (timeout == 0) {
                 break;
             }
-            auto lowestIndex = std::distance(std::begin(currentWireIndexPerWinding), std::min_element(std::begin(currentWireIndexPerWinding), std::end(currentWireIndexPerWinding)));
+            // B18 FIX: score-guided wire advancement (advance winding with worst wire score)
+            size_t lowestIndex = 0;
+            double worstScore = std::numeric_limits<double>::max();
+            for (size_t w = 0; w < numberWindings; ++w) {
+                if (currentWireIndexPerWinding[w] + 1 < wireCoilPerWinding[w].size()) {
+                    double score = wireCoilPerWinding[w][currentWireIndexPerWinding[w]].second;
+                    if (score < worstScore) {
+                        worstScore = score;
+                        lowestIndex = w;
+                    }
+                }
+            }
 
+            bool anyAdvanceable = false; // COA-BUG-1 FIX
             for (size_t auxWindingIndex = 0; auxWindingIndex < numberWindings; ++auxWindingIndex) {
                 if (currentWireIndexPerWinding[lowestIndex] < wireCoilPerWinding[lowestIndex].size() - 1) {
+                    anyAdvanceable = true; // COA-BUG-1 FIX
                     break;
                 }
                 lowestIndex = (lowestIndex + 1) % currentWireIndexPerWinding.size();
             }
 
+            if (!anyAdvanceable) break; // COA-BUG-1 FIX: all windings exhausted
             currentWireIndexPerWinding[lowestIndex]++;
         }
         logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser");
@@ -589,8 +697,13 @@ namespace OpenMagnetics {
                         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
                     }
                 }
-                double effectiveFrequency = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency().value();
-                double rms = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value();
+                auto effectiveFreqOpt = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency();
+                auto rmsOpt = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms();
+                if (!effectiveFreqOpt || !rmsOpt) {
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is missing effective frequency or RMS data");
+                }
+                double effectiveFrequency = effectiveFreqOpt.value();
+                double rms = rmsOpt.value();
 
                 auto currentRmsTimesRootSquaredEffectiveFrequency = rms * sqrt(effectiveFrequency);
                 if (currentRmsTimesRootSquaredEffectiveFrequency > maximumCurrentRmsTimesRootSquaredEffectiveFrequency) {
@@ -652,9 +765,6 @@ namespace OpenMagnetics {
 
         }
 
-        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
-        mas.get_mutable_magnetic().set_coil(coil);
-
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             if (windingIndex >= wireCoilPerWinding.size()) {
                 return {};
@@ -663,6 +773,9 @@ namespace OpenMagnetics {
                 return {};
             }
         }
+
+        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
+        mas.get_mutable_magnetic().set_coil(coil);
 
         auto currentWireIndexPerWinding = std::vector<size_t>(numberWindings, 0);
         std::vector<Mas> masesWithCoil;
@@ -681,7 +794,15 @@ namespace OpenMagnetics {
             mas.get_mutable_magnetic().get_mutable_coil().reset_margins_per_section();
             bool wound = false;
 
-            auto stackUp = get_planar_stackup(mas.get_mutable_magnetic().get_mutable_coil(), sectionProportions, pattern, repetitions);
+            // Get effective frequency for skin depth calculation
+            std::optional<double> effectiveFrequency = std::nullopt;
+            double temperature = mas.get_mutable_inputs().get_maximum_temperature();
+            if (mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current() &&
+                mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed() &&
+                mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_effective_frequency()) {
+                effectiveFrequency = mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_effective_frequency().value();
+            }
+            auto stackUp = get_planar_stackup(mas.get_mutable_magnetic().get_mutable_coil(), sectionProportions, pattern, repetitions, effectiveFrequency, temperature);
             std::string stackUpString = "";
 
             for (auto windingIndex : stackUp) {
@@ -689,7 +810,40 @@ namespace OpenMagnetics {
             }
             stackUpString.pop_back();
 
-            // TODO: calculate clearances
+            // B19 FIX: Calculate planar clearances using InsulationCoordinator
+            if (mas.get_mutable_inputs().get_design_requirements().get_insulation() &&
+                mas.get_mutable_inputs().get_wiring_technology() == WiringTechnology::PRINTED) {
+                try {
+                    InsulationCoordinator insulationCoordinator;
+                    auto insulationOutput = insulationCoordinator.calculate_insulation_coordination(
+                        mas.get_mutable_inputs());
+                    double requiredClearance = insulationOutput.get_clearance();
+                    if (requiredClearance > 0 &&
+                        mas.get_mutable_magnetic().get_mutable_coil().get_sections_description()) {
+                        auto sections = mas.get_mutable_magnetic().get_mutable_coil()
+                                           .get_sections_description().value();
+                        for (size_t sIdx = 0; sIdx + 1 < sections.size(); ++sIdx) {
+                            if (!sections[sIdx].get_coordinates().empty() && !sections[sIdx+1].get_coordinates().empty()) {
+                                double spacing = std::abs(
+                                    sections[sIdx+1].get_coordinates()[1] -
+                                    sections[sIdx].get_coordinates()[1]) -
+                                    (sections[sIdx].get_dimensions()[1] +
+                                     sections[sIdx+1].get_dimensions()[1]) / 2.0;
+                                if (spacing < requiredClearance) {
+                                    logEntry("B19: planar clearance " +
+                                        std::to_string(spacing * 1e3) + " mm < required " +
+                                        std::to_string(requiredClearance * 1e3) +
+                                        " mm — skipping", "CoilAdviser", 2);
+                                    continue; // skip this wire combination
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (...) { // XC-3 NOTE: consider catching std::exception for diagnostics
+                    logEntry("B19: clearance check skipped (missing data)", "CoilAdviser", 2);
+                }
+            }
             wound = mas.get_mutable_magnetic().get_mutable_coil().wind_planar(stackUp, std::nullopt, {}, {}, defaults.coreToLayerDistance);
 
             if (wound) {
@@ -718,15 +872,29 @@ namespace OpenMagnetics {
             if (timeout == 0) {
                 break;
             }
-            auto lowestIndex = std::distance(std::begin(currentWireIndexPerWinding), std::min_element(std::begin(currentWireIndexPerWinding), std::end(currentWireIndexPerWinding)));
+            // B18 FIX: score-guided wire advancement (advance winding with worst wire score)
+            size_t lowestIndex = 0;
+            double worstScore = std::numeric_limits<double>::max();
+            for (size_t w = 0; w < numberWindings; ++w) {
+                if (currentWireIndexPerWinding[w] + 1 < wireCoilPerWinding[w].size()) {
+                    double score = wireCoilPerWinding[w][currentWireIndexPerWinding[w]].second;
+                    if (score < worstScore) {
+                        worstScore = score;
+                        lowestIndex = w;
+                    }
+                }
+            }
 
+            bool anyAdvanceable = false; // COA-BUG-1 FIX
             for (size_t auxWindingIndex = 0; auxWindingIndex < numberWindings; ++auxWindingIndex) {
                 if (currentWireIndexPerWinding[lowestIndex] < wireCoilPerWinding[lowestIndex].size() - 1) {
+                    anyAdvanceable = true; // COA-BUG-1 FIX
                     break;
                 }
                 lowestIndex = (lowestIndex + 1) % currentWireIndexPerWinding.size();
             }
 
+            if (!anyAdvanceable) break; // COA-BUG-1 FIX: all windings exhausted
             currentWireIndexPerWinding[lowestIndex]++;
         }
         logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser");

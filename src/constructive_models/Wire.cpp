@@ -1605,6 +1605,15 @@ namespace OpenMagnetics {
         set_conducting_width(dimensionWithTolerance);
         set_outer_width(get_conducting_width());
         set_outer_height(get_conducting_height());
+        
+        // Update conducting area based on new dimensions
+        if (get_conducting_width() && get_conducting_height()) {
+            double width = resolve_dimensional_values(get_conducting_width().value());
+            double height = resolve_dimensional_values(get_conducting_height().value());
+            DimensionWithTolerance area;
+            area.set_nominal(width * height);
+            set_conducting_area(area);
+        }
     }
 
     double Wire::get_relative_cost() {
@@ -2004,6 +2013,7 @@ namespace OpenMagnetics {
             wire.set_nominal_value_outer_diameter(get_outer_diameter_round(wireConductingDiameter, 1, WireStandard::IEC_60317));
             wire.set_material("copper");
             wire.set_type(WireType::ROUND);
+            wire.set_number_conductors(1);
             return wire;
         }
         else {
@@ -2021,6 +2031,7 @@ namespace OpenMagnetics {
             wire.set_nominal_value_outer_diameter(get_outer_diameter_round(wireConductingDiameter, 1, WireStandard::IEC_60317));
             wire.set_material("copper");
             wire.set_type(WireType::ROUND);
+            wire.set_number_conductors(1);
             return wire;
         }
         else {

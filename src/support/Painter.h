@@ -365,7 +365,7 @@ class PainterInterface {
     virtual void paint_coil_sections(Magnetic magnetic) = 0;
     virtual void paint_coil_layers(Magnetic magnetic) = 0;
     virtual void paint_wire(Wire wire) = 0;
-    virtual void paint_coil_turns(Magnetic magnetic) = 0;
+    virtual void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false) = 0;
     virtual void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0) = 0;
     virtual void paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature=defaults.ambientTemperature) = 0;
     virtual void paint_waveform(Waveform waveform) = 0;
@@ -399,8 +399,8 @@ class BasicPainter : public PainterInterface {
     void paint_toroidal_coil_sections(Magnetic magnetic);
     void paint_two_piece_set_coil_layers(Magnetic magnetic);
     void paint_toroidal_coil_layers(Magnetic magnetic);
-    void paint_two_piece_set_coil_turns(Magnetic magnetic);
-    void paint_toroidal_coil_turns(Magnetic magnetic);
+    void paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
+    void paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
     void paint_two_piece_set_margin(Magnetic magnetic);
     void paint_toroidal_margin(Magnetic magnetic);
 
@@ -454,7 +454,7 @@ class BasicPainter : public PainterInterface {
     void paint_coil_sections(Magnetic magnetic);
     void paint_coil_layers(Magnetic magnetic);
     void paint_wire(Wire wire);
-    void paint_coil_turns(Magnetic magnetic);
+    void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
     void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false, ColorPalette palette = ColorPalette::BLUE_TO_RED, double ambientTemperature = 25.0, const std::string& textColor = "#000000", const std::string& bgColor = "");
 
     /**
@@ -572,8 +572,8 @@ class AdvancedPainter : public PainterInterface {
     void paint_round_wire(double xCoordinate, double yCoordinate, Wire wire);
     void paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire);
     void paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle=0, std::vector<double> center=std::vector<double>{});
-    void paint_two_piece_set_winding_turns(Magnetic magnetic);
-    void paint_toroidal_winding_turns(Magnetic magnetic);
+    void paint_two_piece_set_winding_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
+    void paint_toroidal_winding_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
     void paint_two_piece_set_margin(Magnetic magnetic);
     void paint_toroidal_margin(Magnetic magnetic);
     void calculate_extra_margin_for_toroidal_cores(Magnetic magnetic);
@@ -626,7 +626,7 @@ class AdvancedPainter : public PainterInterface {
     void paint_coil_layers(Magnetic magnetic);
 
     void paint_wire(Wire wire);
-    void paint_coil_turns(Magnetic magnetic);
+    void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
     void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0);
     void paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature=defaults.ambientTemperature);
 
@@ -680,7 +680,7 @@ class Painter{
     void paint_coil_layers(Magnetic magnetic);
 
     void paint_wire(Wire wire); 
-    void paint_coil_turns(Magnetic magnetic);
+    void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
     void paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex = 0);
     void paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature=defaults.ambientTemperature);
 

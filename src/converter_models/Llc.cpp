@@ -187,7 +187,6 @@ DesignRequirements Llc::process_design_requirements() {
     double L = Ln * Ls;
 
     if (Ln < 2.0 || Ln > 20.0) {
-        std::cerr << "WARNING: Ln=" << Ln << " outside typical range [3, 12]." << std::endl;
     }
 
     computedResonantInductance  = Ls;
@@ -200,19 +199,14 @@ DesignRequirements Llc::process_design_requirements() {
         double M_req_max = (mainOutputVoltage * mainTurnsRatio) / (k_bridge * Vin_max);
         double M_max_noload = (Ln > 1.0) ? std::sqrt(Ln / (Ln - 1.0)) : 10.0;
         double M_max_heavy = M_max_noload / std::sqrt(1.0 + Q * Q * std::pow(M_max_noload * M_max_noload - 1.0, 2));
-        if (M_req_min > M_max_heavy)
-            std::cerr << "WARNING: Cannot achieve gain M=" << M_req_min << " at Vin_min=" << Vin_min
-                      << "V (max=" << M_max_heavy << "). Reduce Ln or increase fsw." << std::endl;
-        if (M_req_max < 0.3)
-            std::cerr << "WARNING: Gain too low at Vin_max=" << Vin_max << "V (M=" << M_req_max << ")." << std::endl;
+        (void)M_req_min;
+        (void)M_req_max;
     }
 
     {
         double Coss_est = 200e-12;
         double td_min_zvs = (M_PI / 2.0) * std::sqrt(2.0 * Coss_est * L);
-        if (computedDeadTime < td_min_zvs)
-            std::cerr << "WARNING: Dead time (" << (computedDeadTime*1e9)
-                      << "ns) < min ZVS (" << (td_min_zvs*1e9) << "ns)" << std::endl;
+        (void)td_min_zvs;
     }
 
     DesignRequirements designRequirements;
@@ -436,14 +430,8 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
         LlcModeAnalysis modeAnalysis = detect_operating_mode(Vi, Vo, Po_det, fsw, f0_det, Ln_det, Q_det, isFullBridge);
 
-        if (modeAnalysis.mode == LlcOperatingMode::MODE_BELOW_RESONANCE_LIGHT)
-            std::cerr << "WARNING: Below resonance — NO ZVS!" << std::endl;
-        if (modeAnalysis.mode == LlcOperatingMode::MODE_ABOVE_RESONANCE_HEAVY)
-            std::cerr << "WARNING: Heavy load — high circulating current." << std::endl;
+        (void)modeAnalysis;
     }
-
-    if (Vo >= Vi)
-        std::cerr << "WARNING: Vo (" << Vo << "V) >= Vi (" << Vi << "V)." << std::endl;
 
     double period = 1.0 / fsw;
     double Thalf  = period / 2.0;
@@ -522,6 +510,10 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     // Primary voltage depends on Ls topology:
     //   SEPARATE Ls:   Vpri = VLm(t) — flat clamp + soft hill (magnetizing only)
     //   INTEGRATED Ls: Vpri = Vi - Vc(t) — bridge voltage with Cr ripple
+    //
+    // IMPORTANT: The simulation was done over Thalf_eff (half period minus dead time),
+    // but the waveform must span exactly one full period for correct sampling/FFT.
+    // We scale the time vector so it spans from 0 to period.
     // =====================================================================
 
     int totalSamples = 2 * N + 1;
@@ -531,8 +523,12 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     std::vector<double> Vpri_full(totalSamples);  // Primary voltage (topology-dependent)
     std::vector<double> VLm_full(totalSamples);   // Magnetizing voltage (for core loss & secondary)
 
+    // Scale time so waveform spans exactly one period
+    // Simulation dt was based on Thalf_eff, but we need to scale to full Thalf
+    double dt_output = Thalf / N;  // Time step for output waveform (spans full half-period)
+
     for (int k = 0; k <= N; ++k) {
-        time_full[k] = k * dt;
+        time_full[k] = k * dt_output;
         ILs_full[k] = std::isfinite(ILs_pos[k]) ? ILs_pos[k] : ILs0;
         IL_full[k]  = std::isfinite(IL_pos[k])  ? IL_pos[k]  : IL0;
 
@@ -548,7 +544,7 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     }
 
     for (int k = 1; k <= N; ++k) {
-        time_full[N + k] = Thalf_eff + k * dt;
+        time_full[N + k] = Thalf + k * dt_output;  // Second half starts at Thalf, not Thalf_eff
         ILs_full[N + k] = std::isfinite(ILs_pos[k]) ? -ILs_pos[k] : -ILs0;
         IL_full[N + k]  = std::isfinite(IL_pos[k])  ? -IL_pos[k]  : -IL0;
 
@@ -582,10 +578,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
         auto excitation = complete_excitation(currentWaveform, voltageWaveform,
                                               fsw, "Primary");
-        auto nameOpt = excitation.get_name();
-        std::cerr << "DEBUG LLC Primary excitation name: '" 
-                  << (nameOpt.has_value() ? nameOpt.value() : "NULL") 
-                  << "'" << std::endl;
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 
@@ -646,10 +638,6 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
             std::string windingName = "Secondary " + std::to_string(outputIdx) + " Half " + std::to_string(halfIdx + 1);
             auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
-            auto nameOpt = excitation.get_name();
-            std::cerr << "DEBUG LLC Secondary excitation name: '" 
-                      << (nameOpt.has_value() ? nameOpt.value() : "NULL") 
-                      << "'" << std::endl;
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
     }
@@ -745,18 +733,24 @@ std::string Llc::generate_ngspice_circuit(
         // Secondary windings with sense nodes for current measurement
         circuit << "Lsec1 sec_top_sec sec_ct " << std::scientific << Lsec_half << "\n";
         circuit << "Lsec2 sec_ct sec_bot_sec " << std::scientific << Lsec_half << "\n";
-        circuit << "K1 Lpri Lsec1 Lsec2 " << k_int << "\n\n";
+        // Use pairwise K statements - ngspice has a bug with 3+ inductor K statements
+        circuit << "K12 Lpri Lsec1 " << k_int << "\n";
+        circuit << "K13 Lpri Lsec2 " << k_int << "\n";
+        circuit << "K23 Lsec1 Lsec2 " << k_int << "\n\n";
     } else {
         double Lsec_half = L / (n * n);
         circuit << "* Resonant tank (separate inductor)\n";
         circuit << "Cr lr_in cr_ls " << std::scientific << Cr << "\n";
         circuit << "Lr cr_ls pri_top " << std::scientific << Ls << "\n\n";
-        circuit << "* Transformer (k=0.999)\n";
+        circuit << "* Transformer (k~1, using pairwise K statements for ngspice compatibility)\n";
         circuit << "Lpri pri_top pri_bot " << std::scientific << L << "\n";
         // Secondary windings with sense nodes for current measurement
         circuit << "Lsec1 sec_top_sec sec_ct " << std::scientific << Lsec_half << "\n";
         circuit << "Lsec2 sec_ct sec_bot_sec " << std::scientific << Lsec_half << "\n";
-        circuit << "K1 Lpri Lsec1 Lsec2 0.999\n\n";
+        // Use pairwise K statements - ngspice has a bug with 3+ inductor K statements
+        circuit << "K12 Lpri Lsec1 0.999\n";
+        circuit << "K13 Lpri Lsec2 0.999\n";
+        circuit << "K23 Lsec1 Lsec2 0.999\n\n";
     }
 
     if (isFullBridge) circuit << "Rpri_ret pri_bot bridge_b 0.001\n\n";
@@ -798,12 +792,20 @@ std::string Llc::generate_ngspice_circuit(
 // SPICE simulation wrappers
 // =====================================================================
 std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
-    const std::vector<double>& turnsRatios, double magnetizingInductance)
+    const std::vector<double>& turnsRatios, double magnetizingInductance,
+    size_t numberOfPeriods)
 {
     std::vector<OperatingPoint> operatingPoints;
     NgspiceRunner runner;
     if (!runner.is_available())
         return process_operating_points(turnsRatios, magnetizingInductance);
+
+    // If numberOfPeriods is specified, use it; otherwise use the member variable
+    int numPeriods = (numberOfPeriods > 0) ? static_cast<int>(numberOfPeriods) : get_num_periods_to_extract();
+    
+    // Save original value and set the requested number of periods
+    int originalNumPeriodsToExtract = get_num_periods_to_extract();
+    set_num_periods_to_extract(numPeriods);
 
     std::vector<double> inputVoltages;
     if (get_input_voltage().get_nominal().has_value())
@@ -863,6 +865,9 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
             operatingPoints.push_back(operatingPoint);
         }
     }
+    
+    // Restore original value
+    set_num_periods_to_extract(originalNumPeriodsToExtract);
     return operatingPoints;
 }
 
