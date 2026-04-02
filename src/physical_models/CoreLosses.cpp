@@ -113,16 +113,81 @@ std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string m
 }
 
 
+// DC Permeability Loss Estimator (DPLE) — Mühlethaler et al. (APEC 2025)
+// Corrects Steinmetz-family core losses for DC bias by scaling with the
+// permeability ratio: P_v(H_DC) = P_v(0) × [μ'(0) / μ'(H_DC)]
+// Only applied when: material has DC bias permeability data, excitation has
+// nonzero DC flux offset, and model is not Roshen (which handles DC bias natively).
+static double calculate_dple_factor(const CoreMaterial& material, const OperatingPointExcitation& excitation, double temperature) {
+    if (!excitation.get_magnetic_flux_density() ||
+        !excitation.get_magnetic_flux_density()->get_processed()) {
+        return 1.0;
+    }
+
+    double B_dc = excitation.get_magnetic_flux_density()->get_processed()->get_offset();
+    if (std::abs(B_dc) < 1e-6) {
+        return 1.0;
+    }
+
+    if (!InitialPermeability::has_magnetic_field_dc_bias_dependency(material)) {
+        return 1.0;
+    }
+
+    // Convert B_DC to H_DC using initial permeability at zero bias
+    double mu_0 = Constants().vacuumPermeability;
+    double mu_r_zero = InitialPermeability::get_initial_permeability(material, temperature, 0.0);
+    if (mu_r_zero <= 0) {
+        return 1.0;
+    }
+    double H_dc = std::abs(B_dc) / (mu_0 * mu_r_zero);
+
+    // Get permeability at the DC bias point
+    double mu_r_dc = InitialPermeability::get_initial_permeability(material, temperature, H_dc);
+    if (mu_r_dc <= 0 || std::isnan(mu_r_dc)) {
+        return 1.0;
+    }
+
+    double dple_factor = mu_r_zero / mu_r_dc;
+
+    // Sanity: factor should be >= 1 (DC bias increases losses) and bounded
+    if (dple_factor < 1.0) dple_factor = 1.0;
+    if (dple_factor > 10.0) dple_factor = 10.0;  // Physical upper bound
+
+    return dple_factor;
+}
+
 CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
     auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
 
     CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->get_core_losses(core, excitation, temperature);
+
+    // Apply DPLE correction for non-Roshen models (Roshen handles DC bias natively)
+    if (coreLossesOutput.get_method_used() != "Roshen") {
+        double dpleFactor = calculate_dple_factor(core.resolve_material(), excitation, temperature);
+        if (dpleFactor > 1.0) {
+            coreLossesOutput.set_core_losses(coreLossesOutput.get_core_losses() * dpleFactor);
+            if (coreLossesOutput.get_volumetric_losses()) {
+                coreLossesOutput.set_volumetric_losses(coreLossesOutput.get_volumetric_losses().value() * dpleFactor);
+            }
+            if (coreLossesOutput.get_mass_losses()) {
+                coreLossesOutput.set_mass_losses(coreLossesOutput.get_mass_losses().value() * dpleFactor);
+            }
+        }
+    }
+
     return coreLossesOutput;
 }
 double CoreLosses::get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature){
     auto coreLossesModelForMaterial = get_core_losses_model(coreMaterial.get_name());
 
     double coreVolumetricLosses = coreLossesModelForMaterial->get_core_volumetric_losses(coreMaterial, excitation, temperature);
+
+    // Apply DPLE correction for non-Roshen models
+    if (coreLossesModelForMaterial->get_model_name() != "Roshen") {
+        double dpleFactor = calculate_dple_factor(coreMaterial, excitation, temperature);
+        coreVolumetricLosses *= dpleFactor;
+    }
+
     return coreVolumetricLosses;
 }
 

@@ -10,6 +10,7 @@
 #include <magic_enum.hpp>
 #include "TestingUtils.h"
 #include "support/Settings.h"
+#include "support/Logger.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -2516,6 +2517,38 @@ TEST_CASE("Test_CoilAdviser_Direct_Planar_Wire", "[adviser][coil-adviser][wire][
         }
     }
     
+    settings.reset();
+}
+
+TEST_CASE("Test_CoilAdviser_Web_7_Debug_No_Coil_Found", "[adviser][coil-adviser][bug][debug]") {
+    // Root cause: winding window (1.622mm x 1.720mm = 2.79 mm²) is too small for 17 turns.
+    // At 100kHz with 2.89A RMS, even the smallest wires that handle the current
+    // can't fit 17 times in the section area.
+    // At default 12 MA/m² density: min wire OD ~0.6mm -> 0.6² * 17 = 6.12 mm² >> 2.79 mm²
+    // At doubled 24 MA/m² density: min wire OD ~0.45mm -> 0.45² * 17 = 3.44 mm² > 2.79 mm²
+    // The user needs a larger core or fewer turns.
+    settings.reset();
+    auto json_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_7_debug.json");
+    std::ifstream json_file(json_path);
+    OpenMagnetics::Mas mas(json::parse(json_file));
+
+    auto coil = mas.get_magnetic().get_coil();
+    auto bobbin = coil.resolve_bobbin();
+    auto windingWindows = bobbin.get_winding_window_dimensions();
+
+    for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+
+    CoilAdviser coilAdviser;
+    auto mases = coilAdviser.get_advised_coil(mas, 1);
+
+    // Verify this case correctly returns 0 results (winding window too small for requirements)
+    REQUIRE(mases.size() == 0);
     settings.reset();
 }
 

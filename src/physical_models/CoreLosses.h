@@ -318,8 +318,12 @@ class CoreLossesModel {
     std::vector<double> _hysteresisMinorH;
     SteinmetzCoreLossesMethodRangeDatum _steinmetzDatum;
     bool _steinmetzDatumSet = false;
+  protected:
+    std::string _modelName = "Unknown";
+  public:
     CoreLossesModel() = default;
     virtual ~CoreLossesModel() = default;
+    std::string get_model_name() const { return _modelName; }
     virtual CoreLossesOutput get_core_losses(Core core,
                                              OperatingPointExcitation excitation,
                                              double temperature) = 0;
@@ -473,9 +477,8 @@ class CoreLossesModel {
 // Based on On the law of hysteresis by Charles Proteus Steinmetz
 // https://sci-hub.st/10.1109/proc.1984.12842
 class CoreLossesSteinmetzModel : public CoreLossesModel {
-  private:
-    std::string _modelName = "Steinmetz";
   public:
+    CoreLossesSteinmetzModel() { _modelName = "Steinmetz"; }
     CoreLossesOutput get_core_losses(Core core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -503,9 +506,8 @@ class CoreLossesSteinmetzModel : public CoreLossesModel {
 // Based on Accurate Prediction of Ferrite Core Loss with Nonsinusoidal Waveforms Using Only Steinmetz Parameters by
 // Charles R. Sullivan http://inductor.thayerschool.org/papers/IGSE.pdf
 class CoreLossesIGSEModel : public CoreLossesSteinmetzModel {
-  private:
-    std::string _modelName = "iGSE";
   public:
+    CoreLossesIGSEModel() { _modelName = "iGSE"; }
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -554,8 +556,6 @@ struct ciGSECoefficients {
 
 class CoreLossesciGSEModel : public CoreLossesSteinmetzModel {
   private:
-    std::string _modelName = "ciGSE";
-    
     // Cache for loaded coefficients
     static std::vector<ciGSECoefficients> _coefficientsCache;
     static bool _coefficientsLoaded;
@@ -575,6 +575,7 @@ class CoreLossesciGSEModel : public CoreLossesSteinmetzModel {
                                                double dBdt, double deltaB);
     
   public:
+    CoreLossesciGSEModel() { _modelName = "ciGSE"; }
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -595,7 +596,7 @@ class CoreLossesciGSEModel : public CoreLossesSteinmetzModel {
                                                                         double coreLosses) {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
-    
+
     // Check if ciGSE coefficients are available for a material
     static bool has_cigse_coefficients(const std::string& materialName, double temperature);
 };
@@ -603,9 +604,8 @@ class CoreLossesciGSEModel : public CoreLossesSteinmetzModel {
 // Based on Core Loss Calculation of Symmetric Trapezoidal Magnetic Flux Density Waveform by Sobhi Barg
 // https://miun.diva-portal.org/smash/get/diva2:1622559/FULLTEXT01.pdf
 class CoreLossesBargModel : public CoreLossesSteinmetzModel {
-  private:
-    std::string _modelName = "Barg";
   public:
+    CoreLossesBargModel() { _modelName = "Barg"; }
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -633,9 +633,8 @@ class CoreLossesBargModel : public CoreLossesSteinmetzModel {
 // https://sci-hub.st/10.1109/20.278656
 // https://sci-hub.st/10.1109/TPEL.2006.886608
 class CoreLossesRoshenModel : public CoreLossesModel {
-  private:
-    std::string _modelName = "Roshen";
   public:
+    CoreLossesRoshenModel() { _modelName = "Roshen"; }
     CoreLossesOutput get_core_losses(Core core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -674,9 +673,8 @@ class CoreLossesRoshenModel : public CoreLossesModel {
 // Based on Calculating Core Losses in Transformers for Arbitrary Magnetizing Currents A Comparison of Different
 // Approaches by Manfred Albach https://sci-hub.st/10.1109/PESC.1996.548774
 class CoreLossesAlbachModel : public CoreLossesSteinmetzModel {
-  private:
-    std::string _modelName = "Albach";
   public:
+    CoreLossesAlbachModel() { _modelName = "Albach"; }
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -702,9 +700,8 @@ class CoreLossesAlbachModel : public CoreLossesSteinmetzModel {
 // Based on Measurement and Loss Model of Ferrites with Non-sinusoidal Waveforms by Alex Van den Bossche
 // http://web.eecs.utk.edu/~dcostine/ECE482/Spring2015/materials/magnetics/NSE.pdf
 class CoreLossesNSEModel : public CoreLossesSteinmetzModel {
-  private:
-    std::string _modelName = "NSE";
   public:
+    CoreLossesNSEModel() { _modelName = "NSE"; }
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -731,9 +728,8 @@ class CoreLossesNSEModel : public CoreLossesSteinmetzModel {
 // Based on Calculation of Losses in Ferro- and Ferrimagnetic Materials Based on the Modified Steinmetz Equation by
 // Jürgen Reinert https://sci-hub.st/10.1109/28.936396
 class CoreLossesMSEModel : public CoreLossesSteinmetzModel {
-  private:
-    std::string _modelName = "MSE";
   public:
+    CoreLossesMSEModel() { _modelName = "MSE"; }
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -759,9 +755,8 @@ class CoreLossesMSEModel : public CoreLossesSteinmetzModel {
 // Based on Improved Calculation of Core Loss With Nonsinusoidal Waveforms by Charles R. Sullivan
 // http://inductor.thayerschool.org/papers/gse.pdf
 class CoreLossesGSEModel : public CoreLossesSteinmetzModel {
-  private:
-    std::string _modelName = "GSE";
   public:
+    CoreLossesGSEModel() { _modelName = "GSE"; }
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -786,9 +781,8 @@ class CoreLossesGSEModel : public CoreLossesSteinmetzModel {
 
 // Based on the formula provided by the manufacturer
 class CoreLossesProprietaryModel : public CoreLossesSteinmetzModel {
-  private:
-    std::string _modelName = "Proprietary";
   public:
+    CoreLossesProprietaryModel() { _modelName = "Proprietary"; }
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
@@ -812,9 +806,8 @@ class CoreLossesProprietaryModel : public CoreLossesSteinmetzModel {
 
 // Based on the formula provided by the manufacturer
 class CoreLossesLossFactorModel : public CoreLossesModel {
-  private:
-    std::string _modelName = "Loss Factor";
   public:
+    CoreLossesLossFactorModel() { _modelName = "Loss Factor"; }
     CoreLossesOutput get_core_losses(Core core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
