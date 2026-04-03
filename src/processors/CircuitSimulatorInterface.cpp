@@ -735,8 +735,11 @@ std::shared_ptr<CircuitSimulatorExporterModel> CircuitSimulatorExporterModel::fa
     else if (programName == CircuitSimulatorExporterModels::LTSPICE) {
         return std::make_shared<CircuitSimulatorExporterLtspiceModel>();
     }
+    else if (programName == CircuitSimulatorExporterModels::PLECS) {
+        return std::make_shared<CircuitSimulatorExporterPlecsModel>();
+    }
     else
-        throw ModelNotAvailableException("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE}");
+        throw ModelNotAvailableException("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE, PLECS}");
 }
 
 std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
