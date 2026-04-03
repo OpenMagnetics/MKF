@@ -302,13 +302,14 @@ std::string CircuitSimulatorExporterPlecsModel::emit_probe(
     return ss.str();
 }
 
-std::string CircuitSimulatorExporterPlecsModel::emit_magnetic_connection(
+std::string CircuitSimulatorExporterPlecsModel::emit_connection(
+    const std::string& type,
     const std::string& srcComponent, int srcTerminal,
     const std::string& dstComponent, int dstTerminal,
     std::vector<std::vector<int>> points) {
     std::ostringstream ss;
     ss << "    Connection {\n";
-    ss << "      Type          Magnetic\n";
+    ss << "      Type          " << type << "\n";
     ss << "      SrcComponent  \"" << srcComponent << "\"\n";
     ss << "      SrcTerminal   " << srcTerminal << "\n";
     if (!points.empty()) {
@@ -319,43 +320,6 @@ std::string CircuitSimulatorExporterPlecsModel::emit_magnetic_connection(
         }
         ss << "\n";
     }
-    ss << "      DstComponent  \"" << dstComponent << "\"\n";
-    ss << "      DstTerminal   " << dstTerminal << "\n";
-    ss << "    }\n";
-    return ss.str();
-}
-
-std::string CircuitSimulatorExporterPlecsModel::emit_wire_connection(
-    const std::string& srcComponent, int srcTerminal,
-    const std::string& dstComponent, int dstTerminal,
-    std::vector<std::vector<int>> points) {
-    std::ostringstream ss;
-    ss << "    Connection {\n";
-    ss << "      Type          Wire\n";
-    ss << "      SrcComponent  \"" << srcComponent << "\"\n";
-    ss << "      SrcTerminal   " << srcTerminal << "\n";
-    if (!points.empty()) {
-        ss << "      Points        ";
-        for (size_t i = 0; i < points.size(); ++i) {
-            ss << "[" << points[i][0] << ", " << points[i][1] << "]";
-            if (i < points.size() - 1) ss << "; ";
-        }
-        ss << "\n";
-    }
-    ss << "      DstComponent  \"" << dstComponent << "\"\n";
-    ss << "      DstTerminal   " << dstTerminal << "\n";
-    ss << "    }\n";
-    return ss.str();
-}
-
-std::string CircuitSimulatorExporterPlecsModel::emit_signal_connection(
-    const std::string& srcComponent, int srcTerminal,
-    const std::string& dstComponent, int dstTerminal) {
-    std::ostringstream ss;
-    ss << "    Connection {\n";
-    ss << "      Type          Signal\n";
-    ss << "      SrcComponent  \"" << srcComponent << "\"\n";
-    ss << "      SrcTerminal   " << srcTerminal << "\n";
     ss << "      DstComponent  \"" << dstComponent << "\"\n";
     ss << "      DstTerminal   " << dstTerminal << "\n";
     ss << "    }\n";
@@ -436,14 +400,19 @@ void CircuitSimulatorExporterPlecsModel::build_magnetic_schematic(
 
     if (!isMultiColumn) {
         // ============ SINGLE-COLUMN TOPOLOGY ============
+        int primaryIndex = 0;
+        int secondaryIndex = 0;
         for (size_t i = 0; i < numWindings; ++i) {
             std::string miName = "MagInt_w" + std::to_string(i);
             std::string turnsVar = (numWindings == 1) ? "n_turns" : "n_w" + std::to_string(i);
-            int yPos = yBase + static_cast<int>(i) * ySpacing;
             if (windings[i].get_isolation_side() == IsolationSide::PRIMARY) {
+                int yPos = yBase + primaryIndex * ySpacing;
                 schematic << emit_magnetic_interface(miName, turnsVar, 1, {magX, yPos}, "up", false);
+                ++primaryIndex;
             } else {
-                schematic << emit_magnetic_interface(miName, turnsVar, 1, {magX, yPos - ySpacing}, "down", true);
+                int yPos = yBase - (secondaryIndex + 1) * ySpacing;
+                schematic << emit_magnetic_interface(miName, turnsVar, 1, {magX, yPos}, "down", true);
+                ++secondaryIndex;
             }
         }
 
@@ -469,22 +438,22 @@ void CircuitSimulatorExporterPlecsModel::build_magnetic_schematic(
 
         // Magnetic connections
         for (size_t i = 0; i + 1 < numWindings; ++i) {
-            schematic << emit_magnetic_connection("MagInt_w" + std::to_string(i), 3,
-                                                  "MagInt_w" + std::to_string(i + 1), 4);
+            schematic << emit_connection("Magnetic", "MagInt_w" + std::to_string(i), 3,
+                                         "MagInt_w" + std::to_string(i + 1), 4);
         }
         std::string topMI = (numWindings > 1) ? "MagInt_w" + std::to_string(numWindings - 1) : "MagInt_w0";
         int topMagY = yBase - 80;
-        schematic << emit_magnetic_connection("P_satCore", 1, topMI, 3,
-                                              {{pSatX, topMagY}, {magX, topMagY}});
+        schematic << emit_connection("Magnetic", "P_satCore", 1, topMI, 3,
+                                     {{pSatX, topMagY}, {magX, topMagY}});
         std::string lastGap = (gapCount > 0 && !gapsInColumn.empty() && gapsInColumn[0].get_length() > 0)
             ? "P_air_gap_c0_g" + std::to_string(gapsInColumn.size() - 1)
             : "P_airEquiv";
-        schematic << emit_magnetic_connection(lastGap, 2, "MagInt_w0", 4);
+        schematic << emit_connection("Magnetic", lastGap, 2, "MagInt_w0", 4);
         std::string firstGap = (!gapsInColumn.empty() && gapsInColumn[0].get_length() > 0)
             ? "P_air_gap_c0_g0" : "P_airEquiv";
         int bottomY = gapY + (gapCount - 1) * 40 + 30;
-        schematic << emit_magnetic_connection(firstGap, 1, "P_satCore", 2,
-                                              {{magX, bottomY}, {pSatX, bottomY}});
+        schematic << emit_connection("Magnetic", firstGap, 1, "P_satCore", 2,
+                                     {{magX, bottomY}, {pSatX, bottomY}});
     } else {
         // ============ MULTI-COLUMN (E-CORE) TOPOLOGY ============
         int outerX_L = 310, outerX_R = 570;
@@ -494,14 +463,19 @@ void CircuitSimulatorExporterPlecsModel::build_magnetic_schematic(
             if (columns[ci].get_coordinates()[0] == 0) { centerColIdx = ci; break; }
         }
 
+        int primaryIndex = 0;
+        int secondaryIndex = 0;
         for (size_t i = 0; i < numWindings; ++i) {
             std::string miName = "MagInt_w" + std::to_string(i);
             std::string turnsVar = "n_w" + std::to_string(i);
-            int yPos = yBase + static_cast<int>(i) * ySpacing;
             if (windings[i].get_isolation_side() == IsolationSide::PRIMARY) {
+                int yPos = yBase + primaryIndex * ySpacing;
                 schematic << emit_magnetic_interface(miName, turnsVar, 1, {magX, yPos}, "up", false);
+                ++primaryIndex;
             } else {
-                schematic << emit_magnetic_interface(miName, turnsVar, 1, {magX, yPos - ySpacing}, "down", true);
+                int yPos = yBase - (secondaryIndex + 1) * ySpacing;
+                schematic << emit_magnetic_interface(miName, turnsVar, 1, {magX, yPos}, "down", true);
+                ++secondaryIndex;
             }
         }
 
@@ -548,27 +522,27 @@ void CircuitSimulatorExporterPlecsModel::build_magnetic_schematic(
         for (int g = 0; g + 1 < centerGapCount; ++g) {
             std::string gapA = "P_air_gap_c" + std::to_string(centerColIdx) + "_g" + std::to_string(g);
             std::string gapB = "P_air_gap_c" + std::to_string(centerColIdx) + "_g" + std::to_string(g + 1);
-            schematic << emit_magnetic_connection(gapA, 1, gapB, 2);
+            schematic << emit_connection("Magnetic", gapA, 1, gapB, 2);
         }
 
         // Magnetic connections
         for (size_t i = 0; i + 1 < numWindings; ++i) {
-            schematic << emit_magnetic_connection("MagInt_w" + std::to_string(i), 3,
-                                                  "MagInt_w" + std::to_string(i + 1), 4);
+            schematic << emit_connection("Magnetic", "MagInt_w" + std::to_string(i), 3,
+                                         "MagInt_w" + std::to_string(i + 1), 4);
         }
         std::string topMI = (numWindings > 1) ? "MagInt_w" + std::to_string(numWindings - 1) : "MagInt_w0";
-        schematic << emit_magnetic_connection(lastCenterGap, 2, topMI, 3);
-        schematic << emit_magnetic_connection("P_satCenter", 1, "MagInt_w0", 4);
+        schematic << emit_connection("Magnetic", lastCenterGap, 2, topMI, 3);
+        schematic << emit_connection("Magnetic", "P_satCenter", 1, "MagInt_w0", 4);
         int topNodeY = yBase - 50;
-        schematic << emit_magnetic_connection(firstCenterGap, 1, "P_satOuterL", 1,
-                                              {{magX, topNodeY}, {outerX_L, topNodeY}});
-        schematic << emit_magnetic_connection(firstCenterGap, 1, "P_satOuterR", 1,
-                                              {{magX, topNodeY}, {outerX_R, topNodeY}});
+        schematic << emit_connection("Magnetic", firstCenterGap, 1, "P_satOuterL", 1,
+                                     {{magX, topNodeY}, {outerX_L, topNodeY}});
+        schematic << emit_connection("Magnetic", firstCenterGap, 1, "P_satOuterR", 1,
+                                     {{magX, topNodeY}, {outerX_R, topNodeY}});
         int bottomNodeY = yBase + static_cast<int>(numWindings) * ySpacing + 60;
-        schematic << emit_magnetic_connection("P_satCenter", 2, "P_satOuterL", 2,
-                                              {{magX, bottomNodeY}, {outerX_L, bottomNodeY}});
-        schematic << emit_magnetic_connection("P_satCenter", 2, "P_satOuterR", 2,
-                                              {{magX, bottomNodeY}, {outerX_R, bottomNodeY}});
+        schematic << emit_connection("Magnetic", "P_satCenter", 2, "P_satOuterL", 2,
+                                     {{magX, bottomNodeY}, {outerX_L, bottomNodeY}});
+        schematic << emit_connection("Magnetic", "P_satCenter", 2, "P_satOuterR", 2,
+                                     {{magX, bottomNodeY}, {outerX_R, bottomNodeY}});
     }
 }
 
@@ -615,28 +589,38 @@ void CircuitSimulatorExporterPlecsModel::build_electrical_schematic(
     for (size_t i = 0; i < numWindings; ++i) {
         std::string miName = "MagInt_w" + std::to_string(i);
         if (windings[i].get_isolation_side() == IsolationSide::PRIMARY) {
-            schematic << emit_wire_connection(miName, 1, "V_ac", 1,
-                                              {{magX - 75, yBase - 15}, {vSrcX, yBase - 15}});
-            schematic << emit_wire_connection(miName, 2, "V_ac", 2,
-                                              {{magX - 75, yBase + 15}, {vSrcX, yBase + 15}});
+            schematic << emit_connection("Wire", miName, 1, "V_ac", 1,
+                                         {{magX - 75, yBase - 15}, {vSrcX, yBase - 15}});
+            schematic << emit_connection("Wire", miName, 2, "V_ac", 2,
+                                         {{magX - 75, yBase + 15}, {vSrcX, yBase + 15}});
         } else {
             std::string rName = (secCount == 0) ? "R_load" : "R_load_" + std::to_string(secCount);
             int secY = yBase - static_cast<int>(i) * ySpacing;
-            schematic << emit_wire_connection(miName, 1, rName, 1,
-                                              {{magX + 65, secY - 15}, {loadX, secY - 15}});
-            schematic << emit_wire_connection(miName, 2, rName, 2,
-                                              {{magX + 65, secY + 15}, {loadX, secY + 15}});
+            schematic << emit_connection("Wire", miName, 1, rName, 1,
+                                         {{magX + 65, secY - 15}, {loadX, secY - 15}});
+            schematic << emit_connection("Wire", miName, 2, rName, 2,
+                                         {{magX + 65, secY + 15}, {loadX, secY + 15}});
             secCount++;
         }
     }
 
-    schematic << emit_signal_connection("Probe", 1, "Scope", 1);
+    schematic << emit_connection("Signal", "Probe", 1, "Scope", 1);
+}
+
+std::string CircuitSimulatorExporterPlecsModel::assemble_plecs_file(
+    const std::string& name, const std::string& initStr, const std::string& schematicStr) {
+    std::string result;
+    result += emit_header(name);
+    result += encode_init_commands(initStr);
+    result += emit_footer();
+    result += schematicStr;
+    return result;
 }
 
 std::string CircuitSimulatorExporterPlecsModel::export_magnetic_as_subcircuit(
     Magnetic magnetic, double frequency, double temperature,
-    std::optional<std::string> filePathOrFile,
-    CircuitSimulatorExporterCurveFittingModes mode) {
+    [[maybe_unused]] std::optional<std::string> filePathOrFile,
+    [[maybe_unused]] CircuitSimulatorExporterCurveFittingModes mode) {
 
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
@@ -677,17 +661,11 @@ std::string CircuitSimulatorExporterPlecsModel::export_magnetic_as_subcircuit(
 
     schematic << emit_schematic_footer();
 
-    // Assemble
-    std::string result;
-    result += emit_header(name);
-    result += encode_init_commands(init.str());
-    result += emit_footer();
-    result += schematic.str();
-    return result;
+    return assemble_plecs_file(name, init.str(), schematic.str());
 }
 
 std::string CircuitSimulatorExporterPlecsModel::export_magnetic_as_symbol(
-    Magnetic magnetic, std::optional<std::string> filePathOrFile) {
+    Magnetic magnetic, [[maybe_unused]] std::optional<std::string> filePathOrFile) {
 
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
@@ -715,13 +693,7 @@ std::string CircuitSimulatorExporterPlecsModel::export_magnetic_as_symbol(
 
     schematic << emit_schematic_footer();
 
-    // Assemble
-    std::string result;
-    result += emit_header(name);
-    result += encode_init_commands(init.str());
-    result += emit_footer();
-    result += schematic.str();
-    return result;
+    return assemble_plecs_file(name, init.str(), schematic.str());
 }
 
 } // namespace OpenMagnetics

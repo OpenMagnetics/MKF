@@ -23,26 +23,27 @@ Plecs {
   MaxConsecutiveZCs "10000"
   AlgebraicLoopWithStateMachineMsg "2"
   AssertionAction "1"
-  InitializationCommands base64 "JSUgRmlsZSAyOiB0cmFuc2Zvcm1lci5wbGVjcwolJSBUb"
-"3BvbG9neTogVHdvLXdpbmRpbmcgdHJhbnNmb3JtZXIgd2l0aCBjb3JlIGxvc3Nlcywgbm8gYWlyIG"
-"dhcAolJSAKJSUgUGFyYW1ldGVyCVZhbHVlCiUlIENvcmUgc2hhcGUJRTQyLzIxLzE1IChzaW1wbGl"
-"maWVkIGFzIHNpbmdsZSBtYWduZXRpYyBwYXRoKQolJSBDb3JlIG1hdGVyaWFsCU44NywgzrzhtaMg"
-"PSAyMjAwCiUlIENvcmUgY3Jvc3Mtc2VjdGlvbglBID0gMTc4IG1twrIgPSAxNzhlLTYgbcKyCiUlI"
-"ENvcmUgbWFnbmV0aWMgcGF0aCBsZW5ndGgJbF9jb3JlID0gOTcuMiBtbSA9IDk3LjJlLTMgbQolJS"
-"BBaXIgZ2FwCU5vbmUgKHVuZ2FwcGVkKQolJSBQcmltYXJ5IHdpbmRpbmcJTuKCgSA9IDI0IHR1cm5"
-"zCiUlIFNlY29uZGFyeSB3aW5kaW5nCU7igoIgPSAxMiB0dXJucwolJSBDb3JlIGxvc3MgZXF1aXZh"
-"bGVudAlSbSA9IDUuMGU2IEHCt3TCt3MvV2IKCgolJSBTaW11bGF0aW9uCnRzaW0gPSAwLjE7ICAgI"
-"CAgICUgW3NdIC0gc2ltdWxhdGlvbiB0aW1lCgolJSBFbGVjdHJpY2FsClZfcCA9IDE7ICAgICAgIC"
-"AgJSBbVl0gLSBwZWFrIHNpbmUKZl9zaW4gPSAxMDBlMwpuX3ByaW0gPSAyNDsgICAgICAgICAlIFt"
-"dIC0gcHJpbWFyeSBzaWRlIHR1cm4gbnVtYmVyCm5fc25kcnkgPSAxMjsgICAgICAgICUgW10gLSBz"
-"ZWNvbmRhcnkgc2lkZSB0dXJuIG51bWJlcgpSTD0xZTM7CgolJSBUcmFuc2Zvcm1lciBjb3JlIHBhc"
-"mFtZXRlcnMKQV9lID0gMTc4ZS02OwkJICAlIFttXjJdIC0gZWZmZWN0aXZlIGNyb3NzLXNlY3Rpb2"
-"5hbCBhcmVhIG9mIHRoZSB0cmFuc2Zvcm1lciBjb3JlCmxfZSA9IDk3LjJlLTM7CQkgICUgW21dIC0"
-"gZWZmZWN0aXZlIG1hZ25ldGljIHBhdGggbGVuZ3RoIG9mIHRoZSB0cmFuc2Zvcm1lciBjb3JlCm11"
-"X3IgPSAyMjAwOwkJICAlIFtdIC0gcmVsYXRpdmUgcGVybWVhYmlsaXR5IG9mIHRoZSB0cmFuc2Zvc"
-"m1lciBjb3JlCm11XzAgPSA0KnBpKjFlLTc7CSAgJSBbSC9tXSAtIHBlcm1lYWJpbGl0eSBvZiBmcm"
-"VlIHNwYWNlCkJfc2F0ID0gMC40OTsJCSAgJSBbVF0gLSBzYXR1cmF0aW9uIGZsdXggZGVuc2l0eSB"
-"vZiB0aGUgdHJhbnNmb3JtZXIgY29yZQ=="
+  InitializationCommands base64 "JSUgRmlsZSAyOiB0cmFuc2Zvcm1lci5wbGVjcwolJSBUb3BvbG9neTogVHdvLXdpbmRpbmcgdHJh"
+"bnNmb3JtZXIgd2l0aCBjb3JlIGxvc3Nlcywgbm8gYWlyIGdhcAolJSAKJSUgUGFyYW1ldGVyCVZh"
+"bHVlCiUlIENvcmUgc2hhcGUJRTQyLzIxLzE1IChzaW1wbGlmaWVkIGFzIHNpbmdsZSBtYWduZXRp"
+"YyBwYXRoKQolJSBDb3JlIG1hdGVyaWFsCU44NywgzrzhtaMgPSAyMjAwCiUlIENvcmUgY3Jvc3Mt"
+"c2VjdGlvbglBID0gMTc4IG1twrIgPSAxNzhlLTYgbcKyCiUlIENvcmUgbWFnbmV0aWMgcGF0aCBs"
+"ZW5ndGgJbF9jb3JlID0gOTcuMiBtbSA9IDk3LjJlLTMgbQolJSBBaXIgZ2FwCU5vbmUgKHVuZ2Fw"
+"cGVkKQolJSBQcmltYXJ5IHdpbmRpbmcJTuKCgSA9IDI0IHR1cm5zCiUlIFNlY29uZGFyeSB3aW5k"
+"aW5nCU7igoIgPSAxMiB0dXJucwolJSBDb3JlIGxvc3MgZXF1aXZhbGVudAlSbSA9IDUuMGU2IEHC"
+"t3TCt3MvV2IKCgolJSBTaW11bGF0aW9uCnRzaW0gPSAwLjE7ICAgICAgICUgW3NdIC0gc2ltdWxh"
+"dGlvbiB0aW1lCgolJSBFbGVjdHJpY2FsClZfcCA9IDE7ICAgICAgICAlIFtWXSAtIHBlYWsgc2lu"
+"ZQpmX3NpbiA9IDEwMGUzCm5fcHJpbSA9IDI0OyAgICAgICAgJSBbXSAtIHByaW1hcnkgc2lkZSB0"
+"dXJuIG51bWJlcgpuX3NuZHJ5ID0gMTI7ICAgICAgICUgW10gLSBzZWNvbmRhcnkgc2lkZSB0dXJu"
+"IG51bWJlcgpSTD0xZTM7CgolJSBUcmFuc2Zvcm1lciBjb3JlIHBhcmFtZXRlcnMKQV9lID0gMTc4"
+"ZS02OwkJICAlIFttXjJdIC0gZWZmZWN0aXZlIGNyb3NzLXNlY3Rpb25hbCBhcmVhIG9mIHRoZSB0"
+"cmFuc2Zvcm1lciBjb3JlCmxfZSA9IDk3LjJlLTM7CQkgICUgW21dIC0gZWZmZWN0aXZlIG1hZ25l"
+"dGljIHBhdGggbGVuZ3RoIG9mIHRoZSB0cmFuc2Zvcm1lciBjb3JlCm11X3IgPSAyMjAwOwkJICAl"
+"IFtdIC0gcmVsYXRpdmUgcGVybWVhYmlsaXR5IG9mIHRoZSB0cmFuc2Zvcm1lciBjb3JlCm11XzAg"
+"PSA0KnBpKjFlLTc7CSAgJSBbSC9tXSAtIHBlcm1lYWJpbGl0eSBvZiBmcmVlIHNwYWNlCkJfc2F0"
+"ID0gMC40OTsJCSAgJSBbVF0gLSBzYXR1cmF0aW9uIGZsdXggZGVuc2l0eSBvZiB0aGUgdHJhbnNm"
+"b3JtZXIgY29yZQpSbSA9IDUuMGU2OwkJICAlIFtBwrd0wrdzL1diXSAtIGNvcmUgbG9zcyBlcXVp"
+"dmFsZW50IG1hZ25ldGljIHJlc2lzdGFuY2UK"
   InitialState  "1"
   SystemState   ""
   TaskingMode   "1"
@@ -166,39 +167,17 @@ Plecs {
       }
     }
     Component {
-      Type          Reference
-      SrcComponent  "Components/Magnetic/Components/P_air"
-      Name          "P_air2"
+      Type          MagneticResistance
+      Name          "Rm_loss"
       Show          off
       Position      [440, 355]
       Direction     up
       Flipped       on
       LabelPosition east
-      Frame         [-8, -10; 8, 10]
       Parameter {
-        Variable      "A"
-        Value         "A_e"
+        Variable      "Rm"
+        Value         "Rm"
         Show          off
-      }
-      Parameter {
-        Variable      "l"
-        Value         "l_e"
-        Show          off
-      }
-      Parameter {
-        Variable      "F_init"
-        Value         "0"
-        Show          off
-      }
-      Terminal {
-        Type          MagneticPort
-        Position      [0, -15]
-        Direction     up
-      }
-      Terminal {
-        Type          MagneticPort
-        Position      [0, 15]
-        Direction     down
       }
     }
     Component {
@@ -336,14 +315,14 @@ Plecs {
     }
     Connection {
       Type          Magnetic
-      SrcComponent  "P_air2"
+      SrcComponent  "Rm_loss"
       SrcTerminal   2
       DstComponent  "MagInt5"
       DstTerminal   4
     }
     Connection {
       Type          Magnetic
-      SrcComponent  "P_air2"
+      SrcComponent  "Rm_loss"
       SrcTerminal   1
       Points        [440, 375; 405, 375]
       DstComponent  "P_satTr"

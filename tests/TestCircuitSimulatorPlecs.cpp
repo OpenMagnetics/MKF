@@ -10,6 +10,11 @@ using namespace OpenMagnetics;
 namespace {
 auto outputFilePath = std::filesystem::path{__FILE__}.parent_path().append("..").append("output");
 
+struct EnsureOutputDir {
+    EnsureOutputDir() { std::filesystem::create_directories(outputFilePath); }
+};
+static EnsureOutputDir _ensureOutputDir;
+
 TEST_CASE("Test_CircuitSimulatorExporter_Plecs_Simple_Inductor", "[processor][circuit-simulator-exporter][plecs]") {
     std::vector<int64_t> numberTurns = {20};
     std::vector<int64_t> numberParallels = {1};

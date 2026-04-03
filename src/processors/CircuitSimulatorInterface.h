@@ -585,9 +585,7 @@ class CircuitSimulatorExporterPlecsModel : public CircuitSimulatorExporterModel 
         std::string emit_resistor(const std::string& name, const std::string& valueVar, std::vector<int> position);
         std::string emit_scope(const std::string& name, std::vector<int> position);
         std::string emit_probe(const std::string& name, std::vector<int> position, const std::vector<std::pair<std::string, std::string>>& probes);
-        std::string emit_magnetic_connection(const std::string& srcComponent, int srcTerminal, const std::string& dstComponent, int dstTerminal, std::vector<std::vector<int>> points = {});
-        std::string emit_wire_connection(const std::string& srcComponent, int srcTerminal, const std::string& dstComponent, int dstTerminal, std::vector<std::vector<int>> points = {});
-        std::string emit_signal_connection(const std::string& srcComponent, int srcTerminal, const std::string& dstComponent, int dstTerminal);
+        std::string emit_connection(const std::string& type, const std::string& srcComponent, int srcTerminal, const std::string& dstComponent, int dstTerminal, std::vector<std::vector<int>> points = {});
 
         // Shared helpers for subcircuit/symbol export
         void build_physical_init(std::ostringstream& init, Core& core,
@@ -602,6 +600,7 @@ class CircuitSimulatorExporterPlecsModel : public CircuitSimulatorExporterModel 
         void build_electrical_schematic(std::ostringstream& schematic,
                                          const std::vector<Winding>& windings,
                                          bool isMultiColumn, int yBase);
+        std::string assemble_plecs_file(const std::string& name, const std::string& initStr, const std::string& schematicStr);
 };
 
 class CircuitSimulationReader {
