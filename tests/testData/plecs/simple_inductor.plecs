@@ -1,0 +1,346 @@
+Plecs {
+  Name          "simple_inductor"
+  Version       "4.7"
+  CircuitModel  "ContStateSpace"
+  StartTime     "0.0"
+  TimeSpan      "tsim"
+  Timeout       ""
+  Solver        "dopri"
+  MaxStep       "1"
+  InitStep      "1"
+  FixedStep     "1e-3"
+  Refine        "1"
+  ZCStepSize    "1e-9"
+  RelTol        "1e-3"
+  AbsTol        "-1"
+  TurnOnThreshold "0"
+  SyncFixedStepTasks "2"
+  UseSingleCommonBaseRate "2"
+  LossVariableLimitExceededMsg "3"
+  NegativeSwitchLossMsg "2"
+  DivisionByZeroMsg "2"
+  StiffnessDetectionMsg "2"
+  MaxConsecutiveZCs "10000"
+  AlgebraicLoopWithStateMachineMsg "2"
+  AssertionAction "1"
+  InitializationCommands "%% File 1: simple_inductor.plecs\n%% Topology: Singl"
+"e-winding gapped inductor\n%% \n%% Parameter\tValue\n%% Core shape\tE32/16/9 "
+"(simplified as single magnetic path)\n%% Core material\tN87, mu_r = 2200\n%% "
+"Core cross-section\tA = 83.2 mm^2 = 83.2e-6 m^2\n%% Core magnetic path length"
+"\tl_core = 72.7 mm = 72.7e-3 m\n%% Air gap length\tl_gap = 1.0 mm = 1.0e-3 m"
+"\n%% Winding\tN = 20 turns\n\n%% Simulation\ntsim = 0.1;          % [s] - sim"
+"ulation time\n\n%% Electrical\nV_p = 1;             % [V] - peak sine\nf_sin "
+"= 100e3;       % [Hz] - frequency\n\n%% Winding\nn_turns = 20;        % [] - "
+"number of turns\n\n%% Core parameters\nA_e = 83.2e-6;       % [m^2] - effecti"
+"ve cross-sectional area\nl_e = 72.7e-3;       % [m] - effective magnetic path"
+" length\nmu_r = 2200;         % [] - relative permeability\nmu_0 = 4*pi*1e-7;"
+"   % [H/m] - permeability of free space\nB_sat = 0.49;        % [T] - saturat"
+"ion flux density\n\n%% Air gap parameters\nl_gap = 1.0e-3;      % [m] - air g"
+"ap length\nA_gap = 83.2e-6;     % [m^2] - air gap cross-section\n"
+  InitialState  "1"
+  SystemState   ""
+  TaskingMode   "1"
+  TaskConfigurations ""
+  CodeGenParameterInlining "2"
+  CodeGenFloatingPointFormat "2"
+  CodeGenAbsTimeUsageMsg "3"
+  CodeGenBaseName ""
+  CodeGenOutputDir ""
+  CodeGenExtraOpts ""
+  CodeGenTarget "Generic"
+  CodeGenTargetSettings ""
+  ExtendedMatrixPrecision "1"
+  MatrixSignificanceCheck "2"
+  EnableStateSpaceSplitting "2"
+  DisplayStateSpaceSplitting "1"
+  DiscretizationMethod "2"
+  ExternalModeSettings ""
+  AlgebraicLoopMethod "1"
+  AlgebraicLoopTolerance "1e-6"
+  ScriptsDialogGeometry ""
+  ScriptsDialogSplitterPos "0"
+  Schematic {
+    Location      [-257, -1409; 1021, -784]
+    ZoomFactor    1
+    SliderPosition [0, 0]
+    ShowBrowser   off
+    BrowserWidth  100
+    Component {
+      Type          MagneticInterface
+      Name          "MagInt1"
+      Show          off
+      Position      [440, 290]
+      Direction     up
+      Flipped       off
+      LabelPosition east
+      Parameter {
+        Variable      "n"
+        Value         "n_turns"
+        Show          off
+      }
+      Parameter {
+        Variable      "Polarity"
+        Value         "1"
+        Show          off
+      }
+    }
+    Component {
+      Type          Reference
+      SrcComponent  "Components/Magnetic/Components/P_sat"
+      Name          "P_satCore"
+      Show          off
+      Position      [405, 240]
+      Direction     up
+      Flipped       off
+      LabelPosition east
+      Frame         [-8, -15; 8, 15]
+      Parameter {
+        Variable      "fitting"
+        Value         "1"
+        Show          off
+      }
+      Parameter {
+        Variable      "A"
+        Value         "A_e"
+        Show          off
+      }
+      Parameter {
+        Variable      "l"
+        Value         "l_e"
+        Show          off
+      }
+      Parameter {
+        Variable      "mu_r_unsat"
+        Value         "mu_r"
+        Show          off
+      }
+      Parameter {
+        Variable      "mu_r_sat"
+        Value         "1"
+        Show          off
+      }
+      Parameter {
+        Variable      "B_sat"
+        Value         "B_sat"
+        Show          off
+      }
+      Parameter {
+        Variable      "F_init"
+        Value         "0"
+        Show          off
+      }
+      Terminal {
+        Type          MagneticPort
+        Position      [0, -20]
+        Direction     up
+      }
+      Terminal {
+        Type          MagneticPort
+        Position      [0, 20]
+        Direction     down
+      }
+    }
+    Component {
+      Type          Reference
+      SrcComponent  "Components/Magnetic/Components/P_air"
+      Name          "P_airGap"
+      Show          off
+      Position      [440, 345]
+      Direction     up
+      Flipped       on
+      LabelPosition east
+      Frame         [-8, -10; 8, 10]
+      Parameter {
+        Variable      "A"
+        Value         "A_gap"
+        Show          off
+      }
+      Parameter {
+        Variable      "l"
+        Value         "l_gap"
+        Show          off
+      }
+      Parameter {
+        Variable      "F_init"
+        Value         "0"
+        Show          off
+      }
+      Terminal {
+        Type          MagneticPort
+        Position      [0, -15]
+        Direction     up
+      }
+      Terminal {
+        Type          MagneticPort
+        Position      [0, 15]
+        Direction     down
+      }
+    }
+    Component {
+      Type          ACVoltageSource
+      Name          "V_ac"
+      Show          on
+      Position      [275, 300]
+      Direction     down
+      Flipped       on
+      LabelPosition east
+      Parameter {
+        Variable      "V"
+        Value         "V_p"
+        Show          off
+      }
+      Parameter {
+        Variable      "w"
+        Value         "2*pi*f_sin"
+        Show          off
+      }
+      Parameter {
+        Variable      "phi"
+        Value         "0"
+        Show          off
+      }
+    }
+    Component {
+      Type          Scope
+      Name          "Scope"
+      Show          on
+      Position      [605, 170]
+      Direction     up
+      Flipped       off
+      LabelPosition south
+      Location      [588, 348; 938, 635]
+      State         "AAAA/wAAAAD9AAAAAgAAAAEAAAAAAAAAAPwCAAAAA/sAAAAQAFoAbwBvA"
+"G0AQQByAGUAYQAAAAAA/////wAAADQA////+wAAABQAUwBhAHYAZQBkAFYAaQBlAHcAcwAAAAAA//"
+"///wAAAGYA////+wAAAAwAVAByAGEAYwBlAHMAAAAAAP////8AAABmAP///wAAAAMAAAAAAAAAAPw"
+"BAAAAAfsAAAAUAEQAYQB0AGEAVwBpAGQAZwBlAHQAAAAAAP////8AAABQAP///wAAAV4AAAEEAAAA"
+"BAAAAAQAAAAIAAAACPwAAAABAAAAAgAAAAEAAAAOAFQAbwBvAGwAQgBhAHIBAAAAAP////8AAAAAA"
+"AAAAA=="
+      SavedViews    "AAAAAgAAAAA="
+      HeaderState   "AAAA/wAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAL/gMAAAAJAAAAB"
+"QAAAGQAAAAEAAAAZAAAAAcAAABkAAAABgAAAGQAAAABAAAAZAAAAAMAAABkAAAAAgAAAGQAAAAJAA"
+"AAZAAAAAgAAABkAAAAygAAAAsBAAABAAAAAAAAAAAAAAAAZP////8AAACBAAAAAAAAAAsAAACmAAA"
+"AAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAA"
+"AAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAA"
+"AAkAAAAAQAAAAAAAAPoAAAAACQ="
+      PlotPalettes  "AAAAAQAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      Axes          "1"
+      TimeRange     "0.0"
+      ScrollingMode "1"
+      SingleTimeAxis "1"
+      Open          "1"
+      Ts            "-1"
+      SampleLimit   "0"
+      XAxisLabel    "Time / s"
+      ShowLegend    "1"
+      Axis {
+        Name          ""
+        AutoScale     1
+        MinValue      0
+        MaxValue      1
+        Signals       {}
+        SignalTypes   [ ]
+        Untangle      0
+        KeepBaseline  off
+        BaselineValue 0
+      }
+      Fourier {
+        SingleXAxis       on
+        AxisLabel         "Frequency / Hz"
+        Scaling           0
+        PhaseDisplay      0
+        ShowFourierLegend off
+        Axis {
+          Name          ""
+          AutoScale     1
+          MinValue      0
+          MaxValue      1
+          Signals       {}
+          Untangle      0
+          KeepBaseline  off
+          BaselineValue 0
+        }
+      }
+    }
+    Component {
+      Type          PlecsProbe
+      Name          "Probe"
+      Show          on
+      Position      [545, 170]
+      Direction     right
+      Flipped       off
+      LabelPosition south
+      Probe {
+        Component     "V_ac"
+        Path          ""
+        Signals       {"Source voltage", "Source current"}
+      }
+    }
+    Component {
+      Type          Resistor
+      Name          "R1"
+      Show          on
+      Position      [330, 275]
+      Direction     right
+      Flipped       off
+      LabelPosition south
+      Parameter {
+        Variable      "R"
+        Value         "10e-3"
+        Show          off
+      }
+    }
+    Connection {
+      Type          Magnetic
+      SrcComponent  "P_satCore"
+      SrcTerminal   1
+      Points        [405, 210; 440, 210]
+      DstComponent  "MagInt1"
+      DstTerminal   3
+    }
+    Connection {
+      Type          Magnetic
+      SrcComponent  "P_airGap"
+      SrcTerminal   2
+      DstComponent  "MagInt1"
+      DstTerminal   4
+    }
+    Connection {
+      Type          Magnetic
+      SrcComponent  "P_airGap"
+      SrcTerminal   1
+      Points        [440, 370; 405, 370]
+      DstComponent  "P_satCore"
+      DstTerminal   2
+    }
+    Connection {
+      Type          Wire
+      SrcComponent  "MagInt1"
+      SrcTerminal   2
+      Points        [355, 305; 355, 320]
+      DstComponent  "V_ac"
+      DstTerminal   2
+    }
+    Connection {
+      Type          Signal
+      SrcComponent  "Probe"
+      SrcTerminal   1
+      DstComponent  "Scope"
+      DstTerminal   1
+    }
+    Connection {
+      Type          Wire
+      SrcComponent  "MagInt1"
+      SrcTerminal   1
+      DstComponent  "R1"
+      DstTerminal   1
+    }
+    Connection {
+      Type          Wire
+      SrcComponent  "R1"
+      SrcTerminal   2
+      Points        [275, 275]
+      DstComponent  "V_ac"
+      DstTerminal   1
+    }
+  }
+}
