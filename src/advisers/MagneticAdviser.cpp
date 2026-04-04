@@ -1,6 +1,8 @@
 #include "processors/Inputs.h"
 #include <source_location>
+#include <cfloat>
 #include "advisers/MagneticAdviser.h"
+#include "advisers/CoreAdviser.h"
 #include "physical_models/Impedance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Painter.h"
@@ -43,6 +45,81 @@ void MagneticAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow
     }
 }
 
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(Inputs inputs, size_t maximumNumberResults) {
+    inputs = pre_process_inputs(inputs);
+
+    if (coreDatabase.empty()) {
+        load_cores();
+    }
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_application(get_application());
+    coreAdviser.set_mode(get_core_mode());
+
+    // Step 1: Create Magnetic objects from all cores in the database
+    auto magneticsWithScoring = coreAdviser.create_magnetic_dataset(inputs, &coreDatabase, false);
+
+    // Step 2: Area product filter — sorted by AP score, fast binary filter
+    CoreAdviser::MagneticCoreFilterAreaProduct filterAreaProduct(inputs);
+    filterAreaProduct.set_scorings(&coreAdviser._scorings);
+    filterAreaProduct.set_filter_configuration(&coreAdviser._filterConfiguration);
+    magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+
+    if (magneticsWithScoring.empty()) {
+        return {};
+    }
+
+    // Cap candidates: AP filter sorts by score, keep the best ones.
+    // post_process_core takes ~2-3ms each; 100 candidates ≈ 250ms.
+    const size_t maxCandidates = std::max(maximumNumberResults * 20, size_t(50));
+    if (magneticsWithScoring.size() > maxCandidates) {
+        magneticsWithScoring.resize(maxCandidates);
+    }
+
+    // Step 3: Set turns and gap analytically (single pass, no iteration)
+    add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+
+    // Step 4: Add secondary windings from turns ratios
+    correct_windings(&magneticsWithScoring, inputs);
+
+    // Step 5: Evaluate each core with fast_wind + ohmic losses + core losses
+    std::vector<std::pair<Mas, double>> results;
+    for (auto& [magnetic, scoring] : magneticsWithScoring) {
+        try {
+            auto mas = coreAdviser.post_process_core(magnetic, inputs);
+
+            // Score by total losses (lower is better)
+            double totalLosses = 0;
+            for (auto& output : mas.get_outputs()) {
+                if (output.get_core_losses()) {
+                    totalLosses += output.get_core_losses()->get_core_losses();
+                }
+                if (output.get_winding_losses()) {
+                    totalLosses += output.get_winding_losses()->get_winding_losses();
+                }
+            }
+
+            if (totalLosses > 0 && totalLosses < DBL_MAX / 2) {
+                results.push_back({mas, totalLosses});
+            }
+        }
+        catch (...) {
+            continue;
+        }
+    }
+
+    // Step 6: Sort by total losses (ascending — lower losses = better)
+    std::stable_sort(results.begin(), results.end(),
+        [](const auto& a, const auto& b) { return a.second < b.second; });
+
+    // Step 7: Truncate to requested number
+    if (results.size() > maximumNumberResults) {
+        results.resize(maximumNumberResults);
+    }
+
+    return results;
+}
+
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, size_t maximumNumberResults) {
     return get_advised_magnetic(inputs, _defaultCustomMagneticFilterFlow, maximumNumberResults);
 }
@@ -79,7 +156,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
     
     if (toroidsOriginallyEnabled && maxVoltage > 600) {
-        logEntry("High voltage requirements (" + std::to_string(int(maxVoltage)) + "V) detected. Disabling toroidal cores for better results.", "MagneticAdviser", 1);
+        logEntry("High voltage requirements (" + std::to_string(int(maxVoltage)) + "V) detected. Disabling toroidal cores for better results.", "MagneticAdviser", 0);
         settings.set_use_toroidal_cores(false);
         toroidsOriginallyEnabled = false; // Don't retry since we proactively disabled
     }
@@ -221,7 +298,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
     // Retry without toroids if toroids were enabled but no results found
     if (masMagneticsWithScoring.empty() && toroidsOriginallyEnabled) {
-        logEntry("No magnetics found with toroids enabled. Retrying without toroids...", "MagneticAdviser", 1);
+        logEntry("No magnetics found with toroids enabled. Retrying without toroids...", "MagneticAdviser", 0);
         settings.set_use_toroidal_cores(false);
         // Reset evaluated cores to allow re-evaluation
         evaluatedCores.clear();

@@ -201,6 +201,19 @@ class MagneticAdviser{
         std::vector<std::pair<Mas, double>> get_advised_magnetic(std::vector<Mas> catalogueMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults=1, bool strict=true);
 
         /**
+         * @brief Fast analytical magnetic design for Pareto exploration.
+         *
+         * Bypasses CoilAdviser, MagneticSimulator, and iterative loss filters.
+         * Uses area product filtering, analytical gap/turns, fast_wind(), and
+         * DC ohmic + Steinmetz core losses. Results are approximate but physically valid.
+         *
+         * @param inputs Design requirements and operating conditions.
+         * @param maximumNumberResults Maximum number of designs to return.
+         * @return Vector of (Mas, score) pairs sorted by ascending total losses.
+         */
+        std::vector<std::pair<Mas, double>> get_advised_magnetic_fast(Inputs inputs, size_t maximumNumberResults = 1);
+
+        /**
          * @brief Score a collection of magnetic designs using the filter flow.
          * @param masMagneticsWithCoil Vector of complete magnetic designs to score.
          * @param filterFlow Filter operations defining scoring criteria.

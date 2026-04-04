@@ -43,6 +43,7 @@ class MagneticFilterAreaProduct : public MagneticFilter {
         MagneticFilterAreaProduct() {};
         MagneticFilterAreaProduct(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        double get_estimated_area_product_required(Inputs inputs);
 };
 
 class MagneticFilterEnergyStored : public MagneticFilter {

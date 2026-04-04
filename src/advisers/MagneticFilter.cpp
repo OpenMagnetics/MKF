@@ -349,6 +349,22 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
     return {valid, scoring};
 }
 
+double MagneticFilterAreaProduct::get_estimated_area_product_required(Inputs inputs) {
+    double maxAp = 0;
+    for (size_t i = 0; i < inputs.get_operating_points().size(); ++i) {
+        double temperature = inputs.get_operating_point(i).get_conditions().get_ambient_temperature();
+        double frequency = Inputs::get_switching_frequency(
+            Inputs::get_primary_excitation(inputs.get_operating_point(i)));
+        auto skinDepth = _windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);
+        double wireAirFillingFactor = Wire::get_filling_factor_round(2 * skinDepth);
+        double bobbinFillingFactor = 0.45;
+        double kFill = wireAirFillingFactor * bobbinFillingFactor;
+        double ap = _areaProductRequiredPreCalculations[i] / (kFill * _magneticFluxDensityReference);
+        maxAp = std::max(maxAp, ap);
+    }
+    return maxAp;
+}
+
 MagneticFilterEnergyStored::MagneticFilterEnergyStored(Inputs inputs, std::map<std::string, std::string> models) {
     _models = models;
     _magneticEnergy = MagneticEnergy(models);

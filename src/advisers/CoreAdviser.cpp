@@ -602,6 +602,62 @@ Coil get_dummy_coil(Inputs inputs) {
     return coil;
 }
 
+static CoreShape scale_core_shape(const CoreShape& ref, double scaleFactor) {
+    CoreShape scaled = ref;
+    if (!ref.get_dimensions()) return scaled;
+    auto dims = ref.get_dimensions().value();
+    for (auto& [key, dim] : dims) {
+        if (std::holds_alternative<DimensionWithTolerance>(dim)) {
+            auto& dwt = std::get<DimensionWithTolerance>(dim);
+            if (dwt.get_nominal()) dwt.set_nominal(dwt.get_nominal().value() * scaleFactor);
+            if (dwt.get_minimum()) dwt.set_minimum(dwt.get_minimum().value() * scaleFactor);
+            if (dwt.get_maximum()) dwt.set_maximum(dwt.get_maximum().value() * scaleFactor);
+        } else {
+            dim = std::get<double>(dim) * scaleFactor;
+        }
+    }
+    scaled.set_dimensions(dims);
+    scaled.set_name("Custom " + ref.get_name().value_or("unknown"));
+    return scaled;
+}
+
+std::vector<CoreShape> CoreAdviser::create_custom_core_shapes(Inputs inputs) {
+    MagneticFilterAreaProduct apFilter(inputs);
+    double apRequired = apFilter.get_estimated_area_product_required(inputs);
+
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+
+    std::vector<CoreShapeFamily> gappableFamilies = {
+        CoreShapeFamily::E, CoreShapeFamily::ETD, CoreShapeFamily::EQ,
+        CoreShapeFamily::RM, CoreShapeFamily::PQ, CoreShapeFamily::EP,
+        CoreShapeFamily::EFD, CoreShapeFamily::EL, CoreShapeFamily::ER,
+        CoreShapeFamily::EC, CoreShapeFamily::LP, CoreShapeFamily::EPX,
+        CoreShapeFamily::U, CoreShapeFamily::T,
+        CoreShapeFamily::PLANAR_E, CoreShapeFamily::PLANAR_EL, CoreShapeFamily::PLANAR_ER
+    };
+
+    std::vector<CoreShape> customShapes;
+    for (auto family : gappableFamilies) {
+        try {
+            CoreShape refShape = find_core_shape_by_area_product(apRequired, family);
+            Core refCore(refShape);
+            refCore.process_data();
+            auto columns = refCore.get_columns();
+            if (columns.empty()) continue;
+            double apRef = columns[0].get_area() * refCore.get_winding_window().get_area().value();
+            if (apRef <= 0) continue;
+
+            double s = std::pow(apRequired / apRef, 0.25);
+            s = std::clamp(s, 0.5, 3.0);
+            CoreShape scaled = scale_core_shape(refShape, s);
+            customShapes.push_back(scaled);
+        } catch (...) { continue; }
+    }
+    return customShapes;
+}
+
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, size_t maximumNumberResults) {
     std::map<CoreAdviserFilters, double> weights;
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
@@ -631,8 +687,18 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         }
         return get_advised_core(inputs, &shapes, maximumNumberResults);
     }
+    else if (get_mode() == CoreAdviserModes::CUSTOM_CORES) {
+        if (coreMaterialDatabase.empty()) {
+            load_core_materials();
+        }
+        if (coreShapeDatabase.empty()) {
+            load_core_shapes();
+        }
+        auto customShapes = create_custom_core_shapes(inputs);
+        return get_advised_core(inputs, &customShapes, maximumNumberResults);
+    }
     else {
-        throw NotImplementedException("Custom cores not yet implemented for CoreAdviser");
+        throw NotImplementedException("Unknown CoreAdviserMode");
     }
 }
 

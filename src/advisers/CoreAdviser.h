@@ -198,6 +198,7 @@ class CoreAdviser {
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults=1);
+        std::vector<CoreShape> create_custom_core_shapes(Inputs inputs);
 
         Mas post_process_core(Magnetic magnetic, Inputs inputs);
 
@@ -519,5 +520,10 @@ inline void to_json(json & j, const CoreAdviser::CoreAdviserFilters & x) {
         default: throw std::runtime_error("Unexpected value in enumeration \"CoreAdviser::CoreAdviserFilters\": " + std::to_string(static_cast<int>(x)));
     }
 }
+
+// Free helper functions used by CoreAdviser and MagneticAdviser fast path
+void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs);
+void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs);
+Inputs pre_process_inputs(Inputs inputs);
 
 } // namespace OpenMagnetics

@@ -1,5 +1,6 @@
 #include "RandomUtils.h"
 #include <source_location>
+#include <chrono>
 #include "support/Painter.h"
 #include "advisers/MagneticAdviser.h"
 #include "advisers/CoreAdviser.h"
@@ -506,6 +507,97 @@ namespace {
                 #endif
 
             }
+        }
+    }
+
+    TEST_CASE("MagneticAdviserFastHV", "[adviser][magnetic-adviser][fast][smoke-test]") {
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(true);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        std::vector<double> turnsRatios = {3.6};
+        double frequency = 42000;
+        double magnetizingInductance = 700e-6;
+        double temperature = 42;
+        WaveformLabel waveShape = WaveformLabel::TRIANGULAR;
+        double peakToPeak = 1.1;
+        double dutyCycle = 0.294;
+        double dcCurrent = 0;
+
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, magnetizingInductance, temperature,
+            waveShape, peakToPeak, dutyCycle, dcCurrent, turnsRatios);
+        inputs.process();
+
+        auto start = std::chrono::high_resolution_clock::now();
+
+        MagneticAdviser magneticAdviser;
+        auto results = magneticAdviser.get_advised_magnetic_fast(inputs, 5);
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::high_resolution_clock::now() - start).count();
+
+        INFO("Fast advise took " + std::to_string(elapsed) + " ms");
+        INFO("Results: " + std::to_string(results.size()));
+        REQUIRE(results.size() > 0);
+
+        for (auto& [mas, score] : results) {
+            auto& outputs = mas.get_outputs();
+            REQUIRE(outputs.size() > 0);
+            double coreLosses = outputs[0].get_core_losses()->get_core_losses();
+            double windingLosses = outputs[0].get_winding_losses()->get_winding_losses();
+            INFO("Core: " + mas.get_magnetic().get_core().get_name().value_or("?") +
+                 " losses=" + std::to_string(coreLosses + windingLosses));
+            CHECK(coreLosses > 0);
+            CHECK(windingLosses > 0);
+        }
+    }
+
+    TEST_CASE("MagneticAdviserCustomCores", "[adviser][magnetic-adviser][custom-cores][smoke-test]") {
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        std::vector<double> turnsRatios = {3.6};
+        double frequency = 42000;
+        double magnetizingInductance = 700e-6;
+        double temperature = 42;
+        WaveformLabel waveShape = WaveformLabel::TRIANGULAR;
+        double peakToPeak = 1.1;
+        double dutyCycle = 0.294;
+        double dcCurrent = 0;
+
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            frequency, magnetizingInductance, temperature,
+            waveShape, peakToPeak, dutyCycle, dcCurrent, turnsRatios);
+        inputs.process();
+
+        auto start = std::chrono::high_resolution_clock::now();
+
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::CUSTOM_CORES);
+        auto results = magneticAdviser.get_advised_magnetic(inputs, 5);
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::high_resolution_clock::now() - start).count();
+
+        INFO("Custom cores advise took " + std::to_string(elapsed) + " ms");
+        INFO("Results: " + std::to_string(results.size()));
+        REQUIRE(results.size() > 0);
+
+        for (auto& [mas, score] : results) {
+            auto& outputs = mas.get_outputs();
+            REQUIRE(outputs.size() > 0);
+            double coreLosses = outputs[0].get_core_losses()->get_core_losses();
+            double windingLosses = outputs[0].get_winding_losses()->get_winding_losses();
+            auto coreName = mas.get_magnetic().get_core().get_name().value_or("?");
+            INFO("Core: " + coreName + " losses=" + std::to_string(coreLosses + windingLosses));
+            CHECK(coreLosses > 0);
+            CHECK(windingLosses > 0);
         }
     }
 
