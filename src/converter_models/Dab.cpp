@@ -265,6 +265,10 @@ DesignRequirements Dab::process_design_requirements() {
         designRequirements.set_leakage_inductance(leakageReqs);
     }
 
+    designRequirements.set_topology(Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER);
+    designRequirements.set_isolation_sides(
+        Topology::create_isolation_sides(ops[0].get_output_currents().size(), false));
+
     return designRequirements;
 }
 
