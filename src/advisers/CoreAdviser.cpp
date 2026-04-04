@@ -1403,6 +1403,11 @@ double CoreAdviser::calculate_gap_for_fringing_factor(double targetFringingFacto
 double CoreAdviser::get_peak_current(Inputs inputs) {
     double peakCurrent = 0.0;
 
+    // For transformer topologies (forward converters), core saturation is driven by
+    // magnetizing current only. The reflected secondary current is balanced and does
+    // not contribute to net flux. Using actual current would oversize the core.
+    bool isTransformerTopology = !is_energy_storing_topology(inputs.get_design_requirements().get_topology());
+
     for (auto& op : inputs.get_operating_points()) {
         auto excitation = Inputs::get_primary_excitation(op);
 
@@ -1414,8 +1419,11 @@ double CoreAdviser::get_peak_current(Inputs inputs) {
                 excitation.get_magnetizing_current()->get_processed()->get_peak().value());
         }
 
-        // Check actual current
-        if (excitation.get_current() &&
+        // Check actual current only for energy-storing topologies (e.g. flyback, boost).
+        // For forward converters the actual current includes reflected secondary load
+        // current which does not bias the core.
+        if (!isTransformerTopology &&
+            excitation.get_current() &&
             excitation.get_current()->get_processed() &&
             excitation.get_current()->get_processed()->get_peak()) {
             peakCurrent = std::max(peakCurrent,
