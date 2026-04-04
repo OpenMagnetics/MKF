@@ -430,26 +430,34 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
             }
         }
 
-        // Post-fit validation: ensure impedance is well-behaved (positive and non-resonant)
+        // Post-fit validation: ensure impedance is well-behaved
         if (!bestCoreResistanceCoefficients.empty()) {
+            // Check 1: monotonicity — Z should not drop by more than 50%
             double prevZ = 0;
-            bool valid = true;
+            bool monotonic = true;
             for (size_t i = 0; i < frequenciesVector.size(); ++i) {
                 double z = core_rosano_model(bestCoreResistanceCoefficients.data(), frequenciesVector[i]);
                 if (z <= 0 || (i > 0 && z < prevZ * 0.5)) {
-                    valid = false;
+                    monotonic = false;
                     break;
                 }
                 prevZ = z;
             }
-            if (!valid) {
-                // Neutralize the capacitor: set C1 to a tiny value so 1/(wC) >> R3,
-                // effectively making the RLC stage behave like an RL stage (no resonance)
+            if (!monotonic) {
+                // Neutralize C1 to remove resonance
                 double fMin = frequenciesVector.front();
                 double wMin = 2 * std::numbers::pi * fMin;
                 double R3 = bestCoreResistanceCoefficients[3];
-                // 1/(wMin*C1) should be >> R3, so C1 << 1/(wMin*R3)
                 bestCoreResistanceCoefficients[5] = 1.0 / (wMin * R3 * 1000.0);
+            }
+
+            // Check 2: impedance at mid-frequency must match the Steinmetz data within 10x
+            size_t midIdx = frequenciesVector.size() / 2;
+            double zModel = core_rosano_model(bestCoreResistanceCoefficients.data(), frequenciesVector[midIdx]);
+            double zData = valuePoints[midIdx];
+            if (zModel < zData * 0.1 || zModel > zData * 10.0) {
+                // Bad fit — discard and return empty (callers handle empty = no core loss network)
+                bestCoreResistanceCoefficients.clear();
             }
         }
     } else {
@@ -1758,7 +1766,7 @@ static std::string emit_core_ladder_spice(
     
     // Connect the final node to ground (P1-)
     if (lastNode != "P1-") {
-        s += "Rcore_final " + lastNode + " P1- 1e-6\n";  // Near-zero resistance to close the circuit
+        s += "Rcore_final " + lastNode + " P1- 1e6\n";  // High resistance to close dangling node without creating a short
     }
     
     return s;
@@ -2127,7 +2135,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
                 double inductanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex + 1];
                 double resistanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex];
-                if (inductanceVal > 0.1 || resistanceVal > 100.0 || inductanceVal < 0 || resistanceVal < 0) {
+                if (inductanceVal > 0.1 || inductanceVal < 1e-7 || resistanceVal > 100.0 || resistanceVal < 1e-3) {
                     validLadderCoeffs = false;
                     break;
                 }
@@ -2158,7 +2166,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
 
         headerString += " P" + is + "+ P" + is + "-";
     }
-    
+
     // Generate pairwise K statements for magnetic coupling
     // ngspice has a bug with 3+ inductor K statements inside subcircuits - the third inductor
     // doesn't get the proper hierarchical path prefix. Use pairwise K statements as workaround.
@@ -2206,14 +2214,29 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     }
 
     // Core losses: frequency-dependent resistance network in parallel with Lmag
+    // The network impedance must be >> Lmag impedance, otherwise it shorts the magnetizing inductance
     auto coreLossTopology = static_cast<CoreLossTopology>(settings.get_circuit_simulator_core_loss_topology());
     auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology);
     if (!coreResistanceCoefficients.empty()) {
+        // Sanity check: core loss impedance at mid-frequency must be > 10x Lmag impedance
+        // Otherwise the network shorts the magnetizing inductance instead of modeling losses
+        double fMid = std::sqrt(1000.0 * 300000.0);
+        double wMid = 2 * std::numbers::pi * fMid;
+        double zLmag = wMid * magnetizingInductance;
+        double zCoreLoss;
         if (coreLossTopology == CoreLossTopology::ROSANO) {
-            circuitString += emit_core_rosano_spice(coreResistanceCoefficients, numWindings);
+            zCoreLoss = CircuitSimulatorExporter::core_rosano_model(coreResistanceCoefficients.data(), fMid);
         } else {
-            circuitString += emit_core_ladder_spice(coreResistanceCoefficients, numWindings);
+            zCoreLoss = CircuitSimulatorExporter::core_ladder_model(coreResistanceCoefficients.data(), fMid, coreResistanceCoefficients[0]);
         }
+        if (zCoreLoss > zLmag * 10) {
+            if (coreLossTopology == CoreLossTopology::ROSANO) {
+                circuitString += emit_core_rosano_spice(coreResistanceCoefficients, numWindings);
+            } else {
+                circuitString += emit_core_ladder_spice(coreResistanceCoefficients, numWindings);
+            }
+        }
+        // If zCoreLoss <= 10*zLmag, skip core loss network to avoid shorting Lmag
     }
 
     // Mutual resistance: auxiliary winding network for cross-coupling losses (Hesterman 2020)
@@ -2320,7 +2343,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
                 double inductanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex + 1];
                 double resistanceVal = acResistanceCoefficientsPerWinding[index][ladderIndex];
                 // Sanity check: inductance should be < 0.1H (100mH), resistance should be < 100 Ohm per ladder element
-                if (inductanceVal > 0.1 || resistanceVal > 100.0 || inductanceVal < 0 || resistanceVal < 0) {
+                if (inductanceVal > 0.1 || inductanceVal < 1e-7 || resistanceVal > 100.0 || resistanceVal < 1e-3) {
                     validLadderCoeffs = false;
                     break;
                 }
