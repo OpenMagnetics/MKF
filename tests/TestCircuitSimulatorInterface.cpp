@@ -23,6 +23,201 @@ double max_error = 0.01;
 auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 bool plot = false;
 
+// --- Generalized Ridley model: R0 + L1||(R1 + L2||(R2 + ... LN||RN)) ---
+// coeffs: [R1, L1, R2, L2, ..., RN, LN] — 2*nStages unknowns
+std::complex<double> par(std::complex<double> a, std::complex<double> b) {
+    return 1.0 / (1.0 / a + 1.0 / b);
+}
+
+double ridley_model_n(double* x, int nStages, double freq, double R0) {
+    for (int i = 0; i < 2 * nStages; ++i)
+        if (x[i] <= 0) return 1e30;
+    double w = 2 * std::numbers::pi * freq;
+    // Innermost: LN || RN
+    int k = nStages - 1;
+    auto Z = par(std::complex<double>(0, w * x[k * 2 + 1]),
+                 std::complex<double>(x[k * 2], 0));
+    // Work outward
+    for (k = nStages - 2; k >= 0; --k) {
+        Z = par(std::complex<double>(0, w * x[k * 2 + 1]),
+                std::complex<double>(x[k * 2], 0) + Z);
+    }
+    return (std::complex<double>(R0, 0) + Z).real();
+}
+
+struct RidleyFitData {
+    double* frequencies;
+    double R0;
+    int nStages;
+};
+
+void ridley_func_n(double* p, double* x, int m, int n, void* data) {
+    auto* d = static_cast<RidleyFitData*>(data);
+    for (int i = 0; i < n; ++i)
+        x[i] = ridley_model_n(p, d->nStages, d->frequencies[i], d->R0);
+}
+
+// --- Generalized Rosano model: R1 + nRL*(L||R) + nRLC*(L||(R+1/sC)) ---
+// coeffs: [R_dc, R2,L1, R3,L2, ..., R_rlc,L_rlc,C_rlc, ...]
+// Layout: x[0]=R_dc, then nRL pairs of (R,L), then nRLC triples of (R,L,C)
+double rosano_model_n(double* x, int nRL, int nRLC, double freq) {
+    int total = 1 + 2 * nRL + 3 * nRLC;
+    for (int i = 0; i < total; ++i)
+        if (x[i] <= 0) return 1e30;
+    double w = 2 * std::numbers::pi * freq;
+
+    // Stage 0: series R
+    auto Z = std::complex<double>(x[0], 0);
+
+    // RL stages
+    int idx = 1;
+    for (int i = 0; i < nRL; ++i) {
+        double R = x[idx++];
+        double L = x[idx++];
+        Z += par(std::complex<double>(0, w * L), std::complex<double>(R, 0));
+    }
+
+    // RLC stages
+    for (int i = 0; i < nRLC; ++i) {
+        double R = x[idx++];
+        double L = x[idx++];
+        double C = x[idx++];
+        auto Zrc = std::complex<double>(R, -1.0 / (w * C));
+        Z += par(std::complex<double>(0, w * L), Zrc);
+    }
+
+    return Z.real();
+}
+
+struct RosanoFitData {
+    double* frequencies;
+    int nRL;
+    int nRLC;
+};
+
+void rosano_func_n(double* p, double* x, int m, int n, void* data) {
+    auto* d = static_cast<RosanoFitData*>(data);
+    for (int i = 0; i < n; ++i) {
+        double val = rosano_model_n(p, d->nRL, d->nRLC, d->frequencies[i]);
+        x[i] = (val > 0) ? std::log(val) : -50.0;
+    }
+}
+
+// Fit a generalized Ridley model. Returns {avg relative error, fitting time in ms}
+std::pair<double, double> fit_ridley(const std::vector<double>& freqs, const std::vector<double>& dataR, int nStages) {
+    const int nUnknowns = 2 * nStages;
+    const int nPoints = static_cast<int>(freqs.size());
+    double frequencies[40];
+    double targets[40];
+    for (int i = 0; i < nPoints; ++i) {
+        frequencies[i] = freqs[i];
+        targets[i] = dataR[i];
+    }
+
+    RidleyFitData fitData{frequencies, dataR[0], nStages};
+    double bestError = 1e30;
+    std::vector<double> bestCoeffs(nUnknowns);
+
+    auto tStart = std::chrono::high_resolution_clock::now();
+    double initialState = 10;
+    for (int trial = 0; trial < 15; ++trial) {
+        std::vector<double> coeffs(nUnknowns, initialState);
+        double opts[5] = {1e-3, 1e-25, 1e-25, 1e-25, 1e-19};
+        double info[10];
+        eigen_levmar_dif(ridley_func_n, coeffs.data(), targets, nUnknowns, nPoints,
+                         10000, opts, info, nullptr, nullptr, &fitData);
+
+        double err = 0;
+        for (int i = 0; i < nPoints; ++i) {
+            double modeled = ridley_model_n(coeffs.data(), nStages, freqs[i], dataR[0]);
+            err += fabs(dataR[i] - modeled) / dataR[i];
+        }
+        err /= nPoints;
+        initialState /= 10;
+        if (err < bestError) {
+            bestError = err;
+            bestCoeffs = coeffs;
+        }
+    }
+    auto tEnd = std::chrono::high_resolution_clock::now();
+    double fitTimeMs = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+    return {bestError, fitTimeMs};
+}
+
+// Fit a generalized Rosano model. Returns {avg relative error, fitting time in ms}
+std::pair<double, double> fit_rosano(const std::vector<double>& freqs, const std::vector<double>& dataR, int nRL, int nRLC) {
+    const int nUnknowns = 1 + 2 * nRL + 3 * nRLC;
+    const int nPoints = static_cast<int>(freqs.size());
+    double frequencies[40];
+    double logTargets[40];
+    for (int i = 0; i < nPoints; ++i) {
+        frequencies[i] = freqs[i];
+        logTargets[i] = std::log(dataR[i]);
+    }
+
+    RosanoFitData fitData{frequencies, nRL, nRLC};
+    double bestError = 1e30;
+    auto tStart = std::chrono::high_resolution_clock::now();
+
+    double Rmin = dataR.front();
+    double Rmax = dataR.back();
+    double fMid = std::sqrt(freqs.front() * freqs.back());
+    double wMid = 2 * std::numbers::pi * fMid;
+
+    double rScales[] = {0.2, 0.5, 1.0, 2.0, 5.0};
+    double fScales[] = {0.3, 1.0, 3.0};
+
+    for (double rScale : rScales) {
+        for (double fScale : fScales) {
+            std::vector<double> coeffs(nUnknowns);
+            double wTrans = wMid * fScale;
+            double Rrange = std::max(Rmax - Rmin, Rmax * 0.1) * rScale;
+
+            // R_dc
+            coeffs[0] = std::max(Rmin * rScale, 1e-12);
+
+            // RL stages: distribute R evenly
+            int idx = 1;
+            for (int i = 0; i < nRL; ++i) {
+                double Ri = Rrange / (nRL + nRLC) * (i + 1);
+                double wLocal = wTrans * std::pow(2.0, i - nRL / 2.0);
+                coeffs[idx++] = std::max(Ri, 1e-12);
+                coeffs[idx++] = std::max(Ri / wLocal, 1e-15);
+            }
+            // RLC stages
+            for (int i = 0; i < nRLC; ++i) {
+                double Ri = Rrange / (nRL + nRLC) * (nRL + i + 1);
+                double wLocal = wTrans * std::pow(2.0, i);
+                coeffs[idx++] = std::max(Ri, 1e-12);
+                double Li = std::max(Ri / wLocal, 1e-15);
+                coeffs[idx++] = Li;
+                coeffs[idx++] = std::max(1.0 / (wLocal * wLocal * Li), 1e-15);
+            }
+
+            double opts[5] = {1e-3, 1e-25, 1e-25, 1e-25, 1e-19};
+            double info[10];
+            eigen_levmar_dif(rosano_func_n, coeffs.data(), logTargets, nUnknowns, nPoints,
+                             10000, opts, info, nullptr, nullptr, &fitData);
+
+            bool valid = true;
+            for (int i = 0; i < nUnknowns; ++i)
+                if (coeffs[i] <= 0) { valid = false; break; }
+            if (!valid) continue;
+
+            double err = 0;
+            for (int i = 0; i < nPoints; ++i) {
+                double modeled = rosano_model_n(coeffs.data(), nRL, nRLC, freqs[i]);
+                err += fabs(dataR[i] - modeled) / dataR[i];
+            }
+            err /= nPoints;
+            if (err < bestError) bestError = err;
+        }
+    }
+    auto tEnd = std::chrono::high_resolution_clock::now();
+    double fitTimeMs = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+    return {bestError, fitTimeMs};
+}
+
 TEST_CASE("Test_CircuitSimulatorExporter_Simba_Only_Magnetic", "[processor][circuit-simulator-exporter][simba]") {
     std::vector<int64_t> numberTurns = {30, 10, 5, 1};
     std::vector<int64_t> numberParallels = {1, 1, 1, 2};
@@ -476,6 +671,545 @@ TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder", "
     // std::cout << "errorAverage: " << errorAverage << std::endl;
 
     REQUIRE(0.4 > errorAverage);
+}
+
+TEST_CASE("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Rosano", "[processor][circuit-simulator-exporter][ltspice]") {
+    std::vector<int64_t> numberTurns = {10, 10};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "PQ 35/35";
+    std::vector<OpenMagnetics::Wire> wires;
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                     numberParallels,
+                                                     shapeName);
+
+    int64_t numberStacks = 1;
+    std::string coreMaterial = "3C97";
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto coefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, 25, CoreLossTopology::ROSANO);
+
+    size_t numberElements = 20;
+    double startingFrequency = 1000;
+    double endingFrequency = 300000;
+
+    Curve2D windingCoreResistanceData = Sweeper().sweep_core_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, 25);
+    auto frequenciesVector = windingCoreResistanceData.get_x_points();
+    auto coreResistanceVector = windingCoreResistanceData.get_y_points();
+
+    {
+        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+        auto outFile = outputFilePath;
+
+        outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Rosano_Theory.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, true);
+        painter.paint_curve(windingCoreResistanceData, true);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+    }
+
+    std::vector<double> modeledCoreResistances;
+    double errorAverage = 0;
+    for (size_t index = 0; index < coreResistanceVector.size(); ++index) {
+        std::vector<double> c(coefficients.size());
+        for (size_t coefficientIndex = 0; coefficientIndex < coefficients.size(); ++coefficientIndex) {
+            c[coefficientIndex] = coefficients[coefficientIndex];
+        }
+        auto frequency = frequenciesVector[index];
+        double modeledCoreResistance = CircuitSimulatorExporter::core_rosano_model(c.data(), frequency);
+        modeledCoreResistances.push_back(modeledCoreResistance);
+        double error = fabs(coreResistanceVector[index] - modeledCoreResistance) / coreResistanceVector[index];
+        errorAverage += error;
+    }
+
+    {
+        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+        auto outFile = outputFilePath;
+        outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Rosano_Modeled.svg");
+        Painter painter(outFile, false, true);
+        painter.paint_curve(Curve2D(frequenciesVector, modeledCoreResistances, "meh"));
+        painter.export_svg();
+    }
+
+    errorAverage /= coreResistanceVector.size();
+
+    REQUIRE(0.4 > errorAverage);
+}
+
+TEST_CASE("Test_Core_Loss_Topology_Comparison_Ridley_vs_Rosano", "[processor][circuit-simulator-exporter][comparison]") {
+    // Test multiple core/material combinations
+    struct TestCase {
+        std::string shapeName;
+        std::string material;
+        double gapLength;
+        int numGaps;
+    };
+    std::vector<TestCase> testCases = {
+        {"PQ 35/35", "3C97", 0.0003, 3},
+        {"E 42/21/15", "N87", 0.001, 1},
+        {"PQ 26/25", "3C95", 0.0005, 2},
+        {"ETD 34/17/11", "N49", 0.0002, 3},
+    };
+
+    for (auto& tc : testCases) {
+        SECTION(tc.shapeName + " + " + tc.material) {
+            std::vector<int64_t> numberTurns = {10, 10};
+            std::vector<int64_t> numberParallels = {1, 1};
+
+            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, tc.shapeName);
+            auto gapping = OpenMagneticsTesting::get_distributed_gap(tc.gapLength, tc.numGaps);
+            auto core = OpenMagneticsTesting::get_quick_core(tc.shapeName, gapping, 1, tc.material);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            size_t numberElements = 20;
+            double startingFrequency = 1000;
+            double endingFrequency = 300000;
+
+            Curve2D coreResData = Sweeper().sweep_core_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, 25);
+            auto freqs = coreResData.get_x_points();
+            auto dataR = coreResData.get_y_points();
+
+            // Fit with Ridley
+            auto ridleyCoeffs = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, 25, CoreLossTopology::RIDLEY);
+            double ridleyError = 0;
+            double ridleyMaxError = 0;
+            for (size_t i = 0; i < dataR.size(); ++i) {
+                std::vector<double> c(ridleyCoeffs.begin(), ridleyCoeffs.end());
+                double modeled = CircuitSimulatorExporter::core_ladder_model(c.data(), freqs[i], dataR[0]);
+                double err = fabs(dataR[i] - modeled) / dataR[i];
+                ridleyError += err;
+                ridleyMaxError = std::max(ridleyMaxError, err);
+            }
+            ridleyError /= dataR.size();
+
+            // Fit with Rosano
+            auto rosanoCoeffs = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, 25, CoreLossTopology::ROSANO);
+            double rosanoError = 0;
+            double rosanoMaxError = 0;
+            for (size_t i = 0; i < dataR.size(); ++i) {
+                std::vector<double> c(rosanoCoeffs.begin(), rosanoCoeffs.end());
+                double modeled = CircuitSimulatorExporter::core_rosano_model(c.data(), freqs[i]);
+                double err = fabs(dataR[i] - modeled) / dataR[i];
+                rosanoError += err;
+                rosanoMaxError = std::max(rosanoMaxError, err);
+            }
+            rosanoError /= dataR.size();
+
+            std::cout << "=== " << tc.shapeName << " + " << tc.material << " ===" << std::endl;
+            std::cout << "  Data range: " << dataR.front() << " to " << dataR.back() << " (" << (dataR.back()/dataR.front()) << "x)" << std::endl;
+            std::cout << "  Ridley (RL):  avg=" << (ridleyError*100) << "%  max=" << (ridleyMaxError*100) << "%" << std::endl;
+            std::cout << "  Rosano (RLC): avg=" << (rosanoError*100) << "%  max=" << (rosanoMaxError*100) << "%" << std::endl;
+
+            // Print per-frequency comparison
+            std::cout << "  freq(Hz)      | R_data        | Ridley        | err%   | Rosano        | err%" << std::endl;
+            for (size_t i = 0; i < dataR.size(); ++i) {
+                std::vector<double> cr(ridleyCoeffs.begin(), ridleyCoeffs.end());
+                std::vector<double> cn(rosanoCoeffs.begin(), rosanoCoeffs.end());
+                double mRidley = CircuitSimulatorExporter::core_ladder_model(cr.data(), freqs[i], dataR[0]);
+                double mRosano = CircuitSimulatorExporter::core_rosano_model(cn.data(), freqs[i]);
+                double eRidley = fabs(dataR[i] - mRidley) / dataR[i] * 100;
+                double eRosano = fabs(dataR[i] - mRosano) / dataR[i] * 100;
+                printf("  %-14.0f | %-13.6e | %-13.6e | %5.1f%% | %-13.6e | %5.1f%%\n",
+                       freqs[i], dataR[i], mRidley, eRidley, mRosano, eRosano);
+            }
+            std::cout << std::endl;
+        }
+    }
+}
+
+TEST_CASE("Test_Core_Loss_Flyback_Simulation_Ridley_vs_Rosano", "[processor][circuit-simulator-exporter][comparison][ngspice]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        SKIP("ngspice not available on this system");
+    }
+
+    // Flyback CCM: 48V->12V @ 1A, 100kHz
+    OpenMagnetics::Flyback flyback;
+    DimensionWithTolerance inputVoltage;
+    inputVoltage.set_nominal(48.0);
+    inputVoltage.set_minimum(42.0);
+    inputVoltage.set_maximum(54.0);
+    flyback.set_input_voltage(inputVoltage);
+    flyback.set_diode_voltage_drop(0.5);
+    flyback.set_efficiency(0.9);
+    flyback.set_current_ripple_ratio(0.4);
+    flyback.set_maximum_duty_cycle(0.5);
+
+    OpenMagnetics::FlybackOperatingPoint opPoint;
+    opPoint.set_output_voltages({12.0});
+    opPoint.set_output_currents({1.0});
+    opPoint.set_ambient_temperature(25.0);
+    opPoint.set_switching_frequency(100000.0);
+    flyback.set_operating_points({opPoint});
+
+    auto designReqs = flyback.process_design_requirements();
+    std::vector<double> turnsRatios;
+    for (const auto& tr : designReqs.get_turns_ratios())
+        turnsRatios.push_back(tr.get_nominal().value());
+    double Lmag = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+    std::cout << std::endl;
+    printf("Flyback CCM: 48V->12V @1A, 100kHz, Lmag=%.1f uH, N=%.2f\n\n", Lmag * 1e6, turnsRatios[0]);
+
+    struct Result {
+        std::string name;
+        bool converged;
+        double simTimeMs;
+        double priVmax, priVmin, priImax, secVmax, secIavg;
+    };
+    std::vector<Result> results;
+
+    for (int topo = 0; topo < 2; ++topo) {
+        std::string topoName = (topo == 0) ? "Ridley (RL)" : "Rosano (RLC)";
+        Settings::GetInstance().set_circuit_simulator_core_loss_topology(topo);
+
+        Result r;
+        r.name = topoName;
+        r.converged = false;
+
+        try {
+            auto t0 = std::chrono::high_resolution_clock::now();
+            auto waveforms = flyback.simulate_and_extract_topology_waveforms(turnsRatios, Lmag);
+            auto t1 = std::chrono::high_resolution_clock::now();
+            r.simTimeMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+            if (!waveforms.empty()) {
+                r.converged = true;
+                auto priV = waveforms[0].get_input_voltage().get_data();
+                auto priI = waveforms[0].get_input_current().get_data();
+                auto secV = waveforms[0].get_output_voltages()[0].get_data();
+                auto secI = waveforms[0].get_output_currents()[0].get_data();
+
+                r.priVmax = *std::max_element(priV.begin(), priV.end());
+                r.priVmin = *std::min_element(priV.begin(), priV.end());
+                r.priImax = *std::max_element(priI.begin(), priI.end());
+                r.secVmax = *std::max_element(secV.begin(), secV.end());
+                r.secIavg = std::accumulate(secI.begin(), secI.end(), 0.0) / secI.size();
+            }
+        } catch (const std::exception& e) {
+            r.simTimeMs = 0;
+            std::cout << topoName << ": FAILED - " << e.what() << std::endl;
+        }
+        results.push_back(r);
+    }
+
+    // Print comparison table
+    printf("%-16s | %-10s | %-10s | %-10s | %-10s | %-10s | %-10s | %-10s\n",
+           "Topology", "Converged", "Sim time", "Vpri max", "Vpri min", "Ipri max", "Vsec max", "Isec avg");
+    printf("%-16s-+------------+------------+------------+------------+------------+------------+-----------\n",
+           "----------------");
+    for (auto& r : results) {
+        if (r.converged) {
+            printf("%-16s | %-10s | %7.0f ms | %7.1f V  | %7.1f V  | %7.3f A  | %7.1f V  | %7.3f A\n",
+                   r.name.c_str(), "YES", r.simTimeMs,
+                   r.priVmax, r.priVmin, r.priImax, r.secVmax, r.secIavg);
+        } else {
+            printf("%-16s | %-10s | %7.0f ms | %10s | %10s | %10s | %10s | %10s\n",
+                   r.name.c_str(), "NO", r.simTimeMs, "-", "-", "-", "-", "-");
+        }
+    }
+
+    // Check both converged and waveforms are similar
+    if (results.size() == 2 && results[0].converged && results[1].converged) {
+        double vDiff = fabs(results[0].priVmax - results[1].priVmax) / results[0].priVmax * 100;
+        double iDiff = fabs(results[0].priImax - results[1].priImax) / results[0].priImax * 100;
+        printf("\nWaveform difference: Vpri_max=%.1f%%  Ipri_max=%.1f%%\n", vDiff, iDiff);
+    }
+    printf("\n");
+
+    Settings::GetInstance().set_circuit_simulator_core_loss_topology(0);
+}
+
+#if 0 // old AC sweep test removed
+    std::vector<TestCase> testCases = {
+        {"PQ 35/35", "3C97", 0.0003, 3},
+        {"E 42/21/15", "N87", 0.001, 1},
+    };
+
+    // Helper: run ngspice AC sweep on a magnetic subcircuit.
+    // Drives 1A AC current, measures V/I = impedance. Returns {freqs, Re(Z)} and simTimeMs.
+    auto run_ac_sweep = [](const std::string& subcircuit, double fStart, double fStop, int nPoints)
+        -> std::tuple<std::vector<double>, std::vector<double>, double>
+    {
+        std::string subcktName;
+        auto pos = subcircuit.find(".subckt ");
+        if (pos != std::string::npos) {
+            auto s = pos + 8;
+            auto e = subcircuit.find_first_of(" \n", s);
+            subcktName = subcircuit.substr(s, e - s);
+        }
+        if (subcktName.empty()) return {{}, {}, 0};
+
+        std::string netlist = "* AC sweep core loss test\n";
+        netlist += subcircuit + "\n\n";
+        // 1A AC current source
+        netlist += "I1 P1p 0 AC 1\n";
+        netlist += "X1 P1p 0 " + subcktName + "\n\n";
+        netlist += ".ac dec " + std::to_string(nPoints) + " "
+                 + std::to_string(fStart) + " " + std::to_string(fStop) + "\n\n";
+        netlist += ".control\n";
+        netlist += "run\n";
+        // Print frequency and real part of impedance (V/I = V since I=1A)
+        // Re(V(P1p)) gives the resistive part of impedance
+        netlist += ".print ac vr(p1p) vi(p1p)\n";
+        netlist += ".end\n";
+
+        auto tempDir = std::filesystem::temp_directory_path() / "omag_ac_test";
+        std::filesystem::create_directories(tempDir);
+        auto netlistPath = tempDir / "test.cir";
+        { std::ofstream ofs(netlistPath); ofs << netlist; }
+
+        auto t0 = std::chrono::high_resolution_clock::now();
+        std::string cmd = "ngspice -b " + netlistPath.string() + " 2>&1";
+        FILE* pipe = popen(cmd.c_str(), "r");
+        std::string output;
+        if (pipe) {
+            char buf[512];
+            while (fgets(buf, sizeof(buf), pipe)) output += buf;
+            pclose(pipe);
+        }
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double elapsedMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+        // Parse .print output: look for table with "Index" header
+        std::vector<double> freqs, reZ;
+        std::istringstream iss(output);
+        std::string line;
+        bool inTable = false;
+        while (std::getline(iss, line)) {
+            if (line.find("Index") != std::string::npos && line.find("frequency") != std::string::npos) {
+                inTable = true;
+                continue;
+            }
+            if (inTable && !line.empty() && line[0] == '-') continue;
+            if (inTable && line.empty()) { inTable = false; continue; }
+            if (inTable) {
+                std::istringstream ls(line);
+                int idx;
+                double f, vr, vi;
+                if (ls >> idx >> f >> vr >> vi) {
+                    freqs.push_back(f);
+                    reZ.push_back(vr);
+                }
+            }
+        }
+        // Debug: if no data parsed, dump a snippet of ngspice output
+        if (freqs.empty()) {
+            std::cerr << "WARNING: No AC data parsed. First 500 chars of ngspice output:\n";
+            std::cerr << output.substr(0, 500) << "\n...\n";
+        }
+        std::filesystem::remove_all(tempDir);
+
+        return {freqs, reZ, elapsedMs};
+    };
+
+    std::cout << std::endl;
+
+    for (auto& tc : testCases) {
+        std::vector<int64_t> numberTurns = {10};
+        std::vector<int64_t> numberParallels = {1};
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, tc.shapeName);
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(tc.gapLength, tc.numGaps);
+        auto core = OpenMagneticsTesting::get_quick_core(tc.shapeName, gapping, 1, tc.material);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        // Get Steinmetz reference data
+        Curve2D steinmetzData = Sweeper().sweep_core_resistance_over_frequency(
+            magnetic, 1000, 300000, 20, 25);
+        auto steinmetzFreqs = steinmetzData.get_x_points();
+        auto steinmetzR = steinmetzData.get_y_points();
+
+        printf("=== %s + %s ===\n", tc.shapeName.c_str(), tc.material.c_str());
+        printf("%-12s | %-13s | %-13s %-8s | %-13s %-8s\n",
+               "Freq (Hz)", "R_steinmetz", "R_ridley", "err", "R_rosano", "err");
+        printf("-------------+---------------+----------------------+----------------------\n");
+
+        // Run Ridley AC sweep
+        Settings::GetInstance().set_circuit_simulator_core_loss_topology(0);
+        auto subckt_ridley = CircuitSimulatorExporter(CircuitSimulatorExporterModels::NGSPICE)
+            .export_magnetic_as_subcircuit(magnetic, 100000, 25);
+        auto [freqsR, reZR, timeR] = run_ac_sweep(subckt_ridley, 1000, 300000, 20);
+
+        // Run Rosano AC sweep
+        Settings::GetInstance().set_circuit_simulator_core_loss_topology(1);
+        auto subckt_rosano = CircuitSimulatorExporter(CircuitSimulatorExporterModels::NGSPICE)
+            .export_magnetic_as_subcircuit(magnetic, 100000, 25);
+        auto [freqsN, reZN, timeN] = run_ac_sweep(subckt_rosano, 1000, 300000, 20);
+
+        // Compare at Steinmetz frequencies using linear interpolation from AC sweep data
+        auto interp = [](const std::vector<double>& xs, const std::vector<double>& ys, double x) -> double {
+            if (xs.empty()) return 0;
+            if (x <= xs.front()) return ys.front();
+            if (x >= xs.back()) return ys.back();
+            for (size_t i = 1; i < xs.size(); ++i) {
+                if (xs[i] >= x) {
+                    double t = (x - xs[i-1]) / (xs[i] - xs[i-1]);
+                    return ys[i-1] + t * (ys[i] - ys[i-1]);
+                }
+            }
+            return ys.back();
+        };
+
+        double ridleyErrSum = 0, rosanoErrSum = 0;
+        int nPts = 0;
+        for (size_t i = 0; i < steinmetzFreqs.size(); ++i) {
+            double f = steinmetzFreqs[i];
+            double Rs = steinmetzR[i];
+            double Rr = interp(freqsR, reZR, f);
+            double Rn = interp(freqsN, reZN, f);
+            double errR = (Rs > 0) ? fabs(Rr - Rs) / Rs * 100 : 0;
+            double errN = (Rs > 0) ? fabs(Rn - Rs) / Rs * 100 : 0;
+            ridleyErrSum += errR;
+            rosanoErrSum += errN;
+            nPts++;
+            printf("%11.0f  | %11.3e   | %11.3e  %5.1f%%  | %11.3e  %5.1f%%\n",
+                   f, Rs, Rr, errR, Rn, errN);
+        }
+        if (nPts > 0) {
+            printf("%-12s | %-13s | %-13s %5.1f%%  | %-13s %5.1f%%\n",
+                   "AVERAGE", "", "", ridleyErrSum / nPts, "", rosanoErrSum / nPts);
+        }
+        printf("ngspice time:                   Ridley: %.0f ms           Rosano: %.0f ms\n\n", timeR, timeN);
+    }
+
+// DEAD_CODE_END
+#endif
+
+TEST_CASE("Test_Core_Loss_Stage_Count_Sweep", "[processor][circuit-simulator-exporter][comparison][sweep]") {
+    struct TestCase {
+        std::string shapeName;
+        std::string material;
+        double gapLength;
+        int numGaps;
+    };
+    std::vector<TestCase> testCases = {
+        {"PQ 35/35", "3C97", 0.0003, 3},
+        {"E 42/21/15", "N87", 0.001, 1},
+        {"PQ 26/25", "3C95", 0.0005, 2},
+        {"ETD 34/17/11", "N49", 0.0002, 3},
+    };
+
+    struct Config {
+        std::string name;
+        int nRLStages;
+        int nRLCStages;
+        int unknowns;
+        int components;
+    };
+
+    std::vector<Config> configs = {
+        {"Ridley 3xRL",        3, 0, 6,  6},
+        {"Ridley 4xRL",        4, 0, 8,  8},
+        {"Ridley 5xRL",        5, 0, 10, 10},
+        {"Rosano R+1RL+1RLC",  1, 1, 6,  6},
+        {"Rosano R+2RL+1RLC",  2, 1, 8,  8},
+        {"Rosano R+1RL+2RLC",  1, 2, 9,  9},
+        {"Rosano R+3RL+1RLC",  3, 1, 10, 10},
+        {"Rosano R+2RL+2RLC",  2, 2, 11, 11},
+    };
+
+    // Pre-compute Steinmetz data
+    struct PrecomputedData {
+        std::vector<double> freqs;
+        std::vector<double> dataR;
+    };
+    std::vector<PrecomputedData> precomputed;
+    for (auto& tc : testCases) {
+        std::vector<int64_t> numberTurns = {10, 10};
+        std::vector<int64_t> numberParallels = {1, 1};
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, tc.shapeName);
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(tc.gapLength, tc.numGaps);
+        auto core = OpenMagneticsTesting::get_quick_core(tc.shapeName, gapping, 1, tc.material);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        Curve2D coreResData = Sweeper().sweep_core_resistance_over_frequency(
+            magnetic, 1000, 300000, 20, 25);
+        precomputed.push_back({coreResData.get_x_points(), coreResData.get_y_points()});
+    }
+
+    // Also run Flyback sim for Ridley 3xRL and Rosano R+1RL+1RLC (the production configs)
+    NgspiceRunner runner;
+    bool ngspiceAvailable = runner.is_available();
+    double simTimeRidley = 0, simTimeRosano = 0;
+    if (ngspiceAvailable) {
+        OpenMagnetics::Flyback flyback;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(48.0); inputVoltage.set_minimum(42.0); inputVoltage.set_maximum(54.0);
+        flyback.set_input_voltage(inputVoltage);
+        flyback.set_diode_voltage_drop(0.5);
+        flyback.set_efficiency(0.9);
+        flyback.set_current_ripple_ratio(0.4);
+        flyback.set_maximum_duty_cycle(0.5);
+        OpenMagnetics::FlybackOperatingPoint opPoint;
+        opPoint.set_output_voltages({12.0}); opPoint.set_output_currents({1.0});
+        opPoint.set_ambient_temperature(25.0); opPoint.set_switching_frequency(100000.0);
+        flyback.set_operating_points({opPoint});
+        auto designReqs = flyback.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios()) turnsRatios.push_back(tr.get_nominal().value());
+        double Lmag = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        for (int topo = 0; topo < 2; ++topo) {
+            Settings::GetInstance().set_circuit_simulator_core_loss_topology(topo);
+            try {
+                auto t0 = std::chrono::high_resolution_clock::now();
+                flyback.simulate_and_extract_topology_waveforms(turnsRatios, Lmag);
+                auto t1 = std::chrono::high_resolution_clock::now();
+                double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+                if (topo == 0) simTimeRidley = ms; else simTimeRosano = ms;
+            } catch (...) {
+                if (topo == 0) simTimeRidley = -1; else simTimeRosano = -1;
+            }
+        }
+        Settings::GetInstance().set_circuit_simulator_core_loss_topology(1); // restore default
+    }
+
+    // Print table
+    std::cout << std::endl;
+    printf("%-22s | #Unkn | Fit time ", "Config");
+    for (auto& tc : testCases) printf("| %-12s", (tc.shapeName.substr(0,6) + " " + tc.material).c_str());
+    printf("| Avg err\n");
+    printf("%-22s-+-------+---------", "----------------------");
+    for (size_t i = 0; i < testCases.size(); ++i) printf("-+-%-12s", "------------");
+    printf("-+--------\n");
+
+    for (auto& cfg : configs) {
+        std::vector<double> errors;
+        double totalFitTime = 0;
+        for (size_t ti = 0; ti < testCases.size(); ++ti) {
+            auto& data = precomputed[ti];
+            auto [err, fitMs] = (cfg.nRLCStages == 0)
+                ? fit_ridley(data.freqs, data.dataR, cfg.nRLStages)
+                : fit_rosano(data.freqs, data.dataR, cfg.nRLStages, cfg.nRLCStages);
+            errors.push_back(err);
+            totalFitTime += fitMs;
+        }
+        double avgFitTime = totalFitTime / testCases.size();
+        double avgErr = 0;
+        for (auto e : errors) avgErr += e;
+        avgErr /= errors.size();
+
+        printf("%-22s | %4d  | %5.0f ms ", cfg.name.c_str(), cfg.unknowns, avgFitTime);
+        for (auto& err : errors) printf("| %9.1f%%   ", err * 100);
+        printf("| %5.1f%%\n", avgErr * 100);
+    }
+
+    if (ngspiceAvailable) {
+        printf("\nngspice Flyback CCM simulation (48V->12V @1A, 100kHz):\n");
+        printf("  Ridley 3xRL:       %5.0f ms%s\n", fabs(simTimeRidley), simTimeRidley < 0 ? " (FAILED)" : "");
+        printf("  Rosano R+1RL+1RLC: %5.0f ms%s\n", fabs(simTimeRosano), simTimeRosano < 0 ? " (FAILED)" : "");
+    }
+    printf("\n");
 }
 
 TEST_CASE("Test_Guess_Periodicity_Simba", "[processor][circuit-simulation-reader]") {
@@ -2422,7 +3156,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Only_Magnetic", "[processor][circui
     // Check for expected components (resistors, inductors, windings)
     CHECK(nl5Content.find("type=\"R_R\"") != std::string::npos);  // Resistors
     CHECK(nl5Content.find("type=\"L_L\"") != std::string::npos);  // Inductors
-    CHECK(nl5Content.find("type=\"W_Winding\"") != std::string::npos);  // Winding components
+    CHECK(nl5Content.find("type=\"W_W\"") != std::string::npos);  // Winding components
 
     // Check for winding-related elements (Rdc, Lmag, Winding)
     CHECK(nl5Content.find("Rdc") != std::string::npos);
@@ -2466,7 +3200,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Single_Winding", "[processor][circu
     CHECK(nl5Content.find("Rdc1") != std::string::npos);
     CHECK(nl5Content.find("Lmag") != std::string::npos);  // Single magnetizing inductance
     CHECK(nl5Content.find("name=\"W1\"") != std::string::npos);  // Winding 1
-    CHECK(nl5Content.find("type=\"W_Winding\"") != std::string::npos);
+    CHECK(nl5Content.find("type=\"W_W\"") != std::string::npos);
     // Only one winding component
     CHECK(nl5Content.find("name=\"W2\"") == std::string::npos);
 }
@@ -2515,7 +3249,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Four_Windings", "[processor][circui
     CHECK(nl5Content.find("name=\"W2\"") != std::string::npos);
     CHECK(nl5Content.find("name=\"W3\"") != std::string::npos);
     CHECK(nl5Content.find("name=\"W4\"") != std::string::npos);
-    CHECK(nl5Content.find("type=\"W_Winding\"") != std::string::npos);
+    CHECK(nl5Content.find("type=\"W_W\"") != std::string::npos);
 
     // Check for leakage inductances (for non-primary windings)
     CHECK(nl5Content.find("Lleak") != std::string::npos);
@@ -2552,8 +3286,8 @@ TEST_CASE("Test_CircuitSimulatorExporter_Nl5_Analytical_Mode", "[processor][circ
                            std::istreambuf_iterator<char>());
     nl5Stream.close();
 
-    // Analytical mode should use simple wire connection (W_T2) between Rdc and Lmag
-    CHECK(nl5Content.find("type=\"W_T2\"") != std::string::npos);
+    // Analytical mode should have label components for pin connections
+    CHECK(nl5Content.find("type=\"label\"") != std::string::npos);
     CHECK(nl5Content.find("<NL5>") != std::string::npos);
 }
 

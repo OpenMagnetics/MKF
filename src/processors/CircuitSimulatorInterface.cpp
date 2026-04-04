@@ -198,6 +198,47 @@ void CircuitSimulatorExporter::core_ladder_func(double *p, double *x, int m, int
         x[i]=core_ladder_model(p, dcResistanceAndFrequencies[i + 1], dcResistance);
 }
 
+// Rosano model: R + (L||R) + (L||(R + 1/sC)) — three series stages
+// Stage 1 (R):   R1 — pure DC loss floor
+// Stage 2 (RL):  L1 || R2 — at DC L shorts→0, at high freq→R2
+// Stage 3 (RLC): L2 || (R3 + 1/(sC1)) — adds C for fitting flexibility
+// x[0]=R1, x[1]=R2, x[2]=L1, x[3]=R3, x[4]=L2, x[5]=C1
+double CircuitSimulatorExporter::core_rosano_model(double x[], double frequency) {
+    for (int i = 0; i < 6; ++i) {
+        if (x[i] <= 0) {
+            return 1e30;
+        }
+    }
+
+    double w = 2 * std::numbers::pi * frequency;
+
+    // Stage 1: pure R
+    auto Z1 = std::complex<double>(x[0], 0);
+
+    // Stage 2: L1 || R2
+    auto L1 = std::complex<double>(0, w * x[2]);
+    auto R2 = std::complex<double>(x[1], 0);
+    auto Z2 = parallel(L1, R2);
+
+    // Stage 3: L2 || (R3 + 1/(jωC1))
+    auto L2 = std::complex<double>(0, w * x[4]);
+    auto R3plusC = std::complex<double>(x[3], -1.0 / (w * x[5]));
+    auto Z3 = parallel(L2, R3plusC);
+
+    // Three stages in series
+    return (Z1 + Z2 + Z3).real();
+}
+
+// Fitting function in log space for better convergence across wide dynamic range
+void CircuitSimulatorExporter::core_rosano_func(double *p, double *x, int m, int n, void *data) {
+    double* frequencies = static_cast<double*>(data);
+
+    for (int i = 0; i < n; ++i) {
+        double val = core_rosano_model(p, frequencies[i]);
+        x[i] = (val > 0) ? std::log(val) : -50.0;
+    }
+}
+
 std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_ladder(Magnetic magnetic, double temperature) {
     const size_t numberUnknowns = 10;
 
@@ -274,7 +315,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     return acResistanceCoefficientsPerWinding;
 }
 
-std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(Magnetic magnetic, double temperature) {
+std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(Magnetic magnetic, double temperature, CoreLossTopology topology) {
     const size_t numberUnknowns = 6;
 
     const size_t numberElements = 20;
@@ -300,47 +341,156 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
     double bestError = DBL_MAX;
     double initialState = 10;
     std::vector<double> bestCoreResistanceCoefficients;
-    for (size_t loopIndex = 0; loopIndex < loopIterations; ++loopIndex) {
-        double coefficients[numberUnknowns];
-        for (size_t index = 0; index < numberUnknowns; ++index) {
-            coefficients[index] = initialState;
-        }
-        double opts[5], info[10];
 
-        double lmInitMu = 1e-03;
-        double lmStopThresh = 1e-25;
-        double lmDiffDelta = 1e-19;
-
-        opts[0]= lmInitMu;
-        opts[1]= lmStopThresh;
-        opts[2]= lmStopThresh;
-        opts[3]= lmStopThresh;
-        opts[4]= lmDiffDelta;
-
-        double dcResistanceAndfrequencies[numberElementsPlusOne];
-        dcResistanceAndfrequencies[0] = coreResistances[0];
-        // coefficients[1] = 1e-7;
-        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-            dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
+    if (topology == CoreLossTopology::ROSANO) {
+        // Rosano model: Z = R1 + (L1||R2) + (L2||(R3+1/sC1))
+        // coefficients: [R1, R2, L1, R3, L2, C1]
+        // Fit in log space for uniform relative error across wide dynamic range
+        double frequencies[numberElements];
+        double logCoreResistances[numberElements];
+        size_t numFreqs = std::min(frequenciesVector.size(), numberElements);
+        for (size_t index = 0; index < numFreqs; ++index) {
+            frequencies[index] = frequenciesVector[index];
+            logCoreResistances[index] = std::log(coreResistances[index]);
         }
 
-        eigen_levmar_dif(CircuitSimulatorExporter::core_ladder_func, coefficients, coreResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+        double Rmin = coreResistances[0];
+        double Rmax = coreResistances[numPoints - 1];
+        double fMid = std::sqrt(frequenciesVector.front() * frequenciesVector.back());
+        double wMid = 2 * std::numbers::pi * fMid;
 
-        double errorAverage = 0;
-        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-            double modeledAcResistance = CircuitSimulatorExporter::core_ladder_model(coefficients, frequenciesVector[index], coreResistances[0]);
-            double error = fabs(valuePoints[index] - modeledAcResistance) / valuePoints[index];
-            errorAverage += error;
+        // For series model Z = R1 + (L1||R2) + (L2||(R3+1/sC1)):
+        // At DC: Z = R1, so R1 ≈ Rmin
+        // At high freq: Z ≈ R1 + R2 + R3, so R2+R3 ≈ Rmax
+        double rScales[] = {0.5, 1.0, 2.0};
+        double freqScales[] = {0.3, 1.0, 3.0};
+        double splitRatios[] = {0.5};
+
+        for (double rScale : rScales) {
+            if (bestError < 0.05) break;  // Early exit if already good (<5%)
+            for (double freqScale : freqScales) {
+                if (bestError < 0.05) break;
+                for (double splitRatio : splitRatios) {
+                double coefficients[numberUnknowns];
+                double wTransition = wMid * freqScale;
+                double Rrange = (Rmax - Rmin) * rScale;
+                if (Rrange <= 0) Rrange = Rmax * rScale;
+
+                // R1: DC floor
+                coefficients[0] = Rmin * rScale;
+                if (coefficients[0] <= 0) coefficients[0] = 1e-9;
+                // R2: RL stage high-freq contribution
+                coefficients[1] = Rrange * splitRatio;
+                if (coefficients[1] <= 0) coefficients[1] = 1e-6;
+                // L1: transition frequency for RL stage
+                coefficients[2] = coefficients[1] / wTransition;
+                if (coefficients[2] <= 0) coefficients[2] = 1e-9;
+                // R3: RLC stage contribution
+                coefficients[3] = Rrange * (1.0 - splitRatio);
+                if (coefficients[3] <= 0) coefficients[3] = 1e-6;
+                // L2: transition frequency for RLC stage
+                coefficients[4] = coefficients[3] / (wTransition * 2);
+                if (coefficients[4] <= 0) coefficients[4] = 1e-9;
+                // C1: resonance around transition frequency
+                coefficients[5] = 1.0 / (wTransition * wTransition * coefficients[4]);
+                if (coefficients[5] <= 0) coefficients[5] = 1e-9;
+
+                double opts[5], info[10];
+                opts[0] = 1e-03;
+                opts[1] = 1e-25;
+                opts[2] = 1e-25;
+                opts[3] = 1e-25;
+                opts[4] = 1e-19;
+
+                eigen_levmar_dif(CircuitSimulatorExporter::core_rosano_func, coefficients, logCoreResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&frequencies));
+
+                // Check for negative values (invalid physically)
+                bool allPositive = true;
+                for (size_t i = 0; i < numberUnknowns; ++i) {
+                    if (coefficients[i] <= 0) { allPositive = false; break; }
+                }
+                if (!allPositive) continue;
+
+                double errorAverage = 0;
+                for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+                    double modeledResistance = CircuitSimulatorExporter::core_rosano_model(coefficients, frequenciesVector[index]);
+                    double error = fabs(valuePoints[index] - modeledResistance) / valuePoints[index];
+                    errorAverage += error;
+                }
+                errorAverage /= frequenciesVector.size();
+
+                if (errorAverage < bestError) {
+                    bestError = errorAverage;
+                    bestCoreResistanceCoefficients.clear();
+                    for (auto coefficient : coefficients) {
+                        bestCoreResistanceCoefficients.push_back(coefficient);
+                    }
+                }
+            }
+            }
         }
 
-        errorAverage /= frequenciesVector.size();
-        initialState /= 10;
+        // Post-fit validation: ensure impedance is well-behaved (positive and non-resonant)
+        if (!bestCoreResistanceCoefficients.empty()) {
+            double prevZ = 0;
+            bool valid = true;
+            for (size_t i = 0; i < frequenciesVector.size(); ++i) {
+                double z = core_rosano_model(bestCoreResistanceCoefficients.data(), frequenciesVector[i]);
+                if (z <= 0 || (i > 0 && z < prevZ * 0.5)) {
+                    valid = false;
+                    break;
+                }
+                prevZ = z;
+            }
+            if (!valid) {
+                // Neutralize the capacitor: set C1 to a tiny value so 1/(wC) >> R3,
+                // effectively making the RLC stage behave like an RL stage (no resonance)
+                double fMin = frequenciesVector.front();
+                double wMin = 2 * std::numbers::pi * fMin;
+                double R3 = bestCoreResistanceCoefficients[3];
+                // 1/(wMin*C1) should be >> R3, so C1 << 1/(wMin*R3)
+                bestCoreResistanceCoefficients[5] = 1.0 / (wMin * R3 * 1000.0);
+            }
+        }
+    } else {
+        // Ridley model: R0 + L1 || (R1 + L2 || (R2 + L3 || R3))
+        for (size_t loopIndex = 0; loopIndex < loopIterations; ++loopIndex) {
+            double coefficients[numberUnknowns];
+            for (size_t index = 0; index < numberUnknowns; ++index) {
+                coefficients[index] = initialState;
+            }
+            double opts[5], info[10];
 
-        if (errorAverage < bestError) {
-            bestError = errorAverage;
-            bestCoreResistanceCoefficients.clear();
-            for (auto coefficient : coefficients) {
-                bestCoreResistanceCoefficients.push_back(coefficient);
+            opts[0] = 1e-03;
+            opts[1] = 1e-25;
+            opts[2] = 1e-25;
+            opts[3] = 1e-25;
+            opts[4] = 1e-19;
+
+            double dcResistanceAndfrequencies[numberElementsPlusOne];
+            dcResistanceAndfrequencies[0] = coreResistances[0];
+            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+                dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
+            }
+
+            eigen_levmar_dif(CircuitSimulatorExporter::core_ladder_func, coefficients, coreResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+
+            double errorAverage = 0;
+            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+                double modeledAcResistance = CircuitSimulatorExporter::core_ladder_model(coefficients, frequenciesVector[index], coreResistances[0]);
+                double error = fabs(valuePoints[index] - modeledAcResistance) / valuePoints[index];
+                errorAverage += error;
+            }
+
+            errorAverage /= frequenciesVector.size();
+            initialState /= 10;
+
+            if (errorAverage < bestError) {
+                bestError = errorAverage;
+                bestCoreResistanceCoefficients.clear();
+                for (auto coefficient : coefficients) {
+                    bestCoreResistanceCoefficients.push_back(coefficient);
+                }
             }
         }
     }
@@ -886,6 +1036,83 @@ std::pair<std::vector<ordered_json>, std::vector<ordered_json>> CircuitSimulator
     return {ladderJsons, ladderConnectorsJsons};
 }
 
+std::pair<std::vector<ordered_json>, std::vector<ordered_json>> CircuitSimulatorExporterSimbaModel::create_rosano_ladder(
+    std::vector<double> coefficients, std::vector<int> coordinates, std::string name) {
+    // Rosano topology: Z = R1 + (L1||R2) + (L2||(R3+C1))
+    // Three stages in series. Each stage is a two-terminal block.
+    // Layout: each stage occupies a horizontal row.
+    //   - Stage R: single resistor (horizontal)
+    //   - Stage RL: L on left rail, R on right rail, both between same top/bottom nodes
+    //   - Stage RLC: L on left rail, R+C on right rail (R then C vertical)
+    // coefficients: [R1, R2, L1, R3, L2, C1]
+    std::vector<ordered_json> deviceJsons;
+    std::vector<ordered_json> connectorJsons;
+
+    if (coefficients.size() < 6) return {deviceJsons, connectorJsons};
+
+    double R1 = coefficients[0];
+    double R2 = coefficients[1];
+    double L1 = coefficients[2];
+    double R3 = coefficients[3];
+    double L2 = coefficients[4];
+    double C1 = coefficients[5];
+
+    // We use two vertical rails: left rail (x=coordinates[0]-6) and right rail (x=coordinates[0])
+    // Components on the left rail are horizontal (angle 180), on the right rail vertical (angle 90)
+    // Each stage: left component from nodeA to nodeB, right component from nodeA to nodeB (parallel)
+    // Then a connector links nodeB of this stage to nodeA of the next stage
+
+    int x = coordinates[0];
+    int y = coordinates[1];
+
+    // Stage 1: R1 series (single horizontal resistor)
+    if (R1 > 0) {
+        auto rJson = create_resistor(R1, {x - 6, y}, 180, name + " Stage1 R");
+        deviceJsons.push_back(rJson);
+        y -= 6;
+        // Connector from R1 output to Stage 2 input
+        connectorJsons.push_back(create_connector({x - 6, y + 1}, {x - 6, y + 7}, name + " S1-S2 connector"));
+    }
+
+    // Stage 2: L1 || R2 (two components in parallel between same two nodes)
+    if (R2 > 0 && L1 > 0) {
+        // L1: horizontal on left rail
+        auto l1Json = create_inductor(L1, {x - 6, y}, 180, name + " Stage2 L");
+        deviceJsons.push_back(l1Json);
+        // R2: horizontal on right rail (offset by +6 in x), same y
+        auto r2Json = create_resistor(R2, {x, y}, 180, name + " Stage2 R");
+        deviceJsons.push_back(r2Json);
+        // Connect top nodes (L1 top to R2 top)
+        connectorJsons.push_back(create_connector({x - 6, y + 5}, {x, y + 5}, name + " Stage2 top"));
+        // Connect bottom nodes (L1 bottom to R2 bottom)
+        connectorJsons.push_back(create_connector({x - 6, y - 1}, {x, y - 1}, name + " Stage2 bot"));
+        y -= 6;
+        // Connector to Stage 3
+        connectorJsons.push_back(create_connector({x - 6, y + 1}, {x - 6, y + 7}, name + " S2-S3 connector"));
+    }
+
+    // Stage 3: L2 || (R3 + C1)
+    if (R3 > 0 && L2 > 0 && C1 > 0) {
+        // L2: horizontal on left rail
+        auto l2Json = create_inductor(L2, {x - 6, y}, 180, name + " Stage3 L");
+        deviceJsons.push_back(l2Json);
+        // R3: vertical on right rail (top of R+C series)
+        auto r3Json = create_resistor(R3, {x + 3, y}, 90, name + " Stage3 R");
+        deviceJsons.push_back(r3Json);
+        // C1: vertical below R3
+        auto c1Json = create_capacitor(C1, {x + 3, y - 3}, 90, name + " Stage3 C");
+        deviceJsons.push_back(c1Json);
+        // Connect L2 top to R3 top
+        connectorJsons.push_back(create_connector({x - 6, y + 5}, {x + 3, y + 5}, name + " Stage3 top"));
+        // Connect L2 bottom to C1 bottom
+        connectorJsons.push_back(create_connector({x - 6, y - 1}, {x + 3, y - 1 - 3}, name + " Stage3 bot"));
+        // Final connector to close the circuit
+        connectorJsons.push_back(create_connector({x - 6, y - 1}, {x - 6 + 6, y - 1}, name + " Stage3 final"));
+    }
+
+    return {deviceJsons, connectorJsons};
+}
+
 std::pair<std::vector<ordered_json>, std::vector<ordered_json>> CircuitSimulatorExporterSimbaModel::create_fracpole_ladder(
     const FractionalPoleNetwork& net, std::vector<int> coordinates, const std::string& name) {
     std::vector<ordered_json> ladderJsons;
@@ -1093,11 +1320,14 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     if (resolvedMode_sb == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
         fracpoleNets_sb = CircuitSimulatorExporter::calculate_fracpole_networks_per_winding(magnetic, temperature);
     }
-    // Core losses using R-L ladder (calculate coefficients for positioning)
-    auto coreResistanceCoefficients_sb = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+    // Core losses (calculate coefficients for positioning)
+    auto coreLossTopology_sb_pos = static_cast<CoreLossTopology>(Settings::GetInstance().get_circuit_simulator_core_loss_topology());
+    auto coreResistanceCoefficients_sb = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology_sb_pos);
     double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
     int numberLadderPairElements = acResistanceCoefficientsPerWinding[0].size() / 2 - 1;
-    int numberCoreLadderPairElements = static_cast<int>(coreResistanceCoefficients_sb.size() / 2) + 1;
+    int numberCoreLadderPairElements = (coreLossTopology_sb_pos == CoreLossTopology::ROSANO)
+        ? 5  // R, RL(2), RLC(3) branches ~ 5 visual rows
+        : static_cast<int>(coreResistanceCoefficients_sb.size() / 2) + 1;
 
     for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
         auto column = columns[columnIndex];
@@ -1240,12 +1470,16 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     }
 
 
-    // Magnetizing current and core losses using R-L ladder
-    // The R-L ladder provides impedance that INCREASES with frequency, matching core loss behavior.
+    // Magnetizing current and core losses
     {
-        auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
-        int numberCoreLadderPairElements = static_cast<int>(coreResistanceCoefficients.size() / 2);
-        
+        auto& settings_sb = Settings::GetInstance();
+        auto coreLossTopology_sb = static_cast<CoreLossTopology>(settings_sb.get_circuit_simulator_core_loss_topology());
+        auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology_sb);
+        // For Rosano, element count is 3 branches (R, RL, RLC) = ~4 visual rows; for Ridley, pairs of RL
+        int numberCoreLadderPairElements = (coreLossTopology_sb == CoreLossTopology::ROSANO)
+            ? 4
+            : static_cast<int>(coreResistanceCoefficients.size() / 2);
+
         std::vector<int> coordinates = windingCoordinates;
         std::vector<ordered_json> ladderJsons;
         std::vector<ordered_json> ladderConnectorsJsons;
@@ -1259,10 +1493,14 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
             device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
         }
 
-        // Add core loss R-L ladder using create_ladder
         if (!coreResistanceCoefficients.empty()) {
             coordinates[0] -= 6;
-            auto aux = create_ladder(coreResistanceCoefficients, coordinates, "Core losses");
+            std::pair<std::vector<ordered_json>, std::vector<ordered_json>> aux;
+            if (coreLossTopology_sb == CoreLossTopology::ROSANO) {
+                aux = create_rosano_ladder(coreResistanceCoefficients, coordinates, "Core losses");
+            } else {
+                aux = create_ladder(coreResistanceCoefficients, coordinates, "Core losses");
+            }
             if (coreResistanceCoefficients.size() > 0) {
                 coordinates[0] -= 6;
             }
@@ -1523,6 +1761,62 @@ static std::string emit_core_ladder_spice(
         s += "Rcore_final " + lastNode + " P1- 1e-6\n";  // Near-zero resistance to close the circuit
     }
     
+    return s;
+}
+
+// Emit core loss network using Rosano topology for SPICE.
+// Three stages in series from Node_R_Lmag_1 to P1-:
+//   Stage 1 (R):   R1 — pure resistance
+//   Stage 2 (RL):  L1 || R2 — inductor in parallel with resistor
+//   Stage 3 (RLC): L2 || (R3 + C1) — inductor in parallel with resistor-capacitor series
+// Coefficients are [R1, R2, L1, R3, L2, C1] from calculate_core_resistance_coefficients(ROSANO).
+static std::string emit_core_rosano_spice(
+    const std::vector<double>& coeffs, size_t numWindings) {
+
+    if (coeffs.size() < 6) {
+        return "";
+    }
+
+    double R1 = coeffs[0];
+    double R2 = coeffs[1];
+    double L1 = coeffs[2];
+    double R3 = coeffs[3];
+    double L2 = coeffs[4];
+    double C1 = coeffs[5];
+
+    std::string s;
+    s += "* Core loss Rosano network (R + RL + RLC series stages)\n";
+
+    // Stage 1 (R): series R from core node
+    std::string prevNode = "Node_R_Lmag_1";
+    std::string nextNode = "Node_core_s1";
+    if (R1 > 0) {
+        s += "Rcore_s1 " + prevNode + " " + nextNode + " " + to_string(R1, 12) + "\n";
+        prevNode = nextNode;
+    }
+
+    // Stage 2 (RL): L1 || R2 between prevNode and nextNode
+    nextNode = "Node_core_s2";
+    if (R2 > 0 && L1 > 0) {
+        // R2 path
+        s += "Rcore_s2 " + prevNode + " " + nextNode + " " + to_string(R2, 12) + "\n";
+        // L1 in parallel (same two nodes)
+        s += "Lcore_s2 " + prevNode + " " + nextNode + " " + to_string(L1, 12) + "\n";
+        prevNode = nextNode;
+    }
+
+    // Stage 3 (RLC): L2 || (R3 + C1) between prevNode and ground
+    if (R3 > 0 && L2 > 0 && C1 > 0) {
+        // L2 path: prevNode to ground
+        s += "Lcore_s3 " + prevNode + " P1- " + to_string(L2, 12) + "\n";
+        // R3 + C1 path (in series): prevNode → R3 → C1 → ground
+        s += "Rcore_s3 " + prevNode + " Node_core_s3c " + to_string(R3, 12) + "\n";
+        s += "Ccore_s3 Node_core_s3c P1- " + to_string(C1, 12) + "\n";
+    } else {
+        // If RLC stage invalid, just connect to ground
+        s += "Rcore_gnd " + prevNode + " P1- 1e-6\n";
+    }
+
     return s;
 }
 
@@ -1911,13 +2205,15 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         }
     }
 
-    // Core losses: Use R-L ladder network
-    // The R-L ladder provides impedance that INCREASES with frequency, which matches
-    // the physical behavior of core losses (higher losses at higher frequencies).
-    // This is opposite to the R-C fracpole network which decreases with frequency.
-    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+    // Core losses: frequency-dependent resistance network in parallel with Lmag
+    auto coreLossTopology = static_cast<CoreLossTopology>(settings.get_circuit_simulator_core_loss_topology());
+    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology);
     if (!coreResistanceCoefficients.empty()) {
-        circuitString += emit_core_ladder_spice(coreResistanceCoefficients, numWindings);
+        if (coreLossTopology == CoreLossTopology::ROSANO) {
+            circuitString += emit_core_rosano_spice(coreResistanceCoefficients, numWindings);
+        } else {
+            circuitString += emit_core_ladder_spice(coreResistanceCoefficients, numWindings);
+        }
     }
 
     // Mutual resistance: auxiliary winding network for cross-coupling losses (Hesterman 2020)
@@ -2063,10 +2359,15 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
 
     }
 
-    // Core losses: Use R-L ladder network (same as ngspice)
-    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+    // Core losses: frequency-dependent resistance network in parallel with Lmag
+    auto coreLossTopology_lt = static_cast<CoreLossTopology>(settings.get_circuit_simulator_core_loss_topology());
+    auto coreResistanceCoefficients = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology_lt);
     if (!coreResistanceCoefficients.empty()) {
-        circuitString += emit_core_ladder_spice(coreResistanceCoefficients, coil.get_functional_description().size());
+        if (coreLossTopology_lt == CoreLossTopology::ROSANO) {
+            circuitString += emit_core_rosano_spice(coreResistanceCoefficients, coil.get_functional_description().size());
+        } else {
+            circuitString += emit_core_ladder_spice(coreResistanceCoefficients, coil.get_functional_description().size());
+        }
     }
 
     // Mutual resistance: auxiliary winding network for cross-coupling losses (Hesterman 2020)
@@ -2937,7 +3238,7 @@ static std::string make_nl5_key(const std::string& seed) {
 
 // ---- NL5 Component builder ----
 struct Nl5Cmp {
-    std::string type;      // e.g. "R_R", "L_L", "C_C", "K_K", "G_G", "W_T2"
+    std::string type;      // e.g. "R_R", "L_L", "C_C", "W_W", "W_T2"
     int id;
     std::string name;
     int node0, node1;
@@ -2980,7 +3281,10 @@ static std::string nl5_cmp_to_xml(const Nl5Cmp& cmp) {
        << " node0=\"" << cmp.node0 << "\" node1=\"" << cmp.node1 << "\"";
     if (cmp.node2 >= 0) ss << " node2=\"" << cmp.node2 << "\"";
     if (cmp.node3 >= 0) ss << " node3=\"" << cmp.node3 << "\"";
-    if (!cmp.valParam.empty()) {
+    // model attribute: use explicit extra["model"] if present, otherwise derive from valParam
+    if (cmp.extra.count("model")) {
+        ss << " model=\"" << cmp.extra.at("model") << "\"";
+    } else if (!cmp.valParam.empty()) {
         std::string mdl(1, static_cast<char>(std::toupper(static_cast<unsigned char>(cmp.valParam[0]))));
         ss << " model=\"" << mdl << "\"";
     }
@@ -2990,7 +3294,10 @@ static std::string nl5_cmp_to_xml(const Nl5Cmp& cmp) {
         try { dval = std::stod(cmp.valStr); } catch (...) {}
         ss << " " << cmp.valParam << "_txt=\"" << nl5_to_eng(dval) << "\"";
     }
-    for (auto& [k, v] : cmp.extra) ss << " " << k << "=\"" << v << "\"";
+    for (auto& [k, v] : cmp.extra) {
+        if (k == "model") continue;  // already emitted above
+        ss << " " << k << "=\"" << v << "\"";
+    }
     ss << ">\n";
     ss << "          <Pos x=\"" << cmp.px << "\" y=\"" << cmp.py
        << "\" angle=\"" << cmp.angle << "\" flip=\"" << (cmp.flip ? "1" : "0") << "\" />\n";
@@ -2998,12 +3305,11 @@ static std::string nl5_cmp_to_xml(const Nl5Cmp& cmp) {
     return ss.str();
 }
 
-static std::string nl5_wire_to_xml(int id, int node0, int node1, int x0, int y0, int x1, int y1, const std::string& name="") {
+static std::string nl5_label_to_xml(int id, const std::string& name, int node0, int px, int py) {
     std::ostringstream ss;
-    ss << "        <Cmp type=\"W_T2\" id=\"" << id << "\" name=\"" << (name.empty() ? "W" + std::to_string(id) : name)
-       << "\" descr=\"\" view=\"0\" node0=\"" << node0 << "\" node1=\"" << node1 << "\">\n";
-    ss << "          <Pos x=\"" << x0 << "\" y=\"" << y0 << "\" angle=\"0\" flip=\"0\" />\n";
-    ss << "          <Point x=\"" << x1 << "\" y=\"" << y1 << "\" />\n";
+    ss << "        <Cmp type=\"label\" model=\"Label\" id=\"" << id
+       << "\" name=\"" << name << "\" node0=\"" << node0 << "\">\n";
+    ss << "          <Pos x=\"" << px << "\" y=\"" << py << "\" angle=\"0\" flip=\"0\" />\n";
     ss << "        </Cmp>\n";
     return ss.str();
 }
@@ -3045,7 +3351,8 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
             magnetic, temperature, CircuitSimulatorExporterCurveFittingModes::LADDER);
     }
 
-    auto coreCoeffs = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature);
+    auto coreLossTopology_nl5 = static_cast<CoreLossTopology>(Settings::GetInstance().get_circuit_simulator_core_loss_topology());
+    auto coreCoeffs = CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology_nl5);
 
     double magnetizingInductance = resolve_dimensional_values(
         MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic)
@@ -3123,13 +3430,13 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         c.px=px; c.py=py; c.angle=angle;
         cmps += nl5_cmp_to_xml(c);
     };
-    // NL5 Winding component (W_Winding): ideal transformer with turns ratio
+    // NL5 Winding component (W_W): ideal transformer with turns ratio
     // node0 = winding +, node1 = winding -, node2 = core
-    auto add_Winding = [&](const std::string& name, int n_plus, int n_minus, int n_core, 
+    auto add_Winding = [&](const std::string& name, int n_plus, int n_minus, int n_core,
                            double turns, int px, int py) {
-        Nl5Cmp c; c.type="W_Winding"; c.id=nextId++; c.name=name;
+        Nl5Cmp c; c.type="W_W"; c.id=nextId++; c.name=name;
         c.node0=n_plus; c.node1=n_minus; c.node2=n_core;
-        c.valParam="n"; c.valStr=to_string(turns, 6);
+        c.valParam="w"; c.valStr=std::to_string(static_cast<int>(std::round(turns)));
         c.extra["model"] = "Winding";
         c.px=px; c.py=py;
         cmps += nl5_cmp_to_xml(c);
@@ -3144,7 +3451,6 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         int node_Pplus  = static_cast<int>(wi) + 1;           // Pi+  external
         int node_Pminus = static_cast<int>(numWindings) + is;  // Pi-  external
         int node_after_rdc  = 100 + is;                        // after Rdc
-        int node_after_net  = 200 + is;                        // after ladder/fracpole
         int node_after_leak = 250 + is;                        // after leakage inductance
 
         double Rdc = WindingLosses::calculate_effective_resistance_of_winding(magnetic, wi, 0.1, temperature);
@@ -3159,9 +3465,9 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
             leakageL *= turnsRatio * turnsRatio;
         }
 
-        // Add port wire labels (external terminals)
-        cmps += nl5_wire_to_xml(nextId++, node_Pplus, node_Pplus, 0, base_y, -20, base_y, "P"+ws+"+");
-        cmps += nl5_wire_to_xml(nextId++, node_Pminus, node_Pminus, 180, base_y+40, 200, base_y+40, "P"+ws+"-");
+        // Add port labels (external terminals for SubCir pin mapping)
+        cmps += nl5_label_to_xml(nextId++, "P"+ws+"+", node_Pplus, 0, base_y);
+        cmps += nl5_label_to_xml(nextId++, "P"+ws+"-", node_Pminus, 180, base_y+40);
 
         // 1. Rdc (DC resistance)
         add_R("Rdc"+ws, node_Pplus, node_after_rdc, Rdc, 20, base_y);
@@ -3187,11 +3493,6 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
                 add_C("Cfpinf"+ws, node_last, 0, net.Cinf / net.opts.coef,
                       40 + static_cast<int>(net.stages.size())*16, base_y+20, 90);
             }
-            // Wire to next stage
-            cmps += nl5_wire_to_xml(nextId++, node_last, node_after_net,
-                  40 + static_cast<int>(net.stages.size())*16 + 4, base_y, 
-                  60 + static_cast<int>(net.stages.size())*16, base_y);
-            node_last = node_after_net;
         } else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::LADDER
                    && !acCoeffs.empty() && wi < acCoeffs.size()) {
             // LADDER: R/L stages
@@ -3204,15 +3505,9 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
                 add_R("Rl"+ws+"_"+std::to_string(k), node_stage, 0, c[2*k+1], px+4, base_y+20, 90);
                 node_last = node_stage;
             }
-            // Wire to next stage
-            cmps += nl5_wire_to_xml(nextId++, node_last, node_after_net,
-                  40 + static_cast<int>(stages)*16, base_y, 60 + static_cast<int>(stages)*16, base_y);
-            node_last = node_after_net;
+            // node_last already points to the last ladder stage node
         } else {
-            // ANALYTICAL or fallback: just wire node_after_rdc to node_after_net
-            cmps += nl5_wire_to_xml(nextId++, node_after_rdc, node_after_net,
-                                    40, base_y, 80, base_y);
-            node_last = node_after_net;
+            // ANALYTICAL or fallback: no AC network, node_last stays at node_after_rdc
         }
 
         // 3. Leakage inductance (series with winding)
@@ -3249,28 +3544,52 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         add_L("Lmag", node_core, 0, magnetizingInductance, 160, static_cast<int>(numWindings) * 40);
     }
 
-    // 6. Core loss network in parallel with Lmag using R-L ladder
-    // The R-L ladder provides impedance that INCREASES with frequency, matching core loss behavior.
-    // coreCoeffs already calculated earlier in this function
+    // 6. Core loss network in parallel with Lmag
     if (!coreCoeffs.empty()) {
-        // Build R-L ladder: series of (L || R) stages from node_core to ground
-        // Z = L1 || (R1 + L2 || (R2 + L3 || R3))
-        int node_prev = 0;  // ground
-        int stageCount = static_cast<int>(coreCoeffs.size() / 2);
-        for (int k = stageCount - 1; k >= 0; --k) {
-            double R = coreCoeffs[k * 2];
-            double L = coreCoeffs[k * 2 + 1];
-            // Validate values
-            if (R <= 0 || L <= 0 || R > 1e6 || L > 1) {
-                continue;  // Skip invalid stage
+        if (coreLossTopology_nl5 == CoreLossTopology::ROSANO) {
+            // Rosano: three stages in series from node_core to ground
+            // Stage 1 (R): R1 series, Stage 2 (RL): L1||R2, Stage 3 (RLC): L2||(R3+C1)
+            // coefficients: [R1, R2, L1, R3, L2, C1]
+            int y_base = static_cast<int>(numWindings) * 40;
+            double R1 = coreCoeffs[0];
+            double R2 = coreCoeffs[1];
+            double L1 = coreCoeffs[2];
+            double R3 = coreCoeffs[3];
+            double L2 = coreCoeffs[4];
+            double C1 = coreCoeffs[5];
+
+            // Stage 1: R1 from core to node 901
+            if (R1 > 0) {
+                add_R("Rcore_s1", node_core, 901, R1, 180, y_base);
             }
-            int node_stage = 900 + k;
-            int y_offset = static_cast<int>(numWindings) * 40 + k * 16;
-            // R in series, L in parallel
-            add_R("Rcore" + std::to_string(k), node_stage, node_prev, R, 180, y_offset);
-            int node_next = (k == 0) ? node_core : (900 + k - 1);
-            add_L("Lcore" + std::to_string(k), node_next, node_prev, L, 184, y_offset + 8);
-            node_prev = node_stage;
+            // Stage 2: L1||R2 from node 901 to node 902
+            if (R2 > 0 && L1 > 0) {
+                add_R("Rcore_s2", 901, 902, R2, 180, y_base + 16);
+                add_L("Lcore_s2", 901, 902, L1, 184, y_base + 24);
+            }
+            // Stage 3: L2||(R3+C1) from node 902 to ground
+            if (R3 > 0 && L2 > 0 && C1 > 0) {
+                add_L("Lcore_s3", 902, 0, L2, 180, y_base + 32);
+                add_R("Rcore_s3", 902, 903, R3, 184, y_base + 40);
+                add_C("Ccore_s3", 903, 0, C1, 188, y_base + 48);
+            }
+        } else {
+            // Ridley: R-L ladder from node_core to ground
+            int node_prev = 0;  // ground
+            int stageCount = static_cast<int>(coreCoeffs.size() / 2);
+            for (int k = stageCount - 1; k >= 0; --k) {
+                double R = coreCoeffs[k * 2];
+                double L = coreCoeffs[k * 2 + 1];
+                if (R <= 0 || L <= 0 || R > 1e6 || L > 1) {
+                    continue;
+                }
+                int node_stage = 900 + k;
+                int y_offset = static_cast<int>(numWindings) * 40 + k * 16;
+                add_R("Rcore" + std::to_string(k), node_stage, node_prev, R, 180, y_offset);
+                int node_next = (k == 0) ? node_core : (900 + k - 1);
+                add_L("Lcore" + std::to_string(k), node_next, node_prev, L, 184, y_offset + 8);
+                node_prev = node_stage;
+            }
         }
     }
 

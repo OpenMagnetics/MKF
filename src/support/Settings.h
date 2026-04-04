@@ -144,6 +144,9 @@ class Settings
         // Based on Hesterman (2020) "Mutual Resistance" - models cross-coupling AC losses between windings
         bool _circuitSimulatorIncludeMutualResistance = false;  // Default to disabled
 
+        // Circuit simulator core loss topology (0=RIDLEY RL stages, 1=ROSANO R/RL/RLC branches)
+        int _circuitSimulatorCoreLossTopology = 1;  // Default to ROSANO
+
         bool _verbose = false;
 
         std::string _preferredCoreMaterialFerriteManufacturer = "Fair-Rite";
@@ -440,6 +443,9 @@ class Settings
         
         bool get_circuit_simulator_include_mutual_resistance() const;
         void set_circuit_simulator_include_mutual_resistance(bool value);
+
+        int get_circuit_simulator_core_loss_topology() const;
+        void set_circuit_simulator_core_loss_topology(int value);
 
 
     };

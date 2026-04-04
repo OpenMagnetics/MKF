@@ -36,6 +36,7 @@ namespace OpenMagnetics {
         _circuitSimulatorCurveFittingMode = 0;  // Default to LADDER for backward compatibility
         _circuitSimulatorFracpoleOptions = std::nullopt;
         _circuitSimulatorIncludeSaturation = false;  // Default to linear (no saturation)
+        _circuitSimulatorCoreLossTopology = 1;  // Default to ROSANO
     }
 
 
@@ -806,6 +807,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_circuit_simulator_include_mutual_resistance(bool value) {
         _circuitSimulatorIncludeMutualResistance = value;
+    }
+
+    int Settings::get_circuit_simulator_core_loss_topology() const {
+        return _circuitSimulatorCoreLossTopology;
+    }
+    void Settings::set_circuit_simulator_core_loss_topology(int value) {
+        _circuitSimulatorCoreLossTopology = value;
     }
 
 } // namespace OpenMagnetics
