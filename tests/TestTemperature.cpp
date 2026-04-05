@@ -3886,4 +3886,55 @@ TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[t
 }
 
 
+TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][concentric][buck-inductor]") {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "BuckInductor_164uH_T134_77_27.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+
+    auto magnetic = mas.get_magnetic();
+    auto inputs = mas.get_inputs();
+
+    // Wind the coil if not already wound
+    if (!magnetic.get_coil().get_turns_description()) {
+        magnetic.get_mutable_coil().wind();
+    }
+
+    // Run the electromagnetic simulation to get losses
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    REQUIRE(losses.simulationSucceeded);
+    REQUIRE(losses.windingLossesOutput.has_value());
+
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = true;
+    config.schematicOutputPath = (getOutputDir() / "thermal_schematic_BuckInductor_T134.svg").string();
+
+    {
+        auto outFile = getOutputDir() / "magnetic_BuckInductor_T134.svg";
+        std::filesystem::create_directories(getOutputDir());
+        BasicPainter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+    }
+
+    Temperature temp(magnetic, config);
+    ThermalResult result;
+    try {
+        result = temp.calculateTemperatures();
+        exportTemperatureFieldSvg("BuckInductor_T134", magnetic, result.nodeTemperatures, config.ambientTemperature);
+    } catch (...) {}
+    exportThermalCircuitSchematic("BuckInductor_T134", temp);
+
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+    REQUIRE(result.totalThermalResistance > 0.0);
+
+    auto tempsByType = temp.getTemperaturesByComponentType();
+    REQUIRE(tempsByType.find("core") != tempsByType.end());
+    REQUIRE(tempsByType.at("core") > config.ambientTemperature);
+}
+
 } // namespace

@@ -1023,7 +1023,14 @@ void Temperature::createInsulationLayerNodes() {
             double centerAngleDeg = layerY;
             double radialThickness = layerWidth;
             double angularSpanDeg = layerHeight / 1000.0;  // Convert from millidegrees
-            
+
+            if (radialThickness < 1e-9) {
+                // Zero-thickness = geometric boundary marker from coil winder, not physical insulation.
+                // Skip node creation; turns will connect directly across this boundary.
+                layerIdx++;
+                continue;
+            }
+
             // Get core dimensions
             auto coreDims = flatten_dimensions(core.resolve_shape().get_dimensions().value());
             double innerDiameter = coreDims["B"];  // Inner hole diameter
@@ -2201,6 +2208,15 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                         auto& turn1 = (*turnsDescription)[turn1Idx];
                         auto& turn2 = (*turnsDescription)[turn2Idx];
                         auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
+                        // Zero-thickness layers are geometric boundary markers, not physical insulation.
+                        // Filter them out so they don't block direct turn-to-turn connections.
+                        layersBetween.erase(
+                            std::remove_if(layersBetween.begin(), layersBetween.end(),
+                                [](const auto& layer) {
+                                    return layer.get_dimensions().empty() || layer.get_dimensions()[0] < 1e-9;
+                                }),
+                            layersBetween.end()
+                        );
                         hasSolidInsulationBetween = !layersBetween.empty();
                     } catch (const std::exception& /* e */) { // IMP-8
                         // If we can't determine insulation layers (e.g., missing layer description),
@@ -4516,13 +4532,13 @@ ThermalResult Temperature::solveThermalCircuit() {
         if (iteration > 0) { recalculateConvectionResistances(temperatures); }
 
         SimpleMatrix G(n, n, 0.0);
-        
+
         for (const auto& res : _resistances) {
             double g = 1.0 / std::max(res.resistance, 1e-9);
-            
+
             size_t i = res.nodeFromId;
             size_t j = res.nodeToId;
-            
+
             G(i, i) += g;
             if (j < n) {
                 G(j, j) += g;
@@ -4530,7 +4546,7 @@ ThermalResult Temperature::solveThermalCircuit() {
                 G(j, i) -= g;
             }
         }
-        
+
         // Set ambient node as fixed temperature
         G.setRowZero(ambientIdx);
         G(ambientIdx, ambientIdx) = 1.0;
@@ -4545,6 +4561,36 @@ ThermalResult Temperature::solveThermalCircuit() {
             }
         }
         
+        // Diagnose disconnected nodes before attempting solve
+        {
+            std::vector<size_t> disconnectedNodes;
+            for (size_t i = 0; i < n; ++i) {
+                if (i == ambientIdx) continue;
+                if (_nodes[i].isFixedTemperature) continue;
+                if (G(i, i) < 1e-12) {
+                    disconnectedNodes.push_back(i);
+                }
+            }
+            if (!disconnectedNodes.empty()) {
+                std::string msg = "Temperature::solveThermalCircuit: " + std::to_string(disconnectedNodes.size()) + " disconnected node(s) found (no thermal path to any other node):\n";
+                for (size_t idx : disconnectedNodes) {
+                    msg += "  Node " + std::to_string(idx) + ": name='" + _nodes[idx].name + "' part=";
+                    switch (_nodes[idx].part) {
+                        case ThermalNodePartType::TURN:                  msg += "TURN"; break;
+                        case ThermalNodePartType::CORE_CENTRAL_COLUMN:   msg += "CORE_CENTRAL_COLUMN"; break;
+                        case ThermalNodePartType::CORE_LATERAL_COLUMN:   msg += "CORE_LATERAL_COLUMN"; break;
+                        case ThermalNodePartType::CORE_TOP_YOKE:         msg += "CORE_TOP_YOKE"; break;
+                        case ThermalNodePartType::CORE_BOTTOM_YOKE:      msg += "CORE_BOTTOM_YOKE"; break;
+                        case ThermalNodePartType::CORE_TOROIDAL_SEGMENT: msg += "CORE_TOROIDAL_SEGMENT"; break;
+                        case ThermalNodePartType::AMBIENT:               msg += "AMBIENT"; break;
+                        default:                                          msg += "OTHER"; break;
+                    }
+                    msg += " power=" + std::to_string(_nodes[idx].powerDissipation) + "W\n";
+                }
+                throw std::runtime_error(msg);
+            }
+        }
+
         try {
             // IMP-10: Non-throwing solve
             bool solveSuccess = true;
@@ -4554,7 +4600,7 @@ ThermalResult Temperature::solveThermalCircuit() {
                                          "This indicates disconnected thermal nodes or missing boundary conditions.");
             }
         } catch (const std::exception& e) {
-            throw std::runtime_error("Temperature::solveThermalCircuit: Solver failed with exception: " + 
+            throw std::runtime_error("Temperature::solveThermalCircuit: Solver failed with exception: " +
                                      std::string(e.what()));
         }
         
