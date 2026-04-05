@@ -909,6 +909,74 @@ namespace {
             // Allow ±20% to accommodate switching transients and dead-time effects
             REQUIRE_THAT(spicePeak, Catch::Matchers::WithinRel(analPeak, 0.20));
         }
+
+        SECTION("Waveform shape: RMS matches analytical within 15%") {
+            auto analOps = dab.process_operating_points(turnsRatios, Lm);
+            REQUIRE(!analOps.empty());
+            auto analI = analOps[0].get_excitations_per_winding()[0]
+                             .get_current()->get_waveform().value().get_data();
+
+            auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
+            REQUIRE(!waveforms.empty());
+            auto spiceI = waveforms[0].get_input_current().get_data();
+
+            // Compute RMS for both
+            auto rms = [](const std::vector<double>& v) {
+                double sum = 0;
+                for (double x : v) sum += x * x;
+                return std::sqrt(sum / v.size());
+            };
+            double analRms = rms(analI);
+            double spiceRms = rms(spiceI);
+
+            INFO("Analytical RMS: " << analRms << " A");
+            INFO("SPICE RMS: " << spiceRms << " A");
+            REQUIRE_THAT(spiceRms, Catch::Matchers::WithinRel(analRms, 0.15));
+        }
+
+        SECTION("Waveform shape: half-wave antisymmetry holds in simulation") {
+            auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
+            REQUIRE(!waveforms.empty());
+            auto spiceI = waveforms[0].get_input_current().get_data();
+            REQUIRE(spiceI.size() > 4);
+
+            // SPICE waveform should have both positive and negative portions
+            double iMax = *std::max_element(spiceI.begin(), spiceI.end());
+            double iMin = *std::min_element(spiceI.begin(), spiceI.end());
+            CHECK(iMax > 5.0);   // Peak > 5A (nominal ~16A)
+            CHECK(iMin < -5.0);  // Also negative (antisymmetric)
+            // Symmetry: |max| ≈ |min| within 20%
+            REQUIRE_THAT(std::abs(iMax), Catch::Matchers::WithinRel(std::abs(iMin), 0.20));
+        }
+
+        SECTION("Waveform shape: save CSV for visual inspection") {
+            auto analOps = dab.process_operating_points(turnsRatios, Lm);
+            REQUIRE(!analOps.empty());
+            auto analWfm = analOps[0].get_excitations_per_winding()[0]
+                               .get_current()->get_waveform().value();
+            auto analI = analWfm.get_data();
+            auto analT = analWfm.get_time().value();
+
+            auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
+            REQUIRE(!waveforms.empty());
+            auto spiceI = waveforms[0].get_input_current().get_data();
+            auto spiceT = waveforms[0].get_input_current().get_time().value_or(std::vector<double>{});
+
+            auto csvPath = outputFilePath / "Test_Dab_Waveform_Comparison.csv";
+            std::filesystem::create_directories(outputFilePath);
+            std::ofstream csv(csvPath);
+            csv << "t_anal,i_anal,t_spice,i_spice\n";
+            size_t nRows = std::max(analI.size(), spiceI.size());
+            for (size_t k = 0; k < nRows; ++k) {
+                double ta = (k < analT.size()) ? analT[k] : 0;
+                double ia = (k < analI.size()) ? analI[k] : 0;
+                double ts = (k < spiceT.size()) ? spiceT[k] : 0;
+                double is = (k < spiceI.size()) ? spiceI[k] : 0;
+                csv << ta << "," << ia << "," << ts << "," << is << "\n";
+            }
+            csv.close();
+            CHECK(std::filesystem::exists(csvPath));
+        }
     }
 
 } // anonymous namespace
