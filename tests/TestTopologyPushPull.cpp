@@ -14,6 +14,8 @@
 #include <vector>
 #include <typeinfo>
 #include <numeric>
+#include <cmath>
+#include <limits>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -21,6 +23,62 @@ using namespace OpenMagnetics;
 namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
+
+    // ── PtP waveform comparison helpers ────────────────────────────────────
+    std::vector<double> ptp_interp(const std::vector<double>& t, const std::vector<double>& d, int N) {
+        std::vector<double> out(N);
+        double T = t.back();
+        for (int i = 0; i < N; ++i) {
+            double ti = T * i / (N - 1);
+            int lo = 0;
+            for (int k = 0; k + 1 < (int)t.size(); ++k) if (t[k] <= ti) lo = k;
+            int hi = std::min(lo + 1, (int)t.size() - 1);
+            double dt = t[hi] - t[lo];
+            out[i] = (dt < 1e-20) ? d[hi] : d[lo] + (ti - t[lo]) / dt * (d[hi] - d[lo]);
+        }
+        return out;
+    }
+
+    double ptp_nrmse(const std::vector<double>& ref, const std::vector<double>& sim) {
+        // Mean-subtracted, scale-normalized NRMSE with circular phase alignment.
+        // Measures shape similarity only — invariant to DC offset and amplitude scale.
+        int N = (int)ref.size();
+        double ref_mean = 0.0, sim_mean = 0.0;
+        for (int i = 0; i < N; ++i) { ref_mean += ref[i]; sim_mean += sim[i]; }
+        ref_mean /= N; sim_mean /= N;
+        std::vector<double> r(N), s(N);
+        double rAC = 0.0, sAC = 0.0;
+        for (int i = 0; i < N; ++i) {
+            r[i] = ref[i] - ref_mean; s[i] = sim[i] - sim_mean;
+            rAC += r[i] * r[i]; sAC += s[i] * s[i];
+        }
+        rAC = std::sqrt(rAC / N); sAC = std::sqrt(sAC / N);
+        if (rAC < 1e-10 || sAC < 1e-10) return 1.0;
+        for (int i = 0; i < N; ++i) { r[i] /= rAC; s[i] /= sAC; }
+        int ns = std::min(N, 64);
+        double best = std::numeric_limits<double>::max();
+        for (int ss = 0; ss < ns; ++ss) {
+            int sh = ss * N / ns;
+            double ssd = 0.0;
+            for (int k = 0; k < N; ++k) { double e = r[k] - s[(k + sh) % N]; ssd += e * e; }
+            if (ssd < best) best = ssd;
+        }
+        return std::sqrt(best / N);
+    }
+    std::vector<double> ptp_current(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        return e.get_current()->get_waveform()->get_data();
+    }
+    std::vector<double> ptp_current_time(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        auto tv = e.get_current()->get_waveform()->get_time();
+        return tv ? tv.value() : std::vector<double>{};
+    }
+    // ───────────────────────────────────────────────────────────────────────
 
     TEST_CASE("Test_PushPull_CCM", "[converter-model][push-pull-topology][smoke-test]") {
         json pushPullInputsJson;
@@ -357,14 +415,51 @@ namespace {
         INFO("Primary voltage max: " << priV_max << " V");
         INFO("Primary voltage min: " << priV_min << " V");
         
-        // For push-pull, primary voltage swings around input voltage
-        // Note: Simulation may show voltage spikes due to leakage inductance
-        CHECK(priV_max > 15.0);  // Should be around input voltage (24V)
+        // For push-pull, pri_top is a single-ended node (top half of center-tapped primary)
+        // When S1 is ON: pri_top pulled low (~0V)
+        // When S2 is ON: reflected voltage drives pri_top high (~2*Vin = 48V)
+        // Node is never negative — it swings 0V to ~2*Vin
+        CHECK(priV_max > 30.0);  // Should reach ~2*Vin = 48V during opposite switch ON
         CHECK(priV_max < 100.0);
-        CHECK(priV_min < -15.0);  // Should have negative swing
-        CHECK(priV_min > -700.0);  // Allow for voltage spikes
-        
+        CHECK(priV_min > -2.0);   // Single-ended node: minimum is ~0V
+
         INFO("Push-Pull ngspice simulation test passed");
+
+        SECTION("Waveform shape: bimodal primary voltage (alternates between 0 and ~2*Vin)") {
+            // pri_top alternates: ~0V when S1 conducting, ~2*Vin=48V when S2 conducting
+            double Vin = 24.0;
+            int count_low = 0, count_high = 0;
+            for (double v : priVoltageData) {
+                if (v < Vin) count_low++;
+                else count_high++;
+            }
+            double frac_low = double(count_low) / priVoltageData.size();
+            double frac_high = double(count_high) / priVoltageData.size();
+            INFO("Fraction near 0V: " << frac_low << ", fraction near 2*Vin: " << frac_high);
+            // Both states must occupy significant time for a balanced push-pull (D ≈ 0.5)
+            CHECK(frac_low > 0.25);
+            CHECK(frac_high > 0.25);
+        }
+
+        SECTION("Waveform shape: volt-second balance (avg primary voltage ≈ Vin)") {
+            // avg(v_pri_top) = 0*D + 2*Vin*(1-D) ≈ Vin for D ≈ 0.5 push-pull
+            double priV_avg = std::accumulate(priVoltageData.begin(), priVoltageData.end(), 0.0) / priVoltageData.size();
+            INFO("Primary voltage avg: " << priV_avg << " V (expect ≈ 24V = Vin for D=0.5)");
+            CHECK(priV_avg > 10.0);
+            CHECK(priV_avg < 35.0);
+        }
+
+        SECTION("Waveform shape: primary current is non-zero and positive (CCM operation)") {
+            auto& priCurrentData = converterWaveforms[0].get_input_current().get_data();
+            if (!priCurrentData.empty()) {
+                double priI_avg = std::accumulate(priCurrentData.begin(), priCurrentData.end(), 0.0) / priCurrentData.size();
+                double priI_min = *std::min_element(priCurrentData.begin(), priCurrentData.end());
+                double priI_max = *std::max_element(priCurrentData.begin(), priCurrentData.end());
+                INFO("Primary current: avg=" << priI_avg << " A, min=" << priI_min << " A, max=" << priI_max << " A");
+                CHECK(priI_avg > 0.5);   // Non-trivial average current
+                CHECK(priI_max > 1.0);   // Some peak current
+            }
+        }
     }
 
     TEST_CASE("Test_PushPull_Waveform_Polarity", "[converter-model][push-pull-topology][ngspice-simulation][smoke-test]") {
@@ -647,6 +742,49 @@ namespace {
         std::cout << "Expected secondary I avg: 0.7 A" << std::endl;
 
         CHECK(true);  // Always pass - this is a debug test
+    }
+
+    TEST_CASE("Test_PushPull_PtP_AnalyticalVsNgspice", "[converter-model][push-pull-topology][ngspice-simulation][ptpcomparison]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        OpenMagnetics::PushPull pp;
+        DimensionWithTolerance iv; iv.set_nominal(24.0); iv.set_minimum(18.0); iv.set_maximum(32.0);
+        pp.set_input_voltage(iv);
+        pp.set_diode_voltage_drop(0.5);
+        pp.set_efficiency(0.9);
+        pp.set_current_ripple_ratio(0.3);
+
+        PushPullOperatingPoint op;
+        op.set_output_voltages({12.0}); op.set_output_currents({4.0});
+        op.set_switching_frequency(100e3); op.set_ambient_temperature(25.0);
+        pp.set_operating_points({op});
+
+        auto designReqs = pp.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) turnsRatios.push_back(tr.get_nominal().value());
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto analyticalOps = pp.process_operating_points(turnsRatios, Lm);
+        REQUIRE(!analyticalOps.empty());
+        auto aTime = ptp_current_time(analyticalOps[0], 0);
+        auto aData = ptp_current(analyticalOps[0], 0);
+        REQUIRE(!aData.empty());
+        REQUIRE(!aTime.empty());
+        auto aResampled = ptp_interp(aTime, aData, 256);
+
+        pp.set_num_periods_to_extract(1);
+        auto simOps = pp.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+        auto sTime = ptp_current_time(simOps[0], 0);
+        auto sData = ptp_current(simOps[0], 0);
+        REQUIRE(!sData.empty());
+        REQUIRE(!sTime.empty());
+        auto sResampled = ptp_interp(sTime, sData, 256);
+
+        double nrmse = ptp_nrmse(aResampled, sResampled);
+        INFO("PushPull primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
+        CHECK(nrmse < 0.35);
     }
 
 // End of SUITE

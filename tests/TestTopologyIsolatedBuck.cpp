@@ -14,6 +14,8 @@
 #include <vector>
 #include <typeinfo>
 #include <numeric>
+#include <cmath>
+#include <limits>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -21,6 +23,63 @@ using namespace OpenMagnetics;
 namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
+
+    // ── PtP waveform comparison helpers ────────────────────────────────────
+    std::vector<double> ptp_interp(const std::vector<double>& t, const std::vector<double>& d, int N) {
+        std::vector<double> out(N);
+        double T = t.back();
+        for (int i = 0; i < N; ++i) {
+            double ti = T * i / (N - 1);
+            int lo = 0;
+            for (int k = 0; k + 1 < (int)t.size(); ++k) if (t[k] <= ti) lo = k;
+            int hi = std::min(lo + 1, (int)t.size() - 1);
+            double dt = t[hi] - t[lo];
+            out[i] = (dt < 1e-20) ? d[hi] : d[lo] + (ti - t[lo]) / dt * (d[hi] - d[lo]);
+        }
+        return out;
+    }
+
+    double ptp_nrmse(const std::vector<double>& ref, const std::vector<double>& sim) {
+        // Mean-subtracted, scale-normalized NRMSE with circular phase alignment.
+        // Measures shape similarity only — invariant to DC offset and amplitude scale.
+        int N = (int)ref.size();
+        double ref_mean = 0.0, sim_mean = 0.0;
+        for (int i = 0; i < N; ++i) { ref_mean += ref[i]; sim_mean += sim[i]; }
+        ref_mean /= N; sim_mean /= N;
+        std::vector<double> r(N), s(N);
+        double rAC = 0.0, sAC = 0.0;
+        for (int i = 0; i < N; ++i) {
+            r[i] = ref[i] - ref_mean; s[i] = sim[i] - sim_mean;
+            rAC += r[i] * r[i]; sAC += s[i] * s[i];
+        }
+        rAC = std::sqrt(rAC / N); sAC = std::sqrt(sAC / N);
+        if (rAC < 1e-10 || sAC < 1e-10) return 1.0;
+        for (int i = 0; i < N; ++i) { r[i] /= rAC; s[i] /= sAC; }
+        int ns = std::min(N, 64);
+        double best = std::numeric_limits<double>::max();
+        for (int ss = 0; ss < ns; ++ss) {
+            int sh = ss * N / ns;
+            double ssd = 0.0;
+            for (int k = 0; k < N; ++k) { double e = r[k] - s[(k + sh) % N]; ssd += e * e; }
+            if (ssd < best) best = ssd;
+        }
+        return std::sqrt(best / N);
+    }
+
+    std::vector<double> ptp_current(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        return e.get_current()->get_waveform()->get_data();
+    }
+
+    std::vector<double> ptp_current_time(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        auto tv = e.get_current()->get_waveform()->get_time();
+        return tv ? tv.value() : std::vector<double>{};
+    }
 
     TEST_CASE("Test_IsolatedBuck", "[converter-model][isolated-buck-topology][smoke-test]") {
         json isolatedbuckInputsJson;
@@ -270,8 +329,38 @@ namespace {
         // Validate primary voltage: should be close to input voltage during ON time
         CHECK(priV_max > 30.0);  // Should be around 48V
         CHECK(priV_max < 80.0);
-        
+
         INFO("Isolated Buck ngspice simulation test passed");
+
+        SECTION("Waveform shape: primary voltage is a pulse (ON ≈ Vin, OFF ≈ 0)") {
+            double Vin = 48.0;
+            int count_on = 0;
+            for (double v : priVoltageData) {
+                if (v > 0.5 * Vin) count_on++;
+            }
+            double frac_on = double(count_on) / priVoltageData.size();
+            INFO("Fraction at Vin: " << frac_on << " (expect ≈ D ≈ 0.2-0.5)");
+            CHECK(frac_on > 0.10);
+            CHECK(frac_on < 0.70);
+        }
+
+        SECTION("Waveform shape: primary current ramps up during ON time") {
+            auto peak_it = std::max_element(priCurrentData.begin(), priCurrentData.end());
+            int peak_idx = (int)std::distance(priCurrentData.begin(), peak_it);
+            int N = (int)priCurrentData.size();
+
+            double rising_sum = 0.0;
+            for (int k = 1; k <= peak_idx; ++k)
+                rising_sum += priCurrentData[k] - priCurrentData[k-1];
+
+            double falling_sum = 0.0;
+            for (int k = peak_idx + 1; k < N; ++k)
+                falling_sum += priCurrentData[k] - priCurrentData[k-1];
+
+            INFO("Rising sum: " << rising_sum << " A, falling sum: " << falling_sum << " A");
+            CHECK(rising_sum > 0.0);
+            CHECK(falling_sum < 0.0);
+        }
     }
 
     TEST_CASE("Test_IsolatedBuck_Ngspice_TwoSecondaries_Validation", "[converter-model][isolated-buck-topology][ngspice-simulation]") {
@@ -459,6 +548,49 @@ namespace {
         CHECK(std::abs(inputI_avg) < 1000.0);  // Definitely not thousands of amps
         
         INFO("Flybuck Two Secondaries ngspice simulation test completed successfully");
+    }
+
+    TEST_CASE("Test_IsolatedBuck_PtP_AnalyticalVsNgspice", "[converter-model][isolated-buck-topology][ngspice-simulation][ptpcomparison]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        OpenMagnetics::IsolatedBuck isolatedBuck;
+        DimensionWithTolerance iv; iv.set_nominal(48.0); iv.set_minimum(36.0); iv.set_maximum(72.0);
+        isolatedBuck.set_input_voltage(iv);
+        isolatedBuck.set_diode_voltage_drop(0.5);
+        isolatedBuck.set_efficiency(0.9);
+        isolatedBuck.set_current_ripple_ratio(0.3);
+
+        IsolatedBuckOperatingPoint op;
+        op.set_output_voltages({5.0, 5.0}); op.set_output_currents({0.6, 5.0});
+        op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
+        isolatedBuck.set_operating_points({op});
+
+        auto designReqs = isolatedBuck.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) turnsRatios.push_back(tr.get_nominal().value());
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto analyticalOps = isolatedBuck.process_operating_points(turnsRatios, Lm);
+        REQUIRE(!analyticalOps.empty());
+        auto aTime = ptp_current_time(analyticalOps[0], 0);
+        auto aData = ptp_current(analyticalOps[0], 0);
+        REQUIRE(!aData.empty());
+        REQUIRE(!aTime.empty());
+        auto aResampled = ptp_interp(aTime, aData, 256);
+
+        isolatedBuck.set_num_periods_to_extract(1);
+        auto simOps = isolatedBuck.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+        auto sTime = ptp_current_time(simOps[0], 0);
+        auto sData = ptp_current(simOps[0], 0);
+        REQUIRE(!sData.empty());
+        REQUIRE(!sTime.empty());
+        auto sResampled = ptp_interp(sTime, sData, 256);
+
+        double nrmse = ptp_nrmse(aResampled, sResampled);
+        INFO("Isolated Buck primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
+        CHECK(nrmse < 0.35);
     }
 
 }  // namespace

@@ -51,6 +51,10 @@ namespace OpenMagnetics {
 
         auto primaryCurrentPeakToPeak = (inputVoltage * primaryOutputVoltage) / (inputVoltage + primaryOutputVoltage) / (switchingFrequency * inductance);
 
+        // Fly-Buck-Boost: average magnetizing current = primary output current + reflected secondary currents
+        // (derived from power balance: P_in = P_pri + P_sec, with primary forward-type and secondary flyback-type)
+        auto primaryCurrentAverage = primaryOutputCurrent + totalReflectedSecondaryCurrent;
+
         auto primaryVoltaveMaximum = inputVoltage;
         auto primaryVoltaveMinimum = primaryOutputVoltage - diodeVoltageDrop;
         auto primaryVoltavePeaktoPeak = primaryVoltaveMaximum - primaryVoltaveMinimum;
@@ -60,7 +64,7 @@ namespace OpenMagnetics {
             Waveform currentWaveform;
             Waveform voltageWaveform;
 
-            currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryOutputCurrent, 0);
+            currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryCurrentAverage, 0);
             voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
 
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
@@ -391,20 +395,16 @@ namespace OpenMagnetics {
         circuit << ".model SW1 SW VT=2.5 VH=0.5 RON=0.01 ROFF=1e6\n";
         circuit << "S1 vin_dc pri_p pwm_ctrl 0 SW1\n\n";
         
-        // Primary current sense
+        // Primary current sense - Vpri_sense only needed for switch node connectivity
         circuit << "* Primary current sense\n";
         circuit << "Vpri_sense pri_p pri_in 0\n\n";
-        
-        // Primary winding with output capacitor for primary voltage
-        // The primary output is taken from the same winding when switch is off
-        // Note: For buck-boost/flyback operation, when switch is ON current flows into pri_in.
-        // When switch turns OFF, pri_in goes negative (flyback) causing diode Dpri to conduct.
-        circuit << "* Coupled Inductor (Primary = buck-boost inductor)\n";
+
+        circuit << "* Coupled Inductor (Primary = flyback-type primary winding)\n";
         circuit << "Lpri pri_in 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
         
-        // Secondary windings
-        // NOTE: Secondary inductors have terminals swapped (0 to sec_N_in) to create
-        // opposite dot polarity needed for flyback operation (same as Flyback converter).
+        // Secondary windings: dot at GND side creates flyback polarity (opposite to primary dot at pri_in).
+        // In SPICE simulations, secondary shares primary GND for solver convergence — the transformer
+        // provides conceptual isolation, and floating secondary grounds cause convergence failures.
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             double secondaryInductance = magnetizingInductance / (turnsRatios[secIdx] * turnsRatios[secIdx]);
             circuit << "Lsec" << secIdx << " 0 sec" << secIdx << "_in " << std::scientific << secondaryInductance << std::fixed << "\n";
@@ -437,12 +437,10 @@ namespace OpenMagnetics {
         // Secondary output stages
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << "* Secondary " << secIdx << " output stage\n";
-            // Add small series resistance to break symmetry between identical secondaries
-            // This models real-world winding resistance and allows current sharing
             circuit << "Rsec" << secIdx << " sec" << secIdx << "_in sec" << secIdx << "_node 0.01\n";
             circuit << "Dsec" << secIdx << " sec" << secIdx << "_node sec" << secIdx << "_rect DIDEAL\n";
             circuit << "Vsec_sense" << secIdx << " sec" << secIdx << "_rect vout" << secIdx << " 0\n";
-            
+
             double outputVoltage = opPoint.get_output_voltages()[secIdx + 1];
             double outputCurrent = opPoint.get_output_currents()[secIdx + 1];
             double loadResistance = outputVoltage / outputCurrent;

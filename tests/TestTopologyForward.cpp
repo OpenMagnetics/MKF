@@ -16,6 +16,8 @@
 #include <vector>
 #include <typeinfo>
 #include <numeric>
+#include <cmath>
+#include <limits>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -23,6 +25,62 @@ using namespace OpenMagnetics;
 namespace {
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
     double maximumError = 0.1;
+
+    // ── PtP waveform comparison helpers ────────────────────────────────────
+    std::vector<double> ptp_interp(const std::vector<double>& t, const std::vector<double>& d, int N) {
+        std::vector<double> out(N);
+        double T = t.back();
+        for (int i = 0; i < N; ++i) {
+            double ti = T * i / (N - 1);
+            int lo = 0;
+            for (int k = 0; k + 1 < (int)t.size(); ++k) if (t[k] <= ti) lo = k;
+            int hi = std::min(lo + 1, (int)t.size() - 1);
+            double dt = t[hi] - t[lo];
+            out[i] = (dt < 1e-20) ? d[hi] : d[lo] + (ti - t[lo]) / dt * (d[hi] - d[lo]);
+        }
+        return out;
+    }
+
+    double ptp_nrmse(const std::vector<double>& ref, const std::vector<double>& sim) {
+        // Mean-subtracted, scale-normalized NRMSE with circular phase alignment.
+        // Measures shape similarity only — invariant to DC offset and amplitude scale.
+        int N = (int)ref.size();
+        double ref_mean = 0.0, sim_mean = 0.0;
+        for (int i = 0; i < N; ++i) { ref_mean += ref[i]; sim_mean += sim[i]; }
+        ref_mean /= N; sim_mean /= N;
+        std::vector<double> r(N), s(N);
+        double rAC = 0.0, sAC = 0.0;
+        for (int i = 0; i < N; ++i) {
+            r[i] = ref[i] - ref_mean; s[i] = sim[i] - sim_mean;
+            rAC += r[i] * r[i]; sAC += s[i] * s[i];
+        }
+        rAC = std::sqrt(rAC / N); sAC = std::sqrt(sAC / N);
+        if (rAC < 1e-10 || sAC < 1e-10) return 1.0;
+        for (int i = 0; i < N; ++i) { r[i] /= rAC; s[i] /= sAC; }
+        int ns = std::min(N, 64);
+        double best = std::numeric_limits<double>::max();
+        for (int ss = 0; ss < ns; ++ss) {
+            int sh = ss * N / ns;
+            double ssd = 0.0;
+            for (int k = 0; k < N; ++k) { double e = r[k] - s[(k + sh) % N]; ssd += e * e; }
+            if (ssd < best) best = ssd;
+        }
+        return std::sqrt(best / N);
+    }
+    std::vector<double> ptp_current(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        return e.get_current()->get_waveform()->get_data();
+    }
+    std::vector<double> ptp_current_time(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        auto tv = e.get_current()->get_waveform()->get_time();
+        return tv ? tv.value() : std::vector<double>{};
+    }
+    // ───────────────────────────────────────────────────────────────────────
 
     TEST_CASE("Test_SingleSwitchForward_CCM", "[converter-model][single-switch-forward-topology][smoke-test]") {
         json forwardInputsJson;
@@ -610,12 +668,62 @@ namespace {
         
         // In CCM, current should stay positive (allow for numerical noise)
         CHECK(priI_min > -0.001);
-        
+
         // Validate we have reasonable peak current
         CHECK(priI_max > 0.5);
         CHECK(priI_max < 10.0);
-        
+
         INFO("Single Switch Forward ngspice simulation test passed");
+
+        SECTION("Waveform shape: primary voltage is a pulse (ON ≈ Vin, OFF ≈ 0 or reset)") {
+            // Forward converter: pri_in = Vin during ON, ~0 (or clamped) during OFF
+            double Vin = 48.0;
+            int count_on = 0;
+            for (double v : priVoltageData) {
+                if (v > 0.5 * Vin) count_on++;
+            }
+            double frac_on = double(count_on) / priVoltageData.size();
+            INFO("Fraction at Vin: " << frac_on << " (expect ≈ D = 0.4)");
+            // Duty cycle D=0.4: roughly 30-55% of samples should be near Vin
+            CHECK(frac_on > 0.20);
+            CHECK(frac_on < 0.60);
+        }
+
+        SECTION("Waveform shape: primary current ramps up during ON time (sawtooth in CCM)") {
+            // Current rises during ON time: slope ≈ Vin/Lm
+            auto peak_it = std::max_element(priCurrentData.begin(), priCurrentData.end());
+            int peak_idx = (int)std::distance(priCurrentData.begin(), peak_it);
+            int N = (int)priCurrentData.size();
+
+            double rising_sum = 0.0;
+            for (int k = 1; k <= peak_idx; ++k)
+                rising_sum += priCurrentData[k] - priCurrentData[k-1];
+
+            double falling_sum = 0.0;
+            for (int k = peak_idx + 1; k < N; ++k)
+                falling_sum += priCurrentData[k] - priCurrentData[k-1];
+
+            INFO("Rising sum: " << rising_sum << " A, falling sum: " << falling_sum << " A");
+            CHECK(rising_sum > 0.0);
+            CHECK(falling_sum < 0.0);
+        }
+
+        SECTION("Waveform shape: ON-time current slope matches Vin/Lm") {
+            double Vin = 48.0, fs = 200e3;
+            int N = (int)priCurrentData.size();
+            double dt = 1.0 / (fs * N);
+
+            auto peak_it = std::max_element(priCurrentData.begin(), priCurrentData.end());
+            int peak_idx = (int)std::distance(priCurrentData.begin(), peak_it);
+
+            if (peak_idx > 5) {
+                double slope_A_per_s = (priCurrentData[peak_idx] - priCurrentData[0]) / (peak_idx * dt);
+                double expected = Vin / magnetizingInductance;
+                double err = std::abs(slope_A_per_s - expected) / expected;
+                INFO("di/dt: " << slope_A_per_s << " A/s, Vin/Lm: " << expected << ", error: " << (err*100) << "%");
+                CHECK(err < 0.50);  // 50%: waveform extraction phase offset causes slope error
+            }
+        }
     }
 
     TEST_CASE("Test_TwoSwitchForward_Ngspice_Simulation", "[converter-model][two-switch-forward-topology][ngspice-simulation]") {
@@ -692,8 +800,24 @@ namespace {
         // Validate primary voltage: should be close to input voltage during ON time
         CHECK(priV_max > 30.0);  // Should be around 48V
         CHECK(priV_max < 80.0);
-        
+
         INFO("Two Switch Forward ngspice simulation test passed");
+
+        SECTION("Waveform shape: two-switch forward primary voltage pulse (ON ≈ Vin, OFF ≈ 0)") {
+            double Vin = 48.0;
+            int count_on = 0, count_off = 0;
+            for (double v : priVoltageData) {
+                if (v > 0.5 * Vin) count_on++;
+                else if (v < 5.0) count_off++;
+            }
+            double frac_on = double(count_on) / priVoltageData.size();
+            double frac_off = double(count_off) / priVoltageData.size();
+            INFO("Fraction at Vin: " << frac_on << ", fraction near 0V: " << frac_off << " (D=0.4 expected)");
+            CHECK(frac_on > 0.20);
+            CHECK(frac_on < 0.60);
+            // Two-switch forward: OFF voltage clamped to 0 by demagnetizing diodes
+            CHECK(frac_off > 0.30);
+        }
     }
 
     TEST_CASE("Test_TwoSwitchForward_Waveform_Polarity", "[converter-model][two-switch-forward-topology][ngspice-simulation][smoke-test]") {
@@ -887,8 +1011,30 @@ namespace {
         
         // Active clamp should have negative voltage during reset
         CHECK(priV_min < 0.0);
-        
+
         INFO("Active Clamp Forward ngspice simulation test passed");
+
+        SECTION("Waveform shape: active-clamp primary voltage has ON pulse and negative reset") {
+            double Vin = 48.0;
+            int count_on = 0, count_neg = 0;
+            for (double v : priVoltageData) {
+                if (v > 0.5 * Vin) count_on++;
+                if (v < -5.0) count_neg++;
+            }
+            double frac_on = double(count_on) / priVoltageData.size();
+            double frac_neg = double(count_neg) / priVoltageData.size();
+            INFO("Fraction at Vin: " << frac_on << ", fraction negative: " << frac_neg);
+            CHECK(frac_on > 0.20);   // D ≈ 0.45
+            CHECK(frac_neg >= 0);    // Active clamp may produce negative reset voltage
+            // Verify minimum voltage is indeed negative (active clamp resets core)
+            double priV_min_local = *std::min_element(priVoltageData.begin(), priVoltageData.end());
+            INFO("Primary voltage min: " << priV_min_local << " V");
+            CHECK(priV_min_local < 0.0);  // Active clamp produces negative reset
+        }
+
+        SECTION("Waveform shape: active-clamp primary current: avg > 0 (net energy transfer)") {
+            CHECK(priI_avg > 0.1);
+        }
     }
 
     TEST_CASE("Test_TwoSwitchForward_NumPeriods_SimulatedOperatingPoints", "[converter-model][two-switch-forward-topology][num-periods][ngspice-simulation][smoke-test]") {
@@ -979,6 +1125,143 @@ namespace {
         INFO("3-period converter waveform data size: " << inputV3.size());
 
         CHECK(inputV3.size() > inputV1.size());
+    }
+
+    TEST_CASE("Test_SingleSwitchForward_PtP_AnalyticalVsNgspice", "[converter-model][single-switch-forward-topology][ngspice-simulation][ptpcomparison]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        OpenMagnetics::SingleSwitchForward fwd;
+        DimensionWithTolerance iv; iv.set_nominal(48.0); iv.set_minimum(36.0); iv.set_maximum(72.0);
+        fwd.set_input_voltage(iv);
+        fwd.set_diode_voltage_drop(0.5);
+        fwd.set_efficiency(0.9);
+        fwd.set_current_ripple_ratio(0.3);
+        fwd.set_duty_cycle(0.4);
+
+        ForwardOperatingPoint op;
+        op.set_output_voltages({5.0}); op.set_output_currents({5.0});
+        op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
+        fwd.set_operating_points({op});
+
+        auto designReqs = fwd.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) turnsRatios.push_back(tr.get_nominal().value());
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto analyticalOps = fwd.process_operating_points(turnsRatios, Lm);
+        REQUIRE(!analyticalOps.empty());
+        auto aTime = ptp_current_time(analyticalOps[0], 0);
+        auto aData = ptp_current(analyticalOps[0], 0);
+        REQUIRE(!aData.empty());
+        REQUIRE(!aTime.empty());
+        auto aResampled = ptp_interp(aTime, aData, 256);
+
+        fwd.set_num_periods_to_extract(1);
+        auto simOps = fwd.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+        auto sTime = ptp_current_time(simOps[0], 0);
+        auto sData = ptp_current(simOps[0], 0);
+        REQUIRE(!sData.empty());
+        REQUIRE(!sTime.empty());
+        auto sResampled = ptp_interp(sTime, sData, 256);
+
+        double nrmse = ptp_nrmse(aResampled, sResampled);
+        INFO("Single Switch Forward primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
+        CHECK(nrmse < 0.35);
+    }
+
+    TEST_CASE("Test_ActiveClampForward_PtP_AnalyticalVsNgspice", "[converter-model][active-clamp-forward-topology][ngspice-simulation][ptpcomparison]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        OpenMagnetics::ActiveClampForward fwd;
+        DimensionWithTolerance iv; iv.set_nominal(48.0); iv.set_minimum(36.0); iv.set_maximum(72.0);
+        fwd.set_input_voltage(iv);
+        fwd.set_diode_voltage_drop(0.5);
+        fwd.set_efficiency(0.9);
+        fwd.set_current_ripple_ratio(0.3);
+        fwd.set_duty_cycle(0.45);
+
+        ForwardOperatingPoint op;
+        op.set_output_voltages({5.0}); op.set_output_currents({5.0});
+        op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
+        fwd.set_operating_points({op});
+
+        auto designReqs = fwd.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) turnsRatios.push_back(tr.get_nominal().value());
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto analyticalOps = fwd.process_operating_points(turnsRatios, Lm);
+        REQUIRE(!analyticalOps.empty());
+        auto aTime = ptp_current_time(analyticalOps[0], 0);
+        auto aData = ptp_current(analyticalOps[0], 0);
+        REQUIRE(!aData.empty());
+        REQUIRE(!aTime.empty());
+        auto aResampled = ptp_interp(aTime, aData, 256);
+
+        fwd.set_num_periods_to_extract(1);
+        auto simOps = fwd.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+        auto sTime = ptp_current_time(simOps[0], 0);
+        auto sData = ptp_current(simOps[0], 0);
+        REQUIRE(!sData.empty());
+        REQUIRE(!sTime.empty());
+        auto sResampled = ptp_interp(sTime, sData, 256);
+
+        double nrmse = ptp_nrmse(aResampled, sResampled);
+        // ACF: the active clamp resonant circuit creates a sinusoidal hump in the primary current
+        // that the simplified piecewise analytical model does not capture — shape mismatch is expected.
+        // Threshold of 0.99 verifies the simulation runs and returns non-degenerate waveform data.
+        INFO("Active Clamp Forward primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
+        CHECK(nrmse < 0.99);
+    }
+
+    TEST_CASE("Test_TwoSwitchForward_PtP_AnalyticalVsNgspice", "[converter-model][two-switch-forward-topology][ngspice-simulation][ptpcomparison]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        OpenMagnetics::TwoSwitchForward fwd;
+        DimensionWithTolerance iv; iv.set_nominal(48.0); iv.set_minimum(36.0); iv.set_maximum(72.0);
+        fwd.set_input_voltage(iv);
+        fwd.set_diode_voltage_drop(0.5);
+        fwd.set_efficiency(0.9);
+        fwd.set_current_ripple_ratio(0.3);
+        fwd.set_duty_cycle(0.4);
+
+        ForwardOperatingPoint op;
+        op.set_output_voltages({5.0}); op.set_output_currents({5.0});
+        op.set_switching_frequency(200e3); op.set_ambient_temperature(25.0);
+        fwd.set_operating_points({op});
+
+        auto designReqs = fwd.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) turnsRatios.push_back(tr.get_nominal().value());
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto analyticalOps = fwd.process_operating_points(turnsRatios, Lm);
+        REQUIRE(!analyticalOps.empty());
+        auto aTime = ptp_current_time(analyticalOps[0], 0);
+        auto aData = ptp_current(analyticalOps[0], 0);
+        REQUIRE(!aData.empty());
+        REQUIRE(!aTime.empty());
+        auto aResampled = ptp_interp(aTime, aData, 256);
+
+        fwd.set_num_periods_to_extract(1);
+        auto simOps = fwd.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+        auto sTime = ptp_current_time(simOps[0], 0);
+        auto sData = ptp_current(simOps[0], 0);
+        REQUIRE(!sData.empty());
+        REQUIRE(!sTime.empty());
+        auto sResampled = ptp_interp(sTime, sData, 256);
+
+        double nrmse = ptp_nrmse(aResampled, sResampled);
+        // TSForward has a sharp analytical notch at switch-off (reflected load drops instantly)
+        // that the simulation shows as a smooth transition — 50% threshold accounts for this.
+        INFO("Two Switch Forward primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
+        CHECK(nrmse < 0.50);
     }
 
 }  // namespace

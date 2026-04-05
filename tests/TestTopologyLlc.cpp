@@ -15,10 +15,69 @@
 #include <typeinfo>
 #include <numeric>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 using namespace OpenMagnetics;
 
 namespace {
+
+    // ── PtP waveform comparison helpers ────────────────────────────────────
+    std::vector<double> ptp_interp(const std::vector<double>& t, const std::vector<double>& d, int N) {
+        std::vector<double> out(N);
+        double T = t.back();
+        for (int i = 0; i < N; ++i) {
+            double ti = T * i / (N - 1);
+            int lo = 0;
+            for (int k = 0; k + 1 < (int)t.size(); ++k) if (t[k] <= ti) lo = k;
+            int hi = std::min(lo + 1, (int)t.size() - 1);
+            double dt = t[hi] - t[lo];
+            out[i] = (dt < 1e-20) ? d[hi] : d[lo] + (ti - t[lo]) / dt * (d[hi] - d[lo]);
+        }
+        return out;
+    }
+
+    double ptp_nrmse(const std::vector<double>& ref, const std::vector<double>& sim) {
+        // Mean-subtracted, scale-normalized NRMSE with circular phase alignment.
+        // Measures shape similarity only — invariant to DC offset and amplitude scale.
+        int N = (int)ref.size();
+        double ref_mean = 0.0, sim_mean = 0.0;
+        for (int i = 0; i < N; ++i) { ref_mean += ref[i]; sim_mean += sim[i]; }
+        ref_mean /= N; sim_mean /= N;
+        std::vector<double> r(N), s(N);
+        double rAC = 0.0, sAC = 0.0;
+        for (int i = 0; i < N; ++i) {
+            r[i] = ref[i] - ref_mean; s[i] = sim[i] - sim_mean;
+            rAC += r[i] * r[i]; sAC += s[i] * s[i];
+        }
+        rAC = std::sqrt(rAC / N); sAC = std::sqrt(sAC / N);
+        if (rAC < 1e-10 || sAC < 1e-10) return 1.0;
+        for (int i = 0; i < N; ++i) { r[i] /= rAC; s[i] /= sAC; }
+        int ns = std::min(N, 64);
+        double best = std::numeric_limits<double>::max();
+        for (int ss = 0; ss < ns; ++ss) {
+            int sh = ss * N / ns;
+            double ssd = 0.0;
+            for (int k = 0; k < N; ++k) { double e = r[k] - s[(k + sh) % N]; ssd += e * e; }
+            if (ssd < best) best = ssd;
+        }
+        return std::sqrt(best / N);
+    }
+
+    std::vector<double> ptp_current(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        return e.get_current()->get_waveform()->get_data();
+    }
+
+    std::vector<double> ptp_current_time(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        auto tv = e.get_current()->get_waveform()->get_time();
+        return tv ? tv.value() : std::vector<double>{};
+    }
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
     TEST_CASE("Test_Llc_HalfBridge_Design", "[converter-model][llc-topology][smoke-test]") {
@@ -824,13 +883,13 @@ namespace {
             CHECK(netlist.find("Lr") != std::string::npos);
             CHECK(netlist.find("Cr") != std::string::npos);
             CHECK(netlist.find("Lpri") != std::string::npos);
-            CHECK(netlist.find("Lsec0") != std::string::npos);
-            CHECK(netlist.find("Kpri_sec0") != std::string::npos);
+            CHECK(netlist.find("Lsec1") != std::string::npos);
+            CHECK(netlist.find("K12") != std::string::npos);
             CHECK(netlist.find(".tran") != std::string::npos);
             CHECK(netlist.find(".end") != std::string::npos);
             CHECK(netlist.find("Half") != std::string::npos);
-            CHECK(netlist.find("S1") != std::string::npos);
-            CHECK(netlist.find("S2") != std::string::npos);
+            CHECK(netlist.find("Vbridge") != std::string::npos);
+            CHECK(netlist.find("Vmid") != std::string::npos);
         }
 
         SECTION("Full-bridge netlist") {
@@ -866,11 +925,110 @@ namespace {
             std::string netlist = fbLlc.generate_ngspice_circuit(fbTurnsRatios, fbLm, 0, 0);
 
             CHECK(netlist.find("Full") != std::string::npos);
-            CHECK(netlist.find("S1") != std::string::npos);
-            CHECK(netlist.find("S3") != std::string::npos);
-            CHECK(netlist.find("S4") != std::string::npos);
+            CHECK(netlist.find("Vbridge") != std::string::npos);
+            CHECK(netlist.find("Vbus_gnd") != std::string::npos);
             CHECK(netlist.find("bridge_a") != std::string::npos);
             CHECK(netlist.find("bridge_b") != std::string::npos);
+        }
+    }
+
+    TEST_CASE("Test_Llc_Ngspice_Simulation", "[converter-model][llc-topology][ngspice-simulation]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+
+        json llcJson;
+        json inputVoltage;
+        inputVoltage["nominal"] = 400.0;
+        inputVoltage["minimum"] = 370.0;
+        inputVoltage["maximum"] = 410.0;
+        llcJson["inputVoltage"] = inputVoltage;
+        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["minSwitchingFrequency"] = 80000;
+        llcJson["maxSwitchingFrequency"] = 200000;
+        llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 5.0;
+        llcJson["operatingPoints"] = json::array();
+        {
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = {12.0};
+            op["outputCurrents"] = {10.0};
+            op["switchingFrequency"] = 100000;
+            llcJson["operatingPoints"].push_back(op);
+        }
+
+        OpenMagnetics::Llc llc(llcJson);
+        auto req = llc.process_design_requirements();
+
+        std::vector<double> turnsRatios;
+        for (auto& tr : req.get_turns_ratios())
+            turnsRatios.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+
+        INFO("LLC Lm: " << (Lm * 1e6) << " uH, turns ratio: " << turnsRatios[0]);
+
+        auto converterWaveforms = llc.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+
+        REQUIRE(!converterWaveforms.empty());
+        REQUIRE(!converterWaveforms[0].get_input_current().get_data().empty());
+
+        auto& resonantCurrent = converterWaveforms[0].get_input_current().get_data();
+
+        double iRes_max = *std::max_element(resonantCurrent.begin(), resonantCurrent.end());
+        double iRes_min = *std::min_element(resonantCurrent.begin(), resonantCurrent.end());
+        double iRes_avg = std::accumulate(resonantCurrent.begin(), resonantCurrent.end(), 0.0) / resonantCurrent.size();
+
+        INFO("Resonant current: max=" << iRes_max << " A, min=" << iRes_min << " A, avg=" << iRes_avg << " A");
+
+        SECTION("Waveform shape: resonant current is bipolar (LLC sinusoidal character)") {
+            // LLC resonant current alternates sign each half-cycle
+            CHECK(iRes_max > 1.0);   // Positive half-cycle exists
+            CHECK(iRes_min < -1.0);  // Negative half-cycle exists
+            // For sinusoid: |max| ≈ |min| (within 30% for near-resonance operation)
+            double symmetry = std::abs(iRes_max + iRes_min) / (std::abs(iRes_max) + std::abs(iRes_min));
+            INFO("Current symmetry (0=perfect): " << symmetry);
+            CHECK(symmetry < 0.5);
+        }
+
+        SECTION("Waveform shape: resonant current crosses zero (sinusoidal)") {
+            // A sinusoidal resonant current crosses zero exactly 2 times per period
+            int zero_crossings = 0;
+            for (size_t k = 1; k < resonantCurrent.size(); ++k) {
+                if ((resonantCurrent[k-1] > 0 && resonantCurrent[k] <= 0) ||
+                    (resonantCurrent[k-1] <= 0 && resonantCurrent[k] > 0))
+                    zero_crossings++;
+            }
+            INFO("Zero crossings per period: " << zero_crossings);
+            CHECK(zero_crossings >= 2);   // At least one full oscillation
+            CHECK(zero_crossings <= 12);  // Not excessively noisy
+        }
+
+        SECTION("Waveform shape: output voltage stable near target") {
+            REQUIRE(!converterWaveforms[0].get_output_voltages().empty());
+            auto& voutData = converterWaveforms[0].get_output_voltages()[0].get_data();
+            REQUIRE(!voutData.empty());
+
+            double vout_max = *std::max_element(voutData.begin(), voutData.end());
+            double vout_min = *std::min_element(voutData.begin(), voutData.end());
+            double vout_avg = std::accumulate(voutData.begin(), voutData.end(), 0.0) / voutData.size();
+            double ripple_ratio = (vout_max - vout_min) / vout_avg;
+
+            INFO("LLC output: avg=" << vout_avg << " V, ripple=" << (ripple_ratio * 100) << "%");
+            CHECK(vout_avg > 8.0);     // Should regulate near 12V
+            CHECK(vout_avg < 16.0);
+            CHECK(ripple_ratio < 0.15); // Less than 15% output ripple (single-period simulation)
+        }
+
+        SECTION("Waveform shape: avg resonant current ≈ 0 (no DC bias)") {
+            // LLC resonant current must have zero DC component (no transformer saturation)
+            double iRes_rms = 0.0;
+            for (double v : resonantCurrent) iRes_rms += v * v;
+            iRes_rms = std::sqrt(iRes_rms / resonantCurrent.size());
+            // DC bias < 10% of RMS
+            INFO("Resonant current DC component: " << iRes_avg << " A, RMS: " << iRes_rms << " A");
+            CHECK(std::abs(iRes_avg) < 0.10 * iRes_rms);
         }
     }
 
@@ -1106,5 +1264,60 @@ namespace {
 
         REQUIRE(result.get_operating_points().size() > 0);
         REQUIRE(result.get_design_requirements().get_turns_ratios().size() > 0);
+    }
+
+    TEST_CASE("Test_Llc_PtP_AnalyticalVsNgspice", "[converter-model][llc-topology][ngspice-simulation][ptpcomparison]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        json llcJson;
+        json inputVoltage;
+        inputVoltage["nominal"] = 400.0;
+        inputVoltage["minimum"] = 370.0;
+        inputVoltage["maximum"] = 410.0;
+        llcJson["inputVoltage"] = inputVoltage;
+        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["minSwitchingFrequency"] = 80000;
+        llcJson["maxSwitchingFrequency"] = 200000;
+        llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 5.0;
+        llcJson["operatingPoints"] = json::array();
+        {
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = {12.0};
+            op["outputCurrents"] = {10.0};
+            op["switchingFrequency"] = 100000;
+            llcJson["operatingPoints"].push_back(op);
+        }
+
+        OpenMagnetics::Llc llc(llcJson);
+        auto req = llc.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : req.get_turns_ratios()) turnsRatios.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+
+        auto analyticalOps = llc.process_operating_points(turnsRatios, Lm);
+        REQUIRE(!analyticalOps.empty());
+        auto aTime = ptp_current_time(analyticalOps[0], 0);
+        auto aData = ptp_current(analyticalOps[0], 0);
+        REQUIRE(!aData.empty());
+        REQUIRE(!aTime.empty());
+        auto aResampled = ptp_interp(aTime, aData, 256);
+
+        llc.set_num_periods_to_extract(1);
+        auto simOps = llc.simulate_and_extract_operating_points(turnsRatios, Lm, 1);
+        REQUIRE(!simOps.empty());
+        auto sTime = ptp_current_time(simOps[0], 0);
+        auto sData = ptp_current(simOps[0], 0);
+        REQUIRE(!sData.empty());
+        REQUIRE(!sTime.empty());
+        auto sResampled = ptp_interp(sTime, sData, 256);
+
+        double nrmse = ptp_nrmse(aResampled, sResampled);
+        // LLC resonant current is sinusoidal — analytical TDA vs SPICE should agree well on shape.
+        // 50% threshold accounts for any dead-time and resonant-tank transients.
+        INFO("LLC primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
+        CHECK(nrmse < 0.50);
     }
 }

@@ -15,10 +15,68 @@
 #include <typeinfo>
 #include <numeric>
 #include <cmath>
+#include <limits>
 
 using namespace OpenMagnetics;
 
 namespace {
+
+    // ── PtP waveform comparison helpers ────────────────────────────────────
+    std::vector<double> ptp_interp(const std::vector<double>& t, const std::vector<double>& d, int N) {
+        std::vector<double> out(N);
+        double T = t.back();
+        for (int i = 0; i < N; ++i) {
+            double ti = T * i / (N - 1);
+            int lo = 0;
+            for (int k = 0; k + 1 < (int)t.size(); ++k) if (t[k] <= ti) lo = k;
+            int hi = std::min(lo + 1, (int)t.size() - 1);
+            double dt = t[hi] - t[lo];
+            out[i] = (dt < 1e-20) ? d[hi] : d[lo] + (ti - t[lo]) / dt * (d[hi] - d[lo]);
+        }
+        return out;
+    }
+
+    double ptp_nrmse(const std::vector<double>& ref, const std::vector<double>& sim) {
+        // Mean-subtracted, scale-normalized NRMSE with circular phase alignment.
+        // Measures shape similarity only — invariant to DC offset and amplitude scale.
+        int N = (int)ref.size();
+        double ref_mean = 0.0, sim_mean = 0.0;
+        for (int i = 0; i < N; ++i) { ref_mean += ref[i]; sim_mean += sim[i]; }
+        ref_mean /= N; sim_mean /= N;
+        std::vector<double> r(N), s(N);
+        double rAC = 0.0, sAC = 0.0;
+        for (int i = 0; i < N; ++i) {
+            r[i] = ref[i] - ref_mean; s[i] = sim[i] - sim_mean;
+            rAC += r[i] * r[i]; sAC += s[i] * s[i];
+        }
+        rAC = std::sqrt(rAC / N); sAC = std::sqrt(sAC / N);
+        if (rAC < 1e-10 || sAC < 1e-10) return 1.0;
+        for (int i = 0; i < N; ++i) { r[i] /= rAC; s[i] /= sAC; }
+        int ns = std::min(N, 64);
+        double best = std::numeric_limits<double>::max();
+        for (int ss = 0; ss < ns; ++ss) {
+            int sh = ss * N / ns;
+            double ssd = 0.0;
+            for (int k = 0; k < N; ++k) { double e = r[k] - s[(k + sh) % N]; ssd += e * e; }
+            if (ssd < best) best = ssd;
+        }
+        return std::sqrt(best / N);
+    }
+
+    std::vector<double> ptp_current(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        return e.get_current()->get_waveform()->get_data();
+    }
+
+    std::vector<double> ptp_current_time(const OperatingPoint& op, size_t wi = 0) {
+        if (wi >= op.get_excitations_per_winding().size()) return {};
+        auto& e = op.get_excitations_per_winding()[wi];
+        if (!e.get_current() || !e.get_current()->get_waveform()) return {};
+        auto tv = e.get_current()->get_waveform()->get_time();
+        return tv ? tv.value() : std::vector<double>{};
+    }
     auto outputFilePath = std::filesystem::path{std::source_location::current().file_name()}
         .parent_path().append("..").append("output");
 
@@ -977,6 +1035,56 @@ namespace {
             csv.close();
             CHECK(std::filesystem::exists(csvPath));
         }
+    }
+
+    TEST_CASE("Test_Dab_PtP_AnalyticalVsNgspice", "[converter-model][dab-topology][ngspice-simulation][ptpcomparison]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        json dabJson;
+        json inputVoltage;
+        inputVoltage["nominal"] = 800.0;
+        dabJson["inputVoltage"] = inputVoltage;
+        dabJson["seriesInductance"] = 35e-6;
+        dabJson["useLeakageInductance"] = false;
+        dabJson["operatingPoints"] = json::array();
+        {
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = {500.0};
+            op["outputCurrents"] = {20.0};
+            op["phaseShift"] = 23.0;
+            op["switchingFrequency"] = 100000;
+            dabJson["operatingPoints"].push_back(op);
+        }
+
+        OpenMagnetics::Dab dab(dabJson);
+        auto req = dab.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : req.get_turns_ratios()) turnsRatios.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+
+        auto analyticalOps = dab.process_operating_points(turnsRatios, Lm);
+        REQUIRE(!analyticalOps.empty());
+        auto aTime = ptp_current_time(analyticalOps[0], 0);
+        auto aData = ptp_current(analyticalOps[0], 0);
+        REQUIRE(!aData.empty());
+        REQUIRE(!aTime.empty());
+        auto aResampled = ptp_interp(aTime, aData, 256);
+
+        dab.set_num_periods_to_extract(1);
+        auto simOps = dab.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+        auto sTime = ptp_current_time(simOps[0], 0);
+        auto sData = ptp_current(simOps[0], 0);
+        REQUIRE(!sData.empty());
+        REQUIRE(!sTime.empty());
+        auto sResampled = ptp_interp(sTime, sData, 256);
+
+        double nrmse = ptp_nrmse(aResampled, sResampled);
+        // DAB inductor current is trapezoidal/triangular — 50% threshold for phase-shift transients.
+        INFO("DAB primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
+        CHECK(nrmse < 0.50);
     }
 
 } // anonymous namespace
