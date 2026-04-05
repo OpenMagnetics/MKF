@@ -385,14 +385,15 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
     double phi_sign = (phi_rad >= 0) ? 1.0 : -1.0;
     double phi_abs = std::abs(phi_rad);
 
-    // Compute switching currents
+    // Compute switching currents.
+    // Convention (TI TIDA-010054):
+    //   i1 = current at t=t_phi (the phase-shift instant, start of interval 2)
+    //   i2 = magnitude whose negative gives the current at t=0:
+    //        actual i(0) = -phi_sign * i2  (negative for forward ZVS, positive for reverse ZVS)
+    // The waveform is antisymmetric: iL(t + Thalf) = -iL(t).
+    // Continuity at t_phi: -phi_sign*i2 + slope1*t_phi = phi_sign*i1  (verified analytically).
     double i1, i2;
     compute_switching_currents(V1, V2, N, phi_abs, Fs, L, i1, i2);
-    // For negative phase shift (reverse power flow), negate currents
-    if (phi_sign < 0) {
-        i1 = -i1;
-        i2 = -i2;
-    }
 
     // Sampling
     const int N_samples = 256; // Samples per half-period
@@ -425,12 +426,14 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
             // Interval 1: secondary hasn't switched yet
             // For positive phi (forward): Vcd = -V2
             Vcd_full[k] = -phi_sign * V2;
-            iL_full[k] = i1 + phi_sign * slope1 * t;
+            // Starts at -phi_sign*i2 (negative for forward ZVS), ramps to phi_sign*i1
+            iL_full[k] = phi_sign * (-i2 + slope1 * t);
         } else {
             // Interval 2: secondary has switched
             // For positive phi (forward): Vcd = +V2
             Vcd_full[k] = phi_sign * V2;
-            iL_full[k] = i2 + phi_sign * slope2 * (t - t_phi);
+            // Continues from phi_sign*i1, ramps to phi_sign*i2 at Thalf
+            iL_full[k] = phi_sign * (i1 + slope2 * (t - t_phi));
         }
 
         // Magnetizing current: triangular, starts at -Im_peak at t=0
