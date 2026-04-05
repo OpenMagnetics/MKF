@@ -1092,4 +1092,19 @@ namespace {
             CHECK(expectedImPk < 10.0);  // Reasonable for this spec
         }
     }
+
+    TEST_CASE("Test_AdvancedLlc_Process_NoDesiredTurnsRatios", "[converter-model][llc-topology][bug][smoke-test]") {
+        // Bug #2: AdvancedLlc::process() segfaults when desiredTurnsRatios is not in JSON
+        // because it passes an empty vector to process_operating_points which does turnsRatios[0]
+        auto json_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "process_converter_llc_segfault.json");
+        std::ifstream json_file(json_path);
+        json testJson = json::parse(json_file);
+
+        AdvancedLlc converter(testJson["converter"]);
+        // Should not segfault — falls back to computed turns ratios
+        OpenMagnetics::Inputs result = converter.process();
+
+        REQUIRE(result.get_operating_points().size() > 0);
+        REQUIRE(result.get_design_requirements().get_turns_ratios().size() > 0);
+    }
 }

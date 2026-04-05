@@ -122,7 +122,7 @@ public:
 class AdvancedLlc : public Llc {
 private:
     std::vector<double> desiredTurnsRatios;
-    double desiredMagnetizingInductance;
+    double desiredMagnetizingInductance = 0;
     std::optional<double> desiredResonantInductance;
     std::optional<double> desiredResonantCapacitance;
 

@@ -316,7 +316,9 @@ namespace {
                     Catch::Matchers::WithinAbs(800.0, 1.0));
             }
             // Negative half: V = -V1 = -800
-            for (int k = N_half + 1; k < (int)vData.size(); ++k) {
+            // Skip last sample (k=2*N_half): it is at theta=2*pi which wraps back to
+            // theta=0 (start of next period), so it equals +V1, not -V1.
+            for (int k = N_half + 1; k < (int)vData.size() - 1; ++k) {
                 REQUIRE_THAT(vData[k],
                     Catch::Matchers::WithinAbs(-800.0, 1.0));
             }

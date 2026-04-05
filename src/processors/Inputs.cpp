@@ -2112,6 +2112,44 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 }
 
 OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios) {
+    // BUGFIX: Validate and fix frequency in all excitations before processing
+    // The frequency field in OperatingPointExcitation is not initialized in constructor,
+    // so it can contain garbage values that cause NaN errors downstream
+    for (size_t i = 0; i < operatingPoint.get_excitations_per_winding().size(); ++i) {
+        auto& excitation = operatingPoint.get_mutable_excitations_per_winding()[i];
+        auto freq = excitation.get_frequency();
+        
+        // Check if frequency is invalid (NaN, infinity, negative, or unreasonably small)
+        if (std::isnan(freq) || std::isinf(freq) || freq < 400.0) {
+            // Try to extract frequency from harmonics if available
+            if (excitation.get_current() && excitation.get_current()->get_harmonics()) {
+                auto harmonics = excitation.get_current()->get_harmonics().value();
+                if (harmonics.get_frequencies().size() > 1) {
+                    // Use first non-zero frequency from harmonics
+                    for (auto f : harmonics.get_frequencies()) {
+                        if (f > 400.0) {
+                            excitation.set_frequency(f);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // If still invalid, try to get from voltage harmonics
+            if (excitation.get_frequency() < 400.0 && excitation.get_voltage() && excitation.get_voltage()->get_harmonics()) {
+                auto harmonics = excitation.get_voltage()->get_harmonics().value();
+                if (harmonics.get_frequencies().size() > 1) {
+                    for (auto f : harmonics.get_frequencies()) {
+                        if (f > 400.0) {
+                            excitation.set_frequency(f);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
     std::vector<Waveform> voltageSampledWaveforms;
     bool allExcitationHaveVoltageOrAlreadyCalculated = true;

@@ -2318,14 +2318,22 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
 }
 
 Inputs pre_process_inputs(Inputs inputs) {
+    double magnetizingInductance = resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
         auto excitation = Inputs::get_primary_excitation(inputs.get_mutable_operating_points()[operatingPointIndex]);
         if (!excitation.get_voltage()) {
-            inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0].set_voltage(Inputs::calculate_induced_voltage(excitation, resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance())));
+            if (magnetizingInductance <= 0) continue;
+            inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0].set_voltage(Inputs::calculate_induced_voltage(excitation, magnetizingInductance));
             Inputs::set_current_as_magnetizing_current(&inputs.get_mutable_operating_points()[operatingPointIndex]);
         }
         else if (!excitation.get_magnetizing_current()) {
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance()), false);
+            if (magnetizingInductance <= 0) {
+                // Lm=0 means "not specified" (e.g. LLC transformer). Use the primary
+                // current as the magnetizing current so downstream code has it.
+                Inputs::set_current_as_magnetizing_current(&inputs.get_mutable_operating_points()[operatingPointIndex]);
+                continue;
+            }
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, false);
             inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
         }
     }

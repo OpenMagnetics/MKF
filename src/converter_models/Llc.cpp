@@ -972,14 +972,33 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
 // =====================================================================
 Inputs AdvancedLlc::process() {
     auto designRequirements = process_design_requirements();
+
+    // Use desiredTurnsRatios if provided, otherwise fall back to computed values
+    std::vector<double> turnsRatios = desiredTurnsRatios;
+    if (turnsRatios.empty()) {
+        for (const auto& tr : designRequirements.get_turns_ratios()) {
+            turnsRatios.push_back(resolve_dimensional_values(tr));
+        }
+    }
+    if (turnsRatios.empty()) {
+        throw std::runtime_error("LLC: no turns ratios available (neither desired nor computed)");
+    }
+
     designRequirements.get_mutable_turns_ratios().clear();
-    for (auto n : desiredTurnsRatios) {
+    for (auto n : turnsRatios) {
         DimensionWithTolerance nTol; nTol.set_nominal(n);
         designRequirements.get_mutable_turns_ratios().push_back(nTol);
     }
-    DimensionWithTolerance LmTol; LmTol.set_nominal(desiredMagnetizingInductance);
+
+    // Use desiredMagnetizingInductance if set (> 0), otherwise fall back to computed value
+    double Lm = desiredMagnetizingInductance;
+    if (Lm <= 0) {
+        Lm = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
+    }
+    DimensionWithTolerance LmTol; LmTol.set_nominal(Lm);
     designRequirements.set_magnetizing_inductance(LmTol);
-    auto ops = process_operating_points(desiredTurnsRatios, desiredMagnetizingInductance);
+
+    auto ops = process_operating_points(turnsRatios, Lm);
     Inputs inputs;
     inputs.set_design_requirements(designRequirements);
     inputs.set_operating_points(ops);

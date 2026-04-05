@@ -117,6 +117,101 @@ double Dab::compute_primary_rms_current(double i1, double i2, double phi) {
 //   Primary ZVS:   phi > (1 - 1/d) * pi/2
 //   Secondary ZVS: phi > (1 - d) * pi/2
 // =========================================================================
+// =========================================================================
+// Static helpers: General piecewise-linear voltage waveforms
+// =========================================================================
+//
+// All modulation types (SPS/EPS/DPS/TPS) share the same bridge structure.
+// Inner phase shifts D1, D2 (radians) control the bridge duty cycles.
+// Outer phase shift phi controls power transfer.
+//
+// Primary bridge output Vab(theta), theta in [0, 2pi):
+//   [0,   D1)     : 0
+//   [D1,  pi)     : +V1
+//   [pi,  pi+D1)  : 0
+//   [pi+D1, 2pi)  : -V1
+//
+// Secondary bridge output Vcd(theta), shifted by phi, inner shift D2:
+//   theta_sec = (theta - phi) mod 2pi
+//   [0,   D2)     : 0
+//   [D2,  pi)     : +V2
+//   [pi,  pi+D2)  : 0
+//   [pi+D2, 2pi)  : -V2
+//
+// Inductor voltage (referred to primary): vL = Vab - N*Vcd
+// Inductor current slope: diL/dtheta = vL / (L * 2*pi*Fs)
+//
+// Initial condition from half-wave antisymmetry (iL(theta+pi) = -iL(theta)):
+//   delta = integral_0^pi  vL/L d(theta) / (2*pi*Fs)
+//   iL(0) = -delta/2
+//
+// Power: P = (1/(2*pi)) * integral_0^{2pi} Vab(theta) * iL(theta) d(theta)
+// =========================================================================
+
+static double Vab_at(double theta, double V1, double D1) {
+    theta = std::fmod(theta, 2.0 * M_PI);
+    if (theta < 0) theta += 2.0 * M_PI;
+    if (theta < D1)            return 0.0;
+    if (theta < M_PI)          return  V1;
+    if (theta < M_PI + D1)     return 0.0;
+    return -V1;
+}
+
+static double Vcd_at(double theta, double V2, double D2, double phi) {
+    double ts = std::fmod(theta - phi, 2.0 * M_PI);
+    if (ts < 0) ts += 2.0 * M_PI;
+    if (ts < D2)            return 0.0;
+    if (ts < M_PI)          return  V2;
+    if (ts < M_PI + D2)     return 0.0;
+    return -V2;
+}
+
+double Dab::compute_power_general(double V1, double V2, double N,
+                                   double phi, double D1, double D2,
+                                   double Fs, double L) {
+    const int Nsteps = 1024;
+    double dtheta = 2.0 * M_PI / Nsteps;
+    double inv_scale = 1.0 / (L * 2.0 * M_PI * Fs);
+
+    // Step 1: compute iL(0) from antisymmetry over half period
+    double delta = 0.0;
+    for (int k = 0; k < Nsteps / 2; ++k) {
+        double theta = (k + 0.5) * dtheta;  // midpoint integration
+        double vL = Vab_at(theta, V1, D1) - N * Vcd_at(theta, V2, D2, phi);
+        delta += vL * inv_scale * dtheta;
+    }
+    double iL = -delta / 2.0;  // iL(0)
+
+    // Step 2: integrate full period to get power
+    double power = 0.0;
+    for (int k = 0; k < Nsteps; ++k) {
+        double theta_L = k * dtheta;
+        double theta_mid = theta_L + 0.5 * dtheta;
+        double vL = Vab_at(theta_mid, V1, D1) - N * Vcd_at(theta_mid, V2, D2, phi);
+        iL += vL * inv_scale * dtheta;
+        double vab_mid = Vab_at(theta_mid, V1, D1);
+        power += vab_mid * iL * dtheta;
+    }
+    power /= (2.0 * M_PI);
+    return power;
+}
+
+// Binary-search for phi given desired power (for EPS/DPS/TPS)
+double Dab::compute_phase_shift_general(double V1, double V2, double N,
+                                         double D1, double D2,
+                                         double Fs, double L, double P) {
+    double phi_lo = 0.0;
+    double phi_hi = M_PI / 2.0;
+    for (int iter = 0; iter < 50; ++iter) {
+        double phi_mid = (phi_lo + phi_hi) / 2.0;
+        double P_mid = compute_power_general(V1, V2, N, phi_mid, D1, D2, Fs, L);
+        if (P_mid < P) phi_lo = phi_mid;
+        else           phi_hi = phi_mid;
+    }
+    return (phi_lo + phi_hi) / 2.0;
+}
+
+
 bool Dab::check_zvs_primary(double phi, double d) {
     if (d <= 0) return false;
     double phi_min = (1.0 - 1.0 / d) * M_PI / 2.0;
@@ -163,6 +258,18 @@ bool Dab::run_checks(bool assertErrors) {
             if (assertErrors) throw std::runtime_error("DAB: phase shift out of range (|phi| > 90 deg)");
             ok = false;
         }
+
+        // Validate inner phase shifts
+        double D1_deg = op.get_inner_phase_shift1().value_or(0.0);
+        double D2_deg = op.get_inner_phase_shift2().value_or(0.0);
+        if (D1_deg < 0 || D1_deg >= 90.0) {
+            if (assertErrors) throw std::runtime_error("DAB: innerPhaseShift1 must be in [0, 90) degrees");
+            ok = false;
+        }
+        if (D2_deg < 0 || D2_deg >= 90.0) {
+            if (assertErrors) throw std::runtime_error("DAB: innerPhaseShift2 must be in [0, 90) degrees");
+            ok = false;
+        }
     }
     return ok;
 }
@@ -205,13 +312,24 @@ DesignRequirements Dab::process_design_requirements() {
     double phi_deg = get_value_or(ops[0].get_phase_shift(), 0.0);
     double phi_rad = phi_deg * M_PI / 180.0;
 
+    // For EPS/DPS/TPS: get inner phase shifts from operating point
+    double D1_rad = Dab::get_D1_rad(ops[0]);
+    double D2_rad = Dab::get_D2_rad(ops[0]);
+
     // 3. Series inductance
     double L;
     if (get_series_inductance().has_value() && get_series_inductance().value() > 0) {
         L = get_series_inductance().value();
         // If phase shift is zero or very small, compute it from power
         if (std::abs(phi_rad) < 1e-6 && mainOutputPower > 0) {
-            phi_rad = compute_phase_shift(Vin_nom, mainOutputVoltage, N, Fs, L, mainOutputPower);
+            auto modTypeOpt = ops[0].get_modulation_type();
+            bool isSPS = !modTypeOpt.has_value() || modTypeOpt.value() == ModulationType::SPS;
+            if (isSPS) {
+                phi_rad = compute_phase_shift(Vin_nom, mainOutputVoltage, N, Fs, L, mainOutputPower);
+            } else {
+                phi_rad = compute_phase_shift_general(Vin_nom, mainOutputVoltage, N,
+                                                       D1_rad, D2_rad, Fs, L, mainOutputPower);
+            }
         }
     } else {
         // Compute L from power and phase shift
@@ -385,68 +503,68 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
     double phi_sign = (phi_rad >= 0) ? 1.0 : -1.0;
     double phi_abs = std::abs(phi_rad);
 
-    // Compute switching currents.
-    // Convention (TI TIDA-010054):
-    //   i1 = current at t=t_phi (the phase-shift instant, start of interval 2)
-    //   i2 = magnitude whose negative gives the current at t=0:
-    //        actual i(0) = -phi_sign * i2  (negative for forward ZVS, positive for reverse ZVS)
-    // The waveform is antisymmetric: iL(t + Thalf) = -iL(t).
-    // Continuity at t_phi: -phi_sign*i2 + slope1*t_phi = phi_sign*i1  (verified analytically).
-    double i1, i2;
-    compute_switching_currents(V1, V2, N, phi_abs, Fs, L, i1, i2);
+    // ---- Get D1, D2, phi for this operating point ----
+    double D1_rad = Dab::get_D1_rad(dabOpPoint);
+    double D2_rad = Dab::get_D2_rad(dabOpPoint);
+    // (phi_abs and phi_sign were already computed above)
 
-    // Sampling
-    const int N_samples = 256; // Samples per half-period
-    double dt = Thalf / N_samples;
+    // ---- General waveform generation (works for SPS/EPS/DPS/TPS) ----
+    const int N_samples = 256;
+    double dtheta = M_PI / N_samples;  // half-period in angle
+    double angle_per_time = 2.0 * M_PI * Fs;
+    double inv_scale = 1.0 / (L * angle_per_time);
 
-    // Build full-period waveforms
+    // Step 1: find iL(0) from half-wave antisymmetry
+    double delta = 0.0;
+    for (int k = 0; k < N_samples; ++k) {
+        double theta = (k + 0.5) * dtheta;
+        double vab = Vab_at(theta, V1, D1_rad);
+        double vcd = Vcd_at(theta, V2, D2_rad, phi_abs);
+        delta += (vab - N * vcd) * inv_scale * dtheta;
+    }
+    double iL_start = -delta / 2.0;
+    iL_start *= phi_sign;  // flip sign for reverse power flow
+
+    // Step 2: build full-period waveforms (2*N_samples+1 points)
     int totalSamples = 2 * N_samples + 1;
     std::vector<double> time_full(totalSamples);
-    std::vector<double> iL_full(totalSamples);      // Inductor current
-    std::vector<double> Vab_full(totalSamples);      // Primary bridge voltage
-    std::vector<double> Vcd_full(totalSamples);      // Secondary bridge voltage
-    std::vector<double> Im_full(totalSamples);       // Magnetizing current
+    std::vector<double> iL_full(totalSamples);
+    std::vector<double> Vab_full(totalSamples);
+    std::vector<double> Vcd_full(totalSamples);
+    std::vector<double> Im_full(totalSamples);
 
-    // Voltage slopes
-    double slope1 = (V1 + N * V2) / L;  // Interval 1: Vab=+V1, Vcd=-V2
-    double slope2 = (V1 - N * V2) / L;  // Interval 2: Vab=+V1, Vcd=+V2
-    double Im_slope = V1 / Lm;          // Magnetizing current slope
-    double Im_peak = V1 / (4.0 * Fs * Lm);
+    double Im_slope = V1 / Lm;
+    double Im_peak  = V1 / (4.0 * Fs * Lm);
+    double dt = Thalf / N_samples;
 
-    // Positive half-cycle (0 <= t <= Thalf)
     for (int k = 0; k <= N_samples; ++k) {
-        double t = k * dt;
+        double t     = k * dt;
+        double theta = t * angle_per_time;
         time_full[k] = t;
 
-        // Primary bridge: Vab = +V1
-        Vab_full[k] = V1;
+        Vab_full[k] = Vab_at(theta, V1, D1_rad);
+        Vcd_full[k] = phi_sign * Vcd_at(theta, V2, D2_rad, phi_abs);
+        Im_full[k]  = -Im_peak + Im_slope * t;
 
-        // Secondary bridge: Vcd depends on phase shift
-        if (t < t_phi) {
-            // Interval 1: secondary hasn't switched yet
-            // For positive phi (forward): Vcd = -V2
-            Vcd_full[k] = -phi_sign * V2;
-            // Starts at -phi_sign*i2 (negative for forward ZVS), ramps to phi_sign*i1
-            iL_full[k] = phi_sign * (-i2 + slope1 * t);
+        if (k == 0) {
+            iL_full[k] = iL_start;
         } else {
-            // Interval 2: secondary has switched
-            // For positive phi (forward): Vcd = +V2
-            Vcd_full[k] = phi_sign * V2;
-            // Continues from phi_sign*i1, ramps to phi_sign*i2 at Thalf
-            iL_full[k] = phi_sign * (i1 + slope2 * (t - t_phi));
+            double theta_prev = (k - 1) * dt * angle_per_time;
+            double theta_mid  = theta_prev + 0.5 * dt * angle_per_time;
+            double vab_mid    = Vab_at(theta_mid, V1, D1_rad);
+            double vcd_mid    = Vcd_at(theta_mid, V2, D2_rad, phi_abs);
+            double vL_mid     = phi_sign * (vab_mid - N * vcd_mid);
+            iL_full[k] = iL_full[k-1] + vL_mid * dt / L;
         }
-
-        // Magnetizing current: triangular, starts at -Im_peak at t=0
-        Im_full[k] = -Im_peak + Im_slope * t;
     }
 
-    // Negative half-cycle by antisymmetry
+    // Negative half by antisymmetry
     for (int k = 1; k <= N_samples; ++k) {
-        time_full[N_samples + k] = Thalf + k * dt;
-        iL_full[N_samples + k] = -iL_full[k];
-        Vab_full[N_samples + k] = -Vab_full[k];
-        Vcd_full[N_samples + k] = -Vcd_full[k];
-        Im_full[N_samples + k] = -Im_full[k];
+        time_full[N_samples + k]  = Thalf + k * dt;
+        iL_full[N_samples + k]    = -iL_full[k];
+        Vab_full[N_samples + k]   = -Vab_full[k];
+        Vcd_full[N_samples + k]   = -Vcd_full[k];
+        Im_full[N_samples + k]    = -Im_full[k];
     }
 
     // ---- Primary winding excitation ----

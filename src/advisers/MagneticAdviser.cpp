@@ -69,6 +69,23 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
         return {};
     }
 
+    // Step 2b: Energy stored filter — reject cores that cannot store the required energy.
+    // Without this, tiny cores pass the AP check but produce absurd losses for
+    // energy-storing topologies (e.g. flyback) because they need impossibly large gaps.
+    std::map<std::string, std::string> defaultModels{
+        {"gapReluctance", to_string(defaults.reluctanceModelDefault)},
+        {"coreLosses", to_string(defaults.coreLossesModelDefault)},
+        {"coreTemperature", to_string(defaults.coreTemperatureModelDefault)}
+    };
+    CoreAdviser::MagneticCoreFilterEnergyStored filterEnergyStored(inputs, defaultModels);
+    filterEnergyStored.set_scorings(&coreAdviser._scorings);
+    filterEnergyStored.set_filter_configuration(&coreAdviser._filterConfiguration);
+    magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+
+    if (magneticsWithScoring.empty()) {
+        return {};
+    }
+
     // Cap candidates: AP filter sorts by score, keep the best ones.
     // post_process_core takes ~2-3ms each; 100 candidates ≈ 250ms.
     const size_t maxCandidates = std::max(maximumNumberResults * 20, size_t(50));
@@ -78,6 +95,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
 
     // Step 3: Set turns and gap analytically (single pass, no iteration)
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+
+    // Step 3b: Saturation filter — reject cores that exceed flux density saturation
+    // after turns have been set. Must come after add_initial_turns_by_inductance.
+    CoreAdviser::MagneticCoreFilterSaturation filterSaturation;
+    filterSaturation.set_scorings(&coreAdviser._scorings);
+    filterSaturation.set_filter_configuration(&coreAdviser._filterConfiguration);
+    magneticsWithScoring = filterSaturation.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
 
     // Step 4: Add secondary windings from turns ratios
     correct_windings(&magneticsWithScoring, inputs);

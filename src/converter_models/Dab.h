@@ -163,6 +163,38 @@ public:
     static bool check_zvs_primary(double phi, double d);
     static bool check_zvs_secondary(double phi, double d);
 
+    // ---- Modulation type helpers ----
+
+    /** Retrieve primary inner phase shift D1 in radians for a given operating point */
+    static double get_D1_rad(const DabOperatingPoint& op) {
+        double deg = op.get_inner_phase_shift1().value_or(0.0);
+        return deg * M_PI / 180.0;
+    }
+
+    /** Retrieve secondary inner phase shift D2 in radians.
+     *  For DPS: if innerPhaseShift2 is absent, returns D1.
+     *  For SPS/EPS: returns 0 (or whatever is specified). */
+    static double get_D2_rad(const DabOperatingPoint& op) {
+        if (op.get_inner_phase_shift2().has_value()) {
+            return op.get_inner_phase_shift2().value() * M_PI / 180.0;
+        }
+        auto modTypeOpt = op.get_modulation_type();
+        if (modTypeOpt.has_value() && modTypeOpt.value() == ModulationType::DPS) {
+            return get_D1_rad(op);
+        }
+        return 0.0;
+    }
+
+    /** Compute power transfer for general modulation (numerical integration) */
+    static double compute_power_general(double V1, double V2, double N,
+                                         double phi, double D1, double D2,
+                                         double Fs, double L);
+
+    /** Binary-search for phi given desired power (for EPS/DPS/TPS) */
+    static double compute_phase_shift_general(double V1, double V2, double N,
+                                               double D1, double D2,
+                                               double Fs, double L, double P);
+
     // ---- SPICE simulation ----
     std::string generate_ngspice_circuit(
         const std::vector<double>& turnsRatios,

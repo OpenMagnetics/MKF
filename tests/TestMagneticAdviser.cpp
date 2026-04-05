@@ -5217,8 +5217,53 @@ TEST_CASE("Test_CoreFiltering_Trace_E55_vs_E102", "[adviser][core-adviser][debug
         if (coreName.has_value()) {
         }
     }
-    
+
     REQUIRE(results.size() > 0);
 }
+
+    TEST_CASE("Test_FastAdviser_Flyback_65W_NoAbsurdLosses", "[adviser][magnetic-adviser][fast][bug][smoke-test]") {
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        auto json_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "fast_adviser_flyback_65W_bug.json");
+        std::ifstream json_file(json_path);
+        OpenMagnetics::Inputs inputs = json::parse(json_file);
+        inputs.process();
+
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        auto results = magneticAdviser.get_advised_magnetic_fast(inputs, 1);
+
+        REQUIRE(results.size() > 0);
+        double totalLosses = results[0].second;
+        INFO("Total losses: " + std::to_string(totalLosses) + " W");
+        CHECK(totalLosses < 10.0);
+    }
+
+    TEST_CASE("Test_FastAdviser_LLC_Lm_Zero", "[adviser][magnetic-adviser][fast][bug][smoke-test]") {
+        clear_databases();
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        settings.set_use_toroidal_cores(false);
+        settings.set_use_concentric_cores(true);
+
+        auto json_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "fast_adviser_llc_lm_zero.json");
+        std::ifstream json_file(json_path);
+        OpenMagnetics::Inputs inputs = json::parse(json_file);
+        inputs.process();
+
+        MagneticAdviser magneticAdviser;
+        magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+        // Should not throw INVALID_INPUT despite Lm=0
+        auto results = magneticAdviser.get_advised_magnetic_fast(inputs, 1);
+
+        REQUIRE(results.size() > 0);
+        double totalLosses = results[0].second;
+        INFO("Total losses: " + std::to_string(totalLosses) + " W");
+        CHECK(totalLosses > 0);
+    }
 
 
