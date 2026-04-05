@@ -709,8 +709,10 @@ std::string Dab::generate_ngspice_circuit(
     circuit << "* N=" << N << ", L=" << (L*1e6) << "uH, Lm=" << (Lm*1e6) << "uH\n\n";
 
     // Switch and diode models
-    circuit << ".model SW1 SW(Ron=10m Roff=10Meg Vt=2.5)\n";
-    circuit << ".model DIDEAL D(Is=1e-14 N=0.001)\n\n";
+    // Use VH=0.5 for hysteresis to reduce switch chatter
+    circuit << ".model SW1 SW VT=2.5 VH=0.5\n";
+    // Standard diode (N=1) — ultra-low N (e.g. 0.001) causes timestep collapse
+    circuit << ".model DIDEAL D(IS=1e-14 RS=1e-3)\n\n";
 
     // DC input voltage
     circuit << "Vdc1 vin_dc1 0 " << V1 << "\n\n";
@@ -736,8 +738,10 @@ std::string Dab::generate_ngspice_circuit(
     circuit << "S3 vin_dc1 bridge_b1 pwm_p2 0 SW1\n";
     circuit << "D3 0 bridge_b1 DIDEAL\n\n";
 
-    // Sense primary current
-    circuit << "Vpri_sense bridge_a1 pri_out 0\n\n";
+    // Sense primary current (0V source in series between bridge_a1 and pri_out)
+    circuit << "Vpri_sense bridge_a1 pri_out 0\n";
+    // Differential bridge output Vab = V(pri_out) - V(bridge_b1) via VCVS
+    circuit << "Evab vab 0 pri_out bridge_b1 1\n\n";
 
     // ==== SERIES INDUCTANCE ====
     circuit << "* Series inductance (leakage + external)\n";
@@ -781,9 +785,18 @@ std::string Dab::generate_ngspice_circuit(
     circuit << "S7 vin_dc2 bridge_sec_b pwm_s2 0 SW1\n";
     circuit << "D7 0 bridge_sec_b DIDEAL\n\n";
 
-    // Simulation commands
+    // Transient Analysis
     circuit << ".tran " << std::scientific << stepTime
-            << " " << simTime << " " << startTime << "\n";
+            << " " << simTime << " " << startTime << "\n\n";
+
+    // Output signals: vab = differential H-bridge output (bipolar +/-V1)
+    circuit << ".save v(vab) i(Vpri_sense) v(trafo_sec_a) i(Vdc2)\n\n";
+
+    // Solver options for convergence in switching circuits
+    circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
+    // Initial condition: pre-charge output to target voltage to speed up settling
+    circuit << ".ic v(vin_dc2)=" << V2 << "\n\n";
+
     circuit << ".end\n";
 
     return circuit.str();
@@ -862,12 +875,16 @@ std::vector<ConverterWaveforms> Dab::simulate_and_extract_topology_waveforms(
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("v(pri_out)"));
-            wf.set_input_current(getWaveform("i(vpri_sense)"));
-            
+            // Names are normalized by NgspiceRunner::parse_raw_file:
+            //   v(node)   -> node
+            //   i(source) -> source#branch
+            // vab = Evab VCVS = V(pri_out) - V(bridge_b1) = bipolar +/-V1
+            wf.set_input_voltage(getWaveform("vab"));
+            wf.set_input_current(getWaveform("vpri_sense#branch"));
+
             if (!turnsRatios.empty()) {
-                wf.get_mutable_output_voltages().push_back(getWaveform("v(trafo_sec_a)"));
-                wf.get_mutable_output_currents().push_back(getWaveform("i(vdc2)"));
+                wf.get_mutable_output_voltages().push_back(getWaveform("trafo_sec_a"));
+                wf.get_mutable_output_currents().push_back(getWaveform("vdc2#branch"));
             }
             
             results.push_back(wf);

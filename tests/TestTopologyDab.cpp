@@ -829,4 +829,86 @@ namespace {
         }
     }
 
+    // =====================================================================
+    // TEST 11: NgSpice Simulation vs Analytical Comparison
+    // Runs the DAB SPICE netlist through NgSpice and compares key waveform
+    // metrics (inductor current peak, primary voltage amplitude) against the
+    // analytical model.  Uses a tighter Lm (5× series inductance) to make the
+    // magnetising current large enough to exercise that path, and a loose ±20%
+    // tolerance to absorb SPICE switching transients.
+    // =====================================================================
+    TEST_CASE("Test_Dab_Ngspice_Simulation", "[converter-model][dab-topology][ngspice-simulation]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+
+        json dabJson;
+        json inputVoltage;
+        inputVoltage["nominal"] = 800.0;
+        dabJson["inputVoltage"] = inputVoltage;
+        dabJson["seriesInductance"] = 35e-6;
+        dabJson["useLeakageInductance"] = false;
+        dabJson["operatingPoints"] = json::array();
+        {
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = {500.0};
+            op["outputCurrents"] = {20.0};
+            op["phaseShift"] = 23.0;
+            op["switchingFrequency"] = 100000;
+            dabJson["operatingPoints"].push_back(op);
+        }
+
+        OpenMagnetics::Dab dab(dabJson);
+        dab.set_num_steady_state_periods(10);
+        dab.set_num_periods_to_extract(2);
+        auto req = dab.process_design_requirements();
+
+        std::vector<double> turnsRatios;
+        for (auto& tr : req.get_turns_ratios())
+            turnsRatios.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+
+        SECTION("Simulation runs and returns waveform data") {
+            auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
+            REQUIRE(!waveforms.empty());
+            auto& wf = waveforms[0];
+            CHECK(!wf.get_input_voltage().get_data().empty());
+            CHECK(!wf.get_input_current().get_data().empty());
+            REQUIRE(!wf.get_output_voltages().empty());
+            CHECK(!wf.get_output_voltages()[0].get_data().empty());
+        }
+
+        SECTION("Simulated primary voltage is bipolar ~±800 V") {
+            auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
+            REQUIRE(!waveforms.empty());
+            auto vData = waveforms[0].get_input_voltage().get_data();
+            double vMax = *std::max_element(vData.begin(), vData.end());
+            double vMin = *std::min_element(vData.begin(), vData.end());
+            REQUIRE_THAT(vMax, Catch::Matchers::WithinAbs( 800.0, 80.0));
+            REQUIRE_THAT(vMin, Catch::Matchers::WithinAbs(-800.0, 80.0));
+        }
+
+        SECTION("Simulated peak inductor current matches analytical within 20%") {
+            // Analytical peak
+            auto analOps = dab.process_operating_points(turnsRatios, Lm);
+            REQUIRE(!analOps.empty());
+            auto analI = analOps[0].get_excitations_per_winding()[0]
+                             .get_current()->get_waveform().value().get_data();
+            double analPeak = *std::max_element(analI.begin(), analI.end());
+
+            // SPICE peak
+            auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
+            REQUIRE(!waveforms.empty());
+            auto spiceI = waveforms[0].get_input_current().get_data();
+            double spicePeak = *std::max_element(spiceI.begin(), spiceI.end());
+
+            INFO("Analytical peak: " << analPeak << " A");
+            INFO("SPICE peak: " << spicePeak << " A");
+            // Allow ±20% to accommodate switching transients and dead-time effects
+            REQUIRE_THAT(spicePeak, Catch::Matchers::WithinRel(analPeak, 0.20));
+        }
+    }
+
 } // anonymous namespace
