@@ -334,11 +334,16 @@ namespace {
 
             double N_ratio = turnsRatios[0];
 
-            // Secondary current = N * primary current
+            // The primary winding carries iL + Im (power transfer + magnetizing).
+            // The secondary carries only the power-transfer component: N * iL.
+            // Since Im_peak << iL_peak, secondary ≈ N * primary with Im as the error term.
+            // Tolerance is relaxed to allow for the magnetizing current offset.
+            double Im_peak_approx = 800.0 / (4.0 * 100e3 * Lm);
+            double tolerance = N_ratio * Im_peak_approx * 1.1;
             for (size_t k = 0; k < priI.size(); k += priI.size() / 10) {
                 REQUIRE_THAT(secI[k],
                     Catch::Matchers::WithinAbs(N_ratio * priI[k],
-                        std::max(0.01, std::abs(N_ratio * priI[k]) * 0.02)));
+                        std::max(tolerance, std::abs(N_ratio * priI[k]) * 0.05)));
             }
         }
     }

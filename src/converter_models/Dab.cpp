@@ -497,8 +497,6 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
 
     double period = 1.0 / Fs;
     double Thalf = period / 2.0;
-    double t_phi = std::abs(phi_rad) / (2.0 * M_PI * Fs); // Time for phase shift
-
     // Sign of phi determines power flow direction
     double phi_sign = (phi_rad >= 0) ? 1.0 : -1.0;
     double phi_abs = std::abs(phi_rad);
@@ -568,33 +566,23 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
     }
 
     // ---- Primary winding excitation ----
-    // Current: iL(t) (the inductor current flows through the transformer primary)
-    // Voltage: Vab(t) (the full-bridge output voltage is across the transformer primary
-    //          + series inductor. The voltage across just the transformer primary is
-    //          Vab - L*diL/dt. However, for MAS operating point, we use the voltage
-    //          that appears across the transformer magnetizing inductance, which drives
-    //          the flux. In practice, if use_leakage_inductance is true, the series L
-    //          is the leakage, and the voltage across Lm is Vab - L*diL/dt.
-    //          If use_leakage_inductance is false, the transformer primary voltage
-    //          is approximately Vab (the external inductor drops the difference).
-    //          For the MAS design, we provide the bipolar rectangular waveform
-    //          that the core sees, which is approximately Vab for the transformer
-    //          primary voltage.
+    // The physical primary winding carries iL (power transfer) PLUS Im (magnetizing).
+    // iL_full was computed assuming an ideal transformer (Lm → ∞); Im_full is the
+    // additional magnetizing current superimposed on the primary due to finite Lm.
+    // Total primary winding current = iL_full + Im_full.
+    // The secondary winding does NOT carry Im (it circulates entirely in the
+    // primary-side magnetizing branch).
     {
-        // For the transformer core flux calculation, the relevant voltage is
-        // across the magnetizing inductance. We compute it properly:
-        // V_Lm = Lm * dIm/dt = Lm * (V1/Lm) = V1 during positive half
-        // This is simply the bipolar rectangular wave +/- V1
-        // (same as Vab since the series L drop doesn't affect the core voltage
-        //  in the ideal transformer model)
         std::vector<double> V_primary(totalSamples);
+        std::vector<double> I_primary(totalSamples);
         for (int k = 0; k < totalSamples; ++k) {
             V_primary[k] = Vab_full[k];
+            I_primary[k] = iL_full[k] + Im_full[k];
         }
 
         Waveform currentWaveform;
         currentWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
-        currentWaveform.set_data(iL_full);
+        currentWaveform.set_data(I_primary);
         currentWaveform.set_time(time_full);
 
         Waveform voltageWaveform;
@@ -615,7 +603,8 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
         std::vector<double> vSecData(totalSamples);
 
         for (int k = 0; k < totalSamples; ++k) {
-            // Secondary current = N * iL (reflected from primary)
+            // Secondary current = n * iL (power-transfer component only).
+            // Im is purely a primary magnetizing current; it does not appear on the secondary.
             iSecData[k] = n * iL_full[k];
             // Secondary voltage = Vcd (H-bridge 2 output)
             vSecData[k] = Vcd_full[k];
