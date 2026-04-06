@@ -440,6 +440,7 @@ enum class CircuitSimulatorExporterCurveFittingModes : int {
     ANALYTICAL,
     LADDER,
     FRACPOLE,
+    ROSANO,
     AUTO
 };
 
@@ -479,6 +480,11 @@ class CircuitSimulatorExporter {
         static void core_ladder_func(double *p, double *x, int m, int n, void *data);
         static double core_rosano_model(double x[], double frequency);
         static void core_rosano_func(double *p, double *x, int m, int n, void *data);
+
+        // Rosano winding model: Z = Rdc + sum_k(Rk || jwLk)  [flat series of parallel R||L cells]
+        // coefficients: [R1, L1, R2, L2, ..., R6, L6]  (12 unknowns, 6 stages)
+        static double winding_rosano_model(double x[], double frequency, double dcResistance);
+        static void winding_rosano_func(double *p, double *x, int m, int n, void *data);
 
         static double fracpole_skin_model(double x[], double frequency);
         static void fracpole_skin_func(double *p, double *x, int m, int n, void *data);

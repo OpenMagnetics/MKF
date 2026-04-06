@@ -239,6 +239,129 @@ void CircuitSimulatorExporter::core_rosano_func(double *p, double *x, int m, int
     }
 }
 
+// Rosano winding model: Z = Rdc + sum_k(Rk || jwLk)
+// Each stage is a resistor in parallel with an inductor, chained in series.
+// At DC: all L short → Z = Rdc. At high freq: all L open → Z = Rdc + ΣRk.
+// coefficients: [R1, L1, R2, L2, ..., R6, L6]  (12 unknowns, 6 stages)
+// Rdc is passed separately (pinned to measured DC resistance, not a fitting parameter).
+double CircuitSimulatorExporter::winding_rosano_model(double x[], double frequency, double dcResistance) {
+    const int nStages = 6;
+    for (int i = 0; i < 2 * nStages; ++i)
+        if (x[i] <= 0) return 1e30;
+
+    double w = 2 * std::numbers::pi * frequency;
+    auto Z = std::complex<double>(dcResistance, 0);
+    for (int k = 0; k < nStages; ++k) {
+        auto Rk = std::complex<double>(x[2 * k], 0);
+        auto Lk = std::complex<double>(0, w * x[2 * k + 1]);
+        Z += parallel(Rk, Lk);
+    }
+    return Z.real();
+}
+
+// Fitting function in log space for uniform relative error across wide dynamic range
+void CircuitSimulatorExporter::winding_rosano_func(double *p, double *x, int m, int n, void *data) {
+    double* dcResistanceAndFrequencies = static_cast<double*>(data);
+    double dcResistance = dcResistanceAndFrequencies[0];
+    for (int i = 0; i < n; ++i) {
+        double val = winding_rosano_model(p, dcResistanceAndFrequencies[i + 1], dcResistance);
+        x[i] = (val > 0) ? std::log(val) : -50.0;
+    }
+}
+
+std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_rosano(Magnetic magnetic, double temperature) {
+    const size_t nStages = 6;
+    const size_t numberUnknowns = 2 * nStages;   // [R1,L1, R2,L2, ..., R6,L6]
+    const size_t numberElements = 40;
+    const size_t numberElementsPlusOne = numberElements + 1;
+    double startingFrequency = 0.1;
+    double endingFrequency = 10000000;
+    auto coil = magnetic.get_coil();
+
+    std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        Curve2D windingAcResistanceData = Sweeper().sweep_winding_resistance_over_frequency(
+            magnetic, startingFrequency, endingFrequency, numberElements, windingIndex, temperature);
+        auto frequenciesVector = windingAcResistanceData.get_x_points();
+        auto valuePoints = windingAcResistanceData.get_y_points();
+
+        double acResistances[numberElements];
+        size_t numPoints = std::min(valuePoints.size(), numberElements);
+        for (size_t index = 0; index < numPoints; ++index)
+            acResistances[index] = valuePoints[index];
+
+        // Pack [Rdc, f0, f1, ...] into data array for fitting function
+        double logAcResistances[numberElements];
+        double dcResistanceAndFrequencies[numberElementsPlusOne];
+        double Rdc = acResistances[0];
+        dcResistanceAndFrequencies[0] = Rdc;
+        size_t numFreqs = std::min(frequenciesVector.size(), numberElements);
+        for (size_t index = 0; index < numFreqs; ++index) {
+            dcResistanceAndFrequencies[index + 1] = frequenciesVector[index];
+            logAcResistances[index] = std::log(acResistances[index]);
+        }
+
+        double Rmax = *std::max_element(valuePoints.begin(), valuePoints.begin() + numPoints);
+        double fStart = frequenciesVector.front();
+        double fEnd = frequenciesVector.back();
+
+        double bestError = DBL_MAX;
+        std::vector<double> bestCoeffs;
+
+        // Grid search over rScale and fScale for physics-informed initialization
+        double rScales[] = {0.5, 1.0, 2.0, 5.0};
+        double fScales[] = {0.3, 1.0, 3.0};
+
+        for (double rScale : rScales) {
+            if (bestError < 0.05) break;
+            for (double fScale : fScales) {
+                if (bestError < 0.05) break;
+
+                double coefficients[numberUnknowns];
+                double Rrange = std::max(Rmax - Rdc, Rdc * 0.1) * rScale;
+
+                // Distribute 6 transition frequencies geometrically across [fStart, fEnd]
+                for (size_t k = 0; k < nStages; ++k) {
+                    double fk = fStart * std::pow(fEnd / fStart, (k + 0.5) / static_cast<double>(nStages)) * fScale;
+                    double wk = 2 * std::numbers::pi * fk;
+                    double Rk = Rrange / static_cast<double>(nStages);
+                    coefficients[2 * k]     = std::max(Rk, 1e-9);
+                    coefficients[2 * k + 1] = std::max(Rk / wk, 1e-15);
+                }
+
+                double opts[5] = {1e-3, 1e-25, 1e-25, 1e-25, 1e-19};
+                double info[10];
+                eigen_levmar_dif(CircuitSimulatorExporter::winding_rosano_func, coefficients,
+                                 logAcResistances, numberUnknowns, numberElements,
+                                 10000, opts, info, nullptr, nullptr,
+                                 static_cast<void*>(&dcResistanceAndFrequencies));
+
+                bool allPositive = true;
+                for (size_t i = 0; i < numberUnknowns; ++i)
+                    if (coefficients[i] <= 0) { allPositive = false; break; }
+                if (!allPositive) continue;
+
+                double errorAverage = 0;
+                for (size_t index = 0; index < numFreqs; ++index) {
+                    double modeled = CircuitSimulatorExporter::winding_rosano_model(
+                        coefficients, frequenciesVector[index], Rdc);
+                    double error = fabs(valuePoints[index] - modeled) / valuePoints[index];
+                    errorAverage += error;
+                }
+                errorAverage /= numFreqs;
+
+                if (errorAverage < bestError) {
+                    bestError = errorAverage;
+                    bestCoeffs = std::vector<double>(coefficients, coefficients + numberUnknowns);
+                }
+            }
+        }
+
+        acResistanceCoefficientsPerWinding.push_back(bestCoeffs);
+    }
+    return acResistanceCoefficientsPerWinding;
+}
+
 std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_ladder(Magnetic magnetic, double temperature) {
     const size_t numberUnknowns = 10;
 
@@ -691,6 +814,9 @@ std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistan
     }
     else if (mode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
         return calculate_ac_resistance_coefficients_per_winding_fracpole(magnetic, temperature);
+    }
+    else if (mode == CircuitSimulatorExporterCurveFittingModes::ROSANO) {
+        return calculate_ac_resistance_coefficients_per_winding_rosano(magnetic, temperature);
     }
     else {
         return calculate_ac_resistance_coefficients_per_winding_analytical(magnetic, temperature);
@@ -1828,6 +1954,43 @@ static std::string emit_core_rosano_spice(
     return s;
 }
 
+// Emit Rosano winding AC-resistance network for SPICE.
+// Topology: Z = Rdc + (R1||L1) + (R2||L2) + ... + (R6||L6)  [flat series of parallel R||L cells]
+// Rdc is emitted separately. Each cell Rk||Lk sits between two successive nodes.
+// coefficients: [R1, L1, R2, L2, ..., R6, L6]
+static std::string emit_winding_rosano_spice(
+    const std::vector<double>& coeffs,
+    const std::string& is,
+    double dcResistance) {
+
+    if (coeffs.size() < 2) return "";
+
+    size_t nStages = coeffs.size() / 2;
+    std::string s;
+    s += "* Rosano winding AC loss network (" + std::to_string(nStages) + " R||L stages)\n";
+
+    // Rdc in series (R_0 in Rosano's notation)
+    s += "Rdc" + is + " P" + is + "+ Node_Rdc_" + is + " " + to_string(dcResistance, 12) + "\n";
+
+    std::string prevNode = "Node_Rdc_" + is;
+    for (size_t k = 0; k < nStages; ++k) {
+        double Rk = coeffs[2 * k];
+        double Lk = coeffs[2 * k + 1];
+        std::string ks = std::to_string(k + 1);
+        std::string nextNode = (k == nStages - 1) ? "Node_R_Lmag_" + is : ("Node_Rw_" + is + "_" + ks);
+
+        if (Rk > 0 && Lk > 0) {
+            s += "Rw" + is + "_" + ks + " " + prevNode + " " + nextNode + " " + to_string(Rk, 12) + "\n";
+            s += "Lw" + is + "_" + ks + " " + prevNode + " " + nextNode + " " + to_string(Lk, 12) + "\n";
+        } else {
+            // Degenerate stage: short through
+            s += "Rwshort" + is + "_" + ks + " " + prevNode + " " + nextNode + " 1e-9\n";
+        }
+        prevNode = nextNode;
+    }
+    return s;
+}
+
 // Emit saturating magnetizing inductance for ngspice using behavioral modeling.
 // Uses a tanh-based flux linkage model: Lambda(I) = Lambda_sat * tanh(I/I_sat) + L_linear * I
 // where L_linear accounts for the air gap contribution.
@@ -2059,11 +2222,12 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     auto coil = magnetic.get_coil();
 
     double magnetizingInductance = resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
-    auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature);
+
+    // Resolve AUTO mode from settings before computing coefficients so we use the right model
+    auto resolvedMode = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
+    auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature, resolvedMode);
     auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
-    // Resolve AUTO mode from settings
-    auto resolvedMode = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
     std::vector<FractionalPoleNetwork> fracpoleNets;
     std::optional<FractionalPoleNetwork> coreFracNet;
     if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
@@ -2129,6 +2293,21 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
             throw std::invalid_argument("Analytical mode not supported in NgSpice");
         }
+        else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::ROSANO) {
+            // Rosano winding model: Rdc + (R1||L1) + ... + (R6||L6) flat series
+            const auto& rosanoCoeffs = acResistanceCoefficientsPerWinding[index];
+            if (!rosanoCoeffs.empty()) {
+                circuitString += emit_winding_rosano_spice(rosanoCoeffs, is, effectiveResistanceThisWinding);
+            } else {
+                // Fitting failed — fall back to DC resistance only
+                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            }
+            if (includeSaturation && satParams.valid) {
+                circuitString += emit_saturating_inductor_ngspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
+            } else {
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
+            }
+        }
         else {
             // LADDER mode (default)
             bool validLadderCoeffs = true;
@@ -2140,7 +2319,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
                     break;
                 }
             }
-            
+
             if (validLadderCoeffs && acResistanceCoefficientsPerWinding[index].size() >= 2) {
                 for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
                     std::string ladderIndexs = std::to_string(ladderIndex);
@@ -2263,11 +2442,12 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
     auto coil = magnetic.get_coil();
 
     double magnetizingInductance = resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
-    auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature);
+
+    // Resolve AUTO mode from settings before computing coefficients so we use the right model
+    auto resolvedMode_lt = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
+    auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature, resolvedMode_lt);
     auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
-    // Resolve AUTO mode from settings
-    auto resolvedMode_lt = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
     std::vector<FractionalPoleNetwork> fracpoleNets_lt;
     std::optional<FractionalPoleNetwork> coreFracNet_lt;
     if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::FRACPOLE) {
@@ -2332,6 +2512,19 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
                 circuitString += emit_saturating_inductor_ltspice(satParams, is, "P" + is + "-", "Node_R_Lmag_" + is);
             } else {
                 circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+            }
+        }
+        else if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ROSANO) {
+            const auto& rosanoCoeffs = acResistanceCoefficientsPerWinding[index];
+            if (!rosanoCoeffs.empty()) {
+                circuitString += emit_winding_rosano_spice(rosanoCoeffs, is, effectiveResistanceThisWinding);
+            } else {
+                circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            }
+            if (includeSaturation && satParams.valid) {
+                circuitString += emit_saturating_inductor_ltspice(satParams, is, "Node_R_Lmag_" + is, "P" + is + "-");
+            } else {
+                circuitString += "Lmag_" + is + " Node_R_Lmag_" + is + " P" + is + "- {NumberTurns_" + is + "**2*Permeance}\n";
             }
         }
         else {
