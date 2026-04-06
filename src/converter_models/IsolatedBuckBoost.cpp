@@ -7,6 +7,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <iomanip>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
@@ -448,13 +449,25 @@ namespace OpenMagnetics {
             circuit << "Rload" << secIdx << " vout" << secIdx << " 0 " << loadResistance << "\n\n";
         }
         
+        // Magnetizing current probe:
+        // I_mag = I(Lpri) during ON time (secondary blocked)
+        //       + sum_k( I(Lsec_k) / turnsRatio_k ) during OFF time (primary switch open)
+        // Combined gives a continuous triangular waveform matching the analytical TRIANGULAR model.
+        circuit << "* Magnetizing current probe (continuous triangular waveform)\n";
+        circuit << "Bimag 0 imag_p I = I(Lpri)";
+        for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+            circuit << " + I(Lsec" << secIdx << ")/" << std::fixed << std::setprecision(6) << turnsRatios[secIdx];
+        }
+        circuit << "\n";
+        circuit << "Vimag_sense imag_p 0 0\n\n";
+
         // Transient Analysis
         circuit << "* Transient Analysis\n";
         circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
-        
+
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_in) i(Vpri_sense) v(vpri_out) i(Vpri_out_sense)";
+        circuit << ".save v(pri_in) i(Vpri_sense) i(Vimag_sense) v(vpri_out) i(Vpri_out_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
@@ -526,7 +539,8 @@ namespace OpenMagnetics {
                 NgspiceRunner::WaveformNameMapping waveformMapping;
                 
                 // Primary winding
-                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vpri_sense#branch"}});
+                // Use magnetizing current probe: I(Lpri) + reflected secondary currents
+                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vimag_sense#branch"}});
                 
                 // Secondary windings
                 for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
@@ -623,7 +637,7 @@ namespace OpenMagnetics {
             wf.set_operating_point_name(name);
             
             wf.set_input_voltage(getWaveform("pri_in"));
-            wf.set_input_current(getWaveform("vpri_sense#branch"));
+            wf.set_input_current(getWaveform("vimag_sense#branch"));
             
             for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
