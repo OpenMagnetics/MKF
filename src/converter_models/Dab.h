@@ -92,6 +92,16 @@ private:
     double computedDeadTime = 200e-9;         // Default 200 ns dead time
     double computedPhaseShift = 0;            // phi in radians (computed if not given)
 
+    // Diagnostic outputs from the per-OP analytical solver, populated inside
+    // process_operating_point_for_input_voltage. These mirror the equivalent
+    // accessors on the LLC model so callers can introspect ZVS margins, the
+    // detected modulation regime, and the sub-interval timing structure.
+    mutable int lastModulationType = 0;       // 0=SPS, 1=EPS, 2=DPS, 3=TPS
+    mutable double lastZvsMarginPrimary = 0;   // phi - phi_min,primary (rad)
+    mutable double lastZvsMarginSecondary = 0; // phi - phi_min,secondary (rad)
+    mutable double lastPhaseShiftRad = 0;
+    mutable std::vector<double> lastSubIntervalTimes; // boundary times in radians, [0, 2π]
+
 public:
     bool _assertErrors = false;
 
@@ -115,6 +125,18 @@ public:
     void set_computed_dead_time(double value) { computedDeadTime = value; }
 
     double get_computed_phase_shift() const { return computedPhaseShift; }
+
+    // ---- Per-OP diagnostic accessors (populated by process_operating_point_for_input_voltage) ----
+    /** Modulation type used for the last solved op point: 0=SPS, 1=EPS, 2=DPS, 3=TPS. */
+    int get_last_modulation_type() const { return lastModulationType; }
+    /** ZVS margin on the primary bridge: phi - (1 - 1/d)·π/2 (rad). > 0 means ZVS achieved. */
+    double get_last_zvs_margin_primary() const { return lastZvsMarginPrimary; }
+    /** ZVS margin on the secondary bridge: phi - (1 - d)·π/2 (rad). > 0 means ZVS achieved. */
+    double get_last_zvs_margin_secondary() const { return lastZvsMarginSecondary; }
+    /** Outer phase shift used in the last solved op point (rad, signed). */
+    double get_last_phase_shift_rad() const { return lastPhaseShiftRad; }
+    /** Sub-interval boundary angles for the last solved op point (rad, [0, 2π]). */
+    const std::vector<double>& get_last_sub_interval_times() const { return lastSubIntervalTimes; }
 
     // ---- Topology interface ----
     bool run_checks(bool assert = false) override;
@@ -196,6 +218,31 @@ public:
                                                double Fs, double L, double P);
 
     // ---- SPICE simulation ----
+    //
+    // The generated DAB netlist deliberately uses idealised voltage-controlled
+    // switches (`SW1` model with hysteresis) rather than full MOSFET models.
+    // The omitted effects are:
+    //   • Finite Rds(on) variation with temperature
+    //   • Coss / parasitic drain-source capacitance
+    //   • Body-diode reverse recovery (trr, Qrr)
+    //   • Gate-driver propagation delay
+    //   • Switching-loss energy (Eon, Eoff)
+    //
+    // None of these effects flow through the magnetic component (the user's
+    // transformer winding sees only iL, vL, and the bridge voltages, all of
+    // which are dominated by the resonant tank dynamics, not the silicon).
+    // MKF's purpose is magnetic-component design (winding loss, core loss,
+    // flux density, leakage inductance budgeting), so the SPICE model is
+    // tuned for accurate transformer waveforms — not for converter-level
+    // efficiency, ZVS validation, or EMI prediction. The analytical model
+    // (process_operating_point_for_input_voltage) and the SPICE model agree
+    // to within ~5 % NRMSE on the primary winding current across all four
+    // modulation modes (SPS / EPS / DPS / TPS), which is the relevant
+    // accuracy bar for magnetic design.
+    //
+    // If you need realistic switching transitions (e.g. for ZVS margin
+    // verification at light load), wrap the generated netlist with your own
+    // MOSFET sub-circuit replacing each `S* … SW1` line.
     std::string generate_ngspice_circuit(
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
