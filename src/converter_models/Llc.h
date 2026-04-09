@@ -48,6 +48,20 @@ private:
     double computedInductanceRatio = 5;       // Ln = L / Ls
     double computedDeadTime = 1000e-9;        // Default 1 µs dead time (ZVS-safe)
 
+    // User overrides (skipped MAS schema; settable via C++)
+    double userResonantInductance = 0;        // 0 = unset
+    double userResonantCapacitance = 0;       // 0 = unset
+
+    // Diagnostic outputs from the Nielsen TDA solver, populated per operating
+    // point inside process_operating_point_for_input_voltage. Mode index is
+    // assigned per Nielsen's mode-1..6 numbering (see Llc.cpp). LIP is the
+    // Load Independent Point: f1 = 1/(2π·√(Ls·C)).
+    mutable int lastMode = 0;
+    mutable double computedLipFrequency = 0.0;
+    mutable double computedLipInputVoltage = 0.0;
+    mutable std::vector<int> lastSubStateSequence;
+    mutable double lastSteadyStateResidual = 0.0;
+
 public:
     bool _assertErrors = false;
 
@@ -67,6 +81,28 @@ public:
     double get_computed_dead_time() const { return computedDeadTime; }
     void set_computed_inductance_ratio(double value) { this->computedInductanceRatio = value; }
     void set_computed_dead_time(double value) { this->computedDeadTime = value; }
+
+    // User overrides for Ls/Cr — bypass the Q/Ln/fr design flow when the user
+    // already has measured component values (e.g. validating against a
+    // published reference design like Nielsen's). Setting either to a value
+    // > 0 makes process_design_requirements skip its derivation for that
+    // component and use the user value instead.
+    void set_user_resonant_inductance(double value)  { userResonantInductance = value; }
+    void set_user_resonant_capacitance(double value) { userResonantCapacitance = value; }
+    double get_user_resonant_inductance() const  { return userResonantInductance; }
+    double get_user_resonant_capacitance() const { return userResonantCapacitance; }
+
+    // Nielsen TDA diagnostics (populated by process_operating_point_for_input_voltage)
+    /** Mode index 1..6 per Nielsen's classification (page 1 of llc.pdf). */
+    int get_last_mode() const { return lastMode; }
+    /** LIP frequency f1 = 1/(2π·√(Ls·Cr)). Equivalent to Nielsen's "Flip". */
+    double get_lip_frequency() const { return computedLipFrequency; }
+    /** Input bridge voltage at the LIP boundary. Equivalent to Nielsen's "Vinlip". */
+    double get_lip_input_voltage() const { return computedLipInputVoltage; }
+    /** Sequence of LlcSubState IDs traversed in the last solved half-cycle. */
+    const std::vector<int>& get_last_sub_state_sequence() const { return lastSubStateSequence; }
+    /** L2-norm of the steady-state residual ‖F(x0)‖ from the last Newton solve. */
+    double get_last_steady_state_residual() const { return lastSteadyStateResidual; }
 
     // User-settable inductance ratio (Ln = Lm / Ls)
     // Returns user value if set, otherwise falls back to computedInductanceRatio (default 5)

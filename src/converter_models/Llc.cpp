@@ -1,4 +1,4 @@
-// Version: 3.2 — Runo Nielsen TDA + Integrated Ls + Inductance Ratio
+// Version: 3.3 — Runo Nielsen TDA + Integrated Ls + Inductance Ratio + Multi-output
 #include "converter_models/Llc.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
@@ -7,76 +7,12 @@
 #include <cmath>
 #include <sstream>
 #include <algorithm>
+#include <stdexcept>
+#include <iostream>
+#include <limits>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
-
-// =====================================================================
-// Runo Nielsen Operating Mode Classification
-// Reference: http://www.runonielsen.dk/LLC_LCC.pdf
-// =====================================================================
-
-enum class LlcOperatingMode {
-    MODE_UNDEFINED = 0,
-    MODE_BELOW_RESONANCE_LIGHT,
-    MODE_NEAR_RESONANCE_LIGHT,
-    MODE_ABOVE_RESONANCE_LIGHT,
-    MODE_ABOVE_RESONANCE_HEAVY,
-    MODE_ABOVE_LIP_CONTINUOUS,
-    MODE_OVERLOAD
-};
-
-inline const char* mode_to_string(LlcOperatingMode mode) {
-    switch(mode) {
-        case LlcOperatingMode::MODE_BELOW_RESONANCE_LIGHT: return "Below Resonance (Capacitive)";
-        case LlcOperatingMode::MODE_NEAR_RESONANCE_LIGHT: return "Near Resonance (Optimal)";
-        case LlcOperatingMode::MODE_ABOVE_RESONANCE_LIGHT: return "Above Resonance (Light Load)";
-        case LlcOperatingMode::MODE_ABOVE_RESONANCE_HEAVY: return "Above Resonance (Heavy Load)";
-        case LlcOperatingMode::MODE_ABOVE_LIP_CONTINUOUS: return "Above LIP (Continuous Diode)";
-        case LlcOperatingMode::MODE_OVERLOAD: return "Overload";
-        default: return "Undefined";
-    }
-}
-
-struct LlcModeAnalysis {
-    LlcOperatingMode mode;
-    double fn, lip_voltage;
-    bool is_below_lip, is_zvs_capable, has_freewheeling;
-    std::string description;
-};
-
-static LlcModeAnalysis detect_operating_mode(
-    double Vi, double Vo, double Po, double fsw, double f0,
-    double Ln, double Q, bool isFullBridge)
-{
-    LlcModeAnalysis a;
-    a.fn = (f0 > 0) ? fsw / f0 : 1.0;
-    a.lip_voltage = isFullBridge ? Vo : 2.0 * Vo;
-    a.is_below_lip = Vi < a.lip_voltage;
-    a.is_zvs_capable = a.fn > 1.0;
-    a.has_freewheeling = a.is_below_lip;
-
-    if (a.fn < 0.95) {
-        a.mode = LlcOperatingMode::MODE_BELOW_RESONANCE_LIGHT;
-        a.description = "Capacitive mode (fn < 1). Hard switching - no ZVS!";
-    } else if (a.fn <= 1.05 && Q < 0.5) {
-        a.mode = LlcOperatingMode::MODE_NEAR_RESONANCE_LIGHT;
-        a.description = "Optimal: fn ~ 1, light load, ZVS";
-    } else if (a.fn > 1.05 && a.is_below_lip && Q < 0.5) {
-        a.mode = LlcOperatingMode::MODE_ABOVE_RESONANCE_LIGHT;
-        a.description = "ZVS with freewheeling (Phase A + Phase B)";
-    } else if (a.fn > 1.05 && a.is_below_lip) {
-        a.mode = LlcOperatingMode::MODE_ABOVE_RESONANCE_HEAVY;
-        a.description = "Heavy load: high circulating current";
-    } else if (!a.is_below_lip) {
-        a.mode = LlcOperatingMode::MODE_ABOVE_LIP_CONTINUOUS;
-        a.description = "Above LIP: continuous diode, Phase A only";
-    } else {
-        a.mode = LlcOperatingMode::MODE_UNDEFINED;
-        a.description = "Undefined mode";
-    }
-    return a;
-}
 
 // =====================================================================
 // Construction
@@ -150,34 +86,55 @@ bool Llc::run_checks(bool assertErrors) {
 DesignRequirements Llc::process_design_requirements() {
     double k_bridge = get_bridge_voltage_factor();
     auto& inputVoltage = get_input_voltage();
+    auto& ops = get_operating_points();
+    if (ops.empty())
+        throw std::runtime_error("LLC: at least one operating point is required");
+    if (ops[0].get_output_voltages().empty() || ops[0].get_output_currents().empty())
+        throw std::runtime_error("LLC: operating point is missing output voltages or currents");
+    if (!inputVoltage.get_nominal().has_value() &&
+        !(inputVoltage.get_minimum().has_value() && inputVoltage.get_maximum().has_value()))
+        throw std::runtime_error("LLC: input voltage must specify nominal (or both min and max)");
+
     double Vin_nom = inputVoltage.get_nominal().value_or(
         (inputVoltage.get_minimum().value_or(0) + inputVoltage.get_maximum().value_or(0)) / 2.0);
-    auto& ops = get_operating_points();
     double mainOutputVoltage  = ops[0].get_output_voltages()[0];
     double mainOutputCurrent  = ops[0].get_output_currents()[0];
+    if (mainOutputVoltage <= 0 || mainOutputCurrent <= 0)
+        throw std::runtime_error("LLC: main output voltage and current must be positive");
 
-    double Vo = k_bridge * Vin_nom;
+    double Vo = k_bridge * Vin_nom;  // FHA-equivalent reflected output voltage
     double mainTurnsRatio = Vo / mainOutputVoltage;
 
-    // turnsRatios contains SECONDARY turns ratios only (referenced to primary)
-    // Primary is implicit (ratio = 1) and not included
-    // For center-tapped secondaries: 1 turns ratio per output
-    // turnsRatios[0] = secondary 1 turns ratio
-    // turnsRatios[1] = secondary 2 turns ratio (if multiple outputs)
-    std::vector<double> turnsRatios;
-    // Add one entry per output (the turns ratio for the center-tapped secondary)
-    for (size_t i = 0; i < ops[0].get_output_voltages().size(); i++) {
-        double secTurnsRatio = Vo / ops[0].get_output_voltages()[i];
-        turnsRatios.push_back(secTurnsRatio);  // Secondary output i
+    // turnsRatios stores SECONDARY turns ratios only (primary implicit, ratio = 1).
+    // Each output corresponds to a CENTER-TAPPED secondary, modelled as TWO physical
+    // windings; we therefore push the same ratio twice per output so that the
+    // turns_ratios vector aligns 1-to-1 with non-primary windings (winding count =
+    // turns_ratios.size() + 1 = 1 + 2*nOutputs).
+    size_t nOutputs = ops[0].get_output_voltages().size();
+    std::vector<double> outputTurnsRatios;
+    outputTurnsRatios.reserve(nOutputs);
+    for (size_t i = 0; i < nOutputs; ++i) {
+        double Vout_i = ops[0].get_output_voltages()[i];
+        if (Vout_i <= 0)
+            throw std::runtime_error("LLC: output voltage must be positive");
+        outputTurnsRatios.push_back(Vo / Vout_i);
     }
 
     double Rload = mainOutputVoltage / mainOutputCurrent;
     double Rac = (8.0 * mainTurnsRatio * mainTurnsRatio) / (M_PI * M_PI) * Rload;
     double Q = get_quality_factor().value_or(0.4);
     double fr = get_effective_resonant_frequency();
+    if (fr <= 0)
+        throw std::runtime_error("LLC: resonant frequency must be positive");
     double Zr = Q * Rac;
     double Ls = Zr / (2.0 * M_PI * fr);
     double Cr = 1.0 / (2.0 * M_PI * fr * Zr);
+
+    // User overrides take precedence over the Q/Ln/fr derivation. This lets
+    // callers validate against published reference designs (e.g. Nielsen)
+    // where Ls and Cr are measured component values.
+    if (userResonantInductance > 0)  Ls = userResonantInductance;
+    if (userResonantCapacitance > 0) Cr = userResonantCapacitance;
 
     // Inductance ratio: user-settable via JSON, falls back to computedInductanceRatio
     // Low Ln (3-5):  wide gain range, high magnetizing current, good ZVS margin
@@ -186,34 +143,16 @@ DesignRequirements Llc::process_design_requirements() {
     double Ln = get_inductance_ratio();
     double L = Ln * Ls;
 
-    if (Ln < 2.0 || Ln > 20.0) {
-    }
-
     computedResonantInductance  = Ls;
     computedResonantCapacitance = Cr;
 
-    if (inputVoltage.get_minimum().has_value() && inputVoltage.get_maximum().has_value()) {
-        double Vin_min = inputVoltage.get_minimum().value();
-        double Vin_max = inputVoltage.get_maximum().value();
-        double M_req_min = (mainOutputVoltage * mainTurnsRatio) / (k_bridge * Vin_min);
-        double M_req_max = (mainOutputVoltage * mainTurnsRatio) / (k_bridge * Vin_max);
-        (void)M_req_min;
-        (void)M_req_max;
-    }
-
-    {
-        double Coss_est = 200e-12;
-        double td_min_zvs = (M_PI / 2.0) * std::sqrt(2.0 * Coss_est * L);
-        (void)td_min_zvs;
-    }
-
     DesignRequirements designRequirements;
     designRequirements.get_mutable_turns_ratios().clear();
-    for (auto n : turnsRatios) {
+    for (auto n : outputTurnsRatios) {
         DimensionWithTolerance nTol;
         nTol.set_nominal(roundFloat(n, 2));
-        designRequirements.get_mutable_turns_ratios().push_back(nTol);
-        designRequirements.get_mutable_turns_ratios().push_back(nTol); // Second centered tapped secondary
+        designRequirements.get_mutable_turns_ratios().push_back(nTol);  // half 1
+        designRequirements.get_mutable_turns_ratios().push_back(nTol);  // half 2
     }
     DimensionWithTolerance inductanceWithTolerance;
     inductanceWithTolerance.set_nominal(roundFloat(L, 10));
@@ -227,13 +166,10 @@ DesignRequirements Llc::process_design_requirements() {
         designRequirements.set_leakage_inductance(leakageReqs);
     }
 
-    // Set isolation sides for center-tapped secondaries
-    // Primary: index 0
-    // Each secondary output: 2 windings (center-tapped pair) with same isolation side
+    // Isolation sides: primary, then 2 entries per output (one per center-tapped half)
     std::vector<IsolationSide> isolationSides;
-    isolationSides.push_back(get_isolation_side_from_index(0));  // Primary
-    for (size_t i = 0; i < ops[0].get_output_voltages().size(); i++) {
-        // Both halves of center-tapped secondary have same isolation side
+    isolationSides.push_back(get_isolation_side_from_index(0));
+    for (size_t i = 0; i < nOutputs; ++i) {
         isolationSides.push_back(get_isolation_side_from_index(i + 1));
         isolationSides.push_back(get_isolation_side_from_index(i + 1));
     }
@@ -288,87 +224,492 @@ std::vector<OperatingPoint> Llc::process_operating_points(Magnetic magnetic) {
 }
 
 // =====================================================================
-// CORE SIMULATION — Runo Nielsen Time Domain Approach
+// NIELSEN TIME-DOMAIN APPROACH — event-driven sub-state propagator
+//
+// Implements the Runo Nielsen TDA for the LLC resonant converter as
+// described in:
+//   • "LLC and LCC resonance converters", Runo Nielsen, August 2013
+//   • "Resonance half bridge LLC converter analysis" (Mathcad worksheet
+//     output), Runo Nielsen, March 2022
+//
+// State vector x = [I_Ls, I_L, V_C]ᵀ — three INDEPENDENT components:
+//   I_Ls : resonant inductor current (= primary winding current)
+//   I_L  : magnetizing inductor current (independent of I_Ls except in
+//          the freewheeling sub-state where they coincide)
+//   V_C  : resonant capacitor voltage
+//
+// Three linear sub-states cover all of Nielsen's six modes — the modes
+// emerge from the SEQUENCE of sub-states traversed in one half cycle:
+//   A_POS : secondary diode +Vo conducting   (Id = ILs − IL > 0)
+//           dILs/dt = (Vi − Vc − Vo)/Ls
+//           dIL/dt  = +Vo/L     (magnetizing voltage clamped to +Vo)
+//           dVc/dt  = ILs/C
+//   A_NEG : secondary diode −Vo conducting   (Id < 0)
+//           dILs/dt = (Vi − Vc + Vo)/Ls
+//           dIL/dt  = −Vo/L
+//           dVc/dt  = ILs/C
+//   B_FW  : both diodes off, freewheeling     (ILs ≡ IL)
+//           dILs/dt = (Vi − Vc)/(Ls + L)  ← Lm in series with Ls
+//           dIL/dt  = same                 (the two currents equalise)
+//           dVc/dt  = ILs/C
+//
+// Each sub-state is a linear ODE with closed-form cos/sin solution. The
+// event detector finds the next sub-state transition exactly (analytic
+// root of the trigger function), so the half-cycle is composed from a
+// chain of exact closed-form segments — no per-sample arithmetic.
+//
+// Steady state is enforced by half-wave antisymmetry x(Thalf) = −x(0)
+// via damped Newton on a 3-vector residual F(x0) = x(Thalf; x0) + x0.
 // =====================================================================
 
-struct LlcSimulationResult {
-    bool has_freewheeling;
-    double freewheeling_time;
-    double transition_time;
-    double iLm_at_turnon;
+enum class LlcSubState { A_POS, A_NEG, B_FW };
+
+struct LlcStateVector {
+    double iLs;
+    double iL;
+    double vC;
 };
 
-static LlcSimulationResult simulate_positive_half_cycle(
-    double ILs0, double IL0, double Vc0,
-    double Vi, double Vo, double L,
-    double w1, double Z1, double w0, double Z0,
-    double Thalf_eff, int N, double dt,
-    std::vector<double>& ILs_pos, std::vector<double>& IL_pos,
-    std::vector<double>& Vc_pos, std::vector<double>& VL_pos,
-    double& ILs_end, double& IL_end, double& Vc_end)
-{
-    LlcSimulationResult result;
-    result.has_freewheeling = false;
-    result.freewheeling_time = 0.0;
-    result.transition_time = Thalf_eff;
-    result.iLm_at_turnon = IL0;
+struct LlcSubStateSegment {
+    LlcSubState state;
+    double t_start;
+    double t_end;
+    LlcStateVector x_start;
+    LlcStateVector x_end;
+};
 
-    bool in_freewheeling = false;
-    double t_fw = Thalf_eff, ILs_fw = 0, Vc_fw = 0;
+// Sub-state-specific natural frequency and characteristic impedance.
+// Returns w (rad/s) and Z (ohms) given Ls, L, C and the sub-state type.
+static void substate_freq(LlcSubState s, double Ls, double L, double C,
+                          double& w, double& Z) {
+    if (s == LlcSubState::B_FW) {
+        // Freewheeling: Lm in series with Ls (diodes off)
+        double L_eff = Ls + L;
+        w = 1.0 / std::sqrt(L_eff * C);
+        Z = std::sqrt(L_eff / C);
+    } else {
+        // Power delivery: Lm clamped, only Ls and C ring
+        w = 1.0 / std::sqrt(Ls * C);
+        Z = std::sqrt(Ls / C);
+    }
+}
 
-    for (int k = 0; k <= N; ++k) {
-        double t = k * dt;
-        double ILs_t, IL_t, Vc_t, VL_t;
+// Closed-form propagator for a single sub-state. Computes x(t_start + dt)
+// exactly given x(t_start) and the sub-state type.
+//
+// For A_POS / A_NEG (power delivery), I_Ls and V_C oscillate about the
+// equilibrium V_C_eq = Vi ∓ Vo at frequency w1 = 1/√(Ls·C); I_L ramps
+// linearly because its terminal voltage is clamped to ±Vo.
+//
+// For B_FW (freewheeling), I_Ls (= I_L) and V_C oscillate about V_C_eq = Vi
+// at frequency w0 = 1/√((Ls+Lm)·C).
+static LlcStateVector propagate_substate(LlcSubState s, LlcStateVector x_in,
+                                         double dt, double Vi, double Vo,
+                                         double Ls, double L, double C) {
+    LlcStateVector out{};
+    if (dt <= 0) return x_in;
 
-        if (!in_freewheeling) {
-            double V_drive = Vi - Vo;
-            ILs_t = ILs0 * std::cos(w1 * t)
-                   + (V_drive - Vc0) / Z1 * std::sin(w1 * t);
-            Vc_t = V_drive
-                 - (V_drive - Vc0) * std::cos(w1 * t)
-                 + ILs0 * Z1 * std::sin(w1 * t);
-            IL_t = IL0 + (Vo / L) * t;
-            VL_t = Vo;
+    double w, Z;
+    substate_freq(s, Ls, L, C, w, Z);
+    double cs = std::cos(w * dt);
+    double sn = std::sin(w * dt);
 
-            double Id = ILs_t - IL_t;
-            if (Id < 0 && t > Thalf_eff * 0.05) {
-                in_freewheeling = true;
-                t_fw = t;
-                result.has_freewheeling = true;
-                result.transition_time = t_fw;
-                ILs_fw = 0.5 * (ILs_t + IL_t);
-                Vc_fw = Vc_t;
-            }
-        }
-
-        if (in_freewheeling) {
-            double tau = t - t_fw;
-            ILs_t = ILs_fw * std::cos(w0 * tau)
-                   + (Vi - Vc_fw) / Z0 * std::sin(w0 * tau);
-            Vc_t = Vi - (Vi - Vc_fw) * std::cos(w0 * tau)
-                 + ILs_fw * Z0 * std::sin(w0 * tau);
-            IL_t = ILs_t;
-            double dILs_dt = -ILs_fw * w0 * std::sin(w0 * tau)
-                           + (Vi - Vc_fw) / Z0 * w0 * std::cos(w0 * tau);
-            VL_t = L * dILs_dt;
-        }
-
-        if (!std::isfinite(ILs_t)) ILs_t = ILs0;
-        if (!std::isfinite(IL_t))  IL_t  = IL0;
-        if (!std::isfinite(Vc_t))  Vc_t  = 0;
-        if (!std::isfinite(VL_t))  VL_t  = 0;
-
-        ILs_pos[k] = ILs_t;
-        IL_pos[k]  = IL_t;
-        Vc_pos[k]  = Vc_t;
-        VL_pos[k]  = VL_t;
-
-        if (k == N) { ILs_end = ILs_t; IL_end = IL_t; Vc_end = Vc_t; }
+    if (s == LlcSubState::B_FW) {
+        // Freewheeling: I_Ls ≡ I_L, drive = Vi
+        double V_eq = Vi;
+        double dV = x_in.vC - V_eq;
+        // (ILs, Vc) is an LC oscillator about (0, V_eq):
+        double iLs_new = x_in.iLs * cs - (dV / Z) * sn;
+        double vC_new  = V_eq + dV * cs + x_in.iLs * Z * sn;
+        out.iLs = iLs_new;
+        out.iL  = iLs_new;  // tracks ILs in freewheeling
+        out.vC  = vC_new;
+        return out;
     }
 
-    if (result.has_freewheeling)
-        result.freewheeling_time = Thalf_eff - result.transition_time;
-    return result;
+    // Power-delivery sub-states. For A_POS: V_drive = Vi − Vo, dIL/dt = +Vo/L
+    // For A_NEG: V_drive = Vi + Vo, dIL/dt = −Vo/L
+    double V_drive = (s == LlcSubState::A_POS) ? (Vi - Vo) : (Vi + Vo);
+    double dIL_dt  = (s == LlcSubState::A_POS) ? (+Vo / L) : (-Vo / L);
+
+    double dV = x_in.vC - V_drive;
+    out.iLs = x_in.iLs * cs - (dV / Z) * sn;
+    out.vC  = V_drive + dV * cs + x_in.iLs * Z * sn;
+    out.iL  = x_in.iL + dIL_dt * dt;
+    return out;
+}
+
+// Evaluate the trigger function at the END of a propagation step.
+// Used by the event detector to bracket and locate the next sub-state
+// transition. Returns the value g(dt) for the trigger that ends the
+// current sub-state.
+//
+// Triggers:
+//   A_POS → B_FW : g = I_L − I_Ls (rises to 0 from below as Id falls to 0)
+//   A_NEG → B_FW : g = I_Ls − I_L (rises to 0 from below as Id rises to 0)
+//   B_FW  → A_POS: g = L·dILs/dt − Vo (when magnetizing voltage rises to +Vo)
+//   B_FW  → A_NEG: g = −L·dILs/dt − Vo (when magnetizing voltage drops to −Vo)
+static double trigger_value(LlcSubState s, LlcStateVector x_in, double dt,
+                            double Vi, double Vo, double Ls, double L, double C) {
+    LlcStateVector x = propagate_substate(s, x_in, dt, Vi, Vo, Ls, L, C);
+    if (s == LlcSubState::A_POS) {
+        return x.iL - x.iLs;          // > 0 means Id flipped negative
+    }
+    if (s == LlcSubState::A_NEG) {
+        return x.iLs - x.iL;          // > 0 means Id flipped positive
+    }
+    // B_FW: voltage across Lm exits the ±Vo clamp window.
+    // VLm = (L / (Ls+L)) * (Vi − Vc).  Diodes turn on when |VLm| ≥ Vo.
+    double VLm = (L / (Ls + L)) * (Vi - x.vC);
+    // Return the most-positive of the two clamp violations:
+    //   if VLm > +Vo → A_POS forward-bias (return VLm − Vo)
+    //   if VLm < −Vo → A_NEG forward-bias (return −VLm − Vo)
+    // We pick whichever hits zero first; the caller resolves which
+    // sub-state to enter using sign(VLm) at the crossing.
+    double pos_violation = VLm - Vo;
+    double neg_violation = -VLm - Vo;
+    return std::max(pos_violation, neg_violation);
+}
+
+// Find the smallest t > 0 in (0, t_max] where the trigger function for the
+// given sub-state crosses zero from negative to positive. Returns t_max if
+// no crossing is found.
+//
+// Strategy: subdivide [0, t_max] into a coarse grid (32 segments), find the
+// first interval where the trigger sign changes, then refine with bisection.
+// This is more robust than analytic root-finding for the mixed cos/sin/linear
+// trigger functions in the A± sub-states (where the linear I_L ramp creates
+// trigger functions of the form A·cos(ωt) + B·sin(ωt) + C·t + D).
+static double find_next_event(LlcSubState s, LlcStateVector x_in, double t_max,
+                              double Vi, double Vo, double Ls, double L, double C) {
+    constexpr int COARSE_STEPS = 64;
+    double dt_coarse = t_max / COARSE_STEPS;
+    double prev_g = trigger_value(s, x_in, 1e-12, Vi, Vo, Ls, L, C);
+    if (prev_g >= 0) {
+        // Trigger already true at t≈0: return immediately. This is a
+        // "tangent" case (e.g. Id starts at exactly 0). Skip to a tiny
+        // ε-step to leave the boundary.
+        return 0.0;
+    }
+
+    for (int k = 1; k <= COARSE_STEPS; ++k) {
+        double t = k * dt_coarse;
+        double g = trigger_value(s, x_in, t, Vi, Vo, Ls, L, C);
+        if (g >= 0 && std::isfinite(g)) {
+            // Sign change in (t-dt_coarse, t]. Refine by bisection.
+            double lo = t - dt_coarse;
+            double hi = t;
+            double g_lo = prev_g;
+            for (int it = 0; it < 50; ++it) {
+                double mid = 0.5 * (lo + hi);
+                double g_mid = trigger_value(s, x_in, mid, Vi, Vo, Ls, L, C);
+                if (g_mid * g_lo < 0) {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                    g_lo = g_mid;
+                }
+                if ((hi - lo) < 1e-12) break;
+            }
+            return 0.5 * (lo + hi);
+        }
+        prev_g = g;
+    }
+    return t_max;  // no crossing
+}
+
+// Determine the sub-state immediately after a B_FW transition: which
+// secondary diode forward-biased? Look at sign(VLm) at the crossing.
+static LlcSubState next_state_after_B(LlcStateVector x_at_event, double Vi,
+                                      double Ls, double L) {
+    double VLm = (L / (Ls + L)) * (Vi - x_at_event.vC);
+    return (VLm > 0) ? LlcSubState::A_POS : LlcSubState::A_NEG;
+}
+
+// Determine the initial sub-state at t=0 of the half cycle, given x0 and Vi.
+// At t=0+, the bridge has just switched to +Vi. Examine which constraint
+// is satisfied and pick accordingly. The diode that conducts is determined
+// by the sign of (ILs - IL) — if positive, +Vo diode; if negative, −Vo
+// diode; if both currents are equal, the converter starts in freewheeling.
+static LlcSubState initial_substate(LlcStateVector x0, double Vi, double Vo,
+                                    double Ls, double L) {
+    double Id = x0.iLs - x0.iL;
+    if (std::abs(Id) > 1e-9) {
+        return (Id > 0) ? LlcSubState::A_POS : LlcSubState::A_NEG;
+    }
+    // Id ≈ 0: check if magnetizing voltage will push the diodes on.
+    double VLm = (L / (Ls + L)) * (Vi - x0.vC);
+    if (VLm > Vo) return LlcSubState::A_POS;
+    if (VLm < -Vo) return LlcSubState::A_NEG;
+    return LlcSubState::B_FW;
+}
+
+// Drive the event loop over [0, Thalf]. Returns the chain of segments
+// covering the half cycle. Each segment has exact closed-form start/end
+// states; downstream sampling rasters them onto the 256-point grid.
+static std::vector<LlcSubStateSegment> propagate_half_cycle(
+    LlcStateVector x0, double Thalf,
+    double Vi, double Vo, double Ls, double L, double C)
+{
+    std::vector<LlcSubStateSegment> segments;
+    segments.reserve(8);
+
+    LlcSubState current = initial_substate(x0, Vi, Vo, Ls, L);
+    LlcStateVector x = x0;
+    double t = 0.0;
+    constexpr int MAX_SEGMENTS = 16;  // safety bound; LLC modes use ≤ 6
+
+    for (int k = 0; k < MAX_SEGMENTS; ++k) {
+        double remaining = Thalf - t;
+        if (remaining <= 1e-15) break;
+
+        double t_event = find_next_event(current, x, remaining, Vi, Vo, Ls, L, C);
+        // t_event is relative to the start of this segment.
+        double dt = std::min(t_event, remaining);
+        if (dt < 1e-15 && k > 0) {
+            // Zero-length segment: must transition immediately to avoid
+            // an infinite loop. Pick the next state and continue.
+            LlcSubState next;
+            if (current == LlcSubState::B_FW) {
+                next = next_state_after_B(x, Vi, Ls, L);
+            } else {
+                next = LlcSubState::B_FW;
+            }
+            current = next;
+            continue;
+        }
+        LlcStateVector x_end = propagate_substate(current, x, dt, Vi, Vo, Ls, L, C);
+        segments.push_back({current, t, t + dt, x, x_end});
+        t += dt;
+        x = x_end;
+
+        if (t >= Thalf - 1e-15) break;
+
+        // Determine next sub-state.
+        if (current == LlcSubState::B_FW) {
+            current = next_state_after_B(x, Vi, Ls, L);
+        } else {
+            // A_POS / A_NEG ended on Id = 0 → freewheeling
+            current = LlcSubState::B_FW;
+        }
+    }
+
+    return segments;
+}
+
+// Steady-state solver: damped Newton on F(x0) = propagate_half(x0).end + x0.
+// Returns the converged x0, the segment chain at convergence, and the L2
+// residual. If Newton fails to converge in MAX_ITERS, falls back to a
+// Picard iteration on x0 using x0_new = -propagate_half(x0).end (which is
+// equivalent to the previous code's outer loop).
+static LlcStateVector solve_steady_state(
+    LlcStateVector x0_seed, double Thalf,
+    double Vi, double Vo, double Ls, double L, double C,
+    std::vector<LlcSubStateSegment>& outSegments,
+    double& outResidual)
+{
+    auto eval_F = [&](LlcStateVector x0) -> std::array<double, 3> {
+        auto segs = propagate_half_cycle(x0, Thalf, Vi, Vo, Ls, L, C);
+        LlcStateVector x_end = segs.empty() ? x0 : segs.back().x_end;
+        return {x_end.iLs + x0.iLs, x_end.iL + x0.iL, x_end.vC + x0.vC};
+    };
+    auto norm = [](const std::array<double, 3>& f) {
+        return std::sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+    };
+
+    LlcStateVector x0 = x0_seed;
+    auto F = eval_F(x0);
+    double r = norm(F);
+
+    constexpr int MAX_ITERS = 25;
+    constexpr double TOL = 1e-7;
+
+    // Reasonable perturbation scales for finite differences (in physical
+    // units of A and V).
+    double scale_i = std::max(1e-3, 0.01 * std::abs(x0.iLs) + 1e-3);
+    double scale_v = std::max(1e-2, 0.01 * std::abs(x0.vC)  + 1e-2);
+
+    double damping = 1.0;
+    double prev_r = r;
+    int stagnant = 0;
+
+    for (int iter = 0; iter < MAX_ITERS && r > TOL; ++iter) {
+        // Build Jacobian by central differences.
+        double J[3][3];
+        LlcStateVector xp, xm;
+        std::array<double, 3> Fp, Fm;
+
+        // ∂F/∂iLs
+        xp = x0; xp.iLs += scale_i;
+        xm = x0; xm.iLs -= scale_i;
+        Fp = eval_F(xp); Fm = eval_F(xm);
+        for (int i = 0; i < 3; ++i) J[i][0] = (Fp[i] - Fm[i]) / (2 * scale_i);
+
+        // ∂F/∂iL
+        xp = x0; xp.iL += scale_i;
+        xm = x0; xm.iL -= scale_i;
+        Fp = eval_F(xp); Fm = eval_F(xm);
+        for (int i = 0; i < 3; ++i) J[i][1] = (Fp[i] - Fm[i]) / (2 * scale_i);
+
+        // ∂F/∂vC
+        xp = x0; xp.vC += scale_v;
+        xm = x0; xm.vC -= scale_v;
+        Fp = eval_F(xp); Fm = eval_F(xm);
+        for (int i = 0; i < 3; ++i) J[i][2] = (Fp[i] - Fm[i]) / (2 * scale_v);
+
+        // Solve J · dx = -F by Gaussian elimination with partial pivoting.
+        double A[3][4];
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) A[i][j] = J[i][j];
+            A[i][3] = -F[i];
+        }
+        // Forward elimination
+        bool singular = false;
+        for (int col = 0; col < 3; ++col) {
+            int piv = col;
+            double maxv = std::abs(A[col][col]);
+            for (int row = col + 1; row < 3; ++row) {
+                if (std::abs(A[row][col]) > maxv) {
+                    maxv = std::abs(A[row][col]);
+                    piv = row;
+                }
+            }
+            if (maxv < 1e-14) { singular = true; break; }
+            if (piv != col) std::swap(A[col], A[piv]);
+            for (int row = col + 1; row < 3; ++row) {
+                double f = A[row][col] / A[col][col];
+                for (int k = col; k < 4; ++k) A[row][k] -= f * A[col][k];
+            }
+        }
+        if (singular) break;
+        // Back substitution
+        double dx[3];
+        for (int i = 2; i >= 0; --i) {
+            double sum = A[i][3];
+            for (int j = i + 1; j < 3; ++j) sum -= A[i][j] * dx[j];
+            dx[i] = sum / A[i][i];
+        }
+
+        // Damped step + line search on ||F||.
+        double try_d = damping;
+        LlcStateVector x_new{};
+        std::array<double, 3> F_new{};
+        double r_new = r;
+        bool accepted = false;
+        for (int ls = 0; ls < 6; ++ls) {
+            x_new.iLs = x0.iLs + try_d * dx[0];
+            x_new.iL  = x0.iL  + try_d * dx[1];
+            x_new.vC  = x0.vC  + try_d * dx[2];
+            F_new = eval_F(x_new);
+            r_new = norm(F_new);
+            if (std::isfinite(r_new) && r_new < r) {
+                accepted = true;
+                break;
+            }
+            try_d *= 0.5;
+        }
+        if (!accepted) {
+            // Picard fallback: x0_new = -x_end (same as old outer loop)
+            auto segs = propagate_half_cycle(x0, Thalf, Vi, Vo, Ls, L, C);
+            if (!segs.empty()) {
+                LlcStateVector x_end = segs.back().x_end;
+                x_new.iLs = -x_end.iLs;
+                x_new.iL  = -x_end.iL;
+                x_new.vC  = -x_end.vC;
+                F_new = eval_F(x_new);
+                r_new = norm(F_new);
+            }
+        }
+        x0 = x_new;
+        F = F_new;
+        if (r_new >= prev_r * 0.999) {
+            stagnant++;
+            damping *= 0.7;
+        } else {
+            stagnant = 0;
+            damping = std::min(1.0, damping * 1.2);
+        }
+        prev_r = r_new;
+        r = r_new;
+        if (stagnant >= 4) break;
+    }
+
+    outSegments = propagate_half_cycle(x0, Thalf, Vi, Vo, Ls, L, C);
+    outResidual = r;
+    return x0;
+}
+
+// Map a sub-state segment chain to Nielsen's mode-1..6 numbering.
+// The mapping is the working hypothesis from the plan; it will be refined
+// against Nielsen's mode plot during validation. Returns 0 if the sequence
+// is unrecognised (still produces correct waveforms).
+static int classify_mode(const std::vector<LlcSubStateSegment>& segs) {
+    if (segs.empty()) return 0;
+    // Build sequence of A_POS / A_NEG / B_FW codes.
+    std::vector<LlcSubState> seq;
+    for (auto& s : segs) seq.push_back(s.state);
+
+    auto eq = [](const std::vector<LlcSubState>& s,
+                 std::initializer_list<LlcSubState> ref) {
+        if (s.size() != ref.size()) return false;
+        size_t i = 0;
+        for (auto v : ref) {
+            if (s[i++] != v) return false;
+        }
+        return true;
+    };
+
+    if (eq(seq, {LlcSubState::A_POS}))                                              return 1;
+    if (eq(seq, {LlcSubState::A_POS, LlcSubState::A_NEG}))                          return 2;
+    if (eq(seq, {LlcSubState::A_POS, LlcSubState::B_FW, LlcSubState::A_POS}))       return 3;
+    if (eq(seq, {LlcSubState::A_POS, LlcSubState::B_FW}))                           return 4;
+    if (eq(seq, {LlcSubState::A_POS, LlcSubState::B_FW, LlcSubState::A_NEG}))       return 5;
+    if (eq(seq, {LlcSubState::A_POS, LlcSubState::A_NEG, LlcSubState::B_FW}))       return 6;
+    return 0;  // unrecognised — still produces correct waveforms
+}
+
+// Sample a segment chain onto a uniform time grid [0, Thalf] with `N+1`
+// points. Fills ILs_pos / IL_pos / Vc_pos / VL_pos vectors that the
+// downstream waveform-emission code consumes.
+static void sample_segments(const std::vector<LlcSubStateSegment>& segs,
+                            double Thalf, int N, double Vi, double Vo,
+                            double Ls, double L, double C,
+                            std::vector<double>& ILs_pos,
+                            std::vector<double>& IL_pos,
+                            std::vector<double>& Vc_pos,
+                            std::vector<double>& VL_pos)
+{
+    double dt = Thalf / N;
+    size_t segIdx = 0;
+    for (int k = 0; k <= N; ++k) {
+        double t = k * dt;
+        if (t > Thalf) t = Thalf;
+        // Advance segIdx while t lies past the current segment end.
+        while (segIdx + 1 < segs.size() && t > segs[segIdx].t_end + 1e-15) ++segIdx;
+        if (segs.empty()) {
+            ILs_pos[k] = 0; IL_pos[k] = 0; Vc_pos[k] = 0; VL_pos[k] = 0;
+            continue;
+        }
+        const auto& seg = segs[segIdx];
+        double t_local = t - seg.t_start;
+        if (t_local < 0) t_local = 0;
+        if (t_local > seg.t_end - seg.t_start) t_local = seg.t_end - seg.t_start;
+        LlcStateVector x = propagate_substate(seg.state, seg.x_start, t_local,
+                                              Vi, Vo, Ls, L, C);
+        ILs_pos[k] = x.iLs;
+        IL_pos[k]  = x.iL;
+        Vc_pos[k]  = x.vC;
+        // Magnetizing voltage: clamped during conduction, follows
+        // Lm·dILs/dt during freewheeling.
+        if (seg.state == LlcSubState::A_POS) {
+            VL_pos[k] = +Vo;
+        } else if (seg.state == LlcSubState::A_NEG) {
+            VL_pos[k] = -Vo;
+        } else {
+            // B_FW: VLm = (L/(Ls+L)) * (Vi - Vc)
+            VL_pos[k] = (L / (Ls + L)) * (Vi - x.vC);
+        }
+    }
 }
 
 
@@ -380,6 +721,9 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 {
     OperatingPoint operatingPoint;
 
+    if (llcOpPoint.get_output_voltages().empty() || llcOpPoint.get_output_currents().empty())
+        throw std::runtime_error("LLC: operating point missing output voltages/currents");
+
     double fsw = llcOpPoint.get_switching_frequency();
     if (fsw <= 0) {
         fsw = get_effective_resonant_frequency();
@@ -387,12 +731,29 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     }
 
     double k_bridge = get_bridge_voltage_factor();
-    bool isFullBridge = (get_bridge_type().has_value() &&
-                         get_bridge_type().value() == LlcBridgeType::FULL_BRIDGE);
     bool integratedLs = get_integrated_resonant_inductor().value_or(false);
 
     double Vi = k_bridge * inputVoltage;
-    double Vo = turnsRatios[0] * llcOpPoint.get_output_voltages()[0];
+
+    // turnsRatios stores 2 entries per output (one per center-tapped half) when
+    // built by process_design_requirements. Recover the per-output ratio.
+    size_t nOutputs = llcOpPoint.get_output_voltages().size();
+    if (nOutputs == 0) nOutputs = 1;
+    auto get_n_for_output = [&](size_t outputIdx) -> double {
+        if (turnsRatios.empty())
+            return Vi / llcOpPoint.get_output_voltages()[outputIdx];
+        if (turnsRatios.size() == 2 * nOutputs)
+            return turnsRatios[2 * outputIdx];
+        if (outputIdx < turnsRatios.size())
+            return turnsRatios[outputIdx];
+        return turnsRatios[0];
+    };
+
+    // The reflected (FHA-equivalent) output voltage uses the *first* output, since
+    // the resonant tank current is shared and design parameters target the main
+    // output. Multi-output secondaries are scaled per-output below.
+    double n_main = get_n_for_output(0);
+    double Vo = n_main * llcOpPoint.get_output_voltages()[0];
 
     if (magnetizingInductance <= 0) magnetizingInductance = 200e-6;
 
@@ -407,7 +768,7 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         double Vout = llcOpPoint.get_output_voltages()[0];
         double Iout_fb = llcOpPoint.get_output_currents()[0];
         double Rload = (Iout_fb > 0) ? Vout / Iout_fb : 100.0;
-        double Rac = (8.0 * turnsRatios[0] * turnsRatios[0]) / (M_PI * M_PI) * Rload;
+        double Rac = (8.0 * n_main * n_main) / (M_PI * M_PI) * Rload;
         double Zr = Q_val * Rac;
         Ls = Zr / (2.0 * M_PI * fr);
         C = 1.0 / (2.0 * M_PI * fr * Zr);
@@ -419,99 +780,89 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     if (Ls <= 0 || C <= 0 || L <= 0)
         throw std::runtime_error("LLC resonant tank values invalid.");
 
-    // --- RUNO NIELSEN MODE DETECTION ---
-    {
-        double f0_det = 1.0 / (2.0 * M_PI * std::sqrt(Ls * C));
-        double Ln_det = L / Ls;
-        double Q_det = get_quality_factor().value_or(0.4);
-        double Po_det = llcOpPoint.get_output_voltages()[0] * llcOpPoint.get_output_currents()[0];
-
-        LlcModeAnalysis modeAnalysis = detect_operating_mode(Vi, Vo, Po_det, fsw, f0_det, Ln_det, Q_det, isFullBridge);
-
-        (void)modeAnalysis;
-    }
-
     double period = 1.0 / fsw;
     double Thalf  = period / 2.0;
-    double deadTime = computedDeadTime;
-    double Thalf_eff = Thalf - deadTime;
-    if (Thalf_eff <= 0) { Thalf_eff = Thalf; deadTime = 0; }
 
-    double w1 = 1.0 / std::sqrt(Ls * C);
-    double Z1 = std::sqrt(Ls / C);
-    double w0 = 1.0 / std::sqrt((Ls + L) * C);
-    double Z0 = std::sqrt((Ls + L) / C);
-
-    if (!std::isfinite(w1) || w1 <= 0) w1 = 2.0 * M_PI * 100000.0;
-    if (!std::isfinite(Z1) || Z1 <= 0) Z1 = 10.0;
-    if (!std::isfinite(w0) || w0 <= 0) w0 = w1 * 0.7;
-    if (!std::isfinite(Z0) || Z0 <= 0) Z0 = Z1 * 1.5;
-
-    const int N = 256;
-    double dt = Thalf_eff / N;
+    // The analytical TDA model does not represent the dead-time interval
+    // explicitly (it would require a third sub-phase with both halves of the
+    // primary bridge floating). Simulating over Thalf and ignoring deadTime
+    // is consistent because the resonant tank dynamics are dominated by the
+    // (Ls, Cr, Lm) system, not by the small (~1 µs) bridge gap. The sample
+    // grid `dt` therefore matches the output time base 1-to-1, with no
+    // post-stretch.
+    double Thalf_eff = Thalf;
 
     if (!std::isfinite(Vo) || Vo < 0) Vo = 1.0;
     if (!std::isfinite(Thalf_eff) || Thalf_eff <= 0) Thalf_eff = 5e-6;
     if (!std::isfinite(L) || L <= 0) L = 200e-6;
 
+    // LIP frequency and LIP input voltage (Nielsen's f1 and Vinlip).
+    // f1 = 1/(2π·√(Ls·Cr)) is the load-independent point — the frequency at
+    // which all FHA gain curves cross at gain = 1. Vinlip = 2·Vo because at
+    // the LIP, the bridge voltage Vi (= ½·Vin) exactly equals the reflected
+    // output Vo.
+    computedLipFrequency = 1.0 / (2.0 * M_PI * std::sqrt(Ls * C));
+    computedLipInputVoltage = 2.0 * Vo;
+
+    const int N = 256;
+    double dt = Thalf_eff / N;
+
+    // Initial-condition seed for the Newton solver. Use the FHA-style estimate
+    // of the resonant tank current (load + magnetizing) and the magnetizing
+    // peak ILm0 ≈ -Vo·Thalf/(2·L). The Vc0 seed is 0 (centred bipolar swing).
     double Im_pk_est = Vo * Thalf_eff / (2.0 * L);
     if (!std::isfinite(Im_pk_est) || std::abs(Im_pk_est) > 1e6)
         Im_pk_est = std::copysign(1.0, Im_pk_est);
 
-    double Iout = llcOpPoint.get_output_currents()[0];
-    double n_eff = turnsRatios.empty() ? (Vi / llcOpPoint.get_output_voltages()[0]) : turnsRatios[0];
-    if (n_eff <= 0) n_eff = 1.0;
-    double Iload_reflected = Iout / n_eff;
-
+    double Iout_main = llcOpPoint.get_output_currents()[0];
+    double Iload_reflected = Iout_main / n_main;
     double Ires_est = std::max(std::abs(Im_pk_est) + std::abs(Iload_reflected),
-                               Iload_reflected * 1.5);
+                               std::abs(Iload_reflected) * 1.5);
 
-    double ILs0 = -Ires_est;
-    double IL0  = -Im_pk_est;
+    LlcStateVector x0_seed{ -Ires_est, -Im_pk_est, 0.0 };
 
-    const int MAX_OUTER = 20;
-    const double TOL_I = 1e-4;
-    const int MAX_BISECT = 60;
-    const double TOL_VC = 1e-4;
+    // Run the Nielsen TDA solver.
+    std::vector<LlcSubStateSegment> segments;
+    double residual = 0.0;
+    LlcStateVector x0 = solve_steady_state(x0_seed, Thalf_eff,
+                                           Vi, Vo, Ls, L, C,
+                                           segments, residual);
 
+    // Sample the segment chain onto the existing dt grid that the
+    // downstream waveform-emission code expects.
     std::vector<double> ILs_pos(N + 1, 0.0), IL_pos(N + 1, 0.0);
     std::vector<double> Vc_pos(N + 1, 0.0), VL_pos(N + 1, 0.0);
-    double Vc0 = 0.0;
+    sample_segments(segments, Thalf_eff, N, Vi, Vo, Ls, L, C,
+                    ILs_pos, IL_pos, Vc_pos, VL_pos);
 
-    LlcSimulationResult simResult;
+    // Diagnostics
+    lastMode = classify_mode(segments);
+    lastSubStateSequence.clear();
+    for (const auto& seg : segments)
+        lastSubStateSequence.push_back(static_cast<int>(seg.state));
+    lastSteadyStateResidual = residual;
 
-    for (int outer = 0; outer < MAX_OUTER; ++outer) {
-        IL0 = ILs0;
-        double Vc_lo = -3.0 * Vi, Vc_hi = 3.0 * Vi;
-        double ILs_end = 0, IL_end = 0, Vc_end = 0;
+    // Stuff used by the legacy ILs0/IL0 references below (waveform emission).
+    double ILs0 = x0.iLs;
+    double IL0  = x0.iL;
 
-        for (int bisect = 0; bisect < MAX_BISECT; ++bisect) {
-            Vc0 = 0.5 * (Vc_lo + Vc_hi);
-            simResult = simulate_positive_half_cycle(
-                ILs0, IL0, Vc0, Vi, Vo, L,
-                w1, Z1, w0, Z0, Thalf_eff, N, dt,
-                ILs_pos, IL_pos, Vc_pos, VL_pos,
-                ILs_end, IL_end, Vc_end);
-
-            double err_vc = Vc_end + Vc0;
-            if (std::abs(err_vc) < TOL_VC) break;
-            if (err_vc > 0) Vc_hi = Vc0; else Vc_lo = Vc0;
-        }
-        double err_i = ILs_end + ILs0;
-        if (std::abs(err_i) < TOL_I) break;
-        ILs0 = -ILs_end;
+    // Convergence warning: scaled to physical units. Tighter than before.
+    double i_thresh = std::max(0.5, 0.02 * std::abs(Iload_reflected));
+    if (residual > i_thresh) {
+        std::cerr << "[LLC] Nielsen TDA solver did not fully converge: "
+                  << "residual=" << residual << " A"
+                  << " (Vi=" << Vi << "V, Vo=" << Vo << "V, fsw=" << fsw << "Hz)"
+                  << " — analytical waveform may be inaccurate for this op. point"
+                  << std::endl;
     }
 
     // =====================================================================
-    // Build full-period waveforms
+    // Build full-period waveforms by mirroring the positive half by half-wave
+    // antisymmetry. Time base is `dt` directly — no post-stretch.
     //
     // Primary voltage depends on Ls topology:
     //   SEPARATE Ls:   Vpri = VLm(t) — flat clamp + soft hill (magnetizing only)
     //   INTEGRATED Ls: Vpri = Vi - Vc(t) — bridge voltage with Cr ripple
-    //
-    // IMPORTANT: The simulation was done over Thalf_eff (half period minus dead time),
-    // but the waveform must span exactly one full period for correct sampling/FFT.
-    // We scale the time vector so it spans from 0 to period.
     // =====================================================================
 
     int totalSamples = 2 * N + 1;
@@ -521,12 +872,8 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     std::vector<double> Vpri_full(totalSamples);  // Primary voltage (topology-dependent)
     std::vector<double> VLm_full(totalSamples);   // Magnetizing voltage (for core loss & secondary)
 
-    // Scale time so waveform spans exactly one period
-    // Simulation dt was based on Thalf_eff, but we need to scale to full Thalf
-    double dt_output = Thalf / N;  // Time step for output waveform (spans full half-period)
-
     for (int k = 0; k <= N; ++k) {
-        time_full[k] = k * dt_output;
+        time_full[k] = k * dt;
         ILs_full[k] = std::isfinite(ILs_pos[k]) ? ILs_pos[k] : ILs0;
         IL_full[k]  = std::isfinite(IL_pos[k])  ? IL_pos[k]  : IL0;
 
@@ -542,7 +889,7 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     }
 
     for (int k = 1; k <= N; ++k) {
-        time_full[N + k] = Thalf + k * dt_output;  // Second half starts at Thalf, not Thalf_eff
+        time_full[N + k] = Thalf + k * dt;
         ILs_full[N + k] = std::isfinite(ILs_pos[k]) ? -ILs_pos[k] : -ILs0;
         IL_full[N + k]  = std::isfinite(IL_pos[k])  ? -IL_pos[k]  : -IL0;
 
@@ -575,29 +922,39 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 
-    // --- Secondary excitation ---
-    // turnsRatios contains SECONDARY turns ratios only (referenced to primary)
-    // turnsRatios[0] = secondary output 0 (creates 2 excitations: half 1 and half 2)
-    // turnsRatios[1] = secondary output 1 (creates 2 excitations: half 1 and half 2)
-    // Create individual excitations for each center-tapped secondary half
-    std::vector<double> effectiveTurnsRatios = turnsRatios;
-    if (effectiveTurnsRatios.empty()) {
-        effectiveTurnsRatios.push_back(Vi / llcOpPoint.get_output_voltages()[0]);
+    // --- Secondary excitations (one per center-tapped half, per output) ---
+    //
+    // Convention:
+    //   n_i = primary-to-secondary turns ratio for output i (Np / Ns_half_i)
+    //   Id  = ILs - IL  is the *primary-referred* secondary diode current
+    //         (the share of the resonant tank current actually transferred
+    //          to the secondaries via the transformer).
+    //
+    // Physical secondary current per output (ampere-turn balance):
+    //   I_sec_i = Id * n_i           (multiply by turns ratio, not divide)
+    //
+    // Multi-output approximation: each output receives its share of Id in
+    // proportion to its load conductance, then is scaled by n_i to get the
+    // physical secondary current. For a single output this collapses to the
+    // exact analytical answer.
+    double total_g = 0.0;
+    for (size_t i = 0; i < nOutputs; ++i) {
+        double Vout_i = llcOpPoint.get_output_voltages()[i];
+        double Iout_i = llcOpPoint.get_output_currents()[i];
+        if (Vout_i > 0 && Iout_i > 0) total_g += Iout_i / Vout_i;
     }
+    if (total_g <= 0) total_g = 1.0;
 
-    // For center-tapped LLC, only use the first turns ratio
-    // (both halves of the center-tapped secondary winding share the same turns ratio)
-    // This creates 2 excitations total (half 1 and half 2), not 4
-    size_t numTurnsRatiosToUse = std::min(size_t(1), effectiveTurnsRatios.size());
-    for (size_t secIdx = 0; secIdx < numTurnsRatiosToUse; ++secIdx) {
-        double n = effectiveTurnsRatios[secIdx];
-        size_t outputIdx = secIdx;  // 0, 1, 2... for each output
-        if (n <= 0) { 
-            n = Vi / llcOpPoint.get_output_voltages()[outputIdx]; 
-            if (n <= 0) n = 1.0; 
-        }
+    for (size_t outputIdx = 0; outputIdx < nOutputs; ++outputIdx) {
+        double n_i = get_n_for_output(outputIdx);
+        if (n_i <= 0) n_i = 1.0;
 
-        // Create 2 excitations for this output's center-tapped halves
+        double Vout_i = llcOpPoint.get_output_voltages()[outputIdx];
+        double Iout_i = llcOpPoint.get_output_currents()[outputIdx];
+        double share = (Vout_i > 0 && Iout_i > 0)
+                       ? (Iout_i / Vout_i) / total_g
+                       : (outputIdx == 0 ? 1.0 : 0.0);
+
         for (size_t halfIdx = 0; halfIdx < 2; ++halfIdx) {
             std::vector<double> iSecData(totalSamples, 0.0);
             std::vector<double> vSecData(totalSamples, 0.0);
@@ -605,17 +962,16 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
             for (int k = 0; k < totalSamples; ++k) {
                 double Id = ILs_full[k] - IL_full[k];
                 if (!std::isfinite(Id)) Id = 0;
-                // AC secondary current (not rectified) - each half conducts during its half-cycle
-                // First half (halfIdx=0): conducts during positive half-cycle
-                // Second half (halfIdx=1): conducts during negative half-cycle
-                if (halfIdx == 0) {
-                    // First half of center-tapped secondary
-                    iSecData[k] = (Id > 0) ? Id / n : 0;
-                } else {
-                    // Second half of center-tapped secondary
-                    iSecData[k] = (Id < 0) ? -Id / n : 0;
-                }
-                vSecData[k] = VLm_full[k] / n;
+                double Id_share = Id * share;
+                // Each half of the center-tapped secondary conducts only on
+                // one polarity of the primary cycle:
+                //   half 0 → positive Id only
+                //   half 1 → negative Id only (recorded as |Id|)
+                double Id_half = (halfIdx == 0)
+                                 ? std::max(0.0, Id_share)
+                                 : std::max(0.0, -Id_share);
+                iSecData[k] = Id_half * n_i;       // ampere-turn balance
+                vSecData[k] = VLm_full[k] / n_i;   // V_sec = V_pri / n
                 if (!std::isfinite(iSecData[k])) iSecData[k] = 0;
                 if (!std::isfinite(vSecData[k])) vSecData[k] = 0;
             }
@@ -630,7 +986,8 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
             secVoltageWfm.set_data(vSecData);
             secVoltageWfm.set_time(time_full);
 
-            std::string windingName = "Secondary " + std::to_string(outputIdx) + " Half " + std::to_string(halfIdx + 1);
+            std::string windingName = "Secondary " + std::to_string(outputIdx)
+                                    + " Half " + std::to_string(halfIdx + 1);
             auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
@@ -673,9 +1030,26 @@ std::string Llc::generate_ngspice_circuit(
     double halfPeriod = period / 2.0;
     double deadTime = computedDeadTime;
     double tOn = halfPeriod - deadTime;
-    double Vout = llcOp.get_output_voltages()[0];
-    double Iout = llcOp.get_output_currents()[0];
-    double n = turnsRatios[0];
+
+    size_t numOutputs = llcOp.get_output_voltages().size();
+    if (numOutputs == 0) numOutputs = 1;
+
+    // Recover per-output turns ratios. process_design_requirements pushes the
+    // ratio twice per output (one per center-tapped half) so this collapses to
+    // numOutputs entries here.
+    std::vector<double> nPerOutput(numOutputs);
+    for (size_t i = 0; i < numOutputs; ++i) {
+        if (turnsRatios.size() == 2 * numOutputs)
+            nPerOutput[i] = turnsRatios[2 * i];
+        else if (i < turnsRatios.size())
+            nPerOutput[i] = turnsRatios[i];
+        else if (!turnsRatios.empty())
+            nPerOutput[i] = turnsRatios[0];
+        else
+            nPerOutput[i] = inputVoltage / llcOp.get_output_voltages()[i];
+        if (nPerOutput[i] <= 0) nPerOutput[i] = 1.0;
+    }
+
     double Ls = computedResonantInductance;
     double Cr = computedResonantCapacitance;
     double L  = magnetizingInductance;
@@ -688,14 +1062,24 @@ std::string Llc::generate_ngspice_circuit(
     double simTime = numPeriodsTotal * period;
     double startTime = get_num_steady_state_periods() * period;
     double maxStep = period / 200.0;
-    double Rload = (Iout > 0) ? (Vout / Iout) : 100.0;
 
     std::ostringstream circuit;
 
-    circuit << "* LLC Resonant Converter v3.2 (" << (integratedLs ? "Integrated Ls" : "Separate Ls") << ")\n";
+    circuit << "* LLC Resonant Converter v3.3 (" << (integratedLs ? "Integrated Ls" : "Separate Ls") << ")\n";
     circuit << "* " << (isFullBridge ? "Full" : "Half") << "-Bridge\n";
-    circuit << "* Vin=" << inputVoltage << "V  fsw=" << (fsw/1e3) << "kHz  Vout=" << Vout << "V\n";
-    circuit << "* Ls=" << (Ls*1e6) << "uH  Cr=" << (Cr*1e9) << "nF  Lm=" << (L*1e6) << "uH  n=" << n << "\n\n";
+    circuit << "* Vin=" << inputVoltage << "V  fsw=" << (fsw/1e3) << "kHz  outputs=" << numOutputs << "\n";
+    circuit << "* Ls=" << (Ls*1e6) << "uH  Cr=" << (Cr*1e9) << "nF  Lm=" << (L*1e6) << "uH\n";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        circuit << "*   output " << i << ": Vout=" << llcOp.get_output_voltages()[i]
+                << "V Iout=" << llcOp.get_output_currents()[i] << "A n=" << nPerOutput[i] << "\n";
+    }
+    circuit << "\n";
+
+    // DC bus source: lets the topology-waveforms extractor read a meaningful
+    // input voltage. The actual bridge is a behavioural PULSE source, but the
+    // DC supply is referenced here so callers can probe v(vdc_supply).
+    circuit << "Vdc_supply vdc_supply 0 " << inputVoltage << "\n";
+    circuit << "Rdc_supply_dummy vdc_supply 0 1Meg\n\n";
 
     if (isFullBridge) {
         circuit << "Vbridge bridge_a bridge_b PULSE("
@@ -703,80 +1087,104 @@ std::string Llc::generate_ngspice_circuit(
                 << std::scientific << deadTime << " " << deadTime << " "
                 << tOn << " " << period << std::fixed << ")\n";
         circuit << "Vpri_sense bridge_a lr_in 0\n";
-        circuit << "Vbus_gnd bridge_b 0 0\n";
-        circuit << "Vin_sense bridge_a_in bridge_a 0\n\n";
+        circuit << "Vbus_gnd bridge_b 0 0\n\n";
     } else {
         circuit << "Vbridge sw_node mid_point PULSE("
                 << -(inputVoltage / 2.0) << " " << (inputVoltage / 2.0) << " 0 "
                 << std::scientific << deadTime << " " << deadTime << " "
                 << tOn << " " << period << std::fixed << ")\n";
         circuit << "Vmid mid_point 0 0\n";
-        circuit << "Vpri_sense sw_node lr_in 0\n";
-        circuit << "Vin_sense sw_node_in sw_node 0\n\n";
+        circuit << "Vpri_sense sw_node lr_in 0\n\n";
     }
 
-    if (integratedLs) {
-        double Lpri_total = L + Ls;
-        double k_int = std::sqrt(L / Lpri_total);
-        double Lsec_half = Lpri_total / (n * n);
+    double Lpri_total = integratedLs ? (L + Ls) : L;
+    double k_int = integratedLs ? std::sqrt(L / Lpri_total) : 0.999;
 
+    if (integratedLs) {
         circuit << "* Resonant cap (no separate inductor — leakage provides Ls)\n";
         circuit << "Cr lr_in pri_top " << std::scientific << Cr << "\n\n";
         circuit << "* Transformer: Lpri=Lm+Ls=" << (Lpri_total*1e6) << "uH, k=" << k_int << "\n";
-        circuit << "Lpri pri_top pri_bot " << std::scientific << Lpri_total << "\n";
-        // Secondary windings with sense nodes for current measurement
-        circuit << "Lsec1 sec_top_sec sec_ct " << std::scientific << Lsec_half << "\n";
-        circuit << "Lsec2 sec_ct sec_bot_sec " << std::scientific << Lsec_half << "\n";
-        // Use pairwise K statements - ngspice has a bug with 3+ inductor K statements
-        circuit << "K12 Lpri Lsec1 " << k_int << "\n";
-        circuit << "K13 Lpri Lsec2 " << k_int << "\n";
-        circuit << "K23 Lsec1 Lsec2 " << k_int << "\n\n";
     } else {
-        double Lsec_half = L / (n * n);
         circuit << "* Resonant tank (separate inductor)\n";
         circuit << "Cr lr_in cr_ls " << std::scientific << Cr << "\n";
         circuit << "Lr cr_ls pri_top " << std::scientific << Ls << "\n\n";
-        circuit << "* Transformer (k~1, using pairwise K statements for ngspice compatibility)\n";
-        circuit << "Lpri pri_top pri_bot " << std::scientific << L << "\n";
-        // Secondary windings with sense nodes for current measurement
-        circuit << "Lsec1 sec_top_sec sec_ct " << std::scientific << Lsec_half << "\n";
-        circuit << "Lsec2 sec_ct sec_bot_sec " << std::scientific << Lsec_half << "\n";
-        // Use pairwise K statements - ngspice has a bug with 3+ inductor K statements
-        circuit << "K12 Lpri Lsec1 0.999\n";
-        circuit << "K13 Lpri Lsec2 0.999\n";
-        circuit << "K23 Lsec1 Lsec2 0.999\n\n";
+        circuit << "* Transformer (k~0.999, pairwise K statements for ngspice compatibility)\n";
     }
+    circuit << "Lpri pri_top pri_bot " << std::scientific << Lpri_total << "\n";
+
+    // Per-output center-tapped secondary windings + diodes + load.
+    for (size_t i = 0; i < numOutputs; ++i) {
+        double n_i = nPerOutput[i];
+        double Lsec_half = Lpri_total / (n_i * n_i);
+        std::string si = std::to_string(i + 1);
+        circuit << "Lsec1_o" << si << " sec_top_sec_o" << si << " sec_ct_o" << si
+                << " " << std::scientific << Lsec_half << "\n";
+        circuit << "Lsec2_o" << si << " sec_ct_o" << si << " sec_bot_sec_o" << si
+                << " " << std::scientific << Lsec_half << "\n";
+    }
+    // Couplings: each secondary half couples to the primary; the two halves of
+    // the same output couple to each other. (Inter-output coupling is left to
+    // mutual flux through the primary; ngspice's pairwise K limit makes a full
+    // matrix unwieldy for >1 output.)
+    int kIdx = 0;
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        circuit << "K" << ++kIdx << " Lpri Lsec1_o" << si << " " << k_int << "\n";
+        circuit << "K" << ++kIdx << " Lpri Lsec2_o" << si << " " << k_int << "\n";
+        circuit << "K" << ++kIdx << " Lsec1_o" << si << " Lsec2_o" << si << " " << k_int << "\n";
+    }
+    circuit << "\n";
 
     if (isFullBridge) circuit << "Rpri_ret pri_bot bridge_b 0.001\n\n";
     else              circuit << "Rpri_ret pri_bot mid_point 0.001\n\n";
 
     circuit << ".model DRECT D(Is=1e-8 N=0.01 RS=0.01)\n";
-    circuit << "D1 sec_top vout_pos DRECT\n";
-    circuit << "D2 sec_bot vout_pos DRECT\n";
-    circuit << "Rsn1 sec_top vout_pos 100\nCsn1 sec_top vout_pos 100p\n";
-    circuit << "Rsn2 sec_bot vout_pos 100\nCsn2 sec_bot vout_pos 100p\n";
-    // Current sense elements for individual secondary windings (for accurate winding loss calculation)
-    circuit << "Vsec1_sense sec_top_sec sec_top 0\n";
-    circuit << "Vsec2_sense sec_bot_sec sec_bot 0\n";
-    circuit << "Vsec_sense sec_ct vout_neg 0\nVgnd vout_neg 0 0\n\n";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        double Vout_i = llcOp.get_output_voltages()[i];
+        double Iout_i = llcOp.get_output_currents()[i];
+        double Rload_i = (Iout_i > 0) ? (Vout_i / Iout_i) : 100.0;
 
-    circuit << "Resr vout_pos vout_cap 0.05\n";
-    circuit << "Cout vout_cap vout_neg " << std::scientific << 47e-6 << "\n";
-    circuit << "Rload vout_cap vout_neg " << Rload << "\n\n";
+        circuit << "* Output " << si << " rectifier (Vout=" << Vout_i << "V Rload=" << Rload_i << ")\n";
+        circuit << "D1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " DRECT\n";
+        circuit << "D2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " DRECT\n";
+        circuit << "Rsn1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " 100\n";
+        circuit << "Csn1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " 100p\n";
+        circuit << "Rsn2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " 100\n";
+        circuit << "Csn2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " 100p\n";
+        // Per-half winding-current sense
+        circuit << "Vsec1_sense_o" << si << " sec_top_sec_o" << si << " sec_top_o" << si << " 0\n";
+        circuit << "Vsec2_sense_o" << si << " sec_bot_sec_o" << si << " sec_bot_o" << si << " 0\n";
+        // Center tap → load return current sense
+        circuit << "Vsec_sense_o" << si << " sec_ct_o" << si << " vout_neg_o" << si << " 0\n";
+        circuit << "Vgnd_o" << si << " vout_neg_o" << si << " 0 0\n";
+        circuit << "Resr_o" << si << " vout_pos_o" << si << " vout_cap_o" << si << " 0.05\n";
+        circuit << "Cout_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
+        circuit << "Rload_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
+    }
 
-    circuit << ".ic v(vout_cap)=" << Vout << " v(cr_ls)=0\n\n";
+    // Initial conditions to speed up settling
+    circuit << ".ic";
+    for (size_t i = 0; i < numOutputs; ++i)
+        circuit << " v(vout_cap_o" << (i + 1) << ")=" << llcOp.get_output_voltages()[i];
+    if (!integratedLs) circuit << " v(cr_ls)=0";
+    circuit << "\n\n";
+
     circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=300 ITL4=100\n";
     circuit << ".options METHOD=GEAR TRTOL=7\n\n";
     circuit << ".tran " << std::scientific << maxStep << " " << simTime
             << " " << startTime << " " << maxStep << " UIC\n\n";
-    // Add DC bus voltage to save (converter input, before the bridge)
-    if (isFullBridge) {
-        circuit << ".save v(bridge_a) v(bridge_b) v(pri_top) v(pri_bot) v(sec_top) v(sec_bot) v(vout_pos) v(vout_neg) v(vout_cap)";
-    } else {
-        circuit << ".save v(sw_node) v(mid_point) v(pri_top) v(pri_bot) v(sec_top) v(sec_bot) v(vout_pos) v(vout_neg) v(vout_cap)";
+    circuit << ".save v(vdc_supply) v(pri_top) v(pri_bot) i(Vpri_sense)";
+    if (isFullBridge) circuit << " v(bridge_a) v(bridge_b)";
+    else              circuit << " v(sw_node) v(mid_point)";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        circuit << " v(sec_top_o" << si << ") v(sec_bot_o" << si << ")"
+                << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
+                << " i(Vsec1_sense_o" << si << ") i(Vsec2_sense_o" << si << ")"
+                << " i(Vsec_sense_o" << si << ")";
     }
-    // Save currents: input, primary (resonant tank), secondary windings (for winding loss), and output (rectified)
-    circuit << " i(Vin_sense) i(Vpri_sense) i(Vsec1_sense) i(Vsec2_sense) i(Vsec_sense)\n\n.end\n";
+    circuit << "\n\n.end\n";
 
     return circuit.str();
 }
@@ -829,23 +1237,22 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
 
             NgspiceRunner::WaveformNameMapping waveformMapping;
             waveformMapping.push_back({{"voltage", "pri_top"}, {"current", "vpri_sense#branch"}});
-            
-            // Map individual secondary winding currents for center-tapped secondaries
-            // Each output has 2 windings (center-tapped halves)
+
             std::vector<std::string> windingNames = {"Primary"};
             std::vector<bool> flipCurrentSign = {false};
-            
-            // Add entries for each output's center-tapped secondary halves
+
             size_t numOutputs = ops[opIdx].get_output_voltages().size();
-            for (size_t outIdx = 0; outIdx < numOutputs; outIdx++) {
-                // First half of center-tapped secondary
-                waveformMapping.push_back({{"voltage", "sec_top"}, {"current", "vsec1_sense#branch"}});
-                windingNames.push_back("Secondary " + std::to_string(outIdx + 1) + " Half 1");
+            if (numOutputs == 0) numOutputs = 1;
+            for (size_t outIdx = 0; outIdx < numOutputs; ++outIdx) {
+                std::string si = std::to_string(outIdx + 1);
+                waveformMapping.push_back({{"voltage", "sec_top_o" + si},
+                                           {"current", "vsec1_sense_o" + si + "#branch"}});
+                windingNames.push_back("Secondary " + si + " Half 1");
                 flipCurrentSign.push_back(true);
-                
-                // Second half of center-tapped secondary
-                waveformMapping.push_back({{"voltage", "sec_bot"}, {"current", "vsec2_sense#branch"}});
-                windingNames.push_back("Secondary " + std::to_string(outIdx + 1) + " Half 2");
+
+                waveformMapping.push_back({{"voltage", "sec_bot_o" + si},
+                                           {"current", "vsec2_sense_o" + si + "#branch"}});
+                windingNames.push_back("Secondary " + si + " Half 2");
                 flipCurrentSign.push_back(true);
             }
 
@@ -905,60 +1312,30 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
             return (it != nameToIndex.end()) ? simResult.waveforms[it->second] : Waveform();
         };
 
-        // Determine bridge type to know which DC bus nodes to use
-        bool isFullBridge = (get_bridge_type().has_value() &&
-                             get_bridge_type().value() == LlcBridgeType::FULL_BRIDGE);
-
         ConverterWaveforms wf;
         wf.set_switching_frequency(switchingFrequency);
         wf.set_operating_point_name("LLC op. point " + std::to_string(opIdx));
 
-        // Use DC bus voltage (before bridge) not transformer primary (after bridge)
-        // For full-bridge: bridge_a is the positive rail, bridge_b is ground
-        // For half-bridge: sw_node is the switched node, mid_point is ground
-        Waveform vbus = isFullBridge ? getWf("bridge_a") : getWf("sw_node");
-        Waveform vgnd = isFullBridge ? getWf("bridge_b") : getWf("mid_point");
+        // DC bus voltage: read from the dedicated Vdc_supply rail.
+        Waveform vdc = getWf("vdc_supply");
+        if (!vdc.get_data().empty()) wf.set_input_voltage(vdc);
 
-        // Calculate DC bus voltage (differential)
-        if (!vbus.get_data().empty() && !vgnd.get_data().empty()) {
-            auto vbusData = vbus.get_data();
-            auto vgndData = vgnd.get_data();
-            std::vector<double> vdiff; vdiff.reserve(vbusData.size());
-            for (size_t i = 0; i < vbusData.size() && i < vgndData.size(); ++i)
-                vdiff.push_back(vbusData[i] - vgndData[i]);
-            Waveform vinWf = vbus; vinWf.set_data(vdiff);
-            wf.set_input_voltage(vinWf);
-        }
+        // Input current: resonant tank current (Vpri_sense) is the AC reflection of
+        // the input current; the rectified DC component flows in Rdc_supply_dummy
+        // which we deliberately don't sense (it would be ~0).
+        wf.set_input_current(getWf("vpri_sense#branch"));
 
-        // Get input current - use Vpri_sense current (resonant tank current) as proxy for input current
-        // The DC input current is the rectified version of this, but this gives us the actual current waveform
-        Waveform iin = getWf("vpri_sense#branch");
-        if (iin.get_data().empty()) {
-            // Fallback to vin_sense if available
-            iin = getWf("vin_sense#branch");
-        }
-        wf.set_input_current(iin);
-        if (!iin.get_data().empty()) {
-        }
-
-        if (!turnsRatios.empty()) {
-            // Output voltage: rectified voltage across output capacitor
-            auto vp = getWf("vout_pos"); auto vn = getWf("vout_neg");
-            if (!vp.get_data().empty() && !vn.get_data().empty()) {
-                auto vpd = vp.get_data(); auto vnd = vn.get_data();
-                std::vector<double> vd; vd.reserve(vpd.size());
-                for (size_t i = 0; i < vpd.size() && i < vnd.size(); ++i)
-                    vd.push_back(vpd[i] - vnd[i]);
-                Waveform voutWf = vp; voutWf.set_data(vd);
-                wf.get_mutable_output_voltages().push_back(voutWf);
-            }
-            
-            // Output current: rectified current flowing to the load (from center tap)
-            // This is the actual output current after rectification, not individual winding currents
-            auto iout = getWf("vsec_sense#branch");
-            if (!iout.get_data().empty()) {
-                wf.get_mutable_output_currents().push_back(iout);
-            }
+        // Per-output rectified voltage and current.
+        size_t numOutputs = ops[opIdx].get_output_voltages().size();
+        if (numOutputs == 0) numOutputs = 1;
+        for (size_t i = 0; i < numOutputs; ++i) {
+            std::string si = std::to_string(i + 1);
+            auto vCap = getWf("vout_cap_o" + si);
+            if (!vCap.get_data().empty())
+                wf.get_mutable_output_voltages().push_back(vCap);
+            auto iCt = getWf("vsec_sense_o" + si + "#branch");
+            if (!iCt.get_data().empty())
+                wf.get_mutable_output_currents().push_back(iCt);
         }
         results.push_back(wf);
     }
