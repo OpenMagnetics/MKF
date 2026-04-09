@@ -3435,23 +3435,6 @@ FractionalPoleNetwork CircuitSimulatorExporter::calculate_core_fracpole_network(
 // NL5 circuit simulator exporter
 // ============================================================================
 
-static std::string make_nl5_key(const std::string& seed) {
-    // Deterministic pseudo-UUID from seed hash (not cryptographic, just unique)
-    std::hash<std::string> hasher;
-    size_t h1 = hasher(seed);
-    size_t h2 = hasher(seed + "_b");
-    size_t h3 = hasher(seed + "_c");
-    size_t h4 = hasher(seed + "_d");
-    char buf[33];
-    snprintf(buf, sizeof(buf),
-             "%08X%08X%08X%08X",
-             static_cast<uint32_t>(h1),
-             static_cast<uint32_t>(h2),
-             static_cast<uint32_t>(h3),
-             static_cast<uint32_t>(h4));
-    return std::string(buf);
-}
-
 // ---- NL5 Component builder ----
 struct Nl5Cmp {
     std::string type;      // e.g. "R_R", "L_L", "C_C", "W_W", "W_T2"
@@ -3682,8 +3665,10 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
         }
 
         // Add port labels (external terminals for SubCir pin mapping)
-        cmps += nl5_label_to_xml(nextId++, "P"+ws+"+", node_Pplus, 0, base_y);
-        cmps += nl5_label_to_xml(nextId++, "P"+ws+"-", node_Pminus, 180, base_y+40);
+        // Use "p"/"n" instead of "+"/"-" because '+' is not URL-safe and gets
+        // mangled when NL5 sends component names through URL requests.
+        cmps += nl5_label_to_xml(nextId++, "P"+ws+"p", node_Pplus, 0, base_y);
+        cmps += nl5_label_to_xml(nextId++, "P"+ws+"n", node_Pminus, 180, base_y+40);
 
         // 1. Rdc (DC resistance)
         add_R("Rdc"+ws, node_Pplus, node_after_rdc, Rdc, 20, base_y);
@@ -3810,9 +3795,6 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
     }
 
     // ---- Assemble full XML ----
-    std::string ref = fix_filename(magnetic.get_reference());
-    std::string key = make_nl5_key(ref);
-
     std::ostringstream xml;
     xml << "<?xml version=\"1.0\"?>\n";
     xml << "<NL5>\n";
@@ -3821,7 +3803,7 @@ std::string CircuitSimulatorExporterNl5Model::export_magnetic_as_subcircuit(
     xml << "  <Version ver=\"3\" rev=\"18\" core=\"78\" build=\"99\" />\n";
     xml << "  <Doc>\n";
     xml << "    <Cir mode=\"2\">\n";
-    xml << "      <Cmps Key=\"" << key << "\">\n";
+    xml << "      <Cmps>\n";
     xml << cmps;
     xml << "      </Cmps>\n";
     xml << "      <Scopes />\n";
