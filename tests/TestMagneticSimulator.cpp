@@ -1195,7 +1195,7 @@ namespace {
             // (temperature is computed internally during core loss iteration)
             auto coreLossTemp = output.get_core_losses()->get_temperature();
             if (coreLossTemp) {
-                REQUIRE(coreLossTemp.value() < 200);
+                REQUIRE(coreLossTemp < 200);
             }
         }
     }
