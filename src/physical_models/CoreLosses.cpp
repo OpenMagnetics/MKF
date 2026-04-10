@@ -866,7 +866,7 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     double frequency = Inputs::get_switching_frequency(excitation);
     double magneticFluxDensityAcPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
 
-    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, excitation.get_frequency());
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
@@ -904,7 +904,7 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
             pow(fabs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
             timeDifference;
     }
- 
+
     // double volumetricLosses = ki * pow(mainHarmonicMagneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
     double volumetricLosses = ki * pow(magneticFluxDensityAcPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);

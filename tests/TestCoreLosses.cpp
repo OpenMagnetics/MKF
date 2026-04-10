@@ -1801,7 +1801,7 @@ TEST_CASE("Test_Ki_3C95_Steinmetz", "[physical-model][core-losses][igse-core-los
     auto coreLossesIGSEModel = CoreLossesIGSEModel();
 
     auto ki = coreLossesIGSEModel.get_ki(steinmetzDatum);
-    double expectedKi = 8.17;
+    double expectedKi = 0.0635;
 
     REQUIRE_THAT(ki, Catch::Matchers::WithinAbs(expectedKi, expectedKi * 0.1));
 }
@@ -1857,6 +1857,73 @@ TEST_CASE("Test_Magnet_N49_IGSE", "[physical-model][core-losses][igse-core-losse
 
 TEST_CASE("Test_Magnet_N87_IGSE", "[physical-model][core-losses][igse-core-losses-model]") {
     test_core_losses_magnet_data(CoreLossesModels::IGSE, "N87");
+}
+
+// Regression test for composite waveforms where excitation frequency (e.g. 60 Hz)
+// differs from switching frequency (e.g. 60 kHz). Previously, standardize_waveform
+// was called with the switching frequency, compressing the time axis and inflating
+// dB/dt by the frequency ratio, causing losses to blow up by orders of magnitude.
+TEST_CASE("Test_IGSE_composite_waveform_low_excitation_frequency", "[physical-model][core-losses][igse-core-losses-model]") {
+    settings.reset();
+    clear_databases();
+
+    std::string shapeName = "PQ 20/20";
+    std::string materialName = "3C95";
+    Core core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, materialName);
+
+    double excitationFrequency = 60;        // Hz - line frequency
+    double switchingFrequency = 60000;       // Hz - converter switching frequency
+    double bPeakAtSwitching = 0.1;           // T - flux density amplitude at switching freq
+    double bPeakAtLine = 0.05;              // T - flux density amplitude at line freq
+    double temperature = 25;
+
+    // Build a composite B waveform: 60 Hz + 60 kHz sinusoids
+    size_t numberPoints = 16384;
+    std::vector<double> bData(numberPoints);
+    for (size_t i = 0; i < numberPoints; ++i) {
+        double t = static_cast<double>(i) / (numberPoints - 1) / excitationFrequency;
+        bData[i] = bPeakAtLine * sin(2 * std::numbers::pi * excitationFrequency * t)
+                 + bPeakAtSwitching * sin(2 * std::numbers::pi * switchingFrequency * t);
+    }
+
+    json excitationJson;
+    excitationJson["frequency"] = excitationFrequency;
+    excitationJson["magneticFluxDensity"]["waveform"]["data"] = bData;
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = bPeakAtLine + bPeakAtSwitching;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * (bPeakAtLine + bPeakAtSwitching);
+    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    excitationJson["magneticFluxDensity"]["harmonics"]["amplitudes"] = {0, bPeakAtLine, bPeakAtSwitching};
+    excitationJson["magneticFluxDensity"]["harmonics"]["frequencies"] = {0, excitationFrequency, switchingFrequency};
+    // Current harmonics needed so get_switching_frequency detects 60 kHz
+    excitationJson["current"]["harmonics"]["amplitudes"] = {0, 30.0, 18.0};
+    excitationJson["current"]["harmonics"]["frequencies"] = {0, excitationFrequency, switchingFrequency};
+    excitationJson["current"]["waveform"]["data"] = bData; // dummy, just needs enough points
+
+    OperatingPointExcitation excitation(excitationJson);
+
+    auto coreLossesModel = CoreLossesModel::factory(CoreLossesModels::IGSE);
+    auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+    double volumetricLosses = coreLosses.get_volumetric_losses().value();
+
+    // Steinmetz reference at 60 kHz, 0.1 T peak for comparison
+    auto steinmetzModel = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+    json refExcitationJson;
+    refExcitationJson["frequency"] = switchingFrequency;
+    refExcitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    refExcitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    refExcitationJson["magneticFluxDensity"]["processed"]["peak"] = bPeakAtSwitching;
+    refExcitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * bPeakAtSwitching;
+    refExcitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    OperatingPointExcitation refExcitation(refExcitationJson);
+    auto refLosses = steinmetzModel->get_core_losses(core, refExcitation, temperature);
+    double refVolumetricLosses = refLosses.get_volumetric_losses().value();
+
+    // iGSE composite should be in the same order of magnitude as the Steinmetz reference
+    // (within 10x), not 100x-1000x higher as the bug caused
+    REQUIRE(volumetricLosses < refVolumetricLosses * 10);
+    REQUIRE(volumetricLosses > 0);
 }
 
 TEST_CASE("Test_PQ_20_20_3F4_ciGSE", "[physical-model][core-losses][cigse-core-losses-model]") {

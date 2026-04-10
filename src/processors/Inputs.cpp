@@ -3436,7 +3436,7 @@ double Inputs::get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation e
             excitation.set_magnetic_flux_density(magneticFluxDensity);
         }
         auto harmonics = excitation.get_magnetic_flux_density()->get_harmonics().value();
-        for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
                 return harmonics.get_amplitudes()[harmonicIndex] * 2;
             }
