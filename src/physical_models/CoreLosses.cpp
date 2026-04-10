@@ -637,7 +637,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 for (size_t index = 0; index < numberUnknowns; ++index) {
                     bestCoefficients.push_back(coefficients[index]);
                 }
-                bestCoefficients[0] = pow(10, bestCoefficients[0]); 
+                bestCoefficients[0] = pow(10, std::max(bestCoefficients[0], -15.0));
             }
 
             delete[] volumetricLossesArray;
