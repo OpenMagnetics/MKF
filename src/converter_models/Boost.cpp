@@ -28,7 +28,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint Boost::process_operating_points_for_input_voltage(double inputVoltage, const BoostOperatingPoint& outputOperatingPoint, double inductance) {
+    OperatingPoint Boost::process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();

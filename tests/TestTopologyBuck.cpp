@@ -296,7 +296,7 @@ namespace {
         buck.set_efficiency(0.95);
         
         // Operating point: 5V @ 2A output, 100kHz
-        BuckOperatingPoint opPoint;
+        BaseOperatingPoint opPoint;
         opPoint.set_output_voltages({5.0});
         opPoint.set_output_currents({2.0});
         opPoint.set_switching_frequency(100e3);
@@ -410,7 +410,7 @@ namespace {
         buck.set_efficiency(0.95);
         buck.set_current_ripple_ratio(0.4);
 
-        BuckOperatingPoint op; op.set_output_voltages({5.0}); op.set_output_currents({2.0});
+        BaseOperatingPoint op; op.set_output_voltages({5.0}); op.set_output_currents({2.0});
         op.set_switching_frequency(100e3); op.set_ambient_temperature(25.0);
         buck.set_operating_points({op});
 

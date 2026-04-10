@@ -175,7 +175,7 @@ namespace {
         boost.set_efficiency(0.92);
         
         // Operating point: 24V @ 1A output, 100kHz
-        BoostOperatingPoint opPoint;
+        BaseOperatingPoint opPoint;
         opPoint.set_output_voltages({24.0});
         opPoint.set_output_currents({1.0});
         opPoint.set_switching_frequency(100e3);
@@ -287,7 +287,7 @@ namespace {
         boost.set_efficiency(0.92);
         boost.set_current_ripple_ratio(0.4);
 
-        BoostOperatingPoint op; op.set_output_voltages({24.0}); op.set_output_currents({1.0});
+        BaseOperatingPoint op; op.set_output_voltages({24.0}); op.set_output_currents({1.0});
         op.set_switching_frequency(100e3); op.set_ambient_temperature(25.0);
         boost.set_operating_points({op});
 

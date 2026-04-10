@@ -33,7 +33,7 @@ public:
     DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
 
-    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const BoostOperatingPoint& outputOperatingPoint, double inductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
     double resolve_efficiency();
@@ -104,7 +104,7 @@ inline void from_json(const json & j, AdvancedBoost& x) {
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_switch_current(get_stack_optional<double>(j, "maximumSwitchCurrent"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<BoostOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<BaseOperatingPoint>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
 }
 

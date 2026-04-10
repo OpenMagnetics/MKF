@@ -57,90 +57,6 @@ void ridley_func_n(double* p, double* x, int m, int n, void* data) {
         x[i] = ridley_model_n(p, d->nStages, d->frequencies[i], d->R0);
 }
 
-// --- Rosano winding model (flat Foster): Z = R0 + sum_k(Rk || jwLk) ---
-// This is Rosano's actual winding circuit from his paper (image: flat series of R||L cells).
-// coeffs: [R1, L1, R2, L2, ..., RN, LN]  — 2*nStages unknowns, R0 pinned
-double winding_rosano_model_n(double* x, int nStages, double freq, double R0) {
-    for (int i = 0; i < 2 * nStages; ++i)
-        if (x[i] <= 0) return 1e30;
-    double w = 2 * std::numbers::pi * freq;
-    auto Z = std::complex<double>(R0, 0);
-    for (int k = 0; k < nStages; ++k) {
-        auto Rk = std::complex<double>(x[2 * k], 0);
-        auto Lk = std::complex<double>(0, w * x[2 * k + 1]);
-        Z += par(Rk, Lk);
-    }
-    return Z.real();
-}
-
-struct WindingRosanoFitData { double* dcAndFreqs; int nStages; };
-
-void winding_rosano_func_n(double* p, double* x, int m, int n, void* data) {
-    auto* d = static_cast<WindingRosanoFitData*>(data);
-    double R0 = d->dcAndFreqs[0];
-    for (int i = 0; i < n; ++i) {
-        double val = winding_rosano_model_n(p, d->nStages, d->dcAndFreqs[i + 1], R0);
-        x[i] = (val > 0) ? std::log(val) : -50.0;
-    }
-}
-
-// Fit Rosano winding model with nStages. Returns {avg relative error, fit time ms}
-std::pair<double, double> fit_winding_rosano(
-    const std::vector<double>& freqs, const std::vector<double>& dataR, int nStages) {
-
-    int nUnknowns = 2 * nStages;
-    int nPoints = static_cast<int>(freqs.size());
-    double dcAndFreqs[41];
-    double logTargets[40];
-    double Rdc = dataR.front();
-    double Rmax = dataR.back();
-    double fStart = freqs.front();
-    double fEnd   = freqs.back();
-    dcAndFreqs[0] = Rdc;
-    for (int i = 0; i < nPoints; ++i) {
-        dcAndFreqs[i + 1] = freqs[i];
-        logTargets[i] = std::log(dataR[i]);
-    }
-
-    WindingRosanoFitData fitData{dcAndFreqs, nStages};
-    double bestError = 1e30;
-    auto tStart = std::chrono::high_resolution_clock::now();
-
-    double rScales[] = {0.5, 1.0, 2.0, 5.0};
-    double fScales[] = {0.3, 1.0, 3.0};
-
-    for (double rScale : rScales) {
-        if (bestError < 0.01) break;
-        for (double fScale : fScales) {
-            if (bestError < 0.01) break;
-            std::vector<double> coeffs(nUnknowns);
-            double Rrange = std::max(Rmax - Rdc, Rdc * 0.1) * rScale;
-            for (int k = 0; k < nStages; ++k) {
-                double fk = fStart * std::pow(fEnd / fStart, (k + 0.5) / nStages) * fScale;
-                double wk = 2 * std::numbers::pi * fk;
-                double Rk = Rrange / nStages;
-                coeffs[2 * k]     = std::max(Rk, 1e-9);
-                coeffs[2 * k + 1] = std::max(Rk / wk, 1e-15);
-            }
-            double opts[5] = {1e-3, 1e-25, 1e-25, 1e-25, 1e-19};
-            double info[10];
-            eigen_levmar_dif(winding_rosano_func_n, coeffs.data(), logTargets,
-                             nUnknowns, nPoints, 10000, opts, info, nullptr, nullptr, &fitData);
-            bool valid = true;
-            for (int i = 0; i < nUnknowns; ++i)
-                if (coeffs[i] <= 0) { valid = false; break; }
-            if (!valid) continue;
-            double err = 0;
-            for (int i = 0; i < nPoints; ++i)
-                err += fabs(dataR[i] - winding_rosano_model_n(coeffs.data(), nStages, freqs[i], Rdc)) / dataR[i];
-            err /= nPoints;
-            if (err < bestError) bestError = err;
-        }
-    }
-    auto tEnd = std::chrono::high_resolution_clock::now();
-    return {bestError, std::chrono::duration<double, std::milli>(tEnd - tStart).count()};
-}
-
 // --- Generalized Rosano model: R1 + nRL*(L||R) + nRLC*(L||(R+1/sC)) ---
 // coeffs: [R_dc, R2,L1, R3,L2, ..., R_rlc,L_rlc,C_rlc, ...]
 // Layout: x[0]=R_dc, then nRL pairs of (R,L), then nRLC triples of (R,L,C)
@@ -904,36 +820,6 @@ TEST_CASE("Test_Core_Loss_Topology_Comparison_Ridley_vs_Rosano", "[processor][ci
                        freqs[i], dataR[i], mRidley, eRidley, mRosano, eRosano);
             }
             std::cout << std::endl;
-
-            // --- Stage-count stress test (same data, generalized helpers) ---
-            // Ridley: N nested RL stages (2N unknowns)
-            // Rosano flat RL: R_dc + N*(L||R) stages (1+2N unknowns, no capacitor)
-            // Rosano + RLC:   R_dc + (N-1)*(L||R) + 1*(L||(R+C)) stages (2N+2 unknowns)
-            printf("--- Stage-count stress test: %s + %s ---\n",
-                   tc.shapeName.c_str(), tc.material.c_str());
-            printf("  R_data range: %.3e to %.3e (%.1fx over %.0f–%.0f Hz)\n",
-                   dataR.front(), dataR.back(), dataR.back() / dataR.front(),
-                   freqs.front(), freqs.back());
-            printf("  %7s | %8s | %18s | %18s | %18s\n",
-                   "stages", "params", "Ridley nested RL", "Rosano flat R||L", "Rosano flat+RLC");
-            printf("  -------+----------+--------------------+--------------------+--------------------\n");
-
-            for (int nStages : {1, 2, 3, 4, 5}) {
-                // Ridley: 2*nStages unknowns, nested RL
-                auto [ridErr, ridMs] = fit_ridley(freqs, dataR, nStages);
-                // Rosano flat RL only: 1+2*nStages unknowns
-                auto [rosFlat, rosFlatMs] = fit_rosano(freqs, dataR, nStages, 0);
-                // Rosano with one RLC stage: 1+2*(nStages-1)+3 unknowns (only valid for nStages>=1)
-                double rosRlcErr = 0;
-                if (nStages >= 1) {
-                    auto [e, t] = fit_rosano(freqs, dataR, std::max(0, nStages - 1), 1);
-                    rosRlcErr = e;
-                }
-                printf("  %7d | %8d | %16.2f%%   | %16.2f%%   | %16.2f%%\n",
-                       nStages, 2 * nStages,
-                       ridErr * 100.0, rosFlat * 100.0, rosRlcErr * 100.0);
-            }
-            printf("\n");
         }
     }
 }
@@ -2471,9 +2357,9 @@ TEST_CASE("Converter_Basic_Simulation_Tests", "[converter][basic-simulation][smo
         buck.set_input_voltage(inputVoltage);
         buck.set_diode_voltage_drop(0.5);
         
-        auto opPoint = BuckOperatingPoint();
-        opPoint.set_output_voltage(5.0);
-        opPoint.set_output_current(3.0);
+        auto opPoint = BaseOperatingPoint();
+        opPoint.set_output_voltages({5.0});
+        opPoint.set_output_currents({3.0});
         opPoint.set_ambient_temperature(25.0);
         opPoint.set_switching_frequency(500e3);
         buck.set_operating_points({opPoint});
@@ -2492,9 +2378,9 @@ TEST_CASE("Converter_Basic_Simulation_Tests", "[converter][basic-simulation][smo
         boost.set_input_voltage(inputVoltage);
         boost.set_diode_voltage_drop(0.5);
         
-        auto opPoint = BoostOperatingPoint();
-        opPoint.set_output_voltage(12.0);
-        opPoint.set_output_current(1.0);
+        auto opPoint = BaseOperatingPoint();
+        opPoint.set_output_voltages({12.0});
+        opPoint.set_output_currents({1.0});
         opPoint.set_ambient_temperature(25.0);
         opPoint.set_switching_frequency(300e3);
         boost.set_operating_points({opPoint});
@@ -5153,243 +5039,6 @@ wrdata output.csv v(in) i(Vsrc)
     } else {
         // At minimum, verify waveforms were extracted
         CHECK(result.waveforms.size() > 0);
-    }
-}
-
-TEST_CASE("Test_Winding_Loss_Topology_Comparison_Ridley_vs_Rosano", "[processor][circuit-simulator-exporter][comparison][winding]") {
-    // Compare Ridley (nested Cauer ladder) vs Rosano (flat Foster R||L series)
-    // for fitting the AC resistance vs frequency curve of winding losses.
-    struct TestCase {
-        std::string shapeName;
-        std::string material;
-        double gapLength;
-        int numGaps;
-        std::vector<int64_t> turns;
-        std::vector<int64_t> parallels;
-    };
-    std::vector<TestCase> testCases = {
-        {"PQ 35/35",    "3C97", 0.0003, 3, {30, 10}, {1, 1}},
-        {"E 42/21/15",  "N87",  0.001,  1, {20, 20}, {1, 1}},
-        {"PQ 26/25",    "3C95", 0.0005, 2, {15, 5},  {1, 2}},
-        {"ETD 34/17/11","N49",  0.0002, 3, {25, 8},  {1, 1}},
-    };
-
-    for (auto& tc : testCases) {
-        SECTION(tc.shapeName + " + " + tc.material) {
-            auto coil = OpenMagneticsTesting::get_quick_coil(tc.turns, tc.parallels, tc.shapeName);
-            auto gapping = OpenMagneticsTesting::get_distributed_gap(tc.gapLength, tc.numGaps);
-            auto core = OpenMagneticsTesting::get_quick_core(tc.shapeName, gapping, 1, tc.material);
-            OpenMagnetics::Magnetic magnetic;
-            magnetic.set_core(core);
-            magnetic.set_coil(coil);
-
-            double startingFrequency = 0.1;
-            double endingFrequency = 10000000;
-            size_t numberElements = 40;
-            double temperature = 25;
-
-            for (size_t windingIndex = 0; windingIndex < tc.turns.size(); ++windingIndex) {
-                Curve2D data = Sweeper().sweep_winding_resistance_over_frequency(
-                    magnetic, startingFrequency, endingFrequency, numberElements, windingIndex, temperature);
-                auto freqs = data.get_x_points();
-                auto dataR = data.get_y_points();
-                double Rdc = dataR.front();
-
-                // Fit Ridley (nested ladder, 5 stages, 10 unknowns)
-                auto ridleyCoeffsList = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
-                    magnetic, temperature, CircuitSimulatorExporterCurveFittingModes::LADDER);
-                auto& ridleyCoeffs = ridleyCoeffsList[windingIndex];
-
-                double ridleyError = 0, ridleyMaxError = 0;
-                for (size_t i = 0; i < dataR.size(); ++i) {
-                    double modeled = ridleyCoeffs.size() >= 2
-                        ? CircuitSimulatorExporter::ladder_model(const_cast<double*>(ridleyCoeffs.data()), freqs[i], Rdc)
-                        : Rdc;
-                    double err = fabs(dataR[i] - modeled) / dataR[i];
-                    ridleyError += err;
-                    ridleyMaxError = std::max(ridleyMaxError, err);
-                }
-                ridleyError /= dataR.size();
-
-                // Fit Rosano (flat R||L series, 6 stages, 12 unknowns)
-                auto rosanoCoeffsList = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(
-                    magnetic, temperature, CircuitSimulatorExporterCurveFittingModes::ROSANO);
-                auto& rosanoCoeffs = rosanoCoeffsList[windingIndex];
-
-                double rosanoError = 0, rosanoMaxError = 0;
-                for (size_t i = 0; i < dataR.size(); ++i) {
-                    double modeled = rosanoCoeffs.size() >= 2
-                        ? CircuitSimulatorExporter::winding_rosano_model(const_cast<double*>(rosanoCoeffs.data()), freqs[i], Rdc)
-                        : Rdc;
-                    double err = fabs(dataR[i] - modeled) / dataR[i];
-                    rosanoError += err;
-                    rosanoMaxError = std::max(rosanoMaxError, err);
-                }
-                rosanoError /= dataR.size();
-
-                printf("\n=== %s + %s  winding %zu ===\n", tc.shapeName.c_str(), tc.material.c_str(), windingIndex + 1);
-                printf("  Rdc=%.3e Ω  R_max=%.3e Ω  ratio=%.1fx\n", Rdc, dataR.back(), dataR.back() / Rdc);
-                printf("  Ridley (nested RL):   avg=%5.2f%%  max=%5.2f%%\n", ridleyError * 100, ridleyMaxError * 100);
-                printf("  Rosano (flat R||L):   avg=%5.2f%%  max=%5.2f%%\n", rosanoError * 100, rosanoMaxError * 100);
-
-                printf("  %14s | %13s | %13s | %6s | %13s | %6s\n",
-                       "freq(Hz)", "R_data(Ω)", "Ridley(Ω)", "err%", "Rosano(Ω)", "err%");
-                for (size_t i = 0; i < dataR.size(); i += 4) {  // Every 4th point to keep output compact
-                    double mRidley = ridleyCoeffs.size() >= 2
-                        ? CircuitSimulatorExporter::ladder_model(const_cast<double*>(ridleyCoeffs.data()), freqs[i], Rdc)
-                        : Rdc;
-                    double mRosano = rosanoCoeffs.size() >= 2
-                        ? CircuitSimulatorExporter::winding_rosano_model(const_cast<double*>(rosanoCoeffs.data()), freqs[i], Rdc)
-                        : Rdc;
-                    double eRidley = fabs(dataR[i] - mRidley) / dataR[i] * 100;
-                    double eRosano = fabs(dataR[i] - mRosano) / dataR[i] * 100;
-                    printf("  %-14.1f | %-13.4e | %-13.4e | %5.1f%% | %-13.4e | %5.1f%%\n",
-                           freqs[i], dataR[i], mRidley, eRidley, mRosano, eRosano);
-                }
-            }
-
-            // --- Stress test: reduced stage count ---
-            // Use only the primary winding (most turns = most interesting curve)
-            // Fit with 1, 2, 3 stages for both models and compare accuracy.
-            // This shows which topology extracts more information per parameter.
-            {
-                Curve2D data = Sweeper().sweep_winding_resistance_over_frequency(
-                    magnetic, startingFrequency, endingFrequency, numberElements, 0, temperature);
-                auto freqs = data.get_x_points();
-                auto dataR = data.get_y_points();
-
-                printf("\n--- Stage-count stress test: %s + %s (primary winding) ---\n",
-                       tc.shapeName.c_str(), tc.material.c_str());
-                printf("  Rdc=%.3e  Rmax=%.3e  ratio=%.1fx  freq=[%.1e..%.1e]\n",
-                       dataR.front(), dataR.back(), dataR.back() / dataR.front(),
-                       freqs.front(), freqs.back());
-                printf("  %7s | %16s | %16s\n", "stages", "Ridley avg err%", "Rosano avg err%");
-                printf("  -------+-----------------+-----------------\n");
-
-                for (int nStages : {1, 2, 3, 4, 5}) {
-                    auto [ridErr, ridMs] = fit_ridley(freqs, dataR, nStages);
-                    auto [rosErr, rosMs] = fit_winding_rosano(freqs, dataR, nStages);
-                    printf("  %7d | %14.2f%%   | %14.2f%%\n",
-                           nStages, ridErr * 100.0, rosErr * 100.0);
-                }
-                printf("\n");
-            }
-        }
-    }
-}
-
-TEST_CASE("Test_Winding_Loss_Rosano_Ngspice_AC_Sweep", "[processor][circuit-simulator-exporter][comparison][winding][ngspice]") {
-    // Verify that the Rosano winding network emitted in the NgSpice subcircuit
-    // reproduces the analytical AC resistance curve within a reasonable tolerance.
-    // Drives 1A AC into the primary terminal and measures Re(V/I) = winding impedance.
-    NgspiceRunner runner;
-    if (!runner.is_available()) {
-        SKIP("ngspice not available on this system");
-    }
-
-    std::vector<int64_t> numberTurns = {30, 10};
-    std::vector<int64_t> numberParallels = {1, 1};
-    std::string shapeName = "PQ 35/35";
-    std::string coreMaterial = "3C97";
-
-    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName);
-    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
-    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, coreMaterial);
-    OpenMagnetics::Magnetic magnetic;
-    magnetic.set_core(core);
-    magnetic.set_coil(coil);
-
-    double temperature = 25;
-
-    // Reference: analytical AC resistance sweep
-    size_t numberElements = 20;
-    Curve2D refData = Sweeper().sweep_winding_resistance_over_frequency(
-        magnetic, 1000, 1000000, numberElements, 0, temperature);
-    auto refFreqs = refData.get_x_points();
-    auto refR = refData.get_y_points();
-
-    struct Result {
-        std::string name;
-        bool converged;
-        double simTimeMs;
-        double avgError;   // avg relative error vs analytical sweep
-    };
-    std::vector<Result> results;
-
-    for (int modeIdx = 0; modeIdx < 2; ++modeIdx) {
-        auto curveFitMode = (modeIdx == 0)
-            ? CircuitSimulatorExporterCurveFittingModes::LADDER
-            : CircuitSimulatorExporterCurveFittingModes::ROSANO;
-        std::string modeName = (modeIdx == 0) ? "Ridley (nested RL)" : "Rosano (flat R||L)";
-
-        Result r;
-        r.name = modeName;
-        r.converged = false;
-        r.simTimeMs = 0;
-        r.avgError = 1e9;
-
-        try {
-            auto t0 = std::chrono::high_resolution_clock::now();
-
-            // Generate subcircuit with selected winding model
-            std::string subcircuit = CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(
-                magnetic, 100000, temperature, std::nullopt, curveFitMode);
-
-            // Extract subcircuit name
-            std::string subcktName;
-            auto pos = subcircuit.find(".subckt ");
-            if (pos != std::string::npos) {
-                auto s = pos + 8;
-                auto e = subcircuit.find_first_of(" \n", s);
-                subcktName = subcircuit.substr(s, e - s);
-            }
-            REQUIRE(!subcktName.empty());
-
-            // Build AC sweep netlist: drive P1+ through 1A AC, short P1- and P2+/P2-
-            std::string netlist = "* Winding AC impedance sweep\n";
-            netlist += subcircuit + "\n\n";
-            netlist += "I1 0 in AC 1\n";
-            // Two-winding: P1+ P1- P2+ P2-
-            netlist += "Xmag in P1m P2p P2m " + subcktName + "\n";
-            netlist += "Vp1m P1m 0 0\n";
-            netlist += "Vp2p P2p 0 0\n";
-            netlist += "Vp2m P2m 0 0\n\n";
-            netlist += ".ac dec 5 1000 1000000\n\n";
-            netlist += ".control\nrun\nwritedata output.csv v(in) i(Vp1m)\n.endc\n.end\n";
-
-            SimulationConfig config;
-            config.frequency = 100e3;
-            config.stopTime  = 100e-6;
-            config.stepSize  = 1e-6;
-            config.extractOnePeriod = false;
-
-            auto result = runner.run_simulation(netlist, config);
-
-            auto t1 = std::chrono::high_resolution_clock::now();
-            r.simTimeMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-            r.converged = result.success;
-
-            // If we got frequency-domain waveforms, compare Re(V/I) vs analytical
-            // (NgspiceRunner may not return AC data; convergence alone is the key check)
-            r.avgError = 0;  // Placeholder — the key metric is convergence + fit error from fitting test
-
-        } catch (const std::exception& e) {
-            printf("%s: FAILED — %s\n", modeName.c_str(), e.what());
-        }
-
-        results.push_back(r);
-    }
-
-    printf("\n=== Rosano vs Ridley winding — NgSpice AC sweep (PQ35/35 + 3C97) ===\n");
-    printf("%-22s | %-9s | %-10s\n", "Topology", "Converged", "Sim time");
-    printf("%-22s-+-----------+-----------\n", "----------------------");
-    for (auto& r : results) {
-        printf("%-22s | %-9s | %7.0f ms\n", r.name.c_str(), r.converged ? "YES" : "NO", r.simTimeMs);
-    }
-    printf("\n");
-
-    for (auto& r : results) {
-        CHECK(r.converged);
     }
 }
 

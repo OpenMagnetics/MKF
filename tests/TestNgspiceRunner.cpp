@@ -1084,9 +1084,9 @@ TEST_CASE("Buck converter simulation", "[ngspice-runner][buck-topology][smoke-te
     buck.set_efficiency(0.95);
     
     // Operating point: 5V @ 2A output, 100kHz
-    BuckOperatingPoint opPoint;
-    opPoint.set_output_voltage(5.0);
-    opPoint.set_output_current(2.0);
+    BaseOperatingPoint opPoint;
+    opPoint.set_output_voltages({5.0});
+    opPoint.set_output_currents({2.0});
     opPoint.set_switching_frequency(100e3);
     opPoint.set_ambient_temperature(25.0);
     
@@ -1172,9 +1172,9 @@ TEST_CASE("Boost converter simulation", "[ngspice-runner][boost-topology][smoke-
     boost.set_efficiency(0.92);
     
     // Operating point: 24V @ 1A output, 100kHz
-    BoostOperatingPoint opPoint;
-    opPoint.set_output_voltage(24.0);
-    opPoint.set_output_current(1.0);
+    BaseOperatingPoint opPoint;
+    opPoint.set_output_voltages({24.0});
+    opPoint.set_output_currents({1.0});
     opPoint.set_switching_frequency(100e3);
     opPoint.set_ambient_temperature(25.0);
     
@@ -1535,7 +1535,7 @@ TEST_CASE("PowerFactorCorrection generate ngspice circuit", "[ngspice-runner][pf
     inputVoltage.set_maximum(265.0);
     pfc.set_input_voltage(inputVoltage);
     
-    pfc.set_output_voltage(400.0);    // 400V DC
+    pfc.set_output_voltages({400.0});    // 400V DC
     pfc.set_output_power(500.0);      // 500W
     pfc.set_line_frequency(50.0);
     pfc.set_switching_frequency(100e3);
@@ -1582,7 +1582,7 @@ TEST_CASE("PowerFactorCorrection simulate and extract waveforms", "[ngspice-runn
     inputVoltage.set_maximum(265.0);
     pfc.set_input_voltage(inputVoltage);
     
-    pfc.set_output_voltage(400.0);
+    pfc.set_output_voltages({400.0});
     pfc.set_output_power(500.0);
     pfc.set_line_frequency(50.0);
     pfc.set_switching_frequency(100e3);
@@ -1643,7 +1643,7 @@ TEST_CASE("PowerFactorCorrection simulate and extract operating points", "[ngspi
     inputVoltage.set_maximum(265.0);
     pfc.set_input_voltage(inputVoltage);
     
-    pfc.set_output_voltage(400.0);
+    pfc.set_output_voltages({400.0});
     pfc.set_output_power(500.0);
     pfc.set_line_frequency(50.0);
     pfc.set_switching_frequency(100e3);
@@ -2360,7 +2360,7 @@ TEST_CASE("IsolatedBuckBoost ideal waveforms CCM", "[ngspice-runner][isobbst-top
     
     // Operating point: primary @ 24V, secondary @ 24V output, 100kHz
     // IsolatedBuckBoost expects: output_voltages[0] = primary voltage, output_voltages[1+] = secondary outputs
-    IsolatedBuckBoostOperatingPoint opPoint;
+    IsolatedBuckBaseOperatingPoint opPoint;
     opPoint.set_output_voltages({24.0, 24.0});  // Primary and one secondary output
     opPoint.set_output_currents({0.01, 3.0});   // Small primary current, 3A secondary load
     opPoint.set_switching_frequency(100e3);
@@ -2408,7 +2408,7 @@ TEST_CASE("IsolatedBuckBoost ngspice simulation CCM", "[ngspice-runner][isobbst-
     isobbst.set_current_ripple_ratio(0.3);
     
     // IsolatedBuckBoost expects: output_voltages[0] = primary voltage, output_voltages[1+] = secondary outputs
-    IsolatedBuckBoostOperatingPoint opPoint;
+    IsolatedBuckBaseOperatingPoint opPoint;
     opPoint.set_output_voltages({24.0, 24.0});  // Primary and one secondary output
     opPoint.set_output_currents({0.01, 3.0});   // Small primary current, 3A secondary load
     opPoint.set_switching_frequency(100e3);
@@ -2506,7 +2506,7 @@ TEST_CASE("IsolatedBuckBoost topology waveforms", "[ngspice-runner][isobbst-topo
     isobbst.set_current_ripple_ratio(0.3);
     
     // IsolatedBuckBoost expects: output_voltages[0] = primary voltage, output_voltages[1+] = secondary outputs
-    IsolatedBuckBoostOperatingPoint opPoint;
+    IsolatedBuckBaseOperatingPoint opPoint;
     opPoint.set_output_voltages({24.0, 24.0});  // Primary and one secondary output
     opPoint.set_output_currents({0.01, 3.0});   // Small primary current, 3A secondary load
     opPoint.set_switching_frequency(100e3);
@@ -2580,7 +2580,7 @@ TEST_CASE("IsolatedBuckBoost frontend defaults", "[ngspice-runner][isobbst-topol
     // Frontend defaults: 3 outputs
     // output_voltages[0] = primary (first output: 6V, 0.01A)
     // output_voltages[1+] = secondary outputs
-    IsolatedBuckBoostOperatingPoint opPoint;
+    IsolatedBuckBaseOperatingPoint opPoint;
     opPoint.set_output_voltages({6.0, 5.0, 3.3});  // Primary 6V, Secondary1 5V, Secondary2 3.3V
     opPoint.set_output_currents({0.01, 1.0, 0.3}); // Primary 0.01A, Secondary1 1A, Secondary2 0.3A
     opPoint.set_switching_frequency(400e3);  // 400kHz
