@@ -93,8 +93,8 @@ namespace {
         buckInputsJson["operatingPoints"] = json::array();
         {
             json buckOperatingPointJson;
-            buckOperatingPointJson["outputVoltage"] = 12;
-            buckOperatingPointJson["outputCurrent"] = 3;
+            buckOperatingPointJson["outputVoltages"] = {12.0};
+            buckOperatingPointJson["outputCurrents"] = {3.0};
             buckOperatingPointJson["switchingFrequency"] = 100000;
             buckOperatingPointJson["ambientTemperature"] = 42;
             buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
@@ -163,8 +163,8 @@ namespace {
         buckInputsJson["operatingPoints"] = json::array();
         {
             json buckOperatingPointJson;
-            buckOperatingPointJson["outputVoltage"] = 12;
-            buckOperatingPointJson["outputCurrent"] = 3;
+            buckOperatingPointJson["outputVoltages"] = {12.0};
+            buckOperatingPointJson["outputCurrents"] = {3.0};
             buckOperatingPointJson["switchingFrequency"] = 100000;
             buckOperatingPointJson["ambientTemperature"] = 42;
             buckInputsJson["operatingPoints"].push_back(buckOperatingPointJson);
@@ -221,7 +221,7 @@ namespace {
     }
 
     TEST_CASE("Test_Buck_Web_0", "[converter-model][buck-topology][smoke-test]") {
-        json buckInputsJson = json::parse(R"({"inputVoltage":{"minimum":10,"maximum":12},"diodeVoltageDrop":0.7,"efficiency":0.85,"currentRippleRatio":0.4,"operatingPoints":[{"outputVoltage":5,"outputCurrent":2,"switchingFrequency":100000,"ambientTemperature":25}]})");
+        json buckInputsJson = json::parse(R"({"inputVoltage":{"minimum":10,"maximum":12},"diodeVoltageDrop":0.7,"efficiency":0.85,"currentRippleRatio":0.4,"operatingPoints":[{"outputVoltages":[5],"outputCurrents":[2],"switchingFrequency":100000,"ambientTemperature":25}]})");
         OpenMagnetics::Buck buckInputs(buckInputsJson);
 
         auto inputs = buckInputs.process();
@@ -297,8 +297,8 @@ namespace {
         
         // Operating point: 5V @ 2A output, 100kHz
         BuckOperatingPoint opPoint;
-        opPoint.set_output_voltage(5.0);
-        opPoint.set_output_current(2.0);
+        opPoint.set_output_voltages({5.0});
+        opPoint.set_output_currents({2.0});
         opPoint.set_switching_frequency(100e3);
         opPoint.set_ambient_temperature(25.0);
         
@@ -410,7 +410,7 @@ namespace {
         buck.set_efficiency(0.95);
         buck.set_current_ripple_ratio(0.4);
 
-        BuckOperatingPoint op; op.set_output_voltage(5.0); op.set_output_current(2.0);
+        BuckOperatingPoint op; op.set_output_voltages({5.0}); op.set_output_currents({2.0});
         op.set_switching_frequency(100e3); op.set_ambient_temperature(25.0);
         buck.set_operating_points({op});
 

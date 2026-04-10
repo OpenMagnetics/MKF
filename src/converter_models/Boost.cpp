@@ -32,8 +32,8 @@ namespace OpenMagnetics {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
-        double outputVoltage = outputOperatingPoint.get_output_voltage();
-        double outputCurrent = outputOperatingPoint.get_output_current();
+        double outputVoltage = outputOperatingPoint.get_output_voltages()[0];
+        double outputCurrent = outputOperatingPoint.get_output_currents()[0];
         double diodeVoltageDrop = get_diode_voltage_drop();
         double efficiency = 1;
         if (get_efficiency()) {
@@ -120,7 +120,7 @@ namespace OpenMagnetics {
 
             for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
                 auto boostOperatingPoint = get_operating_points()[boostOperatingPointIndex];
-                maximumOutputCurrent = std::max(maximumOutputCurrent, boostOperatingPoint.get_output_current());
+                maximumOutputCurrent = std::max(maximumOutputCurrent, boostOperatingPoint.get_output_currents()[0]);
             }
 
             maximumCurrentRiple = currentRippleRatio * maximumOutputCurrent;
@@ -131,8 +131,8 @@ namespace OpenMagnetics {
 
             for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
                 auto boostOperatingPoint = get_operating_points()[boostOperatingPointIndex];
-                auto dutyCycle = calculate_duty_cycle(minimumInputVoltage, boostOperatingPoint.get_output_voltage(), get_diode_voltage_drop(), efficiency);
-                auto currentRiple = (maximumSwitchCurrent - boostOperatingPoint.get_output_current() / (1.0 - dutyCycle)) * 2;
+                auto dutyCycle = calculate_duty_cycle(minimumInputVoltage, boostOperatingPoint.get_output_voltages()[0], get_diode_voltage_drop(), efficiency);
+                auto currentRiple = (maximumSwitchCurrent - boostOperatingPoint.get_output_currents()[0] / (1.0 - dutyCycle)) * 2;
                 maximumCurrentRiple = std::max(maximumCurrentRiple, currentRiple);
             }
 
@@ -142,7 +142,7 @@ namespace OpenMagnetics {
         for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
             auto boostOperatingPoint = get_operating_points()[boostOperatingPointIndex];
             auto switchingFrequency = boostOperatingPoint.get_switching_frequency();
-            auto outputVoltage = boostOperatingPoint.get_output_voltage();
+            auto outputVoltage = boostOperatingPoint.get_output_voltages()[0];
             auto desiredInductance = maximumInputVoltage * (outputVoltage - maximumInputVoltage) / (maximumCurrentRiple * switchingFrequency * outputVoltage);
             maximumNeededInductance = std::max(maximumNeededInductance, desiredInductance);
         }
@@ -257,8 +257,8 @@ namespace OpenMagnetics {
         double inputVoltage = inputVoltages[inputVoltageIndex];
         auto opPoint = get_operating_points()[operatingPointIndex];
         
-        double outputVoltage = opPoint.get_output_voltage();
-        double outputCurrent = opPoint.get_output_current();
+        double outputVoltage = opPoint.get_output_voltages()[0];
+        double outputCurrent = opPoint.get_output_currents()[0];
         double switchingFrequency = opPoint.get_switching_frequency();
         double diodeVoltageDrop = get_diode_voltage_drop();
         double efficiency = 1.0;

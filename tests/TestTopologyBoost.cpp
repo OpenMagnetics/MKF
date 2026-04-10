@@ -93,8 +93,8 @@ namespace {
         boostInputsJson["operatingPoints"] = json::array();
         {
             json boostOperatingPointJson;
-            boostOperatingPointJson["outputVoltage"] = 50;
-            boostOperatingPointJson["outputCurrent"] = 1;
+            boostOperatingPointJson["outputVoltages"] = {50.0};
+            boostOperatingPointJson["outputCurrents"] = {1.0};
             boostOperatingPointJson["switchingFrequency"] = 100000;
             boostOperatingPointJson["ambientTemperature"] = 42;
             boostInputsJson["operatingPoints"].push_back(boostOperatingPointJson);
@@ -139,12 +139,12 @@ namespace {
             painter.export_svg();
         }
 
-        REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError));
+        REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltages"][0]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError));
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
         REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
-        REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltage"]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltage"]) * maximumError));
+        REQUIRE_THAT(double(boostInputsJson["operatingPoints"][0]["outputVoltages"][0]), Catch::Matchers::WithinAbs(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak_to_peak().value(), double(boostInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError));
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR_WITH_DEADTIME);
         // Allow small DC offset due to ngspice simulation (was == 0, now allows < 5A)
@@ -176,8 +176,8 @@ namespace {
         
         // Operating point: 24V @ 1A output, 100kHz
         BoostOperatingPoint opPoint;
-        opPoint.set_output_voltage(24.0);
-        opPoint.set_output_current(1.0);
+        opPoint.set_output_voltages({24.0});
+        opPoint.set_output_currents({1.0});
         opPoint.set_switching_frequency(100e3);
         opPoint.set_ambient_temperature(25.0);
         
@@ -287,7 +287,7 @@ namespace {
         boost.set_efficiency(0.92);
         boost.set_current_ripple_ratio(0.4);
 
-        BoostOperatingPoint op; op.set_output_voltage(24.0); op.set_output_current(1.0);
+        BoostOperatingPoint op; op.set_output_voltages({24.0}); op.set_output_currents({1.0});
         op.set_switching_frequency(100e3); op.set_ambient_temperature(25.0);
         boost.set_operating_points({op});
 

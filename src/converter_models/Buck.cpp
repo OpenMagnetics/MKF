@@ -30,8 +30,8 @@ namespace OpenMagnetics {
     OperatingPoint Buck::process_operating_points_for_input_voltage(double inputVoltage, const BuckOperatingPoint& outputOperatingPoint, double inductance) {
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
-        double outputVoltage = outputOperatingPoint.get_output_voltage();
-        double outputCurrent = outputOperatingPoint.get_output_current();
+        double outputVoltage = outputOperatingPoint.get_output_voltages()[0];
+        double outputCurrent = outputOperatingPoint.get_output_currents()[0];
         double diodeVoltageDrop = get_diode_voltage_drop();
         double efficiency = 1;
         if (get_efficiency()) {
@@ -111,7 +111,7 @@ namespace OpenMagnetics {
 
             for (size_t buckOperatingPointIndex = 0; buckOperatingPointIndex < get_operating_points().size(); ++buckOperatingPointIndex) {
                 auto buckOperatingPoint = get_operating_points()[buckOperatingPointIndex];
-                maximumOutputCurrent = std::max(maximumOutputCurrent, buckOperatingPoint.get_output_current());
+                maximumOutputCurrent = std::max(maximumOutputCurrent, buckOperatingPoint.get_output_currents()[0]);
             }
 
             maximumCurrentRiple = currentRippleRatio * maximumOutputCurrent;
@@ -123,7 +123,7 @@ namespace OpenMagnetics {
 
             for (size_t buckOperatingPointIndex = 0; buckOperatingPointIndex < get_operating_points().size(); ++buckOperatingPointIndex) {
                 auto buckOperatingPoint = get_operating_points()[buckOperatingPointIndex];
-                maximumOutputCurrent = std::max(maximumOutputCurrent, buckOperatingPoint.get_output_current());
+                maximumOutputCurrent = std::max(maximumOutputCurrent, buckOperatingPoint.get_output_currents()[0]);
             }
 
             maximumCurrentRiple = (maximumSwitchCurrent - maximumOutputCurrent) * 2;
@@ -133,7 +133,7 @@ namespace OpenMagnetics {
         for (size_t buckOperatingPointIndex = 0; buckOperatingPointIndex < get_operating_points().size(); ++buckOperatingPointIndex) {
             auto buckOperatingPoint = get_operating_points()[buckOperatingPointIndex];
             auto switchingFrequency = buckOperatingPoint.get_switching_frequency();
-            auto outputVoltage = buckOperatingPoint.get_output_voltage();
+            auto outputVoltage = buckOperatingPoint.get_output_voltages()[0];
             auto desiredInductance = outputVoltage * (maximumInputVoltage - outputVoltage) / (maximumCurrentRiple * switchingFrequency * maximumInputVoltage);
             maximumNeededInductance = std::max(maximumNeededInductance, desiredInductance);
         }
@@ -248,8 +248,8 @@ namespace OpenMagnetics {
         double inputVoltage = inputVoltages[inputVoltageIndex];
         auto opPoint = get_operating_points()[operatingPointIndex];
         
-        double outputVoltage = opPoint.get_output_voltage();
-        double outputCurrent = opPoint.get_output_current();
+        double outputVoltage = opPoint.get_output_voltages()[0];
+        double outputCurrent = opPoint.get_output_currents()[0];
         double switchingFrequency = opPoint.get_switching_frequency();
         double diodeVoltageDrop = get_diode_voltage_drop();
         double efficiency = 1.0;
