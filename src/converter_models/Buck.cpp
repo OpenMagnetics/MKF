@@ -20,11 +20,15 @@ namespace OpenMagnetics {
     }
 
     Buck::Buck(const json& j) {
-        from_json(j, *this);
+        json migrated = j;
+        migrate_operating_point_json(migrated);
+        from_json(migrated, *this);
     }
 
     AdvancedBuck::AdvancedBuck(const json& j) {
-        from_json(j, *this);
+        json migrated = j;
+        migrate_operating_point_json(migrated);
+        from_json(migrated, *this);
     }
 
     OperatingPoint Buck::process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductance) {

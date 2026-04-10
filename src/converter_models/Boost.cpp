@@ -21,11 +21,15 @@ namespace OpenMagnetics {
     }
 
     Boost::Boost(const json& j) {
-        from_json(j, *this);
+        json migrated = j;
+        migrate_operating_point_json(migrated);
+        from_json(migrated, *this);
     }
 
     AdvancedBoost::AdvancedBoost(const json& j) {
-        from_json(j, *this);
+        json migrated = j;
+        migrate_operating_point_json(migrated);
+        from_json(migrated, *this);
     }
 
     OperatingPoint Boost::process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductance) {

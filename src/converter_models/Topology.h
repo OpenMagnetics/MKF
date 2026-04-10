@@ -9,6 +9,38 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+/**
+ * @brief Migrate old-format operating-point JSON (singular outputVoltage/
+ *        outputCurrent) to the new plural format (outputVoltages array /
+ *        outputCurrents array). Call this on the raw JSON object BEFORE
+ *        passing it to quicktype's from_json, so old JSON inputs that
+ *        predate the B3 schema change still parse correctly.
+ *
+ * Rules:
+ *   - If "outputVoltage" (number) exists and "outputVoltages" doesn't →
+ *     create "outputVoltages" = [outputVoltage], remove "outputVoltage".
+ *   - If "outputCurrent" (number) exists and "outputCurrents" doesn't →
+ *     create "outputCurrents" = [outputCurrent], remove "outputCurrent".
+ *   - If both exist, the plural takes precedence (no migration needed).
+ *
+ * This handles the buck/boost/forward migration; flyback, LLC, DAB, etc.
+ * already used the plural form and are unaffected.
+ */
+inline void migrate_operating_point_json(json& j) {
+    if (j.contains("operatingPoints") && j["operatingPoints"].is_array()) {
+        for (auto& op : j["operatingPoints"]) {
+            if (op.contains("outputVoltage") && !op.contains("outputVoltages")) {
+                op["outputVoltages"] = json::array({op["outputVoltage"]});
+                op.erase("outputVoltage");
+            }
+            if (op.contains("outputCurrent") && !op.contains("outputCurrents")) {
+                op["outputCurrents"] = json::array({op["outputCurrent"]});
+                op.erase("outputCurrent");
+            }
+        }
+    }
+}
+
 
 /**
  * @brief Structure holding topology-level waveforms for converter validation
