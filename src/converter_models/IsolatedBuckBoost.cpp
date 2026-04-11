@@ -403,12 +403,11 @@ namespace OpenMagnetics {
         circuit << "* Coupled Inductor (Primary = flyback-type primary winding)\n";
         circuit << "Lpri pri_in 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
         
-        // Secondary windings: dot at GND side creates flyback polarity (opposite to primary dot at pri_in).
-        // In SPICE simulations, secondary shares primary GND for solver convergence — the transformer
-        // provides conceptual isolation, and floating secondary grounds cause convergence failures.
+        // Secondary windings: dot at sec0_in side (opposite to primary dot at pri_in).
+        // This creates flyback polarity where secondary conducts when switch is OFF.
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             double secondaryInductance = magnetizingInductance / (turnsRatios[secIdx] * turnsRatios[secIdx]);
-            circuit << "Lsec" << secIdx << " 0 sec" << secIdx << "_in " << std::scientific << secondaryInductance << std::fixed << "\n";
+            circuit << "Lsec" << secIdx << " sec" << secIdx << "_in 0 " << std::scientific << secondaryInductance << std::fixed << "\n";
         }
         
         // Couple primary to each secondary
@@ -473,11 +472,16 @@ namespace OpenMagnetics {
         }
         circuit << "\n\n";
         
-        // Options (matching Flyback for convergence)
-        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000\n";
-        circuit << ".ic v(vpri_out)=" << primaryOutputVoltage << "\n";
+        // Options with convergence aids for flyback topology
+        // RSHUNT: prevents floating nodes (1 TΩ to ground from each node)
+        // RSERIES: small series resistance for inductors (0.1 mΩ)
+        // ITL4=1000: more iterations for transient convergence
+        circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000 RSHUNT=1e12 RSERIES=1e-4\n";
+        
+        // Initial conditions - use .nodeset for better DC convergence
+        circuit << ".nodeset v(pri_in)=0 v(vpri_out)=" << primaryOutputVoltage << "\n";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-            circuit << ".ic v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx + 1] << "\n";
+            circuit << ".nodeset v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx + 1] << "\n";
         }
         circuit << "\n";
         
@@ -527,7 +531,7 @@ namespace OpenMagnetics {
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
                 config.numberOfPeriods = get_num_periods_to_extract();
-                config.keepTempFiles = false;
+                config.keepTempFiles = true;  // DEBUG: Keep temp files for analysis
 
                 auto simResult = runner.run_simulation(netlist, config);
 
@@ -537,11 +541,11 @@ namespace OpenMagnetics {
                 
                 // Define waveform name mapping
                 NgspiceRunner::WaveformNameMapping waveformMapping;
-                
+
                 // Primary winding
                 // Use magnetizing current probe: I(Lpri) + reflected secondary currents
                 waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vimag_sense#branch"}});
-                
+
                 // Secondary windings
                 for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
                     std::string voltageName = "sec" + std::to_string(secIdx) + "_in";
@@ -556,6 +560,7 @@ namespace OpenMagnetics {
                 }
                 
                 std::vector<bool> flipCurrentSign(1 + numSecondaries, false);
+                flipCurrentSign[0] = true;  // Flip primary current sign to match analytical model convention
                 
                 OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
                     simResult,
@@ -638,7 +643,7 @@ namespace OpenMagnetics {
             
             wf.set_input_voltage(getWaveform("pri_in"));
             wf.set_input_current(getWaveform("vimag_sense#branch"));
-            
+
             for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
                 wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense" + std::to_string(secIdx) + "#branch"));

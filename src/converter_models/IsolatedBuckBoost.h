@@ -14,7 +14,7 @@ namespace OpenMagnetics {
 class IsolatedBuckBoost : public MAS::IsolatedBuckBoost, public Topology {
 private:
     int numPeriodsToExtract = 5;
-    int numSteadyStatePeriods = 5;
+    int numSteadyStatePeriods = 20;  // Increased from 5 to ensure steady state
 
 public:
     bool _assertErrors = false;
