@@ -80,8 +80,8 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
         for (auto& massLossesMethodVariant : massLossesMethodsVariants) {
             auto massLossesMethods = massLossesMethodVariant.second;
             for (auto& massLossesMethod : massLossesMethods) {
-                if (std::holds_alternative<MagneticsCoreLossesMethodData>(massLossesMethod)) {
-                    auto methodData = std::get<MagneticsCoreLossesMethodData>(massLossesMethod);
+                if (std::holds_alternative<MagnetecCoreLossesMethodData>(massLossesMethod)) {
+                    auto methodData = std::get<MagnetecCoreLossesMethodData>(massLossesMethod);
                     methods.push_back(methodData.get_method());
                 }
             }

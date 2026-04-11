@@ -467,6 +467,7 @@ namespace OpenMagnetics {
         // Save signals
         circuit << "* Output signals\n";
         circuit << ".save v(pri_in) i(Vpri_sense) i(Vimag_sense) v(vpri_out) i(Vpri_out_sense)";
+        circuit << ".save v(pri_in) i(Vpri_sense) i(Lpri) v(vpri_out) i(Vpri_out_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
@@ -546,6 +547,10 @@ namespace OpenMagnetics {
                 // Use magnetizing current probe: I(Lpri) + reflected secondary currents
                 waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vimag_sense#branch"}});
 
+                
+                // Primary winding - measure inductor current (Lpri#branch) not switch current
+                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "lpri#branch"}});
+                
                 // Secondary windings
                 for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
                     std::string voltageName = "sec" + std::to_string(secIdx) + "_in";
@@ -644,6 +649,8 @@ namespace OpenMagnetics {
             wf.set_input_voltage(getWaveform("pri_in"));
             wf.set_input_current(getWaveform("vimag_sense#branch"));
 
+            wf.set_input_current(getWaveform("lpri#branch"));
+            
             for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
                 wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense" + std::to_string(secIdx) + "#branch"));
