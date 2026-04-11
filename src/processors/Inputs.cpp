@@ -418,12 +418,14 @@ SignalDescriptor Inputs::standardize_waveform(SignalDescriptor signal, double fr
 Waveform Inputs::reconstruct_signal(Harmonics harmonics, double frequency) {
     size_t numberPoints = std::max(settings.get_inputs_number_points_sampled_waveforms(), 16 * round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
     std::vector<double> data = std::vector<double>(numberPoints, 0);
-            
+
 
     for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_frequencies().size(); ++harmonicIndex) {
         auto amplitude = harmonics.get_amplitudes()[harmonicIndex];
         auto frequencyMultiplier = harmonics.get_frequencies()[harmonicIndex] / frequency;
-        auto totalAngle = 2 * std::numbers::pi / (numberPoints - 1) * frequencyMultiplier;
+        // Use numberPoints (not numberPoints-1) to match FFT convention:
+        // N samples span [0, T) with step T/N, period boundary is NOT included.
+        auto totalAngle = 2 * std::numbers::pi / numberPoints * frequencyMultiplier;
         for (size_t i = 0; i < numberPoints; ++i) {
             if (harmonics.get_frequencies()[harmonicIndex] > 0) {
                 double angle = i * totalAngle;
@@ -434,7 +436,13 @@ Waveform Inputs::reconstruct_signal(Harmonics harmonics, double frequency) {
             }
         }
     }
-    std::vector<double> time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), numberPoints);
+    // Generate time array matching FFT convention: N samples spanning [0, T)
+    // with step T/N, where T = 1/frequency. The period endpoint is NOT included.
+    double period = 1. / roundFloat(frequency, 9);
+    std::vector<double> time(numberPoints);
+    for (size_t i = 0; i < numberPoints; ++i) {
+        time[i] = i * period / numberPoints;
+    }
     Waveform waveform;
     waveform.set_data(data);
     waveform.set_time(time);

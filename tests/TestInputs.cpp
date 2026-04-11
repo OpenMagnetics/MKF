@@ -2234,11 +2234,27 @@ TEST_CASE("Test_Standardize_Waveform", "[processor][inputs][smoke-test]") {
     #ifdef ENABLE_MATPLOTPP
         auto outFile = outputFilePath;
         outFile.append("Test_Standardize_Waveform.svg");
-        std::filesystem::remove(outFile);   
+        std::filesystem::remove(outFile);
         Painter painter(outFile, false, true);
         painter.paint_waveform(standardSignalDescriptor.get_waveform().value());
         painter.export_svg();
     #endif
 
+}
+
+TEST_CASE("Test_Standardize_Signal_Descriptor_Non_Multiple_Harmonics", "[processor][inputs][smoke-test]") {
+    // Simulates what happens in the frontend when the user sets harmonics
+    // at non-standard frequencies (e.g., 60 Hz fundamental with a 60 kHz component)
+    SignalDescriptor signalDescriptor = json::parse(R"({"harmonics":{"amplitudes":[0,30.4,18.5],"frequencies":[0,60,60000]},"processed":null,"waveform":null})");
+
+    auto standardized = OpenMagnetics::Inputs::standardize_waveform(signalDescriptor, 60);
+    REQUIRE(standardized.get_waveform().has_value());
+    REQUIRE(standardized.get_harmonics().has_value());
+
+    auto processed = OpenMagnetics::Inputs::calculate_processed_data(
+        standardized.get_harmonics().value(),
+        standardized.get_waveform().value(), true);
+    REQUIRE(processed.get_rms().has_value());
+    REQUIRE(processed.get_rms().value() > 0);
 }
 }  // namespace
