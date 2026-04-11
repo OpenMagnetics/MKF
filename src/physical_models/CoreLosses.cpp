@@ -893,6 +893,18 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
         numberPoints = round(numberPoints / (frequency / excitation.get_frequency()));
     }
 
+    // When the waveform has explicit time data, check if it spans more than one
+    // switching period (e.g. a SPICE waveform covering many cycles). If so, limit
+    // the integration to one switching period worth of points.
+    if (!magneticFluxDensityTime.empty() && numberPoints > 1) {
+        double waveformDuration = magneticFluxDensityTime[numberPoints - 1] - magneticFluxDensityTime[0];
+        double switchingPeriod = 1.0 / frequency;
+        if (waveformDuration > 1.5 * switchingPeriod) {
+            double numCycles = waveformDuration * frequency;
+            numberPoints = std::max(static_cast<size_t>(2), static_cast<size_t>(round(numberPoints / numCycles)));
+        }
+    }
+
     for (size_t i = 0; i < numberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
