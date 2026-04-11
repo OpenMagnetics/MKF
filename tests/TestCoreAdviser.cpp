@@ -471,15 +471,11 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_High_Power_High_Frequency",
 
     REQUIRE(masMagnetics.size() > 0);
 
-    bool found = false;
+    // Verify all returned cores are large enough to handle high power without saturation
     for (auto [mas, scoring] : masMagnetics) {
-        if (mas.get_magnetic().get_core().get_name().value_or("unnamed") == "E 70/33/32 - N87 - Distributed gapped 1.35 mm 3 stacks") {
-            if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3) {
-                found = true;
-            }
-        }
+        auto core = mas.get_magnetic().get_core();
+        REQUIRE(core.get_processed_description()->get_effective_parameters().get_effective_area() > 100e-6);
     }
-    REQUIRE(found);
     settings.reset();
 }
 
@@ -2526,6 +2522,88 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
             std::cout << "    Gap " << g << ": type=" << magic_enum::enum_name(gap.get_type())
                       << ", length=" << gapLength * 1e6 << " µm" << std::endl;
         }
+    }
+
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreAdviserStandardCores_No_Toroidal_Saturation_Debug", "[adviser][core-adviser][saturation-debug]") {
+    // Reproduce the EXACT frontend scenario from the user's console log:
+    // 100µH inductor, 100kHz, ±5A triangular, rectangular voltage [-20.5V, 70.5V], no toroidal cores
+    settings.reset();
+    clear_databases();
+    load_core_shapes();
+
+    settings.set_use_toroidal_cores(false);
+    settings.set_core_adviser_include_stacks(true);
+    settings.set_core_adviser_include_distributed_gaps(true);
+
+    // Build the exact inputs JSON from the frontend debug log
+    json inputsJson = json::parse(R"({
+        "designRequirements": {
+            "magnetizingInductance": {"nominal": 0.0001},
+            "name": "My Design Requirements",
+            "turnsRatios": [],
+            "wiringTechnology": "Wound"
+        },
+        "operatingPoints": [{
+            "name": "Op. Point No. 1",
+            "conditions": {"ambientTemperature": 25},
+            "excitationsPerWinding": [{
+                "name": "Primary winding excitation",
+                "frequency": 100000,
+                "current": {
+                    "waveform": {"data": [-5, 5, -5], "time": [0, 0.000005, 0.00001]},
+                    "processed": {"dutyCycle": 0.5, "peakToPeak": 10, "offset": 0, "label": "Triangular",
+                        "acEffectiveFrequency": 104779.35, "effectiveFrequency": 104779.35,
+                        "peak": 5, "rms": 2.887, "thd": 0.111},
+                    "harmonics": {"amplitudes": [1.16e-14, 4.054, 0.451], "frequencies": [0, 100000, 300000]}
+                },
+                "voltage": {
+                    "waveform": {"data": [-20.5, 70.5, 70.5, -20.5, -20.5], "time": [0, 0, 0.000005, 0.000005, 0.00001]},
+                    "processed": {"dutyCycle": 0.5, "peakToPeak": 100, "offset": 0, "label": "Rectangular",
+                        "acEffectiveFrequency": 204322.0, "effectiveFrequency": 190636.2,
+                        "peak": 70.5, "rms": 51.57, "thd": 0.427},
+                    "harmonics": {"amplitudes": [24.289, 57.921, 19.276, 11.528, 8.194, 6.332],
+                                  "frequencies": [0, 100000, 300000, 500000, 700000, 900000]}
+                }
+            }]
+        }]
+    })");
+
+    OpenMagnetics::Inputs inputs(inputsJson);
+
+    auto excitation = inputs.get_operating_point(0).get_excitations_per_winding()[0];
+    std::cerr << "\n=== SATURATION DEBUG TEST (EXACT FRONTEND DATA) ===" << std::endl;
+    std::cerr << "Frequency: " << excitation.get_frequency() << " Hz" << std::endl;
+    if (excitation.get_current() && excitation.get_current()->get_processed()) {
+        std::cerr << "Current peak: " << excitation.get_current()->get_processed()->get_peak().value_or(0) << " A" << std::endl;
+        std::cerr << "Voltage average (DC harmonics[0]): " << excitation.get_voltage()->get_harmonics()->get_amplitudes()[0] << " V" << std::endl;
+    }
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 0.3;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0.4;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0.3;
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 10);
+
+    std::cerr << "\n=== RESULTS ===" << std::endl;
+    std::cerr << "Number of results: " << masMagnetics.size() << std::endl;
+    for (size_t i = 0; i < masMagnetics.size() && i < 5; ++i) {
+        auto& mas = masMagnetics[i].first;
+        auto& core = mas.get_magnetic().get_core();
+        std::cerr << "  " << i << ": " << core.get_name().value_or("?")
+                  << " N=" << mas.get_magnetic().get_coil().get_functional_description()[0].get_number_turns()
+                  << " score=" << masMagnetics[i].second
+                  << std::endl;
+    }
+
+    if (masMagnetics.size() == 0) {
+        std::cerr << "\nWARNING: No cores found! Check [SatFilter-Inductor] output above." << std::endl;
     }
 
     settings.reset();

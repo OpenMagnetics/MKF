@@ -1583,9 +1583,9 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
         }
 
         scoring += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
-        
+
         bool isSaturated = magneticFluxDensityPeak > magneticFluxDensitySaturation;
-        
+
         if (isSaturated) {
             return {false, 0.0};
         }

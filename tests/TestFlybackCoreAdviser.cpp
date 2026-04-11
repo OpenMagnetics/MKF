@@ -13,8 +13,8 @@ TEST_CASE("Flyback Core Adviser - Default Values", "[core-adviser][flyback][defa
     flybackJson["inputVoltage"]["minimum"] = 120.0;
     flybackJson["inputVoltage"]["maximum"] = 375.0;
     flybackJson["diodeVoltageDrop"] = 0.7;
-    flybackJson["maxDrainSourceVoltage"] = 600.0;
-    flybackJson["maxDutyCycle"] = 0.5;
+    flybackJson["maximumDrainSourceVoltage"] = 600.0;
+    flybackJson["maximumDutyCycle"] = 0.5;
     flybackJson["currentRippleRatio"] = 1.0;
     flybackJson["inductance"] = 200e-6;  // 200 µH
     flybackJson["dutyCycleRange"][0] = 0.5;
@@ -104,8 +104,8 @@ TEST_CASE("Flyback Inputs - Frequency Validation", "[flyback][frequency][validat
     flybackJson["inputVoltage"]["minimum"] = 120.0;
     flybackJson["inputVoltage"]["maximum"] = 375.0;
     flybackJson["diodeVoltageDrop"] = 0.7;
-    flybackJson["maxDrainSourceVoltage"] = 600.0;
-    flybackJson["maxDutyCycle"] = 0.5;
+    flybackJson["maximumDrainSourceVoltage"] = 600.0;
+    flybackJson["maximumDutyCycle"] = 0.5;
     flybackJson["currentRippleRatio"] = 1.0;
     flybackJson["inductance"] = 200e-6;
     

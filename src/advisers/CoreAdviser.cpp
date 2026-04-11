@@ -1371,7 +1371,7 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
     
     double saturationGap = magnetizingInductance.calculate_gap_from_saturation_constraint(
         core, &inputs, targetB, peakCurrent);
-    
+
     // The minimum gap must satisfy BOTH energy storage AND saturation constraints
     double effectiveMinGap = std::max(constraints.minGap, saturationGap);
     
@@ -1406,7 +1406,18 @@ double CoreAdviser::get_peak_current(Inputs inputs) {
     // For transformer topologies (forward converters), core saturation is driven by
     // magnetizing current only. The reflected secondary current is balanced and does
     // not contribute to net flux. Using actual current would oversize the core.
-    bool isTransformerTopology = !is_energy_storing_topology(inputs.get_design_requirements().get_topology());
+    // When topology is unset, fall back to inductance-based heuristic:
+    // minimum-only inductance = transformer; nominal/max inductance = inductor.
+    auto topology = inputs.get_design_requirements().get_topology();
+    bool isTransformerTopology;
+    if (topology.has_value()) {
+        isTransformerTopology = !is_energy_storing_topology(topology);
+    } else {
+        auto& inductanceReq = inputs.get_design_requirements().get_magnetizing_inductance();
+        isTransformerTopology = inductanceReq.get_minimum() &&
+                                !inductanceReq.get_nominal() &&
+                                !inductanceReq.get_maximum();
+    }
 
     for (auto& op : inputs.get_operating_points()) {
         auto excitation = Inputs::get_primary_excitation(op);
@@ -1419,9 +1430,10 @@ double CoreAdviser::get_peak_current(Inputs inputs) {
                 excitation.get_magnetizing_current()->get_processed()->get_peak().value());
         }
 
-        // Check actual current only for energy-storing topologies (e.g. flyback, boost).
-        // For forward converters the actual current includes reflected secondary load
-        // current which does not bias the core.
+        // Check actual current only for energy-storing topologies (e.g. flyback, boost)
+        // and inductors (identified by having a nominal inductance).
+        // For pure transformer topologies the actual current includes reflected secondary
+        // load current which does not bias the core.
         if (!isTransformerTopology &&
             excitation.get_current() &&
             excitation.get_current()->get_processed() &&
