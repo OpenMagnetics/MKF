@@ -664,7 +664,9 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
                 text += "\tMagnetic flux density: " + std::to_string(fluxDensity->get_processed()->get_peak().value()) + "\n";
             }
             
-            text += "\tCore temperature: " + std::to_string(coreLosses.get_temperature()) + "\n";
+            if (coreLosses.get_temperature() > 0) {
+                text += "\tCore temperature: " + std::to_string(coreLosses.get_temperature()) + "\n";
+            }
         }
         
         if (output.get_winding_losses()) {
