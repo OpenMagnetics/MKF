@@ -1501,4 +1501,51 @@ namespace {
         CHECK(err.max_rms_err  < 10.0);
     }
 
+    // =====================================================================
+    // E-battery parameter replication: Vin=400V ±10%, N=1.5, Vout=100V,
+    // P=500W (Iout=5A), Lm=1mH, Ls=50µH, Fs=100kHz — matches the Playwright
+    // E-battery setupN2 function so we can time this in native C++.
+    // =====================================================================
+    TEST_CASE("Test_Dab_EBattery_Params_Timing", "[converter-model][dab-topology][ngspice-simulation][ebattery-timing]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        json dabJson;
+        json inputVoltage;
+        inputVoltage["nominal"] = 400.0;
+        inputVoltage["minimum"] = 360.0;   // ±10%
+        inputVoltage["maximum"] = 440.0;
+        dabJson["inputVoltage"] = inputVoltage;
+        dabJson["seriesInductance"] = 50e-6;
+        dabJson["useLeakageInductance"] = false;
+        dabJson["operatingPoints"] = json::array();
+        {
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = {100.0};
+            op["outputCurrents"] = {5.0};    // 500W / 100V
+            op["switchingFrequency"] = 100000;
+            dabJson["operatingPoints"].push_back(op);
+        }
+
+        OpenMagnetics::Dab dab(dabJson);
+        auto req = dab.process_design_requirements();
+
+        std::vector<double> turnsRatios = {1.5};
+        double Lm = 1e-3;
+
+        SECTION("Topology waveforms (nominal only — 1 sim)") {
+            auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
+            REQUIRE(!waveforms.empty());
+            CHECK(!waveforms[0].get_input_voltage().get_data().empty());
+            std::cerr << "[E-battery] topology waveforms: " << waveforms.size() << " result(s)\n";
+        }
+
+        SECTION("Operating points (nom+min+max — 3 sims)") {
+            auto ops = dab.simulate_and_extract_operating_points(turnsRatios, Lm);
+            REQUIRE(!ops.empty());
+            std::cerr << "[E-battery] operating points: " << ops.size() << " result(s)\n";
+        }
+    }
+
 } // anonymous namespace

@@ -180,16 +180,25 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/eigen-src")
 if(ENABLE_NGSPICE)
     message(STATUS "Configuring ngspice...")
     
-    # ngspice can be built as a shared library with the sharedspice API
-    # We use ExternalProject for more control over the build process
-    include(ExternalProject)
-    
-    set(NGSPICE_VERSION "45.2")
-    set(NGSPICE_URL "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/${NGSPICE_VERSION}/ngspice-${NGSPICE_VERSION}.tar.gz/download")
     set(NGSPICE_PREFIX "${CMAKE_BINARY_DIR}/_deps/ngspice")
     set(NGSPICE_INSTALL_DIR "${NGSPICE_PREFIX}/install")
     
-    # Configure options for ngspice shared library build
+    # Check if ngspice is already installed (e.g. from a previous build)
+    set(NGSPICE_ALREADY_INSTALLED FALSE)
+    if(EXISTS "${NGSPICE_INSTALL_DIR}/lib/libngspice.so" AND EXISTS "${NGSPICE_INSTALL_DIR}/include/ngspice/sharedspice.h")
+        set(NGSPICE_ALREADY_INSTALLED TRUE)
+        message(STATUS "ngspice already installed at ${NGSPICE_INSTALL_DIR}, skipping build")
+    endif()
+    
+    if(NOT NGSPICE_ALREADY_INSTALLED)
+        # ngspice can be built as a shared library with the sharedspice API
+        # We use ExternalProject for more control over the build process
+        include(ExternalProject)
+        
+        set(NGSPICE_VERSION "45.2")
+        set(NGSPICE_URL "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/${NGSPICE_VERSION}/ngspice-${NGSPICE_VERSION}.tar.gz/download")
+        
+        # Configure options for ngspice shared library build
     # Basic configuration - NO CIDER, NO XSPICE for minimal build
     # Key options:
     # --with-ngshared: Build as shared library with C API
@@ -293,9 +302,13 @@ echo 'WASM patches applied successfully'
         )
     endif()
     
+    endif()
+    
     # Create imported target for ngspice
     add_library(ngspice INTERFACE)
-    add_dependencies(ngspice ngspice_external)
+    if(NOT NGSPICE_ALREADY_INSTALLED)
+        add_dependencies(ngspice ngspice_external)
+    endif()
     
     # Set include and library paths
     target_include_directories(ngspice INTERFACE 
@@ -473,7 +486,9 @@ target_link_libraries(MKF PRIVATE nlohmann_json::nlohmann_json)
 # Link ngspice if enabled
 if(ENABLE_NGSPICE)
     target_link_libraries(MKF PUBLIC ngspice)
-    add_dependencies(MKF ngspice_external)
+    if(NOT NGSPICE_ALREADY_INSTALLED)
+        add_dependencies(MKF ngspice_external)
+    endif()
 endif()
 
 target_include_directories(MKF PUBLIC

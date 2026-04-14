@@ -1,0 +1,3 @@
+- [Build with ninja](feedback_build.md) — Use `ninja -j4` in build dir, not cmake --build
+- [Rosano core loss topology](project_rosano_core_loss_topology.md) — R+RL+RLC series model for SPICE core losses, alternative to Ridley RL-ladder
+- [Ignore WebFrontend2](feedback_webfrontend.md) — Only work with WebFrontend, not WebFrontend2

@@ -42,7 +42,9 @@ struct SimulationConfig {
     size_t numberOfPeriods = 2;         // Number of periods to extract (when extractOnePeriod = false)
     std::string workingDirectory = "";  // Working directory for simulation files
     bool keepTempFiles = false;         // Keep temporary files after simulation
-    double timeout = 60.0;              // Timeout in seconds
+    double timeout = 300.0;             // Timeout in seconds (raised from 60 so
+                                        // multi-winding LLC simulations don't
+                                        // time out under WASM)
 };
 
 /**

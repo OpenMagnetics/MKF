@@ -1,0 +1,63 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - button "Visit OpenMagnetics and Tear Down the Paywalls!" [ref=e6] [cursor=pointer]:
+        - img "OpenMagnetics Logo" [ref=e7]
+      - button "OpenMagnetics" [ref=e8] [cursor=pointer]
+      - generic [ref=e9]:
+        - list [ref=e10]:
+          - listitem [ref=e11]:
+            - link "Alf's Musings" [ref=e12] [cursor=pointer]:
+              - /url: https://www.linkedin.com/newsletters/7026708624966135808/
+          - listitem [ref=e13]:
+            - button "New Magnetic" [ref=e14] [cursor=pointer]:
+              - generic [ref=e15]: 
+              - text: New Magnetic
+          - listitem [ref=e16]:
+            - button "Tools" [ref=e17] [cursor=pointer]:
+              - generic [ref=e18]: 
+              - text: Tools
+            - text: 
+          - listitem [ref=e19]:
+            - button "Wizards" [ref=e20] [cursor=pointer]:
+              - generic [ref=e21]: 
+              - text: Wizards
+            - text:                
+          - listitem [ref=e22]:
+            - button "Continue design" [ref=e24] [cursor=pointer]:
+              - generic [ref=e25]: 
+              - text: Continue design
+          - listitem [ref=e26]:
+            - button "Load MAS" [ref=e28] [cursor=pointer]
+        - list [ref=e29]:
+          - listitem [ref=e30]:
+            - link "Donate" [ref=e32] [cursor=pointer]:
+              - /url: https://en.liberapay.com/OpenMagnetics/
+              - text: Donate
+              - generic [ref=e33]: 
+          - listitem [ref=e34]:
+            - button "Bug?" [ref=e36] [cursor=pointer]:
+              - text: Bug?
+              - generic [ref=e37]: 
+          - listitem [ref=e38]:
+            - link [ref=e40] [cursor=pointer]:
+              - /url: https://github.com/OpenMagnetics/
+              - generic [ref=e41]: 
+  - text:  
+  - main [ref=e42]:
+    - generic [ref=e43]:
+      - heading "Loading Magnetic Engine and Databases" [level=1] [ref=e44]
+      - heading "(It will take just a few seconds)" [level=2] [ref=e45]
+      - img "loading" [ref=e46]
+  - contentinfo [ref=e48]:
+    - list [ref=e49]:
+      - listitem [ref=e50]:
+        - link "Home" [ref=e51] [cursor=pointer]:
+          - /url: /
+      - listitem [ref=e52]:
+        - link "Cookie Policy" [ref=e53] [cursor=pointer]:
+          - /url: /cookie_policy
+      - listitem [ref=e54]:
+        - link "Legal" [ref=e55] [cursor=pointer]:
+          - /url: /legal_notice
+    - paragraph [ref=e56]: © 2022-2026 OpenMagnetics

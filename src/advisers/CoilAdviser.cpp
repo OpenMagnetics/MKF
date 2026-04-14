@@ -4,6 +4,7 @@
 #include "constructive_models/Insulation.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include <algorithm>
+#include <set>
 #include <limits> // B18 FIX: for numeric_limits
 #include "support/Exceptions.h"
 #include "support/Logger.h"
@@ -521,15 +522,47 @@ namespace OpenMagnetics {
             };
             logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
 
+            // wound_with windings (e.g. center-tapped LLC half-secondaries)
+            // are virtualized into the same section as their partner, so the
+            // section count is smaller than the winding count. Compute the
+            // 0-based virtual-group index for this winding by counting how
+            // many distinct groups (windings that are NOT wound_with a lower-
+            // index partner) appear up to and including this winding.
+            auto group_representative = [&](size_t idx) -> size_t {
+                const auto& ww = coil.get_functional_description()[idx].get_wound_with();
+                if (!ww || ww->empty()) return idx;
+                const std::string& partnerName = ww.value().front();
+                for (size_t pIdx = 0; pIdx < numberWindings; ++pIdx) {
+                    if (coil.get_functional_description()[pIdx].get_name() == partnerName) {
+                        return std::min(pIdx, idx);
+                    }
+                }
+                return idx;
+            };
+            size_t conductionSectionIndex = 0;
+            {
+                std::set<size_t> seenReps;
+                size_t myRep = group_representative(windingIndex);
+                for (size_t k = 0; k <= windingIndex; ++k) {
+                    size_t rep = group_representative(k);
+                    if (rep == myRep && k != windingIndex) {
+                        // We are a non-representative member of an already-seen
+                        // group; reuse that group's section index.
+                        break;
+                    }
+                    if (seenReps.insert(rep).second) {
+                        if (rep == myRep) break;
+                        conductionSectionIndex++;
+                    }
+                }
+            }
+
             for (auto& wireConfiguration : wireConfigurations) {
                 _wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
                 _wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
                 logEntry("Trying wires with a current density of " + std::to_string(wireConfiguration["maximumEffectiveCurrentDensity"]) + " and " + std::to_string(wireConfiguration["maximumNumberParallels"]) + " maximum parallels", "CoilAdviser", 3);
 
-                auto sectionIndex = coil.convert_conduction_section_index_to_global(windingIndex);
-                
-                if (windingIndex == 0) {
-                }
+                auto sectionIndex = coil.convert_conduction_section_index_to_global(conductionSectionIndex);
 
                 auto wiresWithScoring = _wireAdviser.get_advised_wire(wires,
                                                                      coil.get_functional_description()[windingIndex],
@@ -574,6 +607,26 @@ namespace OpenMagnetics {
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
                 windings.push_back(wireCoilPerWinding[windingIndex][currentWireIndexPerWinding[windingIndex]].first);
             }
+
+            // Wound-together windings (e.g. center-tapped LLC secondary halves)
+            // share a single section and must have matching wire + parallels
+            // for the Coil virtualization step to merge them. The wire adviser
+            // runs per-winding and may pick different wires, so copy the wire
+            // and numberParallels from the first member of each wound_with
+            // group to every other member.
+            for (size_t wIdx = 0; wIdx < windings.size(); ++wIdx) {
+                const auto& wwOpt = windings[wIdx].get_wound_with();
+                if (!wwOpt || wwOpt->empty()) continue;
+                const std::string& partnerName = wwOpt.value().front();
+                for (size_t pIdx = 0; pIdx < windings.size(); ++pIdx) {
+                    if (windings[pIdx].get_name() == partnerName) {
+                        windings[wIdx].set_wire(windings[pIdx].get_wire());
+                        windings[wIdx].set_number_parallels(windings[pIdx].get_number_parallels());
+                        break;
+                    }
+                }
+            }
+
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(windings);
 
             // We have new wires combination, we need to restart insulation each time and let it compute it again
@@ -789,6 +842,26 @@ namespace OpenMagnetics {
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
                 windings.push_back(wireCoilPerWinding[windingIndex][currentWireIndexPerWinding[windingIndex]].first);
             }
+
+            // Wound-together windings (e.g. center-tapped LLC secondary halves)
+            // share a single section and must have matching wire + parallels
+            // for the Coil virtualization step to merge them. The wire adviser
+            // runs per-winding and may pick different wires, so copy the wire
+            // and numberParallels from the first member of each wound_with
+            // group to every other member.
+            for (size_t wIdx = 0; wIdx < windings.size(); ++wIdx) {
+                const auto& wwOpt = windings[wIdx].get_wound_with();
+                if (!wwOpt || wwOpt->empty()) continue;
+                const std::string& partnerName = wwOpt.value().front();
+                for (size_t pIdx = 0; pIdx < windings.size(); ++pIdx) {
+                    if (windings[pIdx].get_name() == partnerName) {
+                        windings[wIdx].set_wire(windings[pIdx].get_wire());
+                        windings[wIdx].set_number_parallels(windings[pIdx].get_number_parallels());
+                        break;
+                    }
+                }
+            }
+
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(windings);
 
             mas.get_mutable_magnetic().get_mutable_coil().reset_margins_per_section();

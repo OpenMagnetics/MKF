@@ -1,0 +1,13 @@
+[      30ms] [LOG] localhost @ http://localhost:5173/wizards:10
+[      30ms] [LOG] localhost @ http://localhost:5173/wizards:25
+[     158ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     158ms] [LOG] [StoreVersioning] Stored version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     158ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[     168ms] [WARNING] Initializing MKF in Web Worker (fresh)... @ http://localhost:5173/src/main.js?t=1776006323673:156
+[     169ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1776006323673:164
+[     212ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[     720ms] [ERROR] wasm streaming compile failed: TypeError: import object field 'env' is not an Object @ blob:http://localhost:5173/722cf839-4492-44f9-94d4-20fee616c7b2:7
+[     720ms] [ERROR] falling back to ArrayBuffer instantiation @ blob:http://localhost:5173/722cf839-4492-44f9-94d4-20fee616c7b2:7
+[    1307ms] [ERROR] failed to asynchronously prepare wasm: TypeError: import object field 'env' is not an Object @ blob:http://localhost:5173/722cf839-4492-44f9-94d4-20fee616c7b2:7
+[    1307ms] [ERROR] Aborted(TypeError: import object field 'env' is not an Object) @ blob:http://localhost:5173/722cf839-4492-44f9-94d4-20fee616c7b2:7
+[    1307ms] [ERROR] [JavaScript Error: "RuntimeError: Aborted(TypeError: import object field 'env' is not an Object). Build with -sASSERTIONS for more info." {file: "blob:http://localhost:5173/722cf839-4492-44f9-94d4-20fee616c7b2" line: 8}] @ blob:http://localhost:5173/722cf839-4492-44f9-94d4-20fee616c7b2:8

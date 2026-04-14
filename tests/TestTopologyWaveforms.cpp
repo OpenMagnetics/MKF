@@ -109,7 +109,7 @@ TEST_CASE("LLC Simulated Waveforms", "[topology][llc][simulation]") {
     #ifndef ENABLE_NGSPICE
     SKIP("ngspice is not enabled, skipping simulation test");
     #endif
-    
+
     json llcJson;
     llcJson["inputVoltage"]["nominal"] = 400.0;
     llcJson["inputVoltage"]["tolerance"] = 0.1;
@@ -142,7 +142,7 @@ TEST_CASE("LLC Simulated Waveforms", "[topology][llc][simulation]") {
     }
     
     double magnetizingInductance = 200e-6;
-    
+
     auto operatingPoints = llc.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
     auto converterWaveforms = llc.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
     

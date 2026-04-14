@@ -2022,6 +2022,17 @@ void Coil::apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<siz
             if (sectionIndex > 0 && !_coilSectionInterfaces.empty()) {
 
                 if (orderedSectionsWithInsulation[sectionIndex - 1].first != ElectricalType::INSULATION) {
+                    // Adjacent conduction sections are allowed when the pair
+                    // belongs to the same isolation side (no insulation was
+                    // inserted by add_insulation_to_sections) — this happens
+                    // for wound_with-grouped center-tap halves, and for
+                    // wires within the same winding side generally.
+                    auto leftIdx = orderedSectionsWithInsulation[sectionIndex].second.first;
+                    auto rightIdxPrev = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
+                    auto pairKey = std::pair<size_t, size_t>{rightIdxPrev, leftIdx};
+                    if (!_insulationSections.contains(pairKey)) {
+                        continue;
+                    }
                     throw InvalidInputException("There cannot be two sections without insulation in between");
                 }
                 auto windingIndex = orderedSectionsWithInsulation[sectionIndex].second.first;
@@ -2207,7 +2218,14 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
         _windingIndexByName.clear();
         _turnIndexByName.clear();
         set_functional_description(functionalDescription);
-        devirtualize_sections_description();
+        // wind_by_(rectangular|round)_sections returns false when wires don't
+        // fit the available section space, leaving sections_description in
+        // its initial nullopt state. Skip devirtualize in that case — there
+        // is nothing to devirtualize, and our caller (fast_wind) treats the
+        // missing sections_description as the "couldn't wind" signal.
+        if (result && get_sections_description()) {
+            devirtualize_sections_description();
+        }
     }
 
 
@@ -2435,6 +2453,11 @@ Turn Coil::virtualize_turn(Turn turn, std::string virtualWindingName, std::strin
 }
 
 void Coil::devirtualize_sections_description() {
+    if (!get_sections_description()) {
+        // Caller is responsible for not invoking devirtualize when wind_by_*
+        // returned false. Be defensive: keep nullopt and return.
+        return;
+    }
     std::vector<Section> newSectionsDescription;
     auto sections = get_sections_description().value();
     for (auto section : sections) {
@@ -6560,6 +6583,14 @@ void Coil::try_rewind() {
     }
 
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        // Windings grouped via wound_with share sections; only the group's
+        // representative (minimum index) accumulates the shared space. Non-
+        // representatives contribute zero so that virtualize_proportion_per_winding
+        // doesn't double-count the shared sections when collapsing the group.
+        if (get_winding_group_minimum_index(windingIndex) != windingIndex) {
+            newProportions.push_back(0.0);
+            continue;
+        }
         // double currentProportion = _currentProportionPerWinding[windingIndex];
         double currentSpace = 0;
         double extraSpaceNeededThisWinding = 0;

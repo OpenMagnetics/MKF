@@ -1,0 +1,32 @@
+[      26ms] [LOG] localhost @ http://localhost:5173/wizards:10
+[      27ms] [LOG] localhost @ http://localhost:5173/wizards:25
+[     164ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     164ms] [LOG] [StoreVersioning] Stored version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     164ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[     170ms] [WARNING] Initializing MKF in Web Worker (fresh)... @ http://localhost:5173/src/main.js?t=1776006323673:156
+[     171ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1776006323673:164
+[     215ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[     718ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[     740ms] [WARNING] Loading core materials in simulator @ http://localhost:5173/src/main.js?t=1776006323673:197
+[     741ms] [WARNING] Loading core shapes in simulator @ http://localhost:5173/src/main.js?t=1776006323673:200
+[     741ms] [WARNING] Loading wires in simulator @ http://localhost:5173/src/main.js?t=1776006323673:203
+[    7470ms] [LOG] Core materials loaded @ http://localhost:5173/src/main.js?t=1776006323673:198
+[    7940ms] [LOG] Core shapes loaded @ http://localhost:5173/src/main.js?t=1776006323673:201
+[   19144ms] [LOG] Wires loaded @ http://localhost:5173/src/main.js?t=1776006323673:204
+[   19144ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1776006323673:213
+[   19144ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1776006323673:216
+[   19152ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1776006323673:219
+[   19198ms] [WARNING] [JavaScript Warning: "unreachable code after return statement" {file: "http://localhost:5173/src/components/Wizards/PsfbWizard.vue" line: 79}] @ http://localhost:5173/src/components/Wizards/PsfbWizard.vue:79
+[   19261ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js?t=1775947585724:393
+[   19261ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js?t=1775947585724:396
+[   42624ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[   49351ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[   49351ms] [LOG] 🔍 [executeWaveformAction] Analytical result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:217
+[   49351ms] [LOG] 🔍 [processAnalyticalWaveforms] Raw WASM data: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:407
+[   49351ms] [LOG] 🔍 [processAnalyticalWaveforms] Built waveforms: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:419
+[   49572ms] [WARNING] [ECharts] Instance ec_1776006413048 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   49573ms] [WARNING] [ECharts] Instance ec_1776006413049 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   49573ms] [WARNING] [ECharts] Instance ec_1776006413050 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   68554ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[   68563ms] [ERROR] [LLC] Nielsen TDA solver did not fully converge: residual=4.73424 A (Vi=400V, Vo=399.84V, fsw=80000Hz) — analytical waveform may be inaccurate for this op. point @ blob:http://localhost:5173/a7570de9-3f0f-49e2-9628-998d0e67a8b8:7
+[   68599ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311

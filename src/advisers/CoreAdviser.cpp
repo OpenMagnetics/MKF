@@ -12,6 +12,7 @@
 #include "constructive_models/Bobbin.h"
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -2228,6 +2229,54 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
 
 void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     MagnetizingInductance magnetizingInductance;
+
+    // If the wizard supplied per-winding excitation names (e.g. LLC center-tap
+    // halves are named "Secondary 0 Half 1" / "Secondary 0 Half 2"), reuse
+    // those names on the Coil so the downstream UI shows the right labels,
+    // and automatically group center-tap halves into the same section via
+    // `wound_with`.
+    std::vector<std::string> excitationNames;
+    if (!inputs.get_operating_points().empty()) {
+        auto& excs = inputs.get_operating_points()[0].get_excitations_per_winding();
+        for (auto& exc : excs) {
+            excitationNames.push_back(exc.get_name().value_or(""));
+        }
+        // Only adopt excitation names if they are all distinct (otherwise they
+        // are generic labels like "Primary winding excitation" repeated for
+        // every winding, which would produce duplicate winding names and
+        // break downstream coil processing).
+        std::set<std::string> uniq(excitationNames.begin(), excitationNames.end());
+        if (uniq.size() != excitationNames.size() || uniq.count("") > 0) {
+            excitationNames.clear();
+        }
+    }
+
+    // The design requirements carry the per-winding isolation side (LLC and
+    // other center-tapped topologies put BOTH halves of a center-tap on the
+    // same side). Reuse those so the Coil virtualization step can merge the
+    // wound-together halves; without this, correct_windings would emit
+    // distinct sides from the generic index map and the merge would fail
+    // with "Windings wound together must have the same isolation side".
+    std::vector<IsolationSide> designRequirementIsolationSides;
+    if (inputs.get_design_requirements().get_isolation_sides()) {
+        designRequirementIsolationSides = inputs.get_design_requirements().get_isolation_sides().value();
+    }
+    auto isolation_side_for_index = [&](size_t windingIndex) -> IsolationSide {
+        if (windingIndex < designRequirementIsolationSides.size()) {
+            return designRequirementIsolationSides[windingIndex];
+        }
+        return get_isolation_side_from_index(windingIndex);
+    };
+    auto is_center_tap_pair = [](const std::string& a, const std::string& b) {
+        // Detect the "<prefix> Half 1" / "<prefix> Half 2" naming pattern.
+        const std::string h1 = " Half 1";
+        const std::string h2 = " Half 2";
+        if (a.size() <= h1.size() || b.size() <= h2.size()) return false;
+        if (a.compare(a.size() - h1.size(), h1.size(), h1) != 0) return false;
+        if (b.compare(b.size() - h2.size(), h2.size(), h2) != 0) return false;
+        return a.substr(0, a.size() - h1.size()) == b.substr(0, b.size() - h2.size());
+    };
+
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
 
         Coil coil = Coil((*magneticsWithScoring)[i].first.get_coil());
@@ -2242,11 +2291,44 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
             bobbin = Bobbin::create_quick_bobbin((*magneticsWithScoring)[i].first.get_core());
         }
         (*magneticsWithScoring)[i].first.get_mutable_coil().set_bobbin(bobbin);
+
+        // Set the PRIMARY's name from the excitation if available.
+        if (!excitationNames.empty() && !excitationNames[0].empty()) {
+            (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_name(excitationNames[0]);
+        }
+
+        // Also align the primary's isolation side with the design requirement.
+        (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_isolation_side(isolation_side_for_index(0));
+
         for (size_t windingIndex = 1; windingIndex < numberTurnsCombination.size(); ++windingIndex) {
             auto winding = coil.get_functional_description()[0];
             winding.set_number_turns(numberTurnsCombination[windingIndex]);
-            winding.set_isolation_side(get_isolation_side_from_index(windingIndex));
-            winding.set_name(get_isolation_side_name_from_index(windingIndex));
+            winding.set_isolation_side(isolation_side_for_index(windingIndex));
+
+            // Prefer the excitation name over the generic isolation-side name.
+            std::string name;
+            if (windingIndex < excitationNames.size() && !excitationNames[windingIndex].empty()) {
+                name = excitationNames[windingIndex];
+            } else {
+                name = get_isolation_side_name_from_index(windingIndex);
+            }
+            winding.set_name(name);
+
+            // Center-tap grouping: if the previous winding's name ends in
+            // "Half 1" and this one ends in "Half 2" with a matching prefix,
+            // tie them together with `wound_with` so the Coil's virtualization
+            // step merges them into a single virtual winding. The 2-D viewer
+            // then draws both halves in the same section / layer.
+            if (windingIndex >= 1 &&
+                windingIndex < excitationNames.size() &&
+                (windingIndex - 1) < excitationNames.size()) {
+                const auto& prev = excitationNames[windingIndex - 1];
+                const auto& curr = excitationNames[windingIndex];
+                if (is_center_tap_pair(prev, curr)) {
+                    winding.set_wound_with(std::vector<std::string>{prev});
+                }
+            }
+
             (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description().push_back(winding);
         }
     }
@@ -2282,7 +2364,7 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
     MagneticEnergy magneticEnergy;
     Mas mas;
     mas.set_magnetic(magnetic);
-    double temperature = 0; 
+    double temperature = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
     }

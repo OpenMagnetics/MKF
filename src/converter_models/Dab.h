@@ -83,8 +83,8 @@ using namespace MAS;
  */
 class Dab : public MAS::DualActiveBridge, public Topology {
 private:
-    int numPeriodsToExtract = 5;
-    int numSteadyStatePeriods = 5;
+    int numPeriodsToExtract = 2;
+    int numSteadyStatePeriods = 3;
 
     // Computed design values (filled by process_design_requirements)
     double computedSeriesInductance = 0;     // L (leakage + external)
@@ -100,6 +100,7 @@ private:
     mutable double lastZvsMarginPrimary = 0;   // phi - phi_min,primary (rad)
     mutable double lastZvsMarginSecondary = 0; // phi - phi_min,secondary (rad)
     mutable double lastPhaseShiftRad = 0;
+    mutable double lastVoltageConversionRatio = 1.0; // d = N·V₂/V₁
     mutable std::vector<double> lastSubIntervalTimes; // boundary times in radians, [0, 2π]
 
 public:
@@ -135,6 +136,8 @@ public:
     double get_last_zvs_margin_secondary() const { return lastZvsMarginSecondary; }
     /** Outer phase shift used in the last solved op point (rad, signed). */
     double get_last_phase_shift_rad() const { return lastPhaseShiftRad; }
+    /** Voltage conversion ratio d = N·V₂/V₁ for the last solved op point. */
+    double get_last_voltage_conversion_ratio() const { return lastVoltageConversionRatio; }
     /** Sub-interval boundary angles for the last solved op point (rad, [0, 2π]). */
     const std::vector<double>& get_last_sub_interval_times() const { return lastSubIntervalTimes; }
 

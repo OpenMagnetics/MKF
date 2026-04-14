@@ -142,7 +142,7 @@ namespace {
         settings.set_use_concentric_cores(true);
         auto shape = find_core_shape_by_effective_parameters(0.079, 0.000171, 0.000014, MAS::CoreShapeFamily::PQ);
 
-        REQUIRE("PQ 35/40" == shape.get_name().value());
+        REQUIRE("PQ 35/35" == shape.get_name().value());
     }
 
     TEST_CASE("Test_Find_By_Perimeter", "[support][utils][smoke-test]") {

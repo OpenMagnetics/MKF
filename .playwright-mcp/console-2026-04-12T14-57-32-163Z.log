@@ -1,0 +1,38 @@
+[     207ms] [LOG] localhost @ http://localhost:5173/wizards:10
+[     208ms] [LOG] localhost @ http://localhost:5173/wizards:25
+[     606ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     607ms] [LOG] [StoreVersioning] Stored version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     607ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[     636ms] [WARNING] Initializing MKF in Web Worker (fresh)... @ http://localhost:5173/src/main.js?t=1775948165851:156
+[     638ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1775948165851:164
+[     731ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[    1267ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[    1284ms] [WARNING] Loading core materials in simulator @ http://localhost:5173/src/main.js?t=1775948165851:197
+[    1285ms] [WARNING] Loading core shapes in simulator @ http://localhost:5173/src/main.js?t=1775948165851:200
+[    1285ms] [WARNING] Loading wires in simulator @ http://localhost:5173/src/main.js?t=1775948165851:203
+[    8271ms] [LOG] Core materials loaded @ http://localhost:5173/src/main.js?t=1775948165851:198
+[    8777ms] [LOG] Core shapes loaded @ http://localhost:5173/src/main.js?t=1775948165851:201
+[   20396ms] [LOG] Wires loaded @ http://localhost:5173/src/main.js?t=1775948165851:204
+[   20397ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1775948165851:213
+[   20398ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1775948165851:216
+[   20409ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1775948165851:219
+[   20452ms] [WARNING] [JavaScript Warning: "unreachable code after return statement" {file: "http://localhost:5173/src/components/Wizards/PsfbWizard.vue" line: 79}] @ http://localhost:5173/src/components/Wizards/PsfbWizard.vue:79
+[   20512ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js?t=1775947585724:393
+[   20512ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js?t=1775947585724:396
+[   34162ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[   34163ms] [LOG] 🔍 [executeWaveformAction] Simulation result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:228
+[   34445ms] [WARNING] [ECharts] Instance ec_1776005872717 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   34446ms] [WARNING] [ECharts] Instance ec_1776005872718 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   34446ms] [WARNING] [ECharts] Instance ec_1776005872719 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   92969ms] [ERROR] DEBUG calculate_llc_inputs: 1 operating points @ blob:http://localhost:5173/8f7ca20b-5fe0-4cc5-be6c-c7e9d3d9b007:7
+[   92970ms] [ERROR]   OP 0: 3 excitations @ blob:http://localhost:5173/8f7ca20b-5fe0-4cc5-be6c-c7e9d3d9b007:7
+[   92971ms] [ERROR]     Excitation 0: name='Primary' @ blob:http://localhost:5173/8f7ca20b-5fe0-4cc5-be6c-c7e9d3d9b007:7
+[   92971ms] [ERROR]     Excitation 1: name='Secondary 0 Half 1' @ blob:http://localhost:5173/8f7ca20b-5fe0-4cc5-be6c-c7e9d3d9b007:7
+[   92971ms] [ERROR]     Excitation 2: name='Secondary 0 Half 2' @ blob:http://localhost:5173/8f7ca20b-5fe0-4cc5-be6c-c7e9d3d9b007:7
+[   92989ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[   92990ms] [LOG] 🔍 [executeWaveformAction] Analytical result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:217
+[   92990ms] [LOG] 🔍 [processAnalyticalWaveforms] Raw WASM data: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:407
+[   92990ms] [LOG] 🔍 [processAnalyticalWaveforms] Built waveforms: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:419
+[   93260ms] [WARNING] [ECharts] Instance ec_1776005872723 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   93261ms] [WARNING] [ECharts] Instance ec_1776005872724 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   93261ms] [WARNING] [ECharts] Instance ec_1776005872725 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615

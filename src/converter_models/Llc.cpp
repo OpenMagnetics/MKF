@@ -822,11 +822,47 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
     LlcStateVector x0_seed{ -Ires_est, -Im_pk_est, 0.0 };
 
     // Run the Nielsen TDA solver.
+    //
+    // At the Load Independent Point (Vi ≈ Vo, fsw ≈ fr) the problem is
+    // under-determined: the (iLs, vC) sub-system is a 180° rotation for any
+    // magnitude, so F(x0) = x_end + x0 has a 2-D null space and the Newton
+    // Jacobian is singular. The solver's singularity break-out then leaves x0
+    // at a seed-dependent value that can explode by orders of magnitude. We
+    // guard against that two ways:
+    //   (a) if |Vi − Vo| is within 0.5% of max(Vi, Vo), perturb Vi up by 0.5%
+    //       during the solver so the rotation is slightly less than π and the
+    //       Jacobian has full rank. The physical steady state is very close
+    //       to the perturbed one, and we use the converged x0 for waveform
+    //       emission with the original Vi.
+    //   (b) after the solver, sanity-check the result against a generous
+    //       physical bound. If it exceeds the bound, fall back to the FHA
+    //       closed-form seed.
     std::vector<LlcSubStateSegment> segments;
     double residual = 0.0;
+
+    double Vi_solver = Vi;
+    double denom_vo = std::max(std::abs(Vi), std::abs(Vo));
+    if (denom_vo > 0 && std::abs(Vi - Vo) / denom_vo < 0.005) {
+        Vi_solver = Vi * 1.005;
+    }
     LlcStateVector x0 = solve_steady_state(x0_seed, Thalf_eff,
-                                           Vi, Vo, Ls, L, C,
+                                           Vi_solver, Vo, Ls, L, C,
                                            segments, residual);
+
+    // Sanity check: if the solver converged to an unphysical null-space
+    // direction, fall back to the FHA closed-form estimate.
+    double sanity_iLs = std::max(10.0 * Ires_est, 20.0);
+    double sanity_vC  = std::max(10.0 * std::abs(Vi), 10.0 * std::abs(Vo));
+    if (sanity_vC < 200.0) sanity_vC = 200.0;
+    if (!std::isfinite(x0.iLs) || !std::isfinite(x0.iL) || !std::isfinite(x0.vC) ||
+        std::abs(x0.iLs) > sanity_iLs ||
+        std::abs(x0.vC)  > sanity_vC) {
+        x0 = x0_seed;
+        residual = -1.0;  // flag "seed fallback" for diagnostics
+    }
+    // Re-propagate with the authoritative Vi for waveform emission (so any
+    // perturbation above is invisible to downstream code).
+    segments = propagate_half_cycle(x0, Thalf_eff, Vi, Vo, Ls, L, C);
 
     // Sample the segment chain onto the existing dt grid that the
     // downstream waveform-emission code expects.
@@ -1122,16 +1158,25 @@ std::string Llc::generate_ngspice_circuit(
         circuit << "Lsec2_o" << si << " sec_ct_o" << si << " sec_bot_sec_o" << si
                 << " " << std::scientific << Lsec_half << "\n";
     }
-    // Couplings: each secondary half couples to the primary; the two halves of
-    // the same output couple to each other. (Inter-output coupling is left to
-    // mutual flux through the primary; ngspice's pairwise K limit makes a full
-    // matrix unwieldy for >1 output.)
-    int kIdx = 0;
+    // Emit a full pairwise K matrix across every coupled inductor (Lpri + two
+    // halves per output). ngspice requires explicit pairwise couplings for
+    // every pair — an "incomplete K set" makes the mutual-inductance matrix
+    // non-positive-definite and the transient solver can't converge (every
+    // multi-output LLC would fail with "Timestep too small").
+    std::vector<std::string> coupledInductors;
+    coupledInductors.reserve(1 + 2 * numOutputs);
+    coupledInductors.emplace_back("Lpri");
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
-        circuit << "K" << ++kIdx << " Lpri Lsec1_o" << si << " " << k_int << "\n";
-        circuit << "K" << ++kIdx << " Lpri Lsec2_o" << si << " " << k_int << "\n";
-        circuit << "K" << ++kIdx << " Lsec1_o" << si << " Lsec2_o" << si << " " << k_int << "\n";
+        coupledInductors.push_back("Lsec1_o" + si);
+        coupledInductors.push_back("Lsec2_o" + si);
+    }
+    int kIdx = 0;
+    for (size_t a = 0; a < coupledInductors.size(); ++a) {
+        for (size_t b = a + 1; b < coupledInductors.size(); ++b) {
+            circuit << "K" << ++kIdx << " " << coupledInductors[a]
+                    << " " << coupledInductors[b] << " " << k_int << "\n";
+        }
     }
     circuit << "\n";
 
@@ -1247,12 +1292,12 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
                 std::string si = std::to_string(outIdx + 1);
                 waveformMapping.push_back({{"voltage", "sec_top_o" + si},
                                            {"current", "vsec1_sense_o" + si + "#branch"}});
-                windingNames.push_back("Secondary " + si + " Half 1");
+                windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 1");
                 flipCurrentSign.push_back(true);
 
                 waveformMapping.push_back({{"voltage", "sec_bot_o" + si},
                                            {"current", "vsec2_sense_o" + si + "#branch"}});
-                windingNames.push_back("Secondary " + si + " Half 2");
+                windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 2");
                 flipCurrentSign.push_back(true);
             }
 

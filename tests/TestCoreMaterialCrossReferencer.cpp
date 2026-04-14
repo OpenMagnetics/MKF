@@ -110,7 +110,7 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "SM 40");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "SM 60");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals_Ferrite", "[adviser][core-material-cross-referencer][smoke-test]") {
@@ -129,7 +129,7 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "MS 160");
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "MP 160");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses", "[adviser][core-material-cross-referencer][smoke-test]") {

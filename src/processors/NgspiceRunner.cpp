@@ -393,33 +393,70 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
     }
     lines.push_back(nullptr);
     
+    auto captured_tail = [&](size_t maxLines) -> std::string {
+        if (_capturedOutput.empty()) return "";
+        size_t start = _capturedOutput.size() > maxLines ? _capturedOutput.size() - maxLines : 0;
+        std::string out;
+        for (size_t i = start; i < _capturedOutput.size(); ++i) {
+            if (!out.empty()) out += " | ";
+            out += _capturedOutput[i];
+        }
+        return out;
+    };
+
+    // Disable ngspice's output-memory preflight check. Under WASM there is no
+    // /proc/meminfo, so getAvailableMemorySize() returns 0, which makes the
+    // preflight in outitf.c::OUTpD_memory fire a false "not enough memory"
+    // error and call controlled_exit(1), aborting the whole run.
+    ngSpice_Command(const_cast<char*>("set no_mem_check"));
+
+    auto tCirc0 = std::chrono::steady_clock::now();
     int ret = ngSpice_Circ(lines.data());
-    
-    // Print any captured output from ngspice (errors should appear here)
-    if (!_capturedOutput.empty()) {
-        // Debug output captured from ngspice
-    }
-    
+    auto tCirc1 = std::chrono::steady_clock::now();
+    auto circMs = std::chrono::duration_cast<std::chrono::milliseconds>(tCirc1 - tCirc0).count();
+    std::cout << "[NGSPICE-TIMING] ngSpice_Circ took " << circMs << " ms (ret=" << ret << ")" << std::endl;
+
     if (ret != 0) {
         result.success = false;
         result.errorMessage = "Failed to load circuit into ngspice (ret=" + std::to_string(ret) + ")";
-        if (!_capturedOutput.empty()) {
-            result.errorMessage += ". Last ngspice output: " + _capturedOutput.back();
+        std::string tail = captured_tail(20);
+        if (!tail.empty()) {
+            result.errorMessage += ". ngspice output: " + tail;
         }
         return result;
     }
-    
+
+    // Stash captured output from the Circ step so post-"run" errors can report it too.
+    size_t circOutputSize = _capturedOutput.size();
+
     // Run simulation
+    auto tRun0 = std::chrono::steady_clock::now();
     ret = ngSpice_Command(const_cast<char*>("run"));
+    auto tRun1 = std::chrono::steady_clock::now();
+    auto runCmdMs = std::chrono::duration_cast<std::chrono::milliseconds>(tRun1 - tRun0).count();
+    std::cout << "[NGSPICE-TIMING] ngSpice_Command('run') took " << runCmdMs << " ms (ret=" << ret << ")" << std::endl;
+
     if (ret != 0) {
         result.success = false;
-        result.errorMessage = "Failed to run simulation";
+        result.errorMessage = "Failed to run simulation (ret=" + std::to_string(ret) + ")";
+        // Prefer output emitted during "run"; fall back to the Circ-stage output if none.
+        size_t start = circOutputSize;
+        std::string tail;
+        for (size_t i = start; i < _capturedOutput.size(); ++i) {
+            if (!tail.empty()) tail += " | ";
+            tail += _capturedOutput[i];
+        }
+        if (tail.empty()) tail = captured_tail(20);
+        if (!tail.empty()) {
+            result.errorMessage += ". ngspice output: " + tail;
+        }
         return result;
     }
-    
+
     // Wait for completion with timeout
     auto timeoutEnd = startTime + std::chrono::duration<double>(config.timeout);
     int timeoutCheckCount = 0;
+    auto tWait0 = std::chrono::steady_clock::now();
     while (!_simulationComplete) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         timeoutCheckCount++;
@@ -431,7 +468,10 @@ SimulationResult NgspiceRunner::run_shared_library(const std::string& netlist, c
             return result;
         }
     }
-    
+    auto tWait1 = std::chrono::steady_clock::now();
+    auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(tWait1 - tWait0).count();
+    std::cout << "[NGSPICE-TIMING] Wait loop took " << waitMs << " ms (checks=" << timeoutCheckCount << ")" << std::endl;
+
     auto endTime = std::chrono::steady_clock::now();
     result.simulationTime = std::chrono::duration<double>(endTime - startTime).count();
     

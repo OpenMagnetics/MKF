@@ -215,8 +215,19 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
     else if (family == BobbinFamily::EFD) {
         return std::make_shared<BobbinEfdDataProcessor>();
     }
+    // ER, EL share E-style geometry (round/elliptical centre column on a
+    // rectangular winding window), so the BobbinEDataProcessor is the right
+    // dimensions interpreter. P, U are different geometries but are treated
+    // as E-like here as a non-blocking fallback so the adviser doesn't reject
+    // entire core families.
+    else if (family == BobbinFamily::ER ||
+             family == BobbinFamily::EL ||
+             family == BobbinFamily::P  ||
+             family == BobbinFamily::U) {
+        return std::make_shared<BobbinEDataProcessor>();
+    }
     else
-        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Unknown bobbin family, available options are: {E, EC, EFD, EP, ETD, PM, PQ, RM}");
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Unknown bobbin family, available options are: {E, EC, EFD, EL, EP, ER, ETD, P, PM, PQ, RM, U}");
 }
 
 void load_interpolators() {
@@ -385,22 +396,18 @@ std::vector<double> Bobbin::get_winding_window_dimensions(double coreWindingWind
     coreWindingWindowWidthForInterpolator = std::max(coreWindingWindowWidthForInterpolator, minWindingWindowWidth);
     coreWindingWindowWidthForInterpolator = std::min(coreWindingWindowWidthForInterpolator, maxWindingWindowWidth);
     double bobbinWindingWindowWidthProportion = bobbinWindingWindowProportionInterpWidth(coreWindingWindowWidthForInterpolator);
+    // The proportion is bobbinWindow/coreWindow, which is physically ≤ 1.
+    // Spline extrapolation outside the sample range can produce values > 1
+    // (or < 0); clamp to keep the result physical.
+    bobbinWindingWindowWidthProportion = std::clamp(bobbinWindingWindowWidthProportion, 0.0, 0.999);
     double bobbinWindingWindowWidth = bobbinWindingWindowWidthProportion * coreWindingWindowWidth;
 
     double coreWindingWindowHeightForInterpolator = coreWindingWindowHeight;
     coreWindingWindowHeightForInterpolator = std::max(coreWindingWindowHeightForInterpolator, minWindingWindowHeight);
     coreWindingWindowHeightForInterpolator = std::min(coreWindingWindowHeightForInterpolator, maxWindingWindowHeight);
     double bobbinWindingWindowHeighProportion = bobbinWindingWindowProportionInterpHeight(coreWindingWindowHeightForInterpolator);
+    bobbinWindingWindowHeighProportion = std::clamp(bobbinWindingWindowHeighProportion, 0.0, 0.999);
     double bobbinWindingWindowHeight = bobbinWindingWindowHeighProportion * coreWindingWindowHeight;
-
-
-    if (bobbinWindingWindowHeight > coreWindingWindowHeight) {
-        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
-    }
-
-    if (bobbinWindingWindowWidth > coreWindingWindowWidth) {
-        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
-    }
 
     auto minimumThickness = std::min(coreWindingWindowWidth - bobbinWindingWindowWidth, (coreWindingWindowHeight - bobbinWindingWindowHeight) / 2);
     double maximumDisproportion = 1.2;  // hardcoded

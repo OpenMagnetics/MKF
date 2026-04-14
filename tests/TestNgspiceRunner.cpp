@@ -101,7 +101,7 @@ TEST_CASE("SimulationConfig defaults", "[ngspice-runner][smoke-test]") {
     REQUIRE(config.extractOnePeriod == true);
     REQUIRE(config.workingDirectory.empty());
     REQUIRE(config.keepTempFiles == false);
-    REQUIRE(config.timeout == 60.0);
+    REQUIRE(config.timeout == 300.0);
 }
 
 TEST_CASE("NgspiceRunner simulate and export waveforms to SVG", "[ngspice-runner][smoke-test]") {

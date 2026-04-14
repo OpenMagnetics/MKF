@@ -6698,14 +6698,14 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary", "[cons
     
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                      numberParallels,
-                                                     "PQ 28/20",
+                                                     "PQ 32/20",
                                                      interleavingLevel,
                                                      windingOrientation,
                                                      layersOrientation,
                                                      turnsAlignment,
                                                      sectionsAlignment);
 
-    auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 32/20", json::parse("[]"), 1, "Dummy");
     // auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
     // coil.set_bobbin(bobbin);
     OpenMagneticsTesting::check_turns_description(coil);
@@ -6764,14 +6764,14 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Secondary", "[co
     
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                      numberParallels,
-                                                     "PQ 28/20",
+                                                     "PQ 32/20",
                                                      interleavingLevel,
                                                      windingOrientation,
                                                      layersOrientation,
                                                      turnsAlignment,
                                                      sectionsAlignment);
 
-    auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 32/20", json::parse("[]"), 1, "Dummy");
     // auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
     // coil.set_bobbin(bobbin);
     OpenMagneticsTesting::check_turns_description(coil);
@@ -6832,14 +6832,14 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous
     
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                      numberParallels,
-                                                     "PQ 28/20",
+                                                     "PQ 32/20",
                                                      interleavingLevel,
                                                      windingOrientation,
                                                      layersOrientation,
                                                      turnsAlignment,
                                                      sectionsAlignment);
 
-    auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 32/20", json::parse("[]"), 1, "Dummy");
     // auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
     // coil.set_bobbin(bobbin);
     OpenMagneticsTesting::check_turns_description(coil);
@@ -6899,14 +6899,14 @@ TEST_CASE("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections", "[co
     
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                      numberParallels,
-                                                     "PQ 28/20",
+                                                     "PQ 32/20",
                                                      interleavingLevel,
                                                      windingOrientation,
                                                      layersOrientation,
                                                      turnsAlignment,
                                                      sectionsAlignment);
 
-    auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 32/20", json::parse("[]"), 1, "Dummy");
     // auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
     // coil.set_bobbin(bobbin);
     OpenMagneticsTesting::check_turns_description(coil);

@@ -1,0 +1,274 @@
+- generic [ref=e50]:
+  - navigation [ref=e51]:
+    - generic [ref=e52]:
+      - button "Visit OpenMagnetics and Tear Down the Paywalls!" [ref=e53] [cursor=pointer]:
+        - img "OpenMagnetics Logo" [ref=e54]
+      - button "OpenMagnetics" [ref=e55] [cursor=pointer]
+      - generic [ref=e56]:
+        - list [ref=e57]:
+          - listitem [ref=e58]:
+            - link "Alf's Musings" [ref=e59] [cursor=pointer]:
+              - /url: https://www.linkedin.com/newsletters/7026708624966135808/
+          - listitem [ref=e60]:
+            - button "New Magnetic" [ref=e61] [cursor=pointer]:
+              - generic [ref=e62]: 
+              - text: New Magnetic
+          - listitem [ref=e63]:
+            - button "Tools" [ref=e64] [cursor=pointer]:
+              - generic [ref=e65]: 
+              - text: Tools
+            - text: 
+          - listitem [ref=e66]:
+            - button "Wizards" [ref=e67] [cursor=pointer]:
+              - generic [ref=e68]: 
+              - text: Wizards
+            - text:                
+          - listitem [ref=e69]:
+            - button "Continue design" [ref=e71] [cursor=pointer]:
+              - generic [ref=e72]: 
+              - text: Continue design
+          - listitem [ref=e73]:
+            - button "Load MAS" [ref=e75] [cursor=pointer]
+        - list [ref=e76]:
+          - listitem [ref=e77]:
+            - link "Donate" [ref=e79] [cursor=pointer]:
+              - /url: https://en.liberapay.com/OpenMagnetics/
+              - text: Donate
+              - generic [ref=e80]: 
+          - listitem [ref=e81]:
+            - button "Bug?" [ref=e83] [cursor=pointer]:
+              - text: Bug?
+              - generic [ref=e84]: 
+          - listitem [ref=e85]:
+            - link [ref=e87] [cursor=pointer]:
+              - /url: https://github.com/OpenMagnetics/
+              - generic [ref=e88]: 
+  - text:  
+  - main [ref=e89]:
+    - generic [ref=e90]:
+      - generic [ref=e92]:
+        - generic [ref=e94]: 
+        - generic [ref=e95]:
+          - heading "LLC Wizard" [level=4] [ref=e96]
+          - paragraph [ref=e97]: Resonant DC-DC Converter
+      - generic [ref=e98]:
+        - generic [ref=e99]:
+          - generic [ref=e100]:
+            - generic [ref=e101]:
+              - generic [ref=e102]:
+                - generic [ref=e103]: 
+                - text: Design Mode
+              - generic [ref=e105]:
+                - generic [ref=e106] [cursor=pointer]:
+                  - radio "Help me with the design" [checked] [ref=e107]
+                  - generic [ref=e108]: Help me with the design
+                - generic [ref=e109] [cursor=pointer]:
+                  - radio "I know the design I want" [ref=e110]
+                  - generic [ref=e111]: I know the design I want
+            - generic [ref=e112]:
+              - generic [ref=e113]:
+                - generic [ref=e114]: 
+                - text: Tank
+              - generic [ref=e115]:
+                - generic [ref=e117]:
+                  - generic [ref=e118]: Q Factor
+                  - spinbutton [ref=e120]: "0.4"
+                - generic [ref=e125]:
+                  - generic [ref=e126]: Ln Ratio
+                  - spinbutton [ref=e128]: "5"
+                - generic [ref=e132]:
+                  - checkbox "Integrated Res L" [checked] [ref=e133]
+                  - generic [ref=e134]: Integrated Res L
+                - generic [ref=e135]:
+                  - checkbox "Override Ls" [ref=e136]
+                  - generic [ref=e137]: Override Ls
+                - generic [ref=e138]:
+                  - checkbox "Override Cr" [ref=e139]
+                  - generic [ref=e140]: Override Cr
+            - generic [ref=e141]:
+              - generic [ref=e142]:
+                - generic [ref=e143]: 
+                - text: Conditions
+              - generic [ref=e144]:
+                - generic [ref=e146]:
+                  - generic [ref=e147]: Min. Frequency
+                  - generic [ref=e148]:
+                    - spinbutton [ref=e149]: "80"
+                    - combobox [ref=e151]:
+                      - option "Hz"
+                      - option "kHz" [selected]
+                      - option "MHz"
+                      - option "GHz"
+                - generic [ref=e155]:
+                  - generic [ref=e156]: Max. Frequency
+                  - generic [ref=e157]:
+                    - spinbutton [ref=e158]: "120"
+                    - combobox [ref=e160]:
+                      - option "Hz"
+                      - option "kHz" [selected]
+                      - option "MHz"
+                      - option "GHz"
+                - generic [ref=e164]:
+                  - generic [ref=e165]: Res. Frequency
+                  - generic [ref=e166]:
+                    - spinbutton [ref=e167]: "100"
+                    - combobox [ref=e169]:
+                      - option "Hz"
+                      - option "kHz" [selected]
+                      - option "MHz"
+                      - option "GHz"
+                - generic [ref=e173]:
+                  - generic [ref=e174]: Op. Frequency
+                  - generic [ref=e175]:
+                    - spinbutton [ref=e176]: "100"
+                    - combobox [ref=e178]:
+                      - option "Hz"
+                      - option "kHz" [selected]
+                      - option "MHz"
+                      - option "GHz"
+                - generic [ref=e182]:
+                  - generic [ref=e183]: Temperature
+                  - generic [ref=e184]:
+                    - spinbutton [ref=e185]: "25"
+                    - combobox [ref=e187]:
+                      - option "C" [selected]
+                - generic [ref=e191]:
+                  - generic [ref=e192]: Efficiency
+                  - generic [ref=e193]:
+                    - spinbutton [ref=e194]: "97"
+                    - combobox [ref=e196]:
+                      - option "%" [selected]
+                - generic [ref=e200]:
+                  - generic [ref=e201]: Insulation
+                  - combobox [ref=e202]:
+                    - option "No"
+                    - option "Basic" [selected]
+                    - option "Reinforced"
+                - generic [ref=e204]:
+                  - generic [ref=e205]: Bridge Type
+                  - combobox [ref=e206]:
+                    - option "Half Bridge"
+                    - option "Full Bridge" [selected]
+          - generic [ref=e208]:
+            - button "Review Specs" [ref=e209] [cursor=pointer]:
+              - generic [ref=e210]: 
+              - text: Review Specs
+            - button "Design Magnetic" [ref=e211] [cursor=pointer]:
+              - generic [ref=e212]: 
+              - text: Design Magnetic
+        - generic [ref=e214]:
+          - generic [ref=e215]:
+            - generic [ref=e216]:
+              - generic [ref=e217]: 
+              - text: Input Voltage
+            - generic [ref=e219]:
+              - generic [ref=e221]: Input Voltage
+              - generic [ref=e222]:
+                - button "Add minimum" [ref=e224] [cursor=pointer]
+                - generic [ref=e225]:
+                  - button "Nom." [ref=e226] [cursor=pointer]:
+                    - text: Nom.
+                    - generic [ref=e227]: 
+                  - spinbutton [ref=e228]: "400"
+                  - combobox [ref=e230]:
+                    - option "uV"
+                    - option "mV"
+                    - option "V" [selected]
+                    - option "kV"
+                    - option "MV"
+                    - option "GV"
+                - button "Add maximum" [ref=e232] [cursor=pointer]
+          - generic [ref=e235]:
+            - generic [ref=e236]:
+              - generic [ref=e237]: 
+              - text: Outputs
+            - generic [ref=e238]:
+              - generic [ref=e241]:
+                - generic [ref=e242]: Number of Outputs
+                - combobox [ref=e243]:
+                  - option "1" [selected]
+                  - option "2"
+                  - option "3"
+                  - option "4"
+                  - option "5"
+                  - option "6"
+                  - option "7"
+                  - option "8"
+                  - option "9"
+                  - option "10"
+              - generic [ref=e246]:
+                - generic [ref=e248]:
+                  - generic [ref=e249]: V1
+                  - generic [ref=e250]:
+                    - spinbutton [ref=e251]: "48"
+                    - combobox [ref=e253]:
+                      - option "uV"
+                      - option "mV"
+                      - option "V" [selected]
+                      - option "kV"
+                      - option "MV"
+                      - option "GV"
+                - generic [ref=e257]:
+                  - generic [ref=e258]: P1
+                  - generic [ref=e259]:
+                    - spinbutton [ref=e260]: "500"
+                    - combobox [ref=e262]:
+                      - option "W" [selected]
+                      - option "kW"
+                      - option "MW"
+                      - option "GW"
+        - generic [ref=e267]:
+          - generic [ref=e268]:
+            - generic [ref=e269]:
+              - generic [ref=e270]: 
+              - text: Waveforms
+            - generic [ref=e271]:
+              - generic [ref=e272]:
+                - generic [ref=e273]: "Periods:"
+                - combobox [ref=e274]:
+                  - option "1"
+                  - option "2" [selected]
+                  - option "3"
+                  - option "4"
+                  - option "5"
+                  - option "6"
+                  - option "7"
+                  - option "8"
+                  - option "9"
+                  - option "10"
+              - generic [ref=e275]:
+                - generic [ref=e276]: "Steady:"
+                - spinbutton [ref=e277]: "50"
+              - generic [ref=e278]:
+                - button "Analytical" [ref=e279] [cursor=pointer]:
+                  - generic [ref=e280]:
+                    - generic [ref=e281]: 
+                    - text: Analytical
+                - button "Simulated" [ref=e282] [cursor=pointer]:
+                  - generic [ref=e283]:
+                    - generic [ref=e284]: 
+                    - text: Simulated
+                - button "SPICE" [ref=e285] [cursor=pointer]:
+                  - generic [ref=e286]:
+                    - generic [ref=e287]: 
+                    - text: SPICE
+          - generic [ref=e290]:
+            - generic [ref=e291]: 
+            - paragraph [ref=e292]:
+              - text: Click
+              - strong [ref=e293]: Analytical
+              - text: or
+              - strong [ref=e294]: Simulated
+              - text: to generate waveforms
+  - contentinfo [ref=e296]:
+    - list [ref=e297]:
+      - listitem [ref=e298]:
+        - link "Home" [ref=e299] [cursor=pointer]:
+          - /url: /
+      - listitem [ref=e300]:
+        - link "Cookie Policy" [ref=e301] [cursor=pointer]:
+          - /url: /cookie_policy
+      - listitem [ref=e302]:
+        - link "Legal" [ref=e303] [cursor=pointer]:
+          - /url: /legal_notice
+    - paragraph [ref=e304]: © 2022-2026 OpenMagnetics

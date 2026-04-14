@@ -512,19 +512,19 @@ DesignRequirements Dab::process_design_requirements() {
     computedPhaseShift = phi_rad;
 
     // 4. Magnetizing inductance
-    //    Lm should be large enough that magnetizing current is small (~5-10% of load current)
+    //    Lm should be large enough that magnetizing current ripple is manageable.
     //    Im_peak = V1 / (4 * Fs * Lm)
-    //    Target: Im_peak < 0.1 * I_load_primary
+    //    Target: Im_peak < 30% of primary load current (conservative enough for ZVS,
+    //    practical enough for standard ferrite cores at typical power densities).
     //
     //    I_load_primary (approximate) = P / V1
-    //    So Lm > V1 / (4 * Fs * 0.1 * P / V1) = V1^2 / (0.4 * Fs * P)
+    //    So Lm > V1 / (4 * Fs * 0.3 * P / V1) = V1^2 / (1.2 * Fs * P)
     //
-    //    We use a factor of 20x the series inductance as a minimum,
-    //    or compute from the 10% magnetizing current criterion
+    //    We use a factor of 10x the series inductance as a minimum.
     double I_load_pri = mainOutputPower / Vin_nom;
-    double Im_target = 0.1 * I_load_pri; // 10% of load current
-    double Lm_from_current = (Im_target > 0) ? Vin_nom / (4.0 * Fs * Im_target) : 20.0 * L;
-    double Lm_from_ratio = 20.0 * L; // At least 20x series inductance
+    double Im_target = 0.3 * I_load_pri; // 30% of load current
+    double Lm_from_current = (Im_target > 0) ? Vin_nom / (4.0 * Fs * Im_target) : 10.0 * L;
+    double Lm_from_ratio = 10.0 * L; // At least 10x series inductance
     double Lm = std::max(Lm_from_current, Lm_from_ratio);
 
     computedMagnetizingInductance = Lm;
@@ -693,6 +693,7 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
 
     // ---- ZVS margin diagnostics ----
     double d_ratio = (V1 > 0) ? (N_main * V2_main / V1) : 1.0;
+    lastVoltageConversionRatio = d_ratio;
     double phi_min_pri = (d_ratio > 0) ? (1.0 - 1.0 / d_ratio) * M_PI / 2.0 : 0.0;
     double phi_min_sec = (1.0 - d_ratio) * M_PI / 2.0;
     lastZvsMarginPrimary = std::abs(phi_rad) - phi_min_pri;
@@ -932,7 +933,7 @@ std::string Dab::generate_ngspice_circuit(
     int numPeriodsTotal = steadyStatePeriods + periodsToExtract;
     double simTime = numPeriodsTotal * period;
     double startTime = steadyStatePeriods * period;
-    double stepTime = period / 500;
+    double stepTime = period / 200;
 
     std::ostringstream circuit;
 
@@ -1124,7 +1125,7 @@ std::string Dab::generate_ngspice_circuit(
     // Solver options for convergence in switching circuits.
     // METHOD=GEAR + larger TRTOL handle the 4-position switching robustly;
     // higher ITL4 lets the solver retry hard switching transients.
-    circuit << ".options RELTOL=0.005 ABSTOL=1e-8 VNTOL=1e-5 ITL1=1000 ITL4=2000\n";
+    circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
     circuit << ".options METHOD=GEAR TRTOL=7\n";
     // Initial conditions: pre-charge each output capacitor to its target voltage.
     circuit << ".ic";
@@ -1256,10 +1257,13 @@ std::vector<ConverterWaveforms> Dab::simulate_and_extract_topology_waveforms(
     std::vector<std::string> inputVoltagesNames;
     collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
     
-    for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-        for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+    // Use nominal input voltage only (index 0) for topology waveforms — same as LLC.
+    // Min/max variants are covered by simulate_and_extract_operating_points.
+    for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+        const size_t inputVoltageIndex = 0;
+        {
             auto opPoint = get_operating_points()[opIndex];
-            
+
             std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
             double switchingFrequency = opPoint.get_switching_frequency();
             

@@ -4,6 +4,9 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "advisers/MagneticAdviser.h"
+#include "advisers/CoreAdviser.h"
+#include "advisers/CoilAdviser.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -600,6 +603,27 @@ namespace {
             double v1 = findPeak(exc1.get_voltage()->get_waveform().value());
             double v3 = findPeak(exc3.get_voltage()->get_waveform().value());
             CHECK(v1 > v3);  // 12V output peak > 5V output peak
+        }
+
+        SECTION("Generated ngspice netlist contains per-output nodes") {
+            std::vector<double> turnsRatios;
+            for (auto& tr : req.get_turns_ratios()) {
+                turnsRatios.push_back(resolve_dimensional_values(tr));
+            }
+            double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+
+            std::string netlist = llc.generate_ngspice_circuit(turnsRatios, Lm, 0, 0);
+
+            // Output 1 identifiers
+            CHECK(netlist.find("Lsec1_o1") != std::string::npos);
+            CHECK(netlist.find("Lsec2_o1") != std::string::npos);
+            CHECK(netlist.find("Rload_o1") != std::string::npos);
+            CHECK(netlist.find("vout_cap_o1") != std::string::npos);
+            // Output 2 identifiers — guards the multi-output path in generate_ngspice_circuit
+            CHECK(netlist.find("Lsec1_o2") != std::string::npos);
+            CHECK(netlist.find("Lsec2_o2") != std::string::npos);
+            CHECK(netlist.find("Rload_o2") != std::string::npos);
+            CHECK(netlist.find("vout_cap_o2") != std::string::npos);
         }
 
         SECTION("Waveform plotting - Multiple Outputs") {
@@ -1528,5 +1552,301 @@ namespace {
         double f1_expected = 1.0 / (2.0 * M_PI * std::sqrt(Ls * Cr));
         double f1_actual = llc.get_lip_frequency();
         REQUIRE_THAT(f1_actual, Catch::Matchers::WithinRel(f1_expected, 1e-6));
+    }
+
+    // Times how long single-output and multi-output simulate_and_extract_*
+    // take through the NgspiceRunner. Confirms whether the pathological
+    // slowdown observed in the WASM build also shows up with the command-line
+    // ngspice path (which reflects the raw ngspice-on-the-netlist cost).
+    TEST_CASE("Test_Llc_Multi_Output_Simulation_Timing",
+              "[converter-model][llc-topology][ngspice-simulation][timing]") {
+        NgspiceRunner probe;
+        if (!probe.is_available()) SKIP("ngspice not available");
+
+        auto build_llc_json = [](std::vector<double> vouts, std::vector<double> iouts) {
+            json j;
+            j["inputVoltage"]["nominal"] = 400.0;
+            j["bridgeType"] = "Full Bridge";
+            j["minSwitchingFrequency"] = 80000;
+            j["maxSwitchingFrequency"] = 120000;
+            j["resonantFrequency"] = 100000;
+            j["qualityFactor"] = 0.4;
+            j["inductanceRatio"] = 5.0;
+            j["integratedResonantInductor"] = true;
+            j["operatingPoints"] = json::array();
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = vouts;
+            op["outputCurrents"] = iouts;
+            op["switchingFrequency"] = 100000;
+            j["operatingPoints"].push_back(op);
+            return j;
+        };
+
+        auto run_case = [](const json& jcfg, const std::string& tag) {
+            Llc llc(jcfg);
+            auto req = llc.process_design_requirements();
+            std::vector<double> trs;
+            for (auto& tr : req.get_turns_ratios())
+                trs.push_back(resolve_dimensional_values(tr));
+            double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+
+            // Keep the simulation short and identical across cases: 3 steady-state
+            // periods + 1 extraction period, so timing differences reflect per-step
+            // solver cost rather than circuit length.
+            llc.set_num_steady_state_periods(3);
+            llc.set_num_periods_to_extract(1);
+
+            // Dump the netlist to /tmp so failures can be inspected.
+            std::string netlist = llc.generate_ngspice_circuit(trs, Lm, 0, 0);
+            std::string netPath = "/tmp/llc_" + tag + ".net";
+            std::ofstream(netPath) << netlist;
+            std::cerr << "    [" << tag << "] netlist → " << netPath
+                      << "  (" << trs.size() / 2 << " outputs, "
+                      << netlist.size() << " bytes)\n";
+
+            auto t0 = std::chrono::steady_clock::now();
+            size_t n = 0;
+            try {
+                auto tw = llc.simulate_and_extract_topology_waveforms(trs, Lm, 1);
+                n = tw.size();
+            } catch (const std::exception& e) {
+                std::cerr << "    [" << tag << "] FAILED: " << e.what() << "\n";
+            }
+            auto t1 = std::chrono::steady_clock::now();
+            double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            std::cerr << "    [" << tag << "] simulate walltime: "
+                      << ms << " ms, returned " << n << " waveform set(s)\n";
+            return std::pair<double, size_t>{ms, n};
+        };
+
+        SECTION("Single output — baseline") {
+            auto jcfg = build_llc_json({48.0}, {10.0});
+            auto [ms, n] = run_case(jcfg, "1out_48V");
+            CHECK(n >= 1);
+            INFO("single-output walltime: " << ms << " ms");
+        }
+
+        SECTION("Two outputs — same voltage (48 V + 48 V)") {
+            auto jcfg = build_llc_json({48.0, 48.0}, {10.0, 2.0});
+            auto [ms, n] = run_case(jcfg, "2out_48V_48V");
+            CHECK(n >= 1);
+            INFO("two-output (same V) walltime: " << ms << " ms");
+        }
+
+        SECTION("Two outputs — mixed voltage (48 V + 12 V)") {
+            auto jcfg = build_llc_json({48.0, 12.0}, {10.0, 4.17});
+            auto [ms, n] = run_case(jcfg, "2out_48V_12V");
+            CHECK(n >= 1);
+            INFO("two-output (mixed V) walltime: " << ms << " ms");
+        }
+
+        SECTION("Three outputs") {
+            auto jcfg = build_llc_json({48.0, 12.0, 5.0}, {10.0, 4.17, 2.0});
+            auto [ms, n] = run_case(jcfg, "3out");
+            CHECK(n >= 1);
+            INFO("three-output walltime: " << ms << " ms");
+        }
+    }
+
+    // End-to-end: LLC → CoreAdviser → CoilAdviser with wound_with center-tap
+    // grouping. Single output (3 windings, 1 wound_with group) and multi
+    // output (5 windings, 2 wound_with groups). These tests are the ones the
+    // WebFrontend + WASM advisor flow depends on — running them natively
+    // cuts the iteration cycle from ~5 min (rebuild WASM + browser) to ~2s.
+    TEST_CASE("Test_Llc_Adviser_CenterTap_Grouping",
+              "[converter-model][llc-topology][adviser][center-tap-grouping]") {
+
+        auto build_inputs = [](std::vector<double> vouts, std::vector<double> iouts) {
+            json llcJson;
+            llcJson["inputVoltage"]["nominal"] = 400.0;
+            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["minSwitchingFrequency"] = 80000;
+            llcJson["maxSwitchingFrequency"] = 120000;
+            llcJson["resonantFrequency"] = 100000;
+            llcJson["qualityFactor"] = 0.4;
+            llcJson["inductanceRatio"] = 5.0;
+            llcJson["integratedResonantInductor"] = true;
+            llcJson["operatingPoints"] = json::array();
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = vouts;
+            op["outputCurrents"] = iouts;
+            op["switchingFrequency"] = 100000;
+            llcJson["operatingPoints"].push_back(op);
+            Llc llc(llcJson);
+            return llc.process();
+        };
+
+        SECTION("Single output: Coil has wound_with on Half 2") {
+            auto inputs = build_inputs({48.0}, {10.4});
+            REQUIRE(inputs.get_operating_points().size() >= 1);
+            REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding().size() == 3);
+
+            // Debug: dump the inputs JSON so we can see if something is missing.
+            {
+                json inputsJson;
+                to_json(inputsJson, inputs);
+                std::cerr << "[test-debug] inputs.designRequirements = "
+                          << inputsJson.value("designRequirements", json::object()).dump(2)
+                          << std::endl;
+                std::cerr << "[test-debug] inputs.wiringTechnology = "
+                          << inputsJson.value("wiringTechnology", "<unset>") << std::endl;
+                std::cerr << "[test-debug] inputs.operatingPoints[0].conditions = "
+                          << inputsJson["operatingPoints"][0].value("conditions", json::object()).dump(2)
+                          << std::endl;
+            }
+
+            // Call the CoreAdviser just to run correct_windings on a dummy
+            // Coil, then inspect the resulting functional description.
+            CoreAdviser coreAdviser;
+            coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+            std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+            try {
+                results = coreAdviser.get_advised_core(inputs, 2);
+            } catch (const std::exception& e) {
+                std::cerr << "[test-debug] get_advised_core threw: " << e.what() << std::endl;
+                throw;
+            }
+            REQUIRE(results.size() >= 1);
+
+            auto coil = results[0].first.get_magnetic().get_coil();
+            auto fd = coil.get_functional_description();
+            CHECK(fd.size() == 3);  // primary + 2 half-secondaries
+            CHECK(fd[0].get_name() == "Primary");
+            CHECK(fd[1].get_name() == "Secondary 0 Half 1");
+            CHECK(fd[2].get_name() == "Secondary 0 Half 2");
+
+            // Half 2 should be wound with Half 1.
+            CHECK(fd[0].get_wound_with().has_value() == false);
+            CHECK(fd[1].get_wound_with().has_value() == false);
+            REQUIRE(fd[2].get_wound_with().has_value());
+            auto ww = fd[2].get_wound_with().value();
+            REQUIRE(ww.size() == 1);
+            CHECK(ww[0] == "Secondary 0 Half 1");
+
+            // Isolation sides should match designRequirements (both halves
+            // share the same secondary side, not tertiary/quaternary).
+            CHECK(fd[1].get_isolation_side() == IsolationSide::SECONDARY);
+            CHECK(fd[2].get_isolation_side() == IsolationSide::SECONDARY);
+        }
+
+        SECTION("Two outputs: two independent wound_with groups") {
+            auto inputs = build_inputs({48.0, 12.0}, {10.4, 4.17});
+            REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding().size() == 5);
+
+            CoreAdviser coreAdviser;
+            coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+            auto results = coreAdviser.get_advised_core(inputs, 2);
+            REQUIRE(results.size() >= 1);
+
+            auto coil = results[0].first.get_magnetic().get_coil();
+            auto fd = coil.get_functional_description();
+            CHECK(fd.size() == 5);
+
+            // Expected names + groupings:
+            //   Primary                   (no wound_with)
+            //   Secondary 0 Half 1        (no wound_with)
+            //   Secondary 0 Half 2        (wound_with = ["Secondary 0 Half 1"])
+            //   Secondary 1 Half 1        (no wound_with)
+            //   Secondary 1 Half 2        (wound_with = ["Secondary 1 Half 1"])
+            CHECK(!fd[1].get_wound_with().has_value());
+            REQUIRE(fd[2].get_wound_with().has_value());
+            CHECK(fd[2].get_wound_with().value()[0] == "Secondary 0 Half 1");
+            CHECK(!fd[3].get_wound_with().has_value());
+            REQUIRE(fd[4].get_wound_with().has_value());
+            CHECK(fd[4].get_wound_with().value()[0] == "Secondary 1 Half 1");
+
+            // Isolation sides: primary, secondary, secondary, tertiary, tertiary
+            CHECK(fd[0].get_isolation_side() == IsolationSide::PRIMARY);
+            CHECK(fd[1].get_isolation_side() == IsolationSide::SECONDARY);
+            CHECK(fd[2].get_isolation_side() == IsolationSide::SECONDARY);
+            CHECK(fd[3].get_isolation_side() == IsolationSide::TERTIARY);
+            CHECK(fd[4].get_isolation_side() == IsolationSide::TERTIARY);
+        }
+    }
+
+    // Drives the full MagneticAdviser flow (CoreAdviser + CoilAdviser + wind)
+    // for multi-output LLC. This is the native-side reproduction of the
+    // "Get Advised Magnetics" button in the wizard.
+    TEST_CASE("Test_Llc_MagneticAdviser_Multi_Output_EndToEnd",
+              "[converter-model][llc-topology][adviser][center-tap-grouping]") {
+
+        auto build_inputs = [](std::vector<double> vouts, std::vector<double> iouts) {
+            json llcJson;
+            llcJson["inputVoltage"]["nominal"] = 400.0;
+            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["minSwitchingFrequency"] = 80000;
+            llcJson["maxSwitchingFrequency"] = 120000;
+            llcJson["resonantFrequency"] = 100000;
+            llcJson["qualityFactor"] = 0.4;
+            llcJson["inductanceRatio"] = 5.0;
+            llcJson["integratedResonantInductor"] = true;
+            llcJson["operatingPoints"] = json::array();
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = vouts;
+            op["outputCurrents"] = iouts;
+            op["switchingFrequency"] = 100000;
+            llcJson["operatingPoints"].push_back(op);
+            Llc llc(llcJson);
+            return llc.process();
+        };
+
+        SECTION("Single output MagneticAdviser completes") {
+            auto inputs = build_inputs({48.0}, {10.4});
+            MagneticAdviser adviser;
+            auto results = adviser.get_advised_magnetic(inputs, 2);
+            REQUIRE(results.size() >= 1);
+            auto coil = results[0].first.get_magnetic().get_coil();
+            CHECK(coil.get_sections_description().has_value());
+            if (coil.get_sections_description()) {
+                // With wound_with grouping, the two Half windings share a
+                // single section, so total conduction sections = 2 (primary
+                // + secondary-virtual).
+                auto secs = coil.get_sections_description().value();
+                // Both halves of the center-tap secondary must share every
+                // conduction section they appear in (wound_with grouping).
+                for (auto& s : secs) {
+                    if (s.get_type() != ElectricalType::CONDUCTION) continue;
+                    std::vector<std::string> names;
+                    for (auto& pw : s.get_partial_windings()) names.push_back(pw.get_winding());
+                    for (auto& n : names) {
+                        const std::string h2 = " Half 2";
+                        if (n.size() > h2.size() && n.compare(n.size() - h2.size(), h2.size(), h2) == 0) {
+                            std::string partner = n.substr(0, n.size() - h2.size()) + " Half 1";
+                            CHECK(std::find(names.begin(), names.end(), partner) != names.end());
+                        }
+                    }
+                }
+            }
+        }
+
+        SECTION("Two output MagneticAdviser completes") {
+            auto inputs = build_inputs({48.0, 12.0}, {10.4, 4.17});
+            MagneticAdviser adviser;
+            auto results = adviser.get_advised_magnetic(inputs, 2);
+            REQUIRE(results.size() >= 1);
+            auto coil = results[0].first.get_magnetic().get_coil();
+            CHECK(coil.get_sections_description().has_value());
+            if (coil.get_sections_description()) {
+                auto secs = coil.get_sections_description().value();
+                // For each conduction section, both halves of a center-tap pair
+                // must appear together (wound_with grouping works).
+                for (auto& s : secs) {
+                    if (s.get_type() != ElectricalType::CONDUCTION) continue;
+                    std::vector<std::string> names;
+                    for (auto& pw : s.get_partial_windings()) names.push_back(pw.get_winding());
+                    // If "Secondary N Half 2" is present, "Secondary N Half 1" must also be.
+                    for (auto& n : names) {
+                        const std::string h2 = " Half 2";
+                        if (n.size() > h2.size() && n.compare(n.size() - h2.size(), h2.size(), h2) == 0) {
+                            std::string partner = n.substr(0, n.size() - h2.size()) + " Half 1";
+                            CHECK(std::find(names.begin(), names.end(), partner) != names.end());
+                        }
+                    }
+                }
+            }
+        }
     }
 }
