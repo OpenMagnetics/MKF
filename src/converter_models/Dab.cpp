@@ -539,7 +539,7 @@ DesignRequirements Dab::process_design_requirements() {
     }
 
     DimensionWithTolerance inductanceWithTolerance;
-    inductanceWithTolerance.set_nominal(roundFloat(Lm, 10));
+    inductanceWithTolerance.set_minimum(roundFloat(Lm, 10));
     designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
 
     // If using leakage inductance as series inductor, request leakage = L
@@ -1347,7 +1347,7 @@ Inputs AdvancedDab::process() {
 
     // Override magnetizing inductance
     DimensionWithTolerance LmTol;
-    LmTol.set_nominal(desiredMagnetizingInductance);
+    LmTol.set_minimum(desiredMagnetizingInductance);
     designRequirements.set_magnetizing_inductance(LmTol);
 
     // Override series inductance if specified
