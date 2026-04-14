@@ -22,6 +22,31 @@
 
 namespace OpenMagnetics {
 
+static size_t find_dominant_non_dc_harmonic_index(const Harmonics& harmonics) {
+    size_t dominantIndex = 1;
+    double maxMetric = 0.0;
+    for (size_t i = 1; i < harmonics.get_amplitudes().size(); ++i) {
+        double metric = harmonics.get_amplitudes()[i] * std::sqrt(harmonics.get_frequencies()[i]);
+        if (metric > maxMetric) {
+            maxMetric = metric;
+            dominantIndex = i;
+        }
+    }
+    return dominantIndex;
+}
+
+static void resolve_harmonic_index_for_painting(const Harmonics& harmonics, size_t& harmonicIndex) {
+    if (harmonicIndex != 1 || harmonics.get_amplitudes().size() <= 2) {
+        return;
+    }
+    double metric1 = harmonics.get_amplitudes()[1] * std::sqrt(harmonics.get_frequencies()[1]);
+    size_t dominant = find_dominant_non_dc_harmonic_index(harmonics);
+    double metricDominant = harmonics.get_amplitudes()[dominant] * std::sqrt(harmonics.get_frequencies()[dominant]);
+    if (metricDominant > 0 && metric1 / metricDominant < 0.01) {
+        harmonicIndex = dominant;
+    }
+}
+
 ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing in excitation");
@@ -50,6 +75,7 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
     }
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    resolve_harmonic_index_for_painting(harmonics, harmonicIndex);
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
     bool includeFringing = settings.get_painter_include_fringing();
@@ -117,6 +143,7 @@ ComplexField PainterInterface::calculate_magnetic_field_internal_only(OperatingP
     }
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    resolve_harmonic_index_for_painting(harmonics, harmonicIndex);
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
     bool includeFringing = settings.get_painter_include_fringing();
@@ -160,6 +187,7 @@ ComplexField PainterInterface::calculate_magnetic_field_external_only(OperatingP
     }
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    resolve_harmonic_index_for_painting(harmonics, harmonicIndex);
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
     bool includeFringing = settings.get_painter_include_fringing();

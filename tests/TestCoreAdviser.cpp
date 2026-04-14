@@ -2609,4 +2609,66 @@ TEST_CASE("Test_CoreAdviserStandardCores_No_Toroidal_Saturation_Debug", "[advise
     settings.reset();
 }
 
+TEST_CASE("Benchmark_CoreAdviser_Transformer_Turn_Variants_Overhead", "[adviser][core-adviser][benchmark]") {
+    settings.reset();
+    clear_databases();
+    load_core_shapes();
+
+    // Transformer-like input: minimum inductance only, with voltage waveform
+    json inputsJson = json::parse(R"({
+        "designRequirements": {
+            "magnetizingInductance": {"minimum": 0.001},
+            "turnsRatios": [{"nominal": 1.0}],
+            "topology": "Dual Active Bridge Converter",
+            "name": "Benchmark",
+            "wiringTechnology": "Wound"
+        },
+        "operatingPoints": [{
+            "name": "Op1",
+            "conditions": {"ambientTemperature": 25},
+            "excitationsPerWinding": [{
+                "name": "Primary",
+                "frequency": 100000,
+                "current": {
+                    "waveform": {"data": [0, 2, -2, 0], "time": [0, 0.0000025, 0.0000075, 0.00001]},
+                    "processed": {"dutyCycle": 0.5, "peakToPeak": 4, "offset": 0, "label": "Triangular",
+                        "peak": 2, "rms": 1.155, "thd": 0.1}
+                },
+                "voltage": {
+                    "waveform": {"data": [400, 400, -400, -400, 400], "time": [0, 0, 0.000005, 0.000005, 0.00001]},
+                    "processed": {"dutyCycle": 0.5, "peakToPeak": 800, "offset": 0, "label": "Rectangular",
+                        "peak": 400, "rms": 400, "thd": 0.5}
+                }
+            }]
+        }]
+    })");
+
+    OpenMagnetics::Inputs inputs(inputsJson);
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 0.3;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0.4;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0.3;
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+
+    const int iterations = 10;
+    auto t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i < iterations; ++i) {
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 20);
+        REQUIRE(masMagnetics.size() > 0);
+    }
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::steady_clock::now() - t0).count();
+
+    std::cout << "[Benchmark] " << iterations << " runs took " << ms << " ms (avg "
+              << (double)ms / iterations << " ms/run). Results count will be checked." << std::endl;
+
+    // One final run to inspect result count (turn variants may increase it)
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 20);
+    std::cout << "[Benchmark] Final result count: " << masMagnetics.size() << std::endl;
+
+    settings.reset();
+}
+
 }  // namespace

@@ -1081,6 +1081,35 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                         !inputs.get_design_requirements().get_magnetizing_inductance().get_maximum();
     }
     
+    // Pre-compute shared transformer values once (not per-core)
+    double transformerTemperature = 25.0;
+    double maxVoltSeconds = 0.0;
+    if (isTransformer) {
+        for (size_t opIdx = 0; opIdx < inputs.get_operating_points().size(); ++opIdx) {
+            auto op = inputs.get_operating_point(opIdx);
+            transformerTemperature = std::max(transformerTemperature, op.get_conditions().get_ambient_temperature());
+            auto excitation = Inputs::get_primary_excitation(op);
+
+            if (excitation.get_voltage() && excitation.get_voltage()->get_waveform() &&
+                excitation.get_voltage()->get_waveform()->get_time()) {
+                auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
+                const auto& data = voltageWaveform.get_data();
+                auto time = voltageWaveform.get_time().value();
+                double integral = 0.0;
+                for (size_t j = 0; j + 1 < std::min(data.size(), time.size()); ++j) {
+                    integral += data[j] * (time[j + 1] - time[j]);
+                    maxVoltSeconds = std::max(maxVoltSeconds, std::abs(integral));
+                }
+            } else if (excitation.get_voltage() && excitation.get_voltage()->get_processed() &&
+                       excitation.get_voltage()->get_processed()->get_peak()) {
+                double frequency = excitation.get_frequency() > 0 ? excitation.get_frequency() : 100000;
+                double omega = 2 * std::numbers::pi * frequency;
+                maxVoltSeconds = std::max(maxVoltSeconds,
+                    excitation.get_voltage()->get_processed()->get_peak().value() / omega);
+            }
+        }
+    }
+
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
 
         Core core = (*magneticsWithScoring)[i].first.get_core();
@@ -1092,37 +1121,17 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
 
         if (initialNumberTurns == 1) {
             if (isTransformer) {
-                // For transformers, calculate turns from voltage using MagnetizingInductance method
-                // Use MAXIMUM voltage peak across all operating points to ensure no saturation
-                double frequency = 100000; // default
-                double voltagePeak = 0;
-                double temperature = 25.0;
-                
-                for (size_t opIdx = 0; opIdx < inputs.get_operating_points().size(); ++opIdx) {
-                    auto op = inputs.get_operating_point(opIdx);
-                    temperature = std::max(temperature, op.get_conditions().get_ambient_temperature());
-                    auto excitation = Inputs::get_primary_excitation(op);
-                    // Use minimum frequency for worst-case saturation (lower freq = higher B for same V)
-                    if (opIdx == 0) {
-                        frequency = excitation.get_frequency();
-                    } else {
-                        frequency = std::min(frequency, excitation.get_frequency());
-                    }
-                    
-                    if (excitation.get_voltage() && excitation.get_voltage()->get_processed() && 
-                        excitation.get_voltage()->get_processed()->get_peak()) {
-                        voltagePeak = std::max(voltagePeak, excitation.get_voltage()->get_processed()->get_peak().value());
-                    }
-                }
-                
-                double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
+                // For transformers, calculate turns from voltage waveform using Faraday's Law.
+                // We use pre-computed maxVoltSeconds (peak |∫V dt|) which is accurate for any
+                // waveform shape (sinusoidal, square, DAB trapezoidal, etc.).
+                double bSat = core.get_magnetic_flux_density_saturation(transformerTemperature, false);
                 double bMax = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
-                
-                if (voltagePeak > 0) {
-                    initialNumberTurns = magnetizingInductance.calculate_turns_from_voltage_and_max_flux_density(
-                        core, voltagePeak, frequency, bMax);
+                double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+
+                if (maxVoltSeconds > 0 && effectiveArea > 0 && bMax > 0) {
+                    initialNumberTurns = std::max(1.0, std::ceil(maxVoltSeconds / (bMax * effectiveArea)));
                 } else {
-                    // Fallback to small number for transformer
+                    // Fallback to small number for transformer when no voltage data exists
                     initialNumberTurns = 5;
                 }
             } else {
@@ -1202,6 +1211,27 @@ void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneti
         core.set_material(coreMaterial);
 
         (*magneticsWithScoring)[i].first.set_core(core);
+    }
+}
+
+void add_transformer_turn_variants(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
+    auto topology = inputs.get_design_requirements().get_topology();
+    if (!topology.has_value() || is_energy_storing_topology(topology)) {
+        return;
+    }
+
+    size_t originalSize = magneticsWithScoring->size();
+    size_t limit = std::min(originalSize, size_t(5));
+    
+    for (size_t i = 0; i < limit; ++i) {
+        auto magnetic = (*magneticsWithScoring)[i].first;
+        auto primaryTurns = static_cast<uint64_t>(magnetic.get_coil().get_functional_description()[0].get_number_turns());
+        uint64_t variantTurns = static_cast<uint64_t>(std::ceil(primaryTurns * 1.3));
+        if (variantTurns <= primaryTurns) {
+            variantTurns = primaryTurns + 1;
+        }
+        magnetic.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(variantTurns);
+        magneticsWithScoring->push_back({magnetic, (*magneticsWithScoring)[i].second});
     }
 }
 
@@ -2520,6 +2550,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         }
     }
 
+    add_transformer_turn_variants(&magneticsWithScoring, inputs);
     correct_windings(&magneticsWithScoring, inputs);
 
     std::vector<std::pair<Mas, double>> masWithScoring;
@@ -2787,6 +2818,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         }
     }
 
+    add_transformer_turn_variants(&magneticsWithScoring, inputs);
     correct_windings(&magneticsWithScoring, inputs);
     add_alternative_materials(&magneticsWithScoring, inputs);
 
