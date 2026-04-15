@@ -463,7 +463,13 @@ DesignRequirements Dab::process_design_requirements() {
     auto& ops = get_operating_points();
     double mainOutputVoltage = ops[0].get_output_voltages()[0];
     double mainOutputCurrent = ops[0].get_output_currents()[0];
-    double mainOutputPower = mainOutputVoltage * mainOutputCurrent;
+    double mainOutputPower = 0.0;
+    for (size_t i = 0; i < ops[0].get_output_voltages().size() && i < ops[0].get_output_currents().size(); ++i) {
+        mainOutputPower += ops[0].get_output_voltages()[i] * ops[0].get_output_currents()[i];
+    }
+    if (mainOutputPower <= 0) {
+        mainOutputPower = mainOutputVoltage * mainOutputCurrent;
+    }
     double Fs = ops[0].get_switching_frequency();
 
     // 1. Turns ratio: N = V1_nom / V2_nom
