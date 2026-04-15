@@ -1121,17 +1121,14 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
 
         if (initialNumberTurns == 1) {
             if (isTransformer) {
-                // For transformers, calculate turns from voltage waveform using Faraday's Law.
-                // We use pre-computed maxVoltSeconds (peak |∫V dt|) which is accurate for any
-                // waveform shape (sinusoidal, square, DAB trapezoidal, etc.).
-                double bSat = core.get_magnetic_flux_density_saturation(transformerTemperature, false);
-                double bMax = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
+                // Feasibility seed: fewest turns that keep B_peak under the material's safe
+                // operating flux. The loss filter refines N upward toward the loss optimum.
+                double bMax = core.get_magnetic_flux_density_saturation(transformerTemperature, true);
                 double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
 
                 if (maxVoltSeconds > 0 && effectiveArea > 0 && bMax > 0) {
                     initialNumberTurns = std::max(1.0, std::ceil(maxVoltSeconds / (bMax * effectiveArea)));
                 } else {
-                    // Fallback to small number for transformer when no voltage data exists
                     initialNumberTurns = 5;
                 }
             } else {
