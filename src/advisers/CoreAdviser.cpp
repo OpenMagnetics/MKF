@@ -1615,7 +1615,6 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
     MagnetizingInductance magnetizingInductance;
     MagneticSimulator magneticSimulator;
     const int MAX_ITERATIONS = 5;  // Reduced from 10 to improve performance
-    const double TARGET_B_RATIO = defaults.maximumProportionMagneticFluxDensitySaturation;
 
     for (size_t i = 0; i < magneticsWithScoring->size();) {
         Core core = (*magneticsWithScoring)[i].first.get_core();
@@ -1643,12 +1642,13 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
             continue;
         }
 
-        // Get Bsat for this core
+        // Target safe operating flux for this core (material Bsat curve at opTemp,
+        // capped by defaults.maximumProportionMagneticFluxDensitySaturation).
         double opTemp = 25.0;
         for (auto& op : inputs.get_operating_points()) {
             opTemp = std::max(opTemp, op.get_conditions().get_ambient_temperature());
         }
-        double realisticBsat = core.get_magnetic_flux_density_saturation(opTemp, false);
+        double maxB = core.get_magnetic_flux_density_saturation(opTemp, /*proportion=*/true);
 
         // Get current gap
         double currentGap = 0;
@@ -1702,14 +1702,12 @@ void CoreAdviser::refine_gaps_for_saturation(std::vector<std::pair<Magnetic, dou
                 break;
             }
 
-            double bRatio = bPeak / realisticBsat;
-
-            // Check if we're at or below target
-            if (bRatio <= TARGET_B_RATIO * 1.01) {  // Allow 1% tolerance
+            // Check if we're at or below the safe operating flux.
+            if (bPeak <= maxB * 1.01) {  // Allow 1% tolerance
                 converged = true;
             } else {
-                // Increase gap to reduce B
-                double newGap = currentGap * (bRatio / TARGET_B_RATIO) * 1.1;  // 10% margin
+                // Increase gap proportionally to the overshoot, with a 10% margin.
+                double newGap = currentGap * (bPeak / maxB) * 1.1;
                 
                 // Check practical limits
                 double columnWidth = core.get_columns()[0].get_width();
@@ -1795,10 +1793,9 @@ double CoreAdviser::calculate_gap_cost_analytical(double gap, Inputs& inputs, Co
     // Calculate flux density using MagnetizingInductance method
     double bPeak = magnetizingInductance.calculate_flux_density_peak(core, turns, peakCurrent, temperature, frequency);
     
-    // Get Bsat for this material
-    double bSat = core.get_magnetic_flux_density_saturation(temperature, false);
-    double maxAllowedB = bSat * defaults.maximumProportionMagneticFluxDensitySaturation;
-    
+    // Safe operating flux cap for this material at the operating temperature.
+    double maxAllowedB = core.get_magnetic_flux_density_saturation(temperature, /*proportion=*/true);
+
     // Check saturation constraint
     if (bPeak > maxAllowedB) {
         return std::numeric_limits<double>::max();  // Constraint violation
