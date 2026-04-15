@@ -1547,54 +1547,48 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             
             if (hasVoltage) {
                 voltagePeak = excitation.get_voltage()->get_processed()->get_peak().value();
-                std::cout << "[SatFilter] Using provided voltage: " << voltagePeak << "V" << std::endl;
             } else if (hasCurrentWaveform) {
-                // If voltage not provided but current is, derive voltage from V = L * di/dt
-                // IMPORTANT: Use the ACTUAL core inductance (after gapping), not the design requirement
-                // The gapped core has lower inductance, which means lower induced voltage for same di/dt
-                std::cout << "[SatFilter] Deriving voltage from current waveform..." << std::endl;
+                // Derive voltage from V = L·di/dt using the actual gapped-core inductance
                 OpenMagnetics::MagnetizingInductance magnetizingInductanceCalc;
                 auto inductanceOutput = magnetizingInductanceCalc.calculate_inductance_from_number_turns_and_gapping(
                     *magnetic, &operatingPoint);
-                
+
                 if (inductanceOutput.get_magnetizing_inductance().get_nominal()) {
                     actualInductance = inductanceOutput.get_magnetizing_inductance().get_nominal().value();
-                    std::cout << "[SatFilter] Actual inductance: " << (actualInductance * 1e6) << " uH" << std::endl;
                     if (actualInductance > 0) {
                         auto inducedVoltage = Inputs::calculate_induced_voltage(excitation, actualInductance);
                         if (inducedVoltage.get_processed() && inducedVoltage.get_processed()->get_peak()) {
                             voltagePeak = inducedVoltage.get_processed()->get_peak().value();
-                            std::cout << "[SatFilter] Derived voltage peak: " << voltagePeak << "V" << std::endl;
-                        } else {
-                            std::cout << "[SatFilter] ERROR: Could not get processed voltage peak" << std::endl;
                         }
                     }
-                } else {
-                    std::cout << "[SatFilter] ERROR: Could not get nominal inductance" << std::endl;
                 }
-            } else {
-                std::cout << "[SatFilter] WARNING: No voltage or current waveform available!" << std::endl;
             }
-            
+
             double numberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
             OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
-            magneticFluxDensityPeak = magnetizingInductanceObj.calculate_flux_density_peak_from_voltage(
-                magnetic->get_mutable_core(), numberTurns, voltagePeak, frequency);
-            
-            // DEBUG output
+
+            // For non-sinusoidal waveforms (e.g. DAB square wave), the sinusoidal formula
+            // V_peak/(N·Ae·ω) underestimates B_peak by ~36%. Integrate V·dt instead.
+            double maxVoltSeconds = 0.0;
+            if (hasVoltage && excitation.get_voltage()->get_waveform() &&
+                excitation.get_voltage()->get_waveform()->get_time()) {
+                auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
+                const auto& data = voltageWaveform.get_data();
+                auto time = voltageWaveform.get_time().value();
+                double integral = 0.0;
+                for (size_t j = 0; j + 1 < std::min(data.size(), time.size()); ++j) {
+                    integral += data[j] * (time[j + 1] - time[j]);
+                    maxVoltSeconds = std::max(maxVoltSeconds, std::abs(integral));
+                }
+            }
+
             double effectiveArea = magnetic->get_mutable_core().get_processed_description()->get_effective_parameters().get_effective_area();
-            int64_t numStacks = magnetic->get_mutable_core().get_number_stacks();
-            std::cout << "[SatFilter] Core: " << magnetic->get_core().get_name().value_or("?") 
-                      << " stacks=" << numStacks
-                      << " Ae=" << (effectiveArea * 1e6) << "mm2"
-                      << " L=" << (actualInductance * 1e6) << "uH"
-                      << " Vpeak=" << voltagePeak << "V"
-                      << " N=" << numberTurns
-                      << " f=" << frequency << "Hz"
-                      << " Bpeak=" << magneticFluxDensityPeak << "T"
-                      << " Bsat=" << magneticFluxDensitySaturation << "T"
-                      << (magneticFluxDensityPeak > magneticFluxDensitySaturation ? " SATURATED" : " OK")
-                      << std::endl;
+            if (maxVoltSeconds > 0 && numberTurns > 0 && effectiveArea > 0) {
+                magneticFluxDensityPeak = maxVoltSeconds / (numberTurns * effectiveArea);
+            } else {
+                magneticFluxDensityPeak = magnetizingInductanceObj.calculate_flux_density_peak_from_voltage(
+                    magnetic->get_mutable_core(), numberTurns, voltagePeak, frequency);
+            }
         } else {
             // For inductors/energy-storing converters, use the standard calculation
             OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
