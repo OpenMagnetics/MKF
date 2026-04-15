@@ -831,6 +831,13 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
 
     auto currentNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
     NumberTurns numberTurns(currentNumberTurns);
+
+    // Step size for the N sweep. With a ~10 iteration budget, a step of 1 only covers
+    // N..N+10 (too narrow to find the loss minimum for larger designs). Using ~10% of
+    // the starting N gives geometric-ish coverage out to ~2× N_start, spanning both
+    // sides of the typical loss optimum.
+    size_t numberTurnsStep = std::max<size_t>(1, static_cast<size_t>(std::ceil(currentNumberTurns * 0.1)));
+
     std::vector<double> totalLossesPerOperatingPoint;
     std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
     std::vector<WindingLossesOutput> windingLossesPerOperatingPoint;
@@ -852,11 +859,20 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
         OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
         size_t numberTimeouts = 0;
+
+        // Track the loss-minimum across the sweep. The do-while only gates progress;
+        // the coil state at break time may be worse than an earlier iteration, so we
+        // remember the best and restore it after the loop.
+        double bestTotalLosses = DBL_MAX;
+        uint64_t bestNumberTurnsPrimary = currentNumberTurns;
+        CoreLossesOutput bestCoreLossesOutput;
+        WindingLossesOutput bestWindingLossesOutput;
+        bestWindingLossesOutput.set_origin(ResultOrigin::SIMULATION);
+
         do {
             currentTotalLosses = newTotalLosses;
-            auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+            auto numberTurnsCombination = numberTurns.get_next_number_turns_combination(numberTurnsStep);
             coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
-            // coil = Coil(coil);
             settings.set_coil_delimit_and_compact(false);
             coil.fast_wind();
 
@@ -865,7 +881,6 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                 if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
-                    // coil = Coil(coil);
                     settings.set_coil_delimit_and_compact(false);
                     coil.fast_wind();
                     break;
@@ -883,7 +898,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             }
 
             excitation.set_magnetic_flux_density(magneticFluxDensity);
-            auto coreLossesMethods = core.get_available_core_losses_methods(); 
+            auto coreLossesMethods = core.get_available_core_losses_methods();
             if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
                 coreLossesOutput = _coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature);
                 coreLosses = coreLossesOutput.get_core_losses();
@@ -924,6 +939,14 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Too large losses");
             }
 
+            // Record the best point seen so far in this operating-point sweep.
+            if (newTotalLosses < bestTotalLosses) {
+                bestTotalLosses = newTotalLosses;
+                bestNumberTurnsPrimary = numberTurnsCombination[0];
+                bestCoreLossesOutput = coreLossesOutput;
+                bestWindingLossesOutput = windingLossesOutput;
+            }
+
             iteration--;
             if (iteration <=0) {
                 numberTimeouts++;
@@ -932,10 +955,23 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
         }
         while(newTotalLosses < currentTotalLosses * defaults.coreAdviserThresholdValidity);
 
+        // Restore the best N from the sweep so downstream code sees the loss-optimal coil.
+        if (bestTotalLosses < DBL_MAX &&
+            coil.get_functional_description()[0].get_number_turns() != static_cast<double>(bestNumberTurnsPrimary)) {
+            coil.get_mutable_functional_description()[0].set_number_turns(bestNumberTurnsPrimary);
+            settings.set_coil_delimit_and_compact(false);
+            coil.fast_wind();
+        }
 
-        if (coreLosses < DBL_MAX && coreLosses > 0) {
+        if (bestTotalLosses < DBL_MAX) {
             magnetic->set_coil(coil);
-
+            totalLossesPerOperatingPoint.push_back(bestTotalLosses);
+            coreLossesPerOperatingPoint.push_back(bestCoreLossesOutput);
+            windingLossesPerOperatingPoint.push_back(bestWindingLossesOutput);
+        }
+        else if (coreLosses < DBL_MAX && coreLosses > 0) {
+            // Fallback: no point ever beat DBL_MAX (e.g. PQI/UI shortcut path with only core losses).
+            magnetic->set_coil(coil);
             currentTotalLosses = newTotalLosses;
             totalLossesPerOperatingPoint.push_back(currentTotalLosses);
             coreLossesPerOperatingPoint.push_back(coreLossesOutput);
@@ -1563,7 +1599,7 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
                     }
                 }
             }
-
+            
             double numberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
             OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
 
