@@ -430,7 +430,7 @@ class CoreAdviser {
         private:
             MagneticFilterDimensions _filter;
         public:
-            std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, double weight=1, bool firstFilter=false);
+            std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterMinimumImpedance : public MagneticCoreFilter {

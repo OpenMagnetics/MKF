@@ -1062,6 +1062,27 @@ std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Magnetic* ma
 
     double volume = core.get_width() * core.get_height() * depth;
 
+    // Penalize planar-shaped cores (width > height winding window) when using wound wire technology.
+    // These cores are optimized for planar/PCB windings and perform poorly with wound wire.
+    if (inputs && inputs->get_wiring_technology() == WiringTechnology::WOUND) {
+        try {
+            auto windingWindow = core.get_winding_window();
+            if (windingWindow.get_width() && windingWindow.get_height()) {
+                double wwWidth = windingWindow.get_width().value();
+                double wwHeight = windingWindow.get_height().value();
+                if (wwWidth > wwHeight && wwHeight > 0) {
+                    double aspectRatio = wwWidth / wwHeight;
+                    // Quadratic penalty starting when width exceeds height.
+                    // At 2:1 ratio, volume is multiplied by ~2.8; at 3:1 by ~5.4.
+                    double penalty = 1.0 + 0.5 * std::pow(aspectRatio - 1.0, 1.5);
+                    volume *= penalty;
+                }
+            }
+        } catch (...) {
+            // If winding window data is missing, proceed without penalty
+        }
+    }
+
     return {true, volume};
 }
 

@@ -404,7 +404,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
     return filteredMagneticsWithScoring;
 }
 
-std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensions::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, double weight, bool firstFilter) {
+std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensions::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
     if (weight <= 0) {
         return *unfilteredMagnetics;
     }
@@ -413,7 +413,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensio
     for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex){
         Magnetic magnetic = (*unfilteredMagnetics)[magneticIndex].first;
 
-        auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, nullptr);
+        auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, &inputs);
 
         newScoring.push_back(scoring);
     }
@@ -2508,7 +2508,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Cost filter.", "CoreAdviser");
 
-    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS], true);
+    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Dimensions filter.", "CoreAdviser");
 
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
@@ -2531,7 +2531,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         
         // Skip saturation filter - go directly to scoring filters
         magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
-        magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS], true);
+        magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
         magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
         
         logEntry("After retry with relaxed constraints: " + std::to_string(magneticsWithScoring.size()) + " magnetics", "CoreAdviser");
@@ -2591,7 +2591,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
 
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
 
-    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS], true);
+    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
 
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
 
@@ -2708,7 +2708,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         std::cout << "[CoreAdviser] After FringingFactor: " << ferriteCores.size() << std::endl;
         
         // Filter by dimensions
-        ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, 1, true);
+        ferriteCores = filterDimensions.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Dimensions (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
         std::cout << "[CoreAdviser] After Dimensions: " << ferriteCores.size() << std::endl;
         
@@ -2763,7 +2763,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             logEntry("After EnergyStored (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
             
             // Filter by dimensions
-            powderCores = filterDimensions.filter_magnetics(&powderCores, 1, true);
+            powderCores = filterDimensions.filter_magnetics(&powderCores, inputs, 1, true);
             logEntry("After Dimensions (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
             
             // Calculate turns
@@ -2872,7 +2872,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
 
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
-    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, 1, true);
+    magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
 
