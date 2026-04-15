@@ -2120,41 +2120,97 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 }
 
 OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios) {
-    // BUGFIX: Validate and fix frequency in all excitations before processing
-    // The frequency field in OperatingPointExcitation is not initialized in constructor,
-    // so it can contain garbage values that cause NaN errors downstream
+    // Decide the excitation's effective loss-driving frequency.
+    //
+    // Two cases must both work:
+    // 1. Single-tone excitations below the line-frequency gate (e.g. a 250 Hz
+    //    triangular inductor, 60 Hz mains transformer): the stated fundamental IS
+    //    the loss-driving frequency and must be preserved verbatim.
+    // 2. PFC-style excitations where the stated fundamental is the slow line/envelope
+    //    frequency but the loss-driving content sits at a much higher switching
+    //    frequency: downstream loss/thermal math needs the switching frequency, so
+    //    we replace the stated value with the dominant loss-contributing harmonic.
+    //
+    // Score each harmonic by f·amplitude (a loss-relevant quantity that grows with
+    // both frequency and flux swing). Below the line-frequency gate we look up the
+    // max-scoring bin; above the gate the stated frequency is taken as authoritative,
+    // which also keeps the heuristic idempotent (no drift into FFT noise on re-runs).
+    constexpr double kLineFrequencyGate = 400.0;
+
+    auto effectiveFrequencyFromHarmonics = [](const SignalDescriptor& sig) -> double {
+        if (!sig.get_harmonics()) {
+            return 0.0;
+        }
+        auto harmonics = sig.get_harmonics().value();
+        const auto& freqs = harmonics.get_frequencies();
+        const auto& amps = harmonics.get_amplitudes();
+        if (freqs.size() != amps.size() || freqs.size() < 2) {
+            return 0.0;
+        }
+        double peakAmplitude = 0.0;
+        for (size_t k = 0; k < freqs.size(); ++k) {
+            if (freqs[k] > 0 && amps[k] > peakAmplitude) {
+                peakAmplitude = amps[k];
+            }
+        }
+        if (peakAmplitude <= 0) {
+            return 0.0;
+        }
+        // Threshold out FFT leakage: ignore bins with tiny amplitude so f·amp scoring
+        // doesn't drift into high-frequency noise.
+        const double amplitudeFloor = peakAmplitude * 0.01;
+        double bestScore = 0.0;
+        double bestFreq = 0.0;
+        for (size_t k = 0; k < freqs.size(); ++k) {
+            if (freqs[k] <= 0) continue;
+            if (amps[k] < amplitudeFloor) continue;
+            double score = freqs[k] * amps[k];
+            if (score > bestScore) {
+                bestScore = score;
+                bestFreq = freqs[k];
+            }
+        }
+        return bestFreq;
+    };
+
     for (size_t i = 0; i < operatingPoint.get_excitations_per_winding().size(); ++i) {
         auto& excitation = operatingPoint.get_mutable_excitations_per_winding()[i];
         auto freq = excitation.get_frequency();
-        
-        // Check if frequency is invalid (NaN, infinity, negative, or unreasonably small)
-        if (std::isnan(freq) || std::isinf(freq) || freq < 400.0) {
-            // Try to extract frequency from harmonics if available
-            if (excitation.get_current() && excitation.get_current()->get_harmonics()) {
-                auto harmonics = excitation.get_current()->get_harmonics().value();
-                if (harmonics.get_frequencies().size() > 1) {
-                    // Use first non-zero frequency from harmonics
-                    for (auto f : harmonics.get_frequencies()) {
-                        if (f > 400.0) {
-                            excitation.set_frequency(f);
-                            break;
-                        }
-                    }
-                }
+
+        // Garbage guard: NaN / inf / non-positive stated frequency.
+        if (std::isnan(freq) || std::isinf(freq) || freq <= 0) {
+            double effectiveFreq = 0.0;
+            if (excitation.get_current()) {
+                effectiveFreq = effectiveFrequencyFromHarmonics(excitation.get_current().value());
             }
-            
-            // If still invalid, try to get from voltage harmonics
-            if (excitation.get_frequency() < 400.0 && excitation.get_voltage() && excitation.get_voltage()->get_harmonics()) {
-                auto harmonics = excitation.get_voltage()->get_harmonics().value();
-                if (harmonics.get_frequencies().size() > 1) {
-                    for (auto f : harmonics.get_frequencies()) {
-                        if (f > 400.0) {
-                            excitation.set_frequency(f);
-                            break;
-                        }
-                    }
-                }
+            if (effectiveFreq <= 0 && excitation.get_voltage()) {
+                effectiveFreq = effectiveFrequencyFromHarmonics(excitation.get_voltage().value());
             }
+            if (effectiveFreq > 0) {
+                excitation.set_frequency(effectiveFreq);
+            }
+            continue;
+        }
+
+        // Idempotency gate: above the line-frequency threshold the stated frequency
+        // is authoritative. Stops re-runs from drifting into FFT noise.
+        if (freq >= kLineFrequencyGate) {
+            continue;
+        }
+
+        double effectiveFreq = 0.0;
+        if (excitation.get_current()) {
+            effectiveFreq = effectiveFrequencyFromHarmonics(excitation.get_current().value());
+        }
+        if (effectiveFreq <= 0 && excitation.get_voltage()) {
+            effectiveFreq = effectiveFrequencyFromHarmonics(excitation.get_voltage().value());
+        }
+
+        // Replace only when the loss-dominant harmonic lives above the gate —
+        // PFC-style. For single-tone excitations below 400 Hz the max-score bin is
+        // the stated fundamental itself and this is a no-op.
+        if (effectiveFreq >= kLineFrequencyGate && effectiveFreq > freq) {
+            excitation.set_frequency(effectiveFreq);
         }
     }
 
