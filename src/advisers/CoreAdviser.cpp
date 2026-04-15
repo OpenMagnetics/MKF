@@ -1211,27 +1211,6 @@ void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneti
     }
 }
 
-void add_transformer_turn_variants(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
-    auto topology = inputs.get_design_requirements().get_topology();
-    if (!topology.has_value() || is_energy_storing_topology(topology)) {
-        return;
-    }
-
-    size_t originalSize = magneticsWithScoring->size();
-    size_t limit = std::min(originalSize, size_t(5));
-    
-    for (size_t i = 0; i < limit; ++i) {
-        auto magnetic = (*magneticsWithScoring)[i].first;
-        auto primaryTurns = static_cast<uint64_t>(magnetic.get_coil().get_functional_description()[0].get_number_turns());
-        uint64_t variantTurns = static_cast<uint64_t>(std::ceil(primaryTurns * 1.3));
-        if (variantTurns <= primaryTurns) {
-            variantTurns = primaryTurns + 1;
-        }
-        magnetic.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(variantTurns);
-        magneticsWithScoring->push_back({magnetic, (*magneticsWithScoring)[i].second});
-    }
-}
-
 void add_gapping(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs) {
     MagneticEnergy magneticEnergy;
     
@@ -2547,7 +2526,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         }
     }
 
-    add_transformer_turn_variants(&magneticsWithScoring, inputs);
     correct_windings(&magneticsWithScoring, inputs);
 
     std::vector<std::pair<Mas, double>> masWithScoring;
@@ -2815,7 +2793,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         }
     }
 
-    add_transformer_turn_variants(&magneticsWithScoring, inputs);
     correct_windings(&magneticsWithScoring, inputs);
     add_alternative_materials(&magneticsWithScoring, inputs);
 
