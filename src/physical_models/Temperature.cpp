@@ -27,7 +27,58 @@ constexpr double CONTACT_THRESHOLD_FACTOR = 0.25;  // wireDiameter / 4
 // Wire Property Helper Functions (extract properties from Wire object locally)
 // ============================================================================
 
-// IMP-1: SimpleMatrix moved to Temperature.h
+// Dense matrix solver for the thermal circuit. File-local — not part of the
+// public Temperature API. For networks >100 nodes, consider a sparse solver.
+namespace {
+class SimpleMatrix {
+private:
+    std::vector<std::vector<double>> data;
+    size_t rows_, cols_;
+public:
+    SimpleMatrix() : rows_(0), cols_(0) {}
+    SimpleMatrix(size_t rows, size_t cols, double val = 0.0)
+        : data(rows, std::vector<double>(cols, val)), rows_(rows), cols_(cols) {}
+    size_t rows() const { return rows_; }
+    size_t cols() const { return cols_; }
+    double& operator()(size_t i, size_t j) { return data[i][j]; }
+    const double& operator()(size_t i, size_t j) const { return data[i][j]; }
+    void setZero() { for (auto& row : data) std::fill(row.begin(), row.end(), 0.0); }
+    void setRowZero(size_t row) { std::fill(data[row].begin(), data[row].end(), 0.0); }
+    void setColZero(size_t col) { for (size_t i = 0; i < rows_; ++i) data[i][col] = 0.0; }
+
+    // Non-throwing solve with success flag
+    static std::vector<double> solve(SimpleMatrix A, std::vector<double> b, bool& success) {
+        success = true;
+        size_t n = A.rows();
+        if (n == 0 || b.size() != n) { success = false; return std::vector<double>(n, 0.0); }
+        std::vector<std::vector<double>> aug(n, std::vector<double>(n + 1));
+        for (size_t i = 0; i < n; ++i) {
+            for (size_t j = 0; j < n; ++j) aug[i][j] = A(i, j);
+            aug[i][n] = b[i];
+        }
+        for (size_t col = 0; col < n; ++col) {
+            size_t maxRow = col;
+            double maxVal = std::abs(aug[col][col]);
+            for (size_t row = col + 1; row < n; ++row) {
+                if (std::abs(aug[row][col]) > maxVal) { maxVal = std::abs(aug[row][col]); maxRow = row; }
+            }
+            if (maxRow != col) std::swap(aug[col], aug[maxRow]);
+            if (std::abs(aug[col][col]) < 1e-15) { success = false; return std::vector<double>(n, 0.0); }
+            for (size_t row = col + 1; row < n; ++row) {
+                double factor = aug[row][col] / aug[col][col];
+                for (size_t j = col; j <= n; ++j) aug[row][j] -= factor * aug[col][j];
+            }
+        }
+        std::vector<double> x(n);
+        for (int i = static_cast<int>(n) - 1; i >= 0; --i) {
+            x[i] = aug[i][n];
+            for (size_t j = i + 1; j < n; ++j) x[i] -= aug[i][j] * x[j];
+            x[i] /= aug[i][i];
+        }
+        return x;
+    }
+};
+} // anonymous namespace
 
 // ============================================================================
 // CoolingUtils Implementation
@@ -986,10 +1037,12 @@ void Temperature::createInsulationLayerNodes() {
                 } else {
                     layerWidth = kInsulation_DefaultThickness;
                 }
-            } catch (const std::exception& /* e */) { // IMP-8
+            } catch (const std::exception& e) { // IMP-8
                 layerWidth = kInsulation_DefaultThickness;
-            }
-            if (THERMAL_DEBUG) {
+                if (THERMAL_DEBUG) {
+                    std::cout << "Temperature: insulation-layer thickness query failed, using default: "
+                              << e.what() << std::endl;
+                }
             }
         }
         
@@ -1000,8 +1053,12 @@ void Temperature::createInsulationLayerNodes() {
             if (insulationMaterial.get_thermal_conductivity()) {
                 layerK = insulationMaterial.get_thermal_conductivity().value();
             }
-        } catch (const std::exception& /* e */) { // IMP-8
+        } catch (const std::exception& e) { // IMP-8
             // Use default if material cannot be resolved
+            if (THERMAL_DEBUG) {
+                std::cout << "Temperature: insulation material resolution failed, using default k: "
+                          << e.what() << std::endl;
+            }
         }
         
         // Check coordinate system
@@ -2001,10 +2058,14 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                         auto& turn2 = (*turnsDescription)[turn2Idx];
                         auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
                         hasSolidInsulationBetween = !layersBetween.empty();
-                    } catch (const std::exception& /* e */) { // IMP-8
+                    } catch (const std::exception& e) { // IMP-8
                         // If we can't determine insulation layers (e.g., missing layer description),
                         // assume no solid insulation and create direct connection
                         hasSolidInsulationBetween = false;
+                        if (THERMAL_DEBUG) {
+                            std::cout << "Temperature: insulation-layer query failed for concentric turn pair, assuming none: "
+                                      << e.what() << std::endl;
+                        }
                     }
                 }
                 
@@ -2095,24 +2156,28 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
             double dx = node1.physicalCoordinates[0] - node2.physicalCoordinates[0];
             double dy = node1.physicalCoordinates[1] - node2.physicalCoordinates[1];
             double centerDistance = std::sqrt(dx*dx + dy*dy);
-            
+
+            // Guard against coincident turn centers (degenerate geometry).
+            // Without this, the unit-vector divisions below produce NaN.
+            if (centerDistance < 1e-12) continue;
+
             // Get minimum dimensions from both wires (used for both threshold and surface distance)
             double minDim1 = std::min(node1.dimensions.width, node1.dimensions.height);
             double minDim2 = std::min(node2.dimensions.width, node2.dimensions.height);
             double thresholdDist = std::min(minDim1, minDim2) / 4.0;
-            
+
             // Calculate surface distance: center distance minus half of min dimensions
             // This is more accurate than using max dimension for rectangular wires
             double extent1 = minDim1 / 2.0;
             double extent2 = minDim2 / 2.0;
             double surfaceDistance = centerDistance - extent1 - extent2;
-            
+
             if (surfaceDistance > thresholdDist) continue;
-            
+
             // Get the angle of each turn (rotation around the toroid)
             double angle1 = std::atan2(node1.physicalCoordinates[1], node1.physicalCoordinates[0]);
             double angle2 = std::atan2(node2.physicalCoordinates[1], node2.physicalCoordinates[0]);
-            
+
             // Direction from turn1 to turn2
             double dirX = -dx / centerDistance;  // unit vector from 1 to 2
             double dirY = -dy / centerDistance;
@@ -2218,10 +2283,14 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                             layersBetween.end()
                         );
                         hasSolidInsulationBetween = !layersBetween.empty();
-                    } catch (const std::exception& /* e */) { // IMP-8
+                    } catch (const std::exception& e) { // IMP-8
                         // If we can't determine insulation layers (e.g., missing layer description),
                         // assume no solid insulation and create direct connection
                         hasSolidInsulationBetween = false;
+                        if (THERMAL_DEBUG) {
+                            std::cout << "Temperature: insulation-layer query failed for toroidal turn pair, assuming none: "
+                                      << e.what() << std::endl;
+                        }
                     }
                 }
 
@@ -4351,8 +4420,12 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
         }
         
         return totalLayerResistance;
-    } catch (const std::exception& /* e */) { // IMP-8
+    } catch (const std::exception& e) { // IMP-8
         // Return resistance based on typical enamel insulation rather than near-zero
+        if (THERMAL_DEBUG) {
+            std::cout << "Temperature: wire insulation resistance calc failed, using enamel default: "
+                      << e.what() << std::endl;
+        }
         double defaultResistance = ThermalResistance::calculateConductionResistance(
             kWire_DefaultEnamelThickness, kWire_DefaultEnamelConductivity, contactArea);
         return std::max(defaultResistance, 1e-6);

@@ -129,65 +129,8 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-// ============================================================================
-// IMP-1: SimpleMatrix — dense matrix solver for thermal circuit
-// For networks >100 nodes, consider sparse solver (Eigen::SparseLU)
-// ============================================================================
-class SimpleMatrix {
-private:
-    std::vector<std::vector<double>> data;
-    size_t rows_, cols_;
-public:
-    SimpleMatrix() : rows_(0), cols_(0) {}
-    SimpleMatrix(size_t rows, size_t cols, double val = 0.0) 
-        : data(rows, std::vector<double>(cols, val)), rows_(rows), cols_(cols) {}
-    size_t rows() const { return rows_; }
-    size_t cols() const { return cols_; }
-    double& operator()(size_t i, size_t j) { return data[i][j]; }
-    const double& operator()(size_t i, size_t j) const { return data[i][j]; }
-    void setZero() { for (auto& row : data) std::fill(row.begin(), row.end(), 0.0); }
-    void setRowZero(size_t row) { std::fill(data[row].begin(), data[row].end(), 0.0); }
-    void setColZero(size_t col) { for (size_t i = 0; i < rows_; ++i) data[i][col] = 0.0; }
-
-    // IMP-10: Non-throwing solve with success flag
-    static std::vector<double> solve(SimpleMatrix A, std::vector<double> b, bool& success) {
-        success = true;
-        size_t n = A.rows();
-        if (n == 0 || b.size() != n) { success = false; return std::vector<double>(n, 0.0); }
-        std::vector<std::vector<double>> aug(n, std::vector<double>(n + 1));
-        for (size_t i = 0; i < n; ++i) {
-            for (size_t j = 0; j < n; ++j) aug[i][j] = A(i, j);
-            aug[i][n] = b[i];
-        }
-        for (size_t col = 0; col < n; ++col) {
-            size_t maxRow = col;
-            double maxVal = std::abs(aug[col][col]);
-            for (size_t row = col + 1; row < n; ++row) {
-                if (std::abs(aug[row][col]) > maxVal) { maxVal = std::abs(aug[row][col]); maxRow = row; }
-            }
-            if (maxRow != col) std::swap(aug[col], aug[maxRow]);
-            if (std::abs(aug[col][col]) < 1e-15) { success = false; return std::vector<double>(n, 0.0); }
-            for (size_t row = col + 1; row < n; ++row) {
-                double factor = aug[row][col] / aug[col][col];
-                for (size_t j = col; j <= n; ++j) aug[row][j] -= factor * aug[col][j];
-            }
-        }
-        std::vector<double> x(n);
-        for (int i = static_cast<int>(n) - 1; i >= 0; --i) {
-            x[i] = aug[i][n];
-            for (size_t j = i + 1; j < n; ++j) x[i] -= aug[i][j] * x[j];
-            x[i] /= aug[i][i];
-        }
-        return x;
-    }
-    // Legacy throwing overload
-    static std::vector<double> solve(SimpleMatrix A, std::vector<double> b) {
-        bool s; auto r = solve(std::move(A), std::move(b), s);
-        if (!s) throw std::runtime_error("Matrix is singular or nearly singular");
-        return r;
-    }
-};
-
+// SimpleMatrix (the dense thermal-circuit solver) is defined as a file-local
+// implementation detail in Temperature.cpp — it is not part of the public API.
 
 // Old thermal types for compatibility with BasicPainter
 enum class ThermalNodeType {
