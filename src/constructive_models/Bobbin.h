@@ -33,6 +33,12 @@ inline double maxWindingWindowWidth;
 inline double minWindingWindowHeight;
 inline double maxWindingWindowHeight;
 
+// Smallest wall/column thickness observed in the bobbin database. Used as a hard
+// lower bound when constructing quick bobbins for cores outside the interpolator's
+// training range, where the proportion clamp would otherwise yield ~µm walls.
+inline double minBobbinWallThickness;
+inline double minBobbinColumnThickness;
+
 class Bobbin : public MAS::Bobbin {
   private:
   public:

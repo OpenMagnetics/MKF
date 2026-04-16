@@ -261,6 +261,9 @@ void load_interpolators() {
         std::vector<AuxWindingWindowHeight> auxWindingWindowHeight;
 
 
+        minBobbinWallThickness = std::numeric_limits<double>::infinity();
+        minBobbinColumnThickness = std::numeric_limits<double>::infinity();
+
         for (auto& datum : bobbinDatabase) {
             try {
                 auto coreShapeName = datum.second.get_functional_description()->get_shape();
@@ -276,6 +279,25 @@ void load_interpolators() {
                 double coreWindingWindowHeight = corePiece->get_winding_window().get_height().value() * 2; // Because if we are using a bobbin we have a two piece set
                 double bobbinWindingWindowWidthProportion = bobbinWindingWindowWidth / coreWindingWindowWidth;
                 double bobbinWindingWindowHeightProportion = bobbinWindingWindowHeight / coreWindingWindowHeight;
+
+                // Track minimum real-world wall/column thicknesses. Prefer the bobbin's
+                // own processedDescription values (already populated by the family-specific
+                // BobbinDataProcessor); fall back to (core - bobbin) leftover otherwise.
+                auto bobbinPd = datum.second.get_processed_description();
+                double sampleWallThickness = bobbinPd->get_wall_thickness();
+                if (!(sampleWallThickness > 0)) {
+                    sampleWallThickness = (coreWindingWindowHeight - bobbinWindingWindowHeight) / 2;
+                }
+                double sampleColumnThickness = bobbinPd->get_column_thickness();
+                if (!(sampleColumnThickness > 0)) {
+                    sampleColumnThickness = coreWindingWindowWidth - bobbinWindingWindowWidth;
+                }
+                if (sampleWallThickness > 0) {
+                    minBobbinWallThickness = std::min(minBobbinWallThickness, sampleWallThickness);
+                }
+                if (sampleColumnThickness > 0) {
+                    minBobbinColumnThickness = std::min(minBobbinColumnThickness, sampleColumnThickness);
+                }
                 AuxFillingFactorWidth bobbinAuxFillingFactorWidth = { bobbinWindingWindowWidth, bobbinFillingFactor };
                 AuxFillingFactorHeight bobbinAuxFillingFactorHeight = { bobbinWindingWindowHeight, bobbinFillingFactor };
                 auxFillingFactorWidth.push_back(bobbinAuxFillingFactorWidth);
@@ -474,6 +496,17 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
         std::vector<double> bobbinWindingWindowDimensions = get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
         bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindowDimensions[0];
         bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindowDimensions[1]) / 2;
+        // Floor the thicknesses at the smallest real bobbin in the database. The
+        // proportion interpolator clamps at 0.999 when the core's window is outside
+        // its training range, which produces ~µm walls that are physically impossible
+        // (real injection-molded bobbins are at least ~0.3 mm). Use the database min
+        // instead, then re-derive the bobbin window dimensions to stay consistent.
+        if (std::isfinite(minBobbinWallThickness) && bobbinWallThickness < minBobbinWallThickness) {
+            bobbinWallThickness = minBobbinWallThickness;
+        }
+        if (std::isfinite(minBobbinColumnThickness) && bobbinColumnThickness < minBobbinColumnThickness) {
+            bobbinColumnThickness = minBobbinColumnThickness;
+        }
         if (bobbinWallThickness <= 0) {
             throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "bobbinWallThickness cannot be negative or 0: " + std::to_string(bobbinWallThickness));
         }
