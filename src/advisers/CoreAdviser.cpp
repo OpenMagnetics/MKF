@@ -408,6 +408,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensio
     if (weight <= 0) {
         return *unfilteredMagnetics;
     }
+    std::vector<std::pair<Magnetic, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
 
     for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex){
@@ -415,21 +416,24 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensio
 
         auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, &inputs);
 
-        newScoring.push_back(scoring);
-    }
-
-    if ((*unfilteredMagnetics).size() != newScoring.size()) {
-        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredMagnetics: " + std::to_string((*unfilteredMagnetics).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
-    }
-
-    if ((*unfilteredMagnetics).size() > 0) {
-        auto normalizedScoring = normalize_scoring(unfilteredMagnetics, newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::DIMENSIONS]);
-        for (size_t i = 0; i < (*unfilteredMagnetics).size(); ++i) {
-            add_scoring((*unfilteredMagnetics)[i].first.get_reference(), CoreAdviser::CoreAdviserFilters::DIMENSIONS, normalizedScoring[i]);
+        if (valid) {
+            filteredMagneticsWithScoring.push_back((*unfilteredMagnetics)[magneticIndex]);
+            newScoring.push_back(scoring);
         }
-        sort_magnetics_by_scoring(unfilteredMagnetics);
     }
-    return (*unfilteredMagnetics);
+
+    if (filteredMagneticsWithScoring.size() != newScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of filteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    }
+
+    if (filteredMagneticsWithScoring.size() > 0) {
+        auto normalizedScoring = normalize_scoring(&filteredMagneticsWithScoring, newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::DIMENSIONS]);
+        for (size_t i = 0; i < filteredMagneticsWithScoring.size(); ++i) {
+            add_scoring(filteredMagneticsWithScoring[i].first.get_reference(), CoreAdviser::CoreAdviserFilters::DIMENSIONS, normalizedScoring[i]);
+        }
+        sort_magnetics_by_scoring(&filteredMagneticsWithScoring);
+    }
+    return filteredMagneticsWithScoring;
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMinimumImpedance::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
@@ -2484,6 +2488,17 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Dimensions filter.", "CoreAdviser");
 
+    // Prune to top candidates by accumulated Cost+Dimensions score before the expensive
+    // Loss filter (which sweeps N per core). Cores ranking poorly on cost+size are not
+    // going to be promoted by losses alone.
+    {
+        const size_t preLossCap = std::max<size_t>(maximumNumberResults * 5, 50);
+        if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > preLossCap) {
+            magneticsWithScoring.resize(preLossCap);
+            logEntry("Pruned to " + std::to_string(magneticsWithScoring.size()) + " magnetics before the Core Losses filter.", "CoreAdviser");
+        }
+    }
+
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Core Losses filter.", "CoreAdviser");
 
@@ -2701,7 +2716,18 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         ferriteCores = filterSaturation.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Saturation (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
         std::cout << "[CoreAdviser] After Saturation: " << ferriteCores.size() << std::endl;
-        
+
+        // Prune to top candidates by accumulated score before the expensive Loss filter
+        // (which sweeps N per core). Cores already losing on cost+dimensions+inductance
+        // are not going to be promoted by losses alone.
+        {
+            const size_t preLossCap = std::max<size_t>(maximumNumberResults * 5, 50);
+            if (settings.get_core_adviser_enable_intermediate_pruning() && ferriteCores.size() > preLossCap) {
+                ferriteCores.resize(preLossCap);
+                logEntry("Pruned ferrite to " + std::to_string(ferriteCores.size()) + " before Losses", "CoreAdviser");
+            }
+        }
+
         // Filter by losses
         ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Losses (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
@@ -2748,7 +2774,16 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             // Filter by saturation
             powderCores = filterSaturation.filter_magnetics(&powderCores, inputs, 1, true);
             logEntry("After Saturation (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
-            
+
+            // Prune to top candidates by accumulated score before the expensive Loss filter.
+            {
+                const size_t preLossCap = std::max<size_t>(maximumNumberResults * 5, 50);
+                if (settings.get_core_adviser_enable_intermediate_pruning() && powderCores.size() > preLossCap) {
+                    powderCores.resize(preLossCap);
+                    logEntry("Pruned powder to " + std::to_string(powderCores.size()) + " before Losses", "CoreAdviser");
+                }
+            }
+
             // Filter by losses
             powderCores = filterLosses.filter_magnetics(&powderCores, inputs, 1, true);
             logEntry("After Losses (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
