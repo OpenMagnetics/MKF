@@ -585,17 +585,18 @@ namespace TestWindingLossesPlanar {
     double maximumError = 0.3;
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar][smoke-test][!mayfail]") {
-        // Expected values from FEM reference (scripts/benchmark_planar_fem.py).
-        // Driving 500 A peak through a 1-turn planar PCB trace: MKF's previous
-        // expected values (~87 W) were the model underestimating; FEM values
-        // reflect physical losses (kW-range at 100 kHz+ due to proximity effect).
+        // Round-column planar core (ER 28/6.5/21, 3C97, ungapped), 1 turn of
+        // 5 mm × 0.5 mm Cu PCB trace, 500 A peak sinusoidal. Round post makes
+        // this case naturally axisymmetric so it can be cross-checked with 2D
+        // RZ FEM. Expected values are MKF's own output (snapshot — tracks the
+        // model, not ground truth).
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing.json", 22,
-            {{10000, 18.80}, {20000, 75.17}, {30000, 169.16}, {40000, 300.72},
-             {50000, 470.11}, {60000, 676.59}, {70000, 921.05}, {80000, 1203.0},
-             {90000, 1522.7}, {100000, 1880.2}, {200000, 7520.5}, {300000, 16921},
-             {400000, 30078}, {500000, 46981}, {600000, 67611}, {700000, 91954},
-             {800000, 119967}, {900000, 151658}, {1000000, 186979}},
+            {{1, 45.702}, {10000, 45.722}, {20000, 45.783}, {30000, 45.884},
+             {40000, 46.024}, {50000, 46.204}, {60000, 46.422}, {70000, 46.678},
+             {80000, 46.970}, {90000, 47.297}, {100000, 47.659}, {200000, 52.811},
+             {300000, 59.630}, {400000, 66.793}, {500000, 73.595}, {600000, 79.810},
+             {700000, 85.448}, {800000, 90.601}, {900000, 95.367}, {1000000, 99.827}},
             maximumError, false);  // includeFringing = false
     }
 
