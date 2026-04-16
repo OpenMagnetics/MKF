@@ -686,29 +686,37 @@ void AdvancedPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
         bobbinCoordinates = bobbinProcessedDescription.get_coordinates().value();
     }
 
+    // Enforce a minimum on-screen thickness of 1 pixel for the bobbin walls, so bobbins
+    // with sub-pixel thicknesses (e.g. cores whose window size falls outside the
+    // bobbin-proportion interpolator's training range, yielding ~micrometer walls) are
+    // still visible. Pixel size in data units is 1 / _scale.
+    double minPixelData = (_scale > 0) ? (1.0 / _scale) : 0.0;
+    double wallThickness = std::max(bobbinProcessedDescription.get_wall_thickness(), minPixelData);
+    double columnThickness = std::max(bobbinProcessedDescription.get_column_thickness(), minPixelData);
+
     double bobbinOuterWidth = bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() + bobbinProcessedDescription.get_winding_windows()[0].get_width().value();
-    double bobbinOuterHeight = bobbinProcessedDescription.get_wall_thickness();
+    double bobbinOuterHeight = wallThickness;
     for (auto& windingWindow: bobbinProcessedDescription.get_winding_windows()) {
         bobbinOuterHeight += windingWindow.get_height().value();
-        bobbinOuterHeight += bobbinProcessedDescription.get_wall_thickness();
+        bobbinOuterHeight += wallThickness;
     }
 
     std::vector<std::vector<double>> bobbinPoints = {};
-    bobbinPoints.push_back(std::vector<double>({bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - bobbinProcessedDescription.get_column_thickness(),
+    bobbinPoints.push_back(std::vector<double>({bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - columnThickness,
                                           bobbinCoordinates[1] + bobbinOuterHeight / 2}));
     bobbinPoints.push_back(std::vector<double>({bobbinOuterWidth,
                                           bobbinCoordinates[1] + bobbinOuterHeight / 2}));
     bobbinPoints.push_back(std::vector<double>({bobbinOuterWidth,
-                                          bobbinCoordinates[1] + bobbinOuterHeight / 2 - bobbinProcessedDescription.get_wall_thickness()}));
+                                          bobbinCoordinates[1] + bobbinOuterHeight / 2 - wallThickness}));
     bobbinPoints.push_back(std::vector<double>({bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value(),
-                                          bobbinCoordinates[1] + bobbinOuterHeight / 2 - bobbinProcessedDescription.get_wall_thickness()}));
+                                          bobbinCoordinates[1] + bobbinOuterHeight / 2 - wallThickness}));
     bobbinPoints.push_back(std::vector<double>({bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value(),
-                                          bobbinCoordinates[1] - bobbinOuterHeight / 2 + bobbinProcessedDescription.get_wall_thickness()}));
+                                          bobbinCoordinates[1] - bobbinOuterHeight / 2 + wallThickness}));
     bobbinPoints.push_back(std::vector<double>({bobbinOuterWidth,
-                                          bobbinCoordinates[1] - bobbinOuterHeight / 2 + bobbinProcessedDescription.get_wall_thickness()}));
+                                          bobbinCoordinates[1] - bobbinOuterHeight / 2 + wallThickness}));
     bobbinPoints.push_back(std::vector<double>({bobbinOuterWidth,
                                           bobbinCoordinates[1] - bobbinOuterHeight / 2}));
-    bobbinPoints.push_back(std::vector<double>({bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - bobbinProcessedDescription.get_column_thickness(),
+    bobbinPoints.push_back(std::vector<double>({bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - columnThickness,
                                           bobbinCoordinates[1] - bobbinOuterHeight / 2}));
 
     std::vector<double> x, y;

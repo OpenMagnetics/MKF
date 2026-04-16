@@ -772,29 +772,38 @@ void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     }
 
     auto shapes = _root.add_child<SVG::Group>();
+
+    // Floor the rendered wall/column thickness at 1 SVG user-unit so bobbins whose
+    // processedDescription has sub-pixel thicknesses (e.g. legacy MAS files written
+    // before the database-min clamp landed in Bobbin::create_quick_bobbin) still show
+    // up. New bobbins built from create_quick_bobbin already have physical thicknesses.
+    double minPixelData = (_scale > 0) ? (1.0 / _scale) : 0.0;
+    double wallThickness = std::max(bobbinProcessedDescription.get_wall_thickness(), minPixelData);
+    double columnThickness = std::max(bobbinProcessedDescription.get_column_thickness(), minPixelData);
+
     double bobbinOuterWidth = bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() + bobbinProcessedDescription.get_winding_windows()[0].get_width().value();
-    double bobbinOuterHeight = bobbinProcessedDescription.get_wall_thickness();
+    double bobbinOuterHeight = wallThickness;
     for (auto& windingWindow: bobbinProcessedDescription.get_winding_windows()) {
         bobbinOuterHeight += windingWindow.get_height().value();
-        bobbinOuterHeight += bobbinProcessedDescription.get_wall_thickness();
+        bobbinOuterHeight += wallThickness;
     }
 
     std::vector<SVG::Point> bobbinPoints = {};
-    bobbinPoints.push_back(SVG::Point(bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - bobbinProcessedDescription.get_column_thickness(),
+    bobbinPoints.push_back(SVG::Point(bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - columnThickness,
                                       bobbinCoordinates[1] + bobbinOuterHeight / 2));
     bobbinPoints.push_back(SVG::Point(bobbinOuterWidth,
                                       bobbinCoordinates[1] + bobbinOuterHeight / 2));
     bobbinPoints.push_back(SVG::Point(bobbinOuterWidth,
-                                      bobbinCoordinates[1] + bobbinOuterHeight / 2 - bobbinProcessedDescription.get_wall_thickness()));
+                                      bobbinCoordinates[1] + bobbinOuterHeight / 2 - wallThickness));
     bobbinPoints.push_back(SVG::Point(bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value(),
-                                      bobbinCoordinates[1] + bobbinOuterHeight / 2 - bobbinProcessedDescription.get_wall_thickness()));
+                                      bobbinCoordinates[1] + bobbinOuterHeight / 2 - wallThickness));
     bobbinPoints.push_back(SVG::Point(bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value(),
-                                      bobbinCoordinates[1] - bobbinOuterHeight / 2 + bobbinProcessedDescription.get_wall_thickness()));
+                                      bobbinCoordinates[1] - bobbinOuterHeight / 2 + wallThickness));
     bobbinPoints.push_back(SVG::Point(bobbinOuterWidth,
-                                      bobbinCoordinates[1] - bobbinOuterHeight / 2 + bobbinProcessedDescription.get_wall_thickness()));
+                                      bobbinCoordinates[1] - bobbinOuterHeight / 2 + wallThickness));
     bobbinPoints.push_back(SVG::Point(bobbinOuterWidth,
                                       bobbinCoordinates[1] - bobbinOuterHeight / 2));
-    bobbinPoints.push_back(SVG::Point(bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - bobbinProcessedDescription.get_column_thickness(),
+    bobbinPoints.push_back(SVG::Point(bobbinCoordinates[0] + bobbinProcessedDescription.get_column_width().value() - columnThickness,
                                       bobbinCoordinates[1] - bobbinOuterHeight / 2));
 
     *shapes << SVG::Polygon(scale_points(bobbinPoints, 0, _scale));
