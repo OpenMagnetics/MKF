@@ -24,41 +24,46 @@ AdvancedDab::AdvancedDab(const json& j) {
 }
 
 // =========================================================================
-// Static helper: Power transfer (SPS modulation)
+// Static helper: SPS power transfer (Single Phase Shift, D1 = D2 = 0)
 // =========================================================================
-// P = N * V1 * V2 * phi * (pi - |phi|) / (2 * pi^2 * Fs * L)
-// Reference: [1] TI TIDA-010054 Eq.6, [2] Demetriades Ch.6
+// The only non-zero control is D3 (outer inter-bridge shift).
+//
+//   P = N · V1 · V2 · D3 · (π − |D3|) / (2 · π² · Fs · L)
+//
+// Refs: TI TIDA-010054 Eq.6; Demetriades Ch.6; Huang et al. 2018 (Eq. 4
+//       reduces to this when D1 = D2 = 0).
 // =========================================================================
 double Dab::compute_power(double V1, double V2, double N,
-                          double phi, double Fs, double L) {
-    return N * V1 * V2 * phi * (M_PI - std::abs(phi))
+                          double D3, double Fs, double L) {
+    return N * V1 * V2 * D3 * (M_PI - std::abs(D3))
            / (2.0 * M_PI * M_PI * Fs * L);
 }
 
 // =========================================================================
-// Static helper: Series inductance for desired power at given phase shift
+// Static helper: SPS — series inductance L for desired power at given D3
 // =========================================================================
-// L = N * V1 * V2 * phi * (pi - phi) / (2 * pi^2 * Fs * P)
+// Rearrangement of compute_power:
+//   L = N · V1 · V2 · D3 · (π − |D3|) / (2 · π² · Fs · P)
 // =========================================================================
 double Dab::compute_series_inductance(double V1, double V2, double N,
-                                      double phi, double Fs, double P) {
+                                      double D3, double Fs, double P) {
     if (P <= 0) return 1e-3; // fallback
-    return N * V1 * V2 * phi * (M_PI - std::abs(phi))
+    return N * V1 * V2 * D3 * (M_PI - std::abs(D3))
            / (2.0 * M_PI * M_PI * Fs * P);
 }
 
 // =========================================================================
-// Static helper: Phase shift for desired power with given inductance
+// Static helper: SPS — D3 (outer shift) for desired power with given L
 // =========================================================================
-// phi = (pi/2) * (1 - sqrt(1 - 8*Fs*L*P / (N*V1*V2)))
-// Reference: [1] TI TIDA-010054 Eq.16
+//   D3 = (π/2) · (1 − sqrt(1 − 8·Fs·L·P / (N·V1·V2)))
+// Ref: TI TIDA-010054 Eq.16.
 // =========================================================================
 double Dab::compute_phase_shift(double V1, double V2, double N,
                                 double Fs, double L, double P) {
     double discriminant = 1.0 - 8.0 * Fs * L * P / (N * V1 * V2);
     if (discriminant < 0) {
-        // Power exceeds maximum transferable power
-        return M_PI / 2.0; // Maximum phase shift
+        // Power exceeds the topology's SPS maximum — saturate at D3 = π/2.
+        return M_PI / 2.0;
     }
     return (M_PI / 2.0) * (1.0 - std::sqrt(discriminant));
 }
@@ -71,75 +76,80 @@ double Dab::compute_voltage_ratio(double V1, double V2, double N) {
 }
 
 // =========================================================================
-// Static helper: Inductor current at switching instants
+// Static helper: SPS — inductor current at the two switching instants
 // =========================================================================
-// Reference: [1] TI TIDA-010054 Eq.7-10
-//   d = N * V2 / V1
-//   Ibase = V1 / (2*pi*Fs*L)
-//   i1 = 0.5 * (2*phi - (1-d)*pi) * Ibase
-//   i2 = 0.5 * (2*d*phi + (1-d)*pi) * Ibase
+// Ref: TI TIDA-010054 Eq.7–10.
+//   d = N · V2 / V1     (voltage conversion ratio)
+//   Ibase = V1 / (2π · Fs · L)
+//   i1 = ½ · (2·D3 − (1−d)·π) · Ibase
+//   i2 = ½ · (2·d·D3 + (1−d)·π) · Ibase
 //
-// i1 = current at t=0 (start of positive half-cycle, before phase shift)
-// i2 = current at t=phi/(2*pi*Fs) (at the phase shift instant)
+// i1 is the current at t = 0 (start of the positive half-cycle, just before
+// the inter-bridge transition). i2 is the current at t = D3/(2π·Fs), i.e.
+// at the outer-shift instant.
 // =========================================================================
 void Dab::compute_switching_currents(double V1, double V2, double N,
-                                     double phi, double Fs, double L,
+                                     double D3, double Fs, double L,
                                      double& i1, double& i2) {
     double d = N * V2 / V1;
     double Ibase = V1 / (2.0 * M_PI * Fs * L);
-    i1 = 0.5 * (2.0 * phi - (1.0 - d) * M_PI) * Ibase;
-    i2 = 0.5 * (2.0 * d * phi + (1.0 - d) * M_PI) * Ibase;
+    i1 = 0.5 * (2.0 * D3 - (1.0 - d) * M_PI) * Ibase;
+    i2 = 0.5 * (2.0 * d * D3 + (1.0 - d) * M_PI) * Ibase;
 }
 
 // =========================================================================
-// Static helper: Primary RMS current
+// Static helper: SPS — primary RMS current
 // =========================================================================
-// Reference: [1] TI TIDA-010054 Eq.14
-//   Ip_rms = sqrt(1/3 * (i1^2 + i2^2 + (1 - 2*phi/pi)*i1*i2))
+// Ref: TI TIDA-010054 Eq.14.
+//   Ip_rms = sqrt( (i1² + i2² + (1 − 2·D3/π) · i1 · i2) / 3 )
 // =========================================================================
-double Dab::compute_primary_rms_current(double i1, double i2, double phi) {
-    double factor = 1.0 - 2.0 * phi / M_PI;
+double Dab::compute_primary_rms_current(double i1, double i2, double D3) {
+    double factor = 1.0 - 2.0 * D3 / M_PI;
     return std::sqrt((i1 * i1 + i2 * i2 + factor * i1 * i2) / 3.0);
 }
 
 // =========================================================================
-// Static helper: ZVS check
+// Static helper: SPS ZVS boundaries
 // =========================================================================
-// Reference: [1] TI TIDA-010054 Eq.11-12
-//   Primary ZVS:   phi > (1 - 1/d) * pi/2
-//   Secondary ZVS: phi > (1 - d) * pi/2
+// Ref: TI TIDA-010054 Eq.11–12.
+//   Primary ZVS:   D3 > (1 − 1/d) · π/2
+//   Secondary ZVS: D3 > (1 − d)   · π/2
 // =========================================================================
 // =========================================================================
 // Static helpers: General piecewise-linear voltage waveforms
 // =========================================================================
 //
-// All modulation types (SPS/EPS/DPS/TPS) share the same bridge structure.
-// Inner phase shifts D1, D2 (radians) control the bridge duty cycles.
-// Outer phase shift phi controls power transfer.
+// All modulation types (SPS / EPS / DPS / TPS) share the same bridge
+// structure. D1 and D2 (radians) control each bridge's intra-leg shift and
+// therefore its effective duty cycle. D3 (radians, signed) is the outer
+// inter-bridge shift that controls power flow.
 //
-// Primary bridge output Vab(theta), theta in [0, 2pi):
-//   [0,   D1)     : 0
-//   [D1,  pi)     : +V1
-//   [pi,  pi+D1)  : 0
-//   [pi+D1, 2pi)  : -V1
+// Primary bridge output Vab(θ), θ in [0, 2π):
+//   [0,      D1)       : 0
+//   [D1,     π)        : +V1
+//   [π,      π + D1)   : 0
+//   [π + D1, 2π)       : −V1
 //
-// Secondary bridge output Vcd(theta), shifted by phi, inner shift D2:
-//   theta_sec = (theta - phi) mod 2pi
-//   [0,   D2)     : 0
-//   [D2,  pi)     : +V2
-//   [pi,  pi+D2)  : 0
-//   [pi+D2, 2pi)  : -V2
+// Secondary bridge output Vcd(θ), shifted by D3 relative to the primary,
+// with its own intra-leg shift D2:
+//   θ_sec = (θ − D3) mod 2π
+//   [0,      D2)       : 0
+//   [D2,     π)        : +V2
+//   [π,      π + D2)   : 0
+//   [π + D2, 2π)       : −V2
 //
-// Inductor voltage (referred to primary): vL = Vab - N*Vcd
-// Inductor current slope: diL/dtheta = vL / (L * 2*pi*Fs)
+// Inductor voltage (referred to primary): vL = Vab − N·Vcd
+// Inductor current slope: diL/dθ = vL / (L · 2π · Fs)
 //
-// Initial condition from half-wave antisymmetry (iL(theta+pi) = -iL(theta)):
-//   delta = integral_0^pi  vL/L d(theta) / (2*pi*Fs)
-//   iL(0) = -delta/2
+// Initial condition from half-wave antisymmetry (iL(θ + π) = −iL(θ)):
+//   δ = ∫₀^π (vL/L) dθ / (2π·Fs)
+//   iL(0) = −δ/2
 //
-// Power: P = (1/(2*pi)) * integral_0^{2pi} Vab(theta) * iL(theta) d(theta)
+// Power: P = (1/(2π)) · ∫₀^{2π} Vab(θ) · iL(θ) dθ
 // =========================================================================
 
+/** Primary bridge output voltage at angle θ. Amplitude ±V1, zero plateau
+ *  of width D1 around each transition (the D1 = 0 limit is a pure square). */
 static double Vab_at(double theta, double V1, double D1) {
     theta = std::fmod(theta, 2.0 * M_PI);
     if (theta < 0) theta += 2.0 * M_PI;
@@ -149,8 +159,11 @@ static double Vab_at(double theta, double V1, double D1) {
     return -V1;
 }
 
-static double Vcd_at(double theta, double V2, double D2, double phi) {
-    double ts = std::fmod(theta - phi, 2.0 * M_PI);
+/** Secondary bridge output voltage at angle θ. Same structure as Vab but
+ *  (a) amplitude ±V2, (b) zero plateau of width D2, (c) globally shifted
+ *  by D3 (the outer inter-bridge phase shift). */
+static double Vcd_at(double theta, double V2, double D2, double D3) {
+    double ts = std::fmod(theta - D3, 2.0 * M_PI);
     if (ts < 0) ts += 2.0 * M_PI;
     if (ts < D2)            return 0.0;
     if (ts < M_PI)          return  V2;
@@ -165,7 +178,10 @@ static double Vcd_at(double theta, double V2, double D2, double phi) {
 // All four DAB modulation modes (SPS / EPS / DPS / TPS) share the same
 // underlying structure: within one switching period, both bridge voltages
 // Vab(θ) and Vcd(θ) are piecewise-constant. The breakpoints come only from
-// the known constants D1, D2 and φ. Inside any sub-interval [θ_k, θ_{k+1}]:
+// the three control variables D1, D2 and D3 (Huang et al. 2018 naming;
+// D3 plays the role of "φ" in older SPS-only notations).
+//
+// Inside any sub-interval [θ_k, θ_{k+1}]:
 //
 //   Vab(θ) = const ⇒ dIm/dθ = Vab/(Lm·ω) = const ⇒ Im(θ) is exactly LINEAR
 //   vL = Vab − N·Vcd = const ⇒ diL/dθ = vL/(L·ω) = const ⇒ iL(θ) is exactly LINEAR
@@ -175,7 +191,7 @@ static double Vcd_at(double theta, double V2, double D2, double phi) {
 // Strategy:
 //   1. Build the sorted list of unique sub-interval boundary angles in [0, 2π).
 //   2. The number of sub-intervals is at most 8 (TPS): {0, D1, π, π+D1,
-//      φ, φ+D2, φ+π, φ+π+D2}, all reduced mod 2π and de-duplicated.
+//      D3, D3+D2, D3+π, D3+π+D2}, all reduced mod 2π and de-duplicated.
 //   3. iL(0) and Im(0) are fixed by half-wave antisymmetry x(π) = −x(0):
 //        iL(0) = − ½ · ∫₀^π (vL/L) dt   = − ½ · Σ_{k: θ_k<π} (vL_k/L)·Δt_k
 //        Im(0) = − ½ · ∫₀^π (Vab/Lm) dt = − ½ · Σ_{k: θ_k<π} (Vab_k/Lm)·Δt_k
@@ -195,9 +211,11 @@ struct DabSubInterval {
     double Vcd;           // secondary bridge voltage in this sub-interval (referred to its own side)
 };
 
-// Build the sorted, deduplicated list of sub-interval boundary angles in
-// [0, 2π], including both 0 and 2π. Returns at most 9 entries (8 segments).
-static std::vector<double> dab_boundary_angles(double D1, double D2, double phi) {
+// Sorted, deduplicated list of sub-interval boundary angles in [0, 2π],
+// including both 0 and 2π. Returns at most 9 entries (8 segments, TPS case).
+// The 8 candidate boundaries are the edges of each bridge's square-wave
+// zero-plateau pair (D1, D2) combined with the outer inter-bridge shift D3.
+static std::vector<double> dab_boundary_angles(double D1, double D2, double D3) {
     auto wrap = [](double a) {
         a = std::fmod(a, 2.0 * M_PI);
         if (a < 0) a += 2.0 * M_PI;
@@ -208,10 +226,10 @@ static std::vector<double> dab_boundary_angles(double D1, double D2, double phi)
         wrap(D1),
         wrap(M_PI),
         wrap(M_PI + D1),
-        wrap(phi),
-        wrap(phi + D2),
-        wrap(phi + M_PI),
-        wrap(phi + M_PI + D2),
+        wrap(D3),                 // secondary leg-A transition
+        wrap(D3 + D2),
+        wrap(D3 + M_PI),
+        wrap(D3 + M_PI + D2),
     };
     std::sort(raw.begin(), raw.end());
     std::vector<double> out;
@@ -224,12 +242,12 @@ static std::vector<double> dab_boundary_angles(double D1, double D2, double phi)
     return out;
 }
 
-// Build the sub-interval list for the full period. Each entry has the
+// Build the sub-interval list for the full period. Each entry holds the
 // constant Vab and Vcd values that apply over [theta_start, theta_end].
 static std::vector<DabSubInterval> dab_build_subintervals(
-    double V1, double V2, double D1, double D2, double phi)
+    double V1, double V2, double D1, double D2, double D3)
 {
-    auto angles = dab_boundary_angles(D1, D2, phi);
+    auto angles = dab_boundary_angles(D1, D2, D3);
     std::vector<DabSubInterval> segs;
     segs.reserve(angles.size());
     for (size_t k = 0; k + 1 < angles.size(); ++k) {
@@ -240,7 +258,7 @@ static std::vector<DabSubInterval> dab_build_subintervals(
         seg.theta_start = a0;
         seg.theta_end   = a1;
         seg.Vab = Vab_at(mid, V1, D1);
-        seg.Vcd = Vcd_at(mid, V2, D2, phi);
+        seg.Vcd = Vcd_at(mid, V2, D2, D3);
         segs.push_back(seg);
     }
     return segs;
@@ -327,16 +345,21 @@ static double dab_sample(double theta,
     return bnd_y[lo] + t * (bnd_y[hi] - bnd_y[lo]);
 }
 
+// =========================================================================
+// General power transfer for EPS / DPS / TPS — parameters (D1, D2, D3)
+// =========================================================================
+//
+// Closed-form average power over one period using piecewise-constant Vab
+// and piecewise-linear iL. Within each sub-interval [θ_k, θ_{k+1}]:
+//   contribution = Vab_k · ∫_{θ_k}^{θ_{k+1}} iL(θ) dθ / (2π)
+// and ∫ iL(θ) dθ = ½ (iL_start + iL_end) · Δθ   (iL is exactly linear).
+// =========================================================================
 double Dab::compute_power_general(double V1, double V2, double N,
-                                   double phi, double D1, double D2,
+                                   double D3, double D1, double D2,
                                    double Fs, double L) {
-    // Closed-form average power over one period using piecewise-constant Vab
-    // and piecewise-linear iL. Within each sub-interval [θ_k, θ_{k+1}]:
-    //   contribution = Vab_k · ∫_{θ_k}^{θ_{k+1}} iL(θ) dθ / (2π)
-    // and ∫ iL(θ) dθ = ½ (iL_start + iL_end) · Δθ  (because iL is linear).
-    auto segs = dab_build_subintervals(V1, V2, D1, D2, phi);
-    // We need Lm too in dab_initial_conditions (for Im), but the power
-    // computation only depends on iL — pass a dummy Lm > 0.
+    auto segs = dab_build_subintervals(V1, V2, D1, D2, D3);
+    // Lm is only needed by dab_initial_conditions for Im; power depends on
+    // iL only, so pass a dummy Lm > 0.
     constexpr double Lm_dummy = 1.0;
     double iL0, Im0;
     dab_initial_conditions(segs, N, L, Lm_dummy, Fs, iL0, Im0);
@@ -353,42 +376,49 @@ double Dab::compute_power_general(double V1, double V2, double N,
     return power / (2.0 * M_PI);
 }
 
-// Binary-search for phi given desired power (for EPS/DPS/TPS).
-// Returns the achieved phi; if the requested power exceeds what the topology
-// can deliver at this L/Fs/voltage operating point, saturates at π/2 and
-// emits a warning so the caller can react.
+// =========================================================================
+// General — find D3 for a given power target, with D1 and D2 fixed
+// =========================================================================
+// Binary search over D3 ∈ [0, π/2]. If the requested power exceeds the
+// topology's achievable maximum at this (D1, D2), saturates at D3 = π/2 and
+// warns the caller. Used by EPS / DPS / TPS design flows where the user
+// specifies inner shifts and we back-solve for the outer shift.
+// =========================================================================
 double Dab::compute_phase_shift_general(double V1, double V2, double N,
                                          double D1, double D2,
                                          double Fs, double L, double P) {
     double P_max = compute_power_general(V1, V2, N, M_PI / 2.0, D1, D2, Fs, L);
     if (P >= P_max) {
         std::cerr << "[DAB] requested power " << P << "W exceeds achievable max "
-                  << P_max << "W at this operating point — saturating phi at π/2"
+                  << P_max << "W at this operating point — saturating D3 at π/2"
                   << std::endl;
         return M_PI / 2.0;
     }
-    double phi_lo = 0.0;
-    double phi_hi = M_PI / 2.0;
+    double D3_lo = 0.0;
+    double D3_hi = M_PI / 2.0;
     for (int iter = 0; iter < 60; ++iter) {
-        double phi_mid = (phi_lo + phi_hi) / 2.0;
-        double P_mid = compute_power_general(V1, V2, N, phi_mid, D1, D2, Fs, L);
-        if (P_mid < P) phi_lo = phi_mid;
-        else           phi_hi = phi_mid;
-        if ((phi_hi - phi_lo) < 1e-8) break;
+        double D3_mid = (D3_lo + D3_hi) / 2.0;
+        double P_mid = compute_power_general(V1, V2, N, D3_mid, D1, D2, Fs, L);
+        if (P_mid < P) D3_lo = D3_mid;
+        else           D3_hi = D3_mid;
+        if ((D3_hi - D3_lo) < 1e-8) break;
     }
-    return (phi_lo + phi_hi) / 2.0;
+    return (D3_lo + D3_hi) / 2.0;
 }
 
 
-bool Dab::check_zvs_primary(double phi, double d) {
+// ZVS checks — SPS asymptote (D1=D2=0). The D3-only form is the standard
+// textbook formula; EPS/DPS/TPS need the more general check-by-current-sign
+// approach implemented via the ZVS margin diagnostics.
+bool Dab::check_zvs_primary(double D3, double d) {
     if (d <= 0) return false;
-    double phi_min = (1.0 - 1.0 / d) * M_PI / 2.0;
-    return phi > phi_min;
+    double D3_min = (1.0 - 1.0 / d) * M_PI / 2.0;
+    return D3 > D3_min;
 }
 
-bool Dab::check_zvs_secondary(double phi, double d) {
-    double phi_min = (1.0 - d) * M_PI / 2.0;
-    return phi > phi_min;
+bool Dab::check_zvs_secondary(double D3, double d) {
+    double D3_min = (1.0 - d) * M_PI / 2.0;
+    return D3 > D3_min;
 }
 
 
@@ -420,22 +450,24 @@ bool Dab::run_checks(bool assertErrors) {
             if (assertErrors) throw std::runtime_error("DAB: invalid switching frequency");
             ok = false;
         }
-        // Phase shift bound: |phi| <= 90 deg (SPS theoretical maximum).
-        double phi_deg = op.get_phase_shift().value_or(0.0);
-        if (std::abs(phi_deg) > 90.0) {
-            if (assertErrors) throw std::runtime_error("DAB: phase shift out of range (|phi| > 90 deg)");
-            ok = false;
-        }
 
-        // Inner phase shifts: 0 <= D < 90 deg (90 collapses the half-cycle to 0 width).
+        // Modulation shift bounds (Huang 2018 / Rosano-Maniktala TPS):
+        //   D1, D2 ∈ [0°, 90°)  (90° collapses the half-cycle to zero width)
+        //   D3    ∈ [−90°, 90°]  (SPS theoretical outer-shift maximum; signed
+        //                        for bidirectional power flow)
         double D1_deg = op.get_inner_phase_shift1().value_or(0.0);
         double D2_deg = op.get_inner_phase_shift2().value_or(0.0);
+        double D3_deg = op.get_inner_phase_shift3().value_or(0.0);
         if (D1_deg < 0.0 || D1_deg >= 90.0) {
-            if (assertErrors) throw std::runtime_error("DAB: innerPhaseShift1 must be in [0, 90) degrees");
+            if (assertErrors) throw std::runtime_error("DAB: innerPhaseShift1 (D1) must be in [0, 90) degrees");
             ok = false;
         }
         if (D2_deg < 0.0 || D2_deg >= 90.0) {
-            if (assertErrors) throw std::runtime_error("DAB: innerPhaseShift2 must be in [0, 90) degrees");
+            if (assertErrors) throw std::runtime_error("DAB: innerPhaseShift2 (D2) must be in [0, 90) degrees");
+            ok = false;
+        }
+        if (std::abs(D3_deg) > 90.0) {
+            if (assertErrors) throw std::runtime_error("DAB: innerPhaseShift3 (D3, outer shift) out of range (|D3| > 90 deg)");
             ok = false;
         }
     }
@@ -482,40 +514,39 @@ DesignRequirements Dab::process_design_requirements() {
         turnsRatios.push_back(Vin_nom / ops[0].get_output_voltages()[i]);
     }
 
-    // 2. Phase shift (from operating point, converted from degrees to radians)
-    double phi_deg = ops[0].get_phase_shift().value_or(0.0);
-    double phi_rad = phi_deg * M_PI / 180.0;
-
-    // For EPS/DPS/TPS: get inner phase shifts from operating point
+    // 2. Modulation shifts (degrees → radians).
+    //    D1, D2 are intra-bridge shifts; D3 is the inter-bridge outer shift
+    //    that drives power transfer (Huang 2018 convention).
+    double D3_rad = Dab::get_D3_rad(ops[0]);
     double D1_rad = Dab::get_D1_rad(ops[0]);
     double D2_rad = Dab::get_D2_rad(ops[0]);
 
-    // 3. Series inductance
+    // 3. Series inductance L. If the user specified L, we back-solve D3 when
+    //    they didn't provide one. Otherwise we target D3 ≈ 25° and solve L.
     double L;
     if (get_series_inductance().has_value() && get_series_inductance().value() > 0) {
         L = get_series_inductance().value();
-        // If phase shift is zero or very small, compute it from power
-        if (std::abs(phi_rad) < 1e-6 && mainOutputPower > 0) {
+        if (std::abs(D3_rad) < 1e-6 && mainOutputPower > 0) {
             auto modTypeOpt = ops[0].get_modulation_type();
             bool isSPS = !modTypeOpt.has_value() || modTypeOpt.value() == ModulationType::SPS;
             if (isSPS) {
-                phi_rad = compute_phase_shift(Vin_nom, mainOutputVoltage, N, Fs, L, mainOutputPower);
+                D3_rad = compute_phase_shift(Vin_nom, mainOutputVoltage, N, Fs, L, mainOutputPower);
             } else {
-                phi_rad = compute_phase_shift_general(Vin_nom, mainOutputVoltage, N,
-                                                       D1_rad, D2_rad, Fs, L, mainOutputPower);
+                D3_rad = compute_phase_shift_general(Vin_nom, mainOutputVoltage, N,
+                                                     D1_rad, D2_rad, Fs, L, mainOutputPower);
             }
         }
     } else {
-        // Compute L from power and phase shift
-        if (std::abs(phi_rad) < 1e-6) {
-            // Default phase shift: target ~20-30 degrees for good controllability
-            phi_rad = 25.0 * M_PI / 180.0;
+        // No L given: pick a default D3 ≈ 25° (good controllability margin)
+        // and solve for L that delivers the target power at that D3.
+        if (std::abs(D3_rad) < 1e-6) {
+            D3_rad = 25.0 * M_PI / 180.0;
         }
-        L = compute_series_inductance(Vin_nom, mainOutputVoltage, N, phi_rad, Fs, mainOutputPower);
+        L = compute_series_inductance(Vin_nom, mainOutputVoltage, N, D3_rad, Fs, mainOutputPower);
     }
 
     computedSeriesInductance = L;
-    computedPhaseShift = phi_rad;
+    computedD3Rad = D3_rad;
 
     // 4. Magnetizing inductance
     //    Lm should be large enough that magnetizing current ripple is manageable.
@@ -671,19 +702,22 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
     if (Lm <= 0) throw std::runtime_error("DAB: magnetizing inductance must be positive");
     if (L <= 0) throw std::runtime_error("DAB: series inductance must be positive (run process_design_requirements first)");
 
-    // Phase shift: signed (degrees) → radians. Negative phi = reverse power flow.
-    double phi_deg = dabOpPoint.get_phase_shift().value_or(0.0);
-    double phi_rad = (std::abs(phi_deg) > 1e-6)
-                   ? phi_deg * M_PI / 180.0
-                   : computedPhaseShift;
+    // D3 (outer inter-bridge shift): signed degrees → radians. Negative =
+    // reverse power flow. If the user didn't specify innerPhaseShift3 we
+    // fall back to the value that the design step computed for this Vin.
+    double D3_deg = dabOpPoint.get_inner_phase_shift3().value_or(0.0);
+    double D3_rad = (std::abs(D3_deg) > 1e-6)
+                  ? D3_deg * M_PI / 180.0
+                  : computedD3Rad;
 
     double period = 1.0 / Fs;
     double Thalf = period / 2.0;
 
+    // Intra-bridge shifts (also degrees → radians via the static accessors).
     double D1_rad = Dab::get_D1_rad(dabOpPoint);
     double D2_rad = Dab::get_D2_rad(dabOpPoint);
 
-    // ---- Detect modulation type for diagnostics ----
+    // ---- Detect modulation type for diagnostics (Huang et al. 2018) ----
     // SPS: D1 = D2 = 0; EPS: exactly one of {D1, D2} > 0; DPS: D1 = D2 > 0;
     // TPS: D1 ≠ D2 and both > 0.
     constexpr double D_TOL = 1e-6;
@@ -695,21 +729,24 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
         else                                        mod_type = 3; // TPS
     }
     lastModulationType = mod_type;
-    lastPhaseShiftRad = phi_rad;
+    lastD3Rad = D3_rad;
 
-    // ---- ZVS margin diagnostics ----
+    // ---- ZVS margin diagnostics (SPS asymptote) ----
+    // > 0 means ZVS is achieved at this operating point under the SPS
+    // approximation. EPS/DPS/TPS can shift these thresholds; use the sign of
+    // the inductor current at the switching instant for a full check.
     double d_ratio = (V1 > 0) ? (N_main * V2_main / V1) : 1.0;
     lastVoltageConversionRatio = d_ratio;
-    double phi_min_pri = (d_ratio > 0) ? (1.0 - 1.0 / d_ratio) * M_PI / 2.0 : 0.0;
-    double phi_min_sec = (1.0 - d_ratio) * M_PI / 2.0;
-    lastZvsMarginPrimary = std::abs(phi_rad) - phi_min_pri;
-    lastZvsMarginSecondary = std::abs(phi_rad) - phi_min_sec;
+    double D3_min_pri = (d_ratio > 0) ? (1.0 - 1.0 / d_ratio) * M_PI / 2.0 : 0.0;
+    double D3_min_sec = (1.0 - d_ratio) * M_PI / 2.0;
+    lastZvsMarginPrimary = std::abs(D3_rad) - D3_min_pri;
+    lastZvsMarginSecondary = std::abs(D3_rad) - D3_min_sec;
 
     // ---- Closed-form sub-interval propagator (replaces Euler) ----
     // Build the sub-interval list for one period using the analytical
-    // breakpoints {0, D1, π, π+D1, φ, φ+D2, φ+π, φ+π+D2}. iL and Im are
+    // breakpoints {0, D1, π, π+D1, D3, D3+D2, D3+π, D3+π+D2}. iL and Im are
     // EXACTLY linear within each sub-interval, so the propagator is exact.
-    auto segs = dab_build_subintervals(V1, V2_main, D1_rad, D2_rad, phi_rad);
+    auto segs = dab_build_subintervals(V1, V2_main, D1_rad, D2_rad, D3_rad);
     double iL_start = 0.0, Im_start = 0.0;
     dab_initial_conditions(segs, N_main, L, Lm, Fs, iL_start, Im_start);
 
@@ -825,10 +862,10 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
             // balance the physical secondary current = n_i * (primary share).
             iSecData[k] = n_i * iL_full[k] * share;
             // Secondary bridge voltage: Vcd_i has amplitude V2_i and the same
-            // phase-shifted square waveform.
+            // D3-shifted square waveform (D3 is the outer inter-bridge shift).
             double t = time_full[k];
             double theta = t * angle_per_time;
-            vSecData[k] = Vcd_at(theta, V2_i, D2_rad, phi_rad);
+            vSecData[k] = Vcd_at(theta, V2_i, D2_rad, D3_rad);
         }
 
         Waveform secCurrentWfm;
@@ -865,16 +902,17 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
 //
 // Circuit topology:
 //   V1 (DC) -> Full Bridge 1 (Q1-Q4) -> L_series -> Transformer (Np:Ns)
-//            -> Full Bridge 2 (Q5-Q8, phase-shifted) -> V2 / R_load
+//            -> Full Bridge 2 (Q5-Q8, D3-shifted) -> V2 / R_load
 //
 // The transformer is modeled as a coupled inductor pair:
 //   L_primary (magnetizing) coupled to L_secondary with k ≈ 1
-//   The leakage is modeled separately as L_series
+//   Leakage is modeled separately as L_series.
 //
-// PWM signals:
-//   Primary bridge: 50% duty, period = 1/Fs
-//   Secondary bridge: 50% duty, phase-shifted by phi from primary
-//
+// PWM signals (Huang et al. 2018 convention):
+//   Primary bridge legs: 50 % duty, period 1/Fs, right-leg delayed by
+//                        t_D1 = D1/(2π·Fs) relative to left leg.
+//   Secondary bridge legs: 50 % duty, globally delayed by t_D3 relative to
+//                          primary, inner leg delayed by t_D2.
 // =========================================================================
 std::string Dab::generate_ngspice_circuit(
     const std::vector<double>& turnsRatios,
@@ -903,7 +941,10 @@ std::string Dab::generate_ngspice_circuit(
     double deadTime = computedDeadTime;
     double tOn = halfPeriod - deadTime;
 
-    // Inner phase shifts (degrees → radians) and outer phase shift.
+    // Modulation shifts (degrees → radians):
+    //   D1, D2 = intra-bridge (leg-to-leg) shifts on primary / secondary
+    //   D3     = inter-bridge (outer) shift, drives power transfer
+    // DPS enforces D2 = D1 if the user only specified D1.
     double D1_deg = dabOp.get_inner_phase_shift1().value_or(0.0);
     double D2_deg;
     if (dabOp.get_inner_phase_shift2().has_value()) {
@@ -915,11 +956,11 @@ std::string Dab::generate_ngspice_circuit(
     double D1_rad = D1_deg * M_PI / 180.0;
     double D2_rad = D2_deg * M_PI / 180.0;
 
-    double phi_deg = dabOp.get_phase_shift().value_or(0.0);
-    double phi_rad = (std::abs(phi_deg) > 1e-6) ? phi_deg * M_PI / 180.0 : computedPhaseShift;
-    double phaseDelay = phi_rad / (2.0 * M_PI * Fs);  // signed
+    double D3_deg = dabOp.get_inner_phase_shift3().value_or(0.0);
+    double D3_rad = (std::abs(D3_deg) > 1e-6) ? D3_deg * M_PI / 180.0 : computedD3Rad;
+    double outerDelay = D3_rad / (2.0 * M_PI * Fs);  // signed time delay for D3
 
-    // Time-domain inner phase shift offsets
+    // Time-domain intra-leg shift offsets.
     double t_D1 = D1_rad / (2.0 * M_PI * Fs);
     double t_D2 = D2_rad / (2.0 * M_PI * Fs);
 
@@ -945,8 +986,8 @@ std::string Dab::generate_ngspice_circuit(
 
     circuit << "* Dual Active Bridge (DAB) Converter - Generated by OpenMagnetics\n";
     circuit << "* V1=" << V1 << "V, Vout=" << V2_main << "V, Fs=" << (Fs/1e3)
-            << "kHz, phi=" << phi_deg << "deg, D1=" << D1_deg
-            << "deg, D2=" << D2_deg << "deg, outputs=" << numOutputs << "\n";
+            << "kHz, D1=" << D1_deg << "deg, D2=" << D2_deg
+            << "deg, D3=" << D3_deg << "deg (outer), outputs=" << numOutputs << "\n";
     circuit << "* L_series=" << (L*1e6) << "uH, Lm=" << (Lm*1e6) << "uH\n\n";
 
     // Switch and diode models. Slightly softer body diode (RS=0.05) and
@@ -970,10 +1011,11 @@ std::string Dab::generate_ngspice_circuit(
     //     Q1 ON during [t_D1, t_D1 + halfPeriod)   → bridge_a1 = V1
     //     Q2 ON during [t_D1 + halfPeriod, +)      → bridge_a1 = 0
     //
-    // Negative outer phi: delay the entire primary bridge by |phi|/(2π·Fs)
-    // so the relative phase (secondary − primary) becomes negative.
-    double priBaseDelay = (phaseDelay < 0) ? -phaseDelay : 0.0;
-    double secBaseDelay = (phaseDelay > 0) ?  phaseDelay : 0.0;
+    // Negative D3: delay the entire primary bridge by |D3|/(2π·Fs) so the
+    // relative phase (secondary − primary) becomes negative. Positive D3
+    // works the conventional way by delaying the secondary.
+    double priBaseDelay = (outerDelay < 0) ? -outerDelay : 0.0;
+    double secBaseDelay = (outerDelay > 0) ?  outerDelay : 0.0;
 
     auto pulse = [&](const std::string& name, double delay) {
         circuit << "V" << name << " " << name << " 0 PULSE(0 5 "
@@ -1164,7 +1206,7 @@ std::vector<OperatingPoint> Dab::simulate_and_extract_operating_points(
         return process_operating_points(turnsRatios, magnetizingInductance);
     }
 
-    // Make sure design quantities (computedSeriesInductance, computedPhaseShift)
+    // Make sure design quantities (computedSeriesInductance, computedD3Rad)
     // are populated. process_design_requirements is idempotent.
     if (computedSeriesInductance <= 0) {
         process_design_requirements();

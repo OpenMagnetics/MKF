@@ -103,7 +103,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {20.0};
-            op["phaseShift"] = 23.0;  // degrees, from TI doc: 0.4 rad ≈ 23 deg
+            op["innerPhaseShift3"] = 23.0;  // degrees, from TI doc: 0.4 rad ≈ 23 deg
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -226,7 +226,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {48.0};
             op["outputCurrents"] = {50.0};
-            op["phaseShift"] = 30.0;
+            op["innerPhaseShift3"] = 30.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -284,7 +284,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {20.0};
-            op["phaseShift"] = 23.0;
+            op["innerPhaseShift3"] = 23.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -425,7 +425,7 @@ namespace {
                 op["ambientTemperature"] = 25.0;
                 op["outputVoltages"] = {500.0};
                 op["outputCurrents"] = {20.0};
-                op["phaseShift"] = 23.0;
+                op["innerPhaseShift3"] = 23.0;
                 op["switchingFrequency"] = 100000;
                 dabJson["operatingPoints"].push_back(op);
             }
@@ -467,7 +467,7 @@ namespace {
                 op["ambientTemperature"] = 25.0;
                 op["outputVoltages"] = {350.0};  // Lower output voltage -> d < 1
                 op["outputCurrents"] = {20.0};
-                op["phaseShift"] = 25.0;
+                op["innerPhaseShift3"] = 25.0;
                 op["switchingFrequency"] = 100000;
                 dabJson["operatingPoints"].push_back(op);
             }
@@ -507,7 +507,7 @@ namespace {
                 // Use N from 800:500 design but output higher voltage
                 op["outputVoltages"] = {500.0};
                 op["outputCurrents"] = {20.0};
-                op["phaseShift"] = 23.0;
+                op["innerPhaseShift3"] = 23.0;
                 op["switchingFrequency"] = 100000;
                 dabJson["operatingPoints"].push_back(op);
             }
@@ -550,7 +550,7 @@ namespace {
                 op["ambientTemperature"] = 25.0;
                 op["outputVoltages"] = {500.0};
                 op["outputCurrents"] = {20.0};
-                op["phaseShift"] = -23.0;  // Negative = reverse power flow
+                op["innerPhaseShift3"] = -23.0;  // Negative = reverse power flow
                 op["switchingFrequency"] = 100000;
                 dabJson["operatingPoints"].push_back(op);
             }
@@ -641,7 +641,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {20.0};
-            op["phaseShift"] = 23.0;
+            op["innerPhaseShift3"] = 23.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -707,7 +707,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {20.0};
-            op["phaseShift"] = 23.0;
+            op["innerPhaseShift3"] = 23.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -816,7 +816,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {2.0};  // Light load: 1 kW
-            op["phaseShift"] = 5.0;         // Small phase shift
+            op["innerPhaseShift3"] = 5.0;         // Small phase shift
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -860,7 +860,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0, 250.0};
             op["outputCurrents"] = {10.0, 5.0};
-            op["phaseShift"] = 20.0;
+            op["innerPhaseShift3"] = 20.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -917,7 +917,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {20.0};
-            op["phaseShift"] = 23.0;
+            op["innerPhaseShift3"] = 23.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -1057,7 +1057,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {20.0};
-            op["phaseShift"] = 23.0;
+            op["innerPhaseShift3"] = 23.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -1114,7 +1114,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {15.0};
-            op["phaseShift"] = 30.0;        // 30° outer phase shift
+            op["innerPhaseShift3"] = 30.0;        // 30° outer phase shift
             op["innerPhaseShift1"] = 20.0;  // 20° primary inner shift (EPS)
             op["modulationType"] = "EPS";
             op["switchingFrequency"] = 100000;
@@ -1169,7 +1169,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {15.0};
-            op["phaseShift"] = 30.0;
+            op["innerPhaseShift3"] = 30.0;
             op["innerPhaseShift1"] = 15.0;
             op["modulationType"] = "DPS";  // D2 will default to D1
             op["switchingFrequency"] = 100000;
@@ -1222,7 +1222,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {15.0};
-            op["phaseShift"] = 30.0;
+            op["innerPhaseShift3"] = 30.0;
             op["innerPhaseShift1"] = 20.0;
             op["innerPhaseShift2"] = 10.0;  // D1 ≠ D2 → TPS
             op["modulationType"] = "TPS";
@@ -1273,7 +1273,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0};
             op["outputCurrents"] = {20.0};
-            op["phaseShift"] = phi_deg;
+            op["innerPhaseShift3"] = phi_deg;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
             return dabJson;
@@ -1335,7 +1335,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = {500.0, 250.0};   // V2_2 = ½ V2_1
             op["outputCurrents"] = {10.0, 4.0};
-            op["phaseShift"] = 23.0;
+            op["innerPhaseShift3"] = 23.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
         }
@@ -1397,7 +1397,7 @@ namespace {
             op["ambientTemperature"] = 25.0;
             op["outputVoltages"] = Vouts;
             op["outputCurrents"] = Iouts;
-            op["phaseShift"] = 23.0;
+            op["innerPhaseShift3"] = 23.0;
             op["switchingFrequency"] = 100000;
             dabJson["operatingPoints"].push_back(op);
 
