@@ -103,6 +103,8 @@ class Settings
         bool _coreAdviserIncludeMargin = false;
         bool _coreAdviserEnableIntermediatePruning = true;
         size_t _coreAdviserMaximumMagneticsAfterFiltering;
+        bool   _coreAdviserEnableTemperatureFilter = false;
+        double _coreAdviserMaximumTemperature = 130.0;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
@@ -359,6 +361,11 @@ class Settings
 
         size_t get_core_adviser_maximum_magnetics_after_filtering() const;
         void set_core_adviser_maximum_magnetics_after_filtering(size_t value);
+
+        bool   get_core_adviser_enable_temperature_filter() const;
+        void   set_core_adviser_enable_temperature_filter(bool value);
+        double get_core_adviser_maximum_temperature() const;
+        void   set_core_adviser_maximum_temperature(double value);
 
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);

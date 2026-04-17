@@ -454,6 +454,16 @@ class CoreAdviser {
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
 
+    class MagneticCoreFilterTemperature : public MagneticCoreFilter {
+        MagneticFilterTemperature _filter;
+    public:
+        MagneticCoreFilterTemperature(Inputs inputs, std::map<std::string, std::string> models,
+                                      double maximumTemperature);
+        std::vector<std::pair<Magnetic, double>> filter_magnetics(
+            std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics,
+            Inputs inputs, double weight = 1, bool firstFilter = false);
+    };
+
 
     /**
      * @brief O9 FIX: EMI geometry score for core shape.

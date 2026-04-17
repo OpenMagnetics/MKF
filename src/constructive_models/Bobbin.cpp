@@ -188,6 +188,33 @@ class BobbinEfdDataProcessor : public BobbinDataProcessor{
         }
 };
 
+class BobbinTDataProcessor : public BobbinDataProcessor{
+    public:
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
+            // Toroidal "virtual" bobbin: the winding is held directly on the core
+            // ring with no physical former. Column and wall thicknesses are 0.
+            // Dimensions A (outer diameter), B (inner diameter), C (height) match
+            // the ring-core shape dimensions (see CorePieceT::process_winding_window).
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
+            CoreBobbinProcessedDescription processedDescription;
+            double columnWidth = (dimensions["A"] - dimensions["B"]) / 2;
+            processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
+            processedDescription.set_column_thickness(0);
+            processedDescription.set_wall_thickness(0);
+            processedDescription.set_column_depth(dimensions["C"] / 2);
+            processedDescription.set_column_width(columnWidth / 2);
+            WindingWindowElement windingWindowElement;
+            windingWindowElement.set_shape(WindingWindowShape::ROUND);
+            windingWindowElement.set_radial_height(dimensions["B"] / 2);
+            windingWindowElement.set_angle(360);
+            windingWindowElement.set_area(std::numbers::pi * pow(dimensions["B"] / 2, 2));
+            windingWindowElement.set_coordinates(std::vector<double>({dimensions["B"] / 2, 0, 0}));
+            processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
+            processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
+            return processedDescription;
+        }
+};
+
 std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin) {
 
     auto family = bobbin.get_functional_description()->get_family();
@@ -215,6 +242,9 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
     else if (family == BobbinFamily::EFD) {
         return std::make_shared<BobbinEfdDataProcessor>();
     }
+    else if (family == BobbinFamily::T) {
+        return std::make_shared<BobbinTDataProcessor>();
+    }
     // ER, EL share E-style geometry (round/elliptical centre column on a
     // rectangular winding window), so the BobbinEDataProcessor is the right
     // dimensions interpreter. P, U are different geometries but are treated
@@ -227,7 +257,7 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
         return std::make_shared<BobbinEDataProcessor>();
     }
     else
-        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Unknown bobbin family, available options are: {E, EC, EFD, EL, EP, ER, ETD, P, PM, PQ, RM, U}");
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Unknown bobbin family, available options are: {E, EC, EFD, EL, EP, ER, ETD, P, PM, PQ, RM, T, U}");
 }
 
 void load_interpolators() {

@@ -1,4 +1,5 @@
 #pragma once
+#include "physical_models/Temperature.h"
 #include "physical_models/CoreLosses.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/MagneticEnergy.h"
@@ -358,12 +359,16 @@ class MagnetomotiveForce : public MagneticFilter {
 //         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 // };
 
-// // Nice to have in the future
-// class MagneticFilterTemperature : public MagneticFilter {
-//     public:
-//         MagneticFilterTemperature() {};
-//         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
-// };
+class MagneticFilterTemperature : public MagneticFilter {
+    double _maximumTemperature = 130.0;
+    std::shared_ptr<CoreLossesModel> _coreLossesModel;
+    MagnetizingInductance _magnetizingInductance;
+public:
+    MagneticFilterTemperature() {};
+    MagneticFilterTemperature(Inputs inputs, double maximumTemperature);
+    std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs,
+                                              std::vector<Outputs>* outputs = nullptr);
+};
 
 // // Nice to have in the future
 // class MagneticFilterStrayCapacitance : public MagneticFilter {

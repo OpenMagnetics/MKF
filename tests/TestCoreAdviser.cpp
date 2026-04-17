@@ -623,18 +623,17 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Redo_Culling", "[adviser][c
 
     REQUIRE(masMagnetics.size() > 0);
 
-    // Check that we got valid results with reasonable saturation levels
-    // The E 22/6/16 - 3C95 with 0.24 mm gap is now correctly filtered out as saturated (103% of Bsat)
-    // Other cores with larger gaps should be present instead
-    bool foundValidCore = false;
+    // For 10mH at 6000V/100kHz, small E25 and PQ20 cores are the expected winners
+    // (E 22/6/16 is eliminated earlier by area product — it is too small for this energy requirement)
+    bool foundExpectedCore = false;
     for (auto [mas, scoring] : masMagnetics) {
-        auto coreName = mas.get_magnetic().get_core().get_name().value_or("unnamed");
-        // Check for any E 22/6/16 core that passed saturation filter
-        if (coreName.find("E 22/6/16") != std::string::npos) {
-            foundValidCore = true;
+        auto coreName = mas.get_magnetic().get_core().get_name().value_or("");
+        if (coreName.find("E 25") != std::string::npos ||
+            coreName.find("PQ 20") != std::string::npos) {
+            foundExpectedCore = true;
         }
     }
-    REQUIRE(foundValidCore);
+    REQUIRE(foundExpectedCore);
     settings.reset();
 }
 
@@ -2667,6 +2666,48 @@ TEST_CASE("Benchmark_CoreAdviser_Transformer_Turn_Variants_Overhead", "[adviser]
     // One final run to inspect result count (turn variants may increase it)
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 20);
     std::cout << "[Benchmark] Final result count: " << masMagnetics.size() << std::endl;
+
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreAdviser_Temperature_Filter", "[adviser][core-adviser][available-cores][temperature-filter]") {
+    clear_databases();
+    double voltagePeakToPeak = 600;
+    double dcCurrent = 0;
+    double ambientTemperature = 25;
+    double frequency = 100000;
+    double desiredMagnetizingInductance = 1e-3;
+    std::vector<double> turnsRatios = {};
+    OpenMagnetics::Inputs inputs;
+
+    prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    settings.set_use_toroidal_cores(false);
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto cores = load_test_data();
+
+    // Run without temperature filter to get baseline
+    settings.set_core_adviser_enable_temperature_filter(false);
+    auto unfilteredResults = coreAdviser.get_advised_core(inputs, weights, &cores, 10);
+
+    // Run with a limit below ambient — thermally impossible to satisfy, so all cores rejected
+    settings.set_core_adviser_enable_temperature_filter(true);
+    settings.set_core_adviser_maximum_temperature(ambientTemperature - 1.0);
+    auto filteredResults = coreAdviser.get_advised_core(inputs, weights, &cores, 10);
+
+    REQUIRE(unfilteredResults.size() > 0);
+    REQUIRE(filteredResults.size() < unfilteredResults.size());
+
+    for (size_t i = 1; i < filteredResults.size(); ++i) {
+        REQUIRE(filteredResults[i].second <= filteredResults[i - 1].second);
+    }
 
     settings.reset();
 }

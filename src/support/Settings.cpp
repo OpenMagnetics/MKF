@@ -611,6 +611,19 @@ namespace OpenMagnetics {
         _coreAdviserMaximumMagneticsAfterFiltering = value;
     }
 
+    bool Settings::get_core_adviser_enable_temperature_filter() const {
+        return _coreAdviserEnableTemperatureFilter;
+    }
+    void Settings::set_core_adviser_enable_temperature_filter(bool value) {
+        _coreAdviserEnableTemperatureFilter = value;
+    }
+    double Settings::get_core_adviser_maximum_temperature() const {
+        return _coreAdviserMaximumTemperature;
+    }
+    void Settings::set_core_adviser_maximum_temperature(double value) {
+        _coreAdviserMaximumTemperature = value;
+    }
+
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {
         return _gappingStrategy;
     }

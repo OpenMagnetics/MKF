@@ -584,6 +584,60 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterSaturati
     return filteredMagneticsWithScoring;
 }
 
+CoreAdviser::MagneticCoreFilterTemperature::MagneticCoreFilterTemperature(
+    Inputs inputs, std::map<std::string, std::string> models, double maximumTemperature)
+{
+    _filter = MagneticFilterTemperature(inputs, maximumTemperature);
+}
+
+std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterTemperature::filter_magnetics(
+    std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter)
+{
+    if (weight <= 0) {
+        return *unfilteredMagnetics;
+    }
+    std::vector<std::pair<Magnetic, double>> filteredMagneticsWithScoring;
+    std::vector<double> newScoring;
+
+    std::list<size_t> listOfIndexesToErase;
+    for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex) {
+        Magnetic magnetic = (*unfilteredMagnetics)[magneticIndex].first;
+
+        auto [valid, scoring] = _filter.evaluate_magnetic(&magnetic, &inputs);
+
+        if (valid) {
+            (*unfilteredMagnetics)[magneticIndex].first = magnetic;
+            newScoring.push_back(scoring);
+        }
+        else {
+            listOfIndexesToErase.push_back(magneticIndex);
+        }
+    }
+
+    for (size_t i = 0; i < (*unfilteredMagnetics).size(); ++i) {
+        if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
+            listOfIndexesToErase.pop_front();
+        }
+        else {
+            filteredMagneticsWithScoring.push_back((*unfilteredMagnetics)[i]);
+        }
+    }
+
+    if (filteredMagneticsWithScoring.size() != newScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering temperature, size of unfilteredMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    }
+
+    if (filteredMagneticsWithScoring.size() > 0) {
+        auto normalizedScoring = normalize_scoring(&filteredMagneticsWithScoring, newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::EFFICIENCY]);
+        for (size_t i = 0; i < filteredMagneticsWithScoring.size(); ++i) {
+            add_scoring(filteredMagneticsWithScoring[i].first.get_reference(), CoreAdviser::CoreAdviserFilters::EFFICIENCY, normalizedScoring[i]);
+        }
+        sort_magnetics_by_scoring(&filteredMagneticsWithScoring);
+    }
+
+    return filteredMagneticsWithScoring;
+}
+
 Coil get_dummy_coil(Inputs inputs) {
     double frequency = 0; 
     double temperature = 0; 
@@ -2502,26 +2556,46 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
     logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Core Losses filter.", "CoreAdviser");
 
+    if (settings.get_core_adviser_enable_temperature_filter()) {
+        MagneticCoreFilterTemperature filterTemperature(
+            inputs, _models, settings.get_core_adviser_maximum_temperature());
+        filterTemperature.set_scorings(&_scorings);
+        filterTemperature.set_filter_configuration(&_filterConfiguration);
+        magneticsWithScoring = filterTemperature.filter_magnetics(
+            &magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+        logEntry("There are " + std::to_string(magneticsWithScoring.size()) +
+                 " magnetics after Temperature filter.", "CoreAdviser");
+    }
+
     // Retry logic: if no cores found, try relaxing the saturation constraint
     if (magneticsWithScoring.size() == 0) {
         logEntry("No cores found with standard filters. Retrying with relaxed saturation constraint...", "CoreAdviser");
-        
+
         // Start over with the original magnetics
         magneticsWithScoring = *magnetics;
         magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
-        
+
         if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
             magneticsWithScoring.resize(maximumMagneticsAfterFiltering);
         }
-        
+
         magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
         add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
-        
+
         // Skip saturation filter - go directly to scoring filters
         magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
         magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::DIMENSIONS], true);
         magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
-        
+
+        if (settings.get_core_adviser_enable_temperature_filter()) {
+            MagneticCoreFilterTemperature filterTemperature(
+                inputs, _models, settings.get_core_adviser_maximum_temperature());
+            filterTemperature.set_scorings(&_scorings);
+            filterTemperature.set_filter_configuration(&_filterConfiguration);
+            magneticsWithScoring = filterTemperature.filter_magnetics(
+                &magneticsWithScoring, inputs, weights[CoreAdviserFilters::EFFICIENCY], true);
+        }
+
         logEntry("After retry with relaxed constraints: " + std::to_string(magneticsWithScoring.size()) + " magnetics", "CoreAdviser");
     }
 
@@ -2732,6 +2806,16 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         ferriteCores = filterLosses.filter_magnetics(&ferriteCores, inputs, 1, true);
         logEntry("After Losses (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
         std::cout << "[CoreAdviser] After Losses: " << ferriteCores.size() << std::endl;
+
+        if (settings.get_core_adviser_enable_temperature_filter()) {
+            MagneticCoreFilterTemperature filterTemperature(
+                inputs, _models, settings.get_core_adviser_maximum_temperature());
+            filterTemperature.set_scorings(&_scorings);
+            filterTemperature.set_filter_configuration(&_filterConfiguration);
+            filterTemperature.set_cache_usage(false);
+            ferriteCores = filterTemperature.filter_magnetics(&ferriteCores, inputs, 1, true);
+            logEntry("After Temperature (ferrite): " + std::to_string(ferriteCores.size()), "CoreAdviser");
+        }
     }
 
     // ========================================================================
@@ -2787,6 +2871,16 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             // Filter by losses
             powderCores = filterLosses.filter_magnetics(&powderCores, inputs, 1, true);
             logEntry("After Losses (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
+
+            if (settings.get_core_adviser_enable_temperature_filter()) {
+                MagneticCoreFilterTemperature filterTemperature(
+                    inputs, _models, settings.get_core_adviser_maximum_temperature());
+                filterTemperature.set_scorings(&_scorings);
+                filterTemperature.set_filter_configuration(&_filterConfiguration);
+                filterTemperature.set_cache_usage(false);
+                powderCores = filterTemperature.filter_magnetics(&powderCores, inputs, 1, true);
+                logEntry("After Temperature (powder): " + std::to_string(powderCores.size()), "CoreAdviser");
+            }
         }
     }
 

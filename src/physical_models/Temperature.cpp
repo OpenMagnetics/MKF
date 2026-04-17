@@ -222,15 +222,17 @@ ThermalResult Temperature::calculateTemperatures() {
     if (THERMAL_DEBUG) {
     }
     
-    // Step 1: Extract wire properties from coil
-    extractWireProperties();
-    
+    // Step 1: Extract wire properties from coil (not needed for core-only analysis)
+    if (!_config.coreOnly) {
+        extractWireProperties();
+    }
+
     // Step 2: Create thermal nodes (core, turns, bobbin)
     createThermalNodes();
-    
+
     // Step 3: Create thermal resistances between nodes
     createThermalResistances();
-    
+
     // Step 4: Calculate schematic scaling
     calculateSchematicScaling();
     
@@ -433,26 +435,30 @@ void Temperature::createThermalNodes() {
     auto core = _magnetic.get_core();
     _isToroidal = (core.get_shape_family() == CoreShapeFamily::T);
     
-    // Ensure coil is wound for proper turn coordinates
-    if (!_magnetic.get_coil().get_turns_description()) {
-        try {
-            _magnetic.get_mutable_coil().wind();
-            if (THERMAL_DEBUG) {
+    if (!_config.coreOnly) {
+        // Ensure coil is wound for proper turn coordinates
+        if (!_magnetic.get_coil().get_turns_description()) {
+            try {
+                _magnetic.get_mutable_coil().wind();
+                if (THERMAL_DEBUG) {
+                }
+            } catch (const std::exception& e) {
+                throw std::runtime_error("Temperature::createThermalNodes: Failed to wind coil: " + std::string(e.what()));
             }
-        } catch (const std::exception& e) {
-            throw std::runtime_error("Temperature::createThermalNodes: Failed to wind coil: " + std::string(e.what()));
         }
     }
-    
+
     if (_isToroidal) {
         createToroidalCoreNodes();
     } else {
         createConcentricCoreNodes();
     }
-    
-    createBobbinNodes();
-    createInsulationLayerNodes();
-    createTurnNodes();
+
+    if (!_config.coreOnly) {
+        createBobbinNodes();
+        createInsulationLayerNodes();
+        createTurnNodes();
+    }
     
     // Add ambient node (always last)
     ThermalNetworkNode ambientNode;
@@ -1529,17 +1535,18 @@ void Temperature::createThermalResistances() {
         createConcentricCoreConnections();
     }
     
-    createBobbinConnections();
-    createTurnToTurnConnections();
-    if (!_isToroidal) {
-        createTurnToBobbinConnections();
+    if (!_config.coreOnly) {
+        createBobbinConnections();
+        createTurnToTurnConnections();
+        if (!_isToroidal) {
+            createTurnToBobbinConnections();
+        }
+        createTurnToInsulationConnections();
+        createInsulationLayerConnections();
+        createTurnToSolidConnections();
     }
-    createTurnToInsulationConnections();
-    createInsulationLayerConnections();
-    createTurnToSolidConnections();
     createConvectionConnections();
-    
-    // NEW: Apply MAS cooling configuration if specified
+
     if (_config.masCooling.has_value()) {
         applyMasCooling(_config.masCooling.value());
     }

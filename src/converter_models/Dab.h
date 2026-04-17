@@ -160,6 +160,8 @@ public:
      *  process_design_requirements when the user does not provide an
      *  explicit innerPhaseShift3 value. */
     double get_computed_d3_rad() const { return computedD3Rad; }
+    /** Alias for get_computed_d3_rad(): SPS phase shift φ (rad). */
+    double get_computed_phase_shift() const { return computedD3Rad; }
 
     // ---- Per-OP diagnostic accessors (populated by process_operating_point_for_input_voltage) ----
     /** Modulation type used for the last solved op point: 0=SPS, 1=EPS, 2=DPS, 3=TPS. */

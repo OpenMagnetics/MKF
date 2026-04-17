@@ -293,6 +293,7 @@ struct TemperatureConfig {
     // Output settings
     bool plotSchematic = true;          // Whether to generate schematic visualization
     std::string schematicOutputPath = "output/thermal_schematic.svg";
+    bool coreOnly = false;              // Skip turn/bobbin nodes; only core nodes solved
     
     // =========================================================================
     // IMP-NEW-03: Configurable minimum natural convection coefficient

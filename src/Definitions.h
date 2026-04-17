@@ -525,7 +525,8 @@ enum class MagneticFilters : int {
     LOSSES_NO_PROXIMITY_TIMES_VOLUME,
     LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE,
     MAGNETOMOTIVE_FORCE,
-    LEAKAGE_INDUCTANCE  // For CMC optimization - minimize leakage for tight coupling
+    LEAKAGE_INDUCTANCE,  // For CMC optimization - minimize leakage for tight coupling
+    TEMPERATURE          // Node-network core temperature (Temperature.cpp, coreOnly mode)
 };
 
 class MagneticFilterOperation {

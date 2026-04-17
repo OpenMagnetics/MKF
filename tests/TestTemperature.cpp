@@ -3937,4 +3937,96 @@ TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][c
     REQUIRE(tempsByType.at("core") > config.ambientTemperature);
 }
 
+TEST_CASE("Temperature: coreOnly mode concentric E-core", "[temperature][core-only]") {
+    std::vector<int64_t> numberTurns({10});
+    std::vector<int64_t> numberParallels({1});
+    std::string shapeName = "E 42/21/15";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED);
+    auto gapping = json::array();
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "N87");
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    TemperatureConfig config;
+    config.coreOnly = true;
+    config.coreLosses = 0.5;
+    config.ambientTemperature = 25.0;
+    config.plotSchematic = false;
+
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+    REQUIRE(result.maximumTemperature < 300.0);
+    REQUIRE(result.averageCoreTemperature > config.ambientTemperature);
+}
+
+TEST_CASE("Temperature: coreOnly mode toroidal core", "[temperature][core-only]") {
+    std::vector<int64_t> numberTurns({10});
+    std::vector<int64_t> numberParallels({1});
+    std::string shapeName = "T 20/10/7";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::SPREAD,
+                                                     CoilAlignment::SPREAD);
+    auto gapping = json::array();
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "3C97");
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    TemperatureConfig config;
+    config.coreOnly = true;
+    config.coreLosses = 0.3;
+    config.ambientTemperature = 25.0;
+    config.plotSchematic = false;
+
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+}
+
+TEST_CASE("Temperature: coreOnly zero losses stays at ambient", "[temperature][core-only]") {
+    std::vector<int64_t> numberTurns({10});
+    std::vector<int64_t> numberParallels({1});
+    std::string shapeName = "E 42/21/15";
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::CONTIGUOUS,
+                                                     CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED);
+    auto gapping = json::array();
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "N87");
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    TemperatureConfig config;
+    config.coreOnly = true;
+    config.coreLosses = 0.0;
+    config.ambientTemperature = 25.0;
+    config.plotSchematic = false;
+
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+
+    REQUIRE(result.converged);
+    REQUIRE_THAT(result.maximumTemperature, Catch::Matchers::WithinAbs(config.ambientTemperature, 1.0));
+}
+
 } // namespace

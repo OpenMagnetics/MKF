@@ -1,4 +1,5 @@
 #include "advisers/MagneticFilter.h"
+#include "physical_models/Temperature.h"
 #include "constructive_models/NumberTurns.h"
 #include "physical_models/MagneticEnergy.h"
 #include "physical_models/WindingLosses.h"
@@ -150,8 +151,10 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             return std::make_shared<MagnetomotiveForce>();
         case MagneticFilters::LEAKAGE_INDUCTANCE:
             return std::make_shared<MagneticFilterLeakageInductance>();
+        case MagneticFilters::TEMPERATURE:
+            return std::make_shared<MagneticFilterTemperature>();
         default:
-            throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE}");
+            throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE, TEMPERATURE}");
     }
 }
 
@@ -2150,6 +2153,64 @@ std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_magnetic(Magne
     }
 
     return {valid, scoring};
+}
+
+MagneticFilterTemperature::MagneticFilterTemperature(Inputs inputs, double maximumTemperature)
+    : _maximumTemperature(maximumTemperature)
+{
+    _coreLossesModel = CoreLossesModel::factory(
+        std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});
+}
+
+std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
+    Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs)
+{
+    try {
+        auto core = magnetic->get_core();
+        double coreLosses = 0.0;
+        double ambientTemperature = 25.0;
+
+        auto coil = magnetic->get_coil();
+        for (auto& op : inputs->get_operating_points()) {
+            ambientTemperature = op.get_conditions().get_ambient_temperature();
+            auto excitation = op.get_excitations_per_winding()[0];
+            auto opCopy = op;
+            auto [magnetizingInductance, magneticFluxDensity] =
+                _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &opCopy);
+            excitation.set_magnetic_flux_density(magneticFluxDensity);
+            auto coreLossesMethods = core.get_available_core_losses_methods();
+            CoreLossesOutput cl;
+            if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(),
+                          VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+                cl = _coreLossesModel->get_core_losses(core, excitation, ambientTemperature);
+            } else {
+                auto proprietaryModel = CoreLossesModel::factory(
+                    std::map<std::string, std::string>{{"coreLosses", "Proprietary"}});
+                cl = proprietaryModel->get_core_losses(core, excitation, ambientTemperature);
+            }
+            coreLosses += cl.get_core_losses();
+        }
+        if (!inputs->get_operating_points().empty())
+            coreLosses /= inputs->get_operating_points().size();
+
+        TemperatureConfig config;
+        config.coreOnly = true;
+        config.coreLosses = coreLosses;
+        config.ambientTemperature = ambientTemperature;
+        config.plotSchematic = false;
+        if (!inputs->get_operating_points().empty()) {
+            auto& cond = inputs->get_operating_points()[0].get_conditions();
+            if (cond.get_cooling()) config.masCooling = cond.get_cooling();
+        }
+
+        Temperature temp(*magnetic, config);
+        auto result = temp.calculateTemperatures();
+
+        return {result.maximumTemperature <= _maximumTemperature, result.maximumTemperature};
+    }
+    catch (...) {
+        return {true, _maximumTemperature};
+    }
 }
 
 } // namespace OpenMagnetics
