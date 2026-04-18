@@ -2214,6 +2214,18 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
         }
     }
 
+    auto physFreqFromWaveform = [](const Waveform& w, double fallback) -> double {
+        if (w.get_time()) {
+            auto t = w.get_time().value();
+            if (t.size() >= 2) {
+                double step = t[1] - t[0];
+                double period = step * static_cast<double>(t.size());
+                if (period > 0 && std::isfinite(1.0 / period)) return 1.0 / period;
+            }
+        }
+        return fallback;
+    };
+
     std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
     std::vector<Waveform> voltageSampledWaveforms;
     bool allExcitationHaveVoltageOrAlreadyCalculated = true;
@@ -2236,7 +2248,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             else {
                 sampledWaveform = waveform;
             }
-            currentExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+            currentExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
             currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledWaveform, true, currentExcitation.get_processed()));
             excitation.set_current(currentExcitation);
         }
@@ -2252,7 +2264,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                 else {
                     sampledWaveform = waveform;
                 }
-                currentExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+                currentExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
                 currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledWaveform, true, currentExcitation.get_processed()));
                 excitation.set_current(currentExcitation);
             }
@@ -2273,7 +2285,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                 sampledWaveform = waveform;
             }
             voltageSampledWaveforms.push_back(sampledWaveform);
-            voltageExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+            voltageExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
             voltageExcitation.set_processed(calculate_processed_data(voltageExcitation, sampledWaveform));
             excitation.set_voltage(voltageExcitation);
         }
@@ -2296,7 +2308,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                     sampledWaveform = waveform;
                 }
                 voltageSampledWaveforms.push_back(sampledWaveform);
-                voltageExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+                voltageExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
                 voltageExcitation.set_processed(calculate_processed_data(voltageExcitation, sampledWaveform, true, voltageExcitation.get_processed()));
                 excitation.set_voltage(voltageExcitation);
             }
@@ -3471,17 +3483,29 @@ double Inputs::get_switching_frequency(OperatingPointExcitation excitation) {
 double Inputs::get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
 
-    if (excitation.get_frequency() != switchingFrequency) {
-        if (!excitation.get_magnetic_flux_density()->get_harmonics()) {
-            auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
-            auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
-            magneticFluxDensity.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
-            excitation.set_magnetic_flux_density(magneticFluxDensity);
+    if (!excitation.get_magnetic_flux_density()->get_harmonics() && magneticFluxDensity.get_waveform()) {
+        auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
+        auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
+        double physFreq = excitation.get_frequency();
+        if (sampledWaveform.get_time()) {
+            auto t = sampledWaveform.get_time().value();
+            if (t.size() >= 2) {
+                double step = t[1] - t[0];
+                double period = step * static_cast<double>(t.size());
+                if (period > 0 && std::isfinite(1.0 / period)) physFreq = 1.0 / period;
+            }
         }
+        magneticFluxDensity.set_harmonics(calculate_harmonics_data(sampledWaveform, physFreq));
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+    }
+
+    if (excitation.get_magnetic_flux_density()->get_harmonics()) {
         auto harmonics = excitation.get_magnetic_flux_density()->get_harmonics().value();
-        for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-            if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
-                return harmonics.get_amplitudes()[harmonicIndex];
+        if (harmonics.get_amplitudes().size() > 1 && harmonics.get_frequencies()[1] != switchingFrequency) {
+            for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+                if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
+                    return harmonics.get_amplitudes()[harmonicIndex];
+                }
             }
         }
     }
@@ -3492,17 +3516,29 @@ double Inputs::get_magnetic_flux_density_peak(OperatingPointExcitation excitatio
 double Inputs::get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
 
-    if (excitation.get_frequency() != switchingFrequency) {
-        if (!excitation.get_magnetic_flux_density()->get_harmonics()) {
-            auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
-            auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
-            magneticFluxDensity.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
-            excitation.set_magnetic_flux_density(magneticFluxDensity);
+    if (!excitation.get_magnetic_flux_density()->get_harmonics() && magneticFluxDensity.get_waveform()) {
+        auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
+        auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
+        double physFreq = excitation.get_frequency();
+        if (sampledWaveform.get_time()) {
+            auto t = sampledWaveform.get_time().value();
+            if (t.size() >= 2) {
+                double step = t[1] - t[0];
+                double period = step * static_cast<double>(t.size());
+                if (period > 0 && std::isfinite(1.0 / period)) physFreq = 1.0 / period;
+            }
         }
+        magneticFluxDensity.set_harmonics(calculate_harmonics_data(sampledWaveform, physFreq));
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+    }
+
+    if (excitation.get_magnetic_flux_density()->get_harmonics()) {
         auto harmonics = excitation.get_magnetic_flux_density()->get_harmonics().value();
-        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-            if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
-                return harmonics.get_amplitudes()[harmonicIndex] * 2;
+        if (harmonics.get_amplitudes().size() > 1 && harmonics.get_frequencies()[1] != switchingFrequency) {
+            for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+                if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
+                    return harmonics.get_amplitudes()[harmonicIndex] * 2;
+                }
             }
         }
     }
