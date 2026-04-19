@@ -320,19 +320,21 @@ std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
 
     for (int w = 0; w < numberOfWindings; ++w) {
         // ── Current waveform ───────────────────────────────────────
-        // Differential-mode: line carries +I, neutral carries -I so
-        // their MMFs cancel in the core (B ≈ 0 at line frequency).
-        // The RMS magnitude is identical on both windings so copper
-        // losses are computed correctly. The CM ripple is in-phase on
-        // both windings (it adds in the core) and is the only flux
-        // contribution that matters for core-loss / inductance checks.
-        double dcSign = (w == 0) ? 1.0 : -1.0;
+        // Every winding gets the SAME waveform: CM ripple at excFreq
+        // riding on the line-current DC bias. Identical waveforms are
+        // a precondition for Inputs::can_be_common_mode_choke — once
+        // it fires, MagnetizingInductance calls
+        // get_common_mode_choke_magnetizing_current which drops the DC
+        // bias (DM part that cancels in the core) and keeps only the
+        // AC ripple as the flux-driving magnetizing current. This is
+        // how the CMC path avoids the "5 A × N turns of flux" false
+        // saturation — see Inputs.cpp:781.
         Waveform currentWaveform = Inputs::create_waveform(
             WaveformLabel::SINUSOIDAL,
             iCmPeak * 2.0,               // peak-to-peak of CM ripple
             excFreq,
             0.5,                         // duty cycle (unused for sinusoidal)
-            dcSign * operatingCurrent,   // +I on line, -I on neutral
+            operatingCurrent,            // DC offset = nominal line current
             0                            // phase
         );
 
