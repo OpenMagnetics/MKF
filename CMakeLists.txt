@@ -411,6 +411,25 @@ add_custom_target(MAS ALL
 include_directories("${MAS_DIRECTORY}")
 
 
+# ============================================================================
+# CCI strand coordinates — embed up to N=1000 into the binary at build time
+# ============================================================================
+set(CCI_COORDS_DIR "${CMAKE_SOURCE_DIR}/../cci_coords"
+    CACHE PATH "Path to cci_coords repository")
+set(CCI_GENERATED_CPP "${CMAKE_BINARY_DIR}/generated/CciCoordinatesData.cpp")
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_custom_command(
+    OUTPUT "${CCI_GENERATED_CPP}"
+    COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/scripts/generate_cci_data.py"
+            "${CCI_COORDS_DIR}"
+            "${CCI_GENERATED_CPP}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/generate_cci_data.py"
+    COMMENT "Generating embedded CCI coordinates"
+    VERBATIM)
+add_custom_target(cci_data_gen DEPENDS "${CCI_GENERATED_CPP}")
+
 file(GLOB SOURCES
     "src/*.cpp"
     "src/advisers/*.cpp"
@@ -419,6 +438,7 @@ file(GLOB SOURCES
     "src/physical_models/*.cpp"
     "src/processors/*.cpp"
     "src/support/*.cpp")
+list(APPEND SOURCES "${CCI_GENERATED_CPP}")
 
 SET(LIBS data::insulation_standards)
 
@@ -439,7 +459,8 @@ else()
     add_library(MKF SHARED ${SOURCES})
 endif()
 set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
-add_dependencies(MKF MAS)
+add_dependencies(MKF MAS cci_data_gen)
+target_include_directories(MKF PUBLIC "${CMAKE_BINARY_DIR}/generated")
 
 cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards NAMESPACE insulationData src/data/insulation_standards/IEC_60664-1.json src/data/insulation_standards/IEC_60664-4.json src/data/insulation_standards/IEC_60664-5.json src/data/insulation_standards/IEC_62368-1.json src/data/insulation_standards/IEC_61558-1.json src/data/insulation_standards/IEC_61558-2-16.json src/data/insulation_standards/IEC_60335-1.json)
 cmrc_add_resource_library(core_losses_data ALIAS data::core_losses_data NAMESPACE coreLossesData src/data/core_losses/ciGSE_coefficients.json)

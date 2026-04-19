@@ -3,6 +3,7 @@
 #include "physical_models/MagneticField.h"
 #include "support/Painter.h"
 #include "support/CoilMesher.h"
+#include "support/CciCoordinatesData.h"
 #include "support/Exceptions.h"
 #include "MAS.hpp"
 #include "support/Utils.h"
@@ -1019,6 +1020,40 @@ void AdvancedPainter::paint_toroidal_winding_sections(Magnetic magnetic) {
         {
             double strokeWidth = sections[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - sections[i].get_coordinates()[0]) * 2;
+
+            // Full-winding-window sections/spacers would collapse to a pie wedge
+            // when rendered as a stroked arc (stroke inner edge at/past origin).
+            // Render as a radial rectangle polygon — same geometry as the
+            // drawSpacer path of paint_toroidal_margin.
+            if (strokeWidth >= circleDiameter - 1e-12) {
+                double centerAngleDeg = sections[i].get_coordinates()[1];
+                double angularWidthDeg = sections[i].get_dimensions()[1];
+                double midRadius = initialRadius / 2.0;
+                double rectangleThickness = midRadius * angularWidthDeg * std::numbers::pi / 180.0;
+                double rectangleAngleInRadians = centerAngleDeg * std::numbers::pi / 180.0;
+
+                std::vector<std::vector<double>> polyPoints = {
+                    {initialRadius * std::cos(rectangleAngleInRadians) - rectangleThickness / 2 * std::sin(rectangleAngleInRadians),
+                     initialRadius * std::sin(rectangleAngleInRadians) + rectangleThickness / 2 * std::cos(rectangleAngleInRadians)},
+                    {initialRadius * std::cos(rectangleAngleInRadians) + rectangleThickness / 2 * std::sin(rectangleAngleInRadians),
+                     initialRadius * std::sin(rectangleAngleInRadians) - rectangleThickness / 2 * std::cos(rectangleAngleInRadians)},
+                    {+rectangleThickness / 2 * std::sin(rectangleAngleInRadians),
+                     -rectangleThickness / 2 * std::cos(rectangleAngleInRadians)},
+                    {-rectangleThickness / 2 * std::sin(rectangleAngleInRadians),
+                     +rectangleThickness / 2 * std::cos(rectangleAngleInRadians)},
+                };
+                std::vector<double> x, y;
+                for (auto& p : polyPoints) {
+                    x.push_back(p[0] + _offsetForColorBar);
+                    y.push_back(p[1]);
+                }
+                const std::string color = (sections[i].get_type() == ElectricalType::CONDUCTION)
+                    ? settings.get_painter_color_copper()
+                    : settings.get_painter_color_insulation();
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(color));
+                continue;
+            }
+
             double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
             auto currentMapIndex = uint_to_hex(_currentMapIndex);
@@ -1028,7 +1063,7 @@ void AdvancedPainter::paint_toroidal_winding_sections(Magnetic magnetic) {
             double angleProportion = sections[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
             matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
+            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " +
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                 _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_copper(), nullptr, 16));
@@ -1105,6 +1140,36 @@ void AdvancedPainter::paint_toroidal_winding_layers(Magnetic magnetic) {
         {
             double strokeWidth = layers[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
+
+            if (strokeWidth >= circleDiameter - 1e-12) {
+                double centerAngleDeg = layers[i].get_coordinates()[1];
+                double angularWidthDeg = layers[i].get_dimensions()[1];
+                double midRadius = initialRadius / 2.0;
+                double rectangleThickness = midRadius * angularWidthDeg * std::numbers::pi / 180.0;
+                double rectangleAngleInRadians = centerAngleDeg * std::numbers::pi / 180.0;
+
+                std::vector<std::vector<double>> polyPoints = {
+                    {initialRadius * std::cos(rectangleAngleInRadians) - rectangleThickness / 2 * std::sin(rectangleAngleInRadians),
+                     initialRadius * std::sin(rectangleAngleInRadians) + rectangleThickness / 2 * std::cos(rectangleAngleInRadians)},
+                    {initialRadius * std::cos(rectangleAngleInRadians) + rectangleThickness / 2 * std::sin(rectangleAngleInRadians),
+                     initialRadius * std::sin(rectangleAngleInRadians) - rectangleThickness / 2 * std::cos(rectangleAngleInRadians)},
+                    {+rectangleThickness / 2 * std::sin(rectangleAngleInRadians),
+                     -rectangleThickness / 2 * std::cos(rectangleAngleInRadians)},
+                    {-rectangleThickness / 2 * std::sin(rectangleAngleInRadians),
+                     +rectangleThickness / 2 * std::cos(rectangleAngleInRadians)},
+                };
+                std::vector<double> x, y;
+                for (auto& p : polyPoints) {
+                    x.push_back(p[0] + _offsetForColorBar);
+                    y.push_back(p[1]);
+                }
+                const std::string color = (layers[i].get_type() == ElectricalType::CONDUCTION)
+                    ? settings.get_painter_color_copper()
+                    : settings.get_painter_color_insulation();
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(color));
+                continue;
+            }
+
             double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
             auto currentMapIndex = uint_to_hex(_currentMapIndex);
@@ -1115,7 +1180,7 @@ void AdvancedPainter::paint_toroidal_winding_layers(Magnetic magnetic) {
             std::string termination = angleProportion < 1? "butt" : "round";
 
             matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
+            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " +
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
                 _postProcessingColors[key] = key_to_rgb_color(stoi(settings.get_painter_color_copper(), nullptr, 16));
@@ -1293,37 +1358,13 @@ void AdvancedPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wi
     }
     else {
         matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color("white");
-        auto coordinateFilePath = settings.get_painter_cci_coordinates_path();
-        coordinateFilePath = coordinateFilePath.append("cci" + std::to_string(numberConductors) + ".txt");
-
-        std::ifstream in(coordinateFilePath);
-        std::vector<std::pair<double, double>> coordinates;
         bool advancedMode = settings.get_painter_advanced_litz();
+        const auto* cciCoords = get_cci_coordinates(numberConductors);
 
-        if (in) {
-            std::string line;
-
-            while (getline(in, line)) {
-                std::stringstream sep(line);
-                std::string field;
-
-                std::vector<double> numbers;
-
-                while (getline(sep, field, ' ')) {
-                    try {
-                        numbers.push_back(stod(field));
-                    }
-                    catch (...) {
-                        continue;
-                    }
-                }
-
-                coordinates.push_back({numbers[1], numbers[2]});
-            }
-
+        if (cciCoords) {
             for (size_t i = 0; i < numberConductors; ++i) {
-                double internalXCoordinate = conductingDiameter / 2 * coordinates[i].first;
-                double internalYCoordinate = conductingDiameter / 2 * coordinates[i].second;
+                double internalXCoordinate = conductingDiameter / 2 * (*cciCoords)[i].first;
+                double internalYCoordinate = conductingDiameter / 2 * (*cciCoords)[i].second;
 
                 if (advancedMode) {
                     AdvancedPainter::paint_round_wire(xCoordinate + internalXCoordinate, yCoordinate + internalYCoordinate, strand);
@@ -1334,10 +1375,7 @@ void AdvancedPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wi
                     increment_current_map_index();
                     _postProcessingColors[key] = key_to_rgb_color(settings.get_painter_color_copper());
                     matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
-
                 }
-
-
             }
         }
         else {

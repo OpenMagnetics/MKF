@@ -1,5 +1,6 @@
 #include "physical_models/WindingLosses.h"
 #include "support/Painter.h"
+#include "support/CciCoordinatesData.h"
 #include <cfloat>
 #include <cmath>
 #include <map>
@@ -223,37 +224,13 @@ void BasicPainter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire 
             paint_circle(xCoordinate, yCoordinate, conductingDiameter / 2, "white", shapes, 360, 0, {0, 0}, label);
         }
 
-        auto coordinateFilePath = settings.get_painter_cci_coordinates_path();
-        coordinateFilePath = coordinateFilePath.append("cci" + std::to_string(numberConductors) + ".txt");
-
-        std::ifstream in(coordinateFilePath);
-        std::vector<std::pair<double, double>> coordinates;
         bool advancedMode = settings.get_painter_advanced_litz();
+        const auto* cciCoords = get_cci_coordinates(numberConductors);
 
-        if (in) {
-            std::string line;
-
-            while (getline(in, line)) {
-                std::stringstream sep(line);
-                std::string field;
-
-                std::vector<double> numbers;
-
-                while (getline(sep, field, ' ')) {
-                    try {
-                        numbers.push_back(stod(field));
-                    }
-                    catch (...) {
-                        continue;
-                    }
-                }
-
-                coordinates.push_back({numbers[1], numbers[2]});
-            }
-
+        if (cciCoords) {
             for (size_t i = 0; i < numberConductors; ++i) {
-                double internalXCoordinate = conductingDiameter / 2 * coordinates[i].first;
-                double internalYCoordinate = conductingDiameter / 2 * coordinates[i].second;
+                double internalXCoordinate = conductingDiameter / 2 * (*cciCoords)[i].first;
+                double internalYCoordinate = conductingDiameter / 2 * (*cciCoords)[i].second;
 
                 if (advancedMode) {
                     BasicPainter::paint_round_wire(xCoordinate + internalXCoordinate, -(yCoordinate + internalYCoordinate), strand);
@@ -480,6 +457,26 @@ void BasicPainter::paint_toroidal_coil_sections(Magnetic magnetic) {
         {
             double strokeWidth = sections[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - sections[i].get_coordinates()[0]) * 2;
+
+            // A section whose radial extent reaches/crosses the toroid axis would
+            // render as a pie wedge (stroke-inner-edge <= 0) rather than a radial
+            // rectangle. Common case: full-window insulation spacers in contiguous
+            // toroidal layouts. Render as a polygon — same geometry as the
+            // drawSpacer path of paint_toroidal_margin.
+            if (strokeWidth >= circleDiameter - 1e-12) {
+                double centerAngleDeg = sections[i].get_coordinates()[1];
+                double angularWidthDeg = sections[i].get_dimensions()[1];
+                double rectangleWidth = (initialRadius / 2.0) * angularWidthDeg * std::numbers::pi / 180.0;
+                std::string cssClassName = generate_random_string();
+                const std::string color = (sections[i].get_type() == ElectricalType::CONDUCTION)
+                    ? std::regex_replace(std::string(settings.get_painter_color_copper()),     std::regex("0x"), "#")
+                    : std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#");
+                _root.style("." + cssClassName).set_attr("fill", color);
+                paint_rectangle(0, initialRadius / 2.0, rectangleWidth, initialRadius,
+                                cssClassName, nullptr, -90.0 + centerAngleDeg, {0, 0});
+                continue;
+            }
+
             double angleProportion = sections[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
 
@@ -552,6 +549,23 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
         {
             double strokeWidth = layers[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
+
+            // Same wedge-at-origin collapse as in paint_toroidal_coil_sections:
+            // full-winding-window spacers must be drawn as radial rectangles.
+            if (strokeWidth >= circleDiameter - 1e-12) {
+                double centerAngleDeg = layers[i].get_coordinates()[1];
+                double angularWidthDeg = layers[i].get_dimensions()[1];
+                double rectangleWidth = (initialRadius / 2.0) * angularWidthDeg * std::numbers::pi / 180.0;
+                std::string cssClassName = generate_random_string();
+                const std::string color = (layers[i].get_type() == ElectricalType::CONDUCTION)
+                    ? std::regex_replace(std::string(settings.get_painter_color_copper()),     std::regex("0x"), "#")
+                    : std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#");
+                _root.style("." + cssClassName).set_attr("fill", color);
+                paint_rectangle(0, initialRadius / 2.0, rectangleWidth, initialRadius,
+                                cssClassName, nullptr, -90.0 + centerAngleDeg, {0, 0});
+                continue;
+            }
+
             double angleProportion = layers[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
 
