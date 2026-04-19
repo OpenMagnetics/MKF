@@ -1459,6 +1459,9 @@ Application Core::guess_material_application() {
 }
 
 Application Core::guess_material_application(CoreMaterial coreMaterial) {
+    if (coreMaterial.get_application()) {
+        return coreMaterial.get_application().value();
+    }
     for (auto method : get_available_core_losses_methods(coreMaterial)) {
         if (method == VolumetricCoreLossesMethodType::LOSS_FACTOR) {
             if (coreMaterial.get_permeability().get_complex()) {
