@@ -708,7 +708,11 @@ bool Inputs::is_multiport_inductor(OperatingPoint operatingPoint, std::optional<
 
 bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint) {
     auto excitations = operatingPoint.get_excitations_per_winding();
-    if (excitations.size() < 2 || excitations.size() > 3) {
+    // CMC topologies: 2 (line + neutral), 3 (three-phase delta), or 4
+    // (three-phase + neutral). Four-winding was previously excluded, which
+    // forced those designs through the multiport-inductor path and pumped
+    // the full line current into the core-flux calculation.
+    if (excitations.size() < 2 || excitations.size() > 4) {
         return false;
     }
     else {
@@ -781,34 +785,50 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
 SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(OperatingPoint operatingPoint) {
     OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
 
+    // ── Physics recap for CMCs ───────────────────────────────────────────
+    // Each winding carries: DM line current + CM noise current.
+    // DM currents in the windings are opposite in real life (line vs neutral)
+    // but MKF stores every winding's current "into the dot", so after that
+    // sign flip the DM shows up as the difference and the CM as the sum.
+    // By CMC symmetry all windings carry identical waveforms, so:
+    //   sum  = 2·I_cm   (drives core flux)
+    //   diff = 0        (DM, cancels — not a core excitation)
+    //
+    // The previous implementation used |secondary_rms − primary_rms| to get
+    // the CM current, which for a symmetric CMC is identically zero — the
+    // flux model then saw no excitation at all and under-reported core
+    // saturation / loss. Correct answer: the AC component of any one
+    // winding IS the CM current, because the DC bias (DM line current) is
+    // the same in both windings and cancels in the net core MMF.
+    //
+    // So take peak_to_peak/2 from the primary winding as the CM peak, and
+    // build the triangular magnetizing current from that — the DC offset
+    // is dropped because it doesn't drive flux in a common-mode choke.
     auto primaryCurrent = operatingPoint.get_excitations_per_winding()[0].get_current().value();
-    auto secondaryCurrent = operatingPoint.get_excitations_per_winding()[1].get_current().value();
     if (!primaryCurrent.get_processed()) {
         throw std::invalid_argument("Current is not processed");
     }
-    if (!secondaryCurrent.get_processed()) {
-        throw std::invalid_argument("Current is not processed");
+    auto primaryProcessed = primaryCurrent.get_processed().value();
+    if (!primaryProcessed.get_peak_to_peak()) {
+        throw std::invalid_argument("Primary current is missing peak-to-peak");
     }
-    if (!primaryCurrent.get_processed()->get_rms()) {
-        throw std::invalid_argument("Current is missing RMS");
-    }
-    if (!secondaryCurrent.get_processed()->get_rms()) {
-        throw std::invalid_argument("Current is missing RMS");
-    }
+
     double frequency = Inputs::get_switching_frequency(excitation);
 
-    double rms = fabs(secondaryCurrent.get_processed()->get_rms().value() - primaryCurrent.get_processed()->get_rms().value());
-    double triangularPeak = rms * sqrt(3);
+    // AC peak of the CM component = half the primary's p-p swing.
+    // We model the magnetizing current as a triangular of the same p-p
+    // centered around zero (no DC flux bias in a CMC).
+    double peakToPeak = primaryProcessed.get_peak_to_peak().value();
 
     Processed triangularProcessed;
     triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
-    triangularProcessed.set_offset(triangularPeak / 2);
-    triangularProcessed.set_peak_to_peak(triangularPeak);
-    auto waveform = create_waveform(triangularProcessed,frequency);
+    triangularProcessed.set_offset(peakToPeak / 2);
+    triangularProcessed.set_peak_to_peak(peakToPeak);
+    auto waveform = create_waveform(triangularProcessed, frequency);
     SignalDescriptor magnetizingCurrent;
-    auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform,frequency);
+    auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
     magnetizingCurrent.set_waveform(sampledWaveform);
-    magnetizingCurrent.set_harmonics(calculate_harmonics_data(sampledWaveform,frequency));
+    magnetizingCurrent.set_harmonics(calculate_harmonics_data(sampledWaveform, frequency));
     magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
 
     return magnetizingCurrent;
@@ -2321,17 +2341,52 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
 
         bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoint, turnsRatios);
 
-        for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
-            auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-
-            if (!excitation.get_magnetizing_current() && magnetizingInductance > 0) {
-                Waveform waveform = excitation.get_voltage()->get_waveform().value();
-                if (windingIndex < voltageSampledWaveforms.size()) {
-                    waveform = voltageSampledWaveforms[windingIndex];
-                }
-                excitation.set_magnetizing_current(calculate_magnetizing_current(excitation, waveform, magnetizingInductance, false, includeDcOffsetIntoMagnetizingCurrent));
+        // ── CMC handling ─────────────────────────────────────────────────
+        // In a common-mode choke every winding carries identical DM + CM
+        // currents (MKF stores every winding's current "into the dot"), so
+        // the DM components cancel in the net core MMF and only the CM
+        // ripple drives flux. The generic per-winding path below integrates
+        // each winding's voltage and adds that winding's DC offset back in,
+        // which for a CMC means N · (I_dm_dc + I_cm_ac) instead of just
+        // N · I_cm_ac — over-counts B by a factor of (I_line / I_cm) and
+        // can make the core look saturated when it isn't.
+        //
+        // When can_be_common_mode_choke(...) fires (2+ matched winding
+        // currents at identical frequencies and amplitudes) plug in the
+        // CM-only magnetizing current across every winding — same logic
+        // MagnetizingInductance.cpp:149 already uses before core losses run.
+        //
+        // Guard: a 1:1 transformer test scenario looks the same to
+        // can_be_common_mode_choke (symmetric currents and voltages), so
+        // only fire when the caller has NOT already pre-populated a
+        // magnetizing_current. Real CMC paths leave it empty here; test
+        // scenarios (create_quick_operating_point with turnsRatios={1})
+        // pre-populate it to pin a specific answer, and stomping that was
+        // regressing TestCoreAdviserAvailableCores on 1:1 transformers.
+        bool primaryHasMagnetizingCurrent =
+            !operatingPoint.get_excitations_per_winding().empty()
+            && operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().has_value();
+        bool isCmcOperatingPoint = !primaryHasMagnetizingCurrent
+            && can_be_common_mode_choke(operatingPoint);
+        if (isCmcOperatingPoint) {
+            auto cmMagnetizingCurrent = get_common_mode_choke_magnetizing_current(operatingPoint);
+            for (size_t windingIndex = 0; windingIndex < processedExcitationsPerWinding.size(); ++windingIndex) {
+                processedExcitationsPerWinding[windingIndex].set_magnetizing_current(cmMagnetizingCurrent);
             }
-            processedExcitationsPerWinding[windingIndex] = excitation;
+        }
+        else {
+            for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+                auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+
+                if (!excitation.get_magnetizing_current() && magnetizingInductance > 0) {
+                    Waveform waveform = excitation.get_voltage()->get_waveform().value();
+                    if (windingIndex < voltageSampledWaveforms.size()) {
+                        waveform = voltageSampledWaveforms[windingIndex];
+                    }
+                    excitation.set_magnetizing_current(calculate_magnetizing_current(excitation, waveform, magnetizingInductance, false, includeDcOffsetIntoMagnetizingCurrent));
+                }
+                processedExcitationsPerWinding[windingIndex] = excitation;
+            }
         }
 
     }

@@ -2558,6 +2558,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     MagneticCoreFilterDimensions filterDimensions;
     MagneticCoreFilterMagneticInductance filterMagneticInductance;
     MagneticCoreFilterMinimumImpedance filterMinimumImpedance;
+    MagneticCoreFilterSaturation filterSaturation;
 
     filterCost.set_scorings(&_scorings);
     filterCost.set_filter_configuration(&_filterConfiguration);
@@ -2569,12 +2570,23 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     filterMagneticInductance.set_filter_configuration(&_filterConfiguration);
     filterMinimumImpedance.set_scorings(&_scorings);
     filterMinimumImpedance.set_filter_configuration(&_filterConfiguration);
+    filterSaturation.set_scorings(&_scorings);
+    filterSaturation.set_filter_configuration(&_filterConfiguration);
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
 
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+
+    // Saturation headroom: without this filter the CMC adviser was picking
+    // the smallest impedance-qualifying core, leaving no B margin. With a
+    // realistic pre-filter CM current (C·dV/dt, or the 100 mA fallback in
+    // CommonModeChoke::process_operating_points) the core can approach
+    // saturation under normal CM noise. The MagnetizingInductance CMC path
+    // (Inputs::can_be_common_mode_choke) already drops the DM DC bias from
+    // the magnetizing current, so this filter sees only the CM flux.
+    magneticsWithScoring = filterSaturation.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
 
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
 
