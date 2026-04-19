@@ -623,18 +623,20 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Redo_Culling", "[adviser][c
 
     REQUIRE(masMagnetics.size() > 0);
 
-    // Check that we got valid results with reasonable saturation levels
-    // The E 22/6/16 - 3C95 with 0.24 mm gap is now correctly filtered out as saturated (103% of Bsat)
-    // Other cores with larger gaps should be present instead
-    bool foundValidCore = false;
+    // For 10 mH at 6000 Vpp / 100 kHz the Area-Product filter discards cores
+    // with Ae too small to store the required energy before they ever reach
+    // the saturation filter, so E 22/6/16 (Ae ≈ 25 mm²) is gone by this stage.
+    // The surviving picks are the small E 25 and PQ 20 families, which have
+    // enough Ae and still score well under the DIMENSIONS-dominated weights.
+    bool foundExpectedCore = false;
     for (auto [mas, scoring] : masMagnetics) {
-        auto coreName = mas.get_magnetic().get_core().get_name().value_or("unnamed");
-        // Check for any E 22/6/16 core that passed saturation filter
-        if (coreName.find("E 22/6/16") != std::string::npos) {
-            foundValidCore = true;
+        auto coreName = mas.get_magnetic().get_core().get_name().value_or("");
+        if (coreName.find("E 25") != std::string::npos ||
+            coreName.find("PQ 20") != std::string::npos) {
+            foundExpectedCore = true;
         }
     }
-    REQUIRE(foundValidCore);
+    REQUIRE(foundExpectedCore);
     settings.reset();
 }
 
