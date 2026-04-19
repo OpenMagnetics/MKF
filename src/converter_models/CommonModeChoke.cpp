@@ -300,14 +300,21 @@ std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
     // Preferred estimate: I_cm = C_parasitic · dV/dt (the physical CM current
     // injected by the switching node through chassis capacitance). Only
     // available in noise-estimation spec mode, where the frontend sends both.
-    // Fallback: 1 % of rated line current — a hand-waving placeholder used when
-    // the user hasn't supplied CM source info.
+    // Fallback: a representative CM current independent of line load current.
+    // CM noise comes from switch-node parasitics (C·dV/dt), not from the
+    // mains load, so scaling the fallback with operatingCurrent (the old
+    // "1 % of line current" rule) overstated noise on high-current CMCs and
+    // pushed the modelled core flux toward saturation for no physical reason.
+    // 100 mA ≈ 20 pF × 5 V/ns — a moderate silicon SMPS into a small chassis
+    // parasitic, representative of the AC current the core actually sees
+    // after any Y-cap upstream of the CMC. Users who want a stricter model
+    // should supply parasiticCap_pF + dvdt_V_ns explicitly.
     double iCmPeak;
     if (parasiticCap_pF > 0.0 && dvdt_V_ns > 0.0) {
         // I_cm = (pF · 1e-12) · (V/ns · 1e9) = pF · V/ns · 1e-3  (amps)
         iCmPeak = parasiticCap_pF * dvdt_V_ns * 1e-3;
     } else {
-        iCmPeak = operatingCurrent * 0.01;
+        iCmPeak = 0.1;
     }
 
     // CM voltage across the inductance: V = L · ω · I_cm_peak
