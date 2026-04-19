@@ -2057,7 +2057,7 @@ TEST_CASE("Test_Import_Csv_Web_4", "[processor][circuit-simulation-reader]") {
     REQUIRE(operatingPoint.get_excitations_per_winding().size() == 2);
 }
 
-TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First", "[processor][circuit-simulator-exporter][ltspice][llc]") {
+TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First", "[processor][circuit-simulator-exporter][ltspice][llc-topology]") {
     // Load the LLC_trafo_first MAS file that was reported to have LTspice errors
     auto mas_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "LLC_trafo_first.json");
     auto mas = OpenMagneticsTesting::mas_loader(mas_path.string());
@@ -2145,7 +2145,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First", "[processor][
     REQUIRE((asyContent.find("SYMDEF") != std::string::npos || asyContent.find("Version") != std::string::npos));
 }
 
-TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First_Analytical", "[processor][circuit-simulator-exporter][ltspice][llc]") {
+TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First_Analytical", "[processor][circuit-simulator-exporter][ltspice][llc-topology]") {
     // Same test but with ANALYTICAL curve fitting mode
     auto mas_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "LLC_trafo_first.json");
     auto mas = OpenMagneticsTesting::mas_loader(mas_path.string());
@@ -2169,7 +2169,7 @@ TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_First_Analytical", "[
     REQUIRE(cirContent.find(".subckt") != std::string::npos);
 }
 
-TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_Runnable_Netlist", "[processor][circuit-simulator-exporter][ltspice][llc]") {
+TEST_CASE("Test_CircuitSimulatorExporter_Ltspice_LLC_Trafo_Runnable_Netlist", "[processor][circuit-simulator-exporter][ltspice][llc-topology]") {
     // This test creates a complete runnable LTspice netlist that includes both the 
     // exported subcircuit and a test circuit to validate it runs in LTspice
     
@@ -2311,7 +2311,7 @@ void compare_ideal_vs_parasitic(
     }
 }
 
-TEST_CASE("Converter_Flyback_Ideal_vs_Parasitic_CCM", "[converter][flyback][ideal-vs-parasitic][smoke-test]") {
+TEST_CASE("Converter_Flyback_Ideal_vs_Parasitic_CCM", "[converter][flyback-topology][ideal-vs-parasitic][smoke-test]") {
     OpenMagnetics::Flyback flyback;
     
     DimensionWithTolerance inputVoltage;

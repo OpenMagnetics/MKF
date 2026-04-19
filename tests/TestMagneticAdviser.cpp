@@ -2880,7 +2880,7 @@ namespace {
         printElapsed("Test completed");
     }
 
-    TEST_CASE("Test_MagneticAdviser_Flyback_Colin_Tuck_EE30_N87", "[adviser][magnetic-adviser][flyback][colin-tuck]") {
+    TEST_CASE("Test_MagneticAdviser_Flyback_Colin_Tuck_EE30_N87", "[adviser][magnetic-adviser][flyback-topology][colin-tuck]") {
         // Flyback transformer design request from Colin Tuck (Preston Consulting Ltd.)
         // Specifications:
         // - Primary inductance: ~400uH
@@ -3258,7 +3258,7 @@ TEST_CASE("Test_Planar_CoilAdviser_From_Full_MAS", "[adviser][planar][coil][full
 // Flyback (base class) — webfrontend defaults
 // Input: 120-375V, outputs: 12V@3A + 5V@5A, fsw=100kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_Flyback", "[adviser][from-converter][flyback]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_Flyback", "[adviser][from-converter][flyback-topology]") {
     // Simplified for speed: single input voltage, single output
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 375}};  // Same min/max = 1 op point
@@ -3291,7 +3291,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback", "[adviser][from-converter
 // ============================================================================
 // Flyback with custom weights
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_WithWeights", "[adviser][from-converter][flyback]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_WithWeights", "[adviser][from-converter][flyback-topology]") {
     // Simplified for speed: single input voltage, single output
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 375}};
@@ -3325,7 +3325,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_WithWeights", "[adviser][fr
 // Buck — webfrontend defaults
 // Input: 10-12V, output: 5V@2A, fsw=100kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_Buck", "[adviser][from-converter][buck]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_Buck", "[adviser][from-converter][buck-topology]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3356,7 +3356,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Buck", "[adviser][from-converter][b
 // Boost — webfrontend defaults
 // Input: 12-24V, output: 50V@1A, fsw=100kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_Boost", "[adviser][from-converter][boost]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_Boost", "[adviser][from-converter][boost-topology]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 24}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3387,7 +3387,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Boost", "[adviser][from-converter][
 // SingleSwitchForward — webfrontend defaults (Forward wizard)
 // Input: 100-190V, output: 5V@5A, turnsRatio=10, dutyCycle=0.42, fsw=200kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward", "[adviser][from-converter][forward]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward", "[adviser][from-converter][forward-topology]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3419,7 +3419,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward", "[adviser][fr
 // TwoSwitchForward — same Forward wizard defaults
 // Input: 100-190V, output: 5V@5A, turnsRatio=10, dutyCycle=0.42, fsw=200kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward", "[adviser][from-converter][forward][!mayfail]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward", "[adviser][from-converter][forward-topology][!mayfail]") {
     // [!mayfail] tag because this test can fail due to test isolation issues with global settings
     // when run after Buck/Boost tests. It passes when run individually or with all tests including [slow].
     json converterJson;
@@ -3453,7 +3453,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward", "[adviser][from-
 // ActiveClampForward — same Forward wizard defaults
 // Input: 100-190V, output: 5V@5A, turnsRatio=10, dutyCycle=0.42, fsw=200kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward", "[adviser][from-converter][forward]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward", "[adviser][from-converter][forward-topology]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3485,7 +3485,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward", "[adviser][fro
 // PushPull — webfrontend defaults
 // Input: 20-30V, output: 48V@0.7A, turnsRatio=1, dutyCycle=0.45, fsw=100kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_PushPull", "[adviser][from-converter][push-pull]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_PushPull", "[adviser][from-converter][push-pull-topology]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 20}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3517,7 +3517,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_PushPull", "[adviser][from-converte
 // IsolatedBuck — webfrontend defaults
 // Input: 36-72V, outputs: 10V@0.02A + 10V@0.1A, turnsRatio=5, fsw=750kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck", "[adviser][from-converter][isolated-buck]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck", "[adviser][from-converter][isolated-buck-topology]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 36}, {"maximum", 72}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3548,7 +3548,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck", "[adviser][from-conv
 // IsolatedBuckBoost — webfrontend defaults
 // Input: 10-30V, outputs: 6V@0.01A + 5V@1A + 5V@0.3A, turnsRatio=0.5, fsw=400kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost", "[adviser][from-converter][isolated-buck-boost]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost", "[adviser][from-converter][isolated-buck-boost-topology]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3579,7 +3579,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost", "[adviser][from
 // LLC Resonant Converter — Half-Bridge topology
 // Input: 370-410V (nominal 400V), output: 12V@10A, fsw=100kHz, resonant=~100kHz
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_LLC", "[adviser][from-converter][llc]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_LLC", "[adviser][from-converter][llc-topology]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"nominal", 400}, {"minimum", 370}, {"maximum", 410}};
     converterJson["bridgeType"] = "Half Bridge";
@@ -3633,7 +3633,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_LLC", "[adviser][from-converter][ll
 // LLC with separate CoreAdviser + CoilAdviser (like web frontend option)
 // This tests the flow where advisers are called independently, not jointly
 // ============================================================================
-TEST_CASE("Test_LLC_Separate_CoreAdviser_CoilAdviser", "[adviser][from-converter][llc][separate-advisers]") {
+TEST_CASE("Test_LLC_Separate_CoreAdviser_CoilAdviser", "[adviser][from-converter][llc-topology][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"nominal", 400}, {"minimum", 370}, {"maximum", 410}};
     converterJson["bridgeType"] = "Half Bridge";
@@ -3906,7 +3906,7 @@ std::vector<OpenMagnetics::Mas> run_separate_advisers(OpenMagnetics::Inputs& inp
 // ============================================================================
 // Flyback - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_Analytical", "[adviser][from-converter][flyback][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_Analytical", "[adviser][from-converter][flyback-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 120}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3936,7 +3936,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Flyback_Analytical", "[adviser][fro
 // ============================================================================
 // Buck - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_Buck_Analytical", "[adviser][from-converter][buck][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_Buck_Analytical", "[adviser][from-converter][buck-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3965,7 +3965,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Buck_Analytical", "[adviser][from-c
 // ============================================================================
 // Boost - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_Boost_Analytical", "[adviser][from-converter][boost][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_Boost_Analytical", "[adviser][from-converter][boost-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 24}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -3994,7 +3994,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_Boost_Analytical", "[adviser][from-
 // ============================================================================
 // SingleSwitchForward - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward_Analytical", "[adviser][from-converter][forward][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward_Analytical", "[adviser][from-converter][forward-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4024,7 +4024,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_SingleSwitchForward_Analytical", "[
 // ============================================================================
 // TwoSwitchForward - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward_Analytical", "[adviser][from-converter][forward][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward_Analytical", "[adviser][from-converter][forward-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4054,7 +4054,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_TwoSwitchForward_Analytical", "[adv
 // ============================================================================
 // ActiveClampForward - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward_Analytical", "[adviser][from-converter][forward][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward_Analytical", "[adviser][from-converter][forward-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4084,7 +4084,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_ActiveClampForward_Analytical", "[a
 // ============================================================================
 // PushPull - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_PushPull_Analytical", "[adviser][from-converter][push-pull][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_PushPull_Analytical", "[adviser][from-converter][push-pull-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 20}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4114,7 +4114,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_PushPull_Analytical", "[adviser][fr
 // ============================================================================
 // IsolatedBuck - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck_Analytical", "[adviser][from-converter][isolated-buck][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck_Analytical", "[adviser][from-converter][isolated-buck-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 36}, {"maximum", 72}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4143,7 +4143,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuck_Analytical", "[adviser
 // ============================================================================
 // IsolatedBuckBoost - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost_Analytical", "[adviser][from-converter][isolated-buck-boost][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost_Analytical", "[adviser][from-converter][isolated-buck-boost-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4172,7 +4172,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_IsolatedBuckBoost_Analytical", "[ad
 // ============================================================================
 // LLC Resonant Converter - Analytical Model
 // ============================================================================
-TEST_CASE("Test_MagneticAdviserFromConverter_LLC_Analytical", "[adviser][from-converter][llc][analytical]") {
+TEST_CASE("Test_MagneticAdviserFromConverter_LLC_Analytical", "[adviser][from-converter][llc-topology][analytical]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"nominal", 400}, {"minimum", 370}, {"maximum", 410}};
     converterJson["bridgeType"] = "Half Bridge";
@@ -4213,7 +4213,7 @@ TEST_CASE("Test_MagneticAdviserFromConverter_LLC_Analytical", "[adviser][from-co
 // ============================================================================
 // FLYBACK - Four Variants
 // ============================================================================
-TEST_CASE("Test_Flyback_Analytical_MagneticAdviser", "[adviser][topology-matrix][flyback][analytical][magnetic-adviser]") {
+TEST_CASE("Test_Flyback_Analytical_MagneticAdviser", "[adviser][topology-matrix][flyback-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 120}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4233,7 +4233,7 @@ TEST_CASE("Test_Flyback_Analytical_MagneticAdviser", "[adviser][topology-matrix]
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Flyback_Analytical_SeparateAdvisers", "[adviser][topology-matrix][flyback][analytical][separate-advisers]") {
+TEST_CASE("Test_Flyback_Analytical_SeparateAdvisers", "[adviser][topology-matrix][flyback-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 120}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4254,7 +4254,7 @@ TEST_CASE("Test_Flyback_Analytical_SeparateAdvisers", "[adviser][topology-matrix
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Flyback_Simulated_MagneticAdviser", "[adviser][topology-matrix][flyback][simulated][magnetic-adviser]") {
+TEST_CASE("Test_Flyback_Simulated_MagneticAdviser", "[adviser][topology-matrix][flyback-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 120}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4275,7 +4275,7 @@ TEST_CASE("Test_Flyback_Simulated_MagneticAdviser", "[adviser][topology-matrix][
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Flyback_Simulated_SeparateAdvisers", "[adviser][topology-matrix][flyback][simulated][separate-advisers]") {
+TEST_CASE("Test_Flyback_Simulated_SeparateAdvisers", "[adviser][topology-matrix][flyback-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 120}, {"maximum", 120}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4299,7 +4299,7 @@ TEST_CASE("Test_Flyback_Simulated_SeparateAdvisers", "[adviser][topology-matrix]
 // ============================================================================
 // BUCK - Four Variants
 // ============================================================================
-TEST_CASE("Test_Buck_Analytical_MagneticAdviser", "[adviser][topology-matrix][buck][analytical][magnetic-adviser]") {
+TEST_CASE("Test_Buck_Analytical_MagneticAdviser", "[adviser][topology-matrix][buck-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4318,7 +4318,7 @@ TEST_CASE("Test_Buck_Analytical_MagneticAdviser", "[adviser][topology-matrix][bu
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Buck_Analytical_SeparateAdvisers", "[adviser][topology-matrix][buck][analytical][separate-advisers]") {
+TEST_CASE("Test_Buck_Analytical_SeparateAdvisers", "[adviser][topology-matrix][buck-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4338,7 +4338,7 @@ TEST_CASE("Test_Buck_Analytical_SeparateAdvisers", "[adviser][topology-matrix][b
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Buck_Simulated_MagneticAdviser", "[adviser][topology-matrix][buck][simulated][magnetic-adviser]") {
+TEST_CASE("Test_Buck_Simulated_MagneticAdviser", "[adviser][topology-matrix][buck-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4358,7 +4358,7 @@ TEST_CASE("Test_Buck_Simulated_MagneticAdviser", "[adviser][topology-matrix][buc
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Buck_Simulated_SeparateAdvisers", "[adviser][topology-matrix][buck][simulated][separate-advisers]") {
+TEST_CASE("Test_Buck_Simulated_SeparateAdvisers", "[adviser][topology-matrix][buck-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4381,7 +4381,7 @@ TEST_CASE("Test_Buck_Simulated_SeparateAdvisers", "[adviser][topology-matrix][bu
 // ============================================================================
 // BOOST - Four Variants
 // ============================================================================
-TEST_CASE("Test_Boost_Analytical_MagneticAdviser", "[adviser][topology-matrix][boost][analytical][magnetic-adviser]") {
+TEST_CASE("Test_Boost_Analytical_MagneticAdviser", "[adviser][topology-matrix][boost-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4400,7 +4400,7 @@ TEST_CASE("Test_Boost_Analytical_MagneticAdviser", "[adviser][topology-matrix][b
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Boost_Analytical_SeparateAdvisers", "[adviser][topology-matrix][boost][analytical][separate-advisers]") {
+TEST_CASE("Test_Boost_Analytical_SeparateAdvisers", "[adviser][topology-matrix][boost-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4420,7 +4420,7 @@ TEST_CASE("Test_Boost_Analytical_SeparateAdvisers", "[adviser][topology-matrix][
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Boost_Simulated_MagneticAdviser", "[adviser][topology-matrix][boost][simulated][magnetic-adviser]") {
+TEST_CASE("Test_Boost_Simulated_MagneticAdviser", "[adviser][topology-matrix][boost-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4440,7 +4440,7 @@ TEST_CASE("Test_Boost_Simulated_MagneticAdviser", "[adviser][topology-matrix][bo
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_Boost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][boost][simulated][separate-advisers]") {
+TEST_CASE("Test_Boost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][boost-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 12}, {"maximum", 12}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4465,7 +4465,7 @@ TEST_CASE("Test_Boost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][b
 // Same as Test_MagneticAdviserFromConverter_SingleSwitchForward
 // Input: 100-190V, output: 5V@5A, dutyCycle=0.42, fsw=200kHz
 // ============================================================================
-TEST_CASE("Test_SingleSwitchForward_Analytical_MagneticAdviser", "[adviser][topology-matrix][forward][analytical][magnetic-adviser]") {
+TEST_CASE("Test_SingleSwitchForward_Analytical_MagneticAdviser", "[adviser][topology-matrix][forward-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4485,7 +4485,7 @@ TEST_CASE("Test_SingleSwitchForward_Analytical_MagneticAdviser", "[adviser][topo
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_SingleSwitchForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward][analytical][separate-advisers]") {
+TEST_CASE("Test_SingleSwitchForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4506,7 +4506,7 @@ TEST_CASE("Test_SingleSwitchForward_Analytical_SeparateAdvisers", "[adviser][top
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_SingleSwitchForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward][simulated][magnetic-adviser]") {
+TEST_CASE("Test_SingleSwitchForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4527,7 +4527,7 @@ TEST_CASE("Test_SingleSwitchForward_Simulated_MagneticAdviser", "[adviser][topol
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_SingleSwitchForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward][simulated][separate-advisers]") {
+TEST_CASE("Test_SingleSwitchForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4553,7 +4553,7 @@ TEST_CASE("Test_SingleSwitchForward_Simulated_SeparateAdvisers", "[adviser][topo
 // Same as Test_MagneticAdviserFromConverter_TwoSwitchForward
 // Input: 100-190V, output: 5V@5A, dutyCycle=0.42, fsw=200kHz
 // ============================================================================
-TEST_CASE("Test_TwoSwitchForward_Analytical_MagneticAdviser", "[adviser][topology-matrix][forward][analytical][magnetic-adviser]") {
+TEST_CASE("Test_TwoSwitchForward_Analytical_MagneticAdviser", "[adviser][topology-matrix][forward-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4573,7 +4573,7 @@ TEST_CASE("Test_TwoSwitchForward_Analytical_MagneticAdviser", "[adviser][topolog
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_TwoSwitchForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward][analytical][separate-advisers]") {
+TEST_CASE("Test_TwoSwitchForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4594,7 +4594,7 @@ TEST_CASE("Test_TwoSwitchForward_Analytical_SeparateAdvisers", "[adviser][topolo
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_TwoSwitchForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward][simulated][magnetic-adviser]") {
+TEST_CASE("Test_TwoSwitchForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4615,7 +4615,7 @@ TEST_CASE("Test_TwoSwitchForward_Simulated_MagneticAdviser", "[adviser][topology
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_TwoSwitchForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward][simulated][separate-advisers]") {
+TEST_CASE("Test_TwoSwitchForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4641,7 +4641,7 @@ TEST_CASE("Test_TwoSwitchForward_Simulated_SeparateAdvisers", "[adviser][topolog
 // Same as Test_MagneticAdviserFromConverter_ActiveClampForward
 // Input: 100-190V, output: 5V@5A, dutyCycle=0.42, fsw=200kHz
 // ============================================================================
-TEST_CASE("Test_ActiveClampForward_Analytical_MagneticAdviser", "[adviser][topology-matrix][forward][analytical][magnetic-adviser]") {
+TEST_CASE("Test_ActiveClampForward_Analytical_MagneticAdviser", "[adviser][topology-matrix][forward-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4661,7 +4661,7 @@ TEST_CASE("Test_ActiveClampForward_Analytical_MagneticAdviser", "[adviser][topol
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_ActiveClampForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward][analytical][separate-advisers]") {
+TEST_CASE("Test_ActiveClampForward_Analytical_SeparateAdvisers", "[adviser][topology-matrix][forward-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4682,7 +4682,7 @@ TEST_CASE("Test_ActiveClampForward_Analytical_SeparateAdvisers", "[adviser][topo
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_ActiveClampForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward][simulated][magnetic-adviser]") {
+TEST_CASE("Test_ActiveClampForward_Simulated_MagneticAdviser", "[adviser][topology-matrix][forward-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4703,7 +4703,7 @@ TEST_CASE("Test_ActiveClampForward_Simulated_MagneticAdviser", "[adviser][topolo
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_ActiveClampForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward][simulated][separate-advisers]") {
+TEST_CASE("Test_ActiveClampForward_Simulated_SeparateAdvisers", "[adviser][topology-matrix][forward-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 100}, {"maximum", 190}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4729,7 +4729,7 @@ TEST_CASE("Test_ActiveClampForward_Simulated_SeparateAdvisers", "[adviser][topol
 // Same as Test_MagneticAdviserFromConverter_PushPull
 // Input: 20-30V, output: 48V@0.7A, dutyCycle=0.45, fsw=100kHz
 // ============================================================================
-TEST_CASE("Test_PushPull_Analytical_MagneticAdviser", "[adviser][topology-matrix][push-pull][analytical][magnetic-adviser]") {
+TEST_CASE("Test_PushPull_Analytical_MagneticAdviser", "[adviser][topology-matrix][push-pull-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 20}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4752,7 +4752,7 @@ TEST_CASE("Test_PushPull_Analytical_MagneticAdviser", "[adviser][topology-matrix
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_PushPull_Analytical_SeparateAdvisers", "[adviser][topology-matrix][push-pull][analytical][separate-advisers]") {
+TEST_CASE("Test_PushPull_Analytical_SeparateAdvisers", "[adviser][topology-matrix][push-pull-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 20}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4776,7 +4776,7 @@ TEST_CASE("Test_PushPull_Analytical_SeparateAdvisers", "[adviser][topology-matri
     REQUIRE(coreResults.size() > 0);
 }
 
-TEST_CASE("Test_PushPull_Simulated_MagneticAdviser", "[adviser][topology-matrix][push-pull][simulated][magnetic-adviser]") {
+TEST_CASE("Test_PushPull_Simulated_MagneticAdviser", "[adviser][topology-matrix][push-pull-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 20}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4802,7 +4802,7 @@ TEST_CASE("Test_PushPull_Simulated_MagneticAdviser", "[adviser][topology-matrix]
     REQUIRE(coreResults.size() > 0);
 }
 
-TEST_CASE("Test_PushPull_Simulated_SeparateAdvisers", "[adviser][topology-matrix][push-pull][simulated][separate-advisers]") {
+TEST_CASE("Test_PushPull_Simulated_SeparateAdvisers", "[adviser][topology-matrix][push-pull-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 20}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4833,7 +4833,7 @@ TEST_CASE("Test_PushPull_Simulated_SeparateAdvisers", "[adviser][topology-matrix
 // currentRippleRatio: 0.4, efficiency: 0.9
 // outputs: 10V@0.02A + 10V@0.1A, switchingFrequency: 750000
 // ============================================================================
-TEST_CASE("Test_IsolatedBuck_Analytical_MagneticAdviser", "[adviser][topology-matrix][isolated-buck][analytical][magnetic-adviser]") {
+TEST_CASE("Test_IsolatedBuck_Analytical_MagneticAdviser", "[adviser][topology-matrix][isolated-buck-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 36}, {"maximum", 72}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4852,7 +4852,7 @@ TEST_CASE("Test_IsolatedBuck_Analytical_MagneticAdviser", "[adviser][topology-ma
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_IsolatedBuck_Analytical_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck][analytical][separate-advisers]") {
+TEST_CASE("Test_IsolatedBuck_Analytical_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 36}, {"maximum", 72}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4872,7 +4872,7 @@ TEST_CASE("Test_IsolatedBuck_Analytical_SeparateAdvisers", "[adviser][topology-m
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_IsolatedBuck_Simulated_MagneticAdviser", "[adviser][topology-matrix][isolated-buck][simulated][magnetic-adviser]") {
+TEST_CASE("Test_IsolatedBuck_Simulated_MagneticAdviser", "[adviser][topology-matrix][isolated-buck-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 36}, {"maximum", 72}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4892,7 +4892,7 @@ TEST_CASE("Test_IsolatedBuck_Simulated_MagneticAdviser", "[adviser][topology-mat
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_IsolatedBuck_Simulated_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck][simulated][separate-advisers]") {
+TEST_CASE("Test_IsolatedBuck_Simulated_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 36}, {"maximum", 72}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4919,7 +4919,7 @@ TEST_CASE("Test_IsolatedBuck_Simulated_SeparateAdvisers", "[adviser][topology-ma
 // currentRippleRatio: 0.4, efficiency: 0.9
 // outputs: 6V@0.01A + 5V@1A + 3.3V@0.3A, switchingFrequency: 400000
 // ============================================================================
-TEST_CASE("Test_IsolatedBuckBoost_Analytical_MagneticAdviser", "[adviser][topology-matrix][isolated-buck-boost][analytical][magnetic-adviser]") {
+TEST_CASE("Test_IsolatedBuckBoost_Analytical_MagneticAdviser", "[adviser][topology-matrix][isolated-buck-boost-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4938,7 +4938,7 @@ TEST_CASE("Test_IsolatedBuckBoost_Analytical_MagneticAdviser", "[adviser][topolo
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_IsolatedBuckBoost_Analytical_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-boost][analytical][separate-advisers]") {
+TEST_CASE("Test_IsolatedBuckBoost_Analytical_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-boost-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4961,7 +4961,7 @@ TEST_CASE("Test_IsolatedBuckBoost_Analytical_SeparateAdvisers", "[adviser][topol
     REQUIRE(coreResults.size() > 0);
 }
 
-TEST_CASE("Test_IsolatedBuckBoost_Simulated_MagneticAdviser", "[adviser][topology-matrix][isolated-buck-boost][simulated][magnetic-adviser]") {
+TEST_CASE("Test_IsolatedBuckBoost_Simulated_MagneticAdviser", "[adviser][topology-matrix][isolated-buck-boost-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -4986,7 +4986,7 @@ TEST_CASE("Test_IsolatedBuckBoost_Simulated_MagneticAdviser", "[adviser][topolog
     REQUIRE(coreResults.size() > 0);
 }
 
-TEST_CASE("Test_IsolatedBuckBoost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-boost][simulated][separate-advisers]") {
+TEST_CASE("Test_IsolatedBuckBoost_Simulated_SeparateAdvisers", "[adviser][topology-matrix][isolated-buck-boost-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"minimum", 10}, {"maximum", 30}};
     converterJson["diodeVoltageDrop"] = 0.7;
@@ -5012,7 +5012,7 @@ TEST_CASE("Test_IsolatedBuckBoost_Simulated_SeparateAdvisers", "[adviser][topolo
 // ============================================================================
 // LLC RESONANT - Four Variants
 // ============================================================================
-TEST_CASE("Test_LLC_Analytical_MagneticAdviser", "[adviser][topology-matrix][llc][analytical][magnetic-adviser]") {
+TEST_CASE("Test_LLC_Analytical_MagneticAdviser", "[adviser][topology-matrix][llc-topology][analytical][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"nominal", 400}, {"minimum", 400}, {"maximum", 400}};
     converterJson["bridgeType"] = "Half Bridge";
@@ -5034,7 +5034,7 @@ TEST_CASE("Test_LLC_Analytical_MagneticAdviser", "[adviser][topology-matrix][llc
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_LLC_Analytical_SeparateAdvisers", "[adviser][topology-matrix][llc][analytical][separate-advisers]") {
+TEST_CASE("Test_LLC_Analytical_SeparateAdvisers", "[adviser][topology-matrix][llc-topology][analytical][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"nominal", 400}, {"minimum", 400}, {"maximum", 400}};
     converterJson["bridgeType"] = "Half Bridge";
@@ -5057,7 +5057,7 @@ TEST_CASE("Test_LLC_Analytical_SeparateAdvisers", "[adviser][topology-matrix][ll
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_LLC_Simulated_MagneticAdviser", "[adviser][topology-matrix][llc][simulated][magnetic-adviser]") {
+TEST_CASE("Test_LLC_Simulated_MagneticAdviser", "[adviser][topology-matrix][llc-topology][simulated][magnetic-adviser]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"nominal", 400}, {"minimum", 400}, {"maximum", 400}};
     converterJson["bridgeType"] = "Half Bridge";
@@ -5080,7 +5080,7 @@ TEST_CASE("Test_LLC_Simulated_MagneticAdviser", "[adviser][topology-matrix][llc]
     REQUIRE(results.size() > 0);
 }
 
-TEST_CASE("Test_LLC_Simulated_SeparateAdvisers", "[adviser][topology-matrix][llc][simulated][separate-advisers]") {
+TEST_CASE("Test_LLC_Simulated_SeparateAdvisers", "[adviser][topology-matrix][llc-topology][simulated][separate-advisers]") {
     json converterJson;
     converterJson["inputVoltage"] = {{"nominal", 400}, {"minimum", 400}, {"maximum", 400}};
     converterJson["bridgeType"] = "Half Bridge";
@@ -5106,7 +5106,7 @@ TEST_CASE("Test_LLC_Simulated_SeparateAdvisers", "[adviser][topology-matrix][llc
 // ============================================================================
 // Flyback Converter Bug Test - Test for MAS that gets stuck in frontend
 // ============================================================================
-TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyback][bug]") {
+TEST_CASE("Test_MagneticAdviser_Flyback_Bug", "[adviser][magnetic-adviser][flyback-topology][bug]") {
     clear_databases();
     settings.reset();
     

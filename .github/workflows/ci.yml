@@ -106,6 +106,66 @@ jobs:
         path: ${{github.workspace}}/build/Testing/
         if-no-files-found: ignore
 
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: build-linux
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-13 lcov
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 100
+
+    - name: Install quicktype
+      run: npm install -g quicktype
+
+    - name: Configure CMake (coverage)
+      run: |
+        cmake -B ${{github.workspace}}/build \
+          -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DENABLE_COVERAGE=ON \
+          -DCMAKE_CXX_COMPILER=g++-13 \
+          -DINCLUDE_MKF_TESTS=ON \
+          -DEMBED_MAS_DATA=ON
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build -j4
+
+    - name: Run smoke tests
+      working-directory: ${{github.workspace}}/build
+      run: ./MKF_tests "[smoke-test]" --reporter console || true
+
+    - name: Collect coverage
+      run: |
+        lcov --capture \
+             --directory ${{github.workspace}}/build \
+             --output-file coverage.info \
+             --rc lcov_branch_coverage=1
+        lcov --remove coverage.info \
+             '*/tests/*' '*/build/_deps/*' '/usr/*' \
+             --output-file coverage_filtered.info \
+             --rc lcov_branch_coverage=1
+        genhtml coverage_filtered.info \
+                --output-directory coverage_html \
+                --branch-coverage \
+                --title "MKF Coverage"
+        lcov --summary coverage_filtered.info --rc lcov_branch_coverage=1
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage_html/
+
   documentation:
     name: Generate Documentation
     runs-on: ubuntu-latest

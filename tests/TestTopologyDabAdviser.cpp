@@ -80,7 +80,7 @@ static json make_adv_dab_json(double phiDeg    = ADV_PHI,
     op["ambientTemperature"] = 25.0;
     op["outputVoltages"]     = {vout};
     op["outputCurrents"]     = {iout};
-    op["phaseShift"]         = phiDeg;
+    op["innerPhaseShift3"]         = phiDeg;
     op["switchingFrequency"] = ADV_FS;
     j["operatingPoints"].push_back(op);
     return j;
@@ -99,7 +99,7 @@ static json make_ti_dab_json(double phiDeg = TI_PHI)
     op["ambientTemperature"] = 25.0;
     op["outputVoltages"]     = {TI_V2};
     op["outputCurrents"]     = {TI_IOUT};
-    op["phaseShift"]         = phiDeg;
+    op["innerPhaseShift3"]         = phiDeg;
     op["switchingFrequency"] = ADV_FS;
     j["operatingPoints"].push_back(op);
     return j;
@@ -519,7 +519,7 @@ TEST_CASE("Test_Dab_MagneticAdviser_MultipleOperatingPoints",
         op["ambientTemperature"] = 25.0;
         op["outputVoltages"]     = {ADV_V2};
         op["outputCurrents"]     = {10.0};    // 2 kW
-        op["phaseShift"]         = 25.0;
+        op["innerPhaseShift3"]         = 25.0;
         op["switchingFrequency"] = ADV_FS;
         j["operatingPoints"].push_back(op);
     }
@@ -529,7 +529,7 @@ TEST_CASE("Test_Dab_MagneticAdviser_MultipleOperatingPoints",
         op["ambientTemperature"] = 25.0;
         op["outputVoltages"]     = {ADV_V2};
         op["outputCurrents"]     = {5.0};     // 1 kW
-        op["phaseShift"]         = 12.0;
+        op["innerPhaseShift3"]         = 12.0;
         op["switchingFrequency"] = ADV_FS;
         j["operatingPoints"].push_back(op);
     }

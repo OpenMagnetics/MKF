@@ -2148,7 +2148,7 @@ TEST_CASE("Test_E32_Specific_Configuration_19turns_640um", "[adviser][core-advis
     settings.reset();
 }
 
-TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-adviser][standard-cores][flyback][debug]") {
+TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-adviser][standard-cores][flyback-topology][debug]") {
     // This test reproduces the exact flyback inputs from the web frontend
     // The issue: After Inductance filter, all 800 cores are eliminated (800 -> 0)
     // 
@@ -2354,7 +2354,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     settings.reset();
 }
 
-TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][standard-cores][llc][debug]") {
+TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][standard-cores][llc-topology][debug]") {
     // This test reproduces the LLC inputs from the web frontend
     // The issue: After Saturation filter, all 163 cores are eliminated (163 -> 0)
     // 

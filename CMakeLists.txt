@@ -143,6 +143,12 @@ if(ENABLE_ASAN)
     set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address")
 endif()
 
+option(ENABLE_COVERAGE "Build with gcov coverage instrumentation" OFF)
+if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
+
 FetchContent_Declare(spline
     GIT_REPOSITORY https://github.com/AlfVII/spline.git)
 FetchContent_MakeAvailable(spline)

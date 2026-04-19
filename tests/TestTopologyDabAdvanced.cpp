@@ -37,7 +37,7 @@ static json make_dab_json(double phaseShiftDeg,
     op["ambientTemperature"] = 25.0;
     op["outputVoltages"] = {500.0};
     op["outputCurrents"] = {20.0};   // 500V * 20A = 10kW
-    op["phaseShift"] = phaseShiftDeg;
+    op["innerPhaseShift3"] = phaseShiftDeg;
     op["switchingFrequency"] = 100000;
     op["modulationType"] = modType;
     if (D1_deg > 0.0)

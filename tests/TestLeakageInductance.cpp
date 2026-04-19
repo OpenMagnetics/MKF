@@ -433,7 +433,7 @@ TEST_CASE("Calculate leakage inductance for an E core with three windings", "[ph
     settings.reset();
 }
 
-TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous sections", "[physical-model][leakage-inductance][toroidal-core][smoke-test]") {
+TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous sections", "[physical-model][leakage-inductance][toroidal][smoke-test]") {
     settings.reset();
     clear_databases();
     settings.set_coil_try_rewind(false);
@@ -489,7 +489,7 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     settings.reset();
 }
 
-TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous sections with few turns", "[physical-model][leakage-inductance][toroidal-core][smoke-test]") {
+TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous sections with few turns", "[physical-model][leakage-inductance][toroidal][smoke-test]") {
     settings.reset();
     settings.set_coil_try_rewind(false);
     clear_databases();
