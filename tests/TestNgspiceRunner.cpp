@@ -1248,7 +1248,7 @@ TEST_CASE("Ngspice runner placeholder", "[ngspice-runner][smoke-test]") {
 // Common Mode Choke (CMC) ngspice simulation tests
 // ==============================================================================
 
-TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc][smoke-test]") {
+TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc-topology][smoke-test]") {
     // Create CMC topology
     CommonModeChoke cmc;
     
@@ -1291,7 +1291,7 @@ TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc][smo
     }
 }
 
-TEST_CASE("CommonModeChoke simulate and extract waveforms", "[ngspice-runner][cmc][smoke-test]") {
+TEST_CASE("CommonModeChoke simulate and extract waveforms", "[ngspice-runner][cmc-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1349,7 +1349,7 @@ TEST_CASE("CommonModeChoke simulate and extract waveforms", "[ngspice-runner][cm
     }
 }
 
-TEST_CASE("CommonModeChoke simulate and extract operating points", "[ngspice-runner][cmc][smoke-test]") {
+TEST_CASE("CommonModeChoke simulate and extract operating points", "[ngspice-runner][cmc-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -1911,7 +1911,7 @@ TEST_CASE("SingleSwitchForward topology waveforms", "[ngspice-runner][forward-to
 // PushPull ngspice Tests
 // ============================================================================
 
-TEST_CASE("PushPull ideal waveforms CCM", "[ngspice-runner][pushpull-topology][smoke-test]") {
+TEST_CASE("PushPull ideal waveforms CCM", "[ngspice-runner][push-pull-topology][smoke-test]") {
     // Create a Push-Pull converter specification
     OpenMagnetics::PushPull pushpull;
     
@@ -1960,7 +1960,7 @@ TEST_CASE("PushPull ideal waveforms CCM", "[ngspice-runner][pushpull-topology][s
     INFO("Got " << operatingPoints.size() << " operating points from ideal calculation");
 }
 
-TEST_CASE("PushPull ngspice simulation CCM", "[ngspice-runner][pushpull-topology][smoke-test]") {
+TEST_CASE("PushPull ngspice simulation CCM", "[ngspice-runner][push-pull-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2057,7 +2057,7 @@ TEST_CASE("PushPull ngspice simulation CCM", "[ngspice-runner][pushpull-topology
     }
 }
 
-TEST_CASE("PushPull topology waveforms", "[ngspice-runner][pushpull-topology][smoke-test]") {
+TEST_CASE("PushPull topology waveforms", "[ngspice-runner][push-pull-topology][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2116,7 +2116,7 @@ TEST_CASE("PushPull topology waveforms", "[ngspice-runner][pushpull-topology][sm
     }
 }
 
-TEST_CASE("PushPull with frontend default values", "[ngspice-runner][pushpull-topology][.][smoke-test]") {
+TEST_CASE("PushPull with frontend default values", "[ngspice-runner][push-pull-topology][.][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {
@@ -2210,7 +2210,7 @@ TEST_CASE("PushPull with frontend default values", "[ngspice-runner][pushpull-to
     }
 }
 
-TEST_CASE("PushPull analytical vs simulated comparison", "[ngspice-runner][pushpull-topology][.][smoke-test]") {
+TEST_CASE("PushPull analytical vs simulated comparison", "[ngspice-runner][push-pull-topology][.][smoke-test]") {
     NgspiceRunner runner;
     
     if (!runner.is_available()) {

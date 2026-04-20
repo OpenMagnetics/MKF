@@ -105,12 +105,12 @@ namespace TestWindingLossesRound {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.25;
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Stacked", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Stacked", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createOneTurnRoundStackedConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config, std::nullopt, std::nullopt);
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Tendency", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Tendency", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test]") {
         settings.reset();
         clear_databases();
         settings.set_magnetic_field_strength_model(MagneticFieldStrengthModels::ALBACH);
@@ -180,7 +180,7 @@ namespace TestWindingLossesRound {
         settings.reset();
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae
         // (Wojda 3/4 integer division, Payne FR vs FR-1, Lotfi current scaling).
         // Test to evaluate skin effect losses, as no fringing or proximity are present
@@ -192,7 +192,7 @@ namespace TestWindingLossesRound {
              {600000, 0.0048621}, {700000, 0.0051882}, {800000, 0.0054789}, {900000, 0.0057414}, {1000000, 0.0059805}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
         // SKIP: Model shows ~118% error at 3MHz. High frequency proximity effect needs improvement.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
@@ -205,7 +205,7 @@ namespace TestWindingLossesRound {
              {3000000, 0.34496}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
         // SKIP: Model shows ~101% error at 20kHz due to fringing effect overestimation.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
@@ -216,7 +216,7 @@ namespace TestWindingLossesRound {
              {600000, 649.64}, {700000, 699.9}, {800000, 746.3}, {900000, 789.66}, {1000000, 830.49}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
         // SKIP: Model shows ~56% error at higher frequencies with distant fringing.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Worst error in this one - use 40% tolerance
@@ -229,7 +229,7 @@ namespace TestWindingLossesRound {
             0.4);  // 40% max error for this test
     }
 
-    TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Eight_Turns_Round_Sinusoidal_Rectangular_Column", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae.
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
@@ -240,12 +240,12 @@ namespace TestWindingLossesRound {
              {600000, 0.1233738382}, {700000, 0.1248007533}, {800000, 0.1264334757}, {900000, 0.1282616081}, {1000000, 0.1302673627}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_With_DC", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_With_DC", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createOneTurnRoundSinusoidalWithDCConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_Interleaving.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
@@ -314,7 +314,7 @@ namespace TestWindingLossesRound {
         settings.reset();
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae.
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
@@ -325,7 +325,7 @@ namespace TestWindingLossesRound {
              {600000, 0.1411}, {700000, 0.14206}, {800000, 0.14314}, {900000, 0.14437}, {1000000, 0.14572}});
     }
 
-    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal_No_Interleaving_2", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test][!mayfail]") {
         // SKIP: Model shows ~41% error. Non-interleaved winding model needs calibration.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
@@ -338,7 +338,7 @@ namespace TestWindingLossesRound {
              {3000000, 0.69729}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty_With_DC", "[physical-model][winding-losses][round][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty_With_DC", "[physical-model][winding-losses][round][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createOneTurnRoundTriangularWithDCConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
@@ -350,37 +350,37 @@ namespace TestWindingLossesLitz {
     double maximumError = 0.25;
     bool plot = false;
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createOneTurnLitzSinusoidalConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Strands", "[physical-model][winding-losses][litz][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Strands", "[physical-model][winding-losses][litz][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createOneTurnLitzManyStrandsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Triangular_With_DC_Many_Strands", "[physical-model][winding-losses][litz][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Triangular_With_DC_Many_Strands", "[physical-model][winding-losses][litz][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createOneTurnLitzTriangularWithDCConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Few_Strands", "[physical-model][winding-losses][litz][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Few_Strands", "[physical-model][winding-losses][litz][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createOneTurnLitzFewStrandsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Many_Strands", "[physical-model][winding-losses][litz][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Many_Strands", "[physical-model][winding-losses][litz][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createOneTurnLitzManyManyStrandsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangle-winding-window][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangular-winding-window][smoke-test]") {
         auto config = WindingLossesTestData::createTenTurnsLitzSinusoidalConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Thirty_Turns_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangle-winding-window]") {
+    TEST_CASE("Test_Winding_Losses_Thirty_Turns_Litz_Sinusoidal", "[physical-model][winding-losses][litz][rectangular-winding-window]") {
         auto config = WindingLossesTestData::createThirtyTurnsLitzSinusoidalConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
@@ -392,7 +392,7 @@ namespace TestWindingLossesRectangular {
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
     double maximumError = 0.2;
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing", "[physical-model][winding-losses][rectangular][rectangle-winding-window][smoke-test][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing", "[physical-model][winding-losses][rectangular][rectangular-winding-window][smoke-test][!mayfail]") {
         // [!mayfail] golden values predate skin-effect bug fixes in commit 90dde3ae.
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing.json", 22,
@@ -404,28 +404,28 @@ namespace TestWindingLossesRectangular {
             WindingLossesTestHelpers::maximumError, false);  // includeFringing = false
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangle-winding-window][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangular-winding-window][!mayfail]") {
         // SKIP: Model shows ~229% error. Rectangular wire losses severely underestimated.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngappedConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window][!mayfail]") {
         // SKIP: Model shows ~220% error. Rectangular wire losses severely underestimated.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createFiveTurnsRectangularUngapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangle-winding-window][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps", "[physical-model][winding-losses][rectangular][rectangular-winding-window][!mayfail]") {
         // SKIP: Model shows ~220% error. Rectangular wire with gap losses underestimated.
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createFiveTurnsRectangularGapped7AmpsConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangle-winding-window]") {
+    TEST_CASE("Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal", "[physical-model][winding-losses][rectangular][rectangular-winding-window]") {
         auto config = WindingLossesTestData::createSevenTurnsRectangularUngappedPQ2717Config();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
@@ -435,19 +435,19 @@ namespace TestWindingLossesRectangular {
 namespace TestWindingLossesFoil {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.3;
-    TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangular-winding-window][!mayfail]") {
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createOneTurnFoilSinusoidalConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangular-winding-window][!mayfail]") {
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createTenTurnsFoilSinusoidalConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);
     }
 
-    TEST_CASE("Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangle-winding-window][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangular-winding-window][!mayfail]") {
         // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
         auto config = WindingLossesTestData::createTenShortTurnsFoilConfig();
         WindingLossesTestHelpers::runWindingLossesTest(config);

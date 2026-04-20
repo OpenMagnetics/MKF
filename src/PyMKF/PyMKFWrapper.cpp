@@ -33,6 +33,28 @@ std::string plot_turns(json magneticJson, std::string outFile) {
     }
 }
 
+std::string plot_sections_and_turns(json magneticJson, std::string outFile) {
+    try {
+        OpenMagnetics::Magnetic magnetic(magneticJson);
+        OpenMagnetics::Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_sections(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        return outFile;
+    }
+    catch(const std::runtime_error& re) {
+        return re.what();
+    }
+    catch(const std::exception& ex) {
+        return ex.what();
+    }
+    catch(...) {
+        return "Unknown failure occurred. Possible memory corruption";
+    }
+}
+
 std::string plot_field(json magneticJson, json operatingPointJson, std::string outFile) {
     try {
         OpenMagnetics::Magnetic magnetic(magneticJson);
@@ -189,6 +211,7 @@ void reset_settings() {
 PYBIND11_MODULE(PyMKF, m) {
     m.doc() = "OpenMagnetics Python bindings (legacy PyMKF compatibility)";
     m.def("plot_turns", &plot_turns, "Generate SVG plot of individual turns");
+    m.def("plot_sections_and_turns", &plot_sections_and_turns, "Generate SVG plot of sections and turns");
     m.def("plot_field", &plot_field, "Generate SVG plot of magnetic field");
     m.def("plot_wire", &plot_wire, "Generate SVG plot of wire cross-section");
     m.def("plot_current_density", &plot_current_density, "Generate SVG plot of current density distribution");

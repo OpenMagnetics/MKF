@@ -2632,6 +2632,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     MagneticCoreFilterDimensions filterDimensions;
     MagneticCoreFilterMagneticInductance filterMagneticInductance;
     MagneticCoreFilterMinimumImpedance filterMinimumImpedance;
+    MagneticCoreFilterSaturation filterSaturation;
 
     filterCost.set_scorings(&_scorings);
     filterCost.set_filter_configuration(&_filterConfiguration);
@@ -2643,12 +2644,22 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     filterMagneticInductance.set_filter_configuration(&_filterConfiguration);
     filterMinimumImpedance.set_scorings(&_scorings);
     filterMinimumImpedance.set_filter_configuration(&_filterConfiguration);
+    filterSaturation.set_scorings(&_scorings);
+    filterSaturation.set_filter_configuration(&_filterConfiguration);
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
 
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+
+    // Saturation gate: the CMC path already drops the DM line-current DC bias
+    // via Inputs::can_be_common_mode_choke, so this filter sees only the CM
+    // ripple B. Underlying MagneticFilterSaturation compares B_peak > Bsat
+    // strictly (no 0.7 headroom), so only genuinely-saturated cores drop
+    // out. Without this the DIMENSIONS filter can pick a too-small toroid
+    // that meets the impedance spec but saturates under normal CM noise.
+    magneticsWithScoring = filterSaturation.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
 
     magneticsWithScoring = filterCost.filter_magnetics(&magneticsWithScoring, inputs, weights[CoreAdviserFilters::COST], true);
 

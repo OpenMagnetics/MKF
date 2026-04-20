@@ -1,4 +1,5 @@
 #include "support/Painter.h"
+#include "support/CciCoordinatesData.h"
 #include "json.hpp"
 #include "TestingUtils.h"
 #include "physical_models/WindingLosses.h"
@@ -5619,6 +5620,108 @@ namespace {
             
             std::cout << "Toroidal electric field (multiple turns) SVG size: " << fileSize << " bytes" << std::endl;
         }
+        settings.reset();
+    }
+
+    // -------------------------------------------------------------------------
+    // CCI embedded coordinates tests
+    // -------------------------------------------------------------------------
+
+    TEST_CASE("Test_CCI_Embedded_Data_Small_N_Returns_Data", "[support][painter][cci][smoke-test]") {
+        // Verify that a well-known small N returns the correct number of coordinate pairs.
+        for (size_t n : {1u, 7u, 17u, 100u, 1000u}) {
+            auto* coords = OpenMagnetics::get_cci_coordinates(n);
+            REQUIRE(coords != nullptr);
+            REQUIRE(coords->size() == n);
+        }
+    }
+
+    TEST_CASE("Test_CCI_Embedded_Data_Large_N_Returns_Nullptr", "[support][painter][cci][smoke-test]") {
+        // N > 1000 is not embedded; the painter falls back to the spiral algorithm.
+        auto* coords = OpenMagnetics::get_cci_coordinates(1001);
+        REQUIRE(coords == nullptr);
+
+        auto* coords2 = OpenMagnetics::get_cci_coordinates(5000);
+        REQUIRE(coords2 == nullptr);
+    }
+
+    TEST_CASE("Test_CCI_Embedded_Data_Coordinates_Normalized", "[support][painter][cci][smoke-test]") {
+        // Coordinates are normalized to [-1, 1]; the centroid should be near 0.
+        auto* coords = OpenMagnetics::get_cci_coordinates(7);
+        REQUIRE(coords != nullptr);
+
+        double sumX = 0, sumY = 0;
+        for (auto& [x, y] : *coords) {
+            REQUIRE(std::abs(x) <= 1.01f);
+            REQUIRE(std::abs(y) <= 1.01f);
+            sumX += x;
+            sumY += y;
+        }
+        // Centroid should be close to origin for a well-packed arrangement.
+        REQUIRE(std::abs(sumX / coords->size()) < 0.05);
+        REQUIRE(std::abs(sumY / coords->size()) < 0.05);
+    }
+
+    TEST_CASE("Test_Litz_Wire_Painter_Uses_Embedded_CCI_No_Path_Needed", "[support][painter][cci][wire-painter][smoke-test]") {
+        // Painting a litz wire must succeed without setting a CCI coordinates path,
+        // proving the embedded data is used instead of file I/O.
+        clear_databases();
+        settings.set_painter_simple_litz(false);
+        settings.set_painter_advanced_litz(false);
+        // Deliberately do NOT call set_painter_cci_coordinates_path().
+
+        OpenMagnetics::Wire wire(json::parse(R"({
+            "standard": "IEC 60317",
+            "type": "litz",
+            "strand": "Round 0.1 - Grade 1",
+            "numberConductors": 17,
+            "coating": {
+                "breakdownVoltage": null, "grade": null, "material": null,
+                "numberLayers": 1, "temperatureRating": null, "thickness": null,
+                "thicknessLayers": null, "type": "served"
+            }
+        })"));
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Litz_Wire_Embedded_CCI.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_wire(wire);
+        painter.export_svg();
+
+        REQUIRE(std::filesystem::exists(outFile));
+        REQUIRE(std::filesystem::file_size(outFile) > 500);
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Litz_Wire_Painter_Large_N_Fallback_Spiral", "[support][painter][cci][wire-painter][smoke-test]") {
+        // N=1500 has no embedded data; painter must fall back to the spiral algorithm
+        // and still produce a valid SVG without throwing.
+        clear_databases();
+        settings.set_painter_simple_litz(false);
+        settings.set_painter_advanced_litz(false);
+
+        OpenMagnetics::Wire wire(json::parse(R"({
+            "standard": "IEC 60317",
+            "type": "litz",
+            "strand": "Round 0.1 - Grade 1",
+            "numberConductors": 1500,
+            "coating": {
+                "breakdownVoltage": null, "grade": null, "material": null,
+                "numberLayers": 1, "temperatureRating": null, "thickness": null,
+                "thicknessLayers": null, "type": "served"
+            }
+        })"));
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Litz_Wire_Spiral_Fallback.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_wire(wire);
+        painter.export_svg();
+
+        REQUIRE(std::filesystem::exists(outFile));
+        REQUIRE(std::filesystem::file_size(outFile) > 500);
         settings.reset();
     }
 

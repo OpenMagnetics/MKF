@@ -112,6 +112,51 @@ run_all_tests() {
     ./MKF_tests --reporter console
 }
 
+# Function to collect gcov coverage and generate HTML report
+run_coverage() {
+    local COVERAGE_BUILD="$PROJECT_ROOT/build_coverage"
+    local FILTER="${1:-[smoke-test]}"
+
+    if ! command_exists lcov; then
+        echo -e "${RED}lcov not found. Install with: sudo apt install lcov${NC}"
+        exit 1
+    fi
+
+    echo -e "\n${YELLOW}Configuring coverage build...${NC}"
+    cmake -B "$COVERAGE_BUILD" -S "$PROJECT_ROOT" \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DENABLE_COVERAGE=ON \
+        -DEMBED_MAS_DATA=ON \
+        -DCMAKE_CXX_COMPILER="${CXX:-g++}"
+
+    echo -e "\n${YELLOW}Building with coverage instrumentation...${NC}"
+    cmake --build "$COVERAGE_BUILD" -j"$PARALLEL_JOBS"
+
+    echo -e "\n${YELLOW}Running tests: $FILTER${NC}"
+    "$COVERAGE_BUILD/MKF_tests" "$FILTER" || true
+
+    echo -e "\n${YELLOW}Collecting coverage data...${NC}"
+    lcov --capture --directory "$COVERAGE_BUILD" \
+         --output-file "$PROJECT_ROOT/coverage.info" \
+         --rc lcov_branch_coverage=1
+
+    lcov --remove "$PROJECT_ROOT/coverage.info" \
+         '*/tests/*' '*/build_coverage/_deps/*' '/usr/*' \
+         --output-file "$PROJECT_ROOT/coverage_filtered.info" \
+         --rc lcov_branch_coverage=1
+
+    echo -e "\n${YELLOW}Generating HTML report...${NC}"
+    genhtml "$PROJECT_ROOT/coverage_filtered.info" \
+            --output-directory "$PROJECT_ROOT/coverage_html" \
+            --branch-coverage \
+            --title "MKF Coverage"
+
+    echo -e "\n${GREEN}=== Coverage Summary ===${NC}"
+    lcov --summary "$PROJECT_ROOT/coverage_filtered.info" --rc lcov_branch_coverage=1
+    echo -e "\n${GREEN}HTML report: $PROJECT_ROOT/coverage_html/index.html${NC}"
+}
+
 # Function to list available tests
 list_tests() {
     cd "$BUILD_DIR"
@@ -138,6 +183,7 @@ usage() {
     echo "  test-filter <filter>  Run tests matching filter (e.g., '[adviser]')"
     echo "  list        List all available tests"
     echo "  full        Full setup: install deps, build, and run smoke tests"
+    echo "  coverage [filter]  Build with gcov, run tests, generate lcov HTML report"
     echo "  rebuild     Clean and rebuild"
     echo ""
     echo "Environment variables:"
@@ -186,6 +232,9 @@ case "${1:-test}" in
         build_project
         run_tests "[smoke-test]"
         echo -e "\n${GREEN}=== Setup complete! ===${NC}"
+        ;;
+    coverage)
+        run_coverage "${2:-[smoke-test]}"
         ;;
     rebuild)
         echo -e "${YELLOW}Cleaning build directory...${NC}"

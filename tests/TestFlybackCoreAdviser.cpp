@@ -7,7 +7,7 @@
 using json = nlohmann::json;
 using namespace OpenMagnetics;
 
-TEST_CASE("Flyback Core Adviser - Default Values", "[core-adviser][flyback][default-values]") {
+TEST_CASE("Flyback Core Adviser - Default Values", "[core-adviser][flyback-topology][default-values]") {
     // Default flyback values from WebFrontend/WebSharedComponents/assets/js/defaults.js
     json flybackJson;
     flybackJson["inputVoltage"]["minimum"] = 120.0;
@@ -99,7 +99,7 @@ TEST_CASE("Flyback Core Adviser - Default Values", "[core-adviser][flyback][defa
     }
 }
 
-TEST_CASE("Flyback Inputs - Frequency Validation", "[flyback][frequency][validation]") {
+TEST_CASE("Flyback Inputs - Frequency Validation", "[flyback-topology][frequency][validation]") {
     json flybackJson;
     flybackJson["inputVoltage"]["minimum"] = 120.0;
     flybackJson["inputVoltage"]["maximum"] = 375.0;

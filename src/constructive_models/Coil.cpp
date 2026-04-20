@@ -4928,6 +4928,10 @@ bool Coil::wind_toroidal_additional_turns() {
     auto sections = get_sections_description().value();
     auto layers = get_layers_description().value();
     auto turns = get_turns_description().value();
+    for (auto& t : turns) {
+        t.set_additional_coordinates(std::nullopt);
+    }
+    set_turns_description(turns);
     double currentBaseRadialHeight = -bobbinColumnWidth * 2;
     std::vector<std::pair<Layer, double>> maximumAdditionalRadialHeightPerInsulationLayerByIndex;
     auto windingOrientation = get_winding_orientation();

@@ -104,6 +104,7 @@ public:
 
     double get_computed_inductance() const { return computedInductance; }
     double get_dominant_frequency()  const { return dominantFrequency; }
+    void   set_dominant_frequency(double v) { dominantFrequency = v; }
     double get_dominant_impedance()  const { return dominantImpedance; }
     int    get_number_of_windings()  const { return numberOfWindings; }
     double get_operating_current()   const { return operatingCurrent; }
@@ -136,7 +137,11 @@ public:
                                          double dvdt_V_ns,
                                          double lineImpedance_Ohms,
                                          double safetyMargin_dB,
-                                         double testFrequency_Hz = 150e3);
+                                         double testFrequency_Hz = 150e3,
+                                         double limit_dBuV = 66.0);
+    // Look up the quasi-peak conducted-emissions limit (dBµV @ 150 kHz) for a
+    // named regulatory standard. Returns 66.0 (CISPR 32 Class B) if unknown.
+    static double limitForRegulatoryStandard(const std::string& name);
     static std::vector<std::string> windingNames(int numWindings);
 
     // ── Ngspice simulation methods ────────────────────────────────
@@ -145,7 +150,9 @@ public:
         double inductance,
         double parasiticCap_pF,
         double dvdt_V_ns,
-        double lineFrequency_Hz = 50.0);
+        double lineFrequency_Hz = 50.0,
+        int numberOfPeriods = 2,
+        int numberOfSteadyStatePeriods = 10);
     std::vector<CmcSimulationWaveforms> simulate_and_extract_waveforms(
         double inductance,
         const std::vector<double>& frequencies);
@@ -153,7 +160,9 @@ public:
     std::vector<OperatingPoint> simulate_realistic_cmc(
         double inductance,
         double parasiticCap_pF,
-        double dvdt_V_ns);
+        double dvdt_V_ns,
+        int numberOfPeriods = 2,
+        int numberOfSteadyStatePeriods = 10);
 };
 
 // Backward-compatible alias
@@ -164,6 +173,11 @@ using Cmc = CommonModeChoke;
 class AdvancedCommonModeChoke : public CommonModeChoke {
 private:
     double desiredInductance = 0.0;
+    // Frequency at which the desired inductance is most relevant — drives the
+    // operating-point excitation frequency. 150 kHz matches the CISPR 32 / FCC
+    // Part 15 lower band edge, i.e. where CMC impedance typically needs to be
+    // characterised.
+    double designFrequency = 150e3;
 
 public:
     AdvancedCommonModeChoke() = default;
@@ -175,6 +189,10 @@ public:
     const double& get_desired_inductance() const  { return desiredInductance; }
     double& get_mutable_desired_inductance()       { return desiredInductance; }
     void set_desired_inductance(const double& v)   { desiredInductance = v; }
+
+    const double& get_design_frequency() const     { return designFrequency; }
+    double& get_mutable_design_frequency()         { return designFrequency; }
+    void set_design_frequency(const double& v)     { designFrequency = v; }
 };
 
 // Backward-compatible alias
@@ -187,11 +205,13 @@ inline void from_json(const json& j, AdvancedCommonModeChoke& x) {
     CommonModeChoke base(j);
     static_cast<CommonModeChoke&>(x) = base;
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
+    x.set_design_frequency(j.value("designFrequency", 150e3));
 }
 
 inline void to_json(json& j, const AdvancedCommonModeChoke& x) {
     j = json::object();
     j["desiredInductance"] = x.get_desired_inductance();
+    j["designFrequency"]   = x.get_design_frequency();
 }
 
 } // namespace OpenMagnetics

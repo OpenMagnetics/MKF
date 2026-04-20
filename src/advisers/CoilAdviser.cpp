@@ -131,6 +131,36 @@ namespace OpenMagnetics {
         auto repetitions = Coil::get_repetitions(inputs, coreType);
         mas.set_inputs(inputs);
 
+        // ── CMC winding policy ──────────────────────────────────────────
+        // Common-mode chokes (sub_application == COMMON_MODE_NOISE_FILTERING)
+        // follow a different topology from generic coupled inductors:
+        //   · one contiguous section per winding (each phase lives on its
+        //     own angular sector of the toroid), NOT interleaved / bifilar;
+        //   · sections spread across the toroid arc for equal proportions;
+        //   · turns centered within each section (compact bundle mid-sector);
+        //   · matching wire and parallels across every winding.
+        // The existing Coil::get_repetitions returns {2, 1} for CMCs today
+        // for legacy balun-style designs; override here so the EMI-filter
+        // layout wins. The wire + parallel mirror happens per-combination
+        // inside the winding loop below — see "CMC: mirror winding[0]" note.
+        //
+        // TODO: creepage-driven inter-section margin — needs either a public
+        // Coil::set_section_margins setter or a CMC-aware branch in
+        // InsulationCoordinator; deferred to avoid modifying Coil.cpp here.
+        const bool isCmc = inputs.get_design_requirements().get_sub_application().has_value()
+                        && inputs.get_design_requirements().get_sub_application().value()
+                           == SubApplication::COMMON_MODE_NOISE_FILTERING;
+        if (isCmc && coreType == CoreType::TOROIDAL) {
+            repetitions = {1};
+            mas.get_mutable_magnetic().get_mutable_coil()
+                .set_winding_orientation(WindingOrientation::CONTIGUOUS);
+            mas.get_mutable_magnetic().get_mutable_coil()
+                .set_section_alignment(CoilAlignment::SPREAD);
+            mas.get_mutable_magnetic().get_mutable_coil()
+                .set_turns_alignment(CoilAlignment::CENTERED);
+            logEntry("CMC detected: forcing {1} repetitions, sections CONTIGUOUS + SPREAD, turns CENTERED", "CoilAdviser");
+        }
+
         
         size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
         logEntry("Trying " + std::to_string(repetitions.size()) + " repetitions and " + std::to_string(patterns.size()) + " patterns", "CoilAdviser");
@@ -399,6 +429,9 @@ namespace OpenMagnetics {
 
     std::vector<Mas> CoilAdviser::get_advised_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference){
         bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
+        const bool isCmc = mas.get_mutable_inputs().get_design_requirements().get_sub_application().has_value()
+                        && mas.get_mutable_inputs().get_design_requirements().get_sub_application().value()
+                           == SubApplication::COMMON_MODE_NOISE_FILTERING;
         size_t maximumNumberWires = settings.get_coil_adviser_maximum_number_wires();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         auto core = mas.get_magnetic().get_core();
@@ -627,6 +660,20 @@ namespace OpenMagnetics {
                 }
             }
 
+            // CMC: mirror winding[0] wire + parallels to every other winding.
+            // A CMC is a coupled inductor where every phase carries identical
+            // line current, so the wire spec must match across windings.
+            // The wire adviser runs per-winding, and with identical operating
+            // points usually converges on the same pick anyway — but nothing
+            // in the WireAdviser enforces this, so pin it here.
+            if (isCmc && !windings.empty()) {
+                const auto& w0 = windings[0];
+                for (size_t wIdx = 1; wIdx < windings.size(); ++wIdx) {
+                    windings[wIdx].set_wire(w0.get_wire());
+                    windings[wIdx].set_number_parallels(w0.get_number_parallels());
+                }
+            }
+
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(windings);
 
             // We have new wires combination, we need to restart insulation each time and let it compute it again
@@ -637,21 +684,37 @@ namespace OpenMagnetics {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
                 mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
 
-
-                if (!mas.get_mutable_magnetic().get_manufacturer_info()) {
-                    MagneticManufacturerInfo manufacturerInfo;
-                    mas.get_mutable_magnetic().set_manufacturer_info(manufacturerInfo);
+                // For toroids the angular fill is the binding constraint: all section
+                // angular extents (dimensions[1], in degrees) must sum to ≤ 360°.
+                if (core.get_functional_description().get_type() == CoreType::TOROIDAL) {
+                    double totalAngle = 0.0;
+                    auto sectionsDesc = mas.get_magnetic().get_coil().get_sections_description();
+                    if (sectionsDesc) {
+                        for (const auto& sec : sectionsDesc.value()) {
+                            totalAngle += sec.get_dimensions()[1];
+                        }
+                    }
+                    if (totalAngle > 360.0) {
+                        wound = false;
+                    }
                 }
-                auto info = mas.get_mutable_magnetic().get_manufacturer_info().value();
-                auto auxReference = reference;
-                auxReference += std::to_string(wiresIndex);
-                info.set_reference(auxReference);
-                mas.get_mutable_magnetic().set_manufacturer_info(info);
 
-                masesWithCoil.push_back(mas);
-                wiresIndex++;
-                if (masesWithCoil.size() == maximumNumberResults) {
-                    break;
+                if (wound) {
+                    if (!mas.get_mutable_magnetic().get_manufacturer_info()) {
+                        MagneticManufacturerInfo manufacturerInfo;
+                        mas.get_mutable_magnetic().set_manufacturer_info(manufacturerInfo);
+                    }
+                    auto info = mas.get_mutable_magnetic().get_manufacturer_info().value();
+                    auto auxReference = reference;
+                    auxReference += std::to_string(wiresIndex);
+                    info.set_reference(auxReference);
+                    mas.get_mutable_magnetic().set_manufacturer_info(info);
+
+                    masesWithCoil.push_back(mas);
+                    wiresIndex++;
+                    if (masesWithCoil.size() == maximumNumberResults) {
+                        break;
+                    }
                 }
             }
             timeout--;

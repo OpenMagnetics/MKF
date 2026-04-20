@@ -1459,6 +1459,9 @@ Application Core::guess_material_application() {
 }
 
 Application Core::guess_material_application(CoreMaterial coreMaterial) {
+    if (coreMaterial.get_application()) {
+        return coreMaterial.get_application().value();
+    }
     for (auto method : get_available_core_losses_methods(coreMaterial)) {
         if (method == VolumetricCoreLossesMethodType::LOSS_FACTOR) {
             if (coreMaterial.get_permeability().get_complex()) {
@@ -1476,6 +1479,32 @@ bool Core::check_material_application(Application application) {
 }
 
 bool Core::check_material_application(CoreMaterial coreMaterial, Application application) {
+    // Narrow fix for Interference Suppression queries: modern power ferrites
+    // (N87, 3C94, …) ship complex-permeability curves to help EMI analysis,
+    // and the complex-permeability heuristic below misclassifies them as
+    // Interference Suppression, letting N87 win the CMC core adviser. With
+    // MAS application tags populated (411/411), trust the manufacturer's
+    // classification here. Signal-Processing-tagged materials (ACME A-series,
+    // TDK K10, Fair-Rite 61, …) are genuinely dual-use for broadband EMI
+    // suppression and can be CMC candidates — BUT the impedance filter needs
+    // a complex-permeability table, so only admit Signal Processing materials
+    // that actually ship one. Materials with just an initial-permeability
+    // curve (e.g. Ferroxcube 3E6) would throw MATERIAL_DATA_MISSING when the
+    // impedance model tries to read Z(f). Power-tagged materials (N87, 3C94,
+    // 67, 77) are correctly kept out. Other primary-query applications
+    // (Power / Signal Processing) still use the heuristic so older catalogs
+    // and tests behave the same as before.
+    if (application == Application::INTERFERENCE_SUPPRESSION
+        && coreMaterial.get_application()) {
+        auto tag = coreMaterial.get_application().value();
+        if (tag == Application::INTERFERENCE_SUPPRESSION) return true;
+        if (tag == Application::SIGNAL_PROCESSING
+            && coreMaterial.get_permeability().get_complex()) {
+            return true;
+        }
+        return false;
+    }
+
     if (coreMaterial.get_permeability().get_complex()) {
         if (application == Application::INTERFERENCE_SUPPRESSION) {
             return true;

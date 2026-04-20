@@ -161,7 +161,26 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     clear_scoring();
     load_filter_flow(filterFlow, inputs);
     std::vector<Mas> masData;
-    
+
+    // Adopt the application tag from the inputs when the caller didn't set one
+    // explicitly. CMC / DMC wizards tag their DesignRequirements with
+    // INTERFERENCE_SUPPRESSION so the downstream filters (toroidal-only,
+    // CM-appropriate ferrites, bifilar winding) can kick in — without this
+    // auto-adoption the adviser defaults to POWER and treats the CMC like a
+    // generic transformer. INTERFERENCE_SUPPRESSION also implies
+    // AVAILABLE_CORES mode: toroidal EMI cores are catalog parts you pick off
+    // the shelf, not blanks you grind a gap into.
+    {
+        auto reqAppOpt = inputs.get_design_requirements().get_application();
+        if (reqAppOpt.has_value() && _application == Application::POWER) {
+            set_application(reqAppOpt.value());
+            if (reqAppOpt.value() == Application::INTERFERENCE_SUPPRESSION &&
+                _coreAdviserMode == CoreAdviser::CoreAdviserModes::STANDARD_CORES) {
+                set_core_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+            }
+        }
+    }
+
     // Store original toroid setting for potential retry
     bool toroidsOriginallyEnabled = settings.get_use_toroidal_cores();
 
