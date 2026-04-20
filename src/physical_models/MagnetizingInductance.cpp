@@ -141,13 +141,22 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     if (numberWindings == 1 && excitation.get_current()) {
                         Inputs::set_current_as_magnetizing_current(operatingPoint);
                     }
-                    else if (Inputs::is_multiport_inductor(*operatingPoint, coil.get_isolation_sides())) {
-                        auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(*operatingPoint);
+                    // CMC check must come BEFORE is_multiport_inductor. CMCs
+                    // have every winding on the same isolation side (L, N, PE
+                    // all primary-side mains), which makes is_multiport_inductor
+                    // return true — wrongly routing to the multiport path that
+                    // uses the primary winding's raw current (DM + CM) as
+                    // magnetizing current. That pumps the DM line current into
+                    // the core flux calculation and overstates B by the ratio
+                    // I_line / I_cm. The correct CMC path averages the winding
+                    // currents and drops the DM DC offset.
+                    else if (Inputs::can_be_common_mode_choke(*operatingPoint) && core.get_type() == CoreType::TOROIDAL) {
+                        auto magnetizingCurrent = Inputs::get_common_mode_choke_magnetizing_current(*operatingPoint);
                         excitation.set_magnetizing_current(magnetizingCurrent);
                         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
                     }
-                    else if (Inputs::can_be_common_mode_choke(*operatingPoint) && core.get_type() == CoreType::TOROIDAL) {
-                        auto magnetizingCurrent = Inputs::get_common_mode_choke_magnetizing_current(*operatingPoint);
+                    else if (Inputs::is_multiport_inductor(*operatingPoint, coil.get_isolation_sides())) {
+                        auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(*operatingPoint);
                         excitation.set_magnetizing_current(magnetizingCurrent);
                         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
                     }

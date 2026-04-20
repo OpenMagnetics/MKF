@@ -420,7 +420,7 @@ include_directories("${MAS_DIRECTORY}")
 # ============================================================================
 # CCI strand coordinates — embed up to N=1000 into the binary at build time
 # ============================================================================
-set(CCI_COORDS_DIR "${CMAKE_SOURCE_DIR}/../cci_coords"
+set(CCI_COORDS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cci_coords"
     CACHE PATH "Path to cci_coords repository")
 set(CCI_GENERATED_CPP "${CMAKE_BINARY_DIR}/generated/CciCoordinatesData.cpp")
 
@@ -428,10 +428,10 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_custom_command(
     OUTPUT "${CCI_GENERATED_CPP}"
     COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_SOURCE_DIR}/scripts/generate_cci_data.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_cci_data.py"
             "${CCI_COORDS_DIR}"
             "${CCI_GENERATED_CPP}"
-    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/generate_cci_data.py"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_cci_data.py"
     COMMENT "Generating embedded CCI coordinates"
     VERBATIM)
 add_custom_target(cci_data_gen DEPENDS "${CCI_GENERATED_CPP}")

@@ -421,7 +421,7 @@ bool Dab::run_checks(bool assertErrors) {
             ok = false;
         }
         // Phase shift bound: |phi| <= 90 deg (SPS theoretical maximum).
-        double phi_deg = op.get_phase_shift().value_or(0.0);
+        double phi_deg = op.get_inner_phase_shift3().value_or(0.0);
         if (std::abs(phi_deg) > 90.0) {
             if (assertErrors) throw std::runtime_error("DAB: phase shift out of range (|phi| > 90 deg)");
             ok = false;
@@ -483,7 +483,7 @@ DesignRequirements Dab::process_design_requirements() {
     }
 
     // 2. Phase shift (from operating point, converted from degrees to radians)
-    double phi_deg = ops[0].get_phase_shift().value_or(0.0);
+    double phi_deg = ops[0].get_inner_phase_shift3().value_or(0.0);
     double phi_rad = phi_deg * M_PI / 180.0;
 
     // For EPS/DPS/TPS: get inner phase shifts from operating point
@@ -672,7 +672,7 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
     if (L <= 0) throw std::runtime_error("DAB: series inductance must be positive (run process_design_requirements first)");
 
     // Phase shift: signed (degrees) → radians. Negative phi = reverse power flow.
-    double phi_deg = dabOpPoint.get_phase_shift().value_or(0.0);
+    double phi_deg = dabOpPoint.get_inner_phase_shift3().value_or(0.0);
     double phi_rad = (std::abs(phi_deg) > 1e-6)
                    ? phi_deg * M_PI / 180.0
                    : computedPhaseShift;
@@ -915,7 +915,7 @@ std::string Dab::generate_ngspice_circuit(
     double D1_rad = D1_deg * M_PI / 180.0;
     double D2_rad = D2_deg * M_PI / 180.0;
 
-    double phi_deg = dabOp.get_phase_shift().value_or(0.0);
+    double phi_deg = dabOp.get_inner_phase_shift3().value_or(0.0);
     double phi_rad = (std::abs(phi_deg) > 1e-6) ? phi_deg * M_PI / 180.0 : computedPhaseShift;
     double phaseDelay = phi_rad / (2.0 * M_PI * Fs);  // signed
 

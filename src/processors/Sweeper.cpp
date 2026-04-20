@@ -296,6 +296,14 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
             excitation.set_magnetizing_current(magnetizingCurrent);
             operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
         }
+        else if (Inputs::can_be_common_mode_choke(operatingPoint) && core.get_type() == CoreType::TOROIDAL) {
+            // CMC: drive the core from the common-mode current alone, so the
+            // DM (line) current which cancels in the toroid doesn't inflate B.
+            // Same pattern MagnetizingInductance.cpp:149 uses.
+            auto magnetizingCurrent = Inputs::get_common_mode_choke_magnetizing_current(operatingPoint);
+            excitation.set_magnetizing_current(magnetizingCurrent);
+            operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
+        }
         else if (excitation.get_voltage()) {
             auto voltage = excitation.get_voltage().value();
             auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
