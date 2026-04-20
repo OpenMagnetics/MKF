@@ -1291,6 +1291,9 @@ TEST_CASE("CalculateAdvisedCoil_ToroidCmcAngularFillMustNotExceed360",
         double totalAngle = 0.0;
         int conductionCount = 0, insulationCount = 0;
         for (const auto& sec : sectionsOpt.value()) {
+            auto type = (sec.get_type() == ElectricalType::CONDUCTION) ? "C" : "I";
+            std::cout << type << " dim0=" << sec.get_dimensions()[0]
+                      << " dim1=" << sec.get_dimensions()[1] << "°\n";
             totalAngle += sec.get_dimensions()[1];
             if (sec.get_type() == ElectricalType::CONDUCTION) conductionCount++;
             if (sec.get_type() == ElectricalType::INSULATION) insulationCount++;
@@ -1301,6 +1304,14 @@ TEST_CASE("CalculateAdvisedCoil_ToroidCmcAngularFillMustNotExceed360",
         CHECK(totalAngle <= 360.0);
         CHECK(conductionCount == 2);
         CHECK(insulationCount == 2);
+        // Bug A: for CONTIGUOUS toroidal CMC, insulation sections must be a
+        // small tape-thickness angle, NOT the full 360° artefact the
+        // OVERLAPPING+POLAR branch used to emit.
+        for (const auto& sec : sectionsOpt.value()) {
+            if (sec.get_type() == ElectricalType::INSULATION) {
+                CHECK(sec.get_dimensions()[1] < 90.0);
+            }
+        }
     }
 }
 
