@@ -230,16 +230,21 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
     }
 
     // All returned cores must be toroidal (set_use_toroidal_cores=true,
-    // concentric cores excluded) and carry an Interference-Suppression
-    // material tag. Before check_material_application was tightened this
-    // test pinned on "67" specifically; with the correct MAS tags N30 (TDK)
-    // is the dominant CMC material in the test catalog.
+    // concentric cores excluded) and carry either an Interference-Suppression
+    // or a Signal-Processing tag. check_material_application treats tagged
+    // broadband Signal-Processing materials (ACME A-series, Fair-Rite 61,
+    // TDK K10, …) as dual-use CMC candidates when they ship complex
+    // permeability, so the adviser can return either class for an
+    // Interference-Suppression query. Power-tagged ferrites (N87, 3C94,
+    // Fair-Rite 67) are still rejected.
     for (auto& [mas, scoring] : masMagnetics) {
         auto coreType = mas.get_mutable_magnetic().get_mutable_core().get_type();
         CHECK(coreType == CoreType::TOROIDAL);
         auto coreMaterial = mas.get_mutable_magnetic().get_mutable_core().resolve_material();
         if (coreMaterial.get_application()) {
-            CHECK(coreMaterial.get_application().value() == Application::INTERFERENCE_SUPPRESSION);
+            auto app = coreMaterial.get_application().value();
+            CHECK((app == Application::INTERFERENCE_SUPPRESSION
+                   || app == Application::SIGNAL_PROCESSING));
         }
     }
     // Verify that at least one of the recommended cores meets the impedance requirements

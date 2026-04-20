@@ -1479,19 +1479,30 @@ bool Core::check_material_application(Application application) {
 }
 
 bool Core::check_material_application(CoreMaterial coreMaterial, Application application) {
-    // Narrow fix for Interference Suppression queries only: modern power
-    // ferrites (N87, 3C94, …) ship complex-permeability curves to aid
-    // EMI filter analysis, and the complex-permeability heuristic below
-    // mistakes them for Interference Suppression materials. That lets N87
-    // win the CMC core adviser. With MAS application tags populated
-    // (411/411), trust the manufacturer's classification when the caller
-    // asks for Interference Suppression. Other applications (Power,
-    // Signal Processing) still use the heuristic so tests that depend on
-    // cores not carrying an explicit tag, or on older catalogs, behave
-    // the same as before.
+    // Narrow fix for Interference Suppression queries: modern power ferrites
+    // (N87, 3C94, …) ship complex-permeability curves to help EMI analysis,
+    // and the complex-permeability heuristic below misclassifies them as
+    // Interference Suppression, letting N87 win the CMC core adviser. With
+    // MAS application tags populated (411/411), trust the manufacturer's
+    // classification here. Signal-Processing-tagged materials (ACME A-series,
+    // TDK K10, Fair-Rite 61, …) are genuinely dual-use for broadband EMI
+    // suppression and can be CMC candidates — BUT the impedance filter needs
+    // a complex-permeability table, so only admit Signal Processing materials
+    // that actually ship one. Materials with just an initial-permeability
+    // curve (e.g. Ferroxcube 3E6) would throw MATERIAL_DATA_MISSING when the
+    // impedance model tries to read Z(f). Power-tagged materials (N87, 3C94,
+    // 67, 77) are correctly kept out. Other primary-query applications
+    // (Power / Signal Processing) still use the heuristic so older catalogs
+    // and tests behave the same as before.
     if (application == Application::INTERFERENCE_SUPPRESSION
         && coreMaterial.get_application()) {
-        return coreMaterial.get_application().value() == Application::INTERFERENCE_SUPPRESSION;
+        auto tag = coreMaterial.get_application().value();
+        if (tag == Application::INTERFERENCE_SUPPRESSION) return true;
+        if (tag == Application::SIGNAL_PROCESSING
+            && coreMaterial.get_permeability().get_complex()) {
+            return true;
+        }
+        return false;
     }
 
     if (coreMaterial.get_permeability().get_complex()) {
