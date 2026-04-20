@@ -1479,6 +1479,21 @@ bool Core::check_material_application(Application application) {
 }
 
 bool Core::check_material_application(CoreMaterial coreMaterial, Application application) {
+    // Narrow fix for Interference Suppression queries only: modern power
+    // ferrites (N87, 3C94, …) ship complex-permeability curves to aid
+    // EMI filter analysis, and the complex-permeability heuristic below
+    // mistakes them for Interference Suppression materials. That lets N87
+    // win the CMC core adviser. With MAS application tags populated
+    // (411/411), trust the manufacturer's classification when the caller
+    // asks for Interference Suppression. Other applications (Power,
+    // Signal Processing) still use the heuristic so tests that depend on
+    // cores not carrying an explicit tag, or on older catalogs, behave
+    // the same as before.
+    if (application == Application::INTERFERENCE_SUPPRESSION
+        && coreMaterial.get_application()) {
+        return coreMaterial.get_application().value() == Application::INTERFERENCE_SUPPRESSION;
+    }
+
     if (coreMaterial.get_permeability().get_complex()) {
         if (application == Application::INTERFERENCE_SUPPRESSION) {
             return true;
