@@ -447,6 +447,29 @@ namespace OpenMagnetics {
                 coil.set_turns_alignment(CoilAlignment::CENTERED);
             }
         }
+        // Bug H: `coil.set_winding_orientation()` only updates the bobbin's
+        // winding-window sections_orientation if the bobbin is processed at
+        // the time of the call. For CMC toroidal coils the bobbin arrives
+        // from `create_quick_bobbin` with a stale OVERLAPPING orientation
+        // that would otherwise win in Coil::wind_by_sections' "keep the
+        // already-set value" guard, stacking both windings at the same
+        // angular center (180°) on different radii instead of splitting
+        // them at 90° and 270°. Force the bobbin's winding-window values
+        // to match the coil-level intent.
+        {
+            auto bobbin = coil.resolve_bobbin();
+            if (bobbin.get_processed_description()) {
+                auto processed = bobbin.get_processed_description().value();
+                auto windingWindows = processed.get_winding_windows();
+                if (!windingWindows.empty()) {
+                    windingWindows[0].set_sections_orientation(coil.get_winding_orientation());
+                    windingWindows[0].set_sections_alignment(coil.get_section_alignment());
+                    processed.set_winding_windows(windingWindows);
+                    bobbin.set_processed_description(processed);
+                    coil.set_bobbin(bobbin);
+                }
+            }
+        }
         mas.get_mutable_magnetic().set_coil(coil);
 
         size_t numberWindings = coil.get_functional_description().size();
