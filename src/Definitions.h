@@ -606,6 +606,7 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Losses No Proximity Times Volume Times Temperature Rise") x = MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
     else if (j == "MagnetomotiveForce") x = MagneticFilters::MAGNETOMOTIVE_FORCE;
     else if (j == "Leakage Inductance") x = MagneticFilters::LEAKAGE_INDUCTANCE;
+    else if (j == "Temperature") x = MagneticFilters::TEMPERATURE;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -646,6 +647,7 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Losses No Proximity Times Volume Times Temperature Rise"; break;
         case MagneticFilters::MAGNETOMOTIVE_FORCE: j = "MagnetomotiveForce"; break;
         case MagneticFilters::LEAKAGE_INDUCTANCE: j = "Leakage Inductance"; break;
+        case MagneticFilters::TEMPERATURE: j = "Temperature"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFilters\": " + std::to_string(static_cast<int>(x)));
     }
 }

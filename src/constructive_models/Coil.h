@@ -106,6 +106,7 @@ class Coil : public MAS::Coil {
         WindingOrientation _layersOrientation = WindingOrientation::OVERLAPPING;
         CoilAlignment _turnsAlignment = CoilAlignment::CENTERED;
         CoilAlignment _sectionAlignment = CoilAlignment::INNER_OR_TOP;
+        bool _sectionAlignmentExplicit = false;
         std::optional<Inputs> _inputs;
         std::map<std::string, CoilAlignment> _turnsAlignmentPerSection;
         std::map<std::string, WindingOrientation> _layersOrientationPerSection;

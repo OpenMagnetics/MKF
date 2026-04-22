@@ -2226,7 +2226,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     // Resolve AUTO mode from settings before computing coefficients so we use the right model
     auto resolvedMode = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
     auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature, resolvedMode);
-    auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
+    auto leakageInductances = LeakageInductance().calculate_leakage_inductance_all_windings(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
     std::vector<FractionalPoleNetwork> fracpoleNets;
     std::optional<FractionalPoleNetwork> coreFracNet;
@@ -2264,7 +2264,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(effectiveResistanceThisWinding) + "\n";
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
         if (index > 0) {
-            double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
+            double leakageInductance = resolve_dimensional_values(leakageInductances[index]);
             if (leakageInductance >= magnetizingInductance) {
                 leakageInductance = magnetizingInductance * 0.1;
             }
@@ -2446,7 +2446,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
     // Resolve AUTO mode from settings before computing coefficients so we use the right model
     auto resolvedMode_lt = CircuitSimulatorExporter::resolve_curve_fitting_mode(mode);
     auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic, temperature, resolvedMode_lt);
-    auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
+    auto leakageInductances = LeakageInductance().calculate_leakage_inductance_all_windings(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
     std::vector<FractionalPoleNetwork> fracpoleNets_lt;
     std::optional<FractionalPoleNetwork> coreFracNet_lt;
@@ -2480,7 +2480,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
         parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(effectiveResistanceThisWinding) + "\n";
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
         if (index > 0) {
-            double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
+            double leakageInductance = resolve_dimensional_values(leakageInductances[index]);
             if (leakageInductance >= magnetizingInductance) {
                 leakageInductance = magnetizingInductance * 0.1;
             }

@@ -9294,6 +9294,57 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Ad
     OpenMagneticsTesting::check_turns_description(coil);
 }
 
+TEST_CASE("Test_Wind_Two_Sections_Toroidal_Default_Alignment_Spreads", "[constructive-model][coil][round-winding-window][smoke-test]") {
+    // Verify that a toroidal coil built without explicit sectionAlignment (e.g. CMC path)
+    // defaults to SPREAD, placing 2 equal windings at ~90° and ~270°.
+    clear_databases();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_try_rewind(false);
+    settings.set_coil_wind_even_if_not_fit(true);
+
+    std::string coreShape = "T 20/10/7";
+    std::string coreMaterial = "3C97";
+    auto emptyGapping = json::array();
+    int64_t numberStacks = 1;
+
+    auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+
+    json bobbinJson;
+    to_json(bobbinJson, bobbin);
+
+    json coilJson;
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array();
+    for (int i = 0; i < 2; ++i) {
+        json w;
+        w["name"] = "winding " + std::to_string(i);
+        w["numberTurns"] = 10;
+        w["numberParallels"] = 1;
+        json iso;
+        to_json(iso, OpenMagnetics::get_isolation_side_from_index(i));
+        w["isolationSide"] = iso;
+        w["wire"] = "Round 0.475 - Grade 1";
+        coilJson["functionalDescription"].push_back(w);
+    }
+
+    // Use json-only constructor: no explicit sectionAlignment → _sectionAlignmentExplicit = false
+    OpenMagnetics::Coil coil(coilJson, false);
+    // Use CONTIGUOUS so the two windings get separate arcs (needed for angular spread to be visible)
+    coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
+    coil.wind();
+
+    settings.reset();
+    coil.convert_turns_to_polar_coordinates();
+    auto turns = coil.get_turns_description().value();
+    // With SPREAD default on round window and 2 equal windings: each winding gets 180°
+    // of the toroid. Section centers at ~90° and ~270°. Turns are compactly wound within
+    // each section, so the MIDDLE turn (index 4 of 10) is nearest to the section center.
+    REQUIRE_THAT(90, Catch::Matchers::WithinAbs(turns[4].get_coordinates()[1], 30));
+    REQUIRE_THAT(270, Catch::Matchers::WithinAbs(turns[14].get_coordinates()[1], 30));
+    OpenMagneticsTesting::check_turns_description(coil);
+}
+
 TEST_CASE("Test_Wind_By_Layers_Planar_One_Layer", "[constructive-model][coil][planar][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);

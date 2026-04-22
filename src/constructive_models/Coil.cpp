@@ -176,6 +176,7 @@ Coil::Coil(const json& j, size_t interleavingLevel,
     _layersOrientation = layersOrientation;
     _turnsAlignment = turnsAlignment;
     _sectionAlignment = sectionAlignment;
+    _sectionAlignmentExplicit = true;
     from_json(j, *this);
 
     if (!is_planar()) {
@@ -298,6 +299,7 @@ void Coil::set_turns_alignment(CoilAlignment turnsAlignment, std::optional<std::
 
 void Coil::set_section_alignment(CoilAlignment sectionAlignment) {
     _sectionAlignment = sectionAlignment;
+    _sectionAlignmentExplicit = true;
 }
 
 WindingOrientation Coil::get_winding_orientation() {
@@ -344,6 +346,9 @@ CoilAlignment Coil::get_section_alignment() {
         if (windingWindows[0].get_sections_alignment()) {
             auto alignment = windingWindows[0].get_sections_alignment().value();
             return alignment;
+        }
+        if (bobbin.get_winding_window_shape() == WindingWindowShape::ROUND) {
+            return defaults.defaultRoundWindowSectionsAlignment;
         }
     }
     return _sectionAlignment;
@@ -2176,7 +2181,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
         windingWindows[0].set_sections_orientation(_windingOrientation);
     }
     if (!windingWindows[0].get_sections_alignment()) {
-        windingWindows[0].set_sections_alignment(_sectionAlignment);
+        windingWindows[0].set_sections_alignment(_sectionAlignmentExplicit ? _sectionAlignment : get_section_alignment());
     }
     bobbinProcessedDescription.set_winding_windows(windingWindows);
     bobbin.set_processed_description(bobbinProcessedDescription);
@@ -3336,10 +3341,9 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     }
 
     set_winding_orientation(WindingOrientation::CONTIGUOUS);
-    // Read section alignment from bobbin's windingWindows instead of hardcoding CENTERED
     auto sectionAlignment = get_section_alignment();
     set_section_alignment(sectionAlignment);
-    set_turns_alignment(CoilAlignment::SPREAD);
+    set_turns_alignment(CoilAlignment::CENTERED);
 
     auto groups = get_groups_description().value();
     if (groups.size() > 1) {
