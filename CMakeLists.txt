@@ -420,8 +420,8 @@ include_directories("${MAS_DIRECTORY}")
 # ============================================================================
 # CCI strand coordinates — embed up to N=1000 into the binary at build time
 # ============================================================================
-set(CCI_COORDS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cci_coords"
-    CACHE PATH "Path to cci_coords repository")
+set(CCI_COORDS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cci_coords"
+    CACHE PATH "Path to cci_coords repository (submodule at MKF/cci_coords)")
 set(CCI_GENERATED_CPP "${CMAKE_BINARY_DIR}/generated/CciCoordinatesData.cpp")
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

@@ -346,33 +346,38 @@ void Temperature::extractWireProperties() {
             // Extract dimensions from THIS winding's wire (not winding[0])
             wProps.wireWidth = kWire_DefaultWidth;
             wProps.wireHeight = kWire_DefaultHeight;
-            
+            bool dimensionsExtracted = false;
+
             if (wProps.isRoundWire) {
                 if (w.get_conducting_diameter()) {
                     auto condDiam = w.get_conducting_diameter().value();
                     if (condDiam.get_nominal()) {
                         wProps.wireWidth = condDiam.get_nominal().value();
                         wProps.wireHeight = wProps.wireWidth;
+                        dimensionsExtracted = true;
                     }
                 } else if (w.get_outer_diameter()) {
                     auto outerDiam = w.get_outer_diameter().value();
                     if (outerDiam.get_nominal()) {
                         wProps.wireWidth = outerDiam.get_nominal().value();
                         wProps.wireHeight = wProps.wireWidth;
+                        dimensionsExtracted = true;
                     }
                 }
             } else if (w.get_type() == WireType::RECTANGULAR || w.get_type() == WireType::FOIL || w.get_type() == WireType::PLANAR) {
                 if (w.get_conducting_width() && w.get_conducting_height()) {
                     wProps.wireWidth = resolve_dimensional_values(w.get_conducting_width().value());
                     wProps.wireHeight = resolve_dimensional_values(w.get_conducting_height().value());
+                    dimensionsExtracted = true;
                 } else if (w.get_outer_width() && w.get_outer_height()) {
                     wProps.wireWidth = resolve_dimensional_values(w.get_outer_width().value());
                     wProps.wireHeight = resolve_dimensional_values(w.get_outer_height().value());
+                    dimensionsExtracted = true;
                 }
             }
-            
+
             // Validate that wire dimensions were actually extracted
-            if (wProps.wireWidth == kWire_DefaultWidth && wProps.wireHeight == kWire_DefaultHeight) {
+            if (!dimensionsExtracted) {
                 throw std::runtime_error("Temperature::extractWireProperties: Could not extract wire dimensions for winding " +
                                          std::to_string(wIdx) + ". Wire must have conducting_diameter (round/litz) or " +
                                          "conducting_width/height (rectangular/foil/planar) defined.");
@@ -4374,69 +4379,69 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
         throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: Contact area is zero or negative (" +
                                  std::to_string(contactArea) + "). Cannot calculate thermal resistance.");
     }
-    
-    try {
-        auto coil = _magnetic.get_coil();
-        auto turnsDescription = coil.get_turns_description();
-        
-        // For turn-to-solid connections (turnIdx2 = -1)
-        if (turnIdx2 < 0) {
-            double insulationThickness = kWire_DefaultEnamelThickness;
-            double insulationK = kWire_DefaultEnamelConductivity;
-            
-            double resistance = ThermalResistance::calculateConductionResistance(
-                insulationThickness, insulationK, contactArea);
-            
-            return std::max(resistance, 1e-6);  // Physically plausible minimum
+
+    auto coil = _magnetic.get_coil();
+    auto turnsDescription = coil.get_turns_description();
+
+    if (turnIdx2 < 0) {
+        // Turn-to-solid connection: read coating from the wire itself, no defaults.
+        if (!turnsDescription || turnIdx1 < 0 || turnIdx1 >= static_cast<int>(turnsDescription->size())) {
+            throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: turnIdx1 " +
+                                     std::to_string(turnIdx1) + " is out of range for turnsDescription.");
         }
-        
-        if (!turnsDescription || turnIdx1 < 0 || turnIdx1 >= static_cast<int>(turnsDescription->size()) || 
-            turnIdx2 >= static_cast<int>(turnsDescription->size())) {
-            // Return resistance based on typical enamel insulation rather than near-zero
-            double defaultResistance = ThermalResistance::calculateConductionResistance(
-                kWire_DefaultEnamelThickness, kWire_DefaultEnamelConductivity, contactArea);
-            return std::max(defaultResistance, 1e-6);
-        }
-        
-        auto& turn1 = (*turnsDescription)[turnIdx1];
-        auto& turn2 = (*turnsDescription)[turnIdx2];
-        
-        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
-        
-        double totalLayerResistance = 0.0;
-        for (const auto& layer : layersBetween) {
-            double layerThickness = coil.get_insulation_layer_thickness(layer);
-            double layerK = kInsulation_DefaultConductivity;
-            
-            auto insulationMaterialOpt = layer.get_insulation_material();
-            if (insulationMaterialOpt.has_value()) {
-                auto& insulationMaterial = insulationMaterialOpt.value();
-                if (std::holds_alternative<MAS::InsulationMaterial>(insulationMaterial)) {
-                    auto material = std::get<MAS::InsulationMaterial>(insulationMaterial);
-                    if (material.get_thermal_conductivity().has_value()) {
-                        layerK = material.get_thermal_conductivity().value();
-                    }
-                } else {
-                    std::string materialName = std::get<std::string>(insulationMaterial);
-                    layerK = ThermalResistance::getMaterialThermalConductivity(materialName);
-                }
-            }
-            
-            totalLayerResistance += ThermalResistance::calculateConductionResistance(
-                layerThickness, layerK, contactArea);
-        }
-        
-        return totalLayerResistance;
-    } catch (const std::exception& e) { // IMP-8
-        // Return resistance based on typical enamel insulation rather than near-zero
-        if (THERMAL_DEBUG) {
-            std::cout << "Temperature: wire insulation resistance calc failed, using enamel default: "
-                      << e.what() << std::endl;
-        }
-        double defaultResistance = ThermalResistance::calculateConductionResistance(
-            kWire_DefaultEnamelThickness, kWire_DefaultEnamelConductivity, contactArea);
-        return std::max(defaultResistance, 1e-6);
+        auto& turn = (*turnsDescription)[turnIdx1];
+        size_t windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        Wire wire = coil.resolve_wire(windingIndex);
+        double insulationThickness = wire.get_coating_thickness();
+        double insulationK = wire.get_coating_thermal_conductivity();
+        return ThermalResistance::calculateConductionResistance(insulationThickness, insulationK, contactArea);
     }
+
+    if (!turnsDescription) {
+        throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: coil has no turnsDescription.");
+    }
+    if (turnIdx1 < 0 || turnIdx1 >= static_cast<int>(turnsDescription->size()) ||
+        turnIdx2 >= static_cast<int>(turnsDescription->size())) {
+        throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: turn indices out of range (" +
+                                 std::to_string(turnIdx1) + ", " + std::to_string(turnIdx2) + ") for turnsDescription size " +
+                                 std::to_string(turnsDescription->size()) + ".");
+    }
+
+    auto& turn1 = (*turnsDescription)[turnIdx1];
+    auto& turn2 = (*turnsDescription)[turnIdx2];
+
+    auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
+
+    double totalLayerResistance = 0.0;
+    for (const auto& layer : layersBetween) {
+        double layerThickness = coil.get_insulation_layer_thickness(layer);
+
+        auto insulationMaterialOpt = layer.get_insulation_material();
+        if (!insulationMaterialOpt.has_value()) {
+            throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: insulation layer between turns " +
+                                     std::to_string(turnIdx1) + " and " + std::to_string(turnIdx2) +
+                                     " has no insulation_material defined in MAS.");
+        }
+        auto& insulationMaterial = insulationMaterialOpt.value();
+        double layerK;
+        if (std::holds_alternative<MAS::InsulationMaterial>(insulationMaterial)) {
+            auto material = std::get<MAS::InsulationMaterial>(insulationMaterial);
+            if (!material.get_thermal_conductivity().has_value()) {
+                throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: insulation material '" +
+                                         material.get_name() +
+                                         "' has no thermal_conductivity defined in MAS.");
+            }
+            layerK = material.get_thermal_conductivity().value();
+        } else {
+            std::string materialName = std::get<std::string>(insulationMaterial);
+            layerK = ThermalResistance::getMaterialThermalConductivity(materialName);
+        }
+
+        totalLayerResistance += ThermalResistance::calculateConductionResistance(
+            layerThickness, layerK, contactArea);
+    }
+
+    return totalLayerResistance;
 }
 
 bool Temperature::hasBobbinNodes() const {
