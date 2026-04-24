@@ -75,7 +75,12 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "N95");
+        // PC47 tracks 3C97 far better than N95 on the scored parameters:
+        //   μr:   3C97=1140, PC47=1154 (1.2% off),  N95=2537 (2.2× off)
+        //   Br:   3C97=0.07, PC47=0.06,             N95=0.225 (3× off)
+        //   Hc:   3C97=8,    PC47=7,                N95=17.3 (2× off)
+        // Older MAS snapshots had stale property values that ranked N95 first.
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "PC47");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {
