@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <functional>
 #include <map>
 #include <numbers>
 #include <streambuf>
@@ -17,7 +18,7 @@ using namespace MAS;
 namespace OpenMagnetics {
 inline std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityMagneticFieldDcBiasInterps;
 inline std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityFrequencyInterps;
-inline std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityTemperatureInterps;
+inline std::map<std::string, std::function<double(double)>> initialPermeabilityTemperatureInterps;
 
 class InitialPermeability {
 

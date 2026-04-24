@@ -618,32 +618,44 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(CoreM
     }
 
     if (!initialPermeabilityTemperatureInterps.contains(coreMaterial.get_name())) {
+        // Sort by temperature so spline x values are strictly increasing
+        std::sort(permeabilityPoints.begin(), permeabilityPoints.end(),
+            [](const auto& a, const auto& b) {
+                return *a.get_temperature() < *b.get_temperature();
+            });
+
         int n = permeabilityPoints.size();
         std::vector<double> x, y;
 
         for (int i = 0; i < n; i++) {
-            if (x.size() == 0 || (*permeabilityPoints[i].get_temperature()) != x.back()) {
+            if (x.size() == 0 || (*permeabilityPoints[i].get_temperature()) > x.back()) {
                 x.push_back(*permeabilityPoints[i].get_temperature());
                 y.push_back(permeabilityPoints[i].get_value());
             }
         }
 
-        if (x.size() > 1) {
+        if (x.size() >= 3) {
             tk::spline interp(x, y, tk::spline::cspline_hermite);
-            initialPermeabilityTemperatureInterps[coreMaterial.get_name()] = interp;
+            initialPermeabilityTemperatureInterps[coreMaterial.get_name()] =
+                [interp](double t) { return interp(t); };
+        }
+        else if (x.size() == 2) {
+            // tk::spline requires >= 3 points. Do manual linear interpolation.
+            double x0 = x[0], x1 = x[1], y0 = y[0], y1 = y[1];
+            initialPermeabilityTemperatureInterps[coreMaterial.get_name()] =
+                [x0, x1, y0, y1](double t) {
+                    return y0 + (y1 - y0) * (t - x0) / (x1 - x0);
+                };
         }
         else {
-            initialPermeabilityTemperatureInterps[coreMaterial.get_name()] = permeabilityPoints[0].get_value();
+            double c = y[0];
+            initialPermeabilityTemperatureInterps[coreMaterial.get_name()] =
+                [c](double) { return c; };
         }
     }
 
-    if (std::holds_alternative<double>(initialPermeabilityTemperatureInterps[coreMaterial.get_name()])) {
-        initialPermeabilityValue = std::get<double>(initialPermeabilityTemperatureInterps[coreMaterial.get_name()]);
-    }
-    else {
-        auto value = std::get<tk::spline>(initialPermeabilityTemperatureInterps[coreMaterial.get_name()])(temperature);
-        initialPermeabilityValue = std::max(1., value);
-    }
+    double value = initialPermeabilityTemperatureInterps[coreMaterial.get_name()](temperature);
+    initialPermeabilityValue = std::max(1., value);
 
 
     if (coreMaterial.get_curie_temperature()) {

@@ -2377,19 +2377,43 @@ double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial
         auto lossFactorData = CoreLossesModel::get_method_data(coreMaterial, "lossFactor");
         auto lossFactorPoints = lossFactorData.get_factors().value();
 
+        // Sort by frequency so spline x values are strictly increasing
+        std::sort(lossFactorPoints.begin(), lossFactorPoints.end(),
+            [](const auto& a, const auto& b) {
+                return *a.get_frequency() < *b.get_frequency();
+            });
+
         int n = lossFactorPoints.size();
         std::vector<double> x, y;
 
-
         for (int i = 0; i < n; i++) {
-            if (x.size() == 0 || (*lossFactorPoints[i].get_frequency()) != x.back()) {
+            if (x.size() == 0 || (*lossFactorPoints[i].get_frequency()) > x.back()) {
                 x.push_back(*lossFactorPoints[i].get_frequency());
                 y.push_back(lossFactorPoints[i].get_value());
             }
         }
 
-        tk::spline interp(x, y, tk::spline::cspline_hermite);
-        lossFactorInterps[coreMaterial.get_name()] = interp;
+        if (x.size() == 0) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "No loss factor points for material: " + coreMaterial.get_name());
+        }
+        else if (x.size() >= 3) {
+            tk::spline interp(x, y, tk::spline::cspline_hermite);
+            lossFactorInterps[coreMaterial.get_name()] =
+                [interp](double f) { return interp(f); };
+        }
+        else if (x.size() == 2) {
+            // tk::spline requires >= 3 points. Do manual linear interpolation.
+            double x0 = x[0], x1 = x[1], y0 = y[0], y1 = y[1];
+            lossFactorInterps[coreMaterial.get_name()] =
+                [x0, x1, y0, y1](double f) {
+                    return y0 + (y1 - y0) * (f - x0) / (x1 - x0);
+                };
+        }
+        else {
+            double c = y[0];
+            lossFactorInterps[coreMaterial.get_name()] =
+                [c](double) { return c; };
+        }
     }
     double lossFactorValue = lossFactorInterps[coreMaterial.get_name()](frequency);
 

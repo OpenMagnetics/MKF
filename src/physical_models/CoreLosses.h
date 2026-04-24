@@ -13,6 +13,7 @@
 #include <map>
 #include <numbers>
 #include <streambuf>
+#include <functional>
 #include <vector>
 #include "support/Exceptions.h"
 
@@ -20,7 +21,7 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-inline std::map<std::string, tk::spline> lossFactorInterps;
+inline std::map<std::string, std::function<double(double)>> lossFactorInterps;
 
 // ============================================================================
 // Roshen Hysteresis Model - Data Structures

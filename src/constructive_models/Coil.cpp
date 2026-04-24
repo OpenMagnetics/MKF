@@ -1075,24 +1075,32 @@ size_t Coil::get_winding_index_by_name(const std::vector<Winding>& functionalDes
 }
 
 size_t Coil::get_turn_index_by_name(std::string name) {
-    if (_turnIndexByName.count(name) == 0) {
-        if (!get_turns_description()) {
-            throw CoilNotProcessedException("Turns description not set, did you forget to wind?");
+    if (!get_turns_description()) {
+        throw CoilNotProcessedException("Turns description not set, did you forget to wind?");
+    }
+    // Note: get_turns_description() returns an optional by value; .value() returns
+    // a reference into that temporary. Copy out to avoid dangling reference.
+    auto turns = get_turns_description().value();
+
+    // Validate cache: the turns vector may have been replaced since the cache was
+    // populated (e.g. re-winding). A stale index would cause out-of-bounds writes
+    // in downstream code that does turns[turnIndex].set_*(...).
+    auto it = _turnIndexByName.find(name);
+    if (it != _turnIndexByName.end()) {
+        if (it->second < turns.size() && turns[it->second].get_name() == name) {
+            return it->second;
         }
-        auto turns = get_turns_description().value();
-        bool found = false;
-        for (size_t i=0; i<turns.size(); ++i) {
-            if (turns[i].get_name() == name) {
-                _turnIndexByName[name] = i;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a turn name: " + name);
+        // Stale cache — clear it entirely since other entries may also be stale
+        _turnIndexByName.clear();
+    }
+
+    for (size_t i = 0; i < turns.size(); ++i) {
+        if (turns[i].get_name() == name) {
+            _turnIndexByName[name] = i;
+            return i;
         }
     }
-    return _turnIndexByName[name];
+    throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a turn name: " + name);
 }
 
 size_t Coil::get_layer_index_by_name(std::string name) {
