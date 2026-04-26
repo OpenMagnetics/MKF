@@ -4029,4 +4029,54 @@ TEST_CASE("Temperature: coreOnly zero losses stays at ambient", "[temperature][c
     REQUIRE_THAT(result.maximumTemperature, Catch::Matchers::WithinAbs(config.ambientTemperature, 1.0));
 }
 
+TEST_CASE("Temperature: Litz Wire Without Pre-computed Outer Diameter", "[temperature][litz][smoke-test]") {
+    // Regression test: litz wires arriving at the temperature calculation may have only strand data
+    // (conductingDiameter, numberConductors, coating) with no outerDiameter pre-computed at the wire level.
+    // Temperature::extractWireProperties must call calculate_outer_diameter() to derive the bundle diameter
+    // from the strand, not rely on outerDiameter being present (the old code left _wireWidth at the 1mm
+    // default because the outer_diameter block was guarded by `if (!_isRoundWire)`, silently using wrong geometry).
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_litz_foil.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+
+    // Strip outerDiameter from the litz wire in the functional description so that
+    // extractWireProperties must compute it via calculate_outer_diameter() from the strand.
+    auto& coil = magnetic.get_mutable_coil();
+    auto functionalDescription = coil.get_functional_description();
+    for (auto& winding : functionalDescription) {
+        auto wireVariant = winding.get_wire();
+        if (std::holds_alternative<OpenMagnetics::Wire>(wireVariant)) {
+            auto wire = std::get<OpenMagnetics::Wire>(wireVariant);
+            if (wire.get_type() == WireType::LITZ) {
+                wire.set_outer_diameter(std::nullopt);
+                REQUIRE(!wire.get_outer_diameter().has_value());
+                REQUIRE(wire.get_strand().has_value());
+                winding.set_wire(wire);
+            }
+        }
+    }
+    coil.set_functional_description(functionalDescription);
+
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    config.windingLosses = losses.windingLosses;
+    if (!losses.windingLossesOutput.has_value()) {
+        throw std::runtime_error("WindingLossesOutput missing");
+    }
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    config.plotSchematic = false;
+
+    Temperature temp(magnetic, config);
+    auto result = temp.calculateTemperatures();
+
+    REQUIRE(result.converged);
+    REQUIRE(result.maximumTemperature > config.ambientTemperature);
+    REQUIRE(result.totalThermalResistance > 0.0);
+}
+
 } // namespace

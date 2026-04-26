@@ -274,40 +274,30 @@ void Temperature::extractWireProperties() {
     _isPlanar = (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::FOIL);
     
     // Get wire dimensions
-    if (wire.get_conducting_diameter()) {
+    if (wire.get_type() == WireType::LITZ) {
+        // Litz has no wire-level conducting_diameter; compute bundle outer diameter from strand data
+        double outerDiam = wire.calculate_outer_diameter();
+        _wireWidth = outerDiam;
+        _wireHeight = outerDiam;
+    } else if (wire.get_type() == WireType::ROUND) {
+        if (!wire.get_conducting_diameter()) {
+            throw std::runtime_error("Temperature::extractWireProperties: Round wire in winding[0] is missing conducting_diameter.");
+        }
         auto condDiam = wire.get_conducting_diameter().value();
-        if (condDiam.get_nominal()) {
-            _wireWidth = condDiam.get_nominal().value();
-            _wireHeight = _wireWidth;  // Round wire
+        if (!condDiam.get_nominal()) {
+            throw std::runtime_error("Temperature::extractWireProperties: Round wire in winding[0] conducting_diameter has no nominal value.");
         }
-    }
-    
-    if (wire.get_outer_diameter()) {
-        auto outerDiam = wire.get_outer_diameter().value();
-        if (outerDiam.get_nominal()) {
-            double outer = outerDiam.get_nominal().value();
-            if (!_isRoundWire) {
-                _wireWidth = outer;  // For rectangular, width = radial
-            }
-        }
-    }
-    
-    // For rectangular/foil wires, query actual width and height
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
-        // Prefer conducting_width / conducting_height if available
+        _wireWidth = condDiam.get_nominal().value();
+        _wireHeight = _wireWidth;
+    } else if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
         if (wire.get_conducting_width() && wire.get_conducting_height()) {
             _wireWidth = resolve_dimensional_values(wire.get_conducting_width().value());
             _wireHeight = resolve_dimensional_values(wire.get_conducting_height().value());
         } else if (wire.get_outer_width() && wire.get_outer_height()) {
             _wireWidth = resolve_dimensional_values(wire.get_outer_width().value());
             _wireHeight = resolve_dimensional_values(wire.get_outer_height().value());
-        } else if (wire.get_outer_diameter()) {
-            auto outerDiam = wire.get_outer_diameter().value();
-            if (outerDiam.get_nominal()) {
-                _wireWidth = outerDiam.get_nominal().value();
-                // Fallback: use outer_diameter for both if no separate width/height
-                _wireHeight = _wireWidth;
-            }
+        } else {
+            throw std::runtime_error("Temperature::extractWireProperties: Rectangular/foil/planar wire in winding[0] is missing conducting_width/height and outer_width/height.");
         }
     }
     
@@ -348,18 +338,16 @@ void Temperature::extractWireProperties() {
             wProps.wireHeight = kWire_DefaultHeight;
             bool dimensionsExtracted = false;
 
-            if (wProps.isRoundWire) {
+            if (w.get_type() == WireType::LITZ) {
+                double outerDiam = w.calculate_outer_diameter();
+                wProps.wireWidth = outerDiam;
+                wProps.wireHeight = outerDiam;
+                dimensionsExtracted = true;
+            } else if (w.get_type() == WireType::ROUND) {
                 if (w.get_conducting_diameter()) {
                     auto condDiam = w.get_conducting_diameter().value();
                     if (condDiam.get_nominal()) {
                         wProps.wireWidth = condDiam.get_nominal().value();
-                        wProps.wireHeight = wProps.wireWidth;
-                        dimensionsExtracted = true;
-                    }
-                } else if (w.get_outer_diameter()) {
-                    auto outerDiam = w.get_outer_diameter().value();
-                    if (outerDiam.get_nominal()) {
-                        wProps.wireWidth = outerDiam.get_nominal().value();
                         wProps.wireHeight = wProps.wireWidth;
                         dimensionsExtracted = true;
                     }
