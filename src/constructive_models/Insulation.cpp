@@ -763,12 +763,12 @@ double InsulationIEC60664Model::calculate_creepage_distance(Inputs& inputs, bool
             double maximumVoltagePeak = inputs.get_maximum_voltage_peak();
             double creepageDistanceOver30kHz = get_creepage_distance_over_30kHz(maximumVoltagePeak, maximumFrequency);
             switch (pollutionDegree) {
-                case PollutionDegree::P1:
+                case PollutionDegree::PD1:
                     break;
-                case PollutionDegree::P2:
+                case PollutionDegree::PD2:
                     creepageDistanceOver30kHz *= 1.2;  // According to table 2 of IEC 60664-4
                     break;
-                case PollutionDegree::P3:
+                case PollutionDegree::PD3:
                     creepageDistanceOver30kHz *= 1.4;  // According to table 2 of IEC 60664-4
                     break;
             }
@@ -782,7 +782,7 @@ double InsulationIEC60664Model::calculate_creepage_distance(Inputs& inputs, bool
 
 
     bool allowSmallerCreepageDistanceThanClearance = false;
-    if (pollutionDegree == PollutionDegree::P1 || pollutionDegree == PollutionDegree::P2) {
+    if (pollutionDegree == PollutionDegree::PD1 || pollutionDegree == PollutionDegree::PD2) {
         auto overvoltageCategory = inputs.get_overvoltage_category();
         auto ratedImpulseWithstandVoltage = get_rated_impulse_withstand_voltage(overvoltageCategory, ratedVoltage, insulationType);
         auto clearanceToWithstandTransientOvervoltages = get_clearance_table_f2(pollutionDegree, ratedImpulseWithstandVoltage);
@@ -920,10 +920,10 @@ double InsulationIEC62368Model::get_clearance_table_11(double supplyVoltagePeak,
 
     double valuePollutionDegree2 = linear_table_interpolation(table, supplyVoltagePeak);
     double result;
-    if (pollutionDegree == PollutionDegree::P1) {
+    if (pollutionDegree == PollutionDegree::PD1) {
         result = valuePollutionDegree2 * 0.8;
     }
-    else if (pollutionDegree == PollutionDegree::P3) {
+    else if (pollutionDegree == PollutionDegree::PD3) {
         result = valuePollutionDegree2 * 1.4;
     }
     else {
@@ -983,10 +983,10 @@ double InsulationIEC62368Model::get_creepage_distance_table_18(double voltageRms
     }
 
     double result;
-    if (pollutionDegree == PollutionDegree::P1) {
+    if (pollutionDegree == PollutionDegree::PD1) {
         result = valuePollutionDegree1;
     }
-    else if (pollutionDegree == PollutionDegree::P2) {
+    else if (pollutionDegree == PollutionDegree::PD2) {
         result = valuePollutionDegree1 * 1.2;
     }
     else {
@@ -1166,7 +1166,7 @@ double InsulationIEC61558Model::get_clearance_table_20(OvervoltageCategory overv
     std::string insulationTypeString = to_string(insulationType);
     std::vector<std::pair<double, double>> table = table20[overvoltageCategoryString][insulationTypeString][pollutionDegreeString];
 
-    if (workingVoltage < iec61558MinimumWorkingVoltage || pollutionDegree == PollutionDegree::P1 || insulationType == InsulationType::FUNCTIONAL) {
+    if (workingVoltage < iec61558MinimumWorkingVoltage || pollutionDegree == PollutionDegree::PD1 || insulationType == InsulationType::FUNCTIONAL) {
         return 0;
     }
 
@@ -1291,26 +1291,26 @@ double InsulationIEC61558Model::calculate_creepage_distance_over_30kHz(Insulatio
 
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
         switch (pollutionDegree) {
-            case PollutionDegree::P1:
+            case PollutionDegree::PD1:
                 table = table108;
                 break;
-            case PollutionDegree::P2:
+            case PollutionDegree::PD2:
                 table = table109;
                 break;
-            case PollutionDegree::P3:
+            case PollutionDegree::PD3:
                 table = table110;
                 break;
         }
     }
     else {
         switch (pollutionDegree) {
-            case PollutionDegree::P1:
+            case PollutionDegree::PD1:
                 table = table105;
                 break;
-            case PollutionDegree::P2:
+            case PollutionDegree::PD2:
                 table = table106;
                 break;
-            case PollutionDegree::P3:
+            case PollutionDegree::PD3:
                 table = table107;
                 break;
         }
@@ -1395,7 +1395,7 @@ double InsulationIEC61558Model::calculate_clearance(Inputs& inputs) {
     }
 
     if (wiringTechnology == WiringTechnology::PRINTED) {
-        pollutionDegree = PollutionDegree::P1;
+        pollutionDegree = PollutionDegree::PD1;
     }
 
     auto clearance = get_clearance_table_20(overvoltageCategory, pollutionDegree, insulationType, workingVoltage);
@@ -1436,7 +1436,7 @@ double InsulationIEC61558Model::calculate_creepage_distance(Inputs& inputs, bool
     }
 
     if (wiringTechnology == WiringTechnology::PRINTED) {
-        pollutionDegree = PollutionDegree::P1;
+        pollutionDegree = PollutionDegree::PD1;
     }
 
     double creepageDistance = get_creepage_distance_table_21(cti, pollutionDegree, insulationType, workingVoltage);
@@ -1480,18 +1480,18 @@ double InsulationIEC60335Model::get_clearance_table_16(PollutionDegree pollution
             }
 
             if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
-                if (ratedImpulseWithstandVoltage <= 800 && pollutionDegree == PollutionDegree::P3) {
+                if (ratedImpulseWithstandVoltage <= 800 && pollutionDegree == PollutionDegree::PD3) {
                     result = 0.0008;
                 }
-                if (ratedImpulseWithstandVoltage <= 500 && (pollutionDegree == PollutionDegree::P1 || pollutionDegree == PollutionDegree::P2) && wiringType == WiringTechnology::PRINTED){
+                if (ratedImpulseWithstandVoltage <= 500 && (pollutionDegree == PollutionDegree::PD1 || pollutionDegree == PollutionDegree::PD2) && wiringType == WiringTechnology::PRINTED){
                     result = 0.0002;
                 }
             }
             else {
-                if (ratedImpulseWithstandVoltage <= 1500 && pollutionDegree == PollutionDegree::P3) {
+                if (ratedImpulseWithstandVoltage <= 1500 && pollutionDegree == PollutionDegree::PD3) {
                     result = 0.0008;
                 }
-                if (ratedImpulseWithstandVoltage <= 800 && (pollutionDegree == PollutionDegree::P1 || pollutionDegree == PollutionDegree::P2) && wiringType == WiringTechnology::PRINTED){
+                if (ratedImpulseWithstandVoltage <= 800 && (pollutionDegree == PollutionDegree::PD1 || pollutionDegree == PollutionDegree::PD2) && wiringType == WiringTechnology::PRINTED){
                     result = 0.0002;
                 }
             }
@@ -1569,7 +1569,7 @@ double InsulationIEC60335Model::calculate_distance_through_insulation(Inputs& in
     auto ratedVoltage = std::max(mainSupplyVoltage, maximumPrimaryVoltageRms);
     auto overvoltageCategory = inputs.get_overvoltage_category();
 
-    if (overvoltageCategory == OvervoltageCategory::OVC_IV) {
+    if (overvoltageCategory == OvervoltageCategory::IV) {
         throw std::invalid_argument("Overvoltage Category IV not supported in standard IEC 60335-1");
     }
 
@@ -1613,7 +1613,7 @@ double InsulationIEC60335Model::calculate_clearance(Inputs& inputs) {
     auto overvoltageCategory = inputs.get_overvoltage_category();
     auto insulationType = inputs.get_insulation_type();
 
-    if (overvoltageCategory == OvervoltageCategory::OVC_IV) {
+    if (overvoltageCategory == OvervoltageCategory::IV) {
         throw std::invalid_argument("Overvoltage Category IV not supported in standard IEC 60335-1");
     }
 

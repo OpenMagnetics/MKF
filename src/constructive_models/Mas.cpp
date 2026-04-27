@@ -1,3 +1,4 @@
+#include "constructive_models/MasMigration.h"
 #include <MAS.hpp>
 #include "constructive_models/Mas.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -11,6 +12,7 @@ void from_file(std::filesystem::path filepath, Mas & x) {
     std::string data((std::istreambuf_iterator<char>(f)),
                      std::istreambuf_iterator<char>());
     auto masJson = json::parse(data);
+    OpenMagnetics::compat::migrate_pre_1_0(masJson);
     auto inputsJson = masJson["inputs"];
     auto magneticJson = masJson["magnetic"];
     auto outputsJson = masJson["outputs"];

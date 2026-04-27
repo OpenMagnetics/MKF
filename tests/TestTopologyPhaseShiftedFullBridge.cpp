@@ -28,7 +28,7 @@ auto outputFilePath = std::filesystem::path{std::source_location::current().file
 json make_psfb_json(double Vin_nom = 400.0, double Vin_min = 370.0, double Vin_max = 410.0,
                     double Vo = 12.0, double Io = 50.0, double Fs = 100000.0,
                     double phaseShift = 126.0,
-                    std::string rectType = "Center Tapped") {
+                    std::string rectType = "centerTapped") {
     json j;
     json inputVoltage;
     inputVoltage["nominal"] = Vin_nom;
@@ -290,7 +290,7 @@ TEST_CASE("Test_Psfb_Multiple_Outputs", "[converter-model][psfb-topology][smoke-
     json inputVoltage;
     inputVoltage["nominal"] = 400.0;
     psfbJson["inputVoltage"] = inputVoltage;
-    psfbJson["rectifierType"] = "Center Tapped";
+    psfbJson["rectifierType"] = "centerTapped";
     psfbJson["operatingPoints"] = json::array();
 
     {
@@ -358,7 +358,7 @@ TEST_CASE("Test_Psfb_Static_Calculations", "[converter-model][psfb-topology][uni
 // =========================================================================
 TEST_CASE("Test_Psfb_CurrentDoubler_Design", "[converter-model][psfb-topology][smoke-test]") {
     auto psfbJson = make_psfb_json(400.0, 370.0, 410.0, 12.0, 50.0, 100000.0,
-                                   126.0, "Current Doubler");
+                                   126.0, "currentDoubler");
     OpenMagnetics::Psfb psfb(psfbJson);
     auto req = psfb.process_design_requirements();
 
@@ -379,7 +379,7 @@ TEST_CASE("Test_AdvancedPsfb_Process", "[converter-model][psfb-topology][advance
     inputVoltage["minimum"] = 370.0;
     inputVoltage["maximum"] = 410.0;
     advJson["inputVoltage"] = inputVoltage;
-    advJson["rectifierType"] = "Center Tapped";
+    advJson["rectifierType"] = "centerTapped";
     advJson["operatingPoints"] = json::array();
 
     {

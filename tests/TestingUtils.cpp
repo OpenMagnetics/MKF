@@ -235,7 +235,7 @@ Core get_quick_core(std::string shapeName,
         coreType = "toroidal";
     }
     else {
-        coreType = "two-piece set";
+        coreType = "twoPieceSet";
     }
 
     coreJson["functionalDescription"] = json();
@@ -263,7 +263,7 @@ OpenMagnetics::Magnetic get_quick_magnetic(std::string shapeName,
         coreType = "toroidal";
     }
     else {
-        coreType = "two-piece set";
+        coreType = "twoPieceSet";
     }
 
     coreJson["functionalDescription"] = json();
@@ -803,12 +803,13 @@ OpenMagnetics::Mas mas_loader(const std::filesystem::path& path) {
     }
 
     auto masJson = json::parse(data);
+    OpenMagnetics::compat::migrate_pre_1_0(masJson);
     auto inputsJson = masJson["inputs"];
     auto magneticJson = masJson["magnetic"];
     auto outputsJson = masJson["outputs"];
 
     auto magnetic = OpenMagnetics::Magnetic(magneticJson);
-    if (magneticJson["coil"]["bobbin"] == "Basic") {
+    if (magneticJson["coil"]["bobbin"] == "basic") {
         auto bobbinData = OpenMagnetics::Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
         to_json(magneticJson["coil"]["bobbin"], bobbinData);
     }

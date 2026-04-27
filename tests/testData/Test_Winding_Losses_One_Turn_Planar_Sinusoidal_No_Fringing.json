@@ -6,7 +6,7 @@
       },
       "name": "My Design Requirements",
       "turnsRatios": [],
-      "wiringTechnology": "Printed"
+      "wiringTechnology": "printed"
     },
     "operatingPoints": [
       {
@@ -280,10 +280,10 @@
                   9.84375e-06,
                   9.921875e-06
                 ],
-                "ancillaryLabel": "Sinusoidal"
+                "ancillaryLabel": "sinusoidal"
               },
               "processed": {
-                "label": "Sinusoidal",
+                "label": "sinusoidal",
                 "peak": 500.0,
                 "offset": 0.0,
                 "peakToPeak": 1000.0,
@@ -328,7 +328,7 @@
                 "dutyCycle": 0.5,
                 "peakToPeak": 100,
                 "offset": 0,
-                "label": "Rectangular",
+                "label": "rectangular",
                 "acEffectiveFrequency": 280423.90426072397,
                 "effectiveFrequency": 261962.865302301,
                 "peak": 70.5,
@@ -399,7 +399,7 @@
               ],
               "height": 0.0057,
               "radialHeight": null,
-              "sectionsAlignment": "inner or top",
+              "sectionsAlignment": "innerOrTop",
               "sectionsOrientation": "contiguous",
               "shape": "rectangular",
               "width": 0.0058
@@ -492,7 +492,7 @@
             }
           ],
           "sectionsOrientation": "contiguous",
-          "type": "Wound"
+          "type": "wound"
         }
       ],
       "layersDescription": [
@@ -1792,12 +1792,12 @@
               "nominal": 0.0114
             }
           },
-          "family": "planar er",
+          "family": "planarER",
           "magneticCircuit": "open",
           "name": "ER 28/6.5/21",
           "type": "standard"
         },
-        "type": "two-piece set",
+        "type": "twoPieceSet",
         "magneticCircuit": "open"
       },
       "geometricalDescription": [
@@ -1847,12 +1847,12 @@
                 "nominal": 0.0114
               }
             },
-            "family": "planar er",
+            "family": "planarER",
             "magneticCircuit": "open",
             "name": "ER 28/6.5/21",
             "type": "standard"
           },
-          "type": "half set"
+          "type": "halfSet"
         },
         {
           "coordinates": [
@@ -1890,12 +1890,12 @@
                 "nominal": 0.0114
               }
             },
-            "family": "planar er",
+            "family": "planarER",
             "magneticCircuit": "open",
             "name": "ER 28/6.5/21",
             "type": "standard"
           },
-          "type": "half set"
+          "type": "halfSet"
         }
       ],
       "name": "98 ER 28/6.5/21 gapped 0.03 mm",
@@ -2111,7 +2111,7 @@
           },
           "processed": {
             "dutyCycle": 0.5,
-            "label": "Custom",
+            "label": "custom",
             "negativePeak": -0.33907151614508685,
             "offset": -0.08678241735565675,
             "peak": 0.33907151614508685,
@@ -2343,7 +2343,7 @@
                   "average": -1.2073675392798577e-14,
                   "dutyCycle": 0.5,
                   "effectiveFrequency": 110746.40291779551,
-                  "label": "Triangular",
+                  "label": "triangular",
                   "offset": 0,
                   "peak": 5,
                   "peakToPeak": 10,
@@ -2751,7 +2751,7 @@
                 },
                 "processed": {
                   "dutyCycle": 0.5,
-                  "label": "Custom",
+                  "label": "custom",
                   "negativePeak": -0.33907151614508685,
                   "offset": -0.08678241735565675,
                   "peak": 0.33907151614508685,
@@ -2913,7 +2913,7 @@
                 "processed": {
                   "average": -0.009976090404492835,
                   "dutyCycle": 0.5,
-                  "label": "Custom",
+                  "label": "custom",
                   "negativePeak": -2.7234720629654614,
                   "offset": -0.6970490824820789,
                   "peak": 2.7234720629654614,
@@ -3324,7 +3324,7 @@
                   "average": 24.2890625,
                   "dutyCycle": 0.4921874999999997,
                   "effectiveFrequency": 553357.3374711702,
-                  "label": "Unipolar Rectangular",
+                  "label": "unipolarRectangular",
                   "negativePeak": -20.5,
                   "offset": -20.5,
                   "peak": 70.5,
@@ -3738,7 +3738,7 @@
                   "average": -1.2073675392798577e-14,
                   "dutyCycle": 0.4999999999999997,
                   "effectiveFrequency": 110746.40291779551,
-                  "label": "Triangular",
+                  "label": "triangular",
                   "negativePeak": -5,
                   "offset": -7.993605777301127e-15,
                   "peak": 5,
@@ -3901,7 +3901,7 @@
                   "average": -1.2304687499999947,
                   "dutyCycle": 0.5,
                   "effectiveFrequency": 573838.646505916,
-                  "label": "Custom",
+                  "label": "custom",
                   "negativePeak": -4.921874999999998,
                   "offset": -2.460937499999995,
                   "peak": 4.921874999999998,
@@ -4314,7 +4314,7 @@
                   "average": -50,
                   "dutyCycle": 0.5,
                   "effectiveFrequency": 489576.7298435604,
-                  "label": "Custom",
+                  "label": "custom",
                   "negativePeak": -100,
                   "offset": -50,
                   "peak": 100,

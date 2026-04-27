@@ -1,5 +1,6 @@
 #pragma once
 
+#include "constructive_models/MasMigration.h"
 #include "constructive_models/Insulation.h"
 #include "constructive_models/Core.h"
 #include "processors/Inputs.h"
@@ -137,13 +138,13 @@ class Coil : public MAS::Coil {
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);
 
-        Coil(const json& j, size_t interleavingLevel = 1,
+        Coil(json j, size_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING,
                        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING,
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
                        CoilAlignment sectionAlignment = CoilAlignment::INNER_OR_TOP);
         Coil(const MAS::Coil coil);
-        Coil(const json& j, bool windInConstructor);
+        Coil(json j, bool windInConstructor);
         Coil() = default;
         virtual ~Coil() = default;
         bool fast_wind();

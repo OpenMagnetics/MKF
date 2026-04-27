@@ -91,7 +91,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
@@ -173,7 +173,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Full Bridge";
+        llcJson["bridgeType"] = "fullBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.35;
@@ -263,7 +263,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
@@ -377,7 +377,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["resonantFrequency"] = 120000;
@@ -415,7 +415,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["resonantFrequency"] = 120000;
@@ -466,7 +466,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["resonantFrequency"] = 80000;
@@ -503,7 +503,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["resonantFrequency"] = 80000;
@@ -555,7 +555,7 @@ namespace {
         json inputVoltage;
         inputVoltage["nominal"] = 400.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["inductanceRatio"] = 5.0;
@@ -662,7 +662,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["inductanceRatio"] = 5.0;
@@ -725,7 +725,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["inductanceRatio"] = 5.0;
@@ -801,7 +801,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
@@ -888,7 +888,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
@@ -936,7 +936,7 @@ namespace {
             json fbInputVoltage;
             fbInputVoltage["nominal"] = 400.0;
             fbJson["inputVoltage"] = fbInputVoltage;
-            fbJson["bridgeType"] = "Full Bridge";
+            fbJson["bridgeType"] = "fullBridge";
             fbJson["minSwitchingFrequency"] = 80000;
             fbJson["maxSwitchingFrequency"] = 200000;
             fbJson["qualityFactor"] = 0.35;
@@ -983,7 +983,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
@@ -1119,7 +1119,7 @@ namespace {
             inputVoltage["minimum"] = 340.0;
             inputVoltage["maximum"] = 420.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Full Bridge";
+            llcJson["bridgeType"] = "fullBridge";
             llcJson["minSwitchingFrequency"] = 60000;
             llcJson["maxSwitchingFrequency"] = 150000;
             llcJson["qualityFactor"] = 0.3;
@@ -1154,7 +1154,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 250000;
             llcJson["inductanceRatio"] = 5.0;
@@ -1185,7 +1185,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
             llcJson["inductanceRatio"] = 5.0;
@@ -1209,7 +1209,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
             llcJson["resonantFrequency"] = 120000;
@@ -1234,7 +1234,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
             llcJson["inductanceRatio"] = 5.0;
@@ -1259,7 +1259,7 @@ namespace {
             json inputVoltage;
             inputVoltage["nominal"] = 400.0;
             llcJson["inputVoltage"] = inputVoltage;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 200000;
             llcJson["inductanceRatio"] = 5.0;
@@ -1315,7 +1315,7 @@ namespace {
         inputVoltage["minimum"] = 370.0;
         inputVoltage["maximum"] = 410.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
@@ -1381,7 +1381,7 @@ namespace {
         json inputVoltage;
         inputVoltage["nominal"] = 261.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 50000;
         llcJson["maxSwitchingFrequency"] = 100000;
         llcJson["inductanceRatio"] = 2.0;  // L/Ls = 344/172 = 2.0 (Nielsen)
@@ -1475,7 +1475,7 @@ namespace {
         json inputVoltage;
         inputVoltage["nominal"] = 420.0;  // boost-mode operating point
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
@@ -1524,7 +1524,7 @@ namespace {
         json inputVoltage;
         inputVoltage["nominal"] = 400.0;
         llcJson["inputVoltage"] = inputVoltage;
-        llcJson["bridgeType"] = "Half Bridge";
+        llcJson["bridgeType"] = "halfBridge";
         llcJson["minSwitchingFrequency"] = 80000;
         llcJson["maxSwitchingFrequency"] = 200000;
         llcJson["qualityFactor"] = 0.4;
@@ -1566,7 +1566,7 @@ namespace {
         auto build_llc_json = [](std::vector<double> vouts, std::vector<double> iouts) {
             json j;
             j["inputVoltage"]["nominal"] = 400.0;
-            j["bridgeType"] = "Full Bridge";
+            j["bridgeType"] = "fullBridge";
             j["minSwitchingFrequency"] = 80000;
             j["maxSwitchingFrequency"] = 120000;
             j["resonantFrequency"] = 100000;
@@ -1660,7 +1660,7 @@ namespace {
         auto build_inputs = [](std::vector<double> vouts, std::vector<double> iouts) {
             json llcJson;
             llcJson["inputVoltage"]["nominal"] = 400.0;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 120000;
             llcJson["resonantFrequency"] = 100000;
@@ -1775,7 +1775,7 @@ namespace {
         auto build_inputs = [](std::vector<double> vouts, std::vector<double> iouts) {
             json llcJson;
             llcJson["inputVoltage"]["nominal"] = 400.0;
-            llcJson["bridgeType"] = "Half Bridge";
+            llcJson["bridgeType"] = "halfBridge";
             llcJson["minSwitchingFrequency"] = 80000;
             llcJson["maxSwitchingFrequency"] = 120000;
             llcJson["resonantFrequency"] = 100000;

@@ -30,7 +30,7 @@ auto outputFilePath = std::filesystem::path{std::source_location::current().file
 json make_pshb_json(double Vin_nom = 400.0, double Vin_min = 370.0, double Vin_max = 410.0,
                     double Vo = 12.0, double Io = 25.0, double Fs = 100000.0,
                     double phaseShift = 135.0,
-                    std::string rectType = "Center Tapped") {
+                    std::string rectType = "centerTapped") {
     json j;
     json inputVoltage;
     inputVoltage["nominal"] = Vin_nom;
@@ -318,7 +318,7 @@ TEST_CASE("Test_Pshb_Multiple_Outputs", "[converter-model][pshb-topology][smoke-
     json inputVoltage;
     inputVoltage["nominal"] = 400.0;
     pshbJson["inputVoltage"] = inputVoltage;
-    pshbJson["rectifierType"] = "Center Tapped";
+    pshbJson["rectifierType"] = "centerTapped";
     pshbJson["operatingPoints"] = json::array();
 
     {
@@ -403,7 +403,7 @@ TEST_CASE("Test_Pshb_Static_Calculations", "[converter-model][pshb-topology][uni
 // =========================================================================
 TEST_CASE("Test_Pshb_CurrentDoubler_Design", "[converter-model][pshb-topology][smoke-test]") {
     auto pshbJson = make_pshb_json(400.0, 370.0, 410.0, 12.0, 25.0, 100000.0,
-                                   135.0, "Current Doubler");
+                                   135.0, "currentDoubler");
     OpenMagnetics::Pshb pshb(pshbJson);
     auto req = pshb.process_design_requirements();
 
@@ -424,7 +424,7 @@ TEST_CASE("Test_AdvancedPshb_Process", "[converter-model][pshb-topology][advance
     inputVoltage["minimum"] = 370.0;
     inputVoltage["maximum"] = 410.0;
     advJson["inputVoltage"] = inputVoltage;
-    advJson["rectifierType"] = "Center Tapped";
+    advJson["rectifierType"] = "centerTapped";
     advJson["operatingPoints"] = json::array();
 
     {
@@ -460,7 +460,7 @@ TEST_CASE("Test_AdvancedPshb_Process", "[converter-model][pshb-topology][advance
 TEST_CASE("Test_Pshb_vs_Psfb_Comparison", "[converter-model][pshb-topology][psfb-topology][comparison]") {
     // Both converters: 400V -> 12V, 25A, 100kHz, 135 deg phase shift, center-tapped
     auto pshbJson = make_pshb_json(400.0, 370.0, 410.0, 12.0, 25.0, 100000.0,
-                                   135.0, "Center Tapped");
+                                   135.0, "centerTapped");
 
     // PSFB with identical operating conditions
     json psfbJson = pshbJson;  // Same JSON (both use PhaseShiftFullBridge schema)

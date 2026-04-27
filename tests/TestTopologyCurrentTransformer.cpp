@@ -26,7 +26,7 @@ namespace {
         currentTransformerInputsJson["burdenResistor"] = 2;
         currentTransformerInputsJson["maximumDutyCycle"] = 0.9;
         currentTransformerInputsJson["maximumPrimaryCurrentPeak"] = 120;
-        currentTransformerInputsJson["waveformLabel"] = "Sinusoidal";
+        currentTransformerInputsJson["waveformLabel"] = "sinusoidal";
         currentTransformerInputsJson["ambientTemperature"] = 25;
         double turnsRatio = 0.01;
 

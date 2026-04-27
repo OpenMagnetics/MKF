@@ -1277,7 +1277,7 @@ TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc-topo
     INFO("Generated CMC netlist:\n" << netlist);
     
     // Verify netlist contains key elements
-    REQUIRE(netlist.find("Common Mode Choke") != std::string::npos);
+    REQUIRE(netlist.find("commonModeChoke") != std::string::npos);
     REQUIRE(netlist.find("LISN") != std::string::npos);
     REQUIRE(netlist.find(".tran") != std::string::npos);
     
@@ -1423,7 +1423,7 @@ TEST_CASE("DifferentialModeChoke generate ngspice circuit", "[ngspice-runner][dm
     INFO("Generated DMC netlist:\n" << netlist);
     
     // Verify netlist contains key elements
-    REQUIRE(netlist.find("Differential Mode Choke") != std::string::npos);
+    REQUIRE(netlist.find("differentialModeChoke") != std::string::npos);
     REQUIRE(netlist.find("Filter") != std::string::npos);
     REQUIRE(netlist.find(".tran") != std::string::npos);
     
@@ -1541,7 +1541,7 @@ TEST_CASE("PowerFactorCorrection generate ngspice circuit", "[ngspice-runner][pf
     pfc.set_switching_frequency(100e3);
     pfc.set_current_ripple_ratio(0.3);
     pfc.set_efficiency(0.95);
-    pfc.set_mode("Continuous Conduction Mode");
+    pfc.set_mode("continuousConductionMode");
     
     double inductance = 500e-6;  // 500µH
     double dcResistance = 0.1;

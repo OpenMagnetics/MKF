@@ -1,3 +1,4 @@
+#include "constructive_models/MasMigration.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Utils.h"
@@ -83,6 +84,7 @@ static void parse_ndjson(std::string database, Callback&& callback) {
             continue;
         }
         json jf = json::parse(token);
+        OpenMagnetics::compat::migrate_pre_1_0(jf);
         callback(jf);
         database.erase(0, pos + delimiter.length());
     }
@@ -167,6 +169,7 @@ void load_cores(std::optional<std::string> fileToLoad) {
                 continue;
             }
             json jf = json::parse(token);
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
             CoreType type;
             from_json(jf["functionalDescription"]["type"], type);
             if ((includeToroidalCores && type == CoreType::TOROIDAL) || (includeConcentricCores && type != CoreType::TOROIDAL)) {
@@ -193,6 +196,7 @@ void load_cores(std::optional<std::string> fileToLoad) {
         database = std::regex_replace(database, std::regex("\n"), ", ");
         database = "[" + database + "]";
         json arr = json::parse(database);
+        OpenMagnetics::compat::migrate_pre_1_0(arr);
         std::vector<Core> tempCoreDatabase;
 
         for (auto elem : arr) {

@@ -58,7 +58,7 @@ TEST_CASE("LLC Analytical Waveforms", "[topology][llc][analytical]") {
     llcJson["turnsRatio"] = 4.0;
     llcJson["ambientTemperature"] = 25.0;
     llcJson["efficiency"] = 0.97;
-    llcJson["insulationType"] = "Basic";
+    llcJson["insulationType"] = "basic";
     
     json opJson;
     opJson["outputVoltages"] = json::array({48.0});
@@ -122,7 +122,7 @@ TEST_CASE("LLC Simulated Waveforms", "[topology][llc][simulation]") {
     llcJson["turnsRatio"] = 4.0;
     llcJson["ambientTemperature"] = 25.0;
     llcJson["efficiency"] = 0.97;
-    llcJson["insulationType"] = "Basic";
+    llcJson["insulationType"] = "basic";
     
     json opJson;
     opJson["outputVoltages"] = json::array({48.0});

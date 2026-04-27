@@ -1,4 +1,5 @@
 #include <cmath>
+#include "constructive_models/MasMigration.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -166,11 +167,12 @@ bool Coil::is_planar() {
     return false;
 }
 
-Coil::Coil(const json& j, size_t interleavingLevel,
+Coil::Coil(json j, size_t interleavingLevel,
                                WindingOrientation windingOrientation,
                                WindingOrientation layersOrientation,
                                CoilAlignment turnsAlignment,
                                CoilAlignment sectionAlignment) {
+        OpenMagnetics::compat::migrate_pre_1_0(j);
     _interleavingLevel = interleavingLevel;
     _windingOrientation = windingOrientation;
     _layersOrientation = layersOrientation;
@@ -184,7 +186,8 @@ Coil::Coil(const json& j, size_t interleavingLevel,
     }
 }
 
-Coil::Coil(const json& j, bool windInConstructor) {
+Coil::Coil(json j, bool windInConstructor) {
+        OpenMagnetics::compat::migrate_pre_1_0(j);
     from_json(j, *this);
 
     if (windInConstructor) {

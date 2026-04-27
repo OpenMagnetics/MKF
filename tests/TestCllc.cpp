@@ -80,7 +80,7 @@ namespace {
             opJson["outputCurrents"] = {18.33};  // ~11 kW at 600V
             opJson["switchingFrequency"] = fsw;
             opJson["ambientTemperature"] = 25.0;
-            opJson["powerFlow"] = (powerFlow == CllcPowerFlow::FORWARD) ? "Forward" : "Reverse";
+            opJson["powerFlow"] = (powerFlow == CllcPowerFlow::FORWARD) ? "forward" : "reverse";
             cllcJson["operatingPoints"].push_back(opJson);
         }
         return cllcJson;
@@ -113,7 +113,7 @@ namespace {
             opJson["outputCurrents"] = {10.0};  // ~480W
             opJson["switchingFrequency"] = fsw;
             opJson["ambientTemperature"] = 25.0;
-            opJson["powerFlow"] = (powerFlow == CllcPowerFlow::FORWARD) ? "Forward" : "Reverse";
+            opJson["powerFlow"] = (powerFlow == CllcPowerFlow::FORWARD) ? "forward" : "reverse";
             cllcJson["operatingPoints"].push_back(opJson);
         }
         return cllcJson;
@@ -321,7 +321,7 @@ namespace {
         json cllcJson = create_standard_cllc_json(73000.0, CllcPowerFlow::REVERSE);
 
         // For reverse mode, swap the voltage/current references
-        cllcJson["operatingPoints"][0]["powerFlow"] = "Reverse";
+        cllcJson["operatingPoints"][0]["powerFlow"] = "reverse";
 
         OpenMagnetics::CllcConverter cllc(cllcJson);
 
@@ -335,8 +335,8 @@ namespace {
 
         REQUIRE(!operatingPoints.empty());
 
-        // Check that operating point name contains "Reverse"
-        REQUIRE(operatingPoints[0].get_name().value().find("Reverse") != std::string::npos);
+        // Check that operating point name contains "reverse"
+        REQUIRE(operatingPoints[0].get_name().value().find("reverse") != std::string::npos);
     }
 
     // =========================================================================
@@ -448,7 +448,7 @@ namespace {
             opJson["outputCurrents"] = {10.0};  // ~5.5 kW at 550V
             opJson["switchingFrequency"] = 90000.0;  // Above resonance
             opJson["ambientTemperature"] = 45.0;
-            opJson["powerFlow"] = "Forward";
+            opJson["powerFlow"] = "forward";
             cllcJson["operatingPoints"].push_back(opJson);
         }
 

@@ -1,4 +1,5 @@
 #include "constructive_models/Core.h"
+#include "constructive_models/MasMigration.h"
 #include "constructive_models/Wire.h"
 #include "physical_models/Resistivity.h"
 #include "physical_models/Reluctance.h"
@@ -23,7 +24,8 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
 
 
-Core::Core(const json& j, bool includeMaterialData, bool includeProcessedDescription, bool includeGeometricalDescription) {
+Core::Core(json j, bool includeMaterialData, bool includeProcessedDescription, bool includeGeometricalDescription) {
+        OpenMagnetics::compat::migrate_pre_1_0(j);
     _includeMaterialData = includeMaterialData;
     from_json(j, *this);
     
@@ -1014,6 +1016,7 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
         if (std::get<std::string>(coreMaterial) == "dummy" || std::get<std::string>(coreMaterial) == "Dummy") {
             CoreMaterial coreMaterial;
             coreMaterial.set_name("Dummy");
+            coreMaterial.set_material(MAS::MaterialType::FERRITE);
             return coreMaterial;
         }
         auto coreMaterialData = find_core_material_by_name(std::get<std::string>(coreMaterial));

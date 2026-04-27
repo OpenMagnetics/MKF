@@ -1,6 +1,7 @@
 #pragma once
 
 #include "json.hpp"
+#include "constructive_models/MasMigration.h"
 
 #include <MAS.hpp>
 #include "Defaults.h"
@@ -19,7 +20,7 @@ class Core : public MAS::MagneticCore {
     bool _includeMaterialData = false;
 
   public:
-    Core(const json& j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true);
+    Core(json j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true);
     Core(const MagneticCore core);
     Core(const CoreShape shape, std::optional<CoreMaterial> material = std::nullopt);
     Core() = default;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <MAS.hpp>
+#include "constructive_models/MasMigration.h"
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
 #include "processors/Outputs.h"
@@ -63,9 +64,11 @@ void from_json(const json& j, std::vector<Mas>& v);
 void to_json(json& j, const std::vector<Mas>& v);
 
 inline void from_json(const json & j, Mas& x) {
-    x.set_inputs(j.at("inputs").get<Inputs>());
-    x.set_magnetic(j.at("magnetic").get<Magnetic>());
-    x.set_outputs(j.at("outputs").get<std::vector<Outputs>>());
+    json migrated = j;
+    OpenMagnetics::compat::migrate_pre_1_0(migrated);
+    x.set_inputs(migrated.at("inputs").get<Inputs>());
+    x.set_magnetic(migrated.at("magnetic").get<Magnetic>());
+    x.set_outputs(migrated.at("outputs").get<std::vector<Outputs>>());
 }
 
 inline void to_json(json & j, const Mas & x) {
@@ -85,6 +88,7 @@ inline void to_file(std::filesystem::path filepath, const Mas & x) {
 
 inline void from_json(const json& j, std::vector<Mas>& v) {
     for (auto e : j) {
+        OpenMagnetics::compat::migrate_pre_1_0(e);
         Mas x;
         x.set_inputs(e.at("inputs").get<Inputs>());
         x.set_magnetic(e.at("magnetic").get<Magnetic>());

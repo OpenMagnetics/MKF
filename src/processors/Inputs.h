@@ -1,6 +1,7 @@
 #pragma once
 
 #include "json.hpp"
+#include "constructive_models/MasMigration.h"
 
 #include <MAS.hpp>
 #include <cmath>
@@ -20,7 +21,8 @@ namespace OpenMagnetics {
 
 class Inputs : public MAS::Inputs {
   public:
-    Inputs(const json& j, bool processWaveform = true, std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt) {
+    Inputs(json j, bool processWaveform = true, std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt) {
+        OpenMagnetics::compat::migrate_pre_1_0(j);
         from_json(j, *this);
         auto check_passed = check_integrity();
         if (!check_passed.first) {

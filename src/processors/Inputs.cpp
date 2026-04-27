@@ -2522,11 +2522,11 @@ Inputs Inputs::create_quick_operating_point(double frequency,
     magnetizingInductanceWithTolerance.set_maximum(magnetizingInductance * 1.2);
 
     InsulationRequirements insulationRequirements;
-    auto overvoltageCategory = OvervoltageCategory::OVC_II;
+    auto overvoltageCategory = OvervoltageCategory::II;
     auto cti = Cti::GROUP_I;
     DimensionWithTolerance altitude;
     DimensionWithTolerance mainSupplyVoltage;
-    auto pollutionDegree = PollutionDegree::P1;
+    auto pollutionDegree = PollutionDegree::PD1;
     auto standards = std::vector<InsulationStandards>{};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
@@ -2619,11 +2619,11 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
     magnetizingInductanceWithTolerance.set_maximum(magnetizingInductance * 1.2);
     InsulationRequirements insulationRequirements;
 
-    auto overvoltageCategory = OvervoltageCategory::OVC_II;
+    auto overvoltageCategory = OvervoltageCategory::II;
     auto cti = Cti::GROUP_I;
     DimensionWithTolerance altitude;
     DimensionWithTolerance mainSupplyVoltage;
-    auto pollutionDegree = PollutionDegree::P1;
+    auto pollutionDegree = PollutionDegree::PD1;
     auto standards = std::vector<InsulationStandards>{};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);
@@ -2715,11 +2715,11 @@ Inputs Inputs::create_quick_operating_point_only_current(double frequency,
     magnetizingInductanceWithTolerance.set_maximum(magnetizingInductance * 1.2);
     InsulationRequirements insulationRequirements;
 
-    auto overvoltageCategory = OvervoltageCategory::OVC_II;
+    auto overvoltageCategory = OvervoltageCategory::II;
     auto cti = Cti::GROUP_I;
     DimensionWithTolerance altitude;
     DimensionWithTolerance mainSupplyVoltage;
-    auto pollutionDegree = PollutionDegree::P1;
+    auto pollutionDegree = PollutionDegree::PD1;
     auto standards = std::vector<InsulationStandards>{};
     altitude.set_maximum(2000);
     mainSupplyVoltage.set_nominal(400);

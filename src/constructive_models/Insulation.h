@@ -1,4 +1,5 @@
 #pragma once
+#include "constructive_models/MasMigration.h"
 #include <MAS.hpp>
 #include "processors/Inputs.h"
 #include "constructive_models/Wire.h"
@@ -96,6 +97,7 @@ class InsulationIEC60664Model : public InsulationStandard {
         {
             auto data = fs.open("src/data/insulation_standards/IEC_60664-1.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
             part1TableA2 = jf["A.2"];
             part1TableF1 = jf["F.1"];
             part1TableF2 = jf["F.2"];
@@ -106,6 +108,7 @@ class InsulationIEC60664Model : public InsulationStandard {
         {
             auto data = fs.open("src/data/insulation_standards/IEC_60664-4.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
             part4Table1 = jf["Table 1"];
 
             std::map<std::string, std::vector<std::pair<double, double>>> temp;
@@ -119,6 +122,7 @@ class InsulationIEC60664Model : public InsulationStandard {
         {
             auto data = fs.open("src/data/insulation_standards/IEC_60664-5.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
             part5Table2 = jf["Table 2"];
             part5Table3 = jf["Table 3"];
             part5Table4 = jf["Table 4"];
@@ -195,6 +199,7 @@ class InsulationIEC62368Model : public InsulationStandard {
         {
             auto data = fs.open("src/data/insulation_standards/IEC_62368-1.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
             table10 = jf["Table 10"];
             table11 = jf["Table 11"];
             table12 = jf["Table 12"];
@@ -291,6 +296,7 @@ class InsulationIEC61558Model : public InsulationStandard {
         {
             auto data = fs.open("src/data/insulation_standards/IEC_61558-1.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
             table14 = jf["Table 14"];
             table20 = jf["Table 20"];
             table21 = jf["Table 21"];
@@ -300,6 +306,7 @@ class InsulationIEC61558Model : public InsulationStandard {
         {
             auto data = fs.open("src/data/insulation_standards/IEC_61558-2-16.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
             table102 = jf["Table 102"];
             table103 = jf["Table 103"];
             table104 = jf["Table 104"];
@@ -425,6 +432,7 @@ class InsulationIEC60335Model : public InsulationStandard {
         {
             auto data = fs.open("src/data/insulation_standards/IEC_60335-1.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
             table7 = jf["Table 7"];
             table15 = jf["Table 15"];
             table16 = jf["Table 16"];

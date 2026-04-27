@@ -1,5 +1,6 @@
 #pragma once
 
+#include "constructive_models/MasMigration.h"
 #include <MAS.hpp>
 #include "constructive_models/Core.h"
 #include "constructive_models/Coil.h"
@@ -96,6 +97,7 @@ inline void from_file(std::filesystem::path filepath, Magnetic & x) {
     std::string data((std::istreambuf_iterator<char>(f)),
                      std::istreambuf_iterator<char>());
     auto masJson = json::parse(data);
+    OpenMagnetics::compat::migrate_pre_1_0(masJson);
     auto magneticJson = masJson["magnetic"];
 
     x = OpenMagnetics::Magnetic(magneticJson);

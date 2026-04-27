@@ -492,7 +492,7 @@ double get_value_or(T&& val, double default_val) {
                     name += " with op. point " + std::to_string(opIndex);
                 }
                 std::string flowStr = (cllcOpPoint.get_power_flow() == CllcPowerFlow::FORWARD) ?
-                    " (Forward)" : " (Reverse)";
+                    " (forward)" : " (reverse)";
                 name += flowStr;
                 operatingPoint.set_name(name);
                 operatingPoints.push_back(operatingPoint);

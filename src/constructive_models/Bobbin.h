@@ -1,6 +1,7 @@
 #pragma once
 
 #include "json.hpp"
+#include "constructive_models/MasMigration.h"
 
 #include "constructive_models/Core.h"
 
@@ -42,7 +43,8 @@ inline double minBobbinColumnThickness;
 class Bobbin : public MAS::Bobbin {
   private:
   public:
-    Bobbin(const json& j, bool includeProcessedDescription = true) {
+    Bobbin(json j, bool includeProcessedDescription = true) {
+        OpenMagnetics::compat::migrate_pre_1_0(j);
         from_json(j, *this);
         if (get_functional_description()) {
             if (includeProcessedDescription) {

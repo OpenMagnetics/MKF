@@ -32,10 +32,10 @@ TEST_CASE("Flyback Core Adviser - Default Values", "[core-adviser][flyback-topol
     flybackJson["operatingPoints"] = json::array({outputParams});
     
     // Insulation settings
-    flybackJson["insulationType"] = "Basic";
-    flybackJson["insulation"]["cti"] = "Group II";
-    flybackJson["insulation"]["pollutionDegree"] = "P2";
-    flybackJson["insulation"]["overvoltageCategory"] = "OVC-III";
+    flybackJson["insulationType"] = "basic";
+    flybackJson["insulation"]["cti"] = "groupII";
+    flybackJson["insulation"]["pollutionDegree"] = "PD2";
+    flybackJson["insulation"]["overvoltageCategory"] = "III";
     flybackJson["insulation"]["altitude"]["maximum"] = 2000.0;
     flybackJson["insulation"]["mainSupplyVoltage"]["maximum"] = 400.0;
     flybackJson["insulation"]["standards"] = json::array({"IEC 60664-1"});
@@ -116,7 +116,7 @@ TEST_CASE("Flyback Inputs - Frequency Validation", "[flyback-topology][frequency
     outputParams["ambientTemperature"] = 25.0;
     flybackJson["operatingPoints"] = json::array({outputParams});
     
-    flybackJson["insulationType"] = "Basic";
+    flybackJson["insulationType"] = "basic";
     flybackJson["efficiency"] = 0.85;
     
     OpenMagnetics::Flyback flyback(flybackJson);

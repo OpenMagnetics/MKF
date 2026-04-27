@@ -1,3 +1,4 @@
+#include "constructive_models/MasMigration.h"
 #include "physical_models/CoreLosses.h"
 #include "physical_models/Resistivity.h"
 #include "physical_models/InitialPermeability.h"
@@ -971,6 +972,7 @@ void CoreLossesciGSEModel::load_coefficients() {
         std::string jsonStr(data.begin(), data.end());
         json jsonData = json::parse(jsonStr);
         
+        OpenMagnetics::compat::migrate_pre_1_0(jsonData);
         if (!jsonData.contains("coefficients")) {
             _coefficientsLoaded = true;
             return;

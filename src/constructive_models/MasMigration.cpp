@@ -1,0 +1,181 @@
+// Backwards-compatibility helper for loading pre-1.0 MAS documents.
+//
+// See MasMigration.h for the contract. The MAPPING table below is the
+// C++ port of MAS/scripts/migrate-to-1.0.py.
+
+#include "constructive_models/MasMigration.h"
+
+#include <string>
+#include <unordered_map>
+
+namespace OpenMagnetics::compat {
+
+namespace {
+
+const std::unordered_map<std::string, std::string>& mapping() {
+    static const std::unordered_map<std::string, std::string> m = {
+        // insulationType
+        {"Functional", "functional"},
+        {"Basic", "basic"},
+        {"Supplementary", "supplementary"},
+        {"Double", "double"},
+        {"Reinforced", "reinforced"},
+        // wiringTechnology
+        {"Wound", "wound"},
+        {"Printed", "printed"},
+        {"Stamped", "stamped"},
+        {"Deposition", "deposition"},
+        // application
+        {"Power", "power"},
+        {"Signal Processing", "signalProcessing"},
+        {"Interference Suppression", "interferenceSuppression"},
+        // subApplication
+        {"Power Filtering", "powerFiltering"},
+        {"Transforming", "transforming"},
+        {"Isolation", "isolation"},
+        {"Common Mode Noise Filtering", "commonModeNoiseFiltering"},
+        {"Differential Mode Noise Filtering", "differentialModeNoiseFiltering"},
+        // connectionType
+        {"Pin", "pin"},
+        {"Screw", "screw"},
+        {"SMT", "smt"},
+        {"Flying Lead", "flyingLead"},
+        {"THT", "tht"},
+        {"PCB Pad", "pcbPad"},
+        // coilAlignment
+        {"inner or top", "innerOrTop"},
+        {"outer or bottom", "outerOrBottom"},
+        // coreType
+        {"two-piece set", "twoPieceSet"},
+        {"piece and plate", "pieceAndPlate"},
+        {"closed shape", "closedShape"},
+        // piece type
+        {"half set", "halfSet"},
+        // DMC configuration
+        {"SINGLE_PHASE", "singlePhase"},
+        {"THREE_PHASE", "threePhase"},
+        {"THREE_PHASE_WITH_NEUTRAL", "threePhaseWithNeutral"},
+        // waveformLabel
+        {"Custom", "custom"},
+        {"Triangular", "triangular"},
+        {"Sinusoidal", "sinusoidal"},
+        {"Rectangular", "rectangular"},
+        {"Unipolar Rectangular", "unipolarRectangular"},
+        {"Unipolar Triangular", "unipolarTriangular"},
+        {"Bipolar Rectangular", "bipolarRectangular"},
+        {"Bipolar Triangular", "bipolarTriangular"},
+        {"Flyback Primary", "flybackPrimary"},
+        {"Flyback Secondary", "flybackSecondary"},
+        {"Rectangular With Deadtime", "rectangularWithDeadtime"},
+        {"Flyback Secondary With Deadtime", "flybackSecondaryWithDeadtime"},
+        {"Rectangular DCM", "rectangularDCM"},
+        {"Secondary Rectangular", "secondaryRectangular"},
+        {"Secondary Rectangular With Deadtime", "secondaryRectangularWithDeadtime"},
+        {"Triangular With Deadtime", "triangularWithDeadtime"},
+        // topology
+        {"Buck Converter", "buckConverter"},
+        {"Boost Converter", "boostConverter"},
+        {"Inverting Buck-Boost Converter", "invertingBuckBoostConverter"},
+        {"Cuk Converter", "cukConverter"},
+        {"Zeta Converter", "zetaConverter"},
+        {"Flyback Converter", "flybackConverter"},
+        {"Active Clamp Forward Converter", "activeClampForwardConverter"},
+        {"Single Switch Forward Converter", "singleSwitchForwardConverter"},
+        {"Two Switch Forward Converter", "twoSwitchForwardConverter"},
+        {"Push-Pull Converter", "pushPullConverter"},
+        {"Weinberg Converter", "weinbergConverter"},
+        {"Half-Bridge Converter", "halfBridgeConverter"},
+        {"Full-Bridge Converter", "fullBridgeConverter"},
+        {"Phase-Shifted Full-Bridge Converter", "phaseShiftedFullBridgeConverter"},
+        {"Phase-Shifted Half-Bridge Converter", "phaseShiftedHalfBridgeConverter"},
+        {"Current Transformer", "currentTransformer"},
+        {"Isolated Buck Converter", "isolatedBuckConverter"},
+        {"Isolated Buck-Boost Converter", "isolatedBuckBoostConverter"},
+        {"Dual Active Bridge Converter", "dualActiveBridgeConverter"},
+        {"LLC Resonant Converter", "llcResonantConverter"},
+        {"CLLC Resonant Converter", "cllcResonantConverter"},
+        {"Common Mode Choke", "commonModeChoke"},
+        {"Differential Mode Choke", "differentialModeChoke"},
+        {"Power Factor Correction", "powerFactorCorrection"},
+        // flybackModes
+        {"Continuous Conduction Mode", "continuousConductionMode"},
+        {"Discontinuous Conduction Mode", "discontinuousConductionMode"},
+        {"Quasi Resonant Mode", "quasiResonantMode"},
+        {"Boundary Mode Operation", "boundaryModeOperation"},
+        // pfcModes
+        {"Critical Conduction Mode", "criticalConductionMode"},
+        {"Transition Mode", "transitionMode"},
+        // bridge types
+        {"Half Bridge", "halfBridge"},
+        {"Full Bridge", "fullBridge"},
+        {"Center Tapped", "centerTapped"},
+        {"Current Doubler", "currentDoubler"},
+        // cllcPowerFlow
+        {"Forward", "forward"},
+        {"Reverse", "reverse"},
+        // market
+        {"Medical", "medical"},
+        {"Commercial", "commercial"},
+        {"Industrial", "industrial"},
+        {"Military", "military"},
+        {"Space", "space"},
+        // materialComposition
+        {"Carbonyl Iron", "carbonylIron"},
+        {"Iron", "iron"},
+        {"Proprietary", "proprietary"},
+        // cti
+        {"Group I", "groupI"},
+        {"Group II", "groupII"},
+        {"Group IIIA", "groupIIIA"},
+        {"Group IIIB", "groupIIIB"},
+        // pollutionDegree (RFC 0008)
+        {"P1", "PD1"},
+        {"P2", "PD2"},
+        {"P3", "PD3"},
+        // overvoltageCategory (RFC 0008)
+        {"OVC-I", "I"},
+        {"OVC-II", "II"},
+        {"OVC-III", "III"},
+        {"OVC-IV", "IV"},
+        // shape family
+        {"planar e", "planarE"},
+        {"planar er", "planarER"},
+        {"planar el", "planarEL"},
+    };
+    return m;
+}
+
+}  // namespace
+
+void migrate_pre_1_0(nlohmann::json& j) {
+    if (j.is_string()) {
+        const auto& m = mapping();
+        const std::string s = j.get<std::string>();
+        auto it = m.find(s);
+        if (it != m.end()) {
+            j = it->second;
+        }
+    } else if (j.is_object()) {
+        for (auto it = j.begin(); it != j.end(); ++it) {
+            // cost was a bare number (distributorInfo) or string (manufacturerInfo)
+            // in pre-1.0; upgrade to {value, currency} struct.
+            if (it.key() == "cost") {
+                if (it.value().is_number()) {
+                    double v = it.value().get<double>();
+                    it.value() = nlohmann::json{{"value", v}, {"currency", "EUR"}};
+                } else if (it.value().is_string()) {
+                    it.value() = nlohmann::json(nullptr);
+                }
+                // null and already-object forms pass through unchanged
+            } else {
+                migrate_pre_1_0(it.value());
+            }
+        }
+    } else if (j.is_array()) {
+        for (auto& e : j) {
+            migrate_pre_1_0(e);
+        }
+    }
+}
+
+}  // namespace OpenMagnetics::compat

@@ -6,7 +6,7 @@
             },
             "name": "My Design Requirements",
             "turnsRatios": [],
-            "wiringTechnology": "Printed"
+            "wiringTechnology": "printed"
         },
         "operatingPoints": [
             {
@@ -35,7 +35,7 @@
                                 "dutyCycle": 0.5,
                                 "peakToPeak": 10,
                                 "offset": 0,
-                                "label": "Triangular",
+                                "label": "triangular",
                                 "acEffectiveFrequency": 104779.34631710833,
                                 "effectiveFrequency": 104779.34631710833,
                                 "peak": 5,
@@ -76,7 +76,7 @@
                                 "dutyCycle": 0.5,
                                 "peakToPeak": 100,
                                 "offset": 0,
-                                "label": "Rectangular",
+                                "label": "rectangular",
                                 "acEffectiveFrequency": 204322.00980871,
                                 "effectiveFrequency": 190636.16661873792,
                                 "peak": 70.5,
@@ -186,7 +186,7 @@
                         }
                     ],
                     "sectionsOrientation": "overlapping",
-                    "type": "Printed"
+                    "type": "printed"
                 }
             ],
             "layersDescription": [
@@ -1748,12 +1748,12 @@
                             "minimum": 0.0005
                         }
                     },
-                    "family": "planar el",
+                    "family": "planarEL",
                     "magneticCircuit": "open",
                     "name": "EL 22/4.0",
                     "type": "standard"
                 },
-                "type": "two-piece set"
+                "type": "twoPieceSet"
             },
             "geometricalDescription": [
                 {
@@ -1816,12 +1816,12 @@
                                 "minimum": 0.0005
                             }
                         },
-                        "family": "planar el",
+                        "family": "planarEL",
                         "magneticCircuit": "open",
                         "name": "EL 22/4.0",
                         "type": "standard"
                     },
-                    "type": "half set"
+                    "type": "halfSet"
                 },
                 {
                     "coordinates": [
@@ -1873,15 +1873,15 @@
                                 "minimum": 0.0005
                             }
                         },
-                        "family": "planar el",
+                        "family": "planarEL",
                         "magneticCircuit": "open",
                         "name": "EL 22/4.0",
                         "type": "standard"
                     },
-                    "type": "half set"
+                    "type": "halfSet"
                 }
             ],
-            "name": "Custom",
+            "name": "custom",
             "processedDescription": {
                 "columns": [
                     {
@@ -2092,7 +2092,7 @@
                     },
                     "processed": {
                         "dutyCycle": 0.4999999999999997,
-                        "label": "Triangular",
+                        "label": "triangular",
                         "negativePeak": -0.139829269039924,
                         "offset": -2.220446049250313e-16,
                         "peak": 0.139829269039924,
@@ -2319,7 +2319,7 @@
                                     "average": -1.2073675392798577e-14,
                                     "dutyCycle": 0.5,
                                     "effectiveFrequency": 110746.40291779551,
-                                    "label": "Triangular",
+                                    "label": "triangular",
                                     "offset": 0,
                                     "peak": 5,
                                     "peakToPeak": 10,
@@ -2727,7 +2727,7 @@
                                 },
                                 "processed": {
                                     "dutyCycle": 0.4999999999999997,
-                                    "label": "Triangular",
+                                    "label": "triangular",
                                     "negativePeak": -0.139829269039924,
                                     "offset": -2.220446049250313e-16,
                                     "peak": 0.139829269039924,
@@ -2887,7 +2887,7 @@
                                     "average": -1.2073675392798577e-14,
                                     "dutyCycle": 0.5,
                                     "effectiveFrequency": 110746.40291779551,
-                                    "label": "Triangular",
+                                    "label": "triangular",
                                     "offset": 0,
                                     "peak": 5,
                                     "peakToPeak": 10,
@@ -3298,7 +3298,7 @@
                                     "average": 24.2890625,
                                     "dutyCycle": 0.4921874999999997,
                                     "effectiveFrequency": 553357.3374711702,
-                                    "label": "Unipolar Rectangular",
+                                    "label": "unipolarRectangular",
                                     "negativePeak": -20.5,
                                     "offset": -20.5,
                                     "peak": 70.5,
