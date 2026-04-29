@@ -16,6 +16,10 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 5;
 
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;
+    mutable std::vector<double>   extraLoInductances;
+
 public:
     bool _assertErrors = false;
 
@@ -37,6 +41,10 @@ public:
 
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, const IsolatedBuckOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 
     /**
      * @brief Generate an ngspice circuit for this Isolated Buck (Flybuck) converter

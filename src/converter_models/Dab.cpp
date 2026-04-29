@@ -1,4 +1,5 @@
 #include "converter_models/Dab.h"
+#include "physical_models/LeakageInductance.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
@@ -603,6 +604,9 @@ std::vector<OperatingPoint> Dab::process_operating_points(
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {
+    extraIndVoltageWaveforms.clear();
+    extraIndCurrentWaveforms.clear();
+
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
     auto& ops = get_operating_points();
@@ -776,6 +780,23 @@ OperatingPoint Dab::process_operating_point_for_input_voltage(
         Vab_full[k]  = Vab_at(theta, V1, D1_rad);
         iL_full[k]   = dab_sample(theta, bnd_theta, bnd_iL);
         Im_full[k]   = dab_sample(theta, bnd_theta, bnd_Im);
+    }
+
+    // ---- Store extra-component waveforms for get_extra_components_inputs ----
+    // Vab is the series inductor voltage (primary bridge square wave).
+    // iL_full (without magnetizing component) is the series inductor current.
+    {
+        Waveform indVoltWfm;
+        indVoltWfm.set_ancillary_label(WaveformLabel::BIPOLAR_RECTANGULAR);
+        indVoltWfm.set_data(Vab_full);
+        indVoltWfm.set_time(time_full);
+        extraIndVoltageWaveforms.push_back(indVoltWfm);
+
+        Waveform indCurrWfm;
+        indCurrWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+        indCurrWfm.set_data(iL_full);
+        indCurrWfm.set_time(time_full);
+        extraIndCurrentWaveforms.push_back(indCurrWfm);
     }
 
     // ---- Primary winding excitation ----
@@ -1410,6 +1431,76 @@ Inputs AdvancedDab::process() {
     inputs.set_operating_points(ops);
 
     return inputs;
+}
+
+// =========================================================================
+// Extra-component inputs for the series inductor
+// =========================================================================
+std::vector<std::variant<Inputs, CAS::Inputs>> Dab::get_extra_components_inputs(
+    ExtraComponentsMode mode,
+    std::optional<Magnetic> magnetic)
+{
+    if (mode == ExtraComponentsMode::REAL && !magnetic.has_value())
+        throw std::invalid_argument("get_extra_components_inputs: mode REAL requires a designed magnetic");
+
+    if (computedSeriesInductance <= 0 || extraIndVoltageWaveforms.empty())
+        throw std::runtime_error("DAB get_extra_components_inputs: call process() first");
+
+    double L = computedSeriesInductance;
+    double L_external = L;
+
+    if (mode == ExtraComponentsMode::REAL) {
+        // Use first OP's switching frequency as representative for leakage extraction
+        auto& ops = get_operating_points();
+        double Fs = ops[0].get_switching_frequency();
+
+        auto leakageOutput = LeakageInductance().calculate_leakage_inductance_all_windings(
+            magnetic.value(), Fs);
+        auto perWinding = leakageOutput.get_leakage_inductance_per_winding();
+        double Llk = 0.0;
+        if (!perWinding.empty())
+            Llk = resolve_dimensional_values(perWinding[0]);
+
+        L_external = L - Llk;
+        if (L_external <= 0.0)
+            return {};  // leakage alone is sufficient — no external inductor needed
+    }
+
+    size_t nOps = extraIndVoltageWaveforms.size();
+    std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+    Inputs masInputs;
+    DesignRequirements dr;
+
+    DimensionWithTolerance inductance;
+    inductance.set_nominal(L_external);
+    dr.set_magnetizing_inductance(inductance);
+    dr.set_name("seriesInductor");
+    dr.set_topology(Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER);
+
+    // Single primary winding, no isolation
+    dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+    dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+    masInputs.set_design_requirements(dr);
+
+    // Use first OP's switching frequency as representative
+    auto& ops = get_operating_points();
+    double Fs = ops[0].get_switching_frequency();
+
+    std::vector<OperatingPoint> masOps;
+    for (size_t i = 0; i < nOps; ++i) {
+        OperatingPoint op;
+        auto& indVoltWfm = extraIndVoltageWaveforms[i];
+        auto& indCurrWfm = extraIndCurrentWaveforms[i];
+
+        auto excitation = complete_excitation(indCurrWfm, indVoltWfm, Fs, "Primary");
+        op.get_mutable_excitations_per_winding().push_back(excitation);
+        masOps.push_back(op);
+    }
+    masInputs.set_operating_points(masOps);
+    result.emplace_back(std::move(masInputs));
+
+    return result;
 }
 
 } // namespace OpenMagnetics

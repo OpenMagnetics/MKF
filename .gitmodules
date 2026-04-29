@@ -4,3 +4,9 @@
 [submodule "cci_coords"]
 	path = cci_coords
 	url = https://github.com/OpenMagnetics/cci_coords.git
+[submodule "CAS"]
+	path = CAS
+	url = https://github.com/Power-Supply-Manufacturers-Association/CAS.git
+[submodule "EAS"]
+	path = EAS
+	url = git@github.com:Power-Supply-Manufacturers-Association/EAS.git

@@ -230,18 +230,70 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        extraLoVoltageWaveforms.clear();
+        extraLoCurrentWaveforms.clear();
+        extraLoInductances.clear();
+
         std::vector<double> outputInductancePerSecondary;
 
         for (size_t forwardOperatingPointIndex = 0; forwardOperatingPointIndex < get_operating_points().size(); ++forwardOperatingPointIndex) {
             outputInductancePerSecondary.push_back(get_output_inductance(turnsRatios[forwardOperatingPointIndex + 1], forwardOperatingPointIndex));
         }
 
+        // Populate extraLoInductances (one per secondary winding)
+        size_t numSecondaries = turnsRatios.size() - 1;  // turnsRatios[0] is demagnetization
+        for (size_t s = 0; s < numSecondaries; ++s) {
+            double lo = get_output_inductance(turnsRatios[s + 1], s);
+            extraLoInductances.push_back(lo);
+        }
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
 
             for (size_t forwardOperatingPointIndex = 0; forwardOperatingPointIndex < get_operating_points().size(); ++forwardOperatingPointIndex) {
-                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[forwardOperatingPointIndex], turnsRatios, magnetizingInductance, outputInductancePerSecondary[0]);
+                auto& fop = get_operating_points()[forwardOperatingPointIndex];
+                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, fop, turnsRatios, magnetizingInductance, outputInductancePerSecondary[0]);
+
+                // Capture Lo waveforms for each secondary
+                double switchingFrequency = fop.get_switching_frequency();
+                double period = 1.0 / switchingFrequency;
+                double diodeVoltageDrop = get_diode_voltage_drop();
+                double mainSecondaryTurnsRatio = turnsRatios[1];
+                double mainOutputVoltage = fop.get_output_voltages()[0];
+                double actualDutyCycle = (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
+                actualDutyCycle = std::min(actualDutyCycle, get_maximum_duty_cycle());
+                double tOn = actualDutyCycle * period;
+                double tOff = period - tOn;
+
+                for (size_t s = 0; s < numSecondaries; ++s) {
+                    double turnsRatioSec = turnsRatios[s + 1];
+                    double outputVoltage = fop.get_output_voltages()[s];
+                    double outputCurrent = fop.get_output_currents()[s];
+                    double currentRipple = get_current_ripple_ratio() * outputCurrent;
+
+                    // Lo current: triangular in CCM, DC output current with ripple
+                    Waveform loCurrentWfm;
+                    {
+                        double iMin = outputCurrent - currentRipple / 2;
+                        double iMax = outputCurrent + currentRipple / 2;
+                        loCurrentWfm.set_data(std::vector<double>{iMin, iMax, iMax, iMin});
+                        loCurrentWfm.set_time(std::vector<double>{0, tOn, tOn, period});
+                        loCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+                    }
+
+                    // Lo voltage: (Vsec - Vout) during on-time, (-Vout) during off-time
+                    double vSecOnTime = inputVoltage / turnsRatioSec - diodeVoltageDrop - outputVoltage;
+                    double vSecOffTime = -outputVoltage;
+                    Waveform loVoltageWfm;
+                    {
+                        loVoltageWfm.set_data(std::vector<double>{vSecOnTime, vSecOnTime, vSecOffTime, vSecOffTime});
+                        loVoltageWfm.set_time(std::vector<double>{0, tOn, tOn, period});
+                        loVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+                    }
+
+                    extraLoCurrentWaveforms.push_back(loCurrentWfm);
+                    extraLoVoltageWaveforms.push_back(loVoltageWfm);
+                }
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
@@ -252,6 +304,56 @@ namespace OpenMagnetics {
             }
         }
         return operatingPoints;
+    }
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> SingleSwitchForward::get_extra_components_inputs(
+        ExtraComponentsMode /*mode*/,
+        std::optional<Magnetic> /*magnetic*/)
+    {
+        if (extraLoInductances.empty() || extraLoVoltageWaveforms.empty())
+            throw std::runtime_error("SingleSwitchForward::get_extra_components_inputs: call process_operating_points() first");
+
+        size_t numSecondaries = extraLoInductances.size();
+        size_t nOps = extraLoVoltageWaveforms.size() / numSecondaries;
+
+        std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+        for (size_t s = 0; s < numSecondaries; ++s) {
+            double lo = extraLoInductances[s];
+            if (lo <= 0)
+                throw std::runtime_error("SingleSwitchForward::get_extra_components_inputs: computedOutputInductance <= 0 for secondary " + std::to_string(s));
+
+            Inputs masInputs;
+            DesignRequirements dr;
+
+            DimensionWithTolerance inductance;
+            inductance.set_nominal(lo);
+            dr.set_magnetizing_inductance(inductance);
+
+            std::string inductorName = (numSecondaries == 1) ? "outputInductor" : ("outputInductor_" + std::to_string(s + 1));
+            dr.set_name(inductorName);
+            dr.set_topology(Topologies::SINGLE_SWITCH_FORWARD_CONVERTER);
+            dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+            dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::SECONDARY});
+            masInputs.set_design_requirements(dr);
+
+            std::vector<OperatingPoint> masOps;
+            for (size_t opIdx = 0; opIdx < nOps; ++opIdx) {
+                size_t wfmIdx = opIdx * numSecondaries + s;
+                OperatingPoint op;
+                double fsw = get_operating_points()[opIdx % get_operating_points().size()].get_switching_frequency();
+                auto excitation = complete_excitation(
+                    extraLoCurrentWaveforms[wfmIdx],
+                    extraLoVoltageWaveforms[wfmIdx],
+                    fsw, "Primary");
+                op.get_mutable_excitations_per_winding().push_back(excitation);
+                masOps.push_back(op);
+            }
+            masInputs.set_operating_points(masOps);
+            result.emplace_back(std::move(masInputs));
+        }
+
+        return result;
     }
 
     std::vector<OperatingPoint> SingleSwitchForward::process_operating_points(Magnetic magnetic) {

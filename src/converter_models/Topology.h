@@ -1,6 +1,7 @@
 #pragma once
 #include "Constants.h"
 #include <MAS.hpp>
+#include <CAS.hpp>
 #include "processors/Inputs.h"
 #include "support/Utils.h"
 #include "constructive_models/Magnetic.h"
@@ -86,6 +87,11 @@ public:
     const double& get_switching_frequency() const { return switchingFrequency; }
     double& get_mutable_switching_frequency() { return switchingFrequency; }
     void set_switching_frequency(const double& value) { this->switchingFrequency = value; }
+};
+
+enum class ExtraComponentsMode {
+    IDEAL,
+    REAL
 };
 
 class Topology {
@@ -189,6 +195,10 @@ public:
     virtual std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) = 0;
     virtual bool run_checks(bool assert = false);
     Inputs process();
+
+    virtual std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt);
 
 };
 

@@ -15,6 +15,10 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 500;
 
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;
+    mutable double                extraLoInductance = 0.0;
+
 public:
     bool _assertErrors = false;
 
@@ -38,6 +42,10 @@ public:
     OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const PushPullOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double outputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio);
     double get_maximum_duty_cycle();
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 
     /**
      * @brief Generate an ngspice circuit for this Push-Pull converter

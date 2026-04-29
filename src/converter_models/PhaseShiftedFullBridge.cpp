@@ -1,4 +1,5 @@
 #include "converter_models/PhaseShiftedFullBridge.h"
+#include "physical_models/LeakageInductance.h"
 #include "support/Utils.h"
 #include <cfloat>
 #include <cmath>
@@ -218,6 +219,11 @@ std::vector<OperatingPoint> Psfb::process_operating_points(
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {
+    extraLoVoltageWaveforms.clear();
+    extraLoCurrentWaveforms.clear();
+    extraLrVoltageWaveforms.clear();
+    extraLrCurrentWaveforms.clear();
+
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
     auto& ops = get_operating_points();
@@ -406,6 +412,73 @@ OperatingPoint Psfb::process_operating_point_for_input_voltage(
     conditions.set_ambient_temperature(psfbOpPoint.get_ambient_temperature());
     conditions.set_cooling(std::nullopt);
     operatingPoint.set_conditions(conditions);
+
+    // ---- Store extra component waveforms ----
+    // Output inductor Lo: sees (Vsec - Vo) during power transfer, (-Vo) during freewheeling
+    // The secondary voltage is Vpri/n during power transfer, 0 during freewheeling
+    {
+        double Vo = psfbOpPoint.get_output_voltages()[0];
+        double Vsec_pk = Vin / n;  // Peak secondary voltage (Vpri/n at power transfer)
+        // Current ripple: triangular around Io
+        double delta_Io = (computedOutputInductance > 0)
+            ? Vo * (1.0 - Deff) / (Fs * computedOutputInductance)
+            : 0.0;
+        double Io_min = Io - delta_Io / 2.0;
+        double Io_max = Io + delta_Io / 2.0;
+
+        std::vector<double> VLo_data(totalSamples);
+        std::vector<double> ILo_data(totalSamples);
+
+        // Positive half-cycle
+        for (int k = 0; k <= N_samples; ++k) {
+            if (k <= n_power) {
+                // Power transfer: Vsec = Vsec_pk, VLo = Vsec_pk - Vo
+                VLo_data[k] = Vsec_pk - Vo;
+                double frac = (n_power > 0) ? (double)k / n_power : 0;
+                ILo_data[k] = Io_min + (Io_max - Io_min) * frac;
+            } else {
+                // Freewheeling: Vsec = 0, VLo = -Vo
+                VLo_data[k] = -Vo;
+                double frac_fw = (double)(k - n_power) / (double)(N_samples - n_power + 1);
+                ILo_data[k] = Io_max - (Io_max - Io_min) * frac_fw;
+            }
+        }
+        // Negative half-cycle mirrors the positive (same rectified shape)
+        for (int k = 1; k <= N_samples; ++k) {
+            VLo_data[N_samples + k] = VLo_data[k];
+            ILo_data[N_samples + k] = ILo_data[k];
+        }
+
+        Waveform loVWfm;
+        loVWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+        loVWfm.set_data(VLo_data);
+        loVWfm.set_time(time_full);
+
+        Waveform loIWfm;
+        loIWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+        loIWfm.set_data(ILo_data);
+        loIWfm.set_time(time_full);
+
+        extraLoVoltageWaveforms.push_back(loVWfm);
+        extraLoCurrentWaveforms.push_back(loIWfm);
+    }
+
+    // Series (ZVS) inductor Lr: same current as primary, voltage = Vpri - Lm*di_mag/dt
+    // For simplicity (and consistent with LLC pattern) use primary waveforms directly
+    {
+        Waveform lrVWfm;
+        lrVWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+        lrVWfm.set_data(Vpri_full);
+        lrVWfm.set_time(time_full);
+
+        Waveform lrIWfm;
+        lrIWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+        lrIWfm.set_data(Ipri_full);
+        lrIWfm.set_time(time_full);
+
+        extraLrVoltageWaveforms.push_back(lrVWfm);
+        extraLrCurrentWaveforms.push_back(lrIWfm);
+    }
 
     return operatingPoint;
 }
@@ -617,6 +690,82 @@ std::vector<ConverterWaveforms> Psfb::simulate_and_extract_topology_waveforms(
     return results;
 }
 
+
+std::vector<std::variant<Inputs, CAS::Inputs>> Psfb::get_extra_components_inputs(
+    ExtraComponentsMode mode,
+    std::optional<Magnetic> magnetic)
+{
+    if (mode == ExtraComponentsMode::REAL && !magnetic.has_value())
+        throw std::invalid_argument("Psfb::get_extra_components_inputs: mode REAL requires a designed magnetic");
+    if (computedOutputInductance <= 0 || extraLoVoltageWaveforms.empty())
+        throw std::runtime_error("Psfb::get_extra_components_inputs: call process() first");
+
+    size_t nOps = extraLoVoltageWaveforms.size();
+    std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+    double fsw = 100e3;
+    if (!get_operating_points().empty())
+        fsw = get_operating_points()[0].get_switching_frequency();
+
+    // Output inductor Lo (value independent of leakage)
+    {
+        Inputs masInputs;
+        DesignRequirements dr;
+        DimensionWithTolerance lTol;
+        lTol.set_nominal(computedOutputInductance);
+        dr.set_magnetizing_inductance(lTol);
+        dr.set_name("outputInductor");
+        dr.set_topology(Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
+        dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+        dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+        masInputs.set_design_requirements(dr);
+
+        std::vector<OperatingPoint> ops;
+        for (size_t i = 0; i < nOps; ++i) {
+            OperatingPoint op;
+            op.get_mutable_excitations_per_winding().push_back(
+                complete_excitation(extraLoCurrentWaveforms[i], extraLoVoltageWaveforms[i], fsw, "Primary"));
+            ops.push_back(op);
+        }
+        masInputs.set_operating_points(ops);
+        result.emplace_back(std::move(masInputs));
+    }
+
+    // ZVS series inductor Lr (subtract leakage in REAL mode)
+    double Lr_external = computedSeriesInductance;
+    if (mode == ExtraComponentsMode::REAL) {
+        auto leakageOutput = LeakageInductance().calculate_leakage_inductance_all_windings(
+            magnetic.value(), fsw);
+        auto perWinding = leakageOutput.get_leakage_inductance_per_winding();
+        double Llk = perWinding.empty() ? 0.0 : resolve_dimensional_values(perWinding[0]);
+        Lr_external = computedSeriesInductance - Llk;
+    }
+
+    if (Lr_external > 0.0 && !extraLrVoltageWaveforms.empty()) {
+        Inputs masInputs;
+        DesignRequirements dr;
+        DimensionWithTolerance lTol;
+        lTol.set_nominal(Lr_external);
+        dr.set_magnetizing_inductance(lTol);
+        dr.set_name("seriesInductor");
+        dr.set_topology(Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER);
+        dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+        dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+        masInputs.set_design_requirements(dr);
+
+        std::vector<OperatingPoint> ops;
+        for (size_t i = 0; i < nOps; ++i) {
+            OperatingPoint op;
+            op.get_mutable_excitations_per_winding().push_back(
+                complete_excitation(extraLrCurrentWaveforms[i], extraLrVoltageWaveforms[i], fsw, "Primary"));
+            ops.push_back(op);
+        }
+        masInputs.set_operating_points(ops);
+        result.emplace_back(std::move(masInputs));
+    }
+
+    return result;
+}
 
 // =========================================================================
 // AdvancedPsfb

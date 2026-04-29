@@ -66,4 +66,14 @@ namespace OpenMagnetics {
     }
 
 
+    std::vector<std::variant<Inputs, CAS::Inputs>> Topology::get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic)
+    {
+        if (mode == ExtraComponentsMode::REAL && !magnetic.has_value()) {
+            throw std::invalid_argument("get_extra_components_inputs: mode REAL requires a designed magnetic");
+        }
+        return {};
+    }
+
 } // namespace OpenMagnetics

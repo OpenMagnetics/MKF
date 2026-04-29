@@ -226,6 +226,14 @@ namespace OpenMagnetics {
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
+        extraLoVoltageWaveforms.clear();
+        extraLoCurrentWaveforms.clear();
+        extraLoInductances.clear();
+
+        // IsolatedBuckBoost: the primary winding IS the converter inductor.
+        // Secondary windings are flyback-type outputs and do not require a separate output inductor Lo.
+        // No Lo waveforms are captured here.
+
         if (get_input_voltage().get_nominal()) {
             inputVoltages.push_back(get_input_voltage().get_nominal().value());
             inputVoltagesNames.push_back("Nom.");
@@ -253,6 +261,15 @@ namespace OpenMagnetics {
             }
         }
         return operatingPoints;
+    }
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> IsolatedBuckBoost::get_extra_components_inputs(
+        ExtraComponentsMode /*mode*/,
+        std::optional<Magnetic> /*magnetic*/)
+    {
+        // IsolatedBuckBoost: the transformer primary winding acts as the converter inductor.
+        // Secondary windings are flyback-type outputs and do not require a separate output inductor Lo.
+        return {};
     }
 
     std::vector<MAS::OperatingPoint> IsolatedBuckBoost::process_operating_points(Magnetic magnetic) {

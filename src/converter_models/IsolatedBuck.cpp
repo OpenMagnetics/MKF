@@ -247,6 +247,14 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        extraLoVoltageWaveforms.clear();
+        extraLoCurrentWaveforms.clear();
+        extraLoInductances.clear();
+
+        // IsolatedBuck (Fly-Buck): the primary winding IS the inductor.
+        // Secondary windings are flyback-coupled outputs; they don't require a separate Lo.
+        // No Lo waveforms are captured here.
+
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t isolatedbuckOperatingPointIndex = 0; isolatedbuckOperatingPointIndex < get_operating_points().size(); ++isolatedbuckOperatingPointIndex) {
@@ -261,6 +269,15 @@ namespace OpenMagnetics {
             }
         }
         return operatingPoints;
+    }
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> IsolatedBuck::get_extra_components_inputs(
+        ExtraComponentsMode /*mode*/,
+        std::optional<Magnetic> /*magnetic*/)
+    {
+        // IsolatedBuck (Fly-Buck): the transformer primary winding acts as the converter inductor.
+        // Secondary windings are flyback-type outputs and do not require a separate output inductor Lo.
+        return {};
     }
 
     std::vector<OperatingPoint> IsolatedBuck::process_operating_points(Magnetic magnetic) {

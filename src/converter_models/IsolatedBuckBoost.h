@@ -16,6 +16,10 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 20;  // Increased from 5 to ensure steady state
 
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;
+    mutable std::vector<double>   extraLoInductances;
+
 public:
     bool _assertErrors = false;
 
@@ -37,6 +41,10 @@ public:
 
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, IsolatedBuckBoostOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 
     /**
      * @brief Generate an ngspice circuit for this Isolated Buck-Boost converter

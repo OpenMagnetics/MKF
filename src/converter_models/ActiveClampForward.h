@@ -14,7 +14,14 @@ class ActiveClampForward : public MAS::Forward, public Topology {
 private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 5;
-    
+
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;
+    mutable std::vector<double>   extraLoInductances;
+    mutable std::vector<Waveform> extraClampCapVoltageWaveforms;
+    mutable std::vector<double>   extraClampVoltages;
+    mutable std::vector<double>   extraSwitchingFrequencies;
+
 public:
     bool _assertErrors = false;
 
@@ -38,6 +45,10 @@ public:
     OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const ForwardOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance, double mainOutputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio, size_t outputIndex);
     double get_maximum_duty_cycle();
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 
     /**
      * @brief Generate an ngspice circuit for this Active Clamp Forward converter

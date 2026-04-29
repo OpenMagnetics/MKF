@@ -416,6 +416,43 @@ add_custom_target(MAS ALL
 
 include_directories("${MAS_DIRECTORY}")
 
+# CAS
+if(NOT DEFINED CAS_DIRECTORY)
+    set(CAS_DIRECTORY "${CMAKE_BINARY_DIR}/CAS/")
+endif()
+
+if(NOT DEFINED CAS_DIR)
+    set(CAS_DIR "${PROJECT_SOURCE_DIR}/CAS")
+endif()
+
+if(NOT DEFINED EAS_DIR)
+    set(EAS_DIR "${PROJECT_SOURCE_DIR}/EAS")
+endif()
+
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/CAS")
+
+add_custom_command(
+  OUTPUT "${CAS_DIRECTORY}/CAS.hpp"
+  COMMAND quicktype -l c++ -s schema ${CAS_DIR}/schemas/inputs.json
+    -S ${CAS_DIR}/schemas/inputs/designRequirements.json
+    -S ${EAS_DIR}/schemas/utils.json
+    -S ${EAS_DIR}/schemas/inputs/twoTerminalOperatingPoint.json
+    -o ${CAS_DIRECTORY}/CAS.hpp --namespace CAS --source-style single-source
+    --type-style pascal-case --member-style underscore-case
+    --enumerator-style upper-underscore-case --no-boost
+    --top-level Inputs
+  DEPENDS
+    "${CAS_DIR}/schemas/inputs.json"
+    "${CAS_DIR}/schemas/inputs/designRequirements.json"
+    "${EAS_DIR}/schemas/utils.json"
+    "${EAS_DIR}/schemas/inputs/twoTerminalOperatingPoint.json"
+  USES_TERMINAL)
+
+add_custom_target(CAS ALL DEPENDS "${CAS_DIRECTORY}/CAS.hpp")
+add_dependencies(CAS MAS)
+
+include_directories("${CAS_DIRECTORY}")
+
 
 # ============================================================================
 # CCI strand coordinates — embed up to N=1000 into the binary at build time

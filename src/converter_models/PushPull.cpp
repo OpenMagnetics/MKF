@@ -1004,12 +1004,66 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
+        extraLoVoltageWaveforms.clear();
+        extraLoCurrentWaveforms.clear();
+
         auto minimumOutputInductance = get_output_inductance(turnsRatios[1]);
+        extraLoInductance = minimumOutputInductance;
+
+        double diodeVoltageDrop = get_diode_voltage_drop();
+        double mainSecondaryTurnsRatio = turnsRatios[1];
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t pushPullOperatingPointIndex = 0; pushPullOperatingPointIndex < get_operating_points().size(); ++pushPullOperatingPointIndex) {
-                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[pushPullOperatingPointIndex], turnsRatios, magnetizingInductance, minimumOutputInductance);
+                auto& pop = get_operating_points()[pushPullOperatingPointIndex];
+                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, pop, turnsRatios, magnetizingInductance, minimumOutputInductance);
+
+                // Capture Lo waveforms for main secondary
+                double switchingFrequency = pop.get_switching_frequency();
+                double period = 1.0 / switchingFrequency;
+                double mainOutputVoltage = pop.get_output_voltages()[0];
+                double mainOutputCurrent = pop.get_output_currents()[0];
+
+                // Push-Pull: Lo sees the secondary voltage at effective frequency 2*fsw.
+                // t1 per half-period = (T/2) * (Vout+Vd) / (Vin/n)
+                double t1 = (period / 2) * (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
+                if (t1 > period / 2) t1 = period / 2;
+
+                double currentRipple = get_current_ripple_ratio() * mainOutputCurrent;
+                double iMin = mainOutputCurrent - currentRipple / 2;
+                double iMax = mainOutputCurrent + currentRipple / 2;
+
+                // Lo current: full period, two ripple triangles (push + pull half-period)
+                Waveform loCurrentWfm;
+                {
+                    double t_off1 = period / 2 - t1;
+                    loCurrentWfm.set_data(std::vector<double>{
+                        iMin, iMax, iMax, iMin,
+                        iMin, iMax, iMax, iMin});
+                    loCurrentWfm.set_time(std::vector<double>{
+                        0, t1, t1, period / 2,
+                        period / 2, period / 2 + t1, period / 2 + t1, period});
+                    (void)t_off1;
+                    loCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+                }
+
+                // Lo voltage: (Vsec - Vout) during each t1, (-Vout) during freewheeling
+                double vOn = inputVoltage / mainSecondaryTurnsRatio - diodeVoltageDrop - mainOutputVoltage;
+                double vOff = -mainOutputVoltage;
+                Waveform loVoltageWfm;
+                {
+                    loVoltageWfm.set_data(std::vector<double>{
+                        vOn, vOn, vOff, vOff,
+                        vOn, vOn, vOff, vOff});
+                    loVoltageWfm.set_time(std::vector<double>{
+                        0, t1, t1, period / 2,
+                        period / 2, period / 2 + t1, period / 2 + t1, period});
+                    loVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+                }
+
+                extraLoCurrentWaveforms.push_back(loCurrentWfm);
+                extraLoVoltageWaveforms.push_back(loVoltageWfm);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
@@ -1020,6 +1074,45 @@ namespace OpenMagnetics {
             }
         }
         return operatingPoints;
+    }
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> PushPull::get_extra_components_inputs(
+        ExtraComponentsMode /*mode*/,
+        std::optional<Magnetic> /*magnetic*/)
+    {
+        if (extraLoInductance <= 0 || extraLoVoltageWaveforms.empty())
+            throw std::runtime_error("PushPull::get_extra_components_inputs: call process_operating_points() first");
+
+        std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+        Inputs masInputs;
+        DesignRequirements dr;
+
+        DimensionWithTolerance inductance;
+        inductance.set_nominal(extraLoInductance);
+        dr.set_magnetizing_inductance(inductance);
+        dr.set_name("outputInductor");
+        dr.set_topology(Topologies::PUSH_PULL_CONVERTER);
+        dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+        dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::SECONDARY});
+        masInputs.set_design_requirements(dr);
+
+        std::vector<OperatingPoint> masOps;
+        for (size_t opIdx = 0; opIdx < extraLoVoltageWaveforms.size(); ++opIdx) {
+            OperatingPoint op;
+            size_t fopIdx = opIdx % get_operating_points().size();
+            double fsw = get_operating_points()[fopIdx].get_switching_frequency();
+            auto excitation = complete_excitation(
+                extraLoCurrentWaveforms[opIdx],
+                extraLoVoltageWaveforms[opIdx],
+                fsw, "Primary");
+            op.get_mutable_excitations_per_winding().push_back(excitation);
+            masOps.push_back(op);
+        }
+        masInputs.set_operating_points(masOps);
+        result.emplace_back(std::move(masInputs));
+
+        return result;
     }
 
     Inputs PushPull::process() {

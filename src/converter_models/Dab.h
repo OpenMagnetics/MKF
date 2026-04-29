@@ -134,6 +134,12 @@ private:
     mutable double lastVoltageConversionRatio = 1.0; // d = N·V₂/V₁
     mutable std::vector<double> lastSubIntervalTimes; // boundary angles in radians, [0, 2π]
 
+    // Extra-component waveforms — one entry per operating point, populated by
+    // process_operating_points, consumed by get_extra_components_inputs.
+    // Cleared at the start of every process_operating_points() call.
+    mutable std::vector<Waveform> extraIndVoltageWaveforms;  // Vab waveform per OP
+    mutable std::vector<Waveform> extraIndCurrentWaveforms;  // iL waveform per OP
+
 public:
     bool _assertErrors = false;
 
@@ -179,6 +185,10 @@ public:
 
     // ---- Topology interface ----
     bool run_checks(bool assert = false) override;
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 
     DesignRequirements process_design_requirements() override;
 

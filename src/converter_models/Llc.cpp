@@ -1,5 +1,6 @@
 // Version: 3.3 — Runo Nielsen TDA + Integrated Ls + Inductance Ratio + Multi-output
 #include "converter_models/Llc.h"
+#include "physical_models/LeakageInductance.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
@@ -187,6 +188,12 @@ std::vector<OperatingPoint> Llc::process_operating_points(
 {
     if (computedResonantInductance <= 0 || computedResonantCapacitance <= 0)
         process_design_requirements();
+
+    extraCapVoltageWaveforms.clear();
+    extraCapCurrentWaveforms.clear();
+    extraIndVoltageWaveforms.clear();
+    extraIndCurrentWaveforms.clear();
+    extraTimeVectors.clear();
 
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
@@ -940,6 +947,51 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         }
     }
 
+    // --- Build and store extra-component waveforms for get_extra_components_inputs ---
+    {
+        // Capacitor voltage: Vc_full assembled from Vc_pos with half-wave antisymmetry
+        std::vector<double> Vc_full(totalSamples);
+        for (int k = 0; k <= N; ++k)
+            Vc_full[k] = std::isfinite(Vc_pos[k]) ? Vc_pos[k] : 0.0;
+        for (int k = 1; k <= N; ++k)
+            Vc_full[N + k] = -Vc_full[k];
+
+        Waveform capVoltWfm;
+        capVoltWfm.set_data(Vc_full);
+        capVoltWfm.set_time(time_full);
+        capVoltWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+        extraCapVoltageWaveforms.push_back(capVoltWfm);
+
+        // Cap current = series tank current ILs
+        Waveform capCurrWfm;
+        capCurrWfm.set_data(ILs_full);
+        capCurrWfm.set_time(time_full);
+        capCurrWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+        extraCapCurrentWaveforms.push_back(capCurrWfm);
+
+        extraTimeVectors.push_back(time_full);
+
+        // Series inductor voltage VLs = Vi_sq - Vc - VLm (only stored when Ls is separate)
+        if (!integratedLs) {
+            std::vector<double> VLs_full(totalSamples);
+            for (int k = 0; k <= N; ++k) {
+                double Vc_k  = Vc_full[k];
+                double VLm_k = std::isfinite(VLm_full[k]) ? VLm_full[k] : 0.0;
+                VLs_full[k] = Vi - Vc_k - VLm_k;
+            }
+            for (int k = 1; k <= N; ++k)
+                VLs_full[N + k] = -VLs_full[k];
+
+            Waveform indVoltWfm;
+            indVoltWfm.set_data(VLs_full);
+            indVoltWfm.set_time(time_full);
+            indVoltWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            extraIndVoltageWaveforms.push_back(indVoltWfm);
+
+            // Series inductor current = same as capacitor current (series circuit)
+            extraIndCurrentWaveforms.push_back(capCurrWfm);
+        }
+    }
 
     // --- Primary excitation ---
     {
@@ -1425,6 +1477,131 @@ Inputs AdvancedLlc::process() {
     inputs.set_design_requirements(designRequirements);
     inputs.set_operating_points(ops);
     return inputs;
+}
+
+std::vector<std::variant<Inputs, CAS::Inputs>> Llc::get_extra_components_inputs(
+    ExtraComponentsMode mode,
+    std::optional<Magnetic> magnetic)
+{
+    if (mode == ExtraComponentsMode::REAL && !magnetic.has_value())
+        throw std::invalid_argument("get_extra_components_inputs: mode REAL requires a designed magnetic");
+
+    if (computedResonantInductance <= 0 || computedResonantCapacitance <= 0 || extraCapVoltageWaveforms.empty())
+        throw std::runtime_error("LLC get_extra_components_inputs: call process() first");
+
+    bool integratedLs = get_integrated_resonant_inductor().value_or(false);
+    double Ls = computedResonantInductance;
+    double Cr = computedResonantCapacitance;
+    double fr = get_effective_resonant_frequency();
+
+    double Llk = 0.0;
+    if (mode == ExtraComponentsMode::REAL) {
+        auto leakageOutput = LeakageInductance().calculate_leakage_inductance_all_windings(
+            magnetic.value(), fr);
+        auto perWinding = leakageOutput.get_leakage_inductance_per_winding();
+        if (!perWinding.empty())
+            Llk = resolve_dimensional_values(perWinding[0]);
+        // Recalculate Cr to resonate with actual available inductance (Llk or full Ls)
+        double Ls_effective = (Llk >= Ls) ? Llk : Ls;
+        Cr = 1.0 / (4.0 * M_PI * M_PI * fr * fr * Ls_effective);
+    }
+
+    size_t nOps = extraCapVoltageWaveforms.size();
+    std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+    // Build CAS::Inputs for the resonant capacitor
+    {
+        CAS::Inputs casInputs;
+        CAS::DesignRequirements dr;
+
+        CAS::DimensionWithTolerance capacitance;
+        capacitance.set_nominal(Cr);
+        dr.set_capacitance(capacitance);
+
+        // Peak voltage across capacitor (from stored waveforms)
+        double peakVc = 0.0;
+        for (const auto& wfm : extraCapVoltageWaveforms) {
+            for (double v : wfm.get_data())
+                peakVc = std::max(peakVc, std::abs(v));
+        }
+        dr.set_rated_voltage(peakVc * 1.2);  // 20 % margin
+
+        dr.set_role(CAS::Application::RESONANT);
+        dr.set_name("resonantCapacitor");
+
+        casInputs.set_design_requirements(dr);
+
+        // Operating points: one per stored waveform
+        std::vector<CAS::TwoTerminalOperatingPoint> casOps;
+        for (size_t i = 0; i < nOps; ++i) {
+            CAS::TwoTerminalOperatingPoint op;
+            CAS::OperatingPointExcitation excitation;
+            excitation.set_frequency(fr);
+
+            // Voltage across cap
+            CAS::SignalDescriptor vSig;
+            CAS::Waveform vWfm;
+            vWfm.set_data(extraCapVoltageWaveforms[i].get_data());
+            if (extraCapVoltageWaveforms[i].get_time())
+                vWfm.set_time(extraCapVoltageWaveforms[i].get_time().value());
+            vSig.set_waveform(vWfm);
+            excitation.set_voltage(vSig);
+
+            // Current through cap (= series inductor current)
+            CAS::SignalDescriptor iSig;
+            CAS::Waveform iWfm;
+            iWfm.set_data(extraCapCurrentWaveforms[i].get_data());
+            if (extraCapCurrentWaveforms[i].get_time())
+                iWfm.set_time(extraCapCurrentWaveforms[i].get_time().value());
+            iSig.set_waveform(iWfm);
+            excitation.set_current(iSig);
+
+            op.set_excitation(excitation);
+            casOps.push_back(op);
+        }
+        casInputs.set_operating_points(casOps);
+        result.emplace_back(std::move(casInputs));
+    }
+
+    // Build MAS Inputs for external series inductor (only when needed)
+    double Ls_external = 0.0;
+    if (mode == ExtraComponentsMode::IDEAL && !integratedLs) {
+        Ls_external = Ls;
+    } else if (mode == ExtraComponentsMode::REAL) {
+        Ls_external = (Llk < Ls) ? (Ls - Llk) : 0.0;
+    }
+
+    if (Ls_external > 0.0 && !extraIndVoltageWaveforms.empty()) {
+        Inputs masInputs;
+        DesignRequirements dr;
+
+        DimensionWithTolerance inductance;
+        inductance.set_nominal(Ls_external);
+        dr.set_magnetizing_inductance(inductance);
+        dr.set_name("seriesInductor");
+        dr.set_topology(Topologies::LLC_RESONANT_CONVERTER);
+
+        // Single primary winding, no isolation
+        dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+        dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+        masInputs.set_design_requirements(dr);
+
+        std::vector<OperatingPoint> masOps;
+        for (size_t i = 0; i < nOps; ++i) {
+            OperatingPoint op;
+            auto& indVoltWfm = extraIndVoltageWaveforms[i];
+            auto& indCurrWfm = extraIndCurrentWaveforms[i];
+            double fsw = fr;  // Use resonant frequency as representative frequency
+
+            auto excitation = complete_excitation(indCurrWfm, indVoltWfm, fsw, "Primary");
+            op.get_mutable_excitations_per_winding().push_back(excitation);
+            masOps.push_back(op);
+        }
+        masInputs.set_operating_points(masOps);
+        result.emplace_back(std::move(masInputs));
+    }
+
+    return result;
 }
 
 } // namespace OpenMagnetics

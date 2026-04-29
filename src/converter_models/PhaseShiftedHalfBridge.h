@@ -112,6 +112,11 @@ private:
     // Half-bridge voltage factor
     static constexpr double BRIDGE_VOLTAGE_FACTOR = 0.5;
 
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;  // Output inductor voltage per OP
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;  // Output inductor current per OP
+    mutable std::vector<Waveform> extraLrVoltageWaveforms;  // Series (ZVS) inductor voltage per OP
+    mutable std::vector<Waveform> extraLrCurrentWaveforms;  // Series (ZVS) inductor current per OP
+
 public:
     bool _assertErrors = false;
 
@@ -157,6 +162,11 @@ public:
     static double compute_output_inductance(double Vo, double Deff, double Fs,
                                             double Io, double rippleRatio);
     static double compute_primary_rms_current(double Io, double n, double Deff);
+
+    // ---- Extra components ----
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 
     // ---- SPICE simulation ----
     std::string generate_ngspice_circuit(

@@ -62,6 +62,15 @@ private:
     mutable std::vector<int> lastSubStateSequence;
     mutable double lastSteadyStateResidual = 0.0;
 
+    // Extra-component waveforms — one entry per operating point, populated by
+    // process_operating_point_for_input_voltage, consumed by get_extra_components_inputs.
+    // Cleared at the start of every process_operating_points() call.
+    mutable std::vector<Waveform> extraCapVoltageWaveforms;   // Vc full-period (resonant capacitor voltage)
+    mutable std::vector<Waveform> extraCapCurrentWaveforms;   // ILs full-period (cap = series-tank current)
+    mutable std::vector<Waveform> extraIndVoltageWaveforms;   // VLs full-period (separate-Ls voltage, if !integratedLs)
+    mutable std::vector<Waveform> extraIndCurrentWaveforms;   // ILs full-period (separate-Ls current, same as cap current)
+    mutable std::vector<std::vector<double>> extraTimeVectors; // time vectors per OP
+
 public:
     bool _assertErrors = false;
 
@@ -149,6 +158,10 @@ public:
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
         size_t numberOfPeriods = 2);
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 };
 
 
