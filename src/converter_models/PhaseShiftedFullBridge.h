@@ -99,12 +99,22 @@ private:
     double computedMagnetizingInductance = 0;
     double computedDeadTime = 200e-9;
     double computedEffectiveDutyCycle = 0;
-    double computedDiodeVoltageDrop = 0.6;  // Default
+    double computedDiodeVoltageDrop = 0.6;
+    double mosfetCoss = 200e-12;
 
-    mutable std::vector<Waveform> extraLoVoltageWaveforms;  // Output inductor voltage per OP
-    mutable std::vector<Waveform> extraLoCurrentWaveforms;  // Output inductor current per OP
-    mutable std::vector<Waveform> extraLrVoltageWaveforms;  // Series (ZVS) inductor voltage per OP
-    mutable std::vector<Waveform> extraLrCurrentWaveforms;  // Series (ZVS) inductor current per OP
+    mutable double lastDutyCycleLoss = 0.0;
+    mutable double lastEffectiveDutyCycle = 0.0;
+    mutable double lastZvsMarginLagging = 0.0;
+    mutable double lastZvsLoadThreshold = 0.0;
+    mutable double lastResonantTransitionTime = 0.0;
+    mutable double lastPrimaryPeakCurrent = 0.0;
+
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;
+    mutable std::vector<Waveform> extraLo2VoltageWaveforms;
+    mutable std::vector<Waveform> extraLo2CurrentWaveforms;
+    mutable std::vector<Waveform> extraLrVoltageWaveforms;
+    mutable std::vector<Waveform> extraLrCurrentWaveforms;
 
 public:
     bool _assertErrors = false;
@@ -127,6 +137,30 @@ public:
     void set_computed_dead_time(double value) { computedDeadTime = value; }
     double get_computed_effective_duty_cycle() const { return computedEffectiveDutyCycle; }
 
+    /// Per-MOSFET output capacitance (F) used for ZVS energy and resonant
+    /// transition-time predictions. Default 200 pF (typical 600V SiC). The
+    /// schema does not carry this field — set it programmatically.
+    double get_mosfet_coss() const { return mosfetCoss; }
+    void set_mosfet_coss(double value) { mosfetCoss = value; }
+
+    /// Duty-cycle loss for the last solved OP, ΔD = 4·Lk·Io·Fs/(n·Vin).
+    double get_last_duty_cycle_loss() const { return lastDutyCycleLoss; }
+    /// Effective duty cycle actually delivered to the secondary
+    /// (D_cmd − ΔD), in 0..1 units.
+    double get_last_effective_duty_cycle() const { return lastEffectiveDutyCycle; }
+    /// Lagging-leg ZVS energy margin: ½·Lk·Ip² − 2·Coss·Vin² (Joules).
+    /// Positive ⇒ ZVS achieved; negative ⇒ hard switching.
+    double get_last_zvs_margin_lagging() const { return lastZvsMarginLagging; }
+    /// Minimum load current (A, output side) required for lagging-leg ZVS at
+    /// the last solved OP's Vin and Lk. Below this, the lagging leg loses ZVS.
+    double get_last_zvs_load_threshold() const { return lastZvsLoadThreshold; }
+    /// Quarter-period of the lagging-leg resonant tank (s) — the gate-driver
+    /// dead-time must be ≥ this for full ZVS transitions.
+    double get_last_resonant_transition_time() const { return lastResonantTransitionTime; }
+    /// Primary peak current at the lagging-leg switching instant (A, primary
+    /// side, includes magnetizing component).
+    double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
+
     // ---- Topology interface ----
     bool run_checks(bool assert = false) override;
     DesignRequirements process_design_requirements() override;
@@ -144,9 +178,9 @@ public:
     // ---- PSFB-specific calculations ----
     static double compute_effective_duty_cycle(double phaseShiftDeg);
     static double compute_output_voltage(double Vin, double Deff, double n,
-                                         double Vd, PsfbRectifierType rectType);
+                                         double Vd, BRectifierType rectType);
     static double compute_turns_ratio(double Vin, double Vo, double Deff,
-                                      double Vd, PsfbRectifierType rectType);
+                                      double Vd, BRectifierType rectType);
     static double compute_output_inductance(double Vo, double Deff, double Fs,
                                             double Io, double rippleRatio);
     static double compute_primary_rms_current(double Io, double n, double Deff);
@@ -215,7 +249,7 @@ inline void from_json(const json& j, AdvancedPsfb& x) {
     x.set_maximum_phase_shift(get_stack_optional<double>(j, "maximumPhaseShift"));
     x.set_operating_points(j.at("operatingPoints").get<std::vector<PsfbOperatingPoint>>());
     x.set_output_inductance(get_stack_optional<double>(j, "outputInductance"));
-    x.set_rectifier_type(get_stack_optional<PsfbRectifierType>(j, "rectifierType"));
+    x.set_rectifier_type(get_stack_optional<BRectifierType>(j, "rectifierType"));
     x.set_series_inductance(get_stack_optional<double>(j, "seriesInductance"));
     x.set_use_leakage_inductance(get_stack_optional<bool>(j, "useLeakageInductance"));
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());

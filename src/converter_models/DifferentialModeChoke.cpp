@@ -27,6 +27,8 @@ namespace OpenMagnetics {
                 _configuration = DmcConfiguration::THREE_PHASE;
             } else if (configStr == "THREE_PHASE_WITH_NEUTRAL") {
                 _configuration = DmcConfiguration::THREE_PHASE_WITH_NEUTRAL;
+            } else if (configStr == "SINGLE_PHASE_BALANCED") {
+                _configuration = DmcConfiguration::SINGLE_PHASE_BALANCED;
             } else {
                 _configuration = DmcConfiguration::SINGLE_PHASE;
             }
@@ -97,20 +99,26 @@ namespace OpenMagnetics {
         }
         designRequirements.set_isolation_sides(isolationSides);
 
-        // Set application and sub-application
+        // Set application, sub-application, and topology — translation only:
+        // this class IS a DMC, so the topology of the resulting design is
+        // the DMC topology. Downstream code (e.g. MagneticFilterSaturation)
+        // routes inductor- vs transformer-style B calculation off this field.
         designRequirements.set_application(Application::INTERFERENCE_SUPPRESSION);
         designRequirements.set_sub_application(SubApplication::DIFFERENTIAL_MODE_NOISE_FILTERING);
+        designRequirements.set_topology(Topologies::DIFFERENTIAL_MODE_CHOKE);
 
-        // Set inductance requirement
-        if (_minimumInductance) {
+        // Filter-application advisers (MagneticFilter) use minimumImpedance as
+        // the primary search criterion: they sweep turn counts on each candidate
+        // core and accept the first N where Z(f) ≥ requirement at every spec
+        // point. Prefer impedance when present; fall back to inductance only
+        // when no impedance was supplied (the wizard's "I know L" mode).
+        if (_minimumImpedance) {
+            designRequirements.set_minimum_impedance(_minimumImpedance.value());
+        }
+        else if (_minimumInductance) {
             DimensionWithTolerance inductanceWithTolerance;
             inductanceWithTolerance.set_minimum(_minimumInductance.value());
             designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        }
-
-        // Set impedance requirements if specified
-        if (_minimumImpedance) {
-            designRequirements.set_minimum_impedance(_minimumImpedance.value());
         }
 
         return designRequirements;
@@ -136,10 +144,16 @@ namespace OpenMagnetics {
         int numWindings = get_number_of_windings();
         double operatingVoltage = resolve_dimensional_values(_inputVoltage);
         
-        // Phase angles for 3-phase systems (120° apart)
+        // Phase angles for 3-phase systems (120° apart). Single-phase
+        // balanced uses a 180° phase difference between Line and Neutral —
+        // both carry the line current but in anti-phase, which keeps the
+        // magnetic flux contributions of the two windings additive on the
+        // shared core.
         std::vector<double> phaseAngles;
         if (_configuration == DmcConfiguration::SINGLE_PHASE) {
             phaseAngles = {0.0};
+        } else if (_configuration == DmcConfiguration::SINGLE_PHASE_BALANCED) {
+            phaseAngles = {0.0, std::numbers::pi};
         } else if (_configuration == DmcConfiguration::THREE_PHASE) {
             phaseAngles = {0.0, 2.0 * std::numbers::pi / 3.0, 4.0 * std::numbers::pi / 3.0};
         } else {  // THREE_PHASE_WITH_NEUTRAL
@@ -147,10 +161,10 @@ namespace OpenMagnetics {
         }
 
         std::vector<OperatingPointExcitation> excitations;
-        
+
         for (int windingIdx = 0; windingIdx < numWindings; windingIdx++) {
             double phaseAngle = phaseAngles[windingIdx];
-            bool isNeutral = (_configuration == DmcConfiguration::THREE_PHASE_WITH_NEUTRAL && 
+            bool isNeutral = (_configuration == DmcConfiguration::THREE_PHASE_WITH_NEUTRAL &&
                              windingIdx == 3);
             
             // Create sinusoidal current waveform at line frequency
@@ -633,6 +647,7 @@ namespace OpenMagnetics {
         design["peakCurrent"] = peakCurrent;
         design["energyStorage_mJ"] = energyStorage * 1e3;
         design["configuration"] = _configuration == DmcConfiguration::SINGLE_PHASE ? "SINGLE_PHASE" :
+                                  _configuration == DmcConfiguration::SINGLE_PHASE_BALANCED ? "SINGLE_PHASE_BALANCED" :
                                   _configuration == DmcConfiguration::THREE_PHASE ? "THREE_PHASE" :
                                   "THREE_PHASE_WITH_NEUTRAL";
         design["numberOfWindings"] = get_number_of_windings();

@@ -11,16 +11,18 @@ namespace OpenMagnetics {
 
 /**
  * @brief DMC configuration types based on number of phases.
- * 
+ *
  * Unlike CMC which uses coupled inductors, DMC configurations use:
- * - SINGLE_PHASE: One inductor between line and load
- * - THREE_PHASE: Three separate inductors (L1, L2, L3), no neutral filtering
+ * - SINGLE_PHASE:          One inductor on the line, no choke on neutral (asymmetric)
+ * - SINGLE_PHASE_BALANCED: Two inductors — one on line, one on neutral (balanced/symmetric)
+ * - THREE_PHASE:           Three separate inductors (L1, L2, L3), no neutral filtering
  * - THREE_PHASE_WITH_NEUTRAL: Four inductors including neutral line filtering
  */
 enum class DmcConfiguration {
-    SINGLE_PHASE,           ///< 1 winding
-    THREE_PHASE,            ///< 3 windings: L1 + L2 + L3
-    THREE_PHASE_WITH_NEUTRAL ///< 4 windings: L1 + L2 + L3 + N
+    SINGLE_PHASE,             ///< 1 winding (asymmetric, line-only)
+    SINGLE_PHASE_BALANCED,    ///< 2 windings: L + N (symmetric line-and-neutral)
+    THREE_PHASE,              ///< 3 windings: L1 + L2 + L3
+    THREE_PHASE_WITH_NEUTRAL  ///< 4 windings: L1 + L2 + L3 + N
 };
 
 /**
@@ -152,6 +154,7 @@ public:
     int get_number_of_windings() const {
         switch (_configuration) {
             case DmcConfiguration::SINGLE_PHASE: return 1;
+            case DmcConfiguration::SINGLE_PHASE_BALANCED: return 2;
             case DmcConfiguration::THREE_PHASE: return 3;
             case DmcConfiguration::THREE_PHASE_WITH_NEUTRAL: return 4;
             default: return 1;

@@ -10,6 +10,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -242,9 +243,10 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
         CHECK(coreType == CoreType::TOROIDAL);
         auto coreMaterial = mas.get_mutable_magnetic().get_mutable_core().resolve_material();
         if (coreMaterial.get_application()) {
-            auto app = coreMaterial.get_application().value();
-            CHECK((app == Application::INTERFERENCE_SUPPRESSION
-                   || app == Application::SIGNAL_PROCESSING));
+            auto tags = coreMaterial.get_application().value();
+            bool ok = std::find(tags.begin(), tags.end(), Application::INTERFERENCE_SUPPRESSION) != tags.end()
+                   || std::find(tags.begin(), tags.end(), Application::SIGNAL_PROCESSING) != tags.end();
+            CHECK(ok);
         }
     }
     // Verify that at least one of the recommended cores meets the impedance requirements

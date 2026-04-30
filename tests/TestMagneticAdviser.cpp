@@ -11,6 +11,7 @@
 #include "physical_models/Impedance.h"
 #include "converter_models/IsolatedBuck.h"
 #include "converter_models/Flyback.h"
+#include "converter_models/DifferentialModeChoke.h"
 #include "converter_models/Buck.h"
 #include "converter_models/Boost.h"
 #include "converter_models/SingleSwitchForward.h"
@@ -1082,6 +1083,73 @@ namespace {
             auto masMagnetic = mas;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
         }
+    }
+
+    // Reproducer for the DMC wizard's "Design Magnetic" → adviser flow.
+    //
+    // Iteration history:
+    //   1. Originally adviser returned 0 because process_design_requirements
+    //      emitted both magnetizingInductance AND minimumImpedance — mutually
+    //      inconsistent. Fix: emit only one (impedance for filter use,
+    //      inductance for "I know L"). PASSED impedance filter on many cores.
+    //   2. Saturation filter then rejected everything because DMC carries
+    //      10 A DC line current and high-µ ferrite saturates. Fix: classify
+    //      DIFFERENTIAL_MODE_CHOKE as an energy-storing topology so the
+    //      saturation filter routes through the inductor B-from-current path
+    //      (MagnetizingInductance::calculate_inductance_and_magnetic_flux_density
+    //      already derates µ via the material's magneticFieldDcBiasFactor
+    //      polynomial). Also set topology in DMC's process_design_requirements
+    //      so the filter can detect it.
+    //   3. Adviser STILL returns 0. Root cause is now a DATA GAP, not code:
+    //      MAS/data/core_materials.ndjson tags every Kool Mµ entry with
+    //      application:"power"; the adviser's catalog gate
+    //      (CoreAdviser::add_ferrite_materials_by_impedance @ "application ==
+    //      _application") then filters Kool Mu OUT of the INTERFERENCE_SUPPRESSION
+    //      candidate list. Only ferrite (294 toroids) remains, and ferrite
+    //      cannot tolerate the 10 A DC bias. Catalog audit:
+    //          ferrite/interferenceSuppression toroids:  294
+    //          ferrite/power                  toroids:   464
+    //          ferrite/signalProcessing       toroids:   184
+    //          powder /power                  toroids: 5266
+    //          powder /interferenceSuppression toroids:    0   ← the gap
+    //      Next step is a data-only fix (re-tag or duplicate-entry powder
+    //      materials with application:"interferenceSuppression"); per the
+    //      architecture rules this is intentionally NOT a CoreAdviser code
+    //      change.
+    TEST_CASE("Test_MagneticAdviser_DMC_Default", "[adviser][magnetic-adviser][dmc][bug]") {
+        settings.set_use_only_cores_in_stock(false);
+
+        // Impedance target derived for an LC filter into a 50 Ω LISN with a
+        // 1 µF capacitor: above f_c (~15 kHz), attenuation rolls off at
+        // 40 dB/dec, so for ~40 dB at 150 kHz the inductor only needs to
+        // present ωL ≈ 500 Ω (not the 5 kΩ the series-L-only formula
+        // 50·10^(A/20) implies — that's the wizard bug we're tracking).
+        json dmcParams = json::parse(R"({
+            "configuration": "SINGLE_PHASE_BALANCED",
+            "inputVoltage": { "nominal": 230 },
+            "operatingCurrent": 10,
+            "lineFrequency": 50,
+            "switchingFrequency": 100000,
+            "ambientTemperature": 25,
+            "filterCapacitance": 1e-6,
+            "minimumImpedance": [{ "frequency": 150000, "impedance": 500 }]
+        })");
+
+        OpenMagnetics::DifferentialModeChoke dmc(dmcParams);
+        OpenMagnetics::Inputs inputs = dmc.process();
+
+        // After the fix, impedance is the binding requirement for the filter
+        // adviser; the inductance constraint is dropped because using both
+        // would over-constrain the search (Z = ωL of any choice cannot
+        // simultaneously satisfy both the LISN-derived Z target and a fixed L).
+        REQUIRE(inputs.get_design_requirements().get_minimum_impedance().has_value());
+        REQUIRE_FALSE(inputs.get_design_requirements().get_magnetizing_inductance().get_minimum().has_value());
+
+        MagneticAdviser magneticAdviser;
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 6);
+
+        INFO("Adviser returned " << masMagnetics.size() << " result(s) for DMC default spec");
+        REQUIRE(masMagnetics.size() > 0);
     }
 
     TEST_CASE("Test_MagneticAdviser_Web_5", "[adviser][magnetic-adviser][bug]") {

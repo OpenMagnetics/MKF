@@ -35,6 +35,12 @@ static bool is_energy_storing_topology(std::optional<Topologies> topology) {
         case Topologies::CUK_CONVERTER:
         case Topologies::SEPIC:
         case Topologies::ZETA_CONVERTER:
+        // DMC is a single-winding (or balanced two-winding) inductor on the
+        // line carrying the full DC line current as bias. Routing it through
+        // the inductor B-from-current path lets MagnetizingInductance derate
+        // permeability via the material's DC-bias polynomial; the transformer
+        // path (B from voltage) misses the DC bias entirely.
+        case Topologies::DIFFERENTIAL_MODE_CHOKE:
             return true;
             
         // Transformer topologies (forward-derived)

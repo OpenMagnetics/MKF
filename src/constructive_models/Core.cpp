@@ -9,6 +9,7 @@
 #include "json.hpp"
 #include "support/Utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -1447,13 +1448,12 @@ Application Core::resolve_material_application() {
 }
 
 Application Core::resolve_material_application(CoreMaterial& coreMaterial) {
-    if (coreMaterial.get_application()) {
-        return coreMaterial.get_application().value();
+    auto tags = coreMaterial.get_application();
+    if (tags && !tags->empty()) {
+        return tags->front();
     }
-    else {
-        coreMaterial.set_application(guess_material_application(coreMaterial));
-        return coreMaterial.get_application().value();
-    }
+    coreMaterial.set_application(std::vector<Application>{guess_material_application(coreMaterial)});
+    return coreMaterial.get_application().value().front();
 }
 
 Application Core::guess_material_application() {
@@ -1462,8 +1462,9 @@ Application Core::guess_material_application() {
 }
 
 Application Core::guess_material_application(CoreMaterial coreMaterial) {
-    if (coreMaterial.get_application()) {
-        return coreMaterial.get_application().value();
+    auto tags = coreMaterial.get_application();
+    if (tags && !tags->empty()) {
+        return tags->front();
     }
     for (auto method : get_available_core_losses_methods(coreMaterial)) {
         if (method == VolumetricCoreLossesMethodType::LOSS_FACTOR) {
@@ -1496,16 +1497,28 @@ bool Core::check_material_application(CoreMaterial coreMaterial, Application app
     // impedance model tries to read Z(f). Power-tagged materials (N87, 3C94,
     // 67, 77) are correctly kept out. Other primary-query applications
     // (Power / Signal Processing) still use the heuristic so older catalogs
-    // and tests behave the same as before.
-    if (application == Application::INTERFERENCE_SUPPRESSION
-        && coreMaterial.get_application()) {
-        auto tag = coreMaterial.get_application().value();
-        if (tag == Application::INTERFERENCE_SUPPRESSION) return true;
-        if (tag == Application::SIGNAL_PROCESSING
+    // and tests behave the same as before. Materials may carry MULTIPLE tags
+    // (e.g. powder cores tagged ["power", "interferenceSuppression"]) — the
+    // checks below use membership semantics so dual-tagged entries pass for
+    // every advertised application.
+    auto tagsOpt = coreMaterial.get_application();
+    auto contains = [&](Application a) {
+        if (!tagsOpt) return false;
+        const auto& tags = tagsOpt.value();
+        return std::find(tags.begin(), tags.end(), a) != tags.end();
+    };
+
+    if (application == Application::INTERFERENCE_SUPPRESSION && tagsOpt) {
+        if (contains(Application::INTERFERENCE_SUPPRESSION)) return true;
+        if (contains(Application::SIGNAL_PROCESSING)
             && coreMaterial.get_permeability().get_complex()) {
             return true;
         }
         return false;
+    }
+
+    if (tagsOpt && contains(application)) {
+        return true;
     }
 
     if (coreMaterial.get_permeability().get_complex()) {

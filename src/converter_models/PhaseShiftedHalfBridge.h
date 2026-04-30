@@ -10,41 +10,54 @@ namespace OpenMagnetics {
 using namespace MAS;
 
 /**
- * @brief Phase-Shifted Half Bridge (PSHB) DC-DC Converter
+ * @brief Phase-Shifted Half Bridge (PSHB) — Three-Level Pinheiro-Barbi DC-DC
+ *        Converter
  *
  * Inherits from MAS::PhaseShiftFullBridge and the Topology interface.
  * Reuses the same JSON/MAS schema as the full-bridge variant but applies
  * a half-bridge voltage factor (Vin/2) throughout.
  *
  * =====================================================================
- * TOPOLOGY OVERVIEW
+ * TOPOLOGY DISAMBIGUATION (READ THIS FIRST)
  * =====================================================================
  *
- * Half-bridge with split-capacitor input and phase-shift control:
+ * The label "phase-shifted half bridge" is genuinely ambiguous.  The
+ * model in this file implements the **two-leg, three-level, split-cap
+ * Pinheiro–Barbi converter** (IEEE TPE 8(4) 1993): four switches
+ * arranged as two half-bridge legs sharing a split-capacitor input,
+ * each leg at fixed 50 % duty, the inter-leg phase shift φ controlling
+ * power flow.  The primary winding sits between the two leg midpoints
+ * and sees a 3-level square wave (+Vin/2, 0, −Vin/2, 0).
  *
- *          +Vin ----+---- C1 ----+---- midCap
- *                   |            |
- *                  [QA]          |
- *                   |            |
- *                midSW ---[Lr]---+---[T1 Np:Ns]---[Rectifier]---[Lo]---Vo
- *                   |
- *                  [QB]
- *                   |
- *          GND -----+
+ * It is **NOT** the asymmetric (complementary) half bridge of
+ * Imbertson-Mohan 1993.  An AHB has only ONE leg, two complementary
+ * switches with asymmetric duty (D / 1−D), a DC-blocking capacitor
+ * in series with the primary, and a 2-level *asymmetric* primary
+ * voltage [+(1−D)·Vin, −D·Vin].  AHB conversion ratio is
+ * Vo = 2·D·(1−D)·Vin/n, which differs from this model's
+ * Vo = (Vin/2)·D_eff/n.
  *
- * QA and QB switch complementarily at ~50% duty.  The transformer
- * primary is connected between the switch mid-point and the capacitor
- * mid-point.  The capacitor divider forces the primary voltage to
- * swing between +Vin/2 and -Vin/2.
+ * If you need an AHB design, use a separate `AsymmetricHalfBridge`
+ * class (planned, not yet implemented).
  *
- * "Phase-shifted" refers to the timing/overlap control of the two
- * switches relative to each other (analogous to the leading/lagging
- * leg concept in the full-bridge, but here applied within a single
- * leg via asymmetric duty or dead-time modulation).  The effective
- * duty cycle D_eff controls the power transfer.
+ * =====================================================================
+ * TOPOLOGY OVERVIEW (this model — Pinheiro-Barbi 1993)
+ * =====================================================================
  *
- * Alternatively, in literature this is sometimes called an
- * "asymmetric half-bridge" or "complementary half-bridge."
+ *   +Vin ─┬── C1 ──┬── (mid_cap = Vin/2 by capacitive divider)
+ *         │        │
+ *        [QA]      │
+ *         │        │
+ *      mid_sw_A ───┴───[Lr]───[T1 Np:Ns]──── mid_sw_B ──┬─ ...
+ *         │                                              │
+ *        [QB]                                          [QC]──[QD]──GND
+ *         │
+ *   GND ──┴── C2 ──┘
+ *
+ * Both legs run at fixed 50% duty; leg-A and leg-B are phase-shifted
+ * by φ.  D_eff = φ/π controls the duration of the +Vin/2 and −Vin/2
+ * power-transfer intervals; the freewheel intervals are when both
+ * legs are at the same potential.
  *
  * =====================================================================
  * KEY EQUATIONS
@@ -97,7 +110,7 @@ using namespace MAS;
  *   - Typically suited for medium power (up to ~500 W)
  *   - Split capacitors must handle full primary current ripple
  */
-class Pshb : public MAS::PhaseShiftFullBridge, public Topology {
+class Pshb : public MAS::PhaseShiftedHalfBridge, public Topology {
 private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 5;
@@ -108,14 +121,24 @@ private:
     double computedDeadTime = 200e-9;
     double computedEffectiveDutyCycle = 0;
     double computedDiodeVoltageDrop = 0.6;
+    double mosfetCoss = 200e-12;
 
-    // Half-bridge voltage factor
+    // Half-bridge voltage factor (split-cap → ±Vin/2)
     static constexpr double BRIDGE_VOLTAGE_FACTOR = 0.5;
 
-    mutable std::vector<Waveform> extraLoVoltageWaveforms;  // Output inductor voltage per OP
-    mutable std::vector<Waveform> extraLoCurrentWaveforms;  // Output inductor current per OP
-    mutable std::vector<Waveform> extraLrVoltageWaveforms;  // Series (ZVS) inductor voltage per OP
-    mutable std::vector<Waveform> extraLrCurrentWaveforms;  // Series (ZVS) inductor current per OP
+    mutable double lastDutyCycleLoss = 0.0;
+    mutable double lastEffectiveDutyCycle = 0.0;
+    mutable double lastZvsMarginLagging = 0.0;
+    mutable double lastZvsLoadThreshold = 0.0;
+    mutable double lastResonantTransitionTime = 0.0;
+    mutable double lastPrimaryPeakCurrent = 0.0;
+
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;
+    mutable std::vector<Waveform> extraLo2VoltageWaveforms;
+    mutable std::vector<Waveform> extraLo2CurrentWaveforms;
+    mutable std::vector<Waveform> extraLrVoltageWaveforms;
+    mutable std::vector<Waveform> extraLrCurrentWaveforms;
 
 public:
     bool _assertErrors = false;
@@ -139,6 +162,24 @@ public:
     double get_computed_effective_duty_cycle() const { return computedEffectiveDutyCycle; }
     double get_bridge_voltage_factor() const { return BRIDGE_VOLTAGE_FACTOR; }
 
+    /// Per-MOSFET output capacitance (F) used for ZVS energy and resonant
+    /// transition-time predictions. Default 200 pF. Schema-less; set via setter.
+    double get_mosfet_coss() const { return mosfetCoss; }
+    void set_mosfet_coss(double value) { mosfetCoss = value; }
+
+    /// Duty-cycle loss for the last solved OP, ΔD = 4·Lk·Io·Fs/(n·Vin/2).
+    double get_last_duty_cycle_loss() const { return lastDutyCycleLoss; }
+    /// Effective duty cycle actually delivered to the secondary.
+    double get_last_effective_duty_cycle() const { return lastEffectiveDutyCycle; }
+    /// Lagging-leg ZVS energy margin (J) using Vbus = Vin/2.
+    double get_last_zvs_margin_lagging() const { return lastZvsMarginLagging; }
+    /// Output-current ZVS load threshold (A).
+    double get_last_zvs_load_threshold() const { return lastZvsLoadThreshold; }
+    /// Quarter-period of the ZVS resonant tank (s).
+    double get_last_resonant_transition_time() const { return lastResonantTransitionTime; }
+    /// Primary peak current at the lagging-leg switching instant (A).
+    double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
+
     // ---- Topology interface ----
     bool run_checks(bool assert = false) override;
     DesignRequirements process_design_requirements() override;
@@ -149,16 +190,16 @@ public:
 
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const PsfbOperatingPoint& pshbOpPoint,
+        const PshbOperatingPoint& pshbOpPoint,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
     // ---- PSHB-specific calculations ----
     static double compute_effective_duty_cycle(double phaseShiftDeg);
     static double compute_output_voltage(double Vin, double Deff, double n,
-                                         double Vd, PsfbRectifierType rectType);
+                                         double Vd, BRectifierType rectType);
     static double compute_turns_ratio(double Vin, double Vo, double Deff,
-                                      double Vd, PsfbRectifierType rectType);
+                                      double Vd, BRectifierType rectType);
     static double compute_output_inductance(double Vo, double Deff, double Fs,
                                             double Io, double rippleRatio);
     static double compute_primary_rms_current(double Io, double n, double Deff);
@@ -225,9 +266,9 @@ inline void from_json(const json& j, AdvancedPshb& x) {
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_phase_shift(get_stack_optional<double>(j, "maximumPhaseShift"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<PsfbOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<PshbOperatingPoint>>());
     x.set_output_inductance(get_stack_optional<double>(j, "outputInductance"));
-    x.set_rectifier_type(get_stack_optional<PsfbRectifierType>(j, "rectifierType"));
+    x.set_rectifier_type(get_stack_optional<BRectifierType>(j, "rectifierType"));
     x.set_series_inductance(get_stack_optional<double>(j, "seriesInductance"));
     x.set_use_leakage_inductance(get_stack_optional<bool>(j, "useLeakageInductance"));
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());

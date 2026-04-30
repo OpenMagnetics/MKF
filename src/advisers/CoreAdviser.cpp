@@ -2081,15 +2081,15 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
     auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_powder_manufacturer());
     for (auto coreMaterial : coreMaterials) {
-        auto application = Core::guess_material_application(coreMaterial);
-        if (application == _application) {
-            coreMaterialsToEvaluate.push_back(Core::resolve_material(coreMaterial));
+        auto resolved = Core::resolve_material(coreMaterial);
+        if (Core::check_material_application(resolved, _application)) {
+            coreMaterialsToEvaluate.push_back(resolved);
         }
     }
     std::vector<CoreMaterial> coreMaterialsToUse;
     std::vector<std::pair<CoreMaterial, double>> evaluations;
 
-    double temperature = 0; 
+    double temperature = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
     }
@@ -2155,15 +2155,15 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
     auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_ferrite_manufacturer());
     for (auto coreMaterial : coreMaterials) {
-        auto application = Core::guess_material_application(coreMaterial);
-        if (application == _application) {
-            coreMaterialsToEvaluate.push_back(Core::resolve_material(coreMaterial));
+        auto resolved = Core::resolve_material(coreMaterial);
+        if (Core::check_material_application(resolved, _application)) {
+            coreMaterialsToEvaluate.push_back(resolved);
         }
     }
     std::vector<CoreMaterial> coreMaterialsToUse;
     std::vector<std::pair<CoreMaterial, double>> evaluations;
 
-    double temperature = 0; 
+    double temperature = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
     }
@@ -2233,9 +2233,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
     auto coreMaterials = get_core_material_names(settings.get_preferred_core_material_ferrite_manufacturer());
     for (auto coreMaterial : coreMaterials) {
-        auto application = Core::guess_material_application(coreMaterial);
-        if (application == _application) {
-            coreMaterialsToEvaluate.push_back(Core::resolve_material(coreMaterial));
+        auto resolved = Core::resolve_material(coreMaterial);
+        if (Core::check_material_application(resolved, _application)) {
+            coreMaterialsToEvaluate.push_back(resolved);
         }
     }
     std::vector<CoreMaterial> coreMaterialsToUse;
