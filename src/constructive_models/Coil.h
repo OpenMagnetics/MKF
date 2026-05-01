@@ -132,8 +132,25 @@ class Coil : public MAS::Coil {
         bool delimit_and_compact_rectangular_window();
         bool delimit_and_compact_round_window();
         bool create_default_group(Bobbin bobbin, WiringTechnology coilType = WiringTechnology::WOUND, double coreToLayerDistance = 0);
+        // Multi-window dispatcher: calls create_default_group for single-window
+        // bobbins, or creates one Group per winding window for multi-window
+        // bobbins (all windings placed in column 0 by default — call
+        // assign_windings_to_columns() to override).
+        bool create_default_groups(Bobbin bobbin, WiringTechnology coilType = WiringTechnology::WOUND, double coreToLayerDistance = 0);
+        // Look up which winding window a group is anchored to, by matching
+        // the group's coordinates against each winding window. Returns 0 if
+        // no match (safe fallback for single-column behaviour).
+        size_t find_window_index_for_group(const std::string& groupName) const;
 
     public:
+        // Distribute windings across the bobbin's winding windows. Creates one
+        // Group per winding window in the bobbin and assigns windings to
+        // groups per the provided indices. The outer vector size MUST equal
+        // the number of winding windows; each inner vector lists the
+        // functionalDescription indices to place in that column. Sets
+        // groupsDescription. Must be called BEFORE wind_by_sections() if you
+        // want non-default column placement.
+        void assign_windings_to_columns(const std::vector<std::vector<size_t>>& windingIndicesPerColumn);
         bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);

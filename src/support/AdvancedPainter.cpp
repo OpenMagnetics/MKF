@@ -561,9 +561,23 @@ void AdvancedPainter::paint_two_piece_set_core(Magnetic magnetic) {
     double imageWidth = aux[0];
     double imageHeight = aux[1];
 
+    // Multi-column: when the core has more than one winding window, the
+    // coil may place sections on both sides of the centre column. Extend
+    // the canvas symmetrically around x=0 so left-column (negative-x)
+    // sections are visible. Single-column behaviour unchanged.
+    bool multiColumn = magnetic.get_core().get_winding_windows().size() > 1
+                       || (magnetic.get_coil().get_groups_description() &&
+                           magnetic.get_coil().get_groups_description().value().size() > 1);
 
     matplot::gcf()->size(imageWidth * _scale, imageHeight * _scale);
-    matplot::xlim({0, imageWidth});
+    if (multiColumn) {
+        // Show full core width (both halves around centre column).
+        double fullWidth = std::max(imageWidth * 2, processedDescription.get_width());
+        matplot::xlim({-fullWidth / 2, fullWidth / 2});
+    }
+    else {
+        matplot::xlim({0, imageWidth});
+    }
     matplot::ylim({-imageHeight / 2, imageHeight / 2});
     matplot::gca()->cb_inside(true);
     matplot::gca()->cb_position({0.01f, 0.05f, 0.05f, 0.9f});

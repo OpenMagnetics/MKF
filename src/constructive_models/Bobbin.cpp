@@ -501,10 +501,9 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
         core.process_data();
     }
 
-    if (core.get_processed_description()->get_winding_windows().size() > 1) {
-        throw NotImplementedException("More than one winding window not supported yet");
-    }
-
+    // Multi-window cores supported. Use the centre/main window (index 0)
+    // to derive default wall/column thicknesses; create_quick_bobbin
+    // (Core, double, double) below will iterate over all windows.
     auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
 
     WindingWindowShape bobbinWindingWindowShape;
@@ -553,11 +552,7 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
         throw CoreNotProcessedException("Core has not been processed yet");
     }
 
-    if (core.get_processed_description()->get_winding_windows().size() > 1) {
-        throw NotImplementedException("More than one winding window not supported yet");
-    }
-
-    auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
+    auto coreWindingWindows = core.get_processed_description()->get_winding_windows();
 
     WindingWindowShape bobbinWindingWindowShape;
     if (core.get_shape_family() == CoreShapeFamily::T) {
@@ -567,67 +562,107 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
         bobbinWindingWindowShape = WindingWindowShape::RECTANGULAR;
     }
 
-    std::vector<double> bobbinWindingWindowDimensions;
-    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        bobbinWindingWindowDimensions = {std::max(0.0, coreWindingWindow.get_width().value() - columnThickness), std::max(0.0, coreWindingWindow.get_height().value() - wallThickness * 2)};
-    }
-    else {
-        bobbinWindingWindowDimensions = {coreWindingWindow.get_radial_height().value(), coreWindingWindow.get_angle().value()};
-    }
-
-    CoreBobbinProcessedDescription coreBobbinProcessedDescription;
-    WindingWindowElement windingWindowElement;
-
     auto coreCentralColumn = core.get_processed_description()->get_columns()[0];
+    CoreBobbinProcessedDescription coreBobbinProcessedDescription;
+    std::vector<WindingWindowElement> bobbinWindingWindows;
+    bool anyFallback = false;
+
+    for (size_t windowIndex = 0; windowIndex < coreWindingWindows.size(); ++windowIndex) {
+        auto& coreWindingWindow = coreWindingWindows[windowIndex];
+        WindingWindowElement windingWindowElement;
+        std::vector<double> bobbinWindingWindowDimensions;
+
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            bobbinWindingWindowDimensions = {std::max(0.0, coreWindingWindow.get_width().value() - columnThickness), std::max(0.0, coreWindingWindow.get_height().value() - wallThickness * 2)};
+        }
+        else {
+            bobbinWindingWindowDimensions = {coreWindingWindow.get_radial_height().value(), coreWindingWindow.get_angle().value()};
+        }
+
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            if ((bobbinWindingWindowDimensions[0] < 0) || (bobbinWindingWindowDimensions[0] > 1) || (bobbinWindingWindowDimensions[1] < 0) || (bobbinWindingWindowDimensions[1] > 1)) {
+                windingWindowElement.set_width(coreWindingWindow.get_width().value());
+                windingWindowElement.set_height(coreWindingWindow.get_height().value());
+                if (windowIndex == 0) {
+                    windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2, 0, 0}));
+                }
+                else {
+                    // Multi-window: mirror from the core's window coordinates so each
+                    // additional window is placed symmetrically. The sign of the core
+                    // window's x-coordinate determines the side.
+                    auto coreCoords = coreWindingWindow.get_coordinates().value();
+                    double sign = (coreCoords[0] < 0) ? -1.0 : 1.0;
+                    windingWindowElement.set_coordinates(std::vector<double>({sign * coreCentralColumn.get_width() / 2, 0, 0}));
+                }
+                anyFallback = true;
+            }
+            else {
+                windingWindowElement.set_width(bobbinWindingWindowDimensions[0]);
+                windingWindowElement.set_height(bobbinWindingWindowDimensions[1]);
+                windingWindowElement.set_area(bobbinWindingWindowDimensions[0] * bobbinWindingWindowDimensions[1]);
+                if (windowIndex == 0) {
+                    windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + columnThickness + bobbinWindingWindowDimensions[0] / 2, 0, 0}));
+                }
+                else {
+                    // Mirror across the centre column for additional windows.
+                    auto coreCoords = coreWindingWindow.get_coordinates().value();
+                    double sign = (coreCoords[0] < 0) ? -1.0 : 1.0;
+                    windingWindowElement.set_coordinates(std::vector<double>({sign * (coreCentralColumn.get_width() / 2 + columnThickness + bobbinWindingWindowDimensions[0] / 2), 0, 0}));
+                }
+            }
+        }
+        else {
+            windingWindowElement.set_radial_height(bobbinWindingWindowDimensions[0]);
+            windingWindowElement.set_angle(bobbinWindingWindowDimensions[1]);
+            windingWindowElement.set_area(std::numbers::pi * pow(bobbinWindingWindowDimensions[0], 2) * bobbinWindingWindowDimensions[1] / 360);
+            windingWindowElement.set_coordinates(std::vector<double>({bobbinWindingWindowDimensions[0], 0, 0}));
+        }
+        windingWindowElement.set_shape(bobbinWindingWindowShape);
+
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            if ((windingWindowElement.get_width().value() < 0) || (windingWindowElement.get_width().value() > 1)) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindowDimensions[0]));
+            }
+            if ((windingWindowElement.get_height().value() < 0) || (windingWindowElement.get_height().value() > 1)) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
+            }
+        }
+        else {
+            if ((windingWindowElement.get_radial_height().value() < 0) || (windingWindowElement.get_radial_height().value() > 1)) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindowDimensions[0]));
+            }
+            if ((windingWindowElement.get_angle().value() < 0) || (windingWindowElement.get_angle().value() > 360)) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
+            }
+        }
+        bobbinWindingWindows.push_back(windingWindowElement);
+    }
+
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        if ((bobbinWindingWindowDimensions[0] < 0) || (bobbinWindingWindowDimensions[0] > 1) || (bobbinWindingWindowDimensions[1] < 0) || (bobbinWindingWindowDimensions[1] > 1)) {
-            windingWindowElement.set_width(coreWindingWindow.get_width().value());
-            windingWindowElement.set_height(coreWindingWindow.get_height().value());
-            windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2, 0, 0}));
+        if (anyFallback) {
             coreBobbinProcessedDescription.set_wall_thickness(0);
             coreBobbinProcessedDescription.set_column_thickness(0);
         }
         else {
-            windingWindowElement.set_width(bobbinWindingWindowDimensions[0]);
-            windingWindowElement.set_height(bobbinWindingWindowDimensions[1]);
-            windingWindowElement.set_area(bobbinWindingWindowDimensions[0] * bobbinWindingWindowDimensions[1]);
-            windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + columnThickness + bobbinWindingWindowDimensions[0] / 2, 0, 0}));
             coreBobbinProcessedDescription.set_wall_thickness(wallThickness);
             coreBobbinProcessedDescription.set_column_thickness(columnThickness);
         }
     }
     else {
-        windingWindowElement.set_radial_height(bobbinWindingWindowDimensions[0]);
-        windingWindowElement.set_angle(bobbinWindingWindowDimensions[1]);
-        windingWindowElement.set_area(std::numbers::pi * pow(bobbinWindingWindowDimensions[0], 2) * bobbinWindingWindowDimensions[1] / 360);
-        windingWindowElement.set_coordinates(std::vector<double>({bobbinWindingWindowDimensions[0], 0, 0}));
         coreBobbinProcessedDescription.set_wall_thickness(0);
         coreBobbinProcessedDescription.set_column_thickness(0);
-
     }
-    windingWindowElement.set_shape(bobbinWindingWindowShape);
-    coreBobbinProcessedDescription.set_winding_windows(std::vector<WindingWindowElement>({windingWindowElement}));
+
+    // NOTE: column_depth/column_shape/column_width describe the centre/main
+    // column only. Multi-window cores store per-window geometry in
+    // winding_windows[]; per-column physical dimensions are not represented
+    // (v2 work).
+    coreBobbinProcessedDescription.set_winding_windows(bobbinWindingWindows);
     coreBobbinProcessedDescription.set_column_shape(coreCentralColumn.get_shape());
     coreBobbinProcessedDescription.set_column_depth(coreCentralColumn.get_depth() / 2 + columnThickness);
     coreBobbinProcessedDescription.set_column_width(coreCentralColumn.get_width() / 2 + columnThickness);
     coreBobbinProcessedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
 
-    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        if ((windingWindowElement.get_width().value() < 0) || (windingWindowElement.get_width().value() > 1)) {
-            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindowDimensions[0]));
-        }
-        if ((windingWindowElement.get_height().value() < 0) || (windingWindowElement.get_height().value() > 1)) {
-            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
-        }
-    }
-    else {
-        if ((windingWindowElement.get_radial_height().value() < 0) || (windingWindowElement.get_radial_height().value() > 1)) {
-            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindowDimensions[0]));
-        }
-        if ((windingWindowElement.get_angle().value() < 0) || (windingWindowElement.get_angle().value() > 360)) {
-            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
-        }
-    }
     Bobbin bobbin;
     bobbin.set_processed_description(coreBobbinProcessedDescription);
     auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
@@ -774,8 +809,8 @@ void Bobbin::set_winding_orientation(WindingOrientation windingOrientation, size
 
     auto bobbinProcessedDescription = get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    if (windingWindows.size() > 1) {
-        throw NotImplementedException("Bobbins with more than winding window not implemented yet");
+    if (windingWindowIndex >= windingWindows.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "windingWindowIndex out of range: " + std::to_string(windingWindowIndex));
     }
     windingWindows[windingWindowIndex].set_sections_orientation(windingOrientation);
     bobbinProcessedDescription.set_winding_windows(windingWindows);
@@ -790,8 +825,8 @@ std::optional<WindingOrientation> Bobbin::get_winding_orientation(size_t winding
 
     auto bobbinProcessedDescription = get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    if (windingWindows.size() > 1) {
-        throw NotImplementedException("Bobbins with more than winding window not implemented yet");
+    if (windingWindowIndex >= windingWindows.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "windingWindowIndex out of range: " + std::to_string(windingWindowIndex));
     }
     if (windingWindows[windingWindowIndex].get_sections_orientation()) {
         return windingWindows[windingWindowIndex].get_sections_orientation().value();

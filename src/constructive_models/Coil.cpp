@@ -342,9 +342,8 @@ CoilAlignment Coil::get_section_alignment() {
     }
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    if (windingWindows.size() > 1) {
-        throw NotImplementedException("Bobbins with more than winding window not implemented yet");
-    }
+    // Multi-window: returns alignment from window 0 (single alignment for the
+    // whole coil; per-window alignment is a v2 refinement).
     if (windingWindows.size() > 0) {
         if (windingWindows[0].get_sections_alignment()) {
             auto alignment = windingWindows[0].get_sections_alignment().value();
@@ -2138,6 +2137,8 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding) {
 }
 
 bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType, double coreToLayerDistance) {
+    // Single-window helper. Multi-window dispatch lives in
+    // create_default_groups() — see the multi-column plan §10.
     Group group;
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -2169,6 +2170,137 @@ bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType, double
     return true;
 }
 
+bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, double coreToLayerDistance) {
+    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+    if (windingWindows.size() <= 1) {
+        return create_default_group(bobbin, coilType, coreToLayerDistance);
+    }
+
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
+    // Build the per-winding partials once; they go in group 0 by default.
+    std::vector<PartialWinding> partialWindings;
+    double numberWindings = get_functional_description().size();
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        PartialWinding partialWinding;
+        partialWinding.set_winding(get_name(windingIndex));
+        partialWinding.set_parallels_proportion(std::vector<double>(get_number_parallels(windingIndex), 1));
+        partialWindings.push_back(partialWinding);
+    }
+
+    std::vector<Group> groups;
+    for (size_t i = 0; i < windingWindows.size(); ++i) {
+        Group g;
+        g.set_name("Column " + std::to_string(i));
+        g.set_coordinates({windingWindows[i].get_coordinates().value()[0], windingWindows[i].get_coordinates().value()[1]});
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            g.set_dimensions(std::vector<double>{windingWindows[i].get_width().value() - coreToLayerDistance * 2, windingWindows[i].get_height().value()});
+            g.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        }
+        else {
+            g.set_dimensions(std::vector<double>{windingWindows[i].get_radial_height().value() - coreToLayerDistance * 2, windingWindows[i].get_angle().value()});
+            g.set_coordinate_system(CoordinateSystem::POLAR);
+        }
+        g.set_sections_orientation(get_winding_orientation());
+        g.set_type(coilType);
+        if (i == 0) {
+            g.set_partial_windings(partialWindings);
+        }
+        else {
+            g.set_partial_windings(std::vector<PartialWinding>{});
+        }
+        groups.push_back(g);
+    }
+    set_groups_description(groups);
+
+    OM_WARNING("Multi-column bobbin detected (" + std::to_string(windingWindows.size()) +
+               " winding windows). All windings placed in column 0 by default. "
+               "Call assign_windings_to_columns() to distribute.");
+    return true;
+}
+
+size_t Coil::find_window_index_for_group(const std::string& groupName) const {
+    auto groupsOpt = get_groups_description();
+    if (!groupsOpt) return 0;
+    auto groups = groupsOpt.value();
+
+    Bobbin bobbinResolved;
+    try {
+        bobbinResolved = const_cast<Coil*>(this)->resolve_bobbin();
+    } catch (...) {
+        return 0;
+    }
+    if (!bobbinResolved.get_processed_description()) return 0;
+    auto windingWindows = bobbinResolved.get_processed_description().value().get_winding_windows();
+    if (windingWindows.size() <= 1) return 0;
+
+    for (auto& g : groups) {
+        if (g.get_name() == groupName) {
+            auto gc = g.get_coordinates();
+            for (size_t j = 0; j < windingWindows.size(); ++j) {
+                auto wwc = windingWindows[j].get_coordinates().value();
+                // Match on x and y (group coordinates are 2D, window are 3D).
+                if (gc.size() >= 2 && wwc.size() >= 2 &&
+                    std::abs(gc[0] - wwc[0]) < 1e-9 &&
+                    std::abs(gc[1] - wwc[1]) < 1e-9) {
+                    return j;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+void Coil::assign_windings_to_columns(const std::vector<std::vector<size_t>>& windingIndicesPerColumn) {
+    auto bobbin = resolve_bobbin();
+    if (!bobbin.get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
+    if (windingIndicesPerColumn.size() != windingWindows.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "windingIndicesPerColumn size (" + std::to_string(windingIndicesPerColumn.size()) +
+            ") must match number of winding windows (" + std::to_string(windingWindows.size()) + ")");
+    }
+
+    auto& functionalDesc = get_functional_description();
+    std::vector<Group> groups;
+
+    for (size_t col = 0; col < windingWindows.size(); ++col) {
+        Group g;
+        g.set_name("Column " + std::to_string(col));
+        g.set_coordinates({windingWindows[col].get_coordinates().value()[0], windingWindows[col].get_coordinates().value()[1]});
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            g.set_dimensions(std::vector<double>{windingWindows[col].get_width().value(), windingWindows[col].get_height().value()});
+            g.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        }
+        else {
+            g.set_dimensions(std::vector<double>{windingWindows[col].get_radial_height().value(), windingWindows[col].get_angle().value()});
+            g.set_coordinate_system(CoordinateSystem::POLAR);
+        }
+        g.set_sections_orientation(get_winding_orientation());
+        g.set_type(WiringTechnology::WOUND);
+
+        std::vector<PartialWinding> partialWindings;
+        for (auto windingIndex : windingIndicesPerColumn[col]) {
+            if (windingIndex >= functionalDesc.size()) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "winding index " + std::to_string(windingIndex) + " out of range");
+            }
+            PartialWinding pw;
+            pw.set_winding(get_name(windingIndex));
+            pw.set_parallels_proportion(std::vector<double>(get_number_parallels(windingIndex), 1));
+            partialWindings.push_back(pw);
+        }
+        g.set_partial_windings(partialWindings);
+        groups.push_back(g);
+    }
+    set_groups_description(groups);
+}
+
 bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     _currentProportionPerWinding = proportionPerWinding;
     _currentPattern = pattern;
@@ -2185,21 +2317,22 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
     }
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    if (windingWindows.size() > 1) {
-        throw NotImplementedException("Bobbins with more than winding window not implemented yet");
-    }
-    if (!windingWindows[0].get_sections_orientation()) {
-        windingWindows[0].set_sections_orientation(_windingOrientation);
-    }
-    if (!windingWindows[0].get_sections_alignment()) {
-        windingWindows[0].set_sections_alignment(_sectionAlignmentExplicit ? _sectionAlignment : get_section_alignment());
+    // Multi-window supported: initialise sections_orientation and
+    // sections_alignment for ALL winding windows.
+    for (size_t i = 0; i < windingWindows.size(); ++i) {
+        if (!windingWindows[i].get_sections_orientation()) {
+            windingWindows[i].set_sections_orientation(_windingOrientation);
+        }
+        if (!windingWindows[i].get_sections_alignment()) {
+            windingWindows[i].set_sections_alignment(_sectionAlignmentExplicit ? _sectionAlignment : get_section_alignment());
+        }
     }
     bobbinProcessedDescription.set_winding_windows(windingWindows);
     bobbin.set_processed_description(bobbinProcessedDescription);
     set_bobbin(bobbin);
 
     if (!get_groups_description()) {
-        create_default_group(bobbin);
+        create_default_groups(bobbin);
     }
 
     set_sections_description(std::nullopt);
@@ -3344,7 +3477,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
     auto bobbin = resolve_bobbin();
     if (!get_groups_description()) {
-        create_default_group(bobbin, WiringTechnology::PRINTED, coreToLayerDistance);
+        create_default_groups(bobbin, WiringTechnology::PRINTED, coreToLayerDistance);
     }
 
     if (!get_groups_description()) {
@@ -3357,9 +3490,8 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     set_turns_alignment(CoilAlignment::CENTERED);
 
     auto groups = get_groups_description().value();
-    if (groups.size() > 1) {
-        throw NotImplementedException("Only one group supported for now.");
-    }
+    // Planar coils v1: only the first group is wound here. Multi-column
+    // planar layouts are uncommon; defer to v2 if needed.
     auto group = groups[0];
 
     auto wirePerWinding = get_wires();
@@ -5327,7 +5459,17 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
         sections[sectionIndex].set_margin(std::vector<double>{0, 0});
     }
 
-    auto windingWindows = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows();
+    auto allWindingWindows = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows();
+    // Multi-column: redirect "[0]" to the section's group's window so the
+    // alignment math uses that column's geometry. Single-column behaviour is
+    // unchanged because find_window_index_for_group returns 0 in that case.
+    size_t windowIndex = 0;
+    auto sectionGroupOpt = sections[sectionIndex].get_group();
+    if (sectionGroupOpt) {
+        windowIndex = find_window_index_for_group(sectionGroupOpt.value());
+    }
+    if (windowIndex >= allWindingWindows.size()) windowIndex = 0;
+    std::vector<WindingWindowElement> windingWindows = {allWindingWindows[windowIndex]};
     double windingWindowHeight = windingWindows[0].get_height().value();
     double windingWindowWidth = windingWindows[0].get_width().value();
     auto windingOrientation = get_winding_orientation();
