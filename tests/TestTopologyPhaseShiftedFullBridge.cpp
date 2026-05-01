@@ -402,16 +402,16 @@ TEST_CASE("Test_Psfb_Static_Calculations", "[converter-model][psfb-topology][uni
     SECTION("Output voltage - center tapped") {
         // Vo = Vin * Deff / n - Vd
         double Vo = Psfb::compute_output_voltage(400.0, 0.7, 22.0, 0.6,
-                                                  PsfbRectifierType::CENTER_TAPPED);
+                                                  BRectifierType::CENTER_TAPPED);
         double expected = 400.0 * 0.7 / 22.0 - 0.6;
         REQUIRE_THAT(Vo, Catch::Matchers::WithinAbs(expected, 0.01));
     }
 
     SECTION("Turns ratio round-trip") {
         double n = Psfb::compute_turns_ratio(400.0, 12.0, 0.7, 0.6,
-                                              PsfbRectifierType::CENTER_TAPPED);
+                                              BRectifierType::CENTER_TAPPED);
         double Vo_check = Psfb::compute_output_voltage(400.0, 0.7, n, 0.6,
-                                                        PsfbRectifierType::CENTER_TAPPED);
+                                                        BRectifierType::CENTER_TAPPED);
         REQUIRE_THAT(Vo_check, Catch::Matchers::WithinAbs(12.0, 0.01));
     }
 }

@@ -429,23 +429,23 @@ TEST_CASE("Test_Pshb_Static_Calculations", "[converter-model][pshb-topology][uni
     SECTION("Output voltage - center tapped (includes Vin/2 factor)") {
         // Vo = (Vin/2) * Deff / n - Vd
         double Vo = Pshb::compute_output_voltage(400.0, 0.75, 11.0, 0.6,
-                                                  PsfbRectifierType::CENTER_TAPPED);
+                                                  BRectifierType::CENTER_TAPPED);
         double expected = (400.0 / 2.0) * 0.75 / 11.0 - 0.6;
         REQUIRE_THAT(Vo, Catch::Matchers::WithinAbs(expected, 0.01));
     }
 
     SECTION("Output voltage - full bridge rectifier") {
         double Vo = Pshb::compute_output_voltage(400.0, 0.75, 11.0, 0.6,
-                                                  PsfbRectifierType::FULL_BRIDGE);
+                                                  BRectifierType::FULL_BRIDGE);
         double expected = (400.0 / 2.0) * 0.75 / 11.0 - 2.0 * 0.6;
         REQUIRE_THAT(Vo, Catch::Matchers::WithinAbs(expected, 0.01));
     }
 
     SECTION("Turns ratio round-trip") {
         double n = Pshb::compute_turns_ratio(400.0, 12.0, 0.75, 0.6,
-                                              PsfbRectifierType::CENTER_TAPPED);
+                                              BRectifierType::CENTER_TAPPED);
         double Vo_check = Pshb::compute_output_voltage(400.0, 0.75, n, 0.6,
-                                                        PsfbRectifierType::CENTER_TAPPED);
+                                                        BRectifierType::CENTER_TAPPED);
         REQUIRE_THAT(Vo_check, Catch::Matchers::WithinAbs(12.0, 0.01));
     }
 
@@ -454,7 +454,7 @@ TEST_CASE("Test_Pshb_Static_Calculations", "[converter-model][pshb-topology][uni
         // n_fb = Vin * Deff / (Vo+Vd)
         // n_hb = (Vin/2) * Deff / (Vo+Vd) = n_fb / 2
         double n_hb = Pshb::compute_turns_ratio(400.0, 12.0, 0.7, 0.6,
-                                                  PsfbRectifierType::CENTER_TAPPED);
+                                                  BRectifierType::CENTER_TAPPED);
         double n_fb_expected = 400.0 * 0.7 / (12.0 + 0.6);
         REQUIRE_THAT(n_hb, Catch::Matchers::WithinAbs(n_fb_expected / 2.0, 0.01));
     }

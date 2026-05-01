@@ -1509,11 +1509,17 @@ bool Core::check_material_application(CoreMaterial coreMaterial, Application app
     };
 
     if (application == Application::INTERFERENCE_SUPPRESSION && tagsOpt) {
-        if (contains(Application::INTERFERENCE_SUPPRESSION)) return true;
-        if (contains(Application::SIGNAL_PROCESSING)
-            && coreMaterial.get_permeability().get_complex()) {
-            return true;
+        // The IS pipeline's MagneticFilterMinimumImpedance reads complex
+        // permeability and throws MATERIAL_DATA_MISSING otherwise. Require
+        // complex µ data on every IS-eligible material — including
+        // dual-tagged powders — until that filter learns to fall back to
+        // ωL with initial permeability. Without this gate, dual-tagged
+        // Kool Mu / MPP / Sendust would crash CMC and DMC adviser runs.
+        if (!coreMaterial.get_permeability().get_complex()) {
+            return false;
         }
+        if (contains(Application::INTERFERENCE_SUPPRESSION)) return true;
+        if (contains(Application::SIGNAL_PROCESSING)) return true;
         return false;
     }
 
