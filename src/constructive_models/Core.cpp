@@ -1510,12 +1510,17 @@ bool Core::check_material_application(CoreMaterial coreMaterial, Application app
 
     if (application == Application::INTERFERENCE_SUPPRESSION && tagsOpt) {
         // The IS pipeline's MagneticFilterMinimumImpedance reads complex
-        // permeability and throws MATERIAL_DATA_MISSING otherwise. Require
-        // complex µ data on every IS-eligible material — including
-        // dual-tagged powders — until that filter learns to fall back to
-        // ωL with initial permeability. Without this gate, dual-tagged
-        // Kool Mu / MPP / Sendust would crash CMC and DMC adviser runs.
-        if (!coreMaterial.get_permeability().get_complex()) {
+        // permeability and throws MATERIAL_DATA_MISSING otherwise. Admit
+        // materials that either ship explicit complex µ data OR have a
+        // frequency-dependent initial-permeability fit
+        // (ComplexPermeability::calculate_complex_permeability_from_frequency_dependent_initial_permeability
+        // auto-derives µ′(f), µ″(f) via the Dowell-sheet model for those).
+        // Powder materials lacking BOTH (e.g. MPP 19 — Magnetics, no
+        // frequencyFactor polynomial published) get skipped so dual-tagged
+        // catalog entries can't crash CMC/DMC adviser runs.
+        bool hasExplicitComplex = coreMaterial.get_permeability().get_complex().has_value();
+        bool canDeriveComplex = InitialPermeability::has_frequency_dependency(coreMaterial);
+        if (!hasExplicitComplex && !canDeriveComplex) {
             return false;
         }
         if (contains(Application::INTERFERENCE_SUPPRESSION)) return true;

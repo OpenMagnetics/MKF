@@ -3,6 +3,8 @@
 #include "support/Utils.h"
 #include <cfloat>
 #include <cmath>
+#include <limits>
+#include <numbers>
 #include <numeric>
 #include <iomanip>
 #include "support/Exceptions.h"
@@ -110,10 +112,28 @@ namespace OpenMagnetics {
         // Filter-application advisers (MagneticFilter) use minimumImpedance as
         // the primary search criterion: they sweep turn counts on each candidate
         // core and accept the first N where Z(f) ≥ requirement at every spec
-        // point. Prefer impedance when present; fall back to inductance only
-        // when no impedance was supplied (the wizard's "I know L" mode).
+        // point. Always emit a minimum-L bound too — when only impedance is
+        // supplied, derive L_min = Z_min / (2π·f_min) at the lowest spec
+        // frequency. Same pattern as CommonModeChoke. CoreAdviser's turn-seeding
+        // helper (add_initial_turns_by_inductance) uses this minimum L to seed
+        // an initial number of turns before the impedance filter sweeps; without
+        // it the helper segfaults on filter-only specs.
         if (_minimumImpedance) {
             designRequirements.set_minimum_impedance(_minimumImpedance.value());
+
+            double lowestFreq = std::numeric_limits<double>::max();
+            double zAtLowestFreq = 0.0;
+            for (const auto& point : _minimumImpedance.value()) {
+                if (point.get_frequency() < lowestFreq) {
+                    lowestFreq = point.get_frequency();
+                    zAtLowestFreq = point.get_impedance().get_magnitude();
+                }
+            }
+            if (lowestFreq > 0 && zAtLowestFreq > 0) {
+                DimensionWithTolerance inductanceWithTolerance;
+                inductanceWithTolerance.set_minimum(zAtLowestFreq / (2.0 * std::numbers::pi * lowestFreq));
+                designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+            }
         }
         else if (_minimumInductance) {
             DimensionWithTolerance inductanceWithTolerance;
