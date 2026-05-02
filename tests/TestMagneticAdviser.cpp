@@ -1151,7 +1151,7 @@ namespace {
         json dmcParams = json::parse(R"({
             "configuration": "SINGLE_PHASE_BALANCED",
             "inputVoltage": { "nominal": 230 },
-            "operatingCurrent": 10,
+            "operatingCurrent": 2,
             "lineFrequency": 50,
             "switchingFrequency": 100000,
             "ambientTemperature": 25,
