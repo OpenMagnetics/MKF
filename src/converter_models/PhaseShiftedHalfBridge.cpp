@@ -569,7 +569,6 @@ std::string Pshb::generate_ngspice_circuit(
     double period = 1.0 / Fs;
     double halfPeriod = period / 2.0;
     double deadTime = computedDeadTime;
-    double tOn = halfPeriod - deadTime;
     double Vo = pshbOp.get_output_voltages()[0];
     double Io = pshbOp.get_output_currents()[0];
     double n = turnsRatios[0];
@@ -594,49 +593,101 @@ std::string Pshb::generate_ngspice_circuit(
 
     std::ostringstream circuit;
 
-    circuit << "* Phase-Shifted Half Bridge (PSHB) — single-leg + split-cap\n";
-    circuit << "* Vin=" << Vin << "V (primary swings ±Vin/2), Vo=" << Vo << "V, Fs="
-            << (Fs/1e3) << "kHz, Deff=" << Deff << ", outputs=" << numOutputs << "\n";
+    circuit << "* Phase-Shifted Half Bridge (PSHB) — three-level Pinheiro-Barbi NPC\n";
+    circuit << "* Vin=" << Vin << "V (primary swings ±Vin/2 / 0 — 3-level), Vo=" << Vo
+            << "V, Fs=" << (Fs/1e3) << "kHz, Deff=" << Deff
+            << ", outputs=" << numOutputs << "\n";
     circuit << "* n=" << n << ", Lr=" << (Lr*1e6) << "uH, Lm=" << (Lm*1e6)
-            << "uH, Lo=" << (Lo*1e6) << "uH, rect=" << static_cast<int>(rectType) << "\n\n";
+            << "uH, Lo=" << (Lo*1e6) << "uH, rect=" << static_cast<int>(rectType) << "\n";
+    circuit << "* Topology: 2 stacked legs × 4 switches + 2 clamp diodes per leg.\n";
+    circuit << "* Reference: Pinheiro & Barbi, IEEE TPE 8(4) 1993.\n\n";
 
     circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
     circuit << ".model DIDEAL D(IS=1e-12 RS=0.05)\n\n";
 
     circuit << "Vdc vin_dc 0 " << Vin << "\n\n";
 
-    // Split capacitor divider — clamps mid_cap to Vin/2 so the primary
-    // (between mid_sw and mid_cap) sees ±Vin/2.
+    // Split capacitor divider — clamp diodes connect to mid_cap.
     circuit << "C_split_hi vin_dc mid_cap 470u ic=" << (Vin/2.0) << "\n";
     circuit << "C_split_lo mid_cap 0 470u ic=" << (Vin/2.0) << "\n";
     circuit << "Rbal_hi vin_dc mid_cap 100k\n";
     circuit << "Rbal_lo mid_cap 0 100k\n\n";
 
-    // Single half-bridge leg (QA-QB): 50% complementary duty.
-    circuit << "Vpwm_A pwm_A 0 PULSE(0 5 0 10n 10n "
-            << std::scientific << tOn << " " << period << std::fixed << ")\n";
-    circuit << "Vpwm_B pwm_B 0 PULSE(0 5 "
-            << std::scientific << halfPeriod << std::fixed
-            << " 10n 10n "
-            << std::scientific << tOn << " " << period << std::fixed << ")\n";
-    circuit << "SA vin_dc mid_sw pwm_A 0 SW1\n";
-    circuit << "DA 0 mid_sw DIDEAL\n";
-    circuit << "SB mid_sw 0 pwm_B 0 SW1\n";
-    circuit << "DB mid_sw vin_dc DIDEAL\n";
-    circuit << "Rsnub_QA vin_dc mid_sw 1k\nCsnub_QA vin_dc mid_sw 1n\n";
-    circuit << "Rsnub_QB mid_sw 0 1k\nCsnub_QB mid_sw 0 1n\n\n";
+    // ============================================================
+    // PWM SCHEME (Pinheiro-Barbi 3-level NPC with phase-shift mod):
+    //   Inner switches (Q2, Q3) per leg run at 50 % complementary
+    //   duty — Q2 first half, Q3 second half. They define the half-
+    //   cycle structure but never chop power directly.
+    //   Outer switches (Q1, Q4) modulate the duty within each half.
+    //     Leg-A: Q1A on during [0, t_act], Q4A on during [Thalf, Thalf+t_act]
+    //   Leg-B is phase-shifted by φ_shift = (1 - Deff)·Thalf so that the
+    //   differential mid_A − mid_B produces the desired 3-level pulse:
+    //     ±Vin/2 during the active intervals, 0 during the freewheel
+    //     intervals.
+    // ============================================================
+    double t_act = Deff * halfPeriod;
+    double phi_shift = (1.0 - Deff) * halfPeriod;  // delay applied to leg-B
 
-    // Primary current sense + primary winding voltage probe.
-    // The *transformer* primary sits between mid_sw and mid_cap via Lr,
-    // and swings ±Vin/2.
-    circuit << "Vpri_sense mid_sw pri_lr 0\n";
-    circuit << "Evab vab 0 mid_sw mid_cap 1\n\n";
+    // Inner-switch PWMs (50 % duty, complementary, common to both legs)
+    circuit << "Vpwm_inner_top inner_top 0 PULSE(0 5 0 10n 10n "
+            << std::scientific << (halfPeriod - deadTime) << " "
+            << period << std::fixed << ")\n";
+    circuit << "Vpwm_inner_bot inner_bot 0 PULSE(0 5 "
+            << std::scientific << halfPeriod << std::fixed << " 10n 10n "
+            << std::scientific << (halfPeriod - deadTime) << " "
+            << period << std::fixed << ")\n";
+
+    // Leg-A outer-switch PWMs (no phase shift)
+    circuit << "Vpwm_A1 pwm_A1 0 PULSE(0 5 0 10n 10n "
+            << std::scientific << t_act << " "
+            << period << std::fixed << ")\n";
+    circuit << "Vpwm_A4 pwm_A4 0 PULSE(0 5 "
+            << std::scientific << halfPeriod << std::fixed << " 10n 10n "
+            << std::scientific << t_act << " "
+            << period << std::fixed << ")\n";
+
+    // Leg-B outer-switch PWMs (phase-shifted by phi_shift)
+    circuit << "Vpwm_B1 pwm_B1 0 PULSE(0 5 "
+            << std::scientific << phi_shift << std::fixed << " 10n 10n "
+            << std::scientific << t_act << " "
+            << period << std::fixed << ")\n";
+    circuit << "Vpwm_B4 pwm_B4 0 PULSE(0 5 "
+            << std::scientific << (halfPeriod + phi_shift) << std::fixed
+            << " 10n 10n "
+            << std::scientific << t_act << " "
+            << period << std::fixed << ")\n\n";
+
+    // Leg-A: 4 stacked switches + 2 clamp diodes
+    circuit << "* Leg-A (3-level NPC)\n";
+    circuit << "SA1 vin_dc nA1 pwm_A1 0 SW1\n";
+    circuit << "SA2 nA1 mid_A inner_top 0 SW1\n";
+    circuit << "SA3 mid_A nA2 inner_bot 0 SW1\n";
+    circuit << "SA4 nA2 0 pwm_A4 0 SW1\n";
+    circuit << "DA_high mid_cap nA1 DIDEAL\n";
+    circuit << "DA_low nA2 mid_cap DIDEAL\n";
+    circuit << "Rsnub_A1 vin_dc nA1 1k\nCsnub_A1 vin_dc nA1 1n\n";
+    circuit << "Rsnub_A4 nA2 0 1k\nCsnub_A4 nA2 0 1n\n\n";
+
+    // Leg-B: 4 stacked switches + 2 clamp diodes
+    circuit << "* Leg-B (3-level NPC, phase-shifted)\n";
+    circuit << "SB1 vin_dc nB1 pwm_B1 0 SW1\n";
+    circuit << "SB2 nB1 mid_B inner_top 0 SW1\n";
+    circuit << "SB3 mid_B nB2 inner_bot 0 SW1\n";
+    circuit << "SB4 nB2 0 pwm_B4 0 SW1\n";
+    circuit << "DB_high mid_cap nB1 DIDEAL\n";
+    circuit << "DB_low nB2 mid_cap DIDEAL\n";
+    circuit << "Rsnub_B1 vin_dc nB1 1k\nCsnub_B1 vin_dc nB1 1n\n";
+    circuit << "Rsnub_B4 nB2 0 1k\nCsnub_B4 nB2 0 1n\n\n";
+
+    // Primary current sense + primary winding voltage probe Vab = mid_A − mid_B.
+    circuit << "Vpri_sense mid_A pri_lr 0\n";
+    circuit << "Evab vab 0 mid_A mid_B 1\n\n";
 
     circuit << "L_series pri_lr trafo_pri " << std::scientific << Lr << "\n\n";
 
-    // Transformer with multi-secondary K-matrix.
+    // Transformer with multi-secondary K-matrix (primary between trafo_pri and mid_B).
     constexpr double K_COUPLING = 0.9999;
-    circuit << "L_pri trafo_pri mid_cap " << std::scientific << Lm << "\n";
+    circuit << "L_pri trafo_pri mid_B " << std::scientific << Lm << "\n";
     for (size_t i = 0; i < numOutputs; ++i) {
         double n_i = turnsRatios[i];
         if (n_i <= 0) n_i = 1.0;
@@ -707,7 +758,7 @@ std::string Pshb::generate_ngspice_circuit(
     circuit << ".tran " << std::scientific << stepTime
             << " " << simTime << " " << startTime << "\n\n";
 
-    circuit << ".save v(vab) v(mid_sw) v(mid_cap) i(Vpri_sense) i(Vdc)";
+    circuit << ".save v(vab) v(mid_A) v(mid_B) v(mid_cap) i(Vpri_sense) i(Vdc)";
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
         circuit << " v(out_node_o" << si << ")"

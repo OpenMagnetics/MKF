@@ -645,40 +645,12 @@ TEST_CASE("Test_Psfb_PtP_AnalyticalVsNgspice", "[converter-model][psfb-topology]
     REQUIRE(!aData.empty());
     auto aResampled = ptp_interp(aTime, aData, 256);
 
-    // Dump the SPICE netlist for offline inspection.
-    {
-        auto netFile = outputFilePath;
-        netFile.append("Test_Psfb_PtP_netlist.cir");
-        std::filesystem::remove(netFile);
-        std::ofstream nf(netFile);
-        nf << psfb.generate_ngspice_circuit(tr, Lm, 0, 0);
-    }
-
     auto sim = psfb.simulate_and_extract_operating_points(tr, Lm);
     REQUIRE(!sim.empty());
     auto sTime = ptp_current_time(sim[0], 0);
     auto sData = ptp_current(sim[0], 0);
     if (!sData.empty()) {
         auto sResampled = ptp_interp(sTime, sData, 256);
-
-        // Dump CSV for offline inspection.
-        auto outFile = outputFilePath;
-        outFile.append("Test_Psfb_PtP_compare.csv");
-        std::filesystem::remove(outFile);
-        std::ofstream f(outFile);
-        f << "k,t_a,a_raw,t_s,s_raw\n";
-        size_t nA = std::min(aData.size(), aTime.size());
-        size_t nS = std::min(sData.size(), sTime.size());
-        size_t nMax = std::max(nA, nS);
-        for (size_t k = 0; k < nMax; ++k) {
-            f << k << ",";
-            if (k < nA) f << aTime[k] << "," << aData[k];
-            else f << ",";
-            f << ",";
-            if (k < nS) f << sTime[k] << "," << sData[k];
-            else f << ",";
-            f << "\n";
-        }
 
         double nrmse = ptp_nrmse(aResampled, sResampled);
         INFO("PSFB primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
@@ -715,6 +687,218 @@ TEST_CASE("Test_Psfb_SpiceNetlistRobustness", "[converter-model][psfb-topology][
     CHECK(net.find(".ic v(out_node_o1)") != std::string::npos);
     // Rectifier-type-aware (default centerTapped)
     CHECK(net.find("Center-tapped rectifier") != std::string::npos);
+}
+
+
+// =========================================================================
+// TEST: Multi-output PSFB analytical (uniform V₂ outputs)
+//
+// PtP-vs-NgSpice for multi-output PSFB is characterisation-only: with two
+// secondaries sharing a single primary tank current we can only verify the
+// PRIMARY waveform is consistent (the per-secondary load-share approximation
+// is documented to be off by 20–100 % depending on V₂ spread, mirroring the
+// DAB Test_Dab_Multiple_Outputs_PtP_* tests). We CHECK primary-current NRMSE
+// only.
+// =========================================================================
+TEST_CASE("Test_Psfb_Multiple_Outputs_PtP_Uniform",
+          "[converter-model][psfb-topology][ngspice-simulation][ptpcomparison]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available");
+
+    json j;
+    json inputVoltage; inputVoltage["nominal"] = 400.0;
+    j["inputVoltage"] = inputVoltage;
+    j["rectifierType"] = "fullBridge";
+    j["seriesInductance"] = 5e-6;
+    j["operatingPoints"] = json::array();
+    {
+        json op;
+        op["ambientTemperature"] = 25.0;
+        op["outputVoltages"] = {12.0, 12.0};   // uniform (same V₂)
+        op["outputCurrents"] = {25.0, 25.0};
+        op["switchingFrequency"] = 100000.0;
+        op["phaseShift"] = 126.0;
+        j["operatingPoints"].push_back(op);
+    }
+
+    OpenMagnetics::Psfb psfb(j);
+    psfb.set_num_periods_to_extract(1);
+    auto req = psfb.process_design_requirements();
+    std::vector<double> tr;
+    for (auto& t : req.get_turns_ratios()) tr.push_back(resolve_dimensional_values(t));
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    REQUIRE(tr.size() == 2);
+
+    auto a = psfb.process_operating_points(tr, Lm);
+    REQUIRE(!a.empty());
+    auto aT = ptp_current_time(a[0], 0);
+    auto aD = ptp_current(a[0], 0);
+    REQUIRE(!aD.empty());
+    auto aR = ptp_interp(aT, aD, 256);
+
+    auto s = psfb.simulate_and_extract_operating_points(tr, Lm);
+    REQUIRE(!s.empty());
+    auto sT = ptp_current_time(s[0], 0);
+    auto sD = ptp_current(s[0], 0);
+    if (!sD.empty()) {
+        auto sR = ptp_interp(sT, sD, 256);
+        double nrmse = ptp_nrmse(aR, sR);
+        INFO("PSFB multi-output (uniform) primary NRMSE: " << (nrmse * 100.0) << "%");
+        CHECK(nrmse < 0.30);
+    }
+}
+
+
+// =========================================================================
+// TEST: Multi-output PSFB analytical (moderate V₂ spread)
+//
+// 12 V / 24 V — 2:1 spread. Per-DAB-pattern, primary waveform stays
+// reasonably accurate even when secondary load-share approximation is off.
+// =========================================================================
+TEST_CASE("Test_Psfb_Multiple_Outputs_PtP_ModerateSpread",
+          "[converter-model][psfb-topology][ngspice-simulation][ptpcomparison]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available");
+
+    json j;
+    json inputVoltage; inputVoltage["nominal"] = 400.0;
+    j["inputVoltage"] = inputVoltage;
+    j["rectifierType"] = "fullBridge";
+    j["seriesInductance"] = 5e-6;
+    j["operatingPoints"] = json::array();
+    {
+        json op;
+        op["ambientTemperature"] = 25.0;
+        op["outputVoltages"] = {12.0, 24.0};   // 2:1 spread
+        op["outputCurrents"] = {30.0, 5.0};
+        op["switchingFrequency"] = 100000.0;
+        op["phaseShift"] = 126.0;
+        j["operatingPoints"].push_back(op);
+    }
+
+    OpenMagnetics::Psfb psfb(j);
+    psfb.set_num_periods_to_extract(1);
+    auto req = psfb.process_design_requirements();
+    std::vector<double> tr;
+    for (auto& t : req.get_turns_ratios()) tr.push_back(resolve_dimensional_values(t));
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    REQUIRE(tr.size() == 2);
+
+    auto a = psfb.process_operating_points(tr, Lm);
+    auto s = psfb.simulate_and_extract_operating_points(tr, Lm);
+    REQUIRE(!a.empty()); REQUIRE(!s.empty());
+    auto aR = ptp_interp(ptp_current_time(a[0], 0), ptp_current(a[0], 0), 256);
+    auto sD = ptp_current(s[0], 0);
+    if (!sD.empty()) {
+        auto sR = ptp_interp(ptp_current_time(s[0], 0), sD, 256);
+        double nrmse = ptp_nrmse(aR, sR);
+        INFO("PSFB multi-output (2:1 spread) primary NRMSE: " << (nrmse * 100.0) << "%");
+        // Allow looser threshold for spread case: secondary load-share
+        // approximation is documented to be off by 20-100 %.
+        CHECK(nrmse < 0.40);
+    }
+}
+
+
+// =========================================================================
+// TEST: PSFB at light load (10 % of rated) — verify ZVS margin goes negative
+// =========================================================================
+TEST_CASE("Test_Psfb_Light_Load", "[converter-model][psfb-topology][unit]") {
+    // Same converter as the design tests but Io scaled down to 5A (10 %).
+    auto j = make_psfb_json(400.0, 380.0, 420.0, 12.0, 5.0, 100000.0,
+                            126.0, "fullBridge");
+    j["seriesInductance"] = 5e-6;
+    OpenMagnetics::Psfb psfb(j);
+    auto req = psfb.process_design_requirements();
+    std::vector<double> tr;
+    for (auto& t : req.get_turns_ratios()) tr.push_back(resolve_dimensional_values(t));
+    psfb.process_operating_points(tr,
+        resolve_dimensional_values(req.get_magnetizing_inductance()));
+
+    // At 10 % load the lagging-leg ZVS margin should turn negative or be near
+    // zero (because Ip² scales with load²). The exact threshold depends on
+    // Coss; at the 200 pF default + 5 µH Lr, full load ZVS is positive but
+    // 10 % load drops below the threshold.
+    double full_load_threshold = psfb.get_last_zvs_load_threshold();
+    INFO("Lagging-leg ZVS minimum-load threshold (A): " << full_load_threshold);
+    CHECK(full_load_threshold > 0.0);
+    // 5 A < threshold ⇒ no ZVS at this op point.
+    CHECK(5.0 < full_load_threshold);
+    // Resonant-transition time should be a sensible sub-µs number for any
+    // reasonable Lk + Coss combination.
+    CHECK(psfb.get_last_resonant_transition_time() > 0.0);
+    CHECK(psfb.get_last_resonant_transition_time() < 5e-6);
+}
+
+
+// =========================================================================
+// TEST: TI TIDU248 reference design — 390V/12V/600W/100kHz, FB rectifier
+//
+// TI TIDU248 (UCC28950) phase-shifted full bridge reference design:
+//   Vin  = 390 V (typical HV-bus)
+//   Vo   = 12 V
+//   Io   = 50 A (600 W out)
+//   Fs   = 100 kHz
+//   D_cmd ≈ 0.7  (phase shift ≈ 126°)
+//   Rectifier: FB
+//
+// Expected ballpark: n ≈ Vin·Deff/(Vo+2·Vd) ≈ 390·0.7 / (12 + 1.2) ≈ 20.7
+// =========================================================================
+TEST_CASE("Test_Psfb_TI_Reference_Design", "[converter-model][psfb-topology][smoke-test]") {
+    auto j = make_psfb_json(390.0, 380.0, 410.0, 12.0, 50.0, 100000.0,
+                            126.0, "fullBridge");
+    OpenMagnetics::Psfb psfb(j);
+
+    auto req = psfb.process_design_requirements();
+    double n = resolve_dimensional_values(req.get_turns_ratios()[0]);
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    double Lo = psfb.get_computed_output_inductance();
+    double Lr = psfb.get_computed_series_inductance();
+    double Deff = psfb.get_computed_effective_duty_cycle();
+
+    // Turns ratio in the published-reference ballpark (15–25).
+    CHECK(n > 15.0);
+    CHECK(n < 25.0);
+
+    // Effective duty after duty-cycle-loss correction is below 0.7 by a few %.
+    CHECK(Deff > 0.55);
+    CHECK(Deff < 0.70);
+
+    // Magnetizing inductance reasonable for a 600 W transformer at 100 kHz
+    // (typical 1–10 mH for the iron-loss/Im-peak target the design solver uses).
+    CHECK(Lm > 100e-6);
+    CHECK(Lm < 100e-3);
+
+    // Output inductor sized for ~30 % ripple at 50 A.
+    CHECK(Lo > 1e-7);
+    CHECK(Lo < 1e-3);
+
+    // Series inductance default seed (≤ 2 µH per our DCL cap).
+    CHECK(Lr > 0);
+    CHECK(Lr <= 2.5e-6);
+}
+
+
+// =========================================================================
+// TEST: PSFB Lr round-trip — user-supplied seriesInductance is preserved
+// =========================================================================
+TEST_CASE("Test_Psfb_Inductance_Round_Trip", "[converter-model][psfb-topology][unit]") {
+    auto j = make_psfb_json();
+    const double user_Lr = 7.5e-6;
+    j["seriesInductance"] = user_Lr;
+    OpenMagnetics::Psfb psfb(j);
+    psfb.process_design_requirements();
+    REQUIRE_THAT(psfb.get_computed_series_inductance(),
+                 Catch::Matchers::WithinRel(user_Lr, 1e-9));
+
+    // Lo round-trip too — when user supplies outputInductance.
+    json j2 = make_psfb_json();
+    const double user_Lo = 50e-6;
+    j2["outputInductance"] = user_Lo;
+    OpenMagnetics::Psfb psfb2(j2);
+    psfb2.process_design_requirements();
+    REQUIRE_THAT(psfb2.get_computed_output_inductance(),
+                 Catch::Matchers::WithinRel(user_Lo, 1e-9));
 }
 
 

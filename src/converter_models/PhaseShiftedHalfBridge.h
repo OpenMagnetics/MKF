@@ -10,24 +10,23 @@ namespace OpenMagnetics {
 using namespace MAS;
 
 /**
- * @brief Phase-Shifted Half Bridge (PSHB) — Three-Level Pinheiro-Barbi DC-DC
- *        Converter
+ * @brief Phase-Shifted Half Bridge (PSHB) — Three-Level Pinheiro-Barbi NPC
+ *        DC-DC Converter
  *
- * Inherits from MAS::PhaseShiftFullBridge and the Topology interface.
- * Reuses the same JSON/MAS schema as the full-bridge variant but applies
- * a half-bridge voltage factor (Vin/2) throughout.
+ * Inherits from MAS::PhaseShiftedHalfBridge and the Topology interface.
  *
  * =====================================================================
  * TOPOLOGY DISAMBIGUATION (READ THIS FIRST)
  * =====================================================================
  *
- * The label "phase-shifted half bridge" is genuinely ambiguous.  The
- * model in this file implements the **two-leg, three-level, split-cap
- * Pinheiro–Barbi converter** (IEEE TPE 8(4) 1993): four switches
- * arranged as two half-bridge legs sharing a split-capacitor input,
- * each leg at fixed 50 % duty, the inter-leg phase shift φ controlling
- * power flow.  The primary winding sits between the two leg midpoints
- * and sees a 3-level square wave (+Vin/2, 0, −Vin/2, 0).
+ * This model implements the **3-level NPC (Neutral Point Clamped)
+ * Pinheiro-Barbi converter** (IEEE TPE 8(4) 1993):
+ *   - Two stacked half-bridge legs sharing a split-capacitor input bus
+ *   - 4 switches per leg + 2 clamp diodes per leg = 8 SiC + 4 diodes total
+ *   - Each leg can output Vin, Vin/2 (clamped via the diodes to mid_cap),
+ *     or 0 — i.e. THREE distinct levels per leg
+ *   - Phase-shift modulation between the two legs controls the duty of
+ *     the differential 3-level pulse: ±Vin/2 / 0
  *
  * It is **NOT** the asymmetric (complementary) half bridge of
  * Imbertson-Mohan 1993.  An AHB has only ONE leg, two complementary
@@ -35,29 +34,50 @@ using namespace MAS;
  * in series with the primary, and a 2-level *asymmetric* primary
  * voltage [+(1−D)·Vin, −D·Vin].  AHB conversion ratio is
  * Vo = 2·D·(1−D)·Vin/n, which differs from this model's
- * Vo = (Vin/2)·D_eff/n.
- *
- * If you need an AHB design, use a separate `AsymmetricHalfBridge`
- * class (planned, not yet implemented).
+ * Vo = (Vin/2)·D_eff/n.  See the planned `AsymmetricHalfBridge` class.
  *
  * =====================================================================
- * TOPOLOGY OVERVIEW (this model — Pinheiro-Barbi 1993)
+ * TOPOLOGY OVERVIEW (this model — Pinheiro-Barbi 1993, 3-level NPC)
  * =====================================================================
  *
- *   +Vin ─┬── C1 ──┬── (mid_cap = Vin/2 by capacitive divider)
- *         │        │
- *        [QA]      │
- *         │        │
- *      mid_sw_A ───┴───[Lr]───[T1 Np:Ns]──── mid_sw_B ──┬─ ...
- *         │                                              │
- *        [QB]                                          [QC]──[QD]──GND
- *         │
- *   GND ──┴── C2 ──┘
+ *           +Vin
+ *            │
+ *           C1 ─── mid_cap (= Vin/2)
+ *            │       │   │
+ *      ┌──Q1A──┐ ┌──Q1B──┐
+ *      │   nA1 │ │   nB1 │
+ *      │   ▲   │ │   ▲   │
+ *      │   │ DA_h│   │ DB_h│   (clamp diode anodes at mid_cap, cathodes at nA1/nB1)
+ *      │   ◄──┘ │ │   ◄──┘ │
+ *      │       │ │       │
+ *      ├──Q2A──┤ ├──Q2B──┤
+ *      │  mid_A│ │  mid_B│   ← primary winding sits between mid_A and mid_B
+ *      │       │ │       │     (with Lr in series)
+ *      ├──Q3A──┤ ├──Q3B──┤
+ *      │   nA2 │ │   nB2 │
+ *      │   │ DA_l│   │ DB_l│   (clamp diode anodes at nA2/nB2, cathodes at mid_cap)
+ *      │   ►──┐ │ │   ►──┐ │
+ *      │       │ │       │
+ *      └──Q4A──┘ └──Q4B──┘
+ *           │
+ *           0
  *
- * Both legs run at fixed 50% duty; leg-A and leg-B are phase-shifted
- * by φ.  D_eff = φ/π controls the duration of the +Vin/2 and −Vin/2
- * power-transfer intervals; the freewheel intervals are when both
- * legs are at the same potential.
+ * Per-leg states (e.g. leg-A):
+ *   Vin output: Q1A + Q2A on, Q3A + Q4A off  → mid_A = Vin
+ *   Vin/2 out:  Q2A + Q3A on, Q1A + Q4A off
+ *               (D_high clamps nA1 to mid_cap when current flows from load
+ *                to mid_A; D_low clamps nA2 to mid_cap when current flows
+ *                the other way; either way mid_A ≈ Vin/2)
+ *   0 output:   Q3A + Q4A on, Q1A + Q2A off  → mid_A = 0
+ *
+ * PWM scheme:
+ *   - Inner switches Q2,Q3 run at 50 % complementary duty (Q2 first half-
+ *     cycle, Q3 second half) — common to both legs.
+ *   - Outer switches Q1,Q4 modulate the duty within each half:
+ *       Leg-A: Q1 on during [0, t_act], Q4 on during [Thalf, Thalf+t_act]
+ *       Leg-B: phase-shifted by φ_shift = (1−Deff)·Thalf
+ *   - Differential mid_A − mid_B has 3-level shape ±Vin/2 / 0 with active
+ *     interval = Deff·Thalf and freewheel interval = (1−Deff)·Thalf.
  *
  * =====================================================================
  * KEY EQUATIONS

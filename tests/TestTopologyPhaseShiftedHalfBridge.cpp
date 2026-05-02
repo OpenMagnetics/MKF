@@ -342,23 +342,31 @@ TEST_CASE("Test_Pshb_Spice_Netlist", "[converter-model][pshb-topology][spice]") 
         std::string netlist = pshb.generate_ngspice_circuit(turnsRatios, Lm);
         CHECK(!netlist.empty());
         CHECK(netlist.find("Phase-Shifted Half Bridge") != std::string::npos);
+        CHECK(netlist.find("Pinheiro-Barbi") != std::string::npos);
         CHECK(netlist.find("L_pri") != std::string::npos);
         CHECK(netlist.find("L_sec") != std::string::npos);
         CHECK(netlist.find("L_out") != std::string::npos);
         CHECK(netlist.find("R_load") != std::string::npos);
         CHECK(netlist.find(".tran") != std::string::npos);
-        // Single-leg HB: 2 switches (SA, SB), no SC/SD.
-        CHECK(netlist.find("SA ") != std::string::npos);
-        CHECK(netlist.find("SB ") != std::string::npos);
-        CHECK(netlist.find("SC ") == std::string::npos);
-        CHECK(netlist.find("SD ") == std::string::npos);
+        // True 3-level NPC: 4 switches per leg (SA1..SA4 + SB1..SB4) = 8 total.
+        CHECK(netlist.find("SA1 ") != std::string::npos);
+        CHECK(netlist.find("SA2 ") != std::string::npos);
+        CHECK(netlist.find("SA3 ") != std::string::npos);
+        CHECK(netlist.find("SA4 ") != std::string::npos);
+        CHECK(netlist.find("SB1 ") != std::string::npos);
+        CHECK(netlist.find("SB4 ") != std::string::npos);
+        // Clamp diodes
+        CHECK(netlist.find("DA_high") != std::string::npos);
+        CHECK(netlist.find("DA_low") != std::string::npos);
+        CHECK(netlist.find("DB_high") != std::string::npos);
+        CHECK(netlist.find("DB_low") != std::string::npos);
         // Split capacitor bus
         CHECK(netlist.find("C_split_hi") != std::string::npos);
         CHECK(netlist.find("C_split_lo") != std::string::npos);
         // Robustness features
-        CHECK(netlist.find("Rsnub_QA") != std::string::npos);
         CHECK(netlist.find("METHOD=GEAR") != std::string::npos);
-        CHECK(netlist.find("Evab vab 0 mid_sw mid_cap 1") != std::string::npos);
+        // Differential probe between leg midpoints
+        CHECK(netlist.find("Evab vab 0 mid_A mid_B 1") != std::string::npos);
     }
 
     SECTION("Netlist saved to file") {
@@ -675,5 +683,50 @@ TEST_CASE("Test_Pshb_PtP_AnalyticalVsNgspice",
         CHECK(nrmse < 0.18);
     }
 }
+
+
+// =========================================================================
+// TEST: PSHB at light load (10 % of rated)
+// =========================================================================
+TEST_CASE("Test_Pshb_Light_Load", "[converter-model][pshb-topology][unit]") {
+    auto j = make_pshb_json(400.0, 380.0, 420.0, 12.0, 2.5, 100000.0,
+                            135.0, "fullBridge");
+    j["seriesInductance"] = 5e-6;
+    OpenMagnetics::Pshb pshb(j);
+    auto req = pshb.process_design_requirements();
+    std::vector<double> tr;
+    for (auto& t : req.get_turns_ratios()) tr.push_back(resolve_dimensional_values(t));
+    pshb.process_operating_points(tr,
+        resolve_dimensional_values(req.get_magnetizing_inductance()));
+
+    double threshold = pshb.get_last_zvs_load_threshold();
+    INFO("Lagging-leg ZVS minimum-load threshold (A): " << threshold);
+    CHECK(threshold > 0.0);
+    CHECK(2.5 < threshold);
+    CHECK(pshb.get_last_resonant_transition_time() > 0.0);
+}
+
+
+// =========================================================================
+// TEST: PSHB Lr / Lo round-trip
+// =========================================================================
+TEST_CASE("Test_Pshb_Inductance_Round_Trip", "[converter-model][pshb-topology][unit]") {
+    auto j = make_pshb_json();
+    const double user_Lr = 7.5e-6;
+    j["seriesInductance"] = user_Lr;
+    OpenMagnetics::Pshb pshb(j);
+    pshb.process_design_requirements();
+    REQUIRE_THAT(pshb.get_computed_series_inductance(),
+                 Catch::Matchers::WithinRel(user_Lr, 1e-9));
+
+    json j2 = make_pshb_json();
+    const double user_Lo = 50e-6;
+    j2["outputInductance"] = user_Lo;
+    OpenMagnetics::Pshb pshb2(j2);
+    pshb2.process_design_requirements();
+    REQUIRE_THAT(pshb2.get_computed_output_inductance(),
+                 Catch::Matchers::WithinRel(user_Lo, 1e-9));
+}
+
 
 } // anonymous namespace
