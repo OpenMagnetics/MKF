@@ -130,7 +130,7 @@ using namespace MAS;
  *   - Typically suited for medium power (up to ~500 W)
  *   - Split capacitors must handle full primary current ripple
  */
-class Pshb : public MAS::PhaseShiftedHalfBridge, public Topology {
+class Pshb : public MAS::PhaseShiftFullBridge, public Topology {
 private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 5;
@@ -210,16 +210,16 @@ public:
 
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const PshbOperatingPoint& pshbOpPoint,
+        const MAS::PsfbOperatingPoint& pshbOpPoint,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
     // ---- PSHB-specific calculations ----
     static double compute_effective_duty_cycle(double phaseShiftDeg);
     static double compute_output_voltage(double Vin, double Deff, double n,
-                                         double Vd, BRectifierType rectType);
+                                         double Vd, MAS::PsfbRectifierType rectType);
     static double compute_turns_ratio(double Vin, double Vo, double Deff,
-                                      double Vd, BRectifierType rectType);
+                                      double Vd, MAS::PsfbRectifierType rectType);
     static double compute_output_inductance(double Vo, double Deff, double Fs,
                                             double Io, double rippleRatio);
     static double compute_primary_rms_current(double Io, double n, double Deff);
@@ -286,9 +286,9 @@ inline void from_json(const json& j, AdvancedPshb& x) {
     x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_maximum_phase_shift(get_stack_optional<double>(j, "maximumPhaseShift"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<PshbOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<MAS::PsfbOperatingPoint>>());
     x.set_output_inductance(get_stack_optional<double>(j, "outputInductance"));
-    x.set_rectifier_type(get_stack_optional<BRectifierType>(j, "rectifierType"));
+    x.set_rectifier_type(get_stack_optional<MAS::PsfbRectifierType>(j, "rectifierType"));
     x.set_series_inductance(get_stack_optional<double>(j, "seriesInductance"));
     x.set_use_leakage_inductance(get_stack_optional<bool>(j, "useLeakageInductance"));
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());

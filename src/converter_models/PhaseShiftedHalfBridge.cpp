@@ -12,7 +12,7 @@
 namespace OpenMagnetics {
 
 Pshb::Pshb(const json& j) {
-    from_json(j, *static_cast<PhaseShiftedHalfBridge*>(this));
+    from_json(j, *static_cast<MAS::PhaseShiftFullBridge*>(this));
 }
 
 AdvancedPshb::AdvancedPshb(const json& j) {
@@ -32,14 +32,14 @@ double Pshb::compute_effective_duty_cycle(double phaseShiftDeg) {
 //         the Vin/2 factor is applied internally)
 // =========================================================================
 double Pshb::compute_output_voltage(double Vin, double Deff, double n,
-                                    double Vd, BRectifierType rectType) {
+                                    double Vd, MAS::PsfbRectifierType rectType) {
     double Vhb = Vin * BRIDGE_VOLTAGE_FACTOR;  // Vin/2
     switch (rectType) {
-        case BRectifierType::CENTER_TAPPED:
-            return Vhb * Deff / n - Vd;
-        case BRectifierType::CURRENT_DOUBLER:
-            return Vhb * Deff / (2.0 * n) - Vd;
-        case BRectifierType::FULL_BRIDGE:
+        case MAS::PsfbRectifierType::CENTER_TAPPED:
+            return (Vin * BRIDGE_VOLTAGE_FACTOR * Deff / n) - Vd;
+        case MAS::PsfbRectifierType::CURRENT_DOUBLER:
+            return (Vin * BRIDGE_VOLTAGE_FACTOR * Deff / (2.0 * n)) - Vd;
+        case MAS::PsfbRectifierType::FULL_BRIDGE:
         default:
             return Vhb * Deff / n - 2.0 * Vd;
     }
@@ -49,14 +49,14 @@ double Pshb::compute_output_voltage(double Vin, double Deff, double n,
 // Static: turns ratio for target output voltage
 // =========================================================================
 double Pshb::compute_turns_ratio(double Vin, double Vo, double Deff,
-                                 double Vd, BRectifierType rectType) {
+                                 double Vd, MAS::PsfbRectifierType rectType) {
     double Vhb = Vin * BRIDGE_VOLTAGE_FACTOR;
     switch (rectType) {
-        case BRectifierType::CENTER_TAPPED:
+        case MAS::PsfbRectifierType::CENTER_TAPPED:
             return Vhb * Deff / (Vo + Vd);
-        case BRectifierType::CURRENT_DOUBLER:
+        case MAS::PsfbRectifierType::CURRENT_DOUBLER:
             return Vhb * Deff / (2.0 * (Vo + Vd));
-        case BRectifierType::FULL_BRIDGE:
+        case MAS::PsfbRectifierType::FULL_BRIDGE:
         default:
             return Vhb * Deff / (Vo + 2.0 * Vd);
     }
@@ -126,7 +126,7 @@ DesignRequirements Pshb::process_design_requirements() {
     double Fs = ops[0].get_switching_frequency();
     double phi_deg = ops[0].get_phase_shift();
 
-    BRectifierType rectType = get_rectifier_type().value_or(BRectifierType::CENTER_TAPPED);
+    MAS::PsfbRectifierType rectType = get_rectifier_type().value_or(MAS::PsfbRectifierType::CENTER_TAPPED);
     double Vd = 0.6;
     computedDiodeVoltageDrop = Vd;
 
@@ -280,7 +280,7 @@ std::vector<OperatingPoint> Pshb::process_operating_points(Magnetic magnetic) {
 // =========================================================================
 OperatingPoint Pshb::process_operating_point_for_input_voltage(
     double inputVoltage,
-    const PshbOperatingPoint& pshbOpPoint,
+    const MAS::PsfbOperatingPoint& pshbOpPoint,
     const std::vector<double>& turnsRatios,
     double magnetizingInductance)
 {
@@ -295,7 +295,7 @@ OperatingPoint Pshb::process_operating_point_for_input_voltage(
     double Lm  = magnetizingInductance;
     double Lr  = computedSeriesInductance > 0 ? computedSeriesInductance : 1e-6;
 
-    BRectifierType rectType = get_rectifier_type().value_or(BRectifierType::CENTER_TAPPED);
+    MAS::PsfbRectifierType rectType = get_rectifier_type().value_or(MAS::PsfbRectifierType::CENTER_TAPPED);
 
     double phi_deg = pshbOpPoint.get_phase_shift();
     double D_cmd = (phi_deg > 1e-6) ? compute_effective_duty_cycle(phi_deg)
@@ -316,7 +316,7 @@ OperatingPoint Pshb::process_operating_point_for_input_voltage(
 
     double Lo = computedOutputInductance;
     double dILo = (Lo > 0) ? Vo * (1.0 - Deff) / (Fs * Lo) : 0.0;
-    double Io_in_inductor = (rectType == BRectifierType::CURRENT_DOUBLER) ? Io / 2.0 : Io;
+    double Io_in_inductor = (rectType == MAS::PsfbRectifierType::CURRENT_DOUBLER) ? Io / 2.0 : Io;
     double ILo_min = Io_in_inductor - dILo / 2.0;
     double ILo_max = Io_in_inductor + dILo / 2.0;
 
@@ -461,7 +461,7 @@ OperatingPoint Pshb::process_operating_point_for_input_voltage(
         double ni = turnsRatios[secIdx];
         if (ni <= 0) continue;
 
-        if (rectType == BRectifierType::CENTER_TAPPED) {
+        if (rectType == MAS::PsfbRectifierType::CENTER_TAPPED) {
             double Vsec_pk = Vhb / ni;
             std::vector<double> v1(totalSamples), i1(totalSamples);
             std::vector<double> v2(totalSamples), i2(totalSamples);
@@ -528,7 +528,7 @@ OperatingPoint Pshb::process_operating_point_for_input_voltage(
         extraLoVoltageWaveforms.push_back(loVWfm);
         extraLoCurrentWaveforms.push_back(loIWfm);
 
-        if (rectType == BRectifierType::CURRENT_DOUBLER) {
+        if (rectType == MAS::PsfbRectifierType::CURRENT_DOUBLER) {
             std::vector<double> ILo2(totalSamples), VLo2(totalSamples);
             for (int k = 0; k < totalSamples; ++k) {
                 int kshift = (k + N_samples) % (totalSamples - 1);
@@ -603,7 +603,7 @@ std::string Pshb::generate_ngspice_circuit(
     double startTime = steadyStatePeriods * period;
     double stepTime = period / 200;
 
-    BRectifierType rectType = get_rectifier_type().value_or(BRectifierType::CENTER_TAPPED);
+    MAS::PsfbRectifierType rectType = get_rectifier_type().value_or(MAS::PsfbRectifierType::CENTER_TAPPED);
 
     size_t numOutputs = std::min(turnsRatios.size(), pshbOp.get_output_voltages().size());
     if (numOutputs == 0) numOutputs = 1;
@@ -748,14 +748,14 @@ std::string Pshb::generate_ngspice_circuit(
         circuit << "Vsec1_sense_o" << si << " sec_a_o" << si << " rec_a_o" << si << " 0\n";
         circuit << "Vsec2_sense_o" << si << " sec_b_o" << si << " rec_b_o" << si << " 0\n";
 
-        if (rectType == BRectifierType::FULL_BRIDGE) {
+        if (rectType == MAS::PsfbRectifierType::FULL_BRIDGE) {
             circuit << "D_r1_o" << si << " rec_a_o" << si << " out_rect_o" << si << " DIDEAL\n";
             circuit << "D_r2_o" << si << " rec_b_o" << si << " out_rect_o" << si << " DIDEAL\n";
             circuit << "D_r3_o" << si << " out_gnd_o" << si << " rec_a_o" << si << " DIDEAL\n";
             circuit << "D_r4_o" << si << " out_gnd_o" << si << " rec_b_o" << si << " DIDEAL\n";
             circuit << "L_out_o" << si << " out_rect_o" << si << " out_node_o" << si
                     << " " << std::scientific << Lo << " IC=" << Io_i << "\n";
-        } else if (rectType == BRectifierType::CURRENT_DOUBLER) {
+        } else if (rectType == MAS::PsfbRectifierType::CURRENT_DOUBLER) {
             double Io_half = Io_i / 2.0;
             circuit << "L_out1_o" << si << " rec_a_o" << si << " out_node_o" << si
                     << " " << std::scientific << Lo << " IC=" << Io_half << "\n";
