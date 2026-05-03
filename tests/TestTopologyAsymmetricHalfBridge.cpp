@@ -151,16 +151,10 @@ TEST_CASE("AHB P1: stubbed methods throw with plan reference", "[ahb-topology][P
     CHECK(capture_throw_message([&]{ ahb.process_design_requirements(); })
               .find("P6") != std::string::npos);
 
-    CHECK_THROWS_AS(ahb.process_operating_points({1.0, 10.0}, 50e-6),
+    CHECK_THROWS_AS(ahb.generate_ngspice_circuit({10.0}, 50e-6),
                     std::runtime_error);
     CHECK(capture_throw_message([&]{
-        ahb.process_operating_points({1.0, 10.0}, 50e-6);
-    }).find("P3") != std::string::npos);
-
-    CHECK_THROWS_AS(ahb.generate_ngspice_circuit({1.0, 10.0}, 50e-6),
-                    std::runtime_error);
-    CHECK(capture_throw_message([&]{
-        ahb.generate_ngspice_circuit({1.0, 10.0}, 50e-6);
+        ahb.generate_ngspice_circuit({10.0}, 50e-6);
     }).find("P7") != std::string::npos);
 }
 
@@ -460,4 +454,256 @@ TEST_CASE("AHB P1: AdvancedAsymmetricHalfBridge constructs and round-trips", "[a
     CHECK_THROWS_AS(ahb.process(), std::runtime_error);
     CHECK(capture_throw_message([&]{ ahb.process(); })
               .find("P12") != std::string::npos);
+}
+
+
+// =============================================================================
+// P3: Operating-point processing (CCM analytical model, V1 CT secondary)
+//
+// Coverage targets per ASYMMETRIC_HALF_BRIDGE_PLAN.md §10:
+//   - OperatingPoints_Generation: process_operating_points returns the right
+//     number of OPs with non-empty waveforms.
+//   - Asymmetric_Switch_RMS: I_Q1,rms / I_Q2,rms ≃ √(D / (1-D)) at D=0.3
+//     within 5 % (Imbertson-Mohan §IV.A).
+//   - Steady_State_Flux_Excursion diagnostic populated.
+//   - Diagnostics_Populated: every per-OP diagnostic non-zero where the
+//     physics dictates non-zero.
+//   - Volt-second balance on v_pri and v_Lo.
+//   - SLUP223 worked example (Vin=100 V, Vo=5 V/20 A, n=10, fsw=200 kHz,
+//     D=0.45) lands in the analytical ballpark.
+// =============================================================================
+
+#include "converter_models/AsymmetricHalfBridge.h"
+
+namespace {
+
+// Trapezoidal integral of y(t) over the entire waveform.
+double trapz(const std::vector<double>& t, const std::vector<double>& y) {
+    REQUIRE(t.size() == y.size());
+    double sum = 0.0;
+    for (size_t k = 0; k + 1 < t.size(); ++k)
+        sum += 0.5 * (y[k] + y[k + 1]) * (t[k + 1] - t[k]);
+    return sum;
+}
+
+double mean_of(const std::vector<double>& t, const std::vector<double>& y) {
+    const double duration = t.back() - t.front();
+    REQUIRE(duration > 0);
+    return trapz(t, y) / duration;
+}
+
+// Build a minimal valid AHB with a chosen duty and pre-sized turns ratio for
+// a centre-tapped secondary (Vo = 2D(1-D)Vin/n at this duty).
+json ahb_with_duty(double Vin, double Vo, double Io, double D, double n,
+                   double fsw = 200000.0) {
+    return json{
+        {"inputVoltage", {{"nominal", Vin}}},
+        {"rectifierType", "centerTapped"},
+        {"operatingPoints", json::array({
+            json{
+                {"ambientTemperature", 25.0},
+                {"switchingFrequency", fsw},
+                {"outputVoltages", {Vo}},
+                {"outputCurrents", {Io}},
+                {"dutyCycle", D}
+            }
+        })}
+    };
+}
+
+} // namespace
+
+
+TEST_CASE("AHB P3: process_operating_points returns one OP per (Vin × OP)",
+          "[ahb-topology][P3]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;   // = 4.95 V
+    AHB ahb(ahb_with_duty(Vin, Vo, 20.0, D, n));
+
+    auto ops = ahb.process_operating_points({n}, 50e-6);
+    REQUIRE(ops.size() == 1);                            // 1 Vin × 1 OP
+    auto& exc = ops[0].get_excitations_per_winding();
+    REQUIRE(exc.size() == 3);                            // pri + sec_a + sec_b
+    CHECK(exc[0].get_current()->get_waveform()->get_data().size() > 100);
+    CHECK(exc[0].get_voltage()->get_waveform()->get_data().size() > 100);
+}
+
+
+TEST_CASE("AHB P3: primary voltage volt-second balance is exact",
+          "[ahb-topology][P3]") {
+    const double Vin = 100.0, n = 10.0;
+    for (double D : {0.20, 0.30, 0.45, 0.50}) {
+        const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+        AHB ahb(ahb_with_duty(Vin, Vo, 10.0, D, n));
+        auto ops = ahb.process_operating_points({n}, 50e-6);
+        const auto& vpri = ops[0].get_excitations_per_winding()[0]
+                              .get_voltage()->get_waveform();
+        const double vs = trapz(vpri->get_time().value(),
+                                vpri->get_data());
+        CHECK_THAT(vs, WithinAbs(0.0, 1e-9));
+    }
+}
+
+
+TEST_CASE("AHB P3: output-inductor voltage volt-second balance is exact",
+          "[ahb-topology][P3]") {
+    const double Vin = 100.0, n = 10.0, D = 0.4;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty(Vin, Vo, 10.0, D, n));
+    auto ops = ahb.process_operating_points({n}, 50e-6);
+    // Lo is the first extra component.
+    // We don't have a public getter for extras, but the op's last excitations
+    // are the 2 secondaries. Lo waveform balance is implicit in the sec
+    // voltages — verify v_pri/n - Vo integrates to ~0 at the rectified node:
+    const auto& vpri = ops[0].get_excitations_per_winding()[0]
+                          .get_voltage()->get_waveform();
+    const auto time = vpri->get_time().value();
+    const auto& data = vpri->get_data();
+    std::vector<double> vLo;
+    vLo.reserve(data.size());
+    for (double v : data) vLo.push_back(std::abs(v) / n - Vo);
+    CHECK_THAT(trapz(time, vLo), WithinAbs(0.0, 1e-9));
+}
+
+
+TEST_CASE("AHB P3: asymmetric switch RMS — I_Q1/I_Q2 = √(D/(1-D))",
+          "[ahb-topology][P3]") {
+    const double D = 0.3, n = 10.0, Vin = 100.0;
+    const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty(Vin, Vo, 10.0, D, n));
+    // Use a generous Lm so the magnetizing ripple is small relative to
+    // the reflected load current — this is the regime in which the
+    // textbook √(D/(1-D)) ratio holds (Imbertson-Mohan §IV.A).
+    ahb.process_operating_points({n}, 5e-3);
+
+    const double Iq1 = ahb.get_last_switch_rms_current_q1();
+    const double Iq2 = ahb.get_last_switch_rms_current_q2();
+    REQUIRE(Iq1 > 0.0);
+    REQUIRE(Iq2 > 0.0);
+    const double ratio_observed = Iq1 / Iq2;
+    const double ratio_textbook = std::sqrt(D / (1.0 - D));
+    CHECK_THAT(ratio_observed, WithinRel(ratio_textbook, 0.05));
+}
+
+
+TEST_CASE("AHB P3: per-OP diagnostics are populated",
+          "[ahb-topology][P3]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty(Vin, Vo, 20.0, D, n));
+    ahb.process_operating_points({n}, 50e-6);
+
+    CHECK_THAT(ahb.get_last_duty_cycle(),                 WithinRel(D, 1e-9));
+    CHECK_THAT(ahb.get_last_conversion_ratio(),           WithinRel(Vo / Vin, 1e-9));
+    CHECK_THAT(ahb.get_last_dc_blocking_cap_voltage(),    WithinRel((1.0 - D) * Vin, 1e-9));
+    CHECK_THAT(ahb.get_last_primary_peak_voltage_positive(),
+               WithinRel((1.0 - D) * Vin, 1e-9));
+    CHECK_THAT(ahb.get_last_primary_peak_voltage_negative(),
+               WithinRel(-D * Vin, 1e-9));
+    CHECK_THAT(ahb.get_last_switch_peak_voltage_q1(),     WithinRel(Vin, 1e-12));
+    CHECK_THAT(ahb.get_last_switch_peak_voltage_q2(),     WithinRel(Vin, 1e-12));
+    CHECK(ahb.get_last_switch_rms_current_q1() > 0.0);
+    CHECK(ahb.get_last_switch_rms_current_q2() > 0.0);
+    CHECK(ahb.get_last_resonant_transition_time() > 0.0);
+    CHECK(ahb.get_last_steady_state_flux_excursion() > 0.0);
+    CHECK(ahb.get_last_magnetizing_current_ripple() > 0.0);
+    CHECK(ahb.get_last_output_inductor_ripple() > 0.0);
+    CHECK(ahb.get_last_operating_mode() == 0);   // CCM at this design
+    CHECK(ahb.get_last_rectifier_type() == 0);   // CT
+}
+
+
+TEST_CASE("AHB P3: steady-state flux excursion matches analytical formula",
+          "[ahb-topology][P3]") {
+    const double Vin = 100.0, n = 10.0, fsw = 200e3;
+    for (double D : {0.20, 0.30, 0.45, 0.50}) {
+        const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+        AHB ahb(ahb_with_duty(Vin, Vo, 10.0, D, n, fsw));
+        ahb.process_operating_points({n}, 50e-6);
+        const double Tsw    = 1.0 / fsw;
+        const double expected = D * (1.0 - D) * Vin * Tsw;   // V·s per turn
+        CHECK_THAT(ahb.get_last_steady_state_flux_excursion(),
+                   WithinRel(expected, 1e-12));
+    }
+}
+
+
+TEST_CASE("AHB P3: nominal+min+max input voltages each produce one OP",
+          "[ahb-topology][P3]") {
+    const double n = 10.0, D = 0.45;
+    const double Vin_nom = 100.0;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin_nom / n;
+    json j = ahb_with_duty(Vin_nom, Vo, 20.0, D, n);
+    j["inputVoltage"]["minimum"] = 80.0;
+    j["inputVoltage"]["maximum"] = 120.0;
+    AHB ahb(j);
+
+    auto ops = ahb.process_operating_points({n}, 50e-6);
+    CHECK(ops.size() == 3);   // min, nom, max
+}
+
+
+TEST_CASE("AHB P3: rejects malformed processing inputs",
+          "[ahb-topology][P3]") {
+    AHB ahb(minimal_valid_ahb());
+    // turnsRatios empty
+    CHECK_THROWS_AS(ahb.process_operating_points({}, 50e-6),
+                    std::invalid_argument);
+    // turnsRatios non-positive
+    CHECK_THROWS_AS(ahb.process_operating_points({-1.0}, 50e-6),
+                    std::invalid_argument);
+    // magnetizingInductance non-positive
+    CHECK_THROWS_AS(ahb.process_operating_points({10.0}, 0.0),
+                    std::invalid_argument);
+    // multi-secondary not yet supported (P4/P11)
+    CHECK_THROWS_AS(ahb.process_operating_points({10.0, 5.0}, 50e-6),
+                    std::invalid_argument);
+}
+
+
+TEST_CASE("AHB P3: SLUP223-like 100V→5V/20A worked example sanity",
+          "[ahb-topology][P3]") {
+    // Vin=100 V, Vo=5 V, Io=20 A, n=10, fsw=200 kHz, D=0.45.
+    // Expected steady-state values (analytical):
+    //   V_Cb        = 0.55 * 100   = 55 V
+    //   M_target    = 5 / 100      = 0.05
+    //   M_actual    = 2*0.45*0.55/10 = 0.0495 → Vo_actual = 4.95 V
+    //   Im_pp       = 0.55*100*0.45*5e-6 / 50e-6 = 2.475 A
+    //   td_resonant = π·sqrt(1e-6 * 2 * 200e-12) ≈ 1.987 ns
+    AHB ahb(ahb_with_duty(100.0, 4.95, 20.0, 0.45, 10.0));
+    ahb.process_operating_points({10.0}, 50e-6);
+
+    CHECK_THAT(ahb.get_last_dc_blocking_cap_voltage(),
+               WithinRel(55.0, 1e-9));
+    CHECK_THAT(ahb.get_last_magnetizing_current_ripple(),
+               WithinRel(0.55 * 100.0 * 0.45 * 5e-6 / 50e-6, 1e-9));
+    // Resonant transition time uses default Coss=200 pF, Llk=1 µF.
+    const double td_expected = M_PI * std::sqrt(1e-6 * 2.0 * 200e-12);
+    CHECK_THAT(ahb.get_last_resonant_transition_time(),
+               WithinRel(td_expected, 1e-9));
+}
+
+
+TEST_CASE("AHB P3: Lo current waveform mean equals Io (extras populated)",
+          "[ahb-topology][P3]") {
+    // We don't have a public extras getter, but we can verify indirectly
+    // via secondary-winding current means: in CT, sec_a+sec_b carry I_Lo
+    // alternately, so their sum equals I_Lo at every instant. The mean
+    // of (i_sec_a + i_sec_b) over one period must equal Io.
+    const double Vin = 100.0, n = 10.0, D = 0.45, Io = 20.0;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty(Vin, Vo, Io, D, n));
+    auto ops = ahb.process_operating_points({n}, 50e-6);
+
+    const auto& iSecA = ops[0].get_excitations_per_winding()[1]
+                          .get_current()->get_waveform();
+    const auto& iSecB = ops[0].get_excitations_per_winding()[2]
+                          .get_current()->get_waveform();
+    const auto tA = iSecA->get_time().value();
+    const auto& dA = iSecA->get_data();
+    const auto& dB = iSecB->get_data();
+    REQUIRE(dA.size() == dB.size());
+    std::vector<double> sum(dA.size());
+    for (size_t k = 0; k < dA.size(); ++k) sum[k] = dA[k] + dB[k];
+    CHECK_THAT(mean_of(tA, sum), WithinRel(Io, 0.02));
 }

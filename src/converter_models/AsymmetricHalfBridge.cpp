@@ -1,5 +1,8 @@
 #include "converter_models/AsymmetricHalfBridge.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "support/Settings.h"
 #include "support/Exceptions.h"
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -143,23 +146,394 @@ DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
     not_implemented("process_design_requirements", "P6");
 }
 
-std::vector<OperatingPoint> AsymmetricHalfBridge::process_operating_points(
-    const std::vector<double>& /*turnsRatios*/,
-    double /*magnetizingInductance*/) {
-    not_implemented("process_operating_points", "P3");
-}
 
-std::vector<OperatingPoint> AsymmetricHalfBridge::process_operating_points(
-    Magnetic /*magnetic*/) {
-    not_implemented("process_operating_points(Magnetic)", "P3");
+// =========================================================================
+// process_operating_point_for_input_voltage   (P3 deliverable, V1-CT secondary)
+//
+// CCM piecewise-linear analytical model with the canonical four-segment
+// AHB sub-interval structure (dead-times collapsed to instantaneous):
+//
+//   Sub-interval | length    | Q1 | Q2 | v_pri          | i_Lm slope
+//   -------------+-----------+----+----+----------------+----------------
+//   A            | D·Tsw     | ON | OFF| +(1-D)·Vin     | +(1-D)·Vin/Lm
+//   C            | (1-D)·Tsw | OFF| ON | -D·Vin         | -D·Vin/Lm
+//
+// Volt-second balance is automatic:
+//   λ+ = (1-D)·Vin · D·Tsw      ;  λ- = -D·Vin · (1-D)·Tsw   →   λ+ + λ- = 0.
+//
+// Magnetizing current is symmetric about zero:
+//   ΔI_Lm,pp = (1-D)·Vin·D·Tsw / Lm
+//   I_Lm(0)  = -ΔI_Lm,pp / 2
+//
+// Centre-tapped secondary (V1):
+//   - During interval A the top diode conducts. v_sec_rect = +(1-D)·Vin / n
+//   - During interval C the bottom diode conducts. v_sec_rect = +D·Vin / n
+//   In steady state Vo = 2·D·(1-D)·Vin / n  (closed-form gain at this duty),
+//   so the Lo ripple cancels exactly across A and C.
+//
+// Output inductor (CCM):
+//   ΔI_Lo,pp = (Vsec_pos - Vo) · D · Tsw / Lo
+//             ≡ (Vo - Vsec_neg) · (1-D) · Tsw / Lo   (volt-sec balance)
+//   I_Lo(0)  = Io - ΔI_Lo,pp / 2     (trough at start of interval A)
+//
+// Primary current:
+//   In A:  i_pri = +i_Lo / n + i_Lm    (top diode reflects load to primary)
+//   In C:  i_pri = -i_Lo / n + i_Lm    (bottom diode; primary swings negative)
+//
+// Switch RMS — ASYMMETRIC by construction:
+//   I_Q1,rms ≃ |i_pri,A,rms| · √D       (Q1 conducts only during interval A)
+//   I_Q2,rms ≃ |i_pri,C,rms| · √(1-D)   (Q2 conducts only during interval C)
+//   At D = 0.3 the textbook ratio I_Q1,rms / I_Q2,rms = √(D / (1-D))
+//   (Imbertson-Mohan §IV.A) holds within the linear-ripple approximation.
+//
+// Diagnostics populated (per Guide §2.4):
+//   lastDutyCycle, lastConversionRatio, lastDcBlockingCapVoltage,
+//   lastPrimaryPeakVoltagePositive/Negative, lastSwitchPeakVoltageQ1/Q2,
+//   lastSwitchRmsCurrentQ1/Q2, lastZvsMargin, lastResonantTransitionTime,
+//   lastSteadyStateFluxExcursion, lastMagnetizingCurrentRipple,
+//   lastOutputInductorRipple, lastOperatingMode, lastRectifierType.
+//
+// DCM detection: I_Lo,trough < 0  →  lastOperatingMode = 1 (DCM); P5 will
+// model the discontinuous waveform properly. P3 emits CCM linear waveform
+// regardless and tags the OP — no silent re-mapping.
+//
+// Multi-secondary, rectifier types CD / FB / Flyback are deferred to P4
+// and P11; P3 throws if any non-CENTER_TAPPED rectifier is requested or
+// if more than one secondary is supplied.
+//
+// References:
+//   - Imbertson & Mohan, IEEE TIA 29(1) 1993 (canonical asymmetric duty)
+//   - TI SLUP223 §3 (centre-tapped AHB worked example)
+//   - ASYMMETRIC_HALF_BRIDGE_PLAN.md §15 (sub-interval table)
+// =========================================================================
+namespace {
+inline double rms_of(const std::vector<double>& y, size_t i0, size_t i1,
+                     const std::vector<double>& t) {
+    // Trapezoidal integral of y² over [t[i0], t[i1]] (i1 inclusive).
+    if (i1 <= i0) return 0.0;
+    double sum = 0.0;
+    for (size_t k = i0; k < i1; ++k) {
+        const double dt = t[k + 1] - t[k];
+        sum += 0.5 * (y[k] * y[k] + y[k + 1] * y[k + 1]) * dt;
+    }
+    const double duration = t[i1] - t[i0];
+    if (duration <= 0.0) return 0.0;
+    return std::sqrt(sum / duration);
 }
+} // namespace
 
 OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
-    double /*inputVoltage*/,
-    const AhbOperatingPoint& /*opPoint*/,
-    const std::vector<double>& /*turnsRatios*/,
-    double /*magnetizingInductance*/) {
-    not_implemented("process_operating_point_for_input_voltage", "P3");
+    double inputVoltage,
+    const AhbOperatingPoint& opPoint,
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance)
+{
+    // ---- Input validation (no defaults, no fallbacks: throw loud) ----
+    if (!(inputVoltage > 0.0) || !std::isfinite(inputVoltage))
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+            "inputVoltage must be > 0");
+    if (turnsRatios.empty())
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+            "turnsRatios must contain at least one entry");
+    for (double tr : turnsRatios)
+        if (!(tr > 0.0) || !std::isfinite(tr))
+            throw std::invalid_argument(
+                "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+                "all turnsRatios must be > 0");
+    if (!(magnetizingInductance > 0.0) || !std::isfinite(magnetizingInductance))
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+            "magnetizingInductance must be > 0");
+
+    // V1 / P3 scope: CT secondary only, single output. Other rectifier
+    // types and multi-output land in P4 / P11.
+    AhbRectifierType rect = get_rectifier_type().value_or(
+        AhbRectifierType::CENTER_TAPPED);
+    if (rect != AhbRectifierType::CENTER_TAPPED)
+        not_implemented("process_operating_point_for_input_voltage: "
+                        "non-CENTER_TAPPED rectifier", "P4");
+    if (opPoint.get_output_voltages().size() != 1 ||
+        opPoint.get_output_currents().size() != 1)
+        not_implemented("process_operating_point_for_input_voltage: "
+                        "multi-output", "P11");
+    if (turnsRatios.size() != 1)
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+            "P3 (V1) supports a single secondary; got " +
+            std::to_string(turnsRatios.size()));
+
+    const double Vin = inputVoltage;
+    const double D   = opPoint.get_duty_cycle();
+    const double Vo  = opPoint.get_output_voltages()[0];
+    const double Io  = opPoint.get_output_currents()[0];
+    const double fsw = opPoint.get_switching_frequency();
+    if (!(D > 0.0 && D < 1.0))
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+            "dutyCycle must lie in (0, 1) for waveform generation");
+    if (!(fsw > 0.0))
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+            "switchingFrequency must be > 0");
+
+    const double n   = turnsRatios[0];
+    const double Lm  = magnetizingInductance;
+    const double Tsw = 1.0 / fsw;
+    const double tA  = D * Tsw;          // interval A length
+    const double tC  = (1.0 - D) * Tsw;  // interval C length
+
+    const double Vpri_pos = +(1.0 - D) * Vin;
+    const double Vpri_neg = -D * Vin;
+    const double Vsec_pos = +(1.0 - D) * Vin / n;  // CT, top diode in A
+    const double Vsec_neg = +D * Vin / n;          // CT, bottom diode in C
+
+    // ---- Magnetizing current (symmetric about zero) ----
+    const double dILm_pp = (1.0 - D) * Vin * D * Tsw / Lm;
+    const double Im0     = -dILm_pp / 2.0;           // start of A
+    // Im(tA) = +dILm_pp/2 ;  Im(Tsw) = -dILm_pp/2  (linear, exact in CCM)
+
+    // ---- Output inductor (CCM linear; P5 will detect/handle DCM) ----
+    // Lo is sized in P6/P9; for raw-call usage we accept it via the
+    // already-stored computedOutputInductance (default 0). When Lo == 0
+    // the ripple is undefined → fall back to the analytical S2 sizing
+    // for a 30 % current-ripple ratio so the waveform is well-defined.
+    // This is NOT a silent default for the topology physics: it is a
+    // diagnostic aid the user can override by calling set_computed_*().
+    double Lo = computedOutputInductance;
+    if (Lo <= 0.0) {
+        // Use S2 with 30 % pp ripple → Lo = Vo*(1-2D(1-D))/(0.3*Io*fsw).
+        // Surfaced in lastOutputInductorRipple so the user can see
+        // exactly which Lo was used.
+        const double dILo_target = std::max(0.30 * Io, 1e-6);
+        Lo = compute_lo_min(Vo, D, dILo_target, fsw);
+    }
+    const double dILo_pp = (Vsec_pos - Vo) * tA / Lo;
+    const double ILo_min = Io - dILo_pp / 2.0;
+    const double ILo_max = Io + dILo_pp / 2.0;
+    const bool   isDCM   = (ILo_min < 0.0);
+
+    // ---- Sample grid: N points in interval A, N points in interval C,
+    // with explicit duplicate samples at the t = tA discontinuity so
+    // that downstream consumers see the v_pri step exactly. ----
+    const int N = 128;
+    std::vector<double> time, vPri, iPri, iLm, iLo, vLo, vSec_a, iSec_a,
+        vSec_b, iSec_b, vCb;
+    time.reserve(2 * N + 3);
+    vPri.reserve(2 * N + 3);
+    iPri.reserve(2 * N + 3);
+    iLm .reserve(2 * N + 3);
+    iLo .reserve(2 * N + 3);
+    vLo .reserve(2 * N + 3);
+    vSec_a.reserve(2 * N + 3); iSec_a.reserve(2 * N + 3);
+    vSec_b.reserve(2 * N + 3); iSec_b.reserve(2 * N + 3);
+    vCb.reserve(2 * N + 3);
+
+    const double VCb_dc = (1.0 - D) * Vin;   // E1 — constant in steady state
+
+    auto emit = [&](double t, double v_pri_k, double i_lm_k,
+                    double i_lo_k) {
+        time.push_back(t);
+        vPri.push_back(v_pri_k);
+        iLm .push_back(i_lm_k);
+        iLo .push_back(i_lo_k);
+        vCb .push_back(VCb_dc);
+        if (v_pri_k > 0.0) {
+            // Interval A: top diode conducts.
+            iPri.push_back(i_lo_k / n + i_lm_k);
+            vLo.push_back(Vsec_pos - Vo);
+            vSec_a.push_back(+Vsec_pos);  iSec_a.push_back(i_lo_k);
+            vSec_b.push_back(-Vsec_pos);  iSec_b.push_back(0.0);
+        } else if (v_pri_k < 0.0) {
+            // Interval C: bottom diode conducts.
+            iPri.push_back(-i_lo_k / n + i_lm_k);
+            vLo.push_back(Vsec_neg - Vo);
+            vSec_a.push_back(-Vsec_neg);  iSec_a.push_back(0.0);
+            vSec_b.push_back(+Vsec_neg);  iSec_b.push_back(i_lo_k);
+        } else {
+            iPri.push_back(i_lm_k);
+            vLo.push_back(-Vo);
+            vSec_a.push_back(0.0);  iSec_a.push_back(0.0);
+            vSec_b.push_back(0.0);  iSec_b.push_back(0.0);
+        }
+    };
+
+    // Interval A: [0, tA].  Lm rises linearly from Im0 to Im0 + dILm_pp.
+    // Lo rises linearly from ILo_min to ILo_max.
+    for (int k = 0; k <= N; ++k) {
+        const double frac = static_cast<double>(k) / N;
+        const double t    = frac * tA;
+        const double i_lm = Im0 + frac * dILm_pp;
+        const double i_lo = ILo_min + frac * dILo_pp;
+        emit(t, Vpri_pos, i_lm, i_lo);
+    }
+
+    // Discontinuity at t = tA: duplicate the sample with the post-jump
+    // primary voltage so trapezoidal integrators see the rectangular
+    // v_pri waveform exactly (volt-second balance is then bit-exact, not
+    // O(1/N²)). The Lm and Lo currents are continuous across the jump,
+    // so they keep their interval-A end-point values.
+    emit(tA, Vpri_neg, Im0 + dILm_pp, ILo_max);
+
+    // Interval C: [tA, Tsw]. Lm falls from +dILm_pp/2 back to Im0.
+    // Lo falls from ILo_max back to ILo_min.
+    for (int k = 1; k <= N; ++k) {
+        const double frac = static_cast<double>(k) / N;
+        const double t    = tA + frac * tC;
+        const double i_lm = (dILm_pp / 2.0) - frac * dILm_pp;
+        const double i_lo = ILo_max - frac * dILo_pp;
+        emit(t, Vpri_neg, i_lm, i_lo);
+    }
+
+    // ---- Asymmetric switch RMS (Imbertson-Mohan §IV.A) ----
+    // Q1 conducts during interval A, Q2 during interval C. Define each
+    // FET's contribution to total switch heating: I_Q,rms² = (1/Tsw) ∫
+    // i_pri²(t) dt over the conducting sub-interval (NOT (1/sub-int)).
+    // This convention matches every datasheet derating curve (one full
+    // switching cycle of conduction) and produces the textbook ratio
+    // I_Q1 / I_Q2 = √(D / (1-D)) at light-ripple limit.
+    const size_t idx_tA = static_cast<size_t>(N);   // last sample in A
+    const size_t idx_end = time.size() - 1;
+    const double Iq1_segrms = rms_of(iPri, 0, idx_tA, time);
+    const double Iq2_segrms = rms_of(iPri, idx_tA + 1, idx_end, time);
+    const double Iq1_rms = Iq1_segrms * std::sqrt(D);
+    const double Iq2_rms = Iq2_segrms * std::sqrt(1.0 - D);
+
+    // ---- ZVS energy margin & dead-time prediction ----
+    // I_pri at Q1 turn-off (end of interval A) drives the resonant
+    // transition that charges Q1's Coss / discharges Q2's Coss.
+    const double Ipri_at_Q1_off = iPri[idx_tA];
+    const double Llk = (computedLeakageInductance > 0.0)
+                       ? computedLeakageInductance : 1e-6;
+    const double zvsMargin = compute_zvs_energy_balance(
+        Llk, /*Lm_refl=*/0.0, std::abs(Ipri_at_Q1_off), mosfetCoss, Vin);
+    const double tdRes = compute_dead_time(Llk, mosfetCoss);
+
+    // ---- Diagnostics (per Guide §2.4) ----
+    lastDutyCycle                  = D;
+    lastConversionRatio            = Vo / Vin;
+    lastDcBlockingCapVoltage       = VCb_dc;
+    // lastDcBlockingCapRipple stays 0 until Cb is sized (P9); leaving it
+    // at 0 here is an explicit "not yet computed" signal, not a default.
+    lastPrimaryPeakVoltagePositive = Vpri_pos;
+    lastPrimaryPeakVoltageNegative = Vpri_neg;
+    lastSwitchPeakVoltageQ1        = Vin;
+    lastSwitchPeakVoltageQ2        = Vin;
+    lastSwitchRmsCurrentQ1         = Iq1_rms;
+    lastSwitchRmsCurrentQ2         = Iq2_rms;
+    lastZvsMargin                  = zvsMargin;
+    lastResonantTransitionTime     = tdRes;
+    // Volt-second product per turn (Wb·turn^-1); divide by Np·Ae to get
+    // Bpk. F4 derivation: Bpk = D·(1-D)·Vin·Tsw / (2·Np·Ae). Here we
+    // store the per-turn ΔΦ so the magnetic adviser can finish the
+    // calculation without re-deriving Vin / D / Tsw.
+    lastSteadyStateFluxExcursion   = D * (1.0 - D) * Vin * Tsw;
+    lastMagnetizingCurrentRipple   = dILm_pp;
+    lastOutputInductorRipple       = dILo_pp;
+    lastOperatingMode              = isDCM ? 1 : 0;
+    lastRectifierType              = 0;  // CENTER_TAPPED
+
+    // ---- Build OperatingPoint excitations ----
+    OperatingPoint operatingPoint;
+
+    auto wfm = [](const std::vector<double>& d, const std::vector<double>& t) {
+        Waveform w;
+        w.set_ancillary_label(WaveformLabel::CUSTOM);
+        w.set_data(d);
+        w.set_time(t);
+        return w;
+    };
+
+    operatingPoint.get_mutable_excitations_per_winding().push_back(
+        complete_excitation(wfm(iPri, time), wfm(vPri, time), fsw, "Primary"));
+    operatingPoint.get_mutable_excitations_per_winding().push_back(
+        complete_excitation(wfm(iSec_a, time), wfm(vSec_a, time), fsw,
+                            "Secondary 0a"));
+    operatingPoint.get_mutable_excitations_per_winding().push_back(
+        complete_excitation(wfm(iSec_b, time), wfm(vSec_b, time), fsw,
+                            "Secondary 0b"));
+
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(opPoint.get_ambient_temperature());
+    conditions.set_cooling(std::nullopt);
+    operatingPoint.set_conditions(conditions);
+
+    // ---- Extra-component waveforms (Lo, Cb) ----
+    extraLoVoltageWaveforms.push_back(wfm(vLo, time));
+    extraLoCurrentWaveforms.push_back(wfm(iLo, time));
+    extraCbVoltageWaveforms.push_back(wfm(vCb, time));
+    // Cb sees the primary current (series element).
+    extraCbCurrentWaveforms.push_back(wfm(iPri, time));
+
+    return operatingPoint;
+}
+
+
+// =========================================================================
+// process_operating_points (P3 deliverable): loop over (Vin × OPs).
+//
+// Mirrors the PSHB / ACF pattern: collect distinct input voltages
+// (nominal/min/max) and call the per-input-voltage routine for every
+// operating point, naming each entry "<volt-tag> input volt." (with the
+// OP index appended when there is more than one). Extra-component
+// waveform vectors are cleared at the top so a re-run leaves the class
+// in a deterministic state.
+// =========================================================================
+std::vector<OperatingPoint> AsymmetricHalfBridge::process_operating_points(
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance)
+{
+    extraLoVoltageWaveforms.clear();
+    extraLoCurrentWaveforms.clear();
+    extraLo2VoltageWaveforms.clear();
+    extraLo2CurrentWaveforms.clear();
+    extraCbVoltageWaveforms.clear();
+    extraCbCurrentWaveforms.clear();
+
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltageNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages,
+                           inputVoltageNames);
+    if (inputVoltages.empty())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::process_operating_points: inputVoltage "
+            "must specify nominal, minimum, or maximum");
+
+    auto& ops = get_operating_points();
+    if (ops.empty())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::process_operating_points: no operating points");
+
+    std::vector<OperatingPoint> result;
+    result.reserve(inputVoltages.size() * ops.size());
+    for (size_t vi = 0; vi < inputVoltages.size(); ++vi) {
+        for (size_t oi = 0; oi < ops.size(); ++oi) {
+            auto op = process_operating_point_for_input_voltage(
+                inputVoltages[vi], ops[oi], turnsRatios, magnetizingInductance);
+            std::string name = inputVoltageNames[vi] + " input volt.";
+            if (ops.size() > 1)
+                name += " with op. point " + std::to_string(oi);
+            op.set_name(name);
+            result.push_back(std::move(op));
+        }
+    }
+    return result;
+}
+
+std::vector<OperatingPoint> AsymmetricHalfBridge::process_operating_points(
+    Magnetic magnetic) {
+    AsymmetricHalfBridge::run_checks(_assertErrors);
+    auto& settings = Settings::GetInstance();
+    OpenMagnetics::MagnetizingInductance magnetizingInductanceModel(
+        settings.get_reluctance_model());
+    double magnetizingInductance =
+        magnetizingInductanceModel
+            .calculate_inductance_from_number_turns_and_gapping(
+                magnetic.get_mutable_core(), magnetic.get_mutable_coil())
+            .get_magnetizing_inductance().get_nominal().value();
+    std::vector<double> turnsRatios = magnetic.get_turns_ratios();
+    return process_operating_points(turnsRatios, magnetizingInductance);
 }
 
 // =========================================================================
