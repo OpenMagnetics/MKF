@@ -147,15 +147,18 @@ TEST_CASE("AHB P1: rectifierType round-trips through JSON", "[ahb-topology][P1]"
 TEST_CASE("AHB P1: stubbed methods throw with plan reference", "[ahb-topology][P1]") {
     AHB ahb(minimal_valid_ahb());
 
-    // P6 (process_design_requirements) is implemented as of the P6 commit;
-    // the only remaining stubbed surfaces here are SPICE (P7-P8) and the
-    // extra-components factory (P9).
+    // P6 (process_design_requirements) and P7 (SPICE netlist /
+    // simulate_and_extract) are implemented as of their respective commits;
+    // the only remaining stubbed surface here is the extra-components
+    // factory (P9).
 
-    CHECK_THROWS_AS(ahb.generate_ngspice_circuit({10.0}, 50e-6),
+    CHECK_THROWS_AS(ahb.get_extra_components_inputs(
+                        OpenMagnetics::ExtraComponentsMode::IDEAL),
                     std::runtime_error);
     CHECK(capture_throw_message([&]{
-        ahb.generate_ngspice_circuit({10.0}, 50e-6);
-    }).find("P7") != std::string::npos);
+        ahb.get_extra_components_inputs(
+            OpenMagnetics::ExtraComponentsMode::IDEAL);
+    }).find("P9") != std::string::npos);
 }
 
 
@@ -1236,4 +1239,206 @@ TEST_CASE("AHB P6: dead-time matches sqrt(Llk+Lm) physics",
     const double td  = ahb.get_computed_dead_time();
     const double td_expected = M_PI * std::sqrt((Llk + Lm) * 2.0 * 200e-12);
     CHECK_THAT(td, WithinRel(td_expected, 1e-9));
+}
+
+
+// =============================================================================
+// P7: SPICE netlist + ngspice simulation harness
+//
+// Covers (per ASYMMETRIC_HALF_BRIDGE_PLAN.md §10):
+//   - generate_ngspice_circuit emits the Guide §5 mandatory contract:
+//       2 SW switches, RC snubbers, METHOD=GEAR, RC pre-charge for ALL FOUR
+//       reactive elements (Cb, Lpri, Lo, Co), Vab probe, sense V-sources.
+//   - Imbertson-Mohan upper-Cb topology: V_Cb = (1-D)·Vin pre-charge.
+//   - Rectifier-type branching produces structurally distinct netlists for
+//     CT (3 windings via Lpri/Lsec_a/Lsec_b), FB (one secondary, 4 diodes),
+//     and CD (one secondary, two output inductors Lo + Lo2).
+//   - AHB_FLYBACK is rejected until P10.
+//   - DivideByZero guard: vanishing output current does not crash netlist
+//     generation; computed Rload is finite (>= 1e-3) and load resistor is
+//     emitted.
+//   - simulate_and_extract_topology_waveforms throws cleanly (rather than
+//     segfaulting) when ngspice is unavailable.
+// =============================================================================
+
+namespace {
+
+// turnsRatio = 10:1, Lm = 1 mH, sized once and reused across P7 tests.
+struct AHBNetlistFixture {
+    AHB ahb;
+    std::vector<double> turnsRatios{10.0};
+    double Lm{1e-3};
+    AHBNetlistFixture() : ahb(minimal_valid_ahb()) {
+        ahb.process_design_requirements();
+    }
+};
+
+} // namespace
+
+TEST_CASE("AHB P7: netlist contains Guide §5 mandatory contract",
+          "[ahb-topology][P7]") {
+    AHBNetlistFixture f;
+    std::string nl = f.ahb.generate_ngspice_circuit(f.turnsRatios, f.Lm, 0, 0);
+
+    // Two voltage-controlled switches Q1 / Q2.
+    CHECK(nl.find("S1 ") != std::string::npos);
+    CHECK(nl.find("S2 ") != std::string::npos);
+    CHECK(nl.find(".model SW1 SW") != std::string::npos);
+    // RC snubbers per switch (mistake #11).
+    CHECK(nl.find("Rsnub_Q1") != std::string::npos);
+    CHECK(nl.find("Csnub_Q1") != std::string::npos);
+    CHECK(nl.find("Rsnub_Q2") != std::string::npos);
+    CHECK(nl.find("Csnub_Q2") != std::string::npos);
+    // GEAR integration for stiff switching circuits.
+    CHECK(nl.find("METHOD=GEAR") != std::string::npos);
+    // Vab differential probe.
+    CHECK(nl.find("Evab vab 0 sw pri_top") != std::string::npos);
+    // Primary-current sense.
+    CHECK(nl.find("Vpri_sense") != std::string::npos);
+    // Cb sense source so i(Cb) is observable.
+    CHECK(nl.find("Vcb_sense") != std::string::npos);
+    // Output and ct sense for waveform extraction.
+    CHECK(nl.find("Vout_sense") != std::string::npos);
+    // K-coupling explicit (not 1.0) to keep mutual-inductance matrix
+    // factorisable (mistake #12). Stream is std::scientific so 0.99 prints
+    // as 9.900000e-01.
+    CHECK(nl.find("9.900000e-01") != std::string::npos);
+    // .tran with uic so SPICE honours initial conditions.
+    CHECK(nl.find(".tran ") != std::string::npos);
+    CHECK(nl.find(" uic") != std::string::npos);
+    CHECK(nl.find(".end") != std::string::npos);
+}
+
+TEST_CASE("AHB P7: IC pre-charge present for all four reactive elements",
+          "[ahb-topology][P7]") {
+    AHBNetlistFixture f;
+    std::string nl = f.ahb.generate_ngspice_circuit(f.turnsRatios, f.Lm, 0, 0);
+
+    // C_b initial voltage = (1-D)*Vin = 0.55 * 100 = 55 V.
+    // Look for the IC= clause on C_b.
+    auto cb = nl.find("C_b ");
+    REQUIRE(cb != std::string::npos);
+    auto eol = nl.find('\n', cb);
+    std::string cb_line = nl.substr(cb, eol - cb);
+    CHECK(cb_line.find("IC=") != std::string::npos);
+
+    // L_pri carries i_Lm initial state.
+    auto lpri = nl.find("L_pri ");
+    REQUIRE(lpri != std::string::npos);
+    eol = nl.find('\n', lpri);
+    std::string lpri_line = nl.substr(lpri, eol - lpri);
+    CHECK(lpri_line.find("IC=") != std::string::npos);
+
+    // L_o carries iLo initial state.
+    auto lo = nl.find("L_o ");
+    REQUIRE(lo != std::string::npos);
+    eol = nl.find('\n', lo);
+    std::string lo_line = nl.substr(lo, eol - lo);
+    CHECK(lo_line.find("IC=") != std::string::npos);
+
+    // C_o carries Vo initial state.
+    auto co = nl.find("C_o ");
+    REQUIRE(co != std::string::npos);
+    eol = nl.find('\n', co);
+    std::string co_line = nl.substr(co, eol - co);
+    CHECK(co_line.find("IC=") != std::string::npos);
+
+    // Plus the global .ic block for node-voltage hints.
+    CHECK(nl.find(".ic ") != std::string::npos);
+}
+
+TEST_CASE("AHB P7: V_Cb pre-charge = (1-D)*Vin (Imbertson upper-Cb)",
+          "[ahb-topology][P7]") {
+    // D = 0.45, Vin = 100 V => V_Cb = 55 V.
+    AHBNetlistFixture f;
+    std::string nl = f.ahb.generate_ngspice_circuit(f.turnsRatios, f.Lm, 0, 0);
+    // Scientific notation: 5.500000e+01 — match the prefix.
+    auto cb = nl.find("C_b ");
+    REQUIRE(cb != std::string::npos);
+    auto eol = nl.find('\n', cb);
+    std::string cb_line = nl.substr(cb, eol - cb);
+    auto eq = cb_line.find("IC=");
+    REQUIRE(eq != std::string::npos);
+    double ic = std::stod(cb_line.substr(eq + 3));
+    CHECK_THAT(ic, WithinRel(0.55 * 100.0, 1e-6));
+}
+
+TEST_CASE("AHB P7: CT rectifier emits two half-secondaries with three K-couplings",
+          "[ahb-topology][P7]") {
+    AHBNetlistFixture f;
+    f.ahb.set_rectifier_type(AhbRectifierType::CENTER_TAPPED);
+    std::string nl = f.ahb.generate_ngspice_circuit(f.turnsRatios, f.Lm, 0, 0);
+    CHECK(nl.find("L_sec_a") != std::string::npos);
+    CHECK(nl.find("L_sec_b") != std::string::npos);
+    CHECK(nl.find("K1 L_pri L_sec_a") != std::string::npos);
+    CHECK(nl.find("K2 L_pri L_sec_b") != std::string::npos);
+    CHECK(nl.find("K3 L_sec_a L_sec_b") != std::string::npos);
+    // CT: single output inductor, no L_o2.
+    CHECK(nl.find("L_o2") == std::string::npos);
+}
+
+TEST_CASE("AHB P7: FB rectifier emits one secondary and four diodes",
+          "[ahb-topology][P7]") {
+    AHBNetlistFixture f;
+    f.ahb.set_rectifier_type(AhbRectifierType::FULL_BRIDGE);
+    std::string nl = f.ahb.generate_ngspice_circuit(f.turnsRatios, f.Lm, 0, 0);
+    CHECK(nl.find("L_sec ") != std::string::npos);
+    CHECK(nl.find("L_sec_a") == std::string::npos);
+    CHECK(nl.find("D_r1") != std::string::npos);
+    CHECK(nl.find("D_r2") != std::string::npos);
+    CHECK(nl.find("D_r3") != std::string::npos);
+    CHECK(nl.find("D_r4") != std::string::npos);
+    CHECK(nl.find("L_o2") == std::string::npos);
+}
+
+TEST_CASE("AHB P7: CD rectifier emits two output inductors",
+          "[ahb-topology][P7]") {
+    AHBNetlistFixture f;
+    f.ahb.set_rectifier_type(AhbRectifierType::CURRENT_DOUBLER);
+    std::string nl = f.ahb.generate_ngspice_circuit(f.turnsRatios, f.Lm, 0, 0);
+    CHECK(nl.find("L_sec ") != std::string::npos);
+    CHECK(nl.find("L_o ")  != std::string::npos);
+    CHECK(nl.find("L_o2 ") != std::string::npos);
+    // Bridge-style D_r3/D_r4 only exist in FB.
+    CHECK(nl.find("D_r3") == std::string::npos);
+    CHECK(nl.find("D_r4") == std::string::npos);
+}
+
+TEST_CASE("AHB P7: AHB_FLYBACK netlist generation deferred to P10 (throws)",
+          "[ahb-topology][P7]") {
+    AHBNetlistFixture f;
+    f.ahb.set_rectifier_type(AhbRectifierType::AHB_FLYBACK);
+    std::string msg = capture_throw_message([&] {
+        f.ahb.generate_ngspice_circuit(f.turnsRatios, f.Lm, 0, 0);
+    });
+    CHECK(msg.find("P10") != std::string::npos);
+}
+
+TEST_CASE("AHB P7: divide-by-zero guard — tiny outputCurrent does not crash",
+          "[ahb-topology][P7]") {
+    json j = minimal_valid_ahb();
+    j["operatingPoints"][0]["outputCurrents"] = std::vector<double>{1e-9};
+    AHB ahb(j);
+    ahb.process_design_requirements();
+    std::string nl;
+    REQUIRE_NOTHROW(nl = ahb.generate_ngspice_circuit({10.0}, 1e-3, 0, 0));
+    CHECK(nl.find("R_load") != std::string::npos);
+}
+
+TEST_CASE("AHB P7: generate_ngspice_circuit rejects empty turnsRatios",
+          "[ahb-topology][P7]") {
+    AHBNetlistFixture f;
+    std::string msg = capture_throw_message([&] {
+        f.ahb.generate_ngspice_circuit({}, f.Lm, 0, 0);
+    });
+    CHECK(msg.find("turnsRatios") != std::string::npos);
+}
+
+TEST_CASE("AHB P7: generate_ngspice_circuit rejects non-positive Lm",
+          "[ahb-topology][P7]") {
+    AHBNetlistFixture f;
+    std::string msg = capture_throw_message([&] {
+        f.ahb.generate_ngspice_circuit(f.turnsRatios, 0.0, 0, 0);
+    });
+    CHECK(msg.find("magnetizingInductance") != std::string::npos);
 }

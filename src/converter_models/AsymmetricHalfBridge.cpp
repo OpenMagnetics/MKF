@@ -1,9 +1,12 @@
 #include "converter_models/AsymmetricHalfBridge.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "processors/NgspiceRunner.h"
 #include "support/Settings.h"
 #include "support/Exceptions.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
 
 namespace OpenMagnetics {
@@ -1138,27 +1141,465 @@ AsymmetricHalfBridge::get_extra_components_inputs(
     not_implemented("get_extra_components_inputs", "P9");
 }
 
+// =========================================================================
+// generate_ngspice_circuit (P7 deliverable)
+//
+// Topology (Imbertson-Mohan upper-Cb convention, matches the analytical
+// model's V_Cb = (1-D)·Vin):
+//
+//      Vin ──┬───────┬────[Cb]────pri_top──[Llk]──[Lpri]── sw  ──┐
+//            │       │                        ║                  │
+//          [Q1]    [Cb-snub]                  ║ K=0.99            │
+//            │                                ║                 [Q2]
+//            sw ─────────────────             ║                   │
+//                                          [Lsec]──>>(rectifier)─0
+//
+// Conventions matched to the P3-P5 analytical model:
+//   - V_Cb,dc = (1-D)·Vin (Imbertson-Mohan original).
+//   - Primary winding dot at the sw side, so v_pri = v(sw) − v(pri_top)
+//     swings to +(1-D)·Vin when Q1 ON and to −D·Vin when Q2 ON.
+//   - Vab probe is the differential v_pri = v(sw) − v(pri_top).
+//   - Vpri_sense (zero V-source) measures primary current with the same
+//     sign as the analytical i_pri (positive when current flows from sw
+//     into the primary winding, i.e. during Q1 ON at heavy load).
+//
+// Per AHB plan §12 mistakes #10 / #11 / #12 the netlist commits to:
+//   - K = 0.99 (not 1.0): factorisation stable, leakage explicit.
+//   - METHOD=GEAR + TRTOL=7: ngspice convergence on switching circuits.
+//   - IC pre-charge for ALL FOUR reactives:
+//        L_pri (i_Lm,0 = -dILm/2),  Cb ((1-D)·Vin),  Lo (Io_per_inductor),
+//        Co (Vo). Without this the first cycle saturates the transformer.
+//   - Per-switch RC snubbers (1k / 1n) for ngspice convergence.
+//   - Parasitic DCR on Lo (50 mΩ) and ESR on Cb / Co (5 mΩ) — lossless
+//     LC networks are badly conditioned in ngspice.
+//   - Rectifier-type branch:
+//        CT  : two half-windings (sec_a, sec_b), ct-tap, two diodes, one Lo.
+//        FB  : single secondary, four-diode bridge, one Lo.
+//        CD  : single secondary, two diodes, two Los (Lo1 + Lo2).
+//   - AHB_FLYBACK : deferred to P10 (no Lo; Lm itself is the storage).
+//
+// The complementary PWM uses a 50 ns dead-time so the switch transition
+// is a real (resonant-or-hard) event ngspice can simulate, instead of
+// instantaneous switching that defeats the IC.
+// =========================================================================
 std::string AsymmetricHalfBridge::generate_ngspice_circuit(
-    const std::vector<double>& /*turnsRatios*/,
-    double /*magnetizingInductance*/,
-    size_t /*inputVoltageIndex*/,
-    size_t /*operatingPointIndex*/) {
-    not_implemented("generate_ngspice_circuit", "P7");
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance,
+    size_t inputVoltageIndex,
+    size_t operatingPointIndex)
+{
+    // ---- Validation (Guide §5: throw loudly on malformed inputs) ----
+    AhbRectifierType rect = get_rectifier_type().value_or(
+        AhbRectifierType::CENTER_TAPPED);
+    if (rect == AhbRectifierType::AHB_FLYBACK)
+        not_implemented("generate_ngspice_circuit: AHB_FLYBACK", "P10");
+    if (turnsRatios.empty())
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::generate_ngspice_circuit: turnsRatios empty");
+    if (!(turnsRatios[0] > 0.0))
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::generate_ngspice_circuit: turnsRatios[0] must be > 0");
+    if (!(magnetizingInductance > 0.0))
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::generate_ngspice_circuit: "
+            "magnetizingInductance must be > 0");
+
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltageNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltageNames);
+    if (inputVoltages.empty())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::generate_ngspice_circuit: inputVoltage "
+            "must specify nominal, minimum, or maximum");
+    const double Vin =
+        inputVoltages[std::min(inputVoltageIndex, inputVoltages.size() - 1)];
+
+    auto& ops = get_operating_points();
+    if (ops.empty())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::generate_ngspice_circuit: at least one "
+            "operating point required");
+    const auto& op = ops[std::min(operatingPointIndex, ops.size() - 1)];
+
+    if (op.get_output_voltages().size() != 1 ||
+        op.get_output_currents().size() != 1)
+        not_implemented("generate_ngspice_circuit: multi-output", "P11");
+
+    const double Vo  = op.get_output_voltages()[0];
+    const double Io  = op.get_output_currents()[0];
+    const double fsw = op.get_switching_frequency();
+    const double D   = op.get_duty_cycle();
+    if (!(D > 0.0 && D < 1.0))
+        throw std::runtime_error("AHB SPICE: dutyCycle must lie in (0, 1)");
+    if (!(fsw > 0.0))
+        throw std::runtime_error("AHB SPICE: switchingFrequency must be > 0");
+    if (!(Vo > 0.0))
+        throw std::runtime_error("AHB SPICE: outputVoltage must be > 0");
+    if (!(Io > 0.0))
+        throw std::runtime_error("AHB SPICE: outputCurrent must be > 0");
+
+    const double n   = turnsRatios[0];
+    const double Lm  = magnetizingInductance;
+    const double Llk = (computedLeakageInductance > 0.0)
+                       ? computedLeakageInductance : 1e-6;
+    const double Tsw = 1.0 / fsw;
+    const double tA  = D * Tsw;
+
+    // Lo / Cb / Co: prefer pre-sized values; fall back to analytical
+    // 30 % ripple / 5 % V_Cb / 1 % Vo defaults so the netlist is always
+    // emittable even when process_design_requirements wasn't called.
+    const bool isCD = (rect == AhbRectifierType::CURRENT_DOUBLER);
+    const double Io_per_inductor = isCD ? Io / 2.0 : Io;
+    double Lo = computedOutputInductance;
+    if (Lo <= 0.0)
+        Lo = compute_lo_min(Vo, D, std::max(0.30 * Io_per_inductor, 1e-6), fsw);
+    double Cb = computedDcBlockingCapacitance;
+    if (Cb <= 0.0) {
+        const double VCb = (1.0 - D) * Vin;
+        const double dILm_pp_max = (1.0 - D) * Vin * D * Tsw / Lm;
+        const double Iprimary_pk = Io / n + dILm_pp_max / 2.0;
+        Cb = compute_cb_min(Iprimary_pk, D,
+                            std::max(0.05 * VCb, 1e-3), fsw);
+    }
+    double Co = computedOutputCapacitance;
+    if (Co <= 0.0) {
+        const double dILo = std::max(0.30 * Io_per_inductor, 1e-6);
+        const double dILo_total = isCD ? 2.0 * dILo : dILo;
+        Co = dILo_total / (8.0 * fsw * std::max(0.01 * Vo, 1e-3));
+    }
+
+    // IC values for all four reactive elements (mistake #10).
+    const double VCb_dc      = (1.0 - D) * Vin;
+    const double dILm_pp     = (1.0 - D) * Vin * D * Tsw / Lm;
+    const double iLm_init    = -dILm_pp / 2.0;        // start of period A
+    const double iLo_init    = Io_per_inductor;       // mean Lo current
+    const double Rload       = std::max(Vo / Io, 1e-3);
+
+    // PWM timing: 50 ns dead-time (resonant transition envelope).
+    constexpr double T_DEAD = 50e-9;
+    const double t_q1_on = std::max(tA - T_DEAD, 1e-9);
+    const double t_q2_on = std::max((1.0 - D) * Tsw - T_DEAD, 1e-9);
+
+    // Simulation horizon: numSteadyStatePeriods to settle, then
+    // numPeriodsToExtract to capture.
+    const int periodsToExtract = numPeriodsToExtract;
+    const int steadyStatePeriods = numSteadyStatePeriods;
+    const int numPeriodsTotal = steadyStatePeriods + periodsToExtract;
+    const double simTime   = numPeriodsTotal * Tsw;
+    const double startTime = steadyStatePeriods * Tsw;
+    const double stepTime  = Tsw / 200.0;
+
+    std::ostringstream c;
+    c << std::scientific;
+
+    c << "* Asymmetric Half Bridge (AHB) — Imbertson-Mohan / TI SLUP223 / ON-Semi AN-4153\n";
+    c << "* Vin=" << Vin << " V, Vo=" << Vo << " V, Io=" << Io
+      << " A, fsw=" << (fsw/1e3) << " kHz, D=" << D
+      << ", n=" << n << ", rect=" << static_cast<int>(rect) << "\n";
+    c << "* Lm=" << (Lm*1e6) << " uH, Llk=" << (Llk*1e6) << " uH, Lo="
+      << (Lo*1e6) << " uH, Cb=" << (Cb*1e6) << " uF, Co=" << (Co*1e6) << " uF\n";
+    c << "* IC: V_Cb=" << VCb_dc << " V, i_Lm=" << iLm_init
+      << " A, i_Lo=" << iLo_init << " A, V_Co=" << Vo << " V\n\n";
+
+    c << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
+    c << ".model DIDEAL D(IS=1e-12 RS=0.05 BV=1000 IBV=1e-12)\n\n";
+
+    c << "Vdc vin_dc 0 " << Vin << "\n\n";
+
+    // ---- PWM gates (complementary, 50 ns dead-time) ----
+    c << "Vpwm_Q1 g1 0 PULSE(0 5 0 10n 10n " << t_q1_on << " " << Tsw << ")\n";
+    c << "Vpwm_Q2 g2 0 PULSE(0 5 " << (tA + T_DEAD) << " 10n 10n "
+      << t_q2_on << " " << Tsw << ")\n\n";
+
+    // ---- Half-bridge leg ----
+    c << "S1 vin_dc sw g1 0 SW1\n";
+    c << "D1 sw vin_dc DIDEAL\n";
+    c << "Rsnub_Q1 vin_dc sw 1k\nCsnub_Q1 vin_dc sw 1n\n";
+    c << "S2 sw 0 g2 0 SW1\n";
+    c << "D2 0 sw DIDEAL\n";
+    c << "Rsnub_Q2 sw 0 1k\nCsnub_Q2 sw 0 1n\n\n";
+
+    // ---- Primary loop: Vin → Cb → pri_top → Llk → Lpri → sw ----
+    // Cb sense source so we can probe i_Cb (= i_pri at steady state).
+    c << "Vcb_sense vin_dc cb_lo 0\n";
+    c << "C_b cb_lo pri_top " << Cb << " IC=" << VCb_dc << "\n";
+    c << "R_cb_esr pri_top pri_top_esr 5m\n";
+    c << "L_lk pri_top_esr pri_lk " << Llk << "\n";
+    // Vab probe = primary terminal voltage = v(sw) - v(pri_top) (Imbertson sign).
+    c << "Evab vab 0 sw pri_top 1\n";
+    // Primary current sense in series with the magnetising inductance.
+    c << "Vpri_sense pri_lk pri_dot 0\n";
+    c << "L_pri pri_dot sw " << Lm << " IC=" << iLm_init << "\n\n";
+
+    // ---- Secondary winding(s) per rectifier type ----
+    constexpr double K_COUPLING = 0.99;
+    if (rect == AhbRectifierType::CENTER_TAPPED) {
+        // Two half-windings of n turns each (relative to primary). Each
+        // half-secondary's inductance = Lm / n^2.
+        const double Lsec_half = Lm / (n * n);
+        c << "L_sec_a sec_a sec_ct " << Lsec_half << "\n";
+        c << "L_sec_b sec_ct sec_b " << Lsec_half << "\n";
+        c << "K1 L_pri L_sec_a " << K_COUPLING << "\n";
+        c << "K2 L_pri L_sec_b " << K_COUPLING << "\n";
+        c << "K3 L_sec_a L_sec_b " << K_COUPLING << "\n";
+        // Diodes from each half to the rectifier output node, ct-tap to gnd
+        // through Vct sense for diagnostic.
+        c << "Vsec_a_sense sec_a sec_a_d 0\n";
+        c << "Vsec_b_sense sec_b sec_b_d 0\n";
+        c << "D_ra sec_a_d out_rect DIDEAL\n";
+        c << "D_rb sec_b_d out_rect DIDEAL\n";
+        c << "Vct_sense out_gnd sec_ct 0\n";
+        c << "L_o out_rect out_node " << Lo << " IC=" << iLo_init << "\n";
+        c << "R_lo_dcr out_node out_node_after_dcr 50m\n";
+    } else if (rect == AhbRectifierType::FULL_BRIDGE) {
+        const double Lsec = Lm / (n * n);
+        c << "L_sec sec_a sec_b " << Lsec << "\n";
+        c << "K1 L_pri L_sec " << K_COUPLING << "\n";
+        c << "Vsec_a_sense sec_a sec_a_d 0\n";
+        c << "Vsec_b_sense sec_b sec_b_d 0\n";
+        // 4-diode bridge.
+        c << "D_r1 sec_a_d out_rect DIDEAL\n";
+        c << "D_r2 sec_b_d out_rect DIDEAL\n";
+        c << "D_r3 out_gnd sec_a_d DIDEAL\n";
+        c << "D_r4 out_gnd sec_b_d DIDEAL\n";
+        c << "L_o out_rect out_node " << Lo << " IC=" << iLo_init << "\n";
+        c << "R_lo_dcr out_node out_node_after_dcr 50m\n";
+    } else { // CURRENT_DOUBLER
+        const double Lsec = Lm / (n * n);
+        c << "L_sec sec_a sec_b " << Lsec << "\n";
+        c << "K1 L_pri L_sec " << K_COUPLING << "\n";
+        c << "Vsec_a_sense sec_a sec_a_d 0\n";
+        c << "Vsec_b_sense sec_b sec_b_d 0\n";
+        // Lo1 charges from sec_a in interval A; Lo2 charges from sec_b in C.
+        c << "L_o  sec_a_d out_node " << Lo << " IC=" << iLo_init << "\n";
+        c << "L_o2 sec_b_d out_node " << Lo << " IC=" << iLo_init << "\n";
+        // Freewheel diodes anchor each Lo's input to gnd during off-half.
+        c << "D_r1 out_gnd sec_a_d DIDEAL\n";
+        c << "D_r2 out_gnd sec_b_d DIDEAL\n";
+        // Single shared Co/Rload.
+        c << "R_lo_dcr out_node out_node_after_dcr 50m\n";
+    }
+
+    // ---- Output cap, load, and probes ----
+    c << "R_co_esr out_node_after_dcr co_top 5m\n";
+    c << "C_o co_top out_gnd " << Co << " IC=" << Vo << "\n";
+    c << "R_load co_top out_gnd " << Rload << "\n";
+    c << "Vout_sense out_gnd 0 0\n\n";
+
+    // ---- Analysis directives ----
+    c << ".tran " << stepTime << " " << simTime << " " << startTime << " uic\n\n";
+
+    c << ".save v(vab) v(sw) v(pri_top) v(out_node)"
+      << " i(Vpri_sense) i(Vcb_sense) i(Vsec_a_sense)"
+      << " i(Vsec_b_sense) i(Vout_sense) i(Vdc)\n\n";
+
+    c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
+    c << ".options METHOD=GEAR TRTOL=7\n";
+    c << ".ic v(co_top)=" << Vo << " v(pri_top)=" << (Vin - VCb_dc)
+      << " v(sw)=" << (D * Vin) << "\n";
+    c << ".nodeset v(out_rect)=" << (Vo + 0.7)
+      << " v(sec_a_d)=" << (Vo + 0.7)
+      << " v(sec_b_d)=" << (Vo + 0.7) << "\n\n";
+
+    c << ".end\n";
+    return c.str();
 }
 
+
+// =========================================================================
+// simulate_and_extract_operating_points (P7 deliverable)
+//
+// Runs ngspice for every (inputVoltage, operatingPoint) pair and
+// extracts a populated OperatingPoint. Falls back to the analytical
+// process_operating_point_for_input_voltage on simulator unavailability
+// or per-OP failure, tagging fallback results with "[analytical]".
+// Mirrors the PSHB pattern (PSHB cpp lines 826-907).
+// =========================================================================
 std::vector<OperatingPoint>
 AsymmetricHalfBridge::simulate_and_extract_operating_points(
-    const std::vector<double>& /*turnsRatios*/,
-    double /*magnetizingInductance*/) {
-    not_implemented("simulate_and_extract_operating_points", "P7");
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance)
+{
+    if (turnsRatios.empty())
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::simulate_and_extract_operating_points: "
+            "turnsRatios empty");
+    if (!(magnetizingInductance > 0.0))
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::simulate_and_extract_operating_points: "
+            "magnetizingInductance must be > 0");
+
+    std::vector<OperatingPoint> result;
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        std::cerr << "[AHB] ngspice not available — falling back to analytical "
+                     "operating-point generation" << std::endl;
+        return process_operating_points(turnsRatios, magnetizingInductance);
+    }
+
+    AhbRectifierType rect = get_rectifier_type().value_or(
+        AhbRectifierType::CENTER_TAPPED);
+
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltageNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltageNames);
+
+    auto& ops = get_operating_points();
+    for (size_t vinIdx = 0; vinIdx < inputVoltages.size(); ++vinIdx) {
+        for (size_t opIdx = 0; opIdx < ops.size(); ++opIdx) {
+            const double fsw = ops[opIdx].get_switching_frequency();
+            std::string netlist = generate_ngspice_circuit(
+                turnsRatios, magnetizingInductance, vinIdx, opIdx);
+
+            SimulationConfig config;
+            config.frequency        = fsw;
+            config.extractOnePeriod = true;
+            config.numberOfPeriods  = static_cast<size_t>(numPeriodsToExtract);
+            config.keepTempFiles    = false;
+
+            auto sim = runner.run_simulation(netlist, config);
+            std::string tag = inputVoltageNames[vinIdx] + " input ("
+                + std::to_string(static_cast<int>(inputVoltages[vinIdx])) + "V)";
+
+            if (!sim.success) {
+                std::cerr << "[AHB] ngspice run failed: " << sim.errorMessage
+                          << " — falling back to analytical for this op."
+                          << std::endl;
+                auto analytical = process_operating_point_for_input_voltage(
+                    inputVoltages[vinIdx], ops[opIdx], turnsRatios,
+                    magnetizingInductance);
+                analytical.set_name(tag + " [analytical]");
+                result.push_back(analytical);
+                continue;
+            }
+
+            NgspiceRunner::WaveformNameMapping mapping;
+            std::vector<std::string> windingNames;
+            std::vector<bool> flipSign;
+
+            mapping.push_back({{"voltage", "vab"},
+                               {"current", "vpri_sense#branch"}});
+            windingNames.push_back("Primary");
+            flipSign.push_back(false);
+
+            if (rect == AhbRectifierType::CENTER_TAPPED) {
+                mapping.push_back({{"voltage", "out_node"},
+                                   {"current", "vsec_a_sense#branch"}});
+                windingNames.push_back("Secondary 0a");
+                flipSign.push_back(false);
+                mapping.push_back({{"voltage", "out_node"},
+                                   {"current", "vsec_b_sense#branch"}});
+                windingNames.push_back("Secondary 0b");
+                flipSign.push_back(false);
+            } else {
+                mapping.push_back({{"voltage", "out_node"},
+                                   {"current", "vsec_a_sense#branch"}});
+                windingNames.push_back("Secondary 0");
+                flipSign.push_back(false);
+            }
+
+            OperatingPoint extracted = NgspiceRunner::extract_operating_point(
+                sim, mapping, fsw, windingNames,
+                ops[opIdx].get_ambient_temperature(), flipSign);
+            extracted.set_name(tag);
+            result.push_back(extracted);
+        }
+    }
+    return result;
 }
 
+
+// =========================================================================
+// simulate_and_extract_topology_waveforms (P7 deliverable)
+//
+// Returns ConverterWaveforms for plotting / NRMSE comparison. Throws
+// on simulator unavailability (no analytical fallback — this entry
+// point exists specifically to surface SPICE-specific signals such as
+// v(sw) and i(C_b) that the analytical model does not produce).
+// =========================================================================
 std::vector<ConverterWaveforms>
 AsymmetricHalfBridge::simulate_and_extract_topology_waveforms(
-    const std::vector<double>& /*turnsRatios*/,
-    double /*magnetizingInductance*/,
-    size_t /*numberOfPeriods*/) {
-    not_implemented("simulate_and_extract_topology_waveforms", "P7");
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance,
+    size_t numberOfPeriods)
+{
+    if (turnsRatios.empty())
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::simulate_and_extract_topology_waveforms: "
+            "turnsRatios empty");
+    if (!(magnetizingInductance > 0.0))
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::simulate_and_extract_topology_waveforms: "
+            "magnetizingInductance must be > 0");
+
+    std::vector<ConverterWaveforms> results;
+    NgspiceRunner runner;
+    if (!runner.is_available())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::simulate_and_extract_topology_waveforms: "
+            "ngspice is not available");
+
+    const int origNum = numPeriodsToExtract;
+    numPeriodsToExtract = static_cast<int>(numberOfPeriods);
+
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltageNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltageNames);
+
+    for (size_t vinIdx = 0; vinIdx < inputVoltages.size(); ++vinIdx) {
+        for (size_t opIdx = 0; opIdx < get_operating_points().size(); ++opIdx) {
+            const auto& op = get_operating_points()[opIdx];
+            const double fsw = op.get_switching_frequency();
+            std::string netlist = generate_ngspice_circuit(
+                turnsRatios, magnetizingInductance, vinIdx, opIdx);
+
+            SimulationConfig config;
+            config.frequency        = fsw;
+            config.extractOnePeriod = true;
+            config.numberOfPeriods  = numberOfPeriods;
+            config.keepTempFiles    = false;
+
+            auto sim = runner.run_simulation(netlist, config);
+            if (!sim.success) {
+                numPeriodsToExtract = origNum;
+                throw std::runtime_error(
+                    std::string("AHB simulation failed: ") + sim.errorMessage);
+            }
+
+            std::map<std::string, size_t> nameToIdx;
+            for (size_t i = 0; i < sim.waveformNames.size(); ++i) {
+                std::string lower = sim.waveformNames[i];
+                std::transform(lower.begin(), lower.end(), lower.begin(),
+                               ::tolower);
+                nameToIdx[lower] = i;
+            }
+            auto getWfm = [&](const std::string& name) -> Waveform {
+                std::string lower = name;
+                std::transform(lower.begin(), lower.end(), lower.begin(),
+                               ::tolower);
+                auto it = nameToIdx.find(lower);
+                if (it != nameToIdx.end()) return sim.waveforms[it->second];
+                return Waveform();
+            };
+
+            ConverterWaveforms wf;
+            wf.set_switching_frequency(fsw);
+            std::string tag = inputVoltageNames[vinIdx] + " input";
+            if (get_operating_points().size() > 1)
+                tag += " op. point " + std::to_string(opIdx);
+            wf.set_operating_point_name(tag);
+
+            wf.set_input_voltage(getWfm("vab"));
+            wf.set_input_current(getWfm("vpri_sense#branch"));
+            wf.get_mutable_output_voltages().push_back(getWfm("out_node"));
+            wf.get_mutable_output_currents().push_back(getWfm("vout_sense#branch"));
+
+            results.push_back(wf);
+        }
+    }
+
+    numPeriodsToExtract = origNum;
+    return results;
 }
 
 Inputs AdvancedAsymmetricHalfBridge::process() {
