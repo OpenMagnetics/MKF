@@ -348,25 +348,32 @@ TEST_CASE("Test_Pshb_Spice_Netlist", "[converter-model][pshb-topology][spice]") 
         CHECK(netlist.find("L_out") != std::string::npos);
         CHECK(netlist.find("R_load") != std::string::npos);
         CHECK(netlist.find(".tran") != std::string::npos);
-        // True 3-level NPC: 4 switches per leg (SA1..SA4 + SB1..SB4) = 8 total.
-        CHECK(netlist.find("SA1 ") != std::string::npos);
-        CHECK(netlist.find("SA2 ") != std::string::npos);
-        CHECK(netlist.find("SA3 ") != std::string::npos);
-        CHECK(netlist.find("SA4 ") != std::string::npos);
-        CHECK(netlist.find("SB1 ") != std::string::npos);
-        CHECK(netlist.find("SB4 ") != std::string::npos);
-        // Clamp diodes
-        CHECK(netlist.find("DA_high") != std::string::npos);
-        CHECK(netlist.find("DA_low") != std::string::npos);
-        CHECK(netlist.find("DB_high") != std::string::npos);
-        CHECK(netlist.find("DB_low") != std::string::npos);
-        // Split capacitor bus
+        // Single 3-level NPC leg: 4 stacked S-switches (S1..S4) with body diodes
+        CHECK(netlist.find(".model SW1 SW") != std::string::npos);
+        CHECK(netlist.find(".model DIDEAL D") != std::string::npos);
+        CHECK(netlist.find("S1 vin_dc nH pwm_S1") != std::string::npos);
+        CHECK(netlist.find("S2 nH bridge_a pwm_S2") != std::string::npos);
+        CHECK(netlist.find("S3 bridge_a nL pwm_S3") != std::string::npos);
+        CHECK(netlist.find("S4 nL 0 pwm_S4") != std::string::npos);
+        CHECK(netlist.find("D1 nH vin_dc DIDEAL") != std::string::npos);
+        CHECK(netlist.find("D4 0 nL DIDEAL") != std::string::npos);
+        // Two NPC clamp diodes anchoring inner nodes to mid_cap
+        CHECK(netlist.find("DC1 mid_cap nH DIDEAL") != std::string::npos);
+        CHECK(netlist.find("DC2 nL mid_cap DIDEAL") != std::string::npos);
+        // Per-switch RC snubbers (DAB/PSFB recipe)
+        CHECK(netlist.find("Rsnub_S1") != std::string::npos);
+        CHECK(netlist.find("Csnub_S4") != std::string::npos);
+        // 4 PWM gate sources (one per switch)
+        CHECK(netlist.find("Vpwm_S1 pwm_S1 0 PULSE") != std::string::npos);
+        CHECK(netlist.find("Vpwm_S4 pwm_S4 0 PULSE") != std::string::npos);
+        CHECK(netlist.find("Vpri_sense bridge_a pri_lr") != std::string::npos);
+        // Split capacitor providing Vin/2 reference (point 'b' for vab)
         CHECK(netlist.find("C_split_hi") != std::string::npos);
         CHECK(netlist.find("C_split_lo") != std::string::npos);
         // Robustness features
         CHECK(netlist.find("METHOD=GEAR") != std::string::npos);
-        // Differential probe between leg midpoints
-        CHECK(netlist.find("Evab vab 0 mid_A mid_B 1") != std::string::npos);
+        // Differential probe vab = v(bridge_a) - v(mid_cap)
+        CHECK(netlist.find("Evab vab 0 bridge_a mid_cap 1") != std::string::npos);
     }
 
     SECTION("Netlist saved to file") {
@@ -674,12 +681,27 @@ TEST_CASE("Test_Pshb_PtP_AnalyticalVsNgspice",
     if (!sData.empty()) {
         auto sResampled = ptp_interp(sTime, sData, 256);
         double nrmse = ptp_nrmse(aResampled, sResampled);
+
+        // Debug: print key stats
+        double aMean = 0, aMax = -1e30, aMin = 1e30, aRms = 0;
+        double sMean = 0, sMax = -1e30, sMin = 1e30, sRms = 0;
+        for (double v : aResampled) {
+            aMean += v; aMax = std::max(aMax, v); aMin = std::min(aMin, v); aRms += v*v;
+        }
+        for (double v : sResampled) {
+            sMean += v; sMax = std::max(sMax, v); sMin = std::min(sMin, v); sRms += v*v;
+        }
+        aMean /= aResampled.size(); sMean /= sResampled.size();
+        aRms = std::sqrt(aRms / aResampled.size()); sRms = std::sqrt(sRms / sResampled.size());
+        INFO("Analytical: mean=" << aMean << "A, rms=" << aRms << "A, min=" << aMin << "A, max=" << aMax << "A");
+        INFO("SPICE:      mean=" << sMean << "A, rms=" << sRms << "A, min=" << sMin << "A, max=" << sMax << "A");
+        INFO("Design: Dcmd=" << pshb.get_computed_effective_duty_cycle()
+            << ", Lr=" << (pshb.get_computed_series_inductance()*1e6) << "uH"
+            << ", Lm=" << (resolve_dimensional_values(req.get_magnetizing_inductance())*1e6) << "uH"
+            << ", n=" << tr[0]);
+
         INFO("PSHB primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
-        // DAB-quality threshold. Achieved: 0.12 with corrected Im_peak
-        // (D_cmd, not Deff) and correct ILo trough/peak geometry. PSHB
-        // single-leg HB physically has no freewheel state, so the held-
-        // constant Ipri model during the analytical "freewheel" matches
-        // the SPICE single-leg netlist closely.
+        // DAB-quality threshold.
         CHECK(nrmse < 0.18);
     }
 }
