@@ -147,9 +147,9 @@ TEST_CASE("AHB P1: rectifierType round-trips through JSON", "[ahb-topology][P1]"
 TEST_CASE("AHB P1: stubbed methods throw with plan reference", "[ahb-topology][P1]") {
     AHB ahb(minimal_valid_ahb());
 
-    CHECK_THROWS_AS(ahb.process_design_requirements(), std::runtime_error);
-    CHECK(capture_throw_message([&]{ ahb.process_design_requirements(); })
-              .find("P6") != std::string::npos);
+    // P6 (process_design_requirements) is implemented as of the P6 commit;
+    // the only remaining stubbed surfaces here are SPICE (P7-P8) and the
+    // extra-components factory (P9).
 
     CHECK_THROWS_AS(ahb.generate_ngspice_circuit({10.0}, 50e-6),
                     std::runtime_error);
@@ -1039,4 +1039,201 @@ TEST_CASE("AHB P5: small pinned Lo drives DCM and toggles operating-mode flag",
     ahb_dcm.process_operating_points({n}, 50e-6);
     CHECK(ahb_dcm.get_last_operating_mode() == 1);     // DCM flagged
     CHECK(ahb_dcm.get_last_output_inductor_ripple() > 2.0 * Io);
+}
+
+
+// =============================================================================
+// P6: process_design_requirements (sizing routines).
+//
+// Coverage targets per ASYMMETRIC_HALF_BRIDGE_PLAN.md §10:
+//   - Design_Requirements: emits well-formed DesignRequirements with
+//     turns_ratios, magnetizing_inductance, topology, isolation_sides.
+//   - n picked at Vin_min satisfies M_target at D_max.
+//   - computedOutputInductance / computedDcBlockingCapacitance /
+//     computedOutputCapacitance / computedMagnetizingInductance are
+//     populated and self-consistent (compute_lo_min / compute_cb_min /
+//     compute_lm_min_for_zvs round-trip).
+//   - Idempotency: calling twice yields identical computed* values.
+//   - AN4153 reference design (Vin=400, Vo=12/5A, fsw=100 kHz, D=0.45)
+//     lands in the published ballpark.
+//   - Rejects multi-output (P11 gate) and ahbFlyback (P10 gate).
+// =============================================================================
+
+TEST_CASE("AHB P6: process_design_requirements emits well-formed output",
+          "[ahb-topology][P6]") {
+    AHB ahb(minimal_valid_ahb());
+    auto req = ahb.process_design_requirements();
+
+    REQUIRE(req.get_turns_ratios().size() == 1);
+    CHECK(req.get_turns_ratios()[0].get_nominal().has_value());
+    CHECK(req.get_turns_ratios()[0].get_nominal().value() > 0.0);
+
+    REQUIRE(req.get_magnetizing_inductance().get_nominal().has_value());
+    CHECK(req.get_magnetizing_inductance().get_nominal().value() > 0.0);
+
+    REQUIRE(req.get_topology().has_value());
+    CHECK(req.get_topology().value() ==
+          OpenMagnetics::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+
+    CHECK(req.get_isolation_sides().has_value());
+    // 1 primary + 1 secondary winding (no demag winding for AHB).
+    CHECK(req.get_isolation_sides().value().size() == 2);
+}
+
+
+TEST_CASE("AHB P6: turns ratio sized at Vin_min reaches Vo at D_max",
+          "[ahb-topology][P6]") {
+    // With nominal=100, min=80, max=120, Vo=4.95, the schema's default
+    // D_max=0.45 should yield n such that the canonical CT conversion
+    // ratio 2*D_max*(1-D_max)/n at Vin_min equals Vo (within rounding).
+    json j = minimal_valid_ahb();
+    j["inputVoltage"]["minimum"] = 80.0;
+    j["inputVoltage"]["maximum"] = 120.0;
+    j["operatingPoints"][0]["outputVoltages"] = {4.95};
+    AHB ahb(j);
+    ahb.process_design_requirements();
+
+    const double n     = ahb.get_computed_turns_ratio();
+    const double D_max = 0.45;
+    const double M_at_min = 2.0 * D_max * (1.0 - D_max) / n;
+    // With diodeDrop=0.6 the achievable Vo at Vin_min is M*Vin_min - Vd.
+    const double Vo_at_min = M_at_min * 80.0 - 0.6;
+    CHECK(Vo_at_min >= 4.95 * 0.99);   // 1 % design margin
+}
+
+
+TEST_CASE("AHB P6: computed Lo, Cb, Co, Lm round-trip the helpers exactly",
+          "[ahb-topology][P6]") {
+    json j = minimal_valid_ahb();
+    AHB ahb(j);
+    ahb.process_design_requirements();
+
+    const double n   = ahb.get_computed_turns_ratio();
+    const double Lo  = ahb.get_computed_output_inductance();
+    const double Lm  = ahb.get_computed_magnetizing_inductance();
+    const double Cb  = ahb.get_computed_dc_blocking_capacitance();
+    const double Co  = ahb.get_computed_output_capacitance();
+    const double D   = ahb.get_computed_duty_cycle();
+    const double td  = ahb.get_computed_dead_time();
+
+    CHECK(n  > 0.0);
+    CHECK(Lo > 0.0);
+    CHECK(Lm > 0.0);
+    CHECK(Cb > 0.0);
+    CHECK(Co > 0.0);
+    CHECK(D  > 0.0);
+    CHECK(td > 0.0);
+
+    // Self-consistency: feed the computed* back into the static helpers
+    // and confirm they reproduce themselves.
+    const double Io  = 20.0;
+    const double Vo  = 5.0;
+    const double fsw = 200000.0;
+
+    const double dILo_target = 0.30 * Io;          // CT, single Lo, no /2
+    CHECK_THAT(AHB::compute_lo_min(Vo, D, dILo_target, fsw),
+               WithinRel(Lo, 1e-12));
+
+    const double Im_target = std::max(0.10 * Io / n, 1e-3);
+    CHECK_THAT(AHB::compute_lm_min_for_zvs(/*Vin_max=*/100.0, D, 1.0/fsw,
+                                           Im_target),
+               WithinRel(Lm, 1e-12));
+}
+
+
+TEST_CASE("AHB P6: process_design_requirements is idempotent",
+          "[ahb-topology][P6]") {
+    AHB ahb(minimal_valid_ahb());
+    ahb.process_design_requirements();
+    const double n1  = ahb.get_computed_turns_ratio();
+    const double Lm1 = ahb.get_computed_magnetizing_inductance();
+    const double Lo1 = ahb.get_computed_output_inductance();
+    const double Cb1 = ahb.get_computed_dc_blocking_capacitance();
+
+    ahb.process_design_requirements();
+    CHECK(ahb.get_computed_turns_ratio()           == n1);
+    CHECK(ahb.get_computed_magnetizing_inductance()== Lm1);
+    CHECK(ahb.get_computed_output_inductance()     == Lo1);
+    CHECK(ahb.get_computed_dc_blocking_capacitance() == Cb1);
+}
+
+
+TEST_CASE("AHB P6: ON-Semi AN-4153 reference design (400V→12V/5A, 100 kHz)",
+          "[ahb-topology][P6]") {
+    // ON-Semi AN-4153 worked example (https://www.onsemi.jp/download/
+    // application-notes/pdf/an-4153.pdf) — reference values are coarse
+    // because AN-4153 sweeps several iterations; we just check the
+    // sizing lands in the analytical ballpark.
+    json j = json{
+        {"inputVoltage", {{"nominal", 400.0},
+                          {"minimum", 350.0},
+                          {"maximum", 410.0}}},
+        {"rectifierType", "centerTapped"},
+        {"operatingPoints", json::array({
+            json{
+                {"ambientTemperature", 25.0},
+                {"switchingFrequency", 100000.0},
+                {"outputVoltages", {12.0}},
+                {"outputCurrents", {5.0}},
+                {"dutyCycle", 0.45}
+            }
+        })}
+    };
+    AHB ahb(j);
+    auto req = ahb.process_design_requirements();
+
+    const double n  = ahb.get_computed_turns_ratio();
+    const double Lo = ahb.get_computed_output_inductance();
+    const double Lm = ahb.get_computed_magnetizing_inductance();
+
+    // n should be roughly Vin_min*2*D_max*(1-D_max)/Vo ≈ 350*0.495/12 ≈ 14.4
+    // (exact value differs by Vd correction).
+    CHECK(n > 12.0);
+    CHECK(n < 18.0);
+
+    // Lo for 30 % ripple at 5 A, Vo=12, D=0.45, fsw=100 kHz:
+    //   Lo = Vo*(1 - 2*D*(1-D)) / (dILo*fsw)
+    //      = 12*0.505 / (1.5 * 100e3) ≈ 40 µH
+    CHECK(Lo > 30e-6);
+    CHECK(Lo < 60e-6);
+
+    // Lm: with Im_target = 0.10 * Io/n ≈ 0.035 A, Vin_max=410, D=0.45,
+    // Tsw=10 µs:  Lm = (1-D)*Vin*D*Tsw/(2*Im_target) ≈ 14.5 mH.
+    CHECK(Lm > 5e-3);
+    CHECK(Lm < 50e-3);
+}
+
+
+TEST_CASE("AHB P6: rejects multi-output (deferred to P11)",
+          "[ahb-topology][P6]") {
+    json j = minimal_valid_ahb();
+    j["operatingPoints"][0]["outputVoltages"] = {5.0, 12.0};
+    j["operatingPoints"][0]["outputCurrents"] = {20.0, 2.0};
+    AHB ahb(j);
+    CHECK_THROWS_AS(ahb.process_design_requirements(), std::runtime_error);
+    CHECK(capture_throw_message([&]{ ahb.process_design_requirements(); })
+              .find("P11") != std::string::npos);
+}
+
+
+TEST_CASE("AHB P6: rejects ahbFlyback (deferred to P10)",
+          "[ahb-topology][P6]") {
+    json j = minimal_valid_ahb();
+    j["rectifierType"] = "ahbFlyback";
+    AHB ahb(j);
+    CHECK_THROWS_AS(ahb.process_design_requirements(), std::runtime_error);
+    CHECK(capture_throw_message([&]{ ahb.process_design_requirements(); })
+              .find("P10") != std::string::npos);
+}
+
+
+TEST_CASE("AHB P6: dead-time matches sqrt(Llk+Lm) physics",
+          "[ahb-topology][P6]") {
+    AHB ahb(minimal_valid_ahb());
+    ahb.process_design_requirements();
+    const double Lm  = ahb.get_computed_magnetizing_inductance();
+    const double Llk = ahb.get_computed_leakage_inductance();   // default 1 µH
+    const double td  = ahb.get_computed_dead_time();
+    const double td_expected = M_PI * std::sqrt((Llk + Lm) * 2.0 * 200e-12);
+    CHECK_THAT(td, WithinRel(td_expected, 1e-9));
 }

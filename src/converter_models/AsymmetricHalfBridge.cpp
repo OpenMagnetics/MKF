@@ -143,7 +143,150 @@ namespace {
 }
 
 DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
-    not_implemented("process_design_requirements", "P6");
+    // -------------------------------------------------------------------------
+    // P6 deliverable. Sizes, in order:
+    //
+    //   S1  n   = compute_turns_ratio(Vin_min, Vo, D_max, Vd, rectType)
+    //               -- worst-case Vin → still hits Vo at the operating duty.
+    //   S2  Lo  = compute_lo_min(Vo, D_nom, dILo=0.30·Io, fsw)
+    //               -- for CD: Io_per_inductor = Io/2.
+    //   S4  Lm  = compute_lm_min_for_zvs(Vin_max, D_nom, Tsw, Im_target)
+    //               with Im_target = 0.10 · I_pri,Io  (mirrors PSHB heuristic).
+    //   S3  Cb  = compute_cb_min(I_pri_pk, D_nom, dVCb=0.05·V_Cb, fsw)
+    //               -- enforces ΔV_Cb ≤ 5 % so flux excursion stays symmetric
+    //               (AHB plan §12 mistake #1).
+    //   S5  Co  = ΔILo / (8·fsw·ΔVo_target),  ΔVo_target = 0.01·Vo
+    //               -- standard buck-style output ripple sizing.
+    //
+    // Multi-output (V6) and ahbFlyback (V5) are deferred to P11 / P10. The
+    // emitted DesignRequirements always carries (a) the per-secondary
+    // turns_ratios, (b) the magnetizing inductance, (c) the leakage
+    // inductance when use_leakage_inductance is set, (d) the topology tag,
+    // and (e) the isolation_sides built from numSecondaries. Lo/Cb/Co flow
+    // through get_extra_components_inputs (P9) — they are stashed in the
+    // computed* members so the P9 pass can pick them up without recomputing.
+    //
+    // The routine is idempotent: calling twice with the same inputs leaves
+    // the computed* members at the same values and emits structurally
+    // identical DesignRequirements (matches DAB/PSHB convention).
+    // -------------------------------------------------------------------------
+
+    AhbRectifierType rect = get_rectifier_type().value_or(
+        AhbRectifierType::CENTER_TAPPED);
+    if (rect == AhbRectifierType::AHB_FLYBACK)
+        not_implemented("process_design_requirements: AHB_FLYBACK", "P10");
+
+    // ---- Pull operating-point envelope ----
+    auto& inputVoltage = get_input_voltage();
+    if (!inputVoltage.get_nominal().has_value() &&
+        !inputVoltage.get_minimum().has_value() &&
+        !inputVoltage.get_maximum().has_value())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::process_design_requirements: inputVoltage "
+            "must specify nominal, minimum, or maximum");
+
+    const double Vin_nom = inputVoltage.get_nominal().value_or(
+        (inputVoltage.get_minimum().value_or(0.0) +
+         inputVoltage.get_maximum().value_or(0.0)) / 2.0);
+    const double Vin_min = inputVoltage.get_minimum().value_or(Vin_nom);
+    const double Vin_max = inputVoltage.get_maximum().value_or(Vin_nom);
+
+    auto& ops = get_operating_points();
+    if (ops.empty())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::process_design_requirements: at least "
+            "one operating point required");
+    if (ops[0].get_output_voltages().size() != 1 ||
+        ops[0].get_output_currents().size() != 1)
+        not_implemented("process_design_requirements: multi-output", "P11");
+
+    const double Vo  = ops[0].get_output_voltages()[0];
+    const double Io  = ops[0].get_output_currents()[0];
+    const double fsw = ops[0].get_switching_frequency();
+    if (!(Vo > 0.0))  throw std::runtime_error("Vo must be > 0");
+    if (!(Io > 0.0))  throw std::runtime_error("Io must be > 0");
+    if (!(fsw > 0.0)) throw std::runtime_error("fsw must be > 0");
+
+    // Operating duty used for sizing: prefer the OP's explicit value (the
+    // user has chosen a target M = Vo/Vin), fall back to the schema's
+    // maximumDutyCycle (default 0.45). Both are validated in (0, 1) by
+    // setters / run_checks.
+    const double D_op  = ops[0].get_duty_cycle();
+    const double D_max = get_maximum_duty_cycle().value_or(0.45);
+    const double D_nom = (D_op > 0.0 && D_op < 1.0) ? D_op : D_max;
+    const double Tsw   = 1.0 / fsw;
+    const double Vd    = computedDiodeVoltageDrop;
+
+    // ---- S1: turns ratio (sized at min Vin to guarantee headroom) ----
+    const double n = compute_turns_ratio(Vin_min, Vo, D_max, Vd, rect);
+    computedTurnsRatio = n;
+
+    // ---- S2: output inductor ----
+    const bool isCD = (rect == AhbRectifierType::CURRENT_DOUBLER);
+    const double Io_per_inductor = isCD ? Io / 2.0 : Io;
+    const double dILo_target = 0.30 * Io_per_inductor;
+    const double Lo = compute_lo_min(Vo, D_nom, dILo_target, fsw);
+    computedOutputInductance = Lo;
+
+    // ---- S4: magnetizing inductance for ZVS at min load ----
+    // Mirrors PSHB heuristic: target Im_pk = 10 % of primary load current.
+    // Sized at Vin_max so the volt-second drives a sufficient Im across
+    // the half-cycle even at the worst-case operating point.
+    const double Io_pri = Io / n;
+    const double Im_target = std::max(0.10 * Io_pri, 1e-3);
+    const double Lm = compute_lm_min_for_zvs(Vin_max, D_nom, Tsw, Im_target);
+    computedMagnetizingInductance = Lm;
+
+    // ---- S3: DC-blocking cap (≤ 5 % ripple of V_Cb,nom) ----
+    // I_pri peak ≈ Io/n + Im_pk. Use the worst-case Vin_max for V_Cb sizing.
+    const double dILm_pp_max  = (1.0 - D_nom) * Vin_max * D_nom * Tsw / Lm;
+    const double Iprimary_pk  = Io_pri + dILm_pp_max / 2.0;
+    const double VCb_nom      = (1.0 - D_nom) * Vin_nom;
+    const double dVCb_target  = std::max(0.05 * VCb_nom, 1e-3);
+    const double Cb = compute_cb_min(Iprimary_pk, D_nom, dVCb_target, fsw);
+    computedDcBlockingCapacitance = Cb;
+
+    // ---- S5: output cap (1 % output ripple) ----
+    // Standard buck cap sizing: ΔVo = ΔILo / (8 · fsw · Co)  →
+    // Co = ΔILo / (8 · fsw · ΔVo_target). For CD the rectified ripple
+    // frequency at the cap is 2·fsw, but we conservatively use fsw here
+    // — exact value is tuned in P9 simulation if needed.
+    const double dILo_pp_total = isCD ? 2.0 * dILo_target : dILo_target;
+    const double dVo_target    = std::max(0.01 * Vo, 1e-3);
+    computedOutputCapacitance  = dILo_pp_total / (8.0 * fsw * dVo_target);
+
+    // ---- Dead-time (resonant tank Llk + Lm per AHB physics, P5 refinement) ----
+    computedDutyCycle = D_nom;
+    computedDeadTime  = compute_dead_time(computedLeakageInductance + Lm,
+                                          mosfetCoss);
+
+    // ---- Build DesignRequirements ----
+    DesignRequirements designRequirements;
+    designRequirements.get_mutable_turns_ratios().clear();
+    {
+        DimensionWithTolerance nTol;
+        nTol.set_nominal(roundFloat(n, 2));
+        designRequirements.get_mutable_turns_ratios().push_back(nTol);
+    }
+
+    DimensionWithTolerance lmTol;
+    lmTol.set_nominal(roundFloat(Lm, 10));
+    designRequirements.set_magnetizing_inductance(lmTol);
+
+    if (computedLeakageInductance > 0.0) {
+        std::vector<DimensionWithTolerance> leakageReqs;
+        DimensionWithTolerance llkTol;
+        llkTol.set_nominal(roundFloat(computedLeakageInductance, 10));
+        leakageReqs.push_back(llkTol);
+        designRequirements.set_leakage_inductance(leakageReqs);
+    }
+
+    designRequirements.set_topology(Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+    designRequirements.set_isolation_sides(
+        Topology::create_isolation_sides(
+            ops[0].get_output_currents().size(), false));
+
+    return designRequirements;
 }
 
 
