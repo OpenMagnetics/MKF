@@ -9,4 +9,4 @@
 	url = https://github.com/Power-Supply-Manufacturers-Association/CAS.git
 [submodule "EAS"]
 	path = EAS
-	url = git@github.com:Power-Supply-Manufacturers-Association/EAS.git
+	url = https://github.com/Power-Supply-Manufacturers-Association/EAS.git
