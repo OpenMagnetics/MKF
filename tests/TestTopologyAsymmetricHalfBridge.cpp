@@ -707,3 +707,169 @@ TEST_CASE("AHB P3: Lo current waveform mean equals Io (extras populated)",
     for (size_t k = 0; k < dA.size(); ++k) sum[k] = dA[k] + dB[k];
     CHECK_THAT(mean_of(tA, sum), WithinRel(Io, 0.02));
 }
+
+
+// =============================================================================
+// P4: Rectifier-type-aware processing — Full-Bridge, Current-Doubler, Flyback.
+//
+// Coverage targets per ASYMMETRIC_HALF_BRIDGE_PLAN.md §10:
+//   - FB rectifier emits exactly 1 secondary winding (vs CT's 2 half-windings),
+//     volt-second balance still exact, lastRectifierType == 2.
+//   - CD rectifier emits 1 secondary, lastRectifierType == 1, vSec balance
+//     exact, asymmetric Lo1/Lo2 inferred via Io_per_inductor split.
+//   - At D=0.5 the CD design is symmetric: |dILo1| ≃ |dILo2|.
+//   - AHB_FLYBACK throws with a "P10" tag (storage topology, separate scope).
+// =============================================================================
+
+namespace {
+
+json ahb_with_duty_rect(double Vin, double Vo, double Io, double D, double n,
+                        const std::string& rectifierType,
+                        double fsw = 200000.0) {
+    return json{
+        {"inputVoltage", {{"nominal", Vin}}},
+        {"rectifierType", rectifierType},
+        {"operatingPoints", json::array({
+            json{
+                {"ambientTemperature", 25.0},
+                {"switchingFrequency", fsw},
+                {"outputVoltages", {Vo}},
+                {"outputCurrents", {Io}},
+                {"dutyCycle", D}
+            }
+        })}
+    };
+}
+
+} // namespace
+
+
+TEST_CASE("AHB P4: full-bridge rectifier emits 1 secondary winding",
+          "[ahb-topology][P4]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty_rect(Vin, Vo, 20.0, D, n, "fullBridge"));
+    auto ops = ahb.process_operating_points({n}, 50e-6);
+    REQUIRE(ops.size() == 1);
+    const auto& exc = ops[0].get_excitations_per_winding();
+    REQUIRE(exc.size() == 2);                         // pri + single sec
+    CHECK(exc[1].get_name() == "Secondary 0");
+    CHECK(ahb.get_last_rectifier_type() == 2);        // FB
+}
+
+
+TEST_CASE("AHB P4: full-bridge primary volt-second balance is exact",
+          "[ahb-topology][P4]") {
+    const double Vin = 100.0, n = 10.0;
+    for (double D : {0.20, 0.30, 0.45, 0.50}) {
+        const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+        AHB ahb(ahb_with_duty_rect(Vin, Vo, 10.0, D, n, "fullBridge"));
+        auto ops = ahb.process_operating_points({n}, 50e-6);
+        const auto& vpri = ops[0].get_excitations_per_winding()[0]
+                              .get_voltage()->get_waveform();
+        CHECK_THAT(trapz(vpri->get_time().value(), vpri->get_data()),
+                   WithinAbs(0.0, 1e-9));
+        const auto& vsec = ops[0].get_excitations_per_winding()[1]
+                              .get_voltage()->get_waveform();
+        CHECK_THAT(trapz(vsec->get_time().value(), vsec->get_data()),
+                   WithinAbs(0.0, 1e-9));
+    }
+}
+
+
+TEST_CASE("AHB P4: full-bridge secondary current is bipolar with mean 0",
+          "[ahb-topology][P4]") {
+    // FB single secondary winding sees +i_Lo in interval A and -i_Lo in
+    // interval C. With i_Lo ≃ Io for low ripple, the period-mean is
+    //   D*Io + (1-D)*(-Io) = (2D-1)*Io
+    // — i.e. zero only at D=0.5; non-zero otherwise. Verify D=0.5.
+    const double Vin = 100.0, n = 10.0, D = 0.5;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    const double Io  = 10.0;
+    AHB ahb(ahb_with_duty_rect(Vin, Vo, Io, D, n, "fullBridge"));
+    auto ops = ahb.process_operating_points({n}, 5e-3);
+    const auto& iSec = ops[0].get_excitations_per_winding()[1]
+                          .get_current()->get_waveform();
+    const auto t = iSec->get_time().value();
+    const auto& d = iSec->get_data();
+    CHECK_THAT(mean_of(t, d), WithinAbs(0.0, 0.05));
+    // Peak amplitude ≃ Io (large Lm so Lo ripple dominates within ±5 %).
+    double peak = 0.0;
+    for (double v : d) peak = std::max(peak, std::abs(v));
+    CHECK_THAT(peak, WithinRel(Io, 0.10));
+}
+
+
+TEST_CASE("AHB P4: current-doubler rectifier emits 1 secondary winding",
+          "[ahb-topology][P4]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty_rect(Vin, Vo, 20.0, D, n, "currentDoubler"));
+    auto ops = ahb.process_operating_points({n}, 50e-6);
+    REQUIRE(ops.size() == 1);
+    const auto& exc = ops[0].get_excitations_per_winding();
+    REQUIRE(exc.size() == 2);
+    CHECK(exc[1].get_name() == "Secondary 0");
+    CHECK(ahb.get_last_rectifier_type() == 1);        // CD
+}
+
+
+TEST_CASE("AHB P4: current-doubler primary volt-second balance is exact",
+          "[ahb-topology][P4]") {
+    const double Vin = 100.0, n = 10.0;
+    for (double D : {0.30, 0.45, 0.50}) {
+        const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+        AHB ahb(ahb_with_duty_rect(Vin, Vo, 10.0, D, n, "currentDoubler"));
+        auto ops = ahb.process_operating_points({n}, 50e-6);
+        const auto& vpri = ops[0].get_excitations_per_winding()[0]
+                              .get_voltage()->get_waveform();
+        CHECK_THAT(trapz(vpri->get_time().value(), vpri->get_data()),
+                   WithinAbs(0.0, 1e-9));
+        const auto& vsec = ops[0].get_excitations_per_winding()[1]
+                              .get_voltage()->get_waveform();
+        CHECK_THAT(trapz(vsec->get_time().value(), vsec->get_data()),
+                   WithinAbs(0.0, 1e-9));
+    }
+}
+
+
+TEST_CASE("AHB P4: current-doubler primary current asymmetry encodes Io/2 split",
+          "[ahb-topology][P4]") {
+    // In CD each output inductor carries Io/2. The reflected primary
+    // current peak is therefore (Io/2)/n (plus i_Lm), not Io/n. Check
+    // by comparing CT vs CD primary peaks at the same operating point
+    // and confirming the CD primary peak is roughly half (within Im
+    // contribution).
+    const double Vin = 100.0, n = 10.0, D = 0.45, Io = 20.0;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    const double Lm  = 5e-3;   // large -> i_Lm small vs reflected load
+
+    AHB ahbCT(ahb_with_duty_rect(Vin, Vo, Io, D, n, "centerTapped"));
+    auto opsCT = ahbCT.process_operating_points({n}, Lm);
+    AHB ahbCD(ahb_with_duty_rect(Vin, Vo, Io, D, n, "currentDoubler"));
+    auto opsCD = ahbCD.process_operating_points({n}, Lm);
+
+    auto peak_abs = [](const std::optional<OpenMagnetics::Waveform>& w) {
+        double p = 0.0;
+        for (double v : w->get_data()) p = std::max(p, std::abs(v));
+        return p;
+    };
+    const double iPriPkCT = peak_abs(opsCT[0].get_excitations_per_winding()[0]
+                                        .get_current()->get_waveform());
+    const double iPriPkCD = peak_abs(opsCD[0].get_excitations_per_winding()[0]
+                                        .get_current()->get_waveform());
+    CHECK_THAT(iPriPkCD, WithinRel(iPriPkCT / 2.0, 0.10));
+}
+
+
+TEST_CASE("AHB P4: AHB_FLYBACK rectifier is deferred to P10 (throws)",
+          "[ahb-topology][P4]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty_rect(Vin, Vo, 20.0, D, n, "ahbFlyback"));
+    CHECK_THROWS_AS(ahb.process_operating_points({n}, 50e-6),
+                    std::runtime_error);
+    CHECK(capture_throw_message([&]{
+              ahb.process_operating_points({n}, 50e-6);
+          }).find("P10") != std::string::npos);
+}

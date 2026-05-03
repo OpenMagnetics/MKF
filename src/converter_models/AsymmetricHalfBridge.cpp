@@ -247,13 +247,14 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
             "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
             "magnetizingInductance must be > 0");
 
-    // V1 / P3 scope: CT secondary only, single output. Other rectifier
-    // types and multi-output land in P4 / P11.
+    // P4 scope: CT / FB / CD secondary, single output. AHB-Flyback is
+    // a different storage topology (Lm carries the energy, no Lo) and
+    // lands in P10. Multi-output (V6) lands in P11.
     AhbRectifierType rect = get_rectifier_type().value_or(
         AhbRectifierType::CENTER_TAPPED);
-    if (rect != AhbRectifierType::CENTER_TAPPED)
+    if (rect == AhbRectifierType::AHB_FLYBACK)
         not_implemented("process_operating_point_for_input_voltage: "
-                        "non-CENTER_TAPPED rectifier", "P4");
+                        "AHB_FLYBACK", "P10");
     if (opPoint.get_output_voltages().size() != 1 ||
         opPoint.get_output_currents().size() != 1)
         not_implemented("process_operating_point_for_input_voltage: "
@@ -261,8 +262,8 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     if (turnsRatios.size() != 1)
         throw std::invalid_argument(
             "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
-            "P3 (V1) supports a single secondary; got " +
-            std::to_string(turnsRatios.size()));
+            "single secondary required (got " +
+            std::to_string(turnsRatios.size()) + ")");
 
     const double Vin = inputVoltage;
     const double D   = opPoint.get_duty_cycle();
@@ -281,128 +282,195 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     const double n   = turnsRatios[0];
     const double Lm  = magnetizingInductance;
     const double Tsw = 1.0 / fsw;
-    const double tA  = D * Tsw;          // interval A length
-    const double tC  = (1.0 - D) * Tsw;  // interval C length
+    const double tA  = D * Tsw;
+    const double tC  = (1.0 - D) * Tsw;
 
     const double Vpri_pos = +(1.0 - D) * Vin;
     const double Vpri_neg = -D * Vin;
-    const double Vsec_pos = +(1.0 - D) * Vin / n;  // CT, top diode in A
-    const double Vsec_neg = +D * Vin / n;          // CT, bottom diode in C
+    const double Vsec_pos = +(1.0 - D) * Vin / n;   // sec voltage in interval A
+    const double Vsec_neg = +D * Vin / n;           // sec voltage in interval C
 
     // ---- Magnetizing current (symmetric about zero) ----
     const double dILm_pp = (1.0 - D) * Vin * D * Tsw / Lm;
-    const double Im0     = -dILm_pp / 2.0;           // start of A
-    // Im(tA) = +dILm_pp/2 ;  Im(Tsw) = -dILm_pp/2  (linear, exact in CCM)
+    const double Im0     = -dILm_pp / 2.0;
 
-    // ---- Output inductor (CCM linear; P5 will detect/handle DCM) ----
-    // Lo is sized in P6/P9; for raw-call usage we accept it via the
-    // already-stored computedOutputInductance (default 0). When Lo == 0
-    // the ripple is undefined → fall back to the analytical S2 sizing
-    // for a 30 % current-ripple ratio so the waveform is well-defined.
-    // This is NOT a silent default for the topology physics: it is a
-    // diagnostic aid the user can override by calling set_computed_*().
-    double Lo = computedOutputInductance;
-    if (Lo <= 0.0) {
-        // Use S2 with 30 % pp ripple → Lo = Vo*(1-2D(1-D))/(0.3*Io*fsw).
-        // Surfaced in lastOutputInductorRipple so the user can see
-        // exactly which Lo was used.
-        const double dILo_target = std::max(0.30 * Io, 1e-6);
-        Lo = compute_lo_min(Vo, D, dILo_target, fsw);
+    // ---- Output inductor sizing (CCM linear; P5 detects DCM) ----
+    // Lo is sized in P6/P9. For raw-call usage we accept it via
+    // computedOutputInductance (default 0). When Lo == 0 we fall back
+    // to the analytical S2 sizing at 30 % current-ripple ratio so the
+    // waveform is well-defined and the user can introspect what was
+    // used via lastOutputInductorRipple. This is a diagnostic aid,
+    // surfaced explicitly — not a silent default for the topology
+    // physics.
+    //
+    // Rectifier-type effects on Lo:
+    //   CT / FB : single output inductor; sees +(Vsec_pos - Vo) in A,
+    //             +(Vsec_neg - Vo) in C. Volt-second balance ties Vo
+    //             to D for self-consistent designs.
+    //   CD      : two output inductors Lo1 + Lo2, each carrying Io/2.
+    //             Lo1 charges in A, freewheels in C: vLo1 = Vsec_pos-Vo
+    //             in A, -Vo in C. Lo2 is the mirror: -Vo in A,
+    //             Vsec_neg-Vo in C. ASYMMETRIC ripple between Lo1 and
+    //             Lo2 when D ≠ 0.5 (a known AHB-CD wart).
+    const bool isCD = (rect == AhbRectifierType::CURRENT_DOUBLER);
+    const double Io_per_inductor = isCD ? Io / 2.0 : Io;
+
+    double Lo1 = computedOutputInductance;
+    if (Lo1 <= 0.0) {
+        const double dILo_target = std::max(0.30 * Io_per_inductor, 1e-6);
+        Lo1 = compute_lo_min(Vo, D, dILo_target, fsw);
     }
-    const double dILo_pp = (Vsec_pos - Vo) * tA / Lo;
-    const double ILo_min = Io - dILo_pp / 2.0;
-    const double ILo_max = Io + dILo_pp / 2.0;
-    const bool   isDCM   = (ILo_min < 0.0);
+    const double Lo2 = Lo1;   // V3 default: matched inductors
 
-    // ---- Sample grid: N points in interval A, N points in interval C,
-    // with explicit duplicate samples at the t = tA discontinuity so
-    // that downstream consumers see the v_pri step exactly. ----
+    // Lo1 ripple — drives both CT/FB and CD-Lo1 (charges in A).
+    const double dILo1_pp = (Vsec_pos - Vo) * tA / Lo1;
+    const double ILo1_min = Io_per_inductor - dILo1_pp / 2.0;
+    const double ILo1_max = Io_per_inductor + dILo1_pp / 2.0;
+
+    // Lo2 ripple — CD only. Charges during interval C with (Vsec_neg - Vo).
+    // For a self-consistent CD design (Vo = D(1-D)Vin/n), this matches
+    // -dILo1_pp in magnitude only when D = 0.5; otherwise asymmetric.
+    const double dILo2_pp = isCD ? (Vsec_neg - Vo) * tC / Lo2 : 0.0;
+    const double ILo2_min = isCD ? Io_per_inductor - std::abs(dILo2_pp) / 2.0 : 0.0;
+    const double ILo2_max = isCD ? Io_per_inductor + std::abs(dILo2_pp) / 2.0 : 0.0;
+
+    const bool isDCM = (ILo1_min < 0.0) || (isCD && ILo2_min < 0.0);
+
+    // ---- Sample buffers ----
     const int N = 128;
-    std::vector<double> time, vPri, iPri, iLm, iLo, vLo, vSec_a, iSec_a,
-        vSec_b, iSec_b, vCb;
-    time.reserve(2 * N + 3);
-    vPri.reserve(2 * N + 3);
-    iPri.reserve(2 * N + 3);
-    iLm .reserve(2 * N + 3);
-    iLo .reserve(2 * N + 3);
-    vLo .reserve(2 * N + 3);
-    vSec_a.reserve(2 * N + 3); iSec_a.reserve(2 * N + 3);
-    vSec_b.reserve(2 * N + 3); iSec_b.reserve(2 * N + 3);
-    vCb.reserve(2 * N + 3);
+    const size_t cap = 2 * N + 3;
+    std::vector<double> time, vPri, iPri, iLm, iLo1, iLo2, vLo1, vLo2,
+        vSec_a, iSec_a, vSec_b, iSec_b, vSec, iSec, vCb;
+    for (auto* v : {&time, &vPri, &iPri, &iLm, &iLo1, &iLo2, &vLo1, &vLo2,
+                    &vSec_a, &iSec_a, &vSec_b, &iSec_b, &vSec, &iSec, &vCb})
+        v->reserve(cap);
 
-    const double VCb_dc = (1.0 - D) * Vin;   // E1 — constant in steady state
+    const double VCb_dc = (1.0 - D) * Vin;
 
+    // emit() pushes one sample to all per-rectifier-type arrays. We
+    // dispatch on rect inside the lambda once — keeps the integrators
+    // simple and lets the discontinuity duplicate sample work uniformly.
     auto emit = [&](double t, double v_pri_k, double i_lm_k,
-                    double i_lo_k) {
+                    double i_lo1_k, double i_lo2_k) {
         time.push_back(t);
         vPri.push_back(v_pri_k);
         iLm .push_back(i_lm_k);
-        iLo .push_back(i_lo_k);
+        iLo1.push_back(i_lo1_k);
+        iLo2.push_back(i_lo2_k);
         vCb .push_back(VCb_dc);
-        if (v_pri_k > 0.0) {
-            // Interval A: top diode conducts.
-            iPri.push_back(i_lo_k / n + i_lm_k);
-            vLo.push_back(Vsec_pos - Vo);
-            vSec_a.push_back(+Vsec_pos);  iSec_a.push_back(i_lo_k);
-            vSec_b.push_back(-Vsec_pos);  iSec_b.push_back(0.0);
-        } else if (v_pri_k < 0.0) {
-            // Interval C: bottom diode conducts.
-            iPri.push_back(-i_lo_k / n + i_lm_k);
-            vLo.push_back(Vsec_neg - Vo);
-            vSec_a.push_back(-Vsec_neg);  iSec_a.push_back(0.0);
-            vSec_b.push_back(+Vsec_neg);  iSec_b.push_back(i_lo_k);
-        } else {
+
+        const bool inA = (v_pri_k > 0.0);
+        const bool inC = (v_pri_k < 0.0);
+
+        // Primary current: Lm component + reflected load. CT/FB always
+        // reflect the single Lo current; CD reflects Lo1 in A and Lo2
+        // in C (each conducts on the opposite half-cycle).
+        if (inA)
+            iPri.push_back(i_lo1_k / n + i_lm_k);
+        else if (inC)
+            iPri.push_back(-(isCD ? i_lo2_k : i_lo1_k) / n + i_lm_k);
+        else
             iPri.push_back(i_lm_k);
-            vLo.push_back(-Vo);
-            vSec_a.push_back(0.0);  iSec_a.push_back(0.0);
-            vSec_b.push_back(0.0);  iSec_b.push_back(0.0);
+
+        // Secondary winding emission depends on rectifier type.
+        switch (rect) {
+            case AhbRectifierType::CENTER_TAPPED: {
+                if (inA) {
+                    vSec_a.push_back(+Vsec_pos); iSec_a.push_back(i_lo1_k);
+                    vSec_b.push_back(-Vsec_pos); iSec_b.push_back(0.0);
+                } else if (inC) {
+                    vSec_a.push_back(-Vsec_neg); iSec_a.push_back(0.0);
+                    vSec_b.push_back(+Vsec_neg); iSec_b.push_back(i_lo1_k);
+                } else {
+                    vSec_a.push_back(0.0); iSec_a.push_back(0.0);
+                    vSec_b.push_back(0.0); iSec_b.push_back(0.0);
+                }
+                vSec.push_back(0.0); iSec.push_back(0.0);   // unused
+                break;
+            }
+            case AhbRectifierType::FULL_BRIDGE: {
+                // Single secondary winding, bipolar.
+                if (inA)      { vSec.push_back(+Vsec_pos); iSec.push_back(+i_lo1_k); }
+                else if (inC) { vSec.push_back(-Vsec_neg); iSec.push_back(-i_lo1_k); }
+                else          { vSec.push_back(0.0);       iSec.push_back(0.0); }
+                vSec_a.push_back(0.0); iSec_a.push_back(0.0);   // unused
+                vSec_b.push_back(0.0); iSec_b.push_back(0.0);   // unused
+                break;
+            }
+            case AhbRectifierType::CURRENT_DOUBLER: {
+                // Single secondary winding, bipolar. In A the upper
+                // diode forwards i_Lo1; in C the lower diode forwards
+                // i_Lo2 with reversed winding polarity.
+                if (inA)      { vSec.push_back(+Vsec_pos); iSec.push_back(+i_lo1_k); }
+                else if (inC) { vSec.push_back(-Vsec_neg); iSec.push_back(-i_lo2_k); }
+                else          { vSec.push_back(0.0);       iSec.push_back(0.0); }
+                vSec_a.push_back(0.0); iSec_a.push_back(0.0);   // unused
+                vSec_b.push_back(0.0); iSec_b.push_back(0.0);   // unused
+                break;
+            }
+            default: break;   // AHB_FLYBACK already rejected at entry
+        }
+
+        // Lo1 voltage:
+        //   CT / FB : sees rectified secondary minus Vo on both intervals
+        //   CD      : charges (Vsec_pos - Vo) in A; freewheels (-Vo) in C
+        if (rect == AhbRectifierType::CURRENT_DOUBLER) {
+            vLo1.push_back(inA ? (Vsec_pos - Vo) : (inC ? -Vo : -Vo));
+            vLo2.push_back(inA ? -Vo : (inC ? (Vsec_neg - Vo) : -Vo));
+        } else {
+            vLo1.push_back(inA ? (Vsec_pos - Vo)
+                                : (inC ? (Vsec_neg - Vo) : -Vo));
+            vLo2.push_back(0.0);   // unused
         }
     };
 
-    // Interval A: [0, tA].  Lm rises linearly from Im0 to Im0 + dILm_pp.
-    // Lo rises linearly from ILo_min to ILo_max.
+    // Interval A
     for (int k = 0; k <= N; ++k) {
         const double frac = static_cast<double>(k) / N;
         const double t    = frac * tA;
         const double i_lm = Im0 + frac * dILm_pp;
-        const double i_lo = ILo_min + frac * dILo_pp;
-        emit(t, Vpri_pos, i_lm, i_lo);
+        // Lo1 charges (+slope) in A; Lo2 freewheels (-slope) in A (CD only).
+        const double i_lo1 = ILo1_min + frac * dILo1_pp;
+        const double i_lo2 = isCD ? (ILo2_max + frac * (-Vo / Lo2) * tA) : 0.0;
+        emit(t, Vpri_pos, i_lm, i_lo1, i_lo2);
     }
 
-    // Discontinuity at t = tA: duplicate the sample with the post-jump
-    // primary voltage so trapezoidal integrators see the rectangular
-    // v_pri waveform exactly (volt-second balance is then bit-exact, not
-    // O(1/N²)). The Lm and Lo currents are continuous across the jump,
-    // so they keep their interval-A end-point values.
-    emit(tA, Vpri_neg, Im0 + dILm_pp, ILo_max);
+    // Discontinuity duplicate sample (post-jump v_pri).
+    {
+        // End-of-A inductor values: Lo1 = ILo1_max; for CD, Lo2 trough.
+        const double iLo2_end_A = isCD
+            ? (ILo2_max + (-Vo / Lo2) * tA)   // Lo2 dropped during A
+            : 0.0;
+        emit(tA, Vpri_neg, Im0 + dILm_pp, ILo1_max, iLo2_end_A);
+    }
 
-    // Interval C: [tA, Tsw]. Lm falls from +dILm_pp/2 back to Im0.
-    // Lo falls from ILo_max back to ILo_min.
+    // Interval C
     for (int k = 1; k <= N; ++k) {
         const double frac = static_cast<double>(k) / N;
         const double t    = tA + frac * tC;
         const double i_lm = (dILm_pp / 2.0) - frac * dILm_pp;
-        const double i_lo = ILo_max - frac * dILo_pp;
-        emit(t, Vpri_neg, i_lm, i_lo);
+        // Lo1 discharges (-slope) in C for CT/FB; for CD Lo1 freewheels (-Vo/Lo1).
+        // Lo2 charges (+slope) in C (CD only).
+        double i_lo1, i_lo2 = 0.0;
+        if (rect == AhbRectifierType::CURRENT_DOUBLER) {
+            i_lo1 = ILo1_max + frac * (-Vo / Lo1) * tC;
+            const double iLo2_start_C = ILo2_max + (-Vo / Lo2) * tA;
+            i_lo2 = iLo2_start_C + frac * dILo2_pp;
+        } else {
+            i_lo1 = ILo1_max - frac * dILo1_pp;
+        }
+        emit(t, Vpri_neg, i_lm, i_lo1, i_lo2);
     }
 
     // ---- Asymmetric switch RMS (Imbertson-Mohan §IV.A) ----
-    // Q1 conducts during interval A, Q2 during interval C. Define each
-    // FET's contribution to total switch heating: I_Q,rms² = (1/Tsw) ∫
-    // i_pri²(t) dt over the conducting sub-interval (NOT (1/sub-int)).
-    // This convention matches every datasheet derating curve (one full
-    // switching cycle of conduction) and produces the textbook ratio
-    // I_Q1 / I_Q2 = √(D / (1-D)) at light-ripple limit.
-    const size_t idx_tA = static_cast<size_t>(N);   // last sample in A
+    const size_t idx_tA  = static_cast<size_t>(N);
     const size_t idx_end = time.size() - 1;
-    const double Iq1_segrms = rms_of(iPri, 0, idx_tA, time);
-    const double Iq2_segrms = rms_of(iPri, idx_tA + 1, idx_end, time);
+    const double Iq1_segrms = rms_of(iPri, 0,           idx_tA, time);
+    const double Iq2_segrms = rms_of(iPri, idx_tA + 1,  idx_end, time);
     const double Iq1_rms = Iq1_segrms * std::sqrt(D);
     const double Iq2_rms = Iq2_segrms * std::sqrt(1.0 - D);
 
-    // ---- ZVS energy margin & dead-time prediction ----
-    // I_pri at Q1 turn-off (end of interval A) drives the resonant
-    // transition that charges Q1's Coss / discharges Q2's Coss.
+    // ---- ZVS energy margin & dead-time ----
     const double Ipri_at_Q1_off = iPri[idx_tA];
     const double Llk = (computedLeakageInductance > 0.0)
                        ? computedLeakageInductance : 1e-6;
@@ -410,12 +478,10 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
         Llk, /*Lm_refl=*/0.0, std::abs(Ipri_at_Q1_off), mosfetCoss, Vin);
     const double tdRes = compute_dead_time(Llk, mosfetCoss);
 
-    // ---- Diagnostics (per Guide §2.4) ----
+    // ---- Diagnostics ----
     lastDutyCycle                  = D;
     lastConversionRatio            = Vo / Vin;
     lastDcBlockingCapVoltage       = VCb_dc;
-    // lastDcBlockingCapRipple stays 0 until Cb is sized (P9); leaving it
-    // at 0 here is an explicit "not yet computed" signal, not a default.
     lastPrimaryPeakVoltagePositive = Vpri_pos;
     lastPrimaryPeakVoltageNegative = Vpri_neg;
     lastSwitchPeakVoltageQ1        = Vin;
@@ -424,15 +490,16 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     lastSwitchRmsCurrentQ2         = Iq2_rms;
     lastZvsMargin                  = zvsMargin;
     lastResonantTransitionTime     = tdRes;
-    // Volt-second product per turn (Wb·turn^-1); divide by Np·Ae to get
-    // Bpk. F4 derivation: Bpk = D·(1-D)·Vin·Tsw / (2·Np·Ae). Here we
-    // store the per-turn ΔΦ so the magnetic adviser can finish the
-    // calculation without re-deriving Vin / D / Tsw.
     lastSteadyStateFluxExcursion   = D * (1.0 - D) * Vin * Tsw;
     lastMagnetizingCurrentRipple   = dILm_pp;
-    lastOutputInductorRipple       = dILo_pp;
+    lastOutputInductorRipple       = dILo1_pp;
     lastOperatingMode              = isDCM ? 1 : 0;
-    lastRectifierType              = 0;  // CENTER_TAPPED
+    switch (rect) {
+        case AhbRectifierType::CENTER_TAPPED:   lastRectifierType = 0; break;
+        case AhbRectifierType::CURRENT_DOUBLER: lastRectifierType = 1; break;
+        case AhbRectifierType::FULL_BRIDGE:     lastRectifierType = 2; break;
+        case AhbRectifierType::AHB_FLYBACK:     lastRectifierType = 3; break;
+    }
 
     // ---- Build OperatingPoint excitations ----
     OperatingPoint operatingPoint;
@@ -447,24 +514,35 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
 
     operatingPoint.get_mutable_excitations_per_winding().push_back(
         complete_excitation(wfm(iPri, time), wfm(vPri, time), fsw, "Primary"));
-    operatingPoint.get_mutable_excitations_per_winding().push_back(
-        complete_excitation(wfm(iSec_a, time), wfm(vSec_a, time), fsw,
-                            "Secondary 0a"));
-    operatingPoint.get_mutable_excitations_per_winding().push_back(
-        complete_excitation(wfm(iSec_b, time), wfm(vSec_b, time), fsw,
-                            "Secondary 0b"));
+
+    if (rect == AhbRectifierType::CENTER_TAPPED) {
+        operatingPoint.get_mutable_excitations_per_winding().push_back(
+            complete_excitation(wfm(iSec_a, time), wfm(vSec_a, time), fsw,
+                                "Secondary 0a"));
+        operatingPoint.get_mutable_excitations_per_winding().push_back(
+            complete_excitation(wfm(iSec_b, time), wfm(vSec_b, time), fsw,
+                                "Secondary 0b"));
+    } else {
+        // FB and CD: single secondary winding.
+        operatingPoint.get_mutable_excitations_per_winding().push_back(
+            complete_excitation(wfm(iSec, time), wfm(vSec, time), fsw,
+                                "Secondary 0"));
+    }
 
     OperatingConditions conditions;
     conditions.set_ambient_temperature(opPoint.get_ambient_temperature());
     conditions.set_cooling(std::nullopt);
     operatingPoint.set_conditions(conditions);
 
-    // ---- Extra-component waveforms (Lo, Cb) ----
-    extraLoVoltageWaveforms.push_back(wfm(vLo, time));
-    extraLoCurrentWaveforms.push_back(wfm(iLo, time));
+    // ---- Extra-component waveforms (Lo, [Lo2], Cb) ----
+    extraLoVoltageWaveforms.push_back(wfm(vLo1, time));
+    extraLoCurrentWaveforms.push_back(wfm(iLo1, time));
+    if (isCD) {
+        extraLo2VoltageWaveforms.push_back(wfm(vLo2, time));
+        extraLo2CurrentWaveforms.push_back(wfm(iLo2, time));
+    }
     extraCbVoltageWaveforms.push_back(wfm(vCb, time));
-    // Cb sees the primary current (series element).
-    extraCbCurrentWaveforms.push_back(wfm(iPri, time));
+    extraCbCurrentWaveforms.push_back(wfm(iPri, time));   // Cb in series with primary
 
     return operatingPoint;
 }
