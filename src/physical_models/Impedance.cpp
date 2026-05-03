@@ -1,5 +1,6 @@
 #include "physical_models/Impedance.h"
 #include "physical_models/ComplexPermeability.h"
+#include "physical_models/InitialPermeability.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/StrayCapacitance.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -43,6 +44,49 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
 
     auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
 
+    auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
+
+    return impedance;
+}
+
+std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double frequency, double magneticFieldDcBias, double temperature) {
+    // DC-biased impedance: scale the small-signal complex permeability by
+    // the ratio µ(H_dc) / µ(0) to account for permeability rolloff under
+    // DC bias. This first-order correction is physically valid because the
+    // DC bias shifts the operating point on the BH curve, reducing the
+    // effective incremental permeability for both real and imaginary parts.
+    auto coreMaterial = core.resolve_material();
+    double muInitial = InitialPermeability::get_initial_permeability(coreMaterial, temperature, std::nullopt, frequency);
+    double muBiased = InitialPermeability::get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency);
+    double biasRatio = (muInitial > 0) ? (muBiased / muInitial) : 1.0;
+
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    double numberTurns = coil.get_functional_description()[0].get_number_turns();
+    double reluctanceCoreUnityPermeability = reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();
+
+    OpenMagnetics::ComplexPermeability complexPermeabilityObj;
+    auto [complexPermeabilityRealPart, complexPermeabilityImaginaryPart] = complexPermeabilityObj.get_complex_permeability(coreMaterial, frequency);
+
+    // Apply DC bias scaling to both real and imaginary parts
+    complexPermeabilityRealPart *= biasRatio;
+    complexPermeabilityImaginaryPart *= biasRatio;
+
+    auto angularFrequency = 2 * std::numbers::pi * frequency;
+    double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
+    auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
+
+    double capacitance;
+    auto& settings = Settings::GetInstance();
+    if (_fastCapacitance) {
+        capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
+    }
+    else {
+        auto strayCapacitanceModel = settings.get_stray_capacitance_model();
+        auto capacitanceMatrix = StrayCapacitance(strayCapacitanceModel).calculate_capacitance(coil).get_capacitance_among_windings().value();
+        capacitance = capacitanceMatrix[coil.get_functional_description()[0].get_name()][coil.get_functional_description()[0].get_name()];
+    }
+
+    auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
     auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
 
     return impedance;

@@ -1142,16 +1142,16 @@ namespace {
             dmcCores.emplace_back(find_core_shape_by_name(shapeName), koolMu60);
         }
 
-        // DMC params kept realistic (10 A line, 230 V, 100 kHz switching) but
-        // with a moderate impedance target (50 Ω at 150 kHz) — reachable for
-        // a Kool Mµ 60 toroid at a few dozen turns. The wizard's original
-        // "series-L only" attenuation math produced a ~500 Ω target that is
-        // unreachable for any powder core at sane turn counts; that's a
-        // separate wizard math bug, not what this test is about.
+        // DMC params: realistic 10 A line current, 230 V, 100 kHz switching,
+        // moderate impedance target (50 Ω at 150 kHz) — reachable for a Kool
+        // Mµ 60 toroid at a few dozen turns.  Powder cores have soft saturation
+        // so 10 A is physically valid here; the saturation filter now applies a
+        // 25% soft-saturation margin for powder materials instead of a hard
+        // binary cutoff at the nominal Bsat.
         json dmcParams = json::parse(R"({
             "configuration": "SINGLE_PHASE_BALANCED",
             "inputVoltage": { "nominal": 230 },
-            "operatingCurrent": 2,
+            "operatingCurrent": 10,
             "lineFrequency": 50,
             "switchingFrequency": 100000,
             "ambientTemperature": 25,

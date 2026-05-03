@@ -108,7 +108,9 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 }
             }
             if (!excitation.get_voltage()) {
-                Inputs::set_current_as_magnetizing_current(operatingPoint);
+                if (!excitation.get_magnetizing_current()) {
+                    Inputs::set_current_as_magnetizing_current(operatingPoint);
+                }
                 auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
                 if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
                     throw std::invalid_argument("magnetizing_current_data vector size from current is not a power of 2");
@@ -138,7 +140,12 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
                     OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
 
-                    if (numberWindings == 1 && excitation.get_current()) {
+                    // If the converter model already computed the magnetizing current
+                    // (e.g. DMC summing all winding currents), respect it — don't overwrite.
+                    if (excitation.get_magnetizing_current()) {
+                        // Already set — skip derivation
+                    }
+                    else if (numberWindings == 1 && excitation.get_current()) {
                         Inputs::set_current_as_magnetizing_current(operatingPoint);
                     }
                     // CMC check must come BEFORE is_multiport_inductor. CMCs
@@ -305,7 +312,7 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
     if (inputs->get_operating_points().size() > 0) {
         OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
-        if (!excitation.get_voltage()) {
+        if (!excitation.get_magnetizing_current() && !excitation.get_voltage()) {
             Inputs::set_current_as_magnetizing_current(&operatingPoint);
             inputs->set_operating_point_by_index(operatingPoint, 0);
         }

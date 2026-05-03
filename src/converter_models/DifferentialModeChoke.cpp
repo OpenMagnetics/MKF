@@ -164,16 +164,24 @@ namespace OpenMagnetics {
         int numWindings = get_number_of_windings();
         double operatingVoltage = resolve_dimensional_values(_inputVoltage);
         
-        // Phase angles for 3-phase systems (120° apart). Single-phase
-        // balanced uses a 180° phase difference between Line and Neutral —
-        // both carry the line current but in anti-phase, which keeps the
-        // magnetic flux contributions of the two windings additive on the
-        // shared core.
+        // Phase angles for the winding currents as seen by the core (i.e.
+        // current "into the dot").  In a DMC the windings are wound in
+        // opposite sense so that the differential-mode (line) current in
+        // each winding reinforces the flux.  In MKF's into-the-dot
+        // convention this means ALL windings store the current with the
+        // SAME phase — the physical reversal of winding sense is already
+        // accounted for by using the same sign.  (Compare with a CMC where
+        // all windings also store the same waveform — there the identical
+        // currents represent CM, whereas here they represent DM.)
+        //
+        // For 3-phase systems each phase is 120° apart electrically, so
+        // the per-winding currents differ in phase angle; the vector sum
+        // of all of them is what drives the core flux.
         std::vector<double> phaseAngles;
         if (_configuration == DmcConfiguration::SINGLE_PHASE) {
             phaseAngles = {0.0};
         } else if (_configuration == DmcConfiguration::SINGLE_PHASE_BALANCED) {
-            phaseAngles = {0.0, std::numbers::pi};
+            phaseAngles = {0.0, 0.0};
         } else if (_configuration == DmcConfiguration::THREE_PHASE) {
             phaseAngles = {0.0, 2.0 * std::numbers::pi / 3.0, 4.0 * std::numbers::pi / 3.0};
         } else {  // THREE_PHASE_WITH_NEUTRAL
@@ -264,6 +272,42 @@ namespace OpenMagnetics {
         OperatingPoint operatingPoint;
         operatingPoint.set_excitations_per_winding(excitations);
         operatingPoint.get_mutable_conditions().set_ambient_temperature(_ambientTemperature);
+
+        // DMC magnetizing current: vector sum of all winding currents.
+        // Unlike a CMC (where DM currents cancel and only CM drives flux),
+        // in a DMC all winding currents drive flux in the same direction
+        // through the core. The total MMF is N × Σ I_k(t), so the
+        // magnetizing current seen by the core is the point-by-point sum
+        // of all winding current waveforms.
+        {
+            auto& primaryExcitation = operatingPoint.get_mutable_excitations_per_winding()[0];
+            double frequency = primaryExcitation.get_frequency();
+
+            // Sum all winding current waveforms point-by-point
+            auto primaryWaveform = primaryExcitation.get_current()->get_waveform().value();
+            std::vector<double> sumData = primaryWaveform.get_data();
+            auto timeData = primaryWaveform.get_time().value();
+
+            for (size_t w = 1; w < excitations.size(); ++w) {
+                auto wData = operatingPoint.get_excitations_per_winding()[w]
+                    .get_current()->get_waveform()->get_data();
+                for (size_t j = 0; j < sumData.size() && j < wData.size(); ++j) {
+                    sumData[j] += wData[j];
+                }
+            }
+
+            Waveform magnetizingWaveform;
+            magnetizingWaveform.set_data(sumData);
+            magnetizingWaveform.set_time(timeData);
+
+            SignalDescriptor magnetizingCurrent;
+            auto sampledWaveform = Inputs::calculate_sampled_waveform(magnetizingWaveform, frequency);
+            magnetizingCurrent.set_waveform(sampledWaveform);
+            magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledWaveform, frequency));
+            magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
+
+            primaryExcitation.set_magnetizing_current(magnetizingCurrent);
+        }
 
         operatingPoints.push_back(operatingPoint);
 
