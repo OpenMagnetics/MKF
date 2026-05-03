@@ -443,7 +443,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         for (auto& winding : get_mutable_functional_description()) {
             if (std::holds_alternative<std::string>(winding.get_wire())) {
                 std::string wireName = std::get<std::string>(winding.get_wire());
-                if (wireName == "Dummy") {
+                if (wireName == "Dummy" || wireName.empty()) {
                     wind = false;
                     break;
                 }
@@ -520,7 +520,7 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
         for (auto& winding : get_mutable_functional_description()) {
             if (std::holds_alternative<std::string>(winding.get_wire())) {
                 std::string wireName = std::get<std::string>(winding.get_wire());
-                if (wireName == "Dummy") {
+                if (wireName == "Dummy" || wireName.empty()) {
                     wind = false;
                     break;
                 }
