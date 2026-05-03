@@ -1449,11 +1449,11 @@ Application Core::resolve_material_application() {
 
 Application Core::resolve_material_application(CoreMaterial& coreMaterial) {
     auto tags = coreMaterial.get_application();
-    if (tags.has_value()) {
-        return tags.value();
+    if (tags && !tags->empty()) {
+        return tags->front();
     }
-    coreMaterial.set_application(guess_material_application(coreMaterial));
-    return coreMaterial.get_application().value();
+    coreMaterial.set_application(std::vector<Application>{guess_material_application(coreMaterial)});
+    return coreMaterial.get_application().value().front();
 }
 
 Application Core::guess_material_application() {
@@ -1463,8 +1463,8 @@ Application Core::guess_material_application() {
 
 Application Core::guess_material_application(CoreMaterial coreMaterial) {
     auto tags = coreMaterial.get_application();
-    if (tags.has_value()) {
-        return tags.value();
+    if (tags && !tags->empty()) {
+        return tags->front();
     }
     for (auto method : get_available_core_losses_methods(coreMaterial)) {
         if (method == VolumetricCoreLossesMethodType::LOSS_FACTOR) {
@@ -1504,7 +1504,8 @@ bool Core::check_material_application(CoreMaterial coreMaterial, Application app
     auto tagsOpt = coreMaterial.get_application();
     auto contains = [&](Application a) {
         if (!tagsOpt) return false;
-        return tagsOpt.value() == a;
+        const auto& tags = tagsOpt.value();
+        return std::find(tags.begin(), tags.end(), a) != tags.end();
     };
 
     if (application == Application::INTERFERENCE_SUPPRESSION && tagsOpt) {
