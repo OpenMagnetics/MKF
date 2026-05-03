@@ -471,12 +471,45 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     const double Iq2_rms = Iq2_segrms * std::sqrt(1.0 - D);
 
     // ---- ZVS energy margin & dead-time ----
+    //
+    // P5 refinement: in the AHB the secondary diodes BLOCK during the
+    // dead-time (rectifier output filter is supplied by Lo from the
+    // capacitor side), so the resonant tank seen at the switch node is
+    // Llk + Lm (NOT just Llk). The magnetizing current also contributes
+    // ZVS energy because Lm is in series with Llk during the transition:
+    //
+    //   E_stored = 0.5 * (Llk + Lm_refl) * I_pri^2
+    //   t_dead   = pi * sqrt((Llk + Lm) * 2 * Coss)
+    //
+    // This matches Mappus 2014 (TI SLUP223 §5) and Imbertson-Mohan §V.
+    // PSFB by contrast keeps Lm out of the tank because the secondary
+    // freewheels through both rectifier diodes during dead-time, clamping
+    // the primary at zero — that's where the AHB / PSFB ZVS physics
+    // diverge.
     const double Ipri_at_Q1_off = iPri[idx_tA];
     const double Llk = (computedLeakageInductance > 0.0)
                        ? computedLeakageInductance : 1e-6;
     const double zvsMargin = compute_zvs_energy_balance(
-        Llk, /*Lm_refl=*/0.0, std::abs(Ipri_at_Q1_off), mosfetCoss, Vin);
-    const double tdRes = compute_dead_time(Llk, mosfetCoss);
+        Llk, /*Lm_refl=*/Lm, std::abs(Ipri_at_Q1_off), mosfetCoss, Vin);
+    const double tdRes = compute_dead_time(Llk + Lm, mosfetCoss);
+
+    // ---- Transient flux excursion (P5) ----
+    //
+    // Reported in volt-seconds (matches lastSteadyStateFluxExcursion's
+    // units); a downstream magnetic adviser divides by Np·Ae to get B.
+    // Worst-case bound: V_Cb cannot follow a Vin step within one cycle,
+    // so the volt-second adder per half-cycle is D·dVin·Tsw on top of
+    // the steady-state D(1-D)·Vin·Tsw. Throws if dVin < 0.
+    double transientFluxExcursion = 0.0;
+    if (auto dVinOpt = get_input_voltage_step_range()) {
+        const double dVin = dVinOpt.value();
+        if (dVin < 0.0)
+            throw std::invalid_argument(
+                "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+                "inputVoltageStepRange must be >= 0");
+        transientFluxExcursion =
+            D * (1.0 - D) * Vin * Tsw + D * dVin * Tsw;
+    }
 
     // ---- Diagnostics ----
     lastDutyCycle                  = D;
@@ -491,6 +524,7 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     lastZvsMargin                  = zvsMargin;
     lastResonantTransitionTime     = tdRes;
     lastSteadyStateFluxExcursion   = D * (1.0 - D) * Vin * Tsw;
+    lastTransientFluxExcursionEstimate = transientFluxExcursion;
     lastMagnetizingCurrentRipple   = dILm_pp;
     lastOutputInductorRipple       = dILo1_pp;
     lastOperatingMode              = isDCM ? 1 : 0;

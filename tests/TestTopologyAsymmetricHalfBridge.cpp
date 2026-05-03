@@ -677,8 +677,13 @@ TEST_CASE("AHB P3: SLUP223-like 100V→5V/20A worked example sanity",
                WithinRel(55.0, 1e-9));
     CHECK_THAT(ahb.get_last_magnetizing_current_ripple(),
                WithinRel(0.55 * 100.0 * 0.45 * 5e-6 / 50e-6, 1e-9));
-    // Resonant transition time uses default Coss=200 pF, Llk=1 µF.
-    const double td_expected = M_PI * std::sqrt(1e-6 * 2.0 * 200e-12);
+    // Resonant transition time uses default Coss=200 pF, default Llk=1 µH.
+    // Per the AHB physics (P5 refinement) the resonant tank during dead-
+    // time is Llk + Lm because the secondary diodes block (Mappus 2014,
+    // Imbertson-Mohan §V); the dead-time helper is fed Llk+Lm = 51 µH
+    // here.
+    const double td_expected =
+        M_PI * std::sqrt((1e-6 + 50e-6) * 2.0 * 200e-12);
     CHECK_THAT(ahb.get_last_resonant_transition_time(),
                WithinRel(td_expected, 1e-9));
 }
@@ -872,4 +877,166 @@ TEST_CASE("AHB P4: AHB_FLYBACK rectifier is deferred to P10 (throws)",
     CHECK(capture_throw_message([&]{
               ahb.process_operating_points({n}, 50e-6);
           }).find("P10") != std::string::npos);
+}
+
+
+// =============================================================================
+// P5: Transient flux excursion + ZVS boundary + DCM detection.
+//
+// Coverage targets per ASYMMETRIC_HALF_BRIDGE_PLAN.md §10:
+//   - Transient_Flux_Excursion: lastTransientFluxExcursionEstimate = 0
+//     when inputVoltageStepRange unset; equals lambda_ss + D·dVin·Tsw
+//     when set; rejects negative dVin; exceeds steady-state for any
+//     positive dVin.
+//   - ZVS_Boundaries: lastZvsMargin sweeps from negative (low Lm/Llk) to
+//     positive as the resonant-tank energy crosses 2·Coss·Vin² and
+//     lastResonantTransitionTime grows with sqrt(Llk + Lm).
+//   - DCM_Detection: forcing a small Lo with a non-zero pinned value
+//     drives ILo_min < 0 and toggles lastOperatingMode to 1.
+// =============================================================================
+
+namespace {
+
+json ahb_with_step_range(double Vin, double Vo, double Io, double D, double n,
+                         double inputVoltageStepRange,
+                         double fsw = 200000.0) {
+    json j = ahb_with_duty(Vin, Vo, Io, D, n, fsw);
+    j["inputVoltageStepRange"] = inputVoltageStepRange;
+    return j;
+}
+
+} // namespace
+
+
+TEST_CASE("AHB P5: lastTransientFluxExcursionEstimate is zero when step range unset",
+          "[ahb-topology][P5]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty(Vin, Vo, 10.0, D, n));
+    ahb.process_operating_points({n}, 50e-6);
+    CHECK(ahb.get_last_transient_flux_excursion_estimate() == 0.0);
+}
+
+
+TEST_CASE("AHB P5: transient flux excursion equals lambda_ss + D·dVin·Tsw",
+          "[ahb-topology][P5]") {
+    const double Vin = 100.0, n = 10.0, D = 0.40, fsw = 200e3;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    const double dVin = 30.0;
+    AHB ahb(ahb_with_step_range(Vin, Vo, 10.0, D, n, dVin, fsw));
+    ahb.process_operating_points({n}, 50e-6);
+    const double Tsw      = 1.0 / fsw;
+    const double expected = D * (1.0 - D) * Vin * Tsw + D * dVin * Tsw;
+    CHECK_THAT(ahb.get_last_transient_flux_excursion_estimate(),
+               WithinRel(expected, 1e-12));
+}
+
+
+TEST_CASE("AHB P5: transient flux excursion strictly exceeds steady-state for dVin>0",
+          "[ahb-topology][P5]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_step_range(Vin, Vo, 10.0, D, n, /*dVin=*/20.0));
+    ahb.process_operating_points({n}, 50e-6);
+    CHECK(ahb.get_last_transient_flux_excursion_estimate() >
+          ahb.get_last_steady_state_flux_excursion());
+}
+
+
+TEST_CASE("AHB P5: negative inputVoltageStepRange is rejected",
+          "[ahb-topology][P5]") {
+    // Schema enforces type=number with no minimum, so the JSON parses;
+    // the rejection happens inside the operating-point processor.
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_step_range(Vin, Vo, 10.0, D, n, /*dVin=*/-5.0));
+    CHECK_THROWS_AS(ahb.process_operating_points({n}, 50e-6),
+                    std::invalid_argument);
+}
+
+
+TEST_CASE("AHB P5: ZVS margin grows monotonically with leakage inductance",
+          "[ahb-topology][P5]") {
+    // With Lm and load fixed, the primary current at Q1-off is fixed,
+    // so E_stored = 0.5*(Llk+Lm)*Ipri² is monotonically increasing in
+    // Llk. Sweep three Llk values and verify.
+    const double Vin = 100.0, n = 10.0, D = 0.45, Io = 5.0;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+
+    auto margin_for_Llk = [&](double Llk) {
+        AHB ahb(ahb_with_duty(Vin, Vo, Io, D, n));
+        ahb.set_computed_leakage_inductance(Llk);
+        ahb.process_operating_points({n}, 200e-6);
+        return ahb.get_last_zvs_margin();
+    };
+    const double m1 = margin_for_Llk(1e-7);
+    const double m2 = margin_for_Llk(1e-6);
+    const double m3 = margin_for_Llk(1e-5);
+    CHECK(m2 > m1);
+    CHECK(m3 > m2);
+}
+
+
+TEST_CASE("AHB P5: resonant transition time grows with sqrt(Llk+Lm)",
+          "[ahb-topology][P5]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    auto td_for = [&](double Llk, double Lm) {
+        AHB ahb(ahb_with_duty(Vin, Vo, 10.0, D, n));
+        ahb.set_computed_leakage_inductance(Llk);
+        ahb.process_operating_points({n}, Lm);
+        return ahb.get_last_resonant_transition_time();
+    };
+    const double Llk = 1e-6, Coss = 200e-12;   // Coss is class default
+    const double td1 = td_for(Llk, 50e-6);
+    const double td2 = td_for(Llk, 200e-6);
+    CHECK_THAT(td1,
+               WithinRel(M_PI * std::sqrt((Llk + 50e-6)  * 2.0 * Coss), 1e-9));
+    CHECK_THAT(td2,
+               WithinRel(M_PI * std::sqrt((Llk + 200e-6) * 2.0 * Coss), 1e-9));
+    CHECK(td2 > td1);
+}
+
+
+TEST_CASE("AHB P5: ZVS margin sign flips between heavy load and light load",
+          "[ahb-topology][P5]") {
+    // ZVS is a load-dependent threshold: at heavy load the reflected Io
+    // dominates the primary peak current and 0.5*(Llk+Lm)*I_pri² >> 2·Coss·Vin²
+    // (margin > 0). At very light load with a large Lm (so the magnetizing
+    // ripple is also small), I_pri collapses to ~Io/n and the stored
+    // energy can fall below the Coss-charge requirement (margin < 0).
+    // This is the classic "AHB loses ZVS at light load" condition.
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    const double Lm  = 50e-3;   // 50 mH -> i_lm,pk ~ µA at this OP
+
+    auto margin_for_Io = [&](double Io) {
+        AHB ahb(ahb_with_duty(Vin, Vo, Io, D, n));
+        ahb.set_computed_leakage_inductance(1e-6);
+        ahb.process_operating_points({n}, Lm);
+        return ahb.get_last_zvs_margin();
+    };
+    CHECK(margin_for_Io(0.01) < 0.0);   // light  -> ZVS lost
+    CHECK(margin_for_Io(20.0) > 0.0);   // heavy  -> ZVS achieved
+}
+
+
+TEST_CASE("AHB P5: small pinned Lo drives DCM and toggles operating-mode flag",
+          "[ahb-topology][P5]") {
+    // Pin a deliberately undersized Lo so the analytical I_Lo,min < 0,
+    // which triggers the DCM flag. We don't model true DCM waveforms in
+    // P5 (that's P9 territory); we just surface the flag so a user can
+    // see the design has crossed the CCM/DCM boundary.
+    const double Vin = 100.0, n = 10.0, D = 0.45, Io = 1.0;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+
+    AHB ahb_ccm(ahb_with_duty(Vin, Vo, Io, D, n));
+    ahb_ccm.process_operating_points({n}, 50e-6);
+    REQUIRE(ahb_ccm.get_last_operating_mode() == 0);   // CCM at default Lo
+
+    AHB ahb_dcm(ahb_with_duty(Vin, Vo, Io, D, n));
+    ahb_dcm.set_computed_output_inductance(1e-7);      // 0.1 µH -> giant ripple
+    ahb_dcm.process_operating_points({n}, 50e-6);
+    CHECK(ahb_dcm.get_last_operating_mode() == 1);     // DCM flagged
+    CHECK(ahb_dcm.get_last_output_inductor_ripple() > 2.0 * Io);
 }

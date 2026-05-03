@@ -162,6 +162,14 @@ public:
     double get_computed_dead_time() const { return computedDeadTime; }
     double get_computed_diode_voltage_drop() const { return computedDiodeVoltageDrop; }
 
+    /// Pin specific component values. When unset (==0), process_operating_*
+    /// will size the corresponding element analytically (Lo: 30 % ripple
+    /// rule). Used by AdvancedAHB and by tests that need to drive a known
+    /// DCM design.
+    void set_computed_output_inductance(double value) { computedOutputInductance = value; }
+    void set_computed_leakage_inductance(double value) { computedLeakageInductance = value; }
+    void set_computed_magnetizing_inductance(double value) { computedMagnetizingInductance = value; }
+
     /// Per-MOSFET output capacitance (F) used for ZVS energy and resonant
     /// transition-time predictions. Default 200 pF. Schema-less; set via setter.
     double get_mosfet_coss() const { return mosfetCoss; }
