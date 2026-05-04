@@ -436,9 +436,34 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     const double Vsec_pos = +(1.0 - D) * Vin / n;   // sec voltage in interval A
     const double Vsec_neg = +D * Vin / n;           // sec voltage in interval C
 
-    // ---- Magnetizing current (symmetric about zero) ----
+    // Rectifier-type-dependent per-output-inductor load current.
+    //   CT / FB : single output inductor carries the full Io.
+    //   CD      : two output inductors, each carrying Io/2.
+    const bool isCD = (rect == AhbRectifierType::CURRENT_DOUBLER);
+    const double Io_per_inductor = isCD ? Io / 2.0 : Io;
+
+    // ---- Magnetizing current with AHB-asymmetric DC bias ----
+    //
+    // The Cb steady-state charge-balance forces mean(i_pri) = 0 (no DC
+    // through a series capacitor). With reflected load = +Io_per_inductor/n
+    // in interval A and -Io_per_inductor/n in interval C, the load
+    // contribution to mean(i_pri) is (Io_per_inductor/n)·(2D-1). The
+    // magnetizing current must therefore carry a DC offset
+    //
+    //     mean(i_Lm) = -(Io_per_inductor/n)·(2D-1) = (Io_per_inductor/n)·(1-2D)
+    //
+    // This is the "AHB DC magnetizing bias" that asymmetric-flux AHB
+    // analyses (Imbertson-Mohan TIA 1993; TI SLUP223 fig. 3) call out.
+    // Without this offset the analytical primary-current waveform has a
+    // spurious DC mean of (Io_per_inductor/n)·(2D-1) and disagrees with
+    // any Cb-bearing SPICE model by exactly that amount.
+    //
+    // The peak-to-peak ramp dILm_pp = (1-D)·Vin·D·Tsw / Lm is symmetric
+    // (volt-second balance — A rises by dILm_pp, C falls by the same),
+    // so Im0 = mean - dILm_pp/2.
+    const double iLm_dc_bias = (Io_per_inductor / n) * (1.0 - 2.0 * D);
     const double dILm_pp = (1.0 - D) * Vin * D * Tsw / Lm;
-    const double Im0     = -dILm_pp / 2.0;
+    const double Im0     = iLm_dc_bias - dILm_pp / 2.0;
 
     // ---- Output inductor sizing (CCM linear; P5 detects DCM) ----
     // Lo is sized in P6/P9. For raw-call usage we accept it via
@@ -458,8 +483,6 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     //             in A, -Vo in C. Lo2 is the mirror: -Vo in A,
     //             Vsec_neg-Vo in C. ASYMMETRIC ripple between Lo1 and
     //             Lo2 when D ≠ 0.5 (a known AHB-CD wart).
-    const bool isCD = (rect == AhbRectifierType::CURRENT_DOUBLER);
-    const double Io_per_inductor = isCD ? Io / 2.0 : Io;
 
     double Lo1 = computedOutputInductance;
     if (Lo1 <= 0.0) {
@@ -594,7 +617,7 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     for (int k = 1; k <= N; ++k) {
         const double frac = static_cast<double>(k) / N;
         const double t    = tA + frac * tC;
-        const double i_lm = (dILm_pp / 2.0) - frac * dILm_pp;
+        const double i_lm = (Im0 + dILm_pp) - frac * dILm_pp;   // ramp back to Im0
         // Lo1 discharges (-slope) in C for CT/FB; for CD Lo1 freewheels (-Vo/Lo1).
         // Lo2 charges (+slope) in C (CD only).
         double i_lo1, i_lo2 = 0.0;
@@ -1240,8 +1263,15 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
 
     const double n   = turnsRatios[0];
     const double Lm  = magnetizingInductance;
+    // Explicit L_lk is set to a tiny "wire-stub" value (1 nH). The
+    // dominant primary leakage in the SPICE model comes from the K=0.999
+    // coupling factor between primary and secondaries (Llk_eff ≈ Lm·(1-K²)
+    // ≈ 2 µH for Lm ≈ 1 mH). Using a large explicit L_lk on top of that
+    // would double-count leakage and slow primary-current transitions
+    // beyond the analytical PWL idealisation that P3-P5 use, blowing up
+    // the analytical-vs-SPICE NRMSE comparison in P8.
     const double Llk = (computedLeakageInductance > 0.0)
-                       ? computedLeakageInductance : 1e-6;
+                       ? computedLeakageInductance : 1e-9;
     const double Tsw = 1.0 / fsw;
     const double tA  = D * Tsw;
 
@@ -1271,7 +1301,9 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     // IC values for all four reactive elements (mistake #10).
     const double VCb_dc      = (1.0 - D) * Vin;
     const double dILm_pp     = (1.0 - D) * Vin * D * Tsw / Lm;
-    const double iLm_init    = -dILm_pp / 2.0;        // start of period A
+    const double iLm_dc_bias = (Io_per_inductor / n) * (1.0 - 2.0 * D);
+    const double iLm_init    = iLm_dc_bias - dILm_pp / 2.0;  // start of period A,
+                                                              // matches analytical Im0
     const double iLo_init    = Io_per_inductor;       // mean Lo current
     const double Rload       = std::max(Vo / Io, 1e-3);
 
@@ -1301,8 +1333,10 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     c << "* IC: V_Cb=" << VCb_dc << " V, i_Lm=" << iLm_init
       << " A, i_Lo=" << iLo_init << " A, V_Co=" << Vo << " V\n\n";
 
-    c << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    c << ".model DIDEAL D(IS=1e-12 RS=0.05 BV=1000 IBV=1e-12)\n\n";
+    c << ".model SW1 SW VT=2.5 VH=0.8 RON=1m ROFF=1Meg\n";
+    // Near-ideal diode RS so SPICE secondary-side operating point stays
+    // close to the analytical ideal-diode assumption (P8 NRMSE).
+    c << ".model DIDEAL D(IS=1e-12 RS=0.001 BV=1000 IBV=1e-12)\n\n";
 
     c << "Vdc vin_dc 0 " << Vin << "\n\n";
 
@@ -1323,7 +1357,7 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     // Cb sense source so we can probe i_Cb (= i_pri at steady state).
     c << "Vcb_sense vin_dc cb_lo 0\n";
     c << "C_b cb_lo pri_top " << Cb << " IC=" << VCb_dc << "\n";
-    c << "R_cb_esr pri_top pri_top_esr 5m\n";
+    c << "R_cb_esr pri_top pri_top_esr 1m\n";
     c << "L_lk pri_top_esr pri_lk " << Llk << "\n";
     // Vab probe = primary terminal voltage = v(sw) - v(pri_top) (Imbertson sign).
     c << "Evab vab 0 sw pri_top 1\n";
@@ -1332,7 +1366,15 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     c << "L_pri pri_dot sw " << Lm << " IC=" << iLm_init << "\n\n";
 
     // ---- Secondary winding(s) per rectifier type ----
-    constexpr double K_COUPLING = 0.99;
+    // K_COUPLING balances two competing effects: too close to 1.0 makes
+    // the mutual-inductance matrix near-singular and ngspice rejects it
+    // (per plan §12 mistake #12), but K = 0.99 implies an effective
+    // leakage of Lm·(1-K²) ≈ Lm·0.02 — for Lm = 1 mH that's 22 µH,
+    // which dominates the explicit L_lk = 1 µH and crushes the primary
+    // current peak by limiting di/dt during the switch transition.
+    // K = 0.999 puts effective leakage at Lm·0.002 ≈ 2 µH which is
+    // close to the explicit L_lk and keeps ngspice numerically stable.
+    constexpr double K_COUPLING = 0.999;
     if (rect == AhbRectifierType::CENTER_TAPPED) {
         // Two half-windings of n turns each (relative to primary). Each
         // half-secondary's inductance = Lm / n^2.
@@ -1350,7 +1392,7 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
         c << "D_rb sec_b_d out_rect DIDEAL\n";
         c << "Vct_sense out_gnd sec_ct 0\n";
         c << "L_o out_rect out_node " << Lo << " IC=" << iLo_init << "\n";
-        c << "R_lo_dcr out_node out_node_after_dcr 50m\n";
+        c << "R_lo_dcr out_node out_node_after_dcr 1m\n";
     } else if (rect == AhbRectifierType::FULL_BRIDGE) {
         const double Lsec = Lm / (n * n);
         c << "L_sec sec_a sec_b " << Lsec << "\n";
@@ -1363,7 +1405,7 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
         c << "D_r3 out_gnd sec_a_d DIDEAL\n";
         c << "D_r4 out_gnd sec_b_d DIDEAL\n";
         c << "L_o out_rect out_node " << Lo << " IC=" << iLo_init << "\n";
-        c << "R_lo_dcr out_node out_node_after_dcr 50m\n";
+        c << "R_lo_dcr out_node out_node_after_dcr 1m\n";
     } else { // CURRENT_DOUBLER
         const double Lsec = Lm / (n * n);
         c << "L_sec sec_a sec_b " << Lsec << "\n";
@@ -1377,11 +1419,11 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
         c << "D_r1 out_gnd sec_a_d DIDEAL\n";
         c << "D_r2 out_gnd sec_b_d DIDEAL\n";
         // Single shared Co/Rload.
-        c << "R_lo_dcr out_node out_node_after_dcr 50m\n";
+        c << "R_lo_dcr out_node out_node_after_dcr 1m\n";
     }
 
     // ---- Output cap, load, and probes ----
-    c << "R_co_esr out_node_after_dcr co_top 5m\n";
+    c << "R_co_esr out_node_after_dcr co_top 1m\n";
     c << "C_o co_top out_gnd " << Co << " IC=" << Vo << "\n";
     c << "R_load co_top out_gnd " << Rload << "\n";
     c << "Vout_sense out_gnd 0 0\n\n";
@@ -1395,9 +1437,16 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
 
     c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
     c << ".options METHOD=GEAR TRTOL=7\n";
-    c << ".ic v(co_top)=" << Vo << " v(pri_top)=" << (Vin - VCb_dc)
-      << " v(sw)=" << (D * Vin) << "\n";
-    c << ".nodeset v(out_rect)=" << (Vo + 0.7)
+    // NOTE: do NOT emit a `.ic v(sw)=...` line here. With `uic` on .tran the
+    // switch-node IC is fought between (a) the body-diode operating point of
+    // Q1/Q2 and (b) the snubber RC time constant; the resulting timestep is
+    // microscopic and ngspice aborts at t=0 ("Timestep too small ... d1").
+    // The reactive elements already carry their own IC= clauses, which is the
+    // important pre-charge needed for steady-state convergence within
+    // numSteadyStatePeriods. .nodeset is a soft hint for the DC OP only.
+    c << ".nodeset v(co_top)=" << Vo
+      << " v(pri_top)=" << (Vin - VCb_dc)
+      << " v(out_rect)=" << (Vo + 0.7)
       << " v(sec_a_d)=" << (Vo + 0.7)
       << " v(sec_b_d)=" << (Vo + 0.7) << "\n\n";
 
