@@ -1759,8 +1759,72 @@ AsymmetricHalfBridge::simulate_and_extract_topology_waveforms(
     return results;
 }
 
+// =========================================================================
+// AdvancedAsymmetricHalfBridge::process
+//
+// User-pinned-parameters entry point used by the WASM wizard binding
+// (libMKF::calculate_ahb_inputs). Mirrors AdvancedPshb::process
+// exactly: builds DesignRequirements from the auto-sizing path, then
+// overrides any field the user pinned via desired*. Calls
+// process_operating_points so the operating-point waveforms (primary,
+// secondaries, Lo[, Lo2], Cb) are populated and the per-OP diagnostics
+// (lastDutyCycle, lastZvsMargin, ...) are filled in.
+//
+// Pre-P12 lite implementation: AdvancedAHB only adds setters for
+// turnsRatio, magnetizingInductance, leakageInductance, outputInductance,
+// dcBlockingCapacitance, outputCapacitance — same set as the PSHB sibling
+// (with the AHB-specific addition of Cb). Full AdvancedAHB extras
+// (separate "designed only" mode, output-cap sizing override) wait for
+// P12 per ASYMMETRIC_HALF_BRIDGE_PLAN.md §11.
+// =========================================================================
 Inputs AdvancedAsymmetricHalfBridge::process() {
-    not_implemented("AdvancedAsymmetricHalfBridge::process", "P12");
+    auto designRequirements = process_design_requirements();
+
+    if (!desiredTurnsRatios.empty()) {
+        designRequirements.get_mutable_turns_ratios().clear();
+        for (auto n : desiredTurnsRatios) {
+            DimensionWithTolerance nTol;
+            nTol.set_nominal(n);
+            designRequirements.get_mutable_turns_ratios().push_back(nTol);
+        }
+    }
+
+    double Lm = desiredMagnetizingInductance;
+    if (Lm > 0) {
+        DimensionWithTolerance LmTol;
+        LmTol.set_nominal(Lm);
+        designRequirements.set_magnetizing_inductance(LmTol);
+        set_computed_magnetizing_inductance(Lm);
+    } else {
+        // Fall back to the auto-sized value the base class already picked.
+        Lm = get_computed_magnetizing_inductance();
+    }
+
+    if (desiredLeakageInductance.has_value())
+        set_computed_leakage_inductance(desiredLeakageInductance.value());
+    if (desiredOutputInductance.has_value())
+        set_computed_output_inductance(desiredOutputInductance.value());
+    if (desiredDcBlockingCapacitance.has_value())
+        set_computed_dc_blocking_capacitance(desiredDcBlockingCapacitance.value());
+    if (desiredOutputCapacitance.has_value())
+        set_computed_output_capacitance(desiredOutputCapacitance.value());
+
+    std::vector<double> turnsRatios;
+    if (!desiredTurnsRatios.empty()) {
+        turnsRatios = desiredTurnsRatios;
+    } else {
+        for (const auto& tr : designRequirements.get_turns_ratios()) {
+            if (tr.get_nominal().has_value())
+                turnsRatios.push_back(tr.get_nominal().value());
+        }
+    }
+
+    auto ops = process_operating_points(turnsRatios, Lm);
+
+    Inputs inputs;
+    inputs.set_design_requirements(designRequirements);
+    inputs.set_operating_points(ops);
+    return inputs;
 }
 
 } // namespace OpenMagnetics

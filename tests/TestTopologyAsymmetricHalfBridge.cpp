@@ -458,9 +458,16 @@ TEST_CASE("AHB P1: AdvancedAsymmetricHalfBridge constructs and round-trips", "[a
     CHECK(out["desiredMagnetizingInductance"] == 50e-6);
     CHECK(out["desiredTurnsRatios"][0] == 10.0);
 
-    CHECK_THROWS_AS(ahb.process(), std::runtime_error);
-    CHECK(capture_throw_message([&]{ ahb.process(); })
-              .find("P12") != std::string::npos);
+    // AdvancedAsymmetricHalfBridge::process is now implemented (delivers
+    // the user-pinned-parameter path used by the WASM wizard). It must
+    // produce a non-empty Inputs with the desired turns-ratio respected.
+    OpenMagnetics::Inputs out2 = ahb.process();
+    CHECK_FALSE(out2.get_operating_points().empty());
+    REQUIRE_FALSE(out2.get_design_requirements().get_turns_ratios().empty());
+    CHECK(out2.get_design_requirements()
+              .get_turns_ratios()[0]
+              .get_nominal()
+              .value() == 10.0);
 }
 
 

@@ -169,6 +169,8 @@ public:
     void set_computed_output_inductance(double value) { computedOutputInductance = value; }
     void set_computed_leakage_inductance(double value) { computedLeakageInductance = value; }
     void set_computed_magnetizing_inductance(double value) { computedMagnetizingInductance = value; }
+    void set_computed_dc_blocking_capacitance(double value) { computedDcBlockingCapacitance = value; }
+    void set_computed_output_capacitance(double value) { computedOutputCapacitance = value; }
 
     /// Per-MOSFET output capacitance (F) used for ZVS energy and resonant
     /// transition-time predictions. Default 200 pF. Schema-less; set via setter.
