@@ -1792,7 +1792,7 @@ Inputs AdvancedAsymmetricHalfBridge::process() {
     double Lm = desiredMagnetizingInductance;
     if (Lm > 0) {
         DimensionWithTolerance LmTol;
-        LmTol.set_nominal(Lm);
+        LmTol.set_minimum(Lm);
         designRequirements.set_magnetizing_inductance(LmTol);
         set_computed_magnetizing_inductance(Lm);
     } else {

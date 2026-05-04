@@ -1002,7 +1002,7 @@ Inputs AdvancedPshb::process() {
     }
 
     DimensionWithTolerance LmTol;
-    LmTol.set_nominal(desiredMagnetizingInductance);
+    LmTol.set_minimum(desiredMagnetizingInductance);
     designRequirements.set_magnetizing_inductance(LmTol);
 
     if (desiredSeriesInductance.has_value())

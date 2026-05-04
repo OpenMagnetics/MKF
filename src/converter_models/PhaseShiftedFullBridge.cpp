@@ -12,7 +12,7 @@
 namespace OpenMagnetics {
 
 Psfb::Psfb(const json& j) {
-    from_json(j, *static_cast<PhaseShiftFullBridge*>(this));
+    from_json(j, *static_cast<PhaseShiftedFullBridge*>(this));
 }
 
 AdvancedPsfb::AdvancedPsfb(const json& j) {
@@ -1144,7 +1144,7 @@ Inputs AdvancedPsfb::process() {
     }
 
     DimensionWithTolerance LmTol;
-    LmTol.set_nominal(desiredMagnetizingInductance);
+    LmTol.set_minimum(desiredMagnetizingInductance);
     designRequirements.set_magnetizing_inductance(LmTol);
 
     if (desiredSeriesInductance.has_value())
