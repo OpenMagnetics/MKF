@@ -270,6 +270,18 @@ DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
         DimensionWithTolerance nTol;
         nTol.set_nominal(roundFloat(n, 2));
         designRequirements.get_mutable_turns_ratios().push_back(nTol);
+        // For CENTER_TAPPED there are two physical secondary windings
+        // (Sec_a, Sec_b) and several places in the coil/adviser pipeline
+        // size winding-count from turns_ratios.size()+1 (e.g.
+        // Coil::get_patterns, MagneticAdviser::numberWindings,
+        // MagneticFilterEstimatedCost). Pushing the same ratio twice
+        // keeps that arithmetic consistent with the actual functional
+        // description so the section algorithm allocates one slot to
+        // each half. wound_with then collapses the pair back into a
+        // single secondary group.
+        if (rect == AhbRectifierType::CENTER_TAPPED) {
+            designRequirements.get_mutable_turns_ratios().push_back(nTol);
+        }
     }
 
     DimensionWithTolerance lmTol;
@@ -285,9 +297,33 @@ DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
     }
 
     designRequirements.set_topology(Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
-    designRequirements.set_isolation_sides(
-        Topology::create_isolation_sides(
-            ops[0].get_output_currents().size(), false));
+    // Isolation sides:
+    //   - For all rectifier types the primary takes side 0.
+    //   - For CENTER_TAPPED there are TWO physical secondary windings
+    //     (Sec_a, Sec_b) but they form a single galvanic secondary; both
+    //     sit on side 1 and are then linked via wound_with so the section
+    //     algorithm treats them as one group.
+    //   - For FB / CD / Flyback there is a single secondary winding on
+    //     side 1 (output_currents().size() == 1).
+    // Topology::create_isolation_sides hands out a fresh side per
+    // secondary (i+1), which would put Sec_a on side 1 and Sec_b on
+    // side 2 — that does not match the CT physical layout and broke
+    // section allocation in get_patterns/get_ordered_sections (one
+    // winding ended up with zero sections, tripping
+    // "Number of slots cannot be less than 1").
+    {
+        std::vector<IsolationSide> isolationSides;
+        isolationSides.push_back(get_isolation_side_from_index(0));  // primary
+        if (rect == AhbRectifierType::CENTER_TAPPED) {
+            isolationSides.push_back(get_isolation_side_from_index(1));  // Sec_a
+            isolationSides.push_back(get_isolation_side_from_index(1));  // Sec_b (same side)
+        } else {
+            for (size_t i = 0; i < ops[0].get_output_currents().size(); ++i) {
+                isolationSides.push_back(get_isolation_side_from_index(i + 1));
+            }
+        }
+        designRequirements.set_isolation_sides(isolationSides);
+    }
 
     return designRequirements;
 }
@@ -1786,6 +1822,18 @@ Inputs AdvancedAsymmetricHalfBridge::process() {
             DimensionWithTolerance nTol;
             nTol.set_nominal(n);
             designRequirements.get_mutable_turns_ratios().push_back(nTol);
+        }
+        // CT carries TWO physical secondary windings. If the wizard only
+        // pinned one ratio (the typical case — the wizard only exposes a
+        // single "turnsRatio" field), duplicate it so turns_ratios.size()
+        // matches the secondary-winding count expected by the coil
+        // pipeline (see process_design_requirements rationale).
+        AhbRectifierType rectAdv = get_rectifier_type().value_or(
+            AhbRectifierType::CENTER_TAPPED);
+        if (rectAdv == AhbRectifierType::CENTER_TAPPED &&
+            designRequirements.get_mutable_turns_ratios().size() == 1) {
+            designRequirements.get_mutable_turns_ratios().push_back(
+                designRequirements.get_mutable_turns_ratios()[0]);
         }
     }
 
