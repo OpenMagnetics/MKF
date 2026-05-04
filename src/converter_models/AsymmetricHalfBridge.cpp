@@ -488,6 +488,11 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
     if (Lo1 <= 0.0) {
         const double dILo_target = std::max(0.30 * Io_per_inductor, 1e-6);
         Lo1 = compute_lo_min(Vo, D, dILo_target, fsw);
+        // Stash the size we actually used so get_extra_components_inputs (P9)
+        // can emit it as the Lo design requirement when the caller goes
+        // straight from process_operating_points → get_extra_components_inputs
+        // without a prior process_design_requirements pass.
+        computedOutputInductance = Lo1;
     }
     const double Lo2 = Lo1;   // V3 default: matched inductors
 
@@ -1158,10 +1163,113 @@ double AsymmetricHalfBridge::compute_transient_flux_excursion(
     return Bpk_ss + dB_trans;
 }
 
+// =========================================================================
+// Extra components inputs (P9 deliverable)
+//
+// Mirrors PhaseShiftedHalfBridge::get_extra_components_inputs (PSHB sibling).
+// AHB has two ancillary *magnetic* components in the basic V1/V2 designs:
+//
+//   - Output inductor Lo                   (always present except V5 flyback)
+//   - Second output inductor Lo2           (current-doubler V3 only)
+//
+// The DC-blocking capacitor Cb and output capacitor Co are non-magnetic
+// components: their sized values are exposed through the
+// `get_computed_dc_blocking_capacitance()` and
+// `get_computed_output_capacitance()` accessors and through the per-OP
+// extraCb*Waveforms vectors. They are NOT returned here because the
+// `Inputs` schema is the magnetics-design contract; capacitor selection
+// is handled by the consumer using the accessors.
+//
+// The IDEAL/REAL distinction follows the PSHB convention: in REAL mode
+// the caller supplies the designed primary `Magnetic` so the topology
+// can subtract any leakage already absorbed by the transformer from
+// auxiliary inductors that physically live in series with the primary.
+// AHB has no such series inductor (Lo lives on the secondary, isolated
+// from primary leakage), so REAL == IDEAL for AHB. We keep the magnetic
+// argument required in REAL mode for API parity with PSHB.
+// =========================================================================
 std::vector<std::variant<Inputs, CAS::Inputs>>
 AsymmetricHalfBridge::get_extra_components_inputs(
-    ExtraComponentsMode /*mode*/, std::optional<Magnetic> /*magnetic*/) {
-    not_implemented("get_extra_components_inputs", "P9");
+    ExtraComponentsMode mode, std::optional<Magnetic> magnetic)
+{
+    if (mode == ExtraComponentsMode::REAL && !magnetic.has_value())
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::get_extra_components_inputs: "
+            "mode REAL requires a designed magnetic");
+
+    if (computedOutputInductance <= 0 || extraLoVoltageWaveforms.empty())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::get_extra_components_inputs: "
+            "call process_operating_points() first");
+
+    if (extraLoVoltageWaveforms.size() != extraLoCurrentWaveforms.size())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::get_extra_components_inputs: "
+            "Lo voltage/current waveform count mismatch");
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> result;
+    const size_t nOps = extraLoVoltageWaveforms.size();
+    const double fsw  = get_operating_points()[0].get_switching_frequency();
+
+    // ---- Output inductor Lo (V1 / V2 / V3 / V4) ----
+    {
+        Inputs masInputs;
+        DesignRequirements dr;
+        DimensionWithTolerance loInductance;
+        loInductance.set_nominal(computedOutputInductance);
+        dr.set_magnetizing_inductance(loInductance);
+        dr.set_name("outputInductor");
+        dr.set_topology(Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+        dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+        dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+        masInputs.set_design_requirements(dr);
+
+        std::vector<OperatingPoint> masOps;
+        masOps.reserve(nOps);
+        for (size_t i = 0; i < nOps; ++i) {
+            OperatingPoint op;
+            op.get_mutable_excitations_per_winding().push_back(
+                complete_excitation(extraLoCurrentWaveforms[i],
+                                    extraLoVoltageWaveforms[i],
+                                    fsw, "Primary"));
+            masOps.push_back(op);
+        }
+        masInputs.set_operating_points(masOps);
+        result.emplace_back(std::move(masInputs));
+    }
+
+    // ---- Second output inductor Lo2 (current-doubler V3 only) ----
+    if (!extraLo2VoltageWaveforms.empty()) {
+        if (extraLo2VoltageWaveforms.size() != extraLo2CurrentWaveforms.size())
+            throw std::runtime_error(
+                "AsymmetricHalfBridge::get_extra_components_inputs: "
+                "Lo2 voltage/current waveform count mismatch");
+        Inputs masInputs;
+        DesignRequirements dr;
+        DimensionWithTolerance lo2Inductance;
+        lo2Inductance.set_nominal(computedOutputInductance);  // CD: Lo1 == Lo2
+        dr.set_magnetizing_inductance(lo2Inductance);
+        dr.set_name("outputInductor2");
+        dr.set_topology(Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+        dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+        dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+        masInputs.set_design_requirements(dr);
+
+        std::vector<OperatingPoint> masOps;
+        masOps.reserve(extraLo2VoltageWaveforms.size());
+        for (size_t i = 0; i < extraLo2VoltageWaveforms.size(); ++i) {
+            OperatingPoint op;
+            op.get_mutable_excitations_per_winding().push_back(
+                complete_excitation(extraLo2CurrentWaveforms[i],
+                                    extraLo2VoltageWaveforms[i],
+                                    fsw, "Primary"));
+            masOps.push_back(op);
+        }
+        masInputs.set_operating_points(masOps);
+        result.emplace_back(std::move(masInputs));
+    }
+
+    return result;
 }
 
 // =========================================================================

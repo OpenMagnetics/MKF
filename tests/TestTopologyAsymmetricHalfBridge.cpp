@@ -147,18 +147,22 @@ TEST_CASE("AHB P1: rectifierType round-trips through JSON", "[ahb-topology][P1]"
 TEST_CASE("AHB P1: stubbed methods throw with plan reference", "[ahb-topology][P1]") {
     AHB ahb(minimal_valid_ahb());
 
-    // P6 (process_design_requirements) and P7 (SPICE netlist /
-    // simulate_and_extract) are implemented as of their respective commits;
-    // the only remaining stubbed surface here is the extra-components
-    // factory (P9).
+    // P6 (process_design_requirements), P7 (SPICE), and P9 (extra
+    // components) are implemented as of their respective commits. The
+    // only remaining stubbed surfaces are V4 sync-rect / V5 flyback
+    // (P10), multi-output (P11), and AdvancedAHB (P12). They are
+    // exercised by their dedicated test cases — no global "all stubbed
+    // methods throw" sweep is required at this point.
 
+    // Calling get_extra_components_inputs before process_operating_points()
+    // must still throw because the stash vectors are empty.
     CHECK_THROWS_AS(ahb.get_extra_components_inputs(
                         OpenMagnetics::ExtraComponentsMode::IDEAL),
                     std::runtime_error);
     CHECK(capture_throw_message([&]{
         ahb.get_extra_components_inputs(
             OpenMagnetics::ExtraComponentsMode::IDEAL);
-    }).find("P9") != std::string::npos);
+    }).find("process_operating_points") != std::string::npos);
 }
 
 
@@ -1728,4 +1732,138 @@ TEST_CASE("AHB P8: primary current NRMSE analytical vs ngspice at D=0.50",
     double nrmse = ahb_p8_nrmse(aR, sR);
     INFO("AHB D=0.50 NRMSE = " << (nrmse * 100.0) << " %");
     CHECK(nrmse < 0.15);
+}
+
+
+// ============================================================================
+// P9 — get_extra_components_inputs(IDEAL/REAL) returns Lo (V1/V2/FB) or
+// Lo + Lo2 (current-doubler V3). Cb and Co are non-magnetic and exposed
+// via accessors, not via this factory.
+// ============================================================================
+
+TEST_CASE("AHB P9: get_extra_components_inputs throws before processing",
+          "[ahb-topology][P9]") {
+    AHB ahb(minimal_valid_ahb());
+    CHECK_THROWS_AS(
+        ahb.get_extra_components_inputs(
+            OpenMagnetics::ExtraComponentsMode::IDEAL),
+        std::runtime_error);
+}
+
+TEST_CASE("AHB P9: REAL mode without magnetic throws",
+          "[ahb-topology][P9]") {
+    const double D = 0.45, n = 10.0, Vin = 100.0;
+    const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty(Vin, Vo, 20.0, D, n));
+    ahb.process_operating_points({n}, 50e-6);
+
+    CHECK_THROWS_AS(
+        ahb.get_extra_components_inputs(
+            OpenMagnetics::ExtraComponentsMode::REAL),
+        std::invalid_argument);
+}
+
+TEST_CASE("AHB P9: V1 (CT) returns one ancillary Inputs (Lo)",
+          "[ahb-topology][P9]") {
+    using OpenMagnetics::Inputs;
+    const double D = 0.45, n = 10.0, Vin = 100.0;
+    const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty(Vin, Vo, 20.0, D, n));
+    ahb.process_operating_points({n}, 50e-6);
+
+    auto extras = ahb.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+
+    REQUIRE(extras.size() == 1);
+    auto& loInputs = std::get<Inputs>(extras[0]);
+    auto& dr = loInputs.get_design_requirements();
+    REQUIRE(dr.get_name().has_value());
+    CHECK(dr.get_name().value() == "outputInductor");
+    CHECK(dr.get_topology() ==
+          OpenMagnetics::Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER);
+    auto Lo_nom = dr.get_magnetizing_inductance().get_nominal();
+    REQUIRE(Lo_nom.has_value());
+    CHECK(*Lo_nom == ahb.get_computed_output_inductance());
+    CHECK_FALSE(loInputs.get_operating_points().empty());
+
+    auto& exc = loInputs.get_operating_points()[0]
+                    .get_excitations_per_winding()[0];
+    REQUIRE(exc.get_voltage().has_value());
+    REQUIRE(exc.get_current().has_value());
+    REQUIRE(exc.get_voltage()->get_waveform().has_value());
+    REQUIRE(exc.get_current()->get_waveform().has_value());
+}
+
+TEST_CASE("AHB P9: V3 (current-doubler) returns Lo + Lo2",
+          "[ahb-topology][P9]") {
+    using OpenMagnetics::Inputs;
+    const double D = 0.45, n = 10.0, Vin = 100.0;
+    const double Vo = D * (1.0 - D) * Vin / n;     // CD: half the CT/FB gain
+    AHB ahb(ahb_with_duty_rect(Vin, Vo, 20.0, D, n, "currentDoubler"));
+    ahb.process_operating_points({n}, 50e-6);
+
+    auto extras = ahb.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+
+    REQUIRE(extras.size() == 2);
+    auto& lo  = std::get<Inputs>(extras[0]).get_design_requirements();
+    auto& lo2 = std::get<Inputs>(extras[1]).get_design_requirements();
+    CHECK(lo.get_name().value()  == "outputInductor");
+    CHECK(lo2.get_name().value() == "outputInductor2");
+    auto Lo  = lo.get_magnetizing_inductance().get_nominal();
+    auto Lo2 = lo2.get_magnetizing_inductance().get_nominal();
+    REQUIRE(Lo.has_value());
+    REQUIRE(Lo2.has_value());
+    CHECK(*Lo == *Lo2);  // CD: identical inductors
+}
+
+TEST_CASE("AHB P9: REAL mode equals IDEAL mode (no primary-series inductor)",
+          "[ahb-topology][P9]") {
+    using OpenMagnetics::Inputs;
+    const double D = 0.45, n = 10.0, Vin = 100.0;
+    const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty(Vin, Vo, 20.0, D, n));
+    ahb.process_operating_points({n}, 50e-6);
+
+    auto ideal = ahb.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+
+    // Build a dummy magnetic — REAL mode requires .has_value(), but for
+    // AHB no leakage is subtracted since Lo lives on the secondary, fully
+    // isolated from the primary leakage path.
+    OpenMagnetics::Magnetic dummy;
+    auto real = ahb.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::REAL, dummy);
+
+    REQUIRE(ideal.size() == real.size());
+    for (size_t i = 0; i < ideal.size(); ++i) {
+        auto& a = std::get<Inputs>(ideal[i]).get_design_requirements();
+        auto& b = std::get<Inputs>(real[i]).get_design_requirements();
+        CHECK(a.get_magnetizing_inductance().get_nominal().value()
+              == b.get_magnetizing_inductance().get_nominal().value());
+    }
+}
+
+TEST_CASE("AHB P9: emits one Inputs per operating point",
+          "[ahb-topology][P9]") {
+    using OpenMagnetics::Inputs;
+    const double D = 0.45, n = 10.0, Vin = 100.0;
+    const double Vo = 2.0 * D * (1.0 - D) * Vin / n;
+    json j = ahb_with_duty(Vin, Vo, 20.0, D, n);
+    // Add a second operating point at lower current.
+    j["operatingPoints"].push_back(json{
+        {"ambientTemperature", 25.0},
+        {"switchingFrequency", 200000.0},
+        {"outputVoltages", {Vo}},
+        {"outputCurrents", {10.0}},
+        {"dutyCycle", D}
+    });
+    AHB ahb(j);
+    ahb.process_operating_points({n}, 50e-6);
+
+    auto extras = ahb.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+    REQUIRE(extras.size() == 1);   // V1 — only Lo
+    auto& loInputs = std::get<Inputs>(extras[0]);
+    CHECK(loInputs.get_operating_points().size() == 2);
 }
