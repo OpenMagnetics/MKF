@@ -331,7 +331,7 @@ TEST_CASE("Test_Cmc_RealisticSimulation", "[converter-model][cmc-topology][simul
     }
 
     json j = makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3);
-    CommonModeChoke cmc(j);
+    OpenMagnetics::CommonModeChoke cmc(j);
     
     double inductance = 1e-3; // 1 mH
     double parasiticCap_pF = 100.0; // 100 pF
@@ -410,7 +410,7 @@ TEST_CASE("Test_Cmc_RealisticSimulation_FrontendDefaults", "[converter-model][cm
     //   dvdt_V_ns:         50 V/ns
     //   inductance:        1 mH (default from getSimulateFn fallback)
     json j = makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3);
-    CommonModeChoke cmc(j);
+    OpenMagnetics::CommonModeChoke cmc(j);
 
     const double inductance      = 1e-3;   // 1 mH
     const double parasiticCap_pF = 10.0;   // 10 pF (frontend localData default)
@@ -676,7 +676,7 @@ TEST_CASE("Test_Cmc_RealisticSimulation_FallbackDefaults", "[converter-model][cm
     }
 
     json j = makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3);
-    CommonModeChoke cmc(j);
+    OpenMagnetics::CommonModeChoke cmc(j);
 
     // Fallback defaults from CmcWizard.getSimulateFn():
     //   parasiticCap_pF = 100 (aux.parasiticCap_pF || 100)
@@ -774,7 +774,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     const double vCmPeak  = L_self * 2.0 * M_PI * f_excit * iCmPeak;  // ≈ 471 V
 
     SECTION("analytical peak CM current matches closed form C·dV/dt") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto inputs = cmc.process();
         REQUIRE(!inputs.get_operating_points().empty());
 
@@ -789,14 +789,14 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("simulated operating point has label 'Simulated'") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!ops.empty());
         CHECK(ops[0].get_name().value_or("") == "Simulated");
     }
 
     SECTION("simulated current peak agrees with analytical within 5%") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!ops.empty());
 
@@ -811,7 +811,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("simulated voltage peak matches L·ω·I from analytical within 5%") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!ops.empty());
 
@@ -826,7 +826,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("simulated waveform is sinusoidal (zero crossings ≈ 2·numberOfPeriods)") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!ops.empty());
 
@@ -847,7 +847,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("numberOfPeriods controls the output time window") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops2 = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 5);
         auto ops4 = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 4, 5);
         REQUIRE(!ops2.empty());
@@ -864,7 +864,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("all windings carry the same CM waveform (CM definition)") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!ops.empty());
         auto excs = ops[0].get_excitations_per_winding();
@@ -882,8 +882,8 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
 
     SECTION("current peak scales linearly with C·dV/dt") {
         // Double C·dV/dt → expect double the AC peak.
-        CommonModeChoke cmc1(makeJsonWithNoise(10.0, 50.0));   // I_cm = 0.5 A
-        CommonModeChoke cmc2(makeJsonWithNoise(20.0, 50.0));   // I_cm = 1.0 A
+        OpenMagnetics::CommonModeChoke cmc1(makeJsonWithNoise(10.0, 50.0));   // I_cm = 0.5 A
+        OpenMagnetics::CommonModeChoke cmc2(makeJsonWithNoise(20.0, 50.0));   // I_cm = 1.0 A
         auto ops1 = cmc1.simulate_realistic_cmc(L_self, 10.0, 50.0, 2, 10);
         auto ops2 = cmc2.simulate_realistic_cmc(L_self, 20.0, 50.0, 2, 10);
         REQUIRE(!ops1.empty());
@@ -899,7 +899,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
 
     SECTION("voltage peak scales linearly with inductance (V = Lω·I)") {
         // Triple the inductance → expect triple the voltage peak at the same I_cm.
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops1 = cmc.simulate_realistic_cmc(1e-3, cap_pF, dvdt, 2, 10);  // 1 mH
         auto ops3 = cmc.simulate_realistic_cmc(3e-3, cap_pF, dvdt, 2, 10);  // 3 mH
         REQUIRE(!ops1.empty());
@@ -920,8 +920,8 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
         json j150 = makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3);
         json j300 = makeCmcJson(230.0, 5.0, 50.0, 2, 2500.0, 300e3);
 
-        CommonModeChoke cmc150(j150);
-        CommonModeChoke cmc300(j300);
+        OpenMagnetics::CommonModeChoke cmc150(j150);
+        OpenMagnetics::CommonModeChoke cmc300(j300);
         CHECK_THAT(cmc150.get_dominant_frequency(), Catch::Matchers::WithinRel(150e3, 0.001));
         CHECK_THAT(cmc300.get_dominant_frequency(), Catch::Matchers::WithinRel(300e3, 0.001));
 
@@ -941,7 +941,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
         json j = makeCmcJson(400.0, 5.0, 50.0, 3, 1000.0, 150e3);
         j["parasiticCap_pF"] = cap_pF;
         j["dvdt_V_ns"]       = dvdt;
-        CommonModeChoke cmc(j);
+        OpenMagnetics::CommonModeChoke cmc(j);
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!ops.empty());
         auto excs = ops[0].get_excitations_per_winding();
@@ -957,7 +957,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("analytical and simulated frequencies agree") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto inputs = cmc.process();
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!inputs.get_operating_points().empty());
@@ -972,7 +972,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("current has DC offset = operating line current") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!ops.empty());
 
@@ -985,7 +985,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_CurrentConsistency",
     }
 
     SECTION("voltage has ~zero DC offset (inductor passes no DC voltage)") {
-        CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
+        OpenMagnetics::CommonModeChoke cmc(makeJsonWithNoise(cap_pF, dvdt));
         auto ops = cmc.simulate_realistic_cmc(L_self, cap_pF, dvdt, 2, 10);
         REQUIRE(!ops.empty());
 
@@ -1017,7 +1017,7 @@ TEST_CASE("Test_Cmc_AnalyticalVsSimulated_WaveformShapeEquality",
     j["dvdt_V_ns"]       = 50.0;
     j["safetyMargin_dB"] = 6.0;
 
-    CommonModeChoke cmc(j);
+    OpenMagnetics::CommonModeChoke cmc(j);
     auto inputs = cmc.process();
     REQUIRE(!inputs.get_operating_points().empty());
 
@@ -1137,7 +1137,7 @@ TEST_CASE("Test_Cmc_AdviserKnowsItsACmc",
           "[converter-model][cmc-topology][adviser]") {
 
     SECTION("process_design_requirements tags CM application flags") {
-        CommonModeChoke cmc(makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3));
+        OpenMagnetics::CommonModeChoke cmc(makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3));
         auto req = cmc.process_design_requirements();
 
         REQUIRE(req.get_application().has_value());
@@ -1150,7 +1150,7 @@ TEST_CASE("Test_Cmc_AdviserKnowsItsACmc",
         std::cout << "\n=== MagneticAdviser — per-case summary ===\n";
         for (const auto& c : CMC_DESIGN_CASES) {
             DYNAMIC_SECTION("case: " << c.label) {
-                CommonModeChoke cmc(makeCmcJsonForCase(c));
+                OpenMagnetics::CommonModeChoke cmc(makeCmcJsonForCase(c));
                 auto inputs = cmc.process();
                 REQUIRE(inputs.get_design_requirements().get_sub_application().has_value());
                 CHECK(inputs.get_design_requirements().get_sub_application().value()
@@ -1275,7 +1275,7 @@ TEST_CASE("CalculateAdvisedCoil_ToroidCmcAngularFillMustNotExceed360",
     SECTION("CMC on T 18.4/5.9/5.9 TDK T65 — sections must fit within 360°") {
         // 230 V / 5 A / 50 Hz line, 150 kHz / 1 kΩ impedance requirement.
         // This exact scenario previously produced totalAngle ≈ 551.5°.
-        CommonModeChoke cmc(makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3));
+        OpenMagnetics::CommonModeChoke cmc(makeCmcJson(230.0, 5.0, 50.0, 2, 1000.0, 150e3));
         auto inputs = cmc.process();
 
         MagneticAdviser adviser;
