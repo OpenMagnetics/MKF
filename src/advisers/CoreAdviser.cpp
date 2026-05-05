@@ -110,11 +110,9 @@ bool is_energy_storing_topology(std::optional<Topologies> topology) {
         case Topologies::FLYBACK_CONVERTER:
         case Topologies::BUCK_CONVERTER:
         case Topologies::BOOST_CONVERTER:
-        case Topologies::INVERTING_BUCK_BOOST_CONVERTER:
         case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
-        case Topologies::CUK_CONVERTER:
-        case Topologies::SEPIC:
-        case Topologies::ZETA_CONVERTER:
+        case Topologies::POWER_FACTOR_CORRECTION:
+        case Topologies::DIFFERENTIAL_MODE_CHOKE:
             return true;
             
         // Transformer topologies (forward-derived)
@@ -123,15 +121,15 @@ bool is_energy_storing_topology(std::optional<Topologies> topology) {
         case Topologies::TWO_SWITCH_FORWARD_CONVERTER:
         case Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER:
         case Topologies::PUSH_PULL_CONVERTER:
-        case Topologies::HALF_BRIDGE_CONVERTER:
-        case Topologies::FULL_BRIDGE_CONVERTER:
         case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER:
+        case Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER:
         case Topologies::ISOLATED_BUCK_CONVERTER:
         case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
         case Topologies::LLC_RESONANT_CONVERTER:
         case Topologies::CLLC_RESONANT_CONVERTER:
-        case Topologies::WEINBERG_CONVERTER:
         case Topologies::CURRENT_TRANSFORMER:
+        case Topologies::COMMON_MODE_CHOKE:
             return false;
             
         default:
@@ -876,8 +874,28 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         }
 
         if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
-            if (core.get_type() != CoreType::TOROIDAL) {
-                continue;
+            // Common-mode chokes MUST be wound on a single closed magnetic path so the
+            // common-mode flux of both windings adds in the core: only toroidal cores
+            // give the tight coupling required. Differential-mode chokes have no such
+            // constraint — they're regular inductors and can use any core type
+            // (powdered-iron toroids, gapped ferrite E/EE/PQ, etc.). Apply the
+            // toroidal-only restriction only to CMC; for DMC and other suppression
+            // topologies, honour the user's includeToroidalCores / includeConcentricCores
+            // settings.
+            auto topology = inputs.get_design_requirements().get_topology();
+            bool isCommonModeChoke = topology.has_value() && topology.value() == Topologies::COMMON_MODE_CHOKE;
+            if (isCommonModeChoke) {
+                if (core.get_type() != CoreType::TOROIDAL) {
+                    continue;
+                }
+            }
+            else {
+                if (!includeToroidalCores && core.get_type() == CoreType::TOROIDAL) {
+                    continue;
+                }
+                if (!includeConcentricCores && (core.get_type() == CoreType::PIECE_AND_PLATE || core.get_type() == CoreType::TWO_PIECE_SET)) {
+                    continue;
+                }
             }
         }
         else {
@@ -973,8 +991,22 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         Core core(shape);
 
         if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
-            if (core.get_type() != CoreType::TOROIDAL) {
-                continue;
+            // See comment in create_magnetic_dataset(): only CMC requires toroidal-only;
+            // DMC and other suppression topologies should honour user settings.
+            auto topology = inputs.get_design_requirements().get_topology();
+            bool isCommonModeChoke = topology.has_value() && topology.value() == Topologies::COMMON_MODE_CHOKE;
+            if (isCommonModeChoke) {
+                if (core.get_type() != CoreType::TOROIDAL) {
+                    continue;
+                }
+            }
+            else {
+                if (!includeToroidalCores && core.get_type() == CoreType::TOROIDAL) {
+                    continue;
+                }
+                if (!includeConcentricCores && (core.get_type() == CoreType::PIECE_AND_PLATE || core.get_type() == CoreType::TWO_PIECE_SET)) {
+                    continue;
+                }
             }
         }
         else {
@@ -2329,13 +2361,23 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
         return get_isolation_side_from_index(windingIndex);
     };
     auto is_center_tap_pair = [](const std::string& a, const std::string& b) {
-        // Detect the "<prefix> Half 1" / "<prefix> Half 2" naming pattern.
+        // Detect the "<prefix> Half 1" / "<prefix> Half 2" naming pattern
+        // (used by LLC) or the "<prefix>a" / "<prefix>b" pattern (used by
+        // AHB CT, e.g. "Secondary 0a" / "Secondary 0b").
         const std::string h1 = " Half 1";
         const std::string h2 = " Half 2";
-        if (a.size() <= h1.size() || b.size() <= h2.size()) return false;
-        if (a.compare(a.size() - h1.size(), h1.size(), h1) != 0) return false;
-        if (b.compare(b.size() - h2.size(), h2.size(), h2) != 0) return false;
-        return a.substr(0, a.size() - h1.size()) == b.substr(0, b.size() - h2.size());
+        if (a.size() > h1.size() && b.size() > h2.size() &&
+            a.compare(a.size() - h1.size(), h1.size(), h1) == 0 &&
+            b.compare(b.size() - h2.size(), h2.size(), h2) == 0 &&
+            a.substr(0, a.size() - h1.size()) == b.substr(0, b.size() - h2.size())) {
+            return true;
+        }
+        if (a.size() >= 2 && b.size() >= 2 &&
+            a.back() == 'a' && b.back() == 'b' &&
+            a.substr(0, a.size() - 1) == b.substr(0, b.size() - 1)) {
+            return true;
+        }
+        return false;
     };
 
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
@@ -2649,9 +2691,69 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
 
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
+    // DMC pre-filter: differential-mode chokes carry the full line current
+    // through the winding (no flux cancellation). Ungapped high-µᵢ ferrite
+    // saturates immediately at typical line currents (B_sat ≈ 0.25 T vs
+    // predicted 16-25 T linear B). Industry practice (Richtek AN008,
+    // Magnetics CS app notes) is to use distributed-gap powder cores
+    // (Sendust/KoolMu/MPP/High-Flux/iron-powder) or amorphous /
+    // nanocrystalline. Gapped ferrite is acceptable too.
+    auto topology = inputs.get_design_requirements().get_topology();
+    if (topology == Topologies::DIFFERENTIAL_MODE_CHOKE) {
+        std::vector<std::pair<Magnetic, double>> dmcFiltered;
+        dmcFiltered.reserve(magneticsWithScoring.size());
+        for (auto& entry : magneticsWithScoring) {
+            auto core = entry.first.get_core();
+            auto coreMaterial = core.resolve_material();
+            auto materialType = coreMaterial.get_material();
+            bool isHighSatMaterial = (materialType == MAS::MaterialType::POWDER ||
+                                      materialType == MAS::MaterialType::AMORPHOUS ||
+                                      materialType == MAS::MaterialType::NANOCRYSTALLINE ||
+                                      materialType == MAS::MaterialType::ELECTRICAL_STEEL);
+            bool hasGap = !core.get_functional_description().get_gapping().empty() &&
+                          core.get_functional_description().get_gapping()[0].get_length() > 0;
+            if (isHighSatMaterial || hasGap) {
+                dmcFiltered.push_back(entry);
+            }
+        }
+        magneticsWithScoring = std::move(dmcFiltered);
+    }
+
+    // CMC pre-filter: common-mode chokes need very high initial permeability
+    // (µᵢ >> 1000, typically MnZn ferrite µᵢ ≥ 5000 or nanocrystalline µᵢ ≥
+    // 30 000) so the common-mode impedance Z = jωL is large in the EMI band
+    // (150 kHz – 30 MHz). Powdered-iron / Sendust / MPP / High-Flux toroids
+    // have µᵢ in the 14–550 range — physically incapable of suppressing
+    // common-mode noise at the required impedance, even though they are
+    // toroidal and tagged "interferenceSuppression" in the dataset (because
+    // they're valid for differential-mode chokes). Reject them here.
+    if (topology == Topologies::COMMON_MODE_CHOKE) {
+        std::vector<std::pair<Magnetic, double>> cmcFiltered;
+        cmcFiltered.reserve(magneticsWithScoring.size());
+        for (auto& entry : magneticsWithScoring) {
+            auto core = entry.first.get_core();
+            auto coreMaterial = core.resolve_material();
+            if (coreMaterial.get_material() == MAS::MaterialType::POWDER) {
+                continue;
+            }
+            cmcFiltered.push_back(entry);
+        }
+        magneticsWithScoring = std::move(cmcFiltered);
+    }
+
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
 
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+
+    // Hard-cap candidates after the (cheap) impedance filter to keep the
+    // expensive downstream filters (saturation, losses, magnetic-inductance)
+    // bounded. The impedance filter already returns cores ranked by extra
+    // impedance margin, so the top-N are the strongest. Without this cap a
+    // suppression flow with many viable powder cores can take >30 s.
+    constexpr size_t kMaxCandidatesAfterImpedance = 50;
+    if (magneticsWithScoring.size() > kMaxCandidatesAfterImpedance) {
+        magneticsWithScoring.resize(kMaxCandidatesAfterImpedance);
+    }
 
     // Saturation gate: the CMC path already drops the DM line-current DC bias
     // via Inputs::can_be_common_mode_choke, so this filter sees only the CM

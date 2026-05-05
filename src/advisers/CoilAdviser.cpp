@@ -47,6 +47,53 @@ namespace OpenMagnetics {
         return std::vector<double>(numWindings, 1.0 / numWindings);
     }
 
+    // Wound-together aware variant: members of the same wound_with group share
+    // a single section's slice instead of each consuming a full slice. Without
+    // this, e.g. an AHB center-tapped secondary (3 windings, group {sec_a,
+    // sec_b}) makes the primary share 33% and secondary share 66% post-
+    // virtualization, so the primary can't fit. With grouping the primary
+    // gets 50% and the secondary group gets 50% (split 25/25 between halves
+    // pre-virtualization, summed to 50% post-virtualization).
+    std::vector<double> calculate_winding_window_proportion_per_winding(Inputs& inputs, const Coil& coil) {
+        const auto& windings = coil.get_functional_description();
+        size_t numWindings = windings.size();
+        if (numWindings == 0) {
+            return calculate_winding_window_proportion_per_winding(inputs);
+        }
+
+        // Build group-representative map: each winding maps to the lowest-
+        // index winding in its wound_with group (or itself if ungrouped).
+        std::vector<size_t> groupRep(numWindings);
+        for (size_t i = 0; i < numWindings; ++i) groupRep[i] = i;
+        for (size_t i = 0; i < numWindings; ++i) {
+            const auto& wwOpt = windings[i].get_wound_with();
+            if (!wwOpt || wwOpt->empty()) continue;
+            size_t minIdx = i;
+            for (const auto& partnerName : wwOpt.value()) {
+                for (size_t j = 0; j < numWindings; ++j) {
+                    if (windings[j].get_name() == partnerName && j < minIdx) {
+                        minIdx = j;
+                    }
+                }
+            }
+            groupRep[i] = minIdx;
+        }
+
+        std::set<size_t> uniqueGroups(groupRep.begin(), groupRep.end());
+        size_t numGroups = uniqueGroups.size();
+        if (numGroups == 0) numGroups = numWindings;
+        double perGroupShare = 1.0 / static_cast<double>(numGroups);
+
+        std::map<size_t, size_t> membersPerGroup;
+        for (size_t i = 0; i < numWindings; ++i) membersPerGroup[groupRep[i]]++;
+
+        std::vector<double> proportions(numWindings);
+        for (size_t i = 0; i < numWindings; ++i) {
+            proportions[i] = perGroupShare / static_cast<double>(membersPerGroup[groupRep[i]]);
+        }
+        return proportions;
+    }
+
     void CoilAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow, std::optional<Inputs> inputs) {
         _filters.clear();
         _loadedFilterFlow = flow;
@@ -150,6 +197,20 @@ namespace OpenMagnetics {
         const bool isCmc = inputs.get_design_requirements().get_sub_application().has_value()
                         && inputs.get_design_requirements().get_sub_application().value()
                            == SubApplication::COMMON_MODE_NOISE_FILTERING;
+        // Multi-winding DMCs are detected by topology=DIFFERENTIAL_MODE_CHOKE
+        // plus an operating point with ≥2 windings (configuration is implied
+        // by winding count: 2 = SINGLE_PHASE_BALANCED, 3 = THREE_PHASE,
+        // 4 = THREE_PHASE_WITH_NEUTRAL). Single-winding DMC takes the regular
+        // inductor path. DMC has no toroidal-only constraint — applies on any
+        // core type.
+        size_t numWindingsForDmcCheck = 0;
+        if (!inputs.get_operating_points().empty()) {
+            numWindingsForDmcCheck = inputs.get_operating_points()[0].get_excitations_per_winding().size();
+        }
+        const bool isDmcMultiWinding =
+            inputs.get_design_requirements().get_topology().has_value()
+            && inputs.get_design_requirements().get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE
+            && numWindingsForDmcCheck >= 2;
         if (isCmc && coreType == CoreType::TOROIDAL) {
             repetitions = {1};
             mas.get_mutable_magnetic().get_mutable_coil()
@@ -159,6 +220,26 @@ namespace OpenMagnetics {
             mas.get_mutable_magnetic().get_mutable_coil()
                 .set_turns_alignment(CoilAlignment::CENTERED);
             logEntry("CMC detected: forcing {1} repetitions, sections CONTIGUOUS + SPREAD, turns CENTERED", "CoilAdviser");
+        }
+        if (isDmcMultiWinding) {
+            // Same EMI-filter winding policy as CMC: one section per phase,
+            // no bifilar interleave. Orientation depends on core type:
+            //   · TOROIDAL: CONTIGUOUS sectors around the arc, SPREAD.
+            //   · concentric (E/PQ etc.): OVERLAPPING is the natural layout.
+            // We keep the orientation choice to the existing per-core-type
+            // logic in get_advised_coil_for_pattern; here we only force
+            // the {1} repetition (no bifilar) since multi-winding DMC
+            // sections must stay separate per phase.
+            repetitions = {1};
+            if (coreType == CoreType::TOROIDAL) {
+                mas.get_mutable_magnetic().get_mutable_coil()
+                    .set_winding_orientation(WindingOrientation::CONTIGUOUS);
+                mas.get_mutable_magnetic().get_mutable_coil()
+                    .set_section_alignment(CoilAlignment::SPREAD);
+                mas.get_mutable_magnetic().get_mutable_coil()
+                    .set_turns_alignment(CoilAlignment::CENTERED);
+            }
+            logEntry("Multi-winding DMC detected: forcing {1} repetitions (no bifilar)", "CoilAdviser");
         }
 
         
@@ -254,7 +335,7 @@ namespace OpenMagnetics {
     }
 
     std::vector<Section> CoilAdviser::get_advised_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions){
-        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
+        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs(), mas.get_magnetic().get_coil());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
 
@@ -277,7 +358,7 @@ namespace OpenMagnetics {
     }
 
     std::vector<Section> CoilAdviser::get_advised_planar_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions){
-        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
+        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs(), mas.get_magnetic().get_coil());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
 
@@ -432,8 +513,16 @@ namespace OpenMagnetics {
         const bool isCmc = mas.get_mutable_inputs().get_design_requirements().get_sub_application().has_value()
                         && mas.get_mutable_inputs().get_design_requirements().get_sub_application().value()
                            == SubApplication::COMMON_MODE_NOISE_FILTERING;
+        size_t dmcWindingCount = 0;
+        if (!mas.get_inputs().get_operating_points().empty()) {
+            dmcWindingCount = mas.get_inputs().get_operating_points()[0].get_excitations_per_winding().size();
+        }
+        const bool isDmcMultiWinding =
+            mas.get_mutable_inputs().get_design_requirements().get_topology().has_value()
+            && mas.get_mutable_inputs().get_design_requirements().get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE
+            && dmcWindingCount >= 2;
         size_t maximumNumberWires = settings.get_coil_adviser_maximum_number_wires();
-        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
+        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs(), mas.get_magnetic().get_coil());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
         if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
@@ -524,6 +613,42 @@ namespace OpenMagnetics {
             _wireAdviser.set_wire_solid_insulation_requirements(solidInsulationRequirementsForWires[windingIndex]);
             wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
 
+            // OPT: skip wireAdv for wound_with children. Their wire and
+            // numberParallels are mirrored from the lower-index group
+            // representative inside the wind loop (lines 720-746), so any
+            // candidates we'd compute here are immediately overwritten.
+            // Cloning the partner's candidate list keeps the loop's index
+            // bookkeeping consistent without doing redundant search work.
+            {
+                const auto& wwOpt = coil.get_functional_description()[windingIndex].get_wound_with();
+                if (wwOpt && !wwOpt->empty()) {
+                    size_t partnerIdx = numberWindings;
+                    for (const auto& partnerName : wwOpt.value()) {
+                        for (size_t pIdx = 0; pIdx < windingIndex; ++pIdx) {
+                            if (coil.get_functional_description()[pIdx].get_name() == partnerName) {
+                                partnerIdx = pIdx;
+                                break;
+                            }
+                        }
+                        if (partnerIdx < numberWindings) break;
+                    }
+                    if (partnerIdx < windingIndex && partnerIdx < wireCoilPerWinding.size()) {
+                        // Clone partner's wire candidates but overlay this
+                        // winding's identity (name, numTurns, isolation_side,
+                        // wound_with). Only the wire spec + numberParallels are
+                        // inherited; everything else must reflect THIS winding.
+                        const auto& selfWinding = coil.get_functional_description()[windingIndex];
+                        for (const auto& partnerCandidate : wireCoilPerWinding[partnerIdx]) {
+                            Winding cloned = selfWinding;
+                            cloned.set_wire(partnerCandidate.first.get_wire());
+                            cloned.set_number_parallels(partnerCandidate.first.get_number_parallels());
+                            wireCoilPerWinding.back().emplace_back(cloned, partnerCandidate.second);
+                        }
+                        timeout += static_cast<int>(wireCoilPerWinding.back().size());
+                        continue;
+                    }
+                }
+            }
 
             SignalDescriptor maximumCurrent;
             double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
@@ -649,12 +774,19 @@ namespace OpenMagnetics {
         }
 
         logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
-        mas.get_mutable_magnetic().set_coil(coil);
+                    mas.get_mutable_magnetic().set_coil(coil);
 
         auto currentWireIndexPerWinding = std::vector<size_t>(numberWindings, 0);
         std::vector<Mas> masesWithCoil;
 
         size_t wiresIndex = 0;
+        // OPT early-exit: if we've tried this many wind() calls and not a
+        // single one has succeeded, the remaining wire combinations are
+        // very unlikely to fit either (wires are roughly score-ordered).
+        // Bail out to keep CoilAdviser bounded for tight cores instead of
+        // burning the full timeout on hopeless candidates.
+        constexpr size_t kMaxConsecutiveFailuresWithNoSuccess = 25;
+        size_t consecutiveFailures = 0;
 
         while (true) {
 
@@ -683,13 +815,14 @@ namespace OpenMagnetics {
                 }
             }
 
-            // CMC: mirror winding[0] wire + parallels to every other winding.
-            // A CMC is a coupled inductor where every phase carries identical
-            // line current, so the wire spec must match across windings.
-            // The wire adviser runs per-winding, and with identical operating
-            // points usually converges on the same pick anyway — but nothing
-            // in the WireAdviser enforces this, so pin it here.
-            if (isCmc && !windings.empty()) {
+            // CMC / multi-winding DMC: mirror winding[0] wire + parallels to
+            // every other winding. Both topologies are coupled inductors where
+            // every phase carries identical line current, so the wire spec must
+            // match across windings. The wire adviser runs per-winding, and
+            // with identical operating points usually converges on the same
+            // pick anyway — but nothing in the WireAdviser enforces this, so
+            // pin it here.
+            if ((isCmc || isDmcMultiWinding) && !windings.empty()) {
                 const auto& w0 = windings[0];
                 for (size_t wIdx = 1; wIdx < windings.size(); ++wIdx) {
                     windings[wIdx].set_wire(w0.get_wire());
@@ -702,6 +835,12 @@ namespace OpenMagnetics {
             // We have new wires combination, we need to restart insulation each time and let it compute it again
             mas.get_mutable_magnetic().get_mutable_coil().reset_insulation();
             bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind(sectionProportions, pattern, repetitions);
+            if (wound) {
+                consecutiveFailures = 0;
+            }
+            else {
+                consecutiveFailures++;
+            }
 
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
@@ -740,6 +879,12 @@ namespace OpenMagnetics {
                     }
                 }
             }
+            // OPT early-exit: bail out if many consecutive failures with no
+            // success so far. Score-ordered wire candidates mean if the
+            // top-N can't fit, the rest almost certainly can't either.
+            if (masesWithCoil.empty() && consecutiveFailures >= kMaxConsecutiveFailuresWithNoSuccess) {
+                break;
+            }
             timeout--;
             if (timeout == 0) {
                 break;
@@ -777,7 +922,7 @@ namespace OpenMagnetics {
     std::vector<Mas> CoilAdviser::get_advised_planar_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, size_t maximumNumberResults, std::string reference){
         // bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
         size_t maximumNumberWires = settings.get_coil_adviser_maximum_number_wires();
-        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
+        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs(), mas.get_magnetic().get_coil());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
 

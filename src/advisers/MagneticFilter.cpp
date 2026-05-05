@@ -30,11 +30,8 @@ static bool is_energy_storing_topology(std::optional<Topologies> topology) {
         case Topologies::FLYBACK_CONVERTER:
         case Topologies::BUCK_CONVERTER:
         case Topologies::BOOST_CONVERTER:
-        case Topologies::INVERTING_BUCK_BOOST_CONVERTER:
         case Topologies::ISOLATED_BUCK_BOOST_CONVERTER:
-        case Topologies::CUK_CONVERTER:
-        case Topologies::SEPIC:
-        case Topologies::ZETA_CONVERTER:
+        case Topologies::POWER_FACTOR_CORRECTION:
         // DMC is a single-winding (or balanced two-winding) inductor on the
         // line carrying the full DC line current as bias. Routing it through
         // the inductor B-from-current path lets MagnetizingInductance derate
@@ -48,15 +45,15 @@ static bool is_energy_storing_topology(std::optional<Topologies> topology) {
         case Topologies::TWO_SWITCH_FORWARD_CONVERTER:
         case Topologies::ACTIVE_CLAMP_FORWARD_CONVERTER:
         case Topologies::PUSH_PULL_CONVERTER:
-        case Topologies::HALF_BRIDGE_CONVERTER:
-        case Topologies::FULL_BRIDGE_CONVERTER:
         case Topologies::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case Topologies::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER:
+        case Topologies::ASYMMETRIC_HALF_BRIDGE_CONVERTER:
         case Topologies::ISOLATED_BUCK_CONVERTER:
         case Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER:
         case Topologies::LLC_RESONANT_CONVERTER:
         case Topologies::CLLC_RESONANT_CONVERTER:
-        case Topologies::WEINBERG_CONVERTER:
         case Topologies::CURRENT_TRANSFORMER:
+        case Topologies::COMMON_MODE_CHOKE:
             return false;
             
         default:
@@ -1189,9 +1186,94 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
 
     bool validDesign = true;
     bool validMaterial = true;
-    double totalImpedanceExtra;
+    double totalImpedanceExtra = 0;
     int timeout = 100;
-    do {
+    bool jumpDefinitive = false;
+    int64_t jumpedRequiredN = 0;
+
+    // Analytical first-jump: inductive impedance scales as N² (with mild
+    // N-dependence via DC-bias and stray capacitance). For each impedance
+    // requirement, compute Z(N=1) once, then jump straight to
+    // N_required = ceil(sqrt(Z_target / Z(N=1))). For first-pass filtering
+    // this is definitive: the do-loop below is skipped (perf) and we accept
+    // the analytical answer. Capacitance/SRF rolloff is a second-order
+    // effect that downstream filters re-validate on the survivor cap.
+    {
+        Coil unitCoil = coil;
+        unitCoil.get_mutable_functional_description()[0].set_number_turns(1.0);
+        int64_t requiredN = 1;
+        double extraSum = 0;
+        bool jumpOk = true;
+        for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
+            auto frequency = impedanceAtFrequency.get_frequency();
+            auto required = impedanceAtFrequency.get_impedance().get_magnitude();
+            try {
+                double zUnit;
+                if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
+                    double H_dc_unit = 1.0 * magnetizingCurrentPeak / effectiveLength;
+                    zUnit = abs(_impedanceModel.calculate_impedance(core, unitCoil, frequency, H_dc_unit, defaults.ambientTemperature));
+                } else {
+                    zUnit = abs(_impedanceModel.calculate_impedance(core, unitCoil, frequency));
+                }
+                if (zUnit <= 0 || !std::isfinite(zUnit)) { jumpOk = false; break; }
+                int64_t nNeeded = static_cast<int64_t>(std::ceil(std::sqrt(required / zUnit)));
+                if (nNeeded < 1) nNeeded = 1;
+                if (nNeeded > requiredN) requiredN = nNeeded;
+                // Use the post-jump impedance estimate for the score
+                double estZ = zUnit * static_cast<double>(requiredN) * static_cast<double>(requiredN);
+                extraSum += std::max(0.0, estZ - required);
+            } catch (const ModelNotAvailableException&) {
+                jumpOk = false;
+                break;
+            }
+        }
+        if (jumpOk) {
+            // Geometric feasibility check: do the turns physically fit?
+            double wireOuterRadius = resolve_dimensional_values(wire.get_outer_diameter().value()) / 2.0;
+            double conductorAreaTotal = static_cast<double>(requiredN) * std::numbers::pi * wireOuterRadius * wireOuterRadius;
+            if (conductorAreaTotal >= windingWindowArea) {
+                magnetic->set_coil(std::move(coil));
+                return {false, 0};
+            }
+            coil.get_mutable_functional_description()[0].set_number_turns(static_cast<double>(requiredN));
+            // Single validation pass at the analytical N to (a) confirm the
+            // jump met the requirement after second-order effects and (b)
+            // produce a real impedance score for ranking. Skips the iterative
+            // refinement (was up to 100 calls/core).
+            double measuredExtra = 0;
+            bool meetsAll = true;
+            for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
+                auto frequency = impedanceAtFrequency.get_frequency();
+                auto required = impedanceAtFrequency.get_impedance().get_magnitude();
+                try {
+                    double impedance;
+                    if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
+                        double H_dc = static_cast<double>(requiredN) * magnetizingCurrentPeak / effectiveLength;
+                        impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency, H_dc, defaults.ambientTemperature));
+                    } else {
+                        impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency));
+                    }
+                    if (impedance < required) {
+                        meetsAll = false;
+                        break;
+                    }
+                    measuredExtra += (impedance - required);
+                } catch (const ModelNotAvailableException&) {
+                    meetsAll = false;
+                    break;
+                }
+            }
+            if (!meetsAll) {
+                magnetic->set_coil(std::move(coil));
+                return {false, 0};
+            }
+            jumpDefinitive = true;
+            jumpedRequiredN = requiredN;
+            totalImpedanceExtra = measuredExtra;
+        }
+    }
+
+    if (!jumpDefinitive) do {
         totalImpedanceExtra = 0;
         validDesign = true;
         auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
@@ -1251,14 +1333,16 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
 
 
     if (validDesign && validMaterial) {
-        coil.fast_wind();
-        bool fitting = coil.are_sections_and_layers_fitting();
-        bool hasTurns = coil.get_turns_description().has_value();
-        if (!fitting || !hasTurns) {
-
-        }
+        // Skip the expensive fast_wind() / are_sections_and_layers_fitting()
+        // validation here. With ~thousands of candidate cores in suppression
+        // flows this winding work dominates the runtime even though most
+        // cores will be culled by the downstream cap. The cheap
+        // winding-area-vs-conductor-area check inside the do-loop already
+        // rejects geometrically infeasible designs; the final
+        // correct_windings() pass after the cap performs full winding
+        // validation on the surviving top-N.
         magnetic->set_coil(std::move(coil));
-        return {fitting && hasTurns, totalImpedanceExtra};
+        return {true, totalImpedanceExtra};
     }
 
     magnetic->set_coil(std::move(coil));

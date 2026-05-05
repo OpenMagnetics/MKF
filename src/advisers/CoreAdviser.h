@@ -499,7 +499,7 @@ inline void from_json(const json & j, CoreAdviser::CoreAdviserModes & x) {
     if (j == "available cores") x = CoreAdviser::CoreAdviserModes::AVAILABLE_CORES;
     else if (j == "standard cores") x = CoreAdviser::CoreAdviserModes::STANDARD_CORES;
     else if (j == "custom cores") x = CoreAdviser::CoreAdviserModes::CUSTOM_CORES;
-    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    else { throw std::runtime_error("Input JSON does not conform to schema! [CoreAdviser.h:502 CoreAdviserModes from_json]"); }
 }
 
 inline void to_json(json & j, const CoreAdviser::CoreAdviserModes & x) {
@@ -519,7 +519,7 @@ inline void from_json(const json & j, CoreAdviser::CoreAdviserFilters & x) {
     if (j == "Cost" || j == "cost" || j == "COST") x = CoreAdviser::CoreAdviserFilters::COST;
     else if (j == "Efficiency" || j == "efficiency" || j == "EFFICIENCY") x = CoreAdviser::CoreAdviserFilters::EFFICIENCY;
     else if (j == "Dimensions" || j == "dimensions" || j == "DIMENSIONS") x = CoreAdviser::CoreAdviserFilters::DIMENSIONS;
-    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    else { throw std::runtime_error("Input JSON does not conform to schema! [CoreAdviser.h:522 CoreAdviserFilters from_json]"); }
 }
 
 inline void to_json(json & j, const CoreAdviser::CoreAdviserFilters & x) {
