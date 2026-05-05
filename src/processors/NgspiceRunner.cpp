@@ -961,6 +961,9 @@ OperatingPoint NgspiceRunner::extract_operating_point(
                 SignalDescriptor voltage;
                 Waveform voltageWaveform = result.waveforms[indexIt->second];
                 voltageWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
+                // Resample to power-of-2 length so downstream consumers (MagnetizingInductance,
+                // harmonics/FFT) get the standardized waveform contract MKF expects.
+                voltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency);
                 voltage.set_waveform(voltageWaveform);
                 // Calculate processed data for voltage
                 auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, frequency, true);
@@ -990,6 +993,8 @@ OperatingPoint NgspiceRunner::extract_operating_point(
                 
                 SignalDescriptor current;
                 currentWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
+                // Resample to power-of-2 length to match the voltage path (see comment above).
+                currentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, frequency);
                 current.set_waveform(currentWaveform);
                 // Calculate processed data for current
                 auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, frequency, true);

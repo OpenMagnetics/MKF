@@ -777,6 +777,28 @@ std::vector<Wire> get_wires(std::optional<WireType> wireType, std::optional<Wire
         load_wires();
     }
 
+    // PERF: this function is called per-core inside MagneticFilterCoreMinimumImpedance
+    // (via Wire::get_wire_for_conducting_area -> find_wire_by_dimension) when the
+    // adviser scans 1000+ candidate cores. Without caching, every call iterates
+    // the entire wire database and copy-constructs each Wire (each holds
+    // strings, optional materials, etc.), dominating per-core wall time.
+    // The wireDatabase is loaded once and immutable, so the filtered+copied
+    // list is safe to memoize by (type, standard).
+    using CacheKey = std::pair<int, int>;
+    static std::map<CacheKey, std::vector<Wire>> filteredWiresCache;
+    static size_t cachedDatabaseSize = 0;
+    if (cachedDatabaseSize != wireDatabase.size()) {
+        // Database was reloaded since we last cached; invalidate.
+        filteredWiresCache.clear();
+        cachedDatabaseSize = wireDatabase.size();
+    }
+    CacheKey key = {wireType.has_value() ? static_cast<int>(*wireType) : -1,
+                    wireStandard.has_value() ? static_cast<int>(*wireStandard) : -1};
+    auto cacheIt = filteredWiresCache.find(key);
+    if (cacheIt != filteredWiresCache.end()) {
+        return cacheIt->second;
+    }
+
     std::vector<Wire> wires;
 
     for (auto& datum : wireDatabase) {
@@ -795,6 +817,7 @@ std::vector<Wire> get_wires(std::optional<WireType> wireType, std::optional<Wire
         wires.push_back(datum.second);
     }
 
+    filteredWiresCache[key] = wires;
     return wires;
 }
 
@@ -861,18 +884,32 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
         load_wires();
     }
 
-    auto wires = get_wires(wireType, wireStandard);
+    // PERF: avoid the get_wires() copy. This function is called per-core
+    // inside MagneticFilterCoreMinimumImpedance and the previous get_wires()
+    // call copy-constructed every Wire (large objects with strings/optionals)
+    // into a fresh vector on every call. Iterate the database directly.
     double minimumDistance = DBL_MAX;
     Wire chosenWire;
-    std::vector<Wire> possibleWires;
+    std::vector<const Wire*> possibleWires;
 
-    for (auto wire : wires) {
+    for (const auto& datum : wireDatabase) {
+        const Wire& wire = datum.second;
+
+        if (wireStandard && !wire.get_standard()) {
+            continue;
+        }
+        if (wireStandard && wire.get_standard().value() != wireStandard) {
+            continue;
+        }
+        if (wireType && wire.get_type() != wireType) {
+            continue;
+        }
+
         double distance = 0;
 
         switch (wire.get_type()) {
             case WireType::LITZ:
                 continue;
-                // throw std::runtime_error("Not defined for Litz wire");
             case WireType::ROUND:
                 {
                     if (!wire.get_conducting_diameter()) {
@@ -911,16 +948,18 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
             chosenWire = wire;
         }
         else if (distance == minimumDistance) {
-            possibleWires.push_back(wire);
+            possibleWires.push_back(&wire);
         }
     }
 
     double minimumOuterDimension = DBL_MAX;
 
-    for (auto wire : possibleWires) {
-        if (minimumOuterDimension > wire.get_maximum_outer_dimension()) {
-            minimumOuterDimension = wire.get_maximum_outer_dimension();
-            chosenWire = wire;
+    for (const Wire* wirePtr : possibleWires) {
+        Wire wireCopy = *wirePtr;  // get_maximum_outer_dimension is non-const
+        double dim = wireCopy.get_maximum_outer_dimension();
+        if (minimumOuterDimension > dim) {
+            minimumOuterDimension = dim;
+            chosenWire = wireCopy;
         }
     }
 
