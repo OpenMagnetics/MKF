@@ -89,7 +89,7 @@ using namespace MAS;
  *   Lr_min = Coss * Vin^2 / Ip^2
  *   Duty cycle loss: t_loss = Lr * Io_ref / (n * Vin)
  */
-class Psfb : public MAS::PhaseShiftFullBridge, public Topology {
+class Psfb : public MAS::PhaseShiftedFullBridge, public Topology {
 private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 5;

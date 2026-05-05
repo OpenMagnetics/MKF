@@ -118,6 +118,97 @@ Waveform Inputs::sum_waveform(Waveform waveform, double scalarValue){
     return waveform;
 }
 
+Waveform Inputs::add_waveforms(Waveform a, const Waveform& b) {
+    auto& aData = a.get_mutable_data();
+    const auto& bData = b.get_data();
+    if (aData.size() != bData.size()) {
+        throw std::invalid_argument("add_waveforms: size mismatch (" +
+                                    std::to_string(aData.size()) + " vs " +
+                                    std::to_string(bData.size()) + ")");
+    }
+    for (size_t i = 0; i < aData.size(); ++i) {
+        aData[i] += bData[i];
+    }
+    return a;
+}
+
+Waveform Inputs::subtract_waveforms(Waveform a, const Waveform& b) {
+    auto& aData = a.get_mutable_data();
+    const auto& bData = b.get_data();
+    if (aData.size() != bData.size()) {
+        throw std::invalid_argument("subtract_waveforms: size mismatch (" +
+                                    std::to_string(aData.size()) + " vs " +
+                                    std::to_string(bData.size()) + ")");
+    }
+    for (size_t i = 0; i < aData.size(); ++i) {
+        aData[i] -= bData[i];
+    }
+    return a;
+}
+
+Waveform Inputs::shift_waveform(Waveform waveform, int samples) {
+    auto& data = waveform.get_mutable_data();
+    const int n = static_cast<int>(data.size());
+    if (n == 0) {
+        throw std::invalid_argument("shift_waveform: empty waveform");
+    }
+    // Normalize shift into [0, n)
+    int s = samples % n;
+    if (s < 0) s += n;
+    if (s == 0) return waveform;
+    std::vector<double> shifted(n);
+    for (int i = 0; i < n; ++i) {
+        shifted[(i + s) % n] = data[i];
+    }
+    data = shifted;
+    return waveform;
+}
+
+SignalDescriptor Inputs::add_signals(const SignalDescriptor& a, const SignalDescriptor& b, double frequency) {
+    if (!a.get_waveform() || !b.get_waveform()) {
+        throw std::invalid_argument("add_signals: both signals must have waveforms");
+    }
+    auto wa = a.get_waveform().value();
+    auto wb = b.get_waveform().value();
+    auto sa = calculate_sampled_waveform(wa, frequency);
+    auto sb = calculate_sampled_waveform(wb, frequency);
+    auto sum = add_waveforms(sa, sb);
+    SignalDescriptor out;
+    out.set_waveform(sum);
+    out.set_harmonics(calculate_harmonics_data(sum, frequency));
+    out.set_processed(calculate_processed_data(out, sum, true));
+    return out;
+}
+
+SignalDescriptor Inputs::subtract_signals(const SignalDescriptor& a, const SignalDescriptor& b, double frequency) {
+    if (!a.get_waveform() || !b.get_waveform()) {
+        throw std::invalid_argument("subtract_signals: both signals must have waveforms");
+    }
+    auto wa = a.get_waveform().value();
+    auto wb = b.get_waveform().value();
+    auto sa = calculate_sampled_waveform(wa, frequency);
+    auto sb = calculate_sampled_waveform(wb, frequency);
+    auto diff = subtract_waveforms(sa, sb);
+    SignalDescriptor out;
+    out.set_waveform(diff);
+    out.set_harmonics(calculate_harmonics_data(diff, frequency));
+    out.set_processed(calculate_processed_data(out, diff, true));
+    return out;
+}
+
+SignalDescriptor Inputs::shift_signal(const SignalDescriptor& s, int samples, double frequency) {
+    if (!s.get_waveform()) {
+        throw std::invalid_argument("shift_signal: signal must have a waveform");
+    }
+    auto sampled = calculate_sampled_waveform(s.get_waveform().value(), frequency);
+    auto shifted = shift_waveform(sampled, samples);
+    SignalDescriptor out;
+    out.set_waveform(shifted);
+    out.set_harmonics(calculate_harmonics_data(shifted, frequency));
+    out.set_processed(calculate_processed_data(out, shifted, true));
+    return out;
+}
+
 bool is_close_enough(double x, double y, double error){
     return fabs(x - y) <= error;
 }
@@ -830,6 +921,103 @@ SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(OperatingPoin
     magnetizingCurrent.set_waveform(sampledWaveform);
     magnetizingCurrent.set_harmonics(calculate_harmonics_data(sampledWaveform, frequency));
     magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
+
+    return magnetizingCurrent;
+}
+
+bool Inputs::can_be_differential_mode_choke(OperatingPoint operatingPoint, bool isDmcTopology) {
+    // DMC dispatch fires when:
+    //   1) caller has identified the topology as DMC
+    //      (designRequirements.topology == DIFFERENTIAL_MODE_CHOKE), AND
+    //   2) the operating point has 2, 3, or 4 windings — implying
+    //      SINGLE_PHASE_BALANCED, THREE_PHASE, or THREE_PHASE_WITH_NEUTRAL.
+    //
+    // Single-phase 1-winding DMC (1 winding) is intentionally NOT
+    // intercepted here — it's a plain series inductor and the existing
+    // numberWindings==1 path in MagnetizingInductance.cpp handles it
+    // correctly (full line current with DC bias).
+    if (!isDmcTopology) {
+        return false;
+    }
+    auto excitations = operatingPoint.get_excitations_per_winding();
+    return excitations.size() >= 2 && excitations.size() <= 4;
+}
+
+SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(OperatingPoint operatingPoint) {
+    // ── DMC effective core current synthesis ─────────────────────────────
+    // MKF convention: every winding's current is stored "into the dot",
+    // matching DifferentialModeChoke::process_operating_points which uses
+    // the same phase sign on every winding (the physical reversal of
+    // winding sense is already absorbed into the sign convention). The
+    // flux-driving "magnetizing" current the core sees is therefore the
+    // point-by-point SUM of all winding currents for every DMC config:
+    //
+    //   2 windings (SINGLE_PHASE_BALANCED): i_L + i_N (both same sign
+    //     into-the-dot → 2·I_DM driving flux additively).
+    //
+    //   3 windings (THREE_PHASE 3-wire):    i_a + i_b + i_c (vector sum;
+    //     in a perfectly balanced load this is zero — no excitation —
+    //     and imbalance / zero-sequence is what we filter).
+    //
+    //   4 windings (THREE_PHASE_WITH_NEUTRAL): i_a + i_b + i_c + i_n.
+    //
+    // 1-winding DMC (SINGLE_PHASE) is handled by the regular inductor
+    // path and never lands here (can_be_differential_mode_choke returns
+    // false for 1 winding).
+    OperatingPointExcitation primaryExcitation = Inputs::get_primary_excitation(operatingPoint);
+    double frequency = primaryExcitation.get_frequency();
+
+    auto excitations = operatingPoint.get_excitations_per_winding();
+    if (excitations.size() < 2 || excitations.size() > 4) {
+        throw std::invalid_argument("DMC magnetizing current synthesis requires 2, 3, or 4 windings, got " +
+                                    std::to_string(excitations.size()));
+    }
+
+    std::vector<Waveform> windingCurrents;
+    windingCurrents.reserve(excitations.size());
+    for (size_t i = 0; i < excitations.size(); ++i) {
+        if (!excitations[i].get_current()) {
+            throw std::invalid_argument("DMC: winding " + std::to_string(i) + " has no current");
+        }
+        auto current = excitations[i].get_current().value();
+        if (!current.get_waveform()) {
+            throw std::invalid_argument("DMC: winding " + std::to_string(i) + " current has no waveform");
+        }
+        auto wf = current.get_waveform().value();
+        if (wf.get_data().empty() || !is_size_power_of_2(wf.get_data())) {
+            wf = calculate_sampled_waveform(wf, frequency);
+        }
+        windingCurrents.push_back(wf);
+    }
+
+    size_t N = windingCurrents[0].get_data().size();
+    for (size_t i = 1; i < windingCurrents.size(); ++i) {
+        if (windingCurrents[i].get_data().size() != N) {
+            throw std::invalid_argument("DMC: per-winding waveform sizes mismatch — winding 0 has " +
+                std::to_string(N) + ", winding " + std::to_string(i) + " has " +
+                std::to_string(windingCurrents[i].get_data().size()));
+        }
+    }
+
+    std::vector<double> combined(N, 0.0);
+    for (size_t s = 0; s < N; ++s) {
+        double sum = 0.0;
+        for (size_t w = 0; w < windingCurrents.size(); ++w) {
+            sum += windingCurrents[w].get_data()[s];
+        }
+        combined[s] = sum;
+    }
+
+    Waveform combinedWaveform;
+    combinedWaveform.set_data(combined);
+    if (windingCurrents[0].get_time()) {
+        combinedWaveform.set_time(windingCurrents[0].get_time().value());
+    }
+
+    SignalDescriptor magnetizingCurrent;
+    magnetizingCurrent.set_waveform(combinedWaveform);
+    magnetizingCurrent.set_harmonics(calculate_harmonics_data(combinedWaveform, frequency));
+    magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, combinedWaveform, true));
 
     return magnetizingCurrent;
 }
@@ -2139,7 +2327,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
     return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
 }
 
-OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios) {
+OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios, bool isDmcTopology) {
     // Decide the excitation's effective loss-driving frequency.
     //
     // Two cases must both work:
@@ -2378,9 +2566,33 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
         bool primaryHasMagnetizingCurrent =
             !operatingPoint.get_excitations_per_winding().empty()
             && operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().has_value();
+        // ── DMC handling ─────────────────────────────────────────────────
+        // Multi-winding DMC topologies (SINGLE_PHASE_BALANCED, THREE_PHASE,
+        // THREE_PHASE_WITH_NEUTRAL) carry one phase-current per winding in
+        // physical sign convention. The flux-driving "magnetizing" current
+        // the core sees is a case-specific combination (see
+        // get_differential_mode_choke_magnetizing_current). Stamp the
+        // synthesized current onto winding[0] so MagnetizingInductance and
+        // the downstream loss/flux pipeline pick it up via the standard
+        // pre-stamped path.
+        // Single-phase 1-winding DMC is intentionally NOT intercepted here
+        // — it's a plain series inductor and the regular path handles it.
+        bool isDmcOperatingPoint = !primaryHasMagnetizingCurrent
+            && can_be_differential_mode_choke(operatingPoint, isDmcTopology);
         bool isCmcOperatingPoint = !primaryHasMagnetizingCurrent
+            && !isDmcOperatingPoint
             && can_be_common_mode_choke(operatingPoint);
-        if (isCmcOperatingPoint) {
+        if (isDmcOperatingPoint) {
+            auto dmMagnetizingCurrent = get_differential_mode_choke_magnetizing_current(operatingPoint);
+            // Stamp the synthesized DMC magnetizing current on every winding;
+            // downstream consumers read winding[0] but mirroring keeps the
+            // operating point internally consistent (each winding "sees" the
+            // same coupled flux).
+            for (size_t windingIndex = 0; windingIndex < processedExcitationsPerWinding.size(); ++windingIndex) {
+                processedExcitationsPerWinding[windingIndex].set_magnetizing_current(dmMagnetizingCurrent);
+            }
+        }
+        else if (isCmcOperatingPoint) {
             auto cmMagnetizingCurrent = get_common_mode_choke_magnetizing_current(operatingPoint);
             for (size_t windingIndex = 0; windingIndex < processedExcitationsPerWinding.size(); ++windingIndex) {
                 processedExcitationsPerWinding[windingIndex].set_magnetizing_current(cmMagnetizingCurrent);
@@ -2410,6 +2622,12 @@ void Inputs::process(std::optional<std::variant<double, std::vector<double>>> ma
     auto operatingPoints = get_mutable_operating_points();
     std::vector<OperatingPoint> processed_operating_points;
 
+    // Detect DMC topology from design requirements so process_operating_point
+    // can synthesize the effective core magnetizing current for multi-winding
+    // DMCs (configuration is implied by the operating point's winding count).
+    bool isDmcTopology = get_design_requirements().get_topology().has_value()
+        && get_design_requirements().get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE;
+
     for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
         auto operatingPoint = operatingPoints[operatingPointIndex];
         double magnetizingInductanceToProcess;
@@ -2433,7 +2651,7 @@ void Inputs::process(std::optional<std::variant<double, std::vector<double>>> ma
         else {
             magnetizingInductanceToProcess = resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance());
         }
-        processed_operating_points.push_back(process_operating_point(operatingPoint, magnetizingInductanceToProcess));
+        processed_operating_points.push_back(process_operating_point(operatingPoint, magnetizingInductanceToProcess, std::nullopt, isDmcTopology));
     }
     set_operating_points(processed_operating_points);
 }

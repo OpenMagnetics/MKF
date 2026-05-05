@@ -85,37 +85,51 @@ double CommonModeChoke::limitForRegulatoryStandard(const std::string& name) {
 // ═══════════════════════════════════════════════════════════════════════
 
 CommonModeChoke::CommonModeChoke(const json& j) : Topology(j) {
-    operatingVoltage    = j.at("operatingVoltage").get<DimensionWithTolerance>();
-    operatingCurrent    = j.at("operatingCurrent").get<double>();
-    lineFrequency       = j.at("lineFrequency").get<double>();
-    ambientTemperature  = j.at("ambientTemperature").get<double>();
+    set_operating_voltage(j.at("operatingVoltage").get<DimensionWithTolerance>());
+    set_operating_current(j.at("operatingCurrent").get<double>());
+    set_line_frequency(j.at("lineFrequency").get<double>());
+    set_ambient_temperature(j.at("ambientTemperature").get<double>());
 
-    lineImpedance            = j.value("lineImpedance",            50.0);
-    maximumDcResistance      = j.value("maximumDcResistance",       0.0);
-    maximumLeakageInductance = j.value("maximumLeakageInductance",  0.0);
-    numberOfWindings         = j.value("numberOfWindings",           2);
+    set_line_impedance(j.value("lineImpedance", 50.0));
+    if (j.contains("maximumDcResistance"))      set_maximum_dc_resistance(j.at("maximumDcResistance").get<double>());
+    if (j.contains("maximumLeakageInductance")) set_maximum_leakage_inductance(j.at("maximumLeakageInductance").get<double>());
+    numberOfWindings = j.value("numberOfWindings", 2);
+
+    double lineImpedance = get_line_impedance_or_default();
 
     // ── Parse minimumImpedance ──────────────────────────────────────
+    auto& impedancePoints = get_mutable_minimum_impedance();
     if (j.contains("minimumImpedance")) {
         for (const auto& item : j.at("minimumImpedance")) {
-            minimumImpedance.push_back({
-                item.at("frequency").get<double>(),
-                item.at("impedance").get<double>()
-            });
+            MAS::ImpedanceAtFrequency p;
+            p.set_frequency(item.at("frequency").get<double>());
+            MAS::ImpedancePoint mag;
+            mag.set_magnitude(item.at("impedance").get<double>());
+            p.set_impedance(mag);
+            impedancePoints.push_back(p);
         }
     }
 
     // ── Parse targetInsertionLoss and convert to impedance points ───
     if (j.contains("targetInsertionLoss")) {
+        std::vector<MAS::InsertionLossAtFrequency> losses;
         for (const auto& item : j.at("targetInsertionLoss")) {
             double freq = item.at("frequency").get<double>();
             double il   = item.at("insertionLoss").get<double>();
-            targetInsertionLoss.push_back({freq, il});
-            minimumImpedance.push_back({
-                freq,
-                insertionLossToImpedance(il, lineImpedance)
-            });
+
+            MAS::InsertionLossAtFrequency loss;
+            loss.set_frequency(freq);
+            loss.set_insertion_loss(il);
+            losses.push_back(loss);
+
+            MAS::ImpedanceAtFrequency p;
+            p.set_frequency(freq);
+            MAS::ImpedancePoint mag;
+            mag.set_magnitude(insertionLossToImpedance(il, lineImpedance));
+            p.set_impedance(mag);
+            impedancePoints.push_back(p);
         }
+        set_target_insertion_loss(losses);
     }
 
     // ── Parse noise-estimation params ─────────────────────────────
@@ -139,26 +153,35 @@ CommonModeChoke::CommonModeChoke(const json& j) : Topology(j) {
         // Only synthesise an impedance point if the user has provided
         // no other spec. Otherwise we would silently override their
         // explicit requirement.
-        if (minimumImpedance.empty() && targetInsertionLoss.empty()) {
+        bool noUserSpec = impedancePoints.empty()
+            && (!get_target_insertion_loss().has_value() || get_target_insertion_loss()->empty());
+        if (noUserSpec) {
             const double limit_dBuV = limitForRegulatoryStandard(
                 j.value("regulatoryStandard", std::string("CISPR 32 Class B")));
             const double testFreq_Hz = 150e3;
             double Zcm = noiseParamsToImpedance(
                 parasiticCap_pF, dvdt_V_ns, lineImpedance, safetyMargin_dB, testFreq_Hz, limit_dBuV);
 
-            minimumImpedance.push_back({ testFreq_Hz, Zcm });
+            MAS::ImpedanceAtFrequency p;
+            p.set_frequency(testFreq_Hz);
+            MAS::ImpedancePoint mag;
+            mag.set_magnitude(Zcm);
+            p.set_impedance(mag);
+            impedancePoints.push_back(p);
         }
     }
 
     // ── Compute required inductance from all impedance points ───────
     // L = Z / (2πf) for each point; take the maximum (most demanding)
     computedInductance = 0.0;
-    for (const auto& pt : minimumImpedance) {
-        double L = impedanceToInductance(pt.impedance, pt.frequency);
+    for (const auto& pt : get_minimum_impedance()) {
+        double f = pt.get_frequency();
+        double z = pt.get_impedance().get_magnitude();
+        double L = impedanceToInductance(z, f);
         if (L > computedInductance) {
             computedInductance = L;
-            dominantFrequency  = pt.frequency;
-            dominantImpedance  = pt.impedance;
+            dominantFrequency  = f;
+            dominantImpedance  = z;
         }
     }
 }
@@ -180,26 +203,26 @@ AdvancedCommonModeChoke::AdvancedCommonModeChoke(const json& j) : CommonModeChok
 // ═══════════════════════════════════════════════════════════════════════
 
 bool CommonModeChoke::run_checks(bool assert) {
-    if (minimumImpedance.empty()) {
+    if (get_minimum_impedance().empty()) {
         if (!assert) return false;
         throw InvalidInputException(
             ErrorCode::MISSING_DATA,
             "CMC: at least one impedance requirement must be provided");
     }
-    if (operatingCurrent <= 0) {
+    if (get_operating_current() <= 0) {
         if (!assert) return false;
         throw InvalidInputException(
             ErrorCode::INVALID_INPUT,
             "CMC: operatingCurrent must be > 0");
     }
-    if (lineFrequency <= 0) {
+    if (get_line_frequency() <= 0) {
         if (!assert) return false;
         throw InvalidInputException(
             ErrorCode::INVALID_INPUT,
             "CMC: lineFrequency must be > 0");
     }
-    for (const auto& pt : minimumImpedance) {
-        if (pt.frequency <= 0 || pt.impedance <= 0) {
+    for (const auto& pt : get_minimum_impedance()) {
+        if (pt.get_frequency() <= 0 || pt.get_impedance().get_magnitude() <= 0) {
             if (!assert) return false;
             throw InvalidInputException(
                 ErrorCode::INVALID_INPUT,
@@ -250,22 +273,11 @@ DesignRequirements CommonModeChoke::process_design_requirements() {
 
     // ── Minimum impedance spec ─────────────────────────────────────
     // CoreAdviser::add_ferrite_materials_by_impedance scores materials by
-    // complex permeability at each impedance-spec frequency — so it needs
-    // the points in the DesignRequirements, not just the stash of {freq,Z}
-    // we kept as a member. Build the MAS schema version here.
-    if (!minimumImpedance.empty()) {
-        // Use MAS:: types explicitly — CommonModeChoke has a local
-        // ImpedancePoint struct that would otherwise shadow the MAS schema.
-        std::vector<MAS::ImpedanceAtFrequency> impedancePoints;
-        for (const auto& pt : minimumImpedance) {
-            MAS::ImpedanceAtFrequency p;
-            p.set_frequency(pt.frequency);
-            MAS::ImpedancePoint mag;
-            mag.set_magnitude(pt.impedance);
-            p.set_impedance(mag);
-            impedancePoints.push_back(p);
-        }
-        designRequirements.set_minimum_impedance(impedancePoints);
+    // complex permeability at each impedance-spec frequency. Storage now
+    // lives in the inherited MAS::CommonModeChoke; just forward the points
+    // straight through.
+    if (!get_minimum_impedance().empty()) {
+        designRequirements.set_minimum_impedance(get_minimum_impedance());
     }
 
     // ── Isolation sides ────────────────────────────────────────────
@@ -294,7 +306,7 @@ std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
     double magnetizingInductance)
 {
     // Frequency at which the core is excited (worst-case impedance point)
-    double excFreq = (dominantFrequency > 0) ? dominantFrequency : lineFrequency;
+    double excFreq = (dominantFrequency > 0) ? dominantFrequency : get_line_frequency();
 
     // CM current amplitude.
     // Preferred estimate: I_cm = C_parasitic · dV/dt (the physical CM current
@@ -341,7 +353,7 @@ std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
             iCmPeak * 2.0,               // peak-to-peak of CM ripple
             excFreq,
             0.5,                         // duty cycle (unused for sinusoidal)
-            operatingCurrent,            // DC offset = nominal line current
+            get_operating_current(),     // DC offset = nominal line current
             0                            // phase
         );
 
@@ -363,7 +375,7 @@ std::vector<OperatingPoint> CommonModeChoke::process_operating_points(
     }
 
     OperatingConditions conditions;
-    conditions.set_ambient_temperature(ambientTemperature);
+    conditions.set_ambient_temperature(get_ambient_temperature());
     conditions.set_cooling(std::nullopt);
     operatingPoint.set_conditions(conditions);
     operatingPoint.set_name("Nominal");
@@ -512,7 +524,7 @@ std::string CommonModeChoke::generate_ngspice_circuit(double inductance, double 
 
     // AC load (represents the EUT - Equipment Under Test)
     circuit << "* AC Load (EUT)\n";
-    double loadResistance = resolve_dimensional_values(operatingVoltage) / operatingCurrent;
+    double loadResistance = resolve_dimensional_values(get_operating_voltage()) / get_operating_current();
     if (numWindings == 2) {
         circuit << "Rload cmc_in0_sense cmc_in1_sense " << loadResistance << "\n";
     } else {
@@ -637,8 +649,8 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_and_extract_operating_poin
 
     // Get frequencies from minimum impedance requirements
     std::vector<double> frequencies;
-    for (const auto& pt : minimumImpedance) {
-        frequencies.push_back(pt.frequency);
+    for (const auto& pt : get_minimum_impedance()) {
+        frequencies.push_back(pt.get_frequency());
     }
 
     if (frequencies.empty()) {
@@ -691,7 +703,7 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_and_extract_operating_poin
 
         OperatingPoint operatingPoint;
         operatingPoint.set_excitations_per_winding(excitations);
-        operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
+        operatingPoint.get_mutable_conditions().set_ambient_temperature(get_ambient_temperature());
         operatingPoint.set_name(simWf.operatingPointName);
 
         operatingPoints.push_back(operatingPoint);
@@ -765,7 +777,7 @@ std::string CommonModeChoke::generate_realistic_cmc_circuit(
     circuit << "* Per-winding CM current source (DC line bias + sinusoidal CM ripple)\n";
     for (int w = 0; w < numWindings; ++w) {
         circuit << "Icm" << w << " 0 src" << w
-                << " SIN(" << operatingCurrent
+                << " SIN(" << get_operating_current()
                 << " "    << cmNoiseCurrent
                 << " "    << excitationFreq
                 << " 0 0 0)\n";
@@ -836,7 +848,7 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_realistic_cmc(
 
     // Generate circuit with sinusoidal CM excitation
     std::string netlist = generate_realistic_cmc_circuit(
-        inductance, parasiticCap_pF_param, dvdt_V_ns_param, lineFrequency,
+        inductance, parasiticCap_pF_param, dvdt_V_ns_param, get_line_frequency(),
         numberOfPeriods, numberOfSteadyStatePeriods);
 
     SimulationConfig config;
@@ -929,7 +941,7 @@ std::vector<OperatingPoint> CommonModeChoke::simulate_realistic_cmc(
     if (!excitations.empty()) {
         OperatingPoint operatingPoint;
         operatingPoint.set_excitations_per_winding(excitations);
-        operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
+        operatingPoint.get_mutable_conditions().set_ambient_temperature(get_ambient_temperature());
         operatingPoint.set_name("Simulated");
 
         operatingPoints.push_back(operatingPoint);

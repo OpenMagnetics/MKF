@@ -21,18 +21,25 @@ namespace OpenMagnetics {
         excitation.set_frequency(switchingFrequency);
         
         SignalDescriptor current;
-        current.set_waveform(currentWaveform);
         auto currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true);
         auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
         auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
+        // Store the resampled (power-of-2) waveform so downstream consumers
+        // (MagnetizingInductance, harmonics derivation, FFT-based pipelines)
+        // get the standardized waveform contract MKF expects. The raw
+        // analytical waveform is not necessarily a power-of-2 length (e.g.
+        // DAB/PSFB/PSHB use 2*N+1 = 513 samples, AHB has variable size due to
+        // discontinuity duplicates), and the size-check gates in
+        // MagnetizingInductance.cpp would otherwise throw.
+        current.set_waveform(sampledCurrentWaveform);
         current.set_processed(currentProcessed);
         current.set_harmonics(currentHarmonics);
         excitation.set_current(current);
         SignalDescriptor voltage;
-        voltage.set_waveform(voltageWaveform);
         auto voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true);
         auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
         auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
+        voltage.set_waveform(sampledVoltageWaveform);
         voltage.set_processed(voltageProcessed);
         voltage.set_harmonics(voltageHarmonics);
         excitation.set_voltage(voltage);

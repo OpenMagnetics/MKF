@@ -35,9 +35,11 @@ struct CmcSimulationWaveforms {
 /**
  * @brief Common Mode Choke (CMC) for EMI filtering
  *
- * Physical principle:
- *   - CM currents (same phase on all lines) produce ADDITIVE flux → high Z
- *   - DM currents (opposite phase) produce CANCELLING flux → low Z
+ * MAS::CommonModeChoke owns the spec fields (operating_voltage,
+ * operating_current, line_frequency, line_impedance, ambient_temperature,
+ * maximum_dc_resistance, maximum_leakage_inductance, minimum_impedance,
+ * target_insertion_loss). MKF inherits to add the engineering layer:
+ * noise-estimation params, winding count, derived inductance, ngspice.
  *
  * Specification modes (all resolved to impedance points inside the constructor):
  *   1. minimumImpedance[]    : direct (frequency, impedance) pairs
@@ -51,35 +53,19 @@ struct CmcSimulationWaveforms {
  *   operatingPoints: sinusoidal CM excitation at dominant frequency
  *
  * Supported configurations: 2 windings (single-phase), 3 (three-phase), 4 (three-phase+neutral)
- *
- * Also provides ngspice simulation methods for CISPR 16 LISN testing and
- * realistic line + switching noise simulation.
  */
-class CommonModeChoke : public Topology {
+class CommonModeChoke : public Topology, public MAS::CommonModeChoke {
 private:
+    // ── MKF-only fields (not in MAS::CommonModeChoke) ──────────────
     int numPeriodsToExtract   = 5;
     int numSteadyStatePeriods = 3;
 
-    // ── Parsed fields ──────────────────────────────────────────────
-    DimensionWithTolerance operatingVoltage;
-    double operatingCurrent         = 1.0;
-    double lineFrequency            = 50.0;
-    double lineImpedance            = 50.0;
-    double ambientTemperature       = 25.0;
-    double maximumDcResistance      = 0.0;
-    double maximumLeakageInductance = 0.0;
-    int    numberOfWindings         = 2;
+    int numberOfWindings = 2;
 
-    // Noise-estimation fields (specMode = "Estimate from noise")
+    // Noise-estimation inputs (specMode = "Estimate from noise")
     double parasiticCap_pF  = 0.0;
     double dvdt_V_ns        = 0.0;
     double safetyMargin_dB  = 6.0;
-
-    struct ImpedancePoint     { double frequency; double impedance; };
-    struct InsertionLossPoint { double frequency; double insertionLoss; };
-
-    std::vector<ImpedancePoint>     minimumImpedance;
-    std::vector<InsertionLossPoint> targetInsertionLoss;
 
     // ── Computed ───────────────────────────────────────────────────
     double computedInductance = 0.0;
@@ -96,7 +82,7 @@ public:
     CommonModeChoke(const json& j);
     CommonModeChoke() {}
 
-    // ── Accessors ──────────────────────────────────────────────────
+    // ── MKF-only accessors ─────────────────────────────────────────
     int    get_num_periods_to_extract()   const { return numPeriodsToExtract; }
     void   set_num_periods_to_extract(int v)    { numPeriodsToExtract = v; }
     int    get_num_steady_state_periods() const { return numSteadyStatePeriods; }
@@ -107,19 +93,20 @@ public:
     void   set_dominant_frequency(double v) { dominantFrequency = v; }
     double get_dominant_impedance()  const { return dominantImpedance; }
     int    get_number_of_windings()  const { return numberOfWindings; }
-    double get_operating_current()   const { return operatingCurrent; }
-    double get_line_frequency()      const { return lineFrequency; }
-    double get_line_impedance()      const { return lineImpedance; }
-    double get_ambient_temperature() const { return ambientTemperature; }
-
-    void   set_operating_current(double v)  { operatingCurrent = v; }
-    void   set_line_frequency(double v)     { lineFrequency = v; }
-    void   set_line_impedance(double v)     { lineImpedance = v; }
-    void   set_ambient_temperature(double v){ ambientTemperature = v; }
     void   set_number_of_windings(int v)    { numberOfWindings = v; }
 
-    const DimensionWithTolerance& get_operating_voltage() const { return operatingVoltage; }
-    void set_operating_voltage(const DimensionWithTolerance& v) { operatingVoltage = v; }
+    // ── Convenience pass-throughs for legacy MKF call sites ────────
+    // These thin wrappers exist so the .cpp keeps using the same API
+    // while the *storage* lives in MAS::CommonModeChoke.
+    double get_line_impedance_or_default(double fallback = 50.0) const {
+        return MAS::CommonModeChoke::get_line_impedance().value_or(fallback);
+    }
+    double get_maximum_dc_resistance_or_default(double fallback = 0.0) const {
+        return MAS::CommonModeChoke::get_maximum_dc_resistance().value_or(fallback);
+    }
+    double get_maximum_leakage_inductance_or_default(double fallback = 0.0) const {
+        return MAS::CommonModeChoke::get_maximum_leakage_inductance().value_or(fallback);
+    }
 
     // ── Topology interface ─────────────────────────────────────────
     bool run_checks(bool assert_errors = false) override;

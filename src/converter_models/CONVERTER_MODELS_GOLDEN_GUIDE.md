@@ -628,4 +628,217 @@ Final pre-merge checklist:
 - [ ] Multi-output supported (warn-once on approximation; emit K-matrix
       in SPICE; per-secondary sense sources).
 - [ ] Rectifier-type-aware secondary waveforms (if applicable).
+
+---
+
+## 16. Cross-stack synchronization (MAS ↔ MKF ↔ WebLibMKF ↔ WebFrontend)
+
+A converter is **not done** when its `.cpp` builds. A converter ships
+across four codebases and breaks silently if any of them fall out of
+sync. The following rules are non-negotiable and apply to every new
+topology.
+
+### 16.1 The four moving parts
+
+```
+            ┌─────────────────── MAS ──────────────────┐
+            │  schemas/inputs/topologies/<X>.json      │   schema
+            │  schemas/inputs/designRequirements.json  │   topology enum
+            │  schemas/inputs.json::supportedTopologies│   map key
+            │  scripts/check-mas-hpp.sh                │   regen list
+            │  MAS.hpp                                 │   generated C++
+            └──────────────────────────────────────────┘
+                              │  inherits
+                              ▼
+            ┌─────────────── MKF ──────────────────────┐
+            │  src/converter_models/<X>.{h,cpp}        │   class : public MAS::<X>, Topology
+            │  src/advisers/CoreAdviser.cpp            │   is_energy_storing_topology, routing
+            │  src/advisers/CoilAdviser.cpp            │   sub_application branches
+            │  src/advisers/MagneticFilter.cpp         │   topology switches
+            │  src/processors/Inputs.cpp               │   per-topology magnetizing-current synth
+            │  tests/TestTopology<X>.cpp               │   DAB-quality bar
+            └──────────────────────────────────────────┘
+                              │  exposed via embind
+                              ▼
+            ┌────────── WebLibMKF ─────────────────────┐
+            │  src/libMKF.cpp                          │   simulate_<x>_ideal_waveforms
+            └──────────────────────────────────────────┘
+                              │  loaded by Vite
+                              ▼
+            ┌────────── WebFrontend ───────────────────┐
+            │  src/components/Wizards/<X>Wizard.vue    │   getTopology() returns SCHEMA STRING
+            │  src/stores/state.js                     │   Wizards routing enum
+            │  src/stores/mas.js                       │   topology readers
+            │  src/stores/taskQueue.js                 │   topology routing
+            │  WebSharedComponents/assets/js/defaults  │   per-topology MAS defaults
+            └──────────────────────────────────────────┘
+```
+
+### 16.2 The MAS class is the single source of truth
+
+The MKF C++ class **must inherit from the MAS-generated class**:
+
+```cpp
+class MyTopology : public MAS::MyTopology, public Topology { ... };
+```
+
+This is the rule that flybuck/CMC/DMC/PFC violated for years. The
+penalty is duplication: when the C++ class declares its own
+`_inputVoltage` field instead of inheriting from
+`MAS::MyTopology::input_voltage`, every read/write must be plumbed
+manually through the wizard, the libMKF binding, and back. Any drift
+between the schema and the duplicated C++ field is a silent
+correctness bug.
+
+**Concretely:**
+- Do **not** declare private fields that shadow MAS-generated members.
+- Use the inherited `get_*`/`set_*` accessors; do not invent your own.
+- Schema-less device parameters (Coss, snubber values, dead-time
+  defaults) are the **only** legitimate private fields.
+- If you need a field the MAS class does not have, **add it to the
+  schema first**, regen `MAS.hpp`, then use the inherited accessor.
+
+### 16.3 Naming consistency rule
+
+Three names must agree across the stack — or the schema validation,
+JS routing, and serialization all desync:
+
+| Layer | Token | Example |
+|---|---|---|
+| `designRequirements.json::topology` enum value | `<x>Converter` | `flybackConverter`, `boostConverter` |
+| `inputs.json::supportedTopologies` map key | `<x>` (no `Converter` suffix) | `flyback`, `boost` |
+| `MAS::Topologies` C++ enum | `<X>_CONVERTER` | `FLYBACK_CONVERTER`, `BOOST_CONVERTER` |
+| `MAS::SupportedTopologies` C++ field | `<x>` | `flyback`, `boost` |
+| `<X>Wizard.vue::getTopology()` return value | `<x>Converter` (matches enum) | `flybackConverter` |
+| `defaults.js` topology default value | `<x>Converter` | `flybackConverter` |
+
+A historical pitfall: PSFB used `phaseShiftFullBridge` as the map key
+but `phaseShiftedFullBridgeConverter` as the enum value, with no
+matching C++ class. The 2026 cleanup standardized on the
+"shifted" spelling everywhere.
+
+A second historical pitfall: every wizard's `getTopology()` returned
+human-readable strings (`'Flyback Converter'`, `'CommonModeChoke'`)
+instead of the schema enum string. Round-tripped MAS files were
+schema-invalid. Wizards must return the **exact** enum string.
+
+### 16.4 Sub-application is an enum, not a string
+
+`utils.json::subApplication` is an enum. The MKF code uses
+`SubApplication::COMMON_MODE_NOISE_FILTERING` etc. Frontend writers
+must emit the enum string verbatim (`"commonModeNoiseFiltering"`,
+`"differentialModeNoiseFiltering"`, `"powerFiltering"`,
+`"transforming"`, `"isolation"`). String-comparing in MKF for new
+sub-applications is allowed only via the `SubApplication::*` enum,
+never against raw string literals.
+
+### 16.5 The `is_energy_storing_topology` switch
+
+`CoreAdviser::is_energy_storing_topology` (around line 102) gates gap
+selection. Every new topology added to the `Topologies` enum **must**
+get an explicit case. Do not rely on the `default: return false;`
+branch — silent miss-classification produces ungapped designs for
+buck/boost-class topologies and gapped designs for transformer-class
+topologies.
+
+Truth table guidance:
+- Storing energy in a magnetic (single-winding inductor, flyback,
+  forward-class with output inductor, PFC, DMC): **true**.
+- Pure transformer (push-pull, full-bridge, LLC, CLLC, DAB, CMC,
+  current transformer): **false**.
+
+### 16.6 Frontend wizard ↔ MAS ↔ libMKF binding
+
+A new topology is wired end-to-end only when **all four** of these
+exist and agree:
+
+1. `MAS/schemas/inputs/topologies/<x>.json` — design-input shape.
+2. `MAS::<X>` C++ class — generated by quicktype (added to
+   `check-mas-hpp.sh` `-S` list).
+3. `WebLibMKF/src/libMKF.cpp::simulate_<x>_ideal_waveforms` —
+   embind entry point that constructs the MKF C++ class, calls
+   `process_design_requirements()` + `process_operating_points()`,
+   and writes to `inputs.operatingPoints[]`.
+4. `WebFrontend/src/components/Wizards/<X>Wizard.vue` — UI that
+   builds the per-topology block in
+   `inputs.converterInformation.supportedTopologies.<x>` **and**
+   sets `designRequirements.topology = "<x>Converter"`.
+
+A topology missing any of these is "schema only" and will fail
+silently in the adviser pipeline.
+
+### 16.7 Add-a-topology checklist
+
+Before opening a PR adding a new converter:
+
+**MAS:**
+- [ ] Created `schemas/inputs/topologies/<x>.json`.
+- [ ] Added `<x>Converter` to the `topology` enum in
+      `schemas/inputs/designRequirements.json`.
+- [ ] Added `<x>` map key under `supportedTopologies` in
+      `schemas/inputs.json`.
+- [ ] Added `-S ./schemas/inputs/topologies/<x>.json` to
+      `scripts/check-mas-hpp.sh`.
+- [ ] Re-ran quicktype regeneration; committed `MAS.hpp`.
+- [ ] `scripts/check-mas-hpp.sh` exits clean.
+
+**MKF:**
+- [ ] `class <X> : public MAS::<X>, public Topology` — inherits, does
+      not duplicate fields.
+- [ ] `set_topology(Topologies::<X>_CONVERTER)` called in
+      `process_design_requirements`.
+- [ ] `set_application` and `set_sub_application` set explicitly.
+- [ ] Added a case to `CoreAdviser::is_energy_storing_topology`.
+- [ ] Added a case to any `MagneticFilter` topology switches.
+- [ ] If sub-application is CMC/DMC/etc., added matching branches in
+      `CoilAdviser` (insulation, repetitions, layout heuristics).
+
+**WebLibMKF:**
+- [ ] Added `simulate_<x>_ideal_waveforms` embind entry.
+- [ ] Wired the MKF class constructor + `process_*` calls.
+
+**WebFrontend:**
+- [ ] Created `<X>Wizard.vue` extending `ConverterWizardBase`.
+- [ ] `getTopology()` returns the **schema enum string** (not a
+      human-readable label).
+- [ ] Wizard writes `inputs.converterInformation.supportedTopologies.<x>`.
+- [ ] Updated `stores/state.js::Wizards` if a routing enum exists.
+- [ ] Updated `defaults.js` per-topology MAS defaults.
+- [ ] Updated `stores/mas.js` and `stores/taskQueue.js` topology
+      readers to recognize the new enum value.
+- [ ] Verified MAS round-trip: load default, save, reload — no diff.
+
+**Tests:**
+- [ ] `MKF/tests/TestTopology<X>.cpp` covers the DAB-quality bar
+      (§15).
+- [ ] At least one MCP end-to-end test from wizard → core advisor.
+
+### 16.8 Removing a topology
+
+If a topology has no converter model, drop it everywhere:
+- Remove enum value from `designRequirements.json::topology`.
+- Remove map key from `inputs.json::supportedTopologies`.
+- Remove `-S` flag from `check-mas-hpp.sh`.
+- Delete schema file.
+- Regen `MAS.hpp`.
+- Grep MKF/WebLibMKF/WebFrontend for the enum value and the
+  PascalCase class name; remove all references.
+
+The 2026 cleanup removed `flybuck` (duplicate of `isolatedBuck`),
+`invertingBuckBoostConverter`, `SEPIC`, `cukConverter`,
+`zetaConverter`, `weinbergConverter`, `halfBridgeConverter`,
+`fullBridgeConverter` (no converter model). Any future topology
+without a converter model should be removed, not left as a stub.
+
+### 16.9 Audit before adding
+
+Before adding a new topology, run a cross-reference audit:
+- `git grep "<x>Converter"` in MAS, MKF, WebLibMKF, WebFrontend.
+- `git grep "Topologies::<X>"` in MKF.
+- `git grep "MAS::<X>"` in MKF, WebLibMKF.
+- `git grep "<x>Wizard"` in WebFrontend.
+
+If grep returns hits in fewer than four codebases, the topology is
+not actually wired end-to-end. Treat partial wirings as a
+correctness bug, not a feature.
 - [ ] No divide-by-zero in design-time or SPICE code.

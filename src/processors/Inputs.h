@@ -48,12 +48,13 @@ class Inputs : public MAS::Inputs {
 
     std::pair<bool, std::string> check_integrity();
     void process(std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt);
-    static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios = std::nullopt);
+    static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios = std::nullopt, bool isDmcTopology = false);
 
     static bool is_waveform_sampled(Waveform waveform);
     static bool is_waveform_imported(Waveform waveform);
     static bool is_multiport_inductor(OperatingPoint operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides = std::nullopt);
     static bool can_be_common_mode_choke(OperatingPoint operatingPoint);
+    static bool can_be_differential_mode_choke(OperatingPoint operatingPoint, bool isDmcTopology = false);
 
     static Waveform calculate_sampled_waveform(Waveform waveform, double frequency=0, std::optional<size_t> numberPoints=std::nullopt);
     static Processed calculate_processed_data(Waveform waveform, std::optional<double> frequency=std::nullopt, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
@@ -146,6 +147,20 @@ class Inputs : public MAS::Inputs {
     static double calculate_waveform_average(Waveform waveform) ;
     static Waveform multiply_waveform(Waveform waveform, double scalarValue);
     static Waveform sum_waveform(Waveform waveform, double scalarValue);
+    // Pointwise add two waveforms. Both must have the same number of data points.
+    // Time vector is taken from `a` (must be aligned with `b`).
+    static Waveform add_waveforms(Waveform a, const Waveform& b);
+    // Pointwise subtract: returns a - b. Same length requirement.
+    static Waveform subtract_waveforms(Waveform a, const Waveform& b);
+    // Circularly shift waveform samples by `samples` positions to the right
+    // (i.e. delay by samples * dt). Negative values shift left (advance).
+    // Operates on the data vector only; time vector (if any) is preserved.
+    static Waveform shift_waveform(Waveform waveform, int samples);
+    // SignalDescriptor wrappers: perform the op on the underlying sampled
+    // waveform and recompute harmonics and processed data at `frequency`.
+    static SignalDescriptor add_signals(const SignalDescriptor& a, const SignalDescriptor& b, double frequency);
+    static SignalDescriptor subtract_signals(const SignalDescriptor& a, const SignalDescriptor& b, double frequency);
+    static SignalDescriptor shift_signal(const SignalDescriptor& s, int samples, double frequency);
 
     static double try_guess_duty_cycle(Waveform waveform, WaveformLabel label=WaveformLabel::CUSTOM, double frequency=0);
     static double calculate_instantaneous_power(OperatingPointExcitation excitation);
@@ -167,6 +182,7 @@ class Inputs : public MAS::Inputs {
     static double get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency);
     static SignalDescriptor get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint);
     static SignalDescriptor get_common_mode_choke_magnetizing_current(OperatingPoint operatingPoint);
+    static SignalDescriptor get_differential_mode_choke_magnetizing_current(OperatingPoint operatingPoint);
 
     DimensionWithTolerance get_altitude();
     Cti get_cti();
