@@ -1097,6 +1097,31 @@ void Temperature::createInsulationLayerNodes() {
             // - Outer nodes: outside the core, away from center (A/2 + radialHeight)
             double innerSurfaceRadius = innerDiameter / 2.0 - radialHeight;
             double outerSurfaceRadius = outerDiameter / 2.0 + radialHeight;
+
+            // For toroidal coils with CONTIGUOUS section orientation, the winding fans out
+            // around the OD with much wider angular spacing than the section-boundary IL nodes
+            // can represent. Outer-side IL nodes ended up spuriously blocking turn-to-turn
+            // connections on the outer face (insulationNodeBetween over-trigger) AND failed
+            // the strict turn-to-IL proximity check, leaving outer turns disconnected.
+            // Skip outer-side IL nodes for contiguous toroidals: outer turns will connect
+            // directly to each other and to ambient where exposed.
+            bool skipOuterIlNodes = false;
+            try {
+                auto bobbinOpt = coil.get_bobbin();
+                if (std::holds_alternative<Bobbin>(bobbinOpt)) {
+                    auto bobbin = std::get<Bobbin>(bobbinOpt);
+                    auto secOrient = bobbin.get_winding_window_sections_orientation(0);
+                    skipOuterIlNodes = (secOrient == WindingOrientation::CONTIGUOUS);
+                    std::cerr << "[TEMP-DBG] toroidal IL: bobbin.sections_orientation = "
+                              << magic_enum::enum_name(secOrient)
+                              << ", coil.get_winding_orientation = "
+                              << magic_enum::enum_name(coil.get_winding_orientation())
+                              << ", skip=" << skipOuterIlNodes << std::endl;
+                }
+            } catch (const std::exception& e) { // IMP-8
+                skipOuterIlNodes = false;
+                std::cerr << "[TEMP-DBG] orientation lookup threw: " << e.what() << std::endl;
+            }
             
             // Use same number of segments as toroidal core
             size_t numSegments = _config.toroidalSegments;
@@ -1168,6 +1193,14 @@ void Temperature::createInsulationLayerNodes() {
                 _nodes.push_back(innerNode);
                 createdCount++;
                 
+                if (skipOuterIlNodes) {
+                    if (THERMAL_DEBUG) {
+                        std::cout << "Created insulation node (contiguous toroidal, outer skipped): "
+                                  << innerNode.name << " at radius=" << innerSurfaceRadius * 1000 << "mm" << std::endl;
+                    }
+                    continue;
+                }
+
                 // Create OUTER node (at outer surface of insulation layer)
                 ThermalNetworkNode outerNode;
                 outerNode.part = ThermalNodePartType::INSULATION_LAYER;
@@ -2338,7 +2371,11 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                     // Check if insulation is radially between the two turns
                     double minTurnRadius = std::min(turn1Radius, turn2Radius);
                     double maxTurnRadius = std::max(turn1Radius, turn2Radius);
-                    double radiusTolerance = std::max(node1.dimensions.width, node1.dimensions.height);
+                    // Half a wire diameter: an IL at r within ±wireRadius of the inter-turn span is
+                    // genuinely between the two turns. Using a full diameter previously caused
+                    // an IL one full layer away from one of the turns to be misclassified as
+                    // "between," spuriously suppressing the direct turn-to-turn edge.
+                    double radiusTolerance = std::max(node1.dimensions.width, node1.dimensions.height) / 2.0;
 
                     bool radiallyBetween = (insRadius > minTurnRadius - radiusTolerance) &&
                                           (insRadius < maxTurnRadius + radiusTolerance);
@@ -3434,19 +3471,34 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
     }
 
     bool hasInsulationLayers = false;
+    bool hasOuterInsulationLayers = false;
     for (size_t i = 0; i < _nodes.size(); i++) {
-        if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) { hasInsulationLayers = true; break; }
+        if (_nodes[i].part == ThermalNodePartType::INSULATION_LAYER) {
+            hasInsulationLayers = true;
+            // An IL node is on the OUTER side of the toroid if its position is beyond the
+            // core OD. (Contiguous toroidals skip outer-side IL creation, so this stays
+            // false there, allowing outer turns to convect to ambient directly.)
+            double ilX = _nodes[i].physicalCoordinates[0];
+            double ilY = _nodes[i].physicalCoordinates[1];
+            double ilR = std::sqrt(ilX*ilX + ilY*ilY);
+            if (ilR > coreOuterR) hasOuterInsulationLayers = true;
+        }
     }
 
     // For each turn node, check each quadrant for exposure to air
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::TURN) continue;
             
-            // If insulation layers exist, turns should NOT have convection to ambient
-            // Only insulation layer nodes should have convection (on radial faces)
-            if (hasInsulationLayers) continue;
-            
             const auto& node = _nodes[i];
+
+            // If insulation layers exist, turns should NOT have convection to ambient
+            // Only insulation layer nodes should have convection (on radial faces).
+            // EXCEPTION: when no outer-side ILs exist (contiguous toroidal case),
+            // the OUTER face of the winding IS exposed to ambient -- allow per-quadrant
+            // exposure check below to evaluate it. We still skip turns whose outermost
+            // surface is on the inner-hole side (those are covered by inner ILs).
+            bool turnIsOuterSide = !node.isInnerTurn;
+            if (hasInsulationLayers && !(turnIsOuterSide && !hasOuterInsulationLayers)) continue;
             double nodeX = node.physicalCoordinates[0];
             double nodeY = node.physicalCoordinates[1];
             double nodeR = std::sqrt(nodeX*nodeX + nodeY*nodeY);
@@ -4406,9 +4458,21 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
 
         auto insulationMaterialOpt = layer.get_insulation_material();
         if (!insulationMaterialOpt.has_value()) {
+            // [TEMP-FAIL-LAYER] dump full identity of offending layer
+            std::string layerName = layer.get_name();
+            std::string layerSection = layer.get_section().value_or("<no-section>");
+            auto dims = layer.get_dimensions();
+            auto coords = layer.get_coordinates();
+            std::string dimsStr = "[";
+            for (size_t k = 0; k < dims.size(); ++k) { if (k) dimsStr += ","; dimsStr += std::to_string(dims[k]); }
+            dimsStr += "]";
+            std::string coordsStr = "[";
+            for (size_t k = 0; k < coords.size(); ++k) { if (k) coordsStr += ","; coordsStr += std::to_string(coords[k]); }
+            coordsStr += "]";
             throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: insulation layer between turns " +
                                      std::to_string(turnIdx1) + " and " + std::to_string(turnIdx2) +
-                                     " has no insulation_material defined in MAS.");
+                                     " has no insulation_material defined in MAS. Layer name='" + layerName +
+                                     "' section='" + layerSection + "' dims=" + dimsStr + " coords=" + coordsStr + ".");
         }
         auto& insulationMaterial = insulationMaterialOpt.value();
         double layerK;

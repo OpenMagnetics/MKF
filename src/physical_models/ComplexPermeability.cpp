@@ -126,6 +126,27 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
 
 
 std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMaterial coreMaterial, double frequency) {
+    // Fast path: if both interpolators are already cached for this material,
+    // skip the expensive recomputation of the complex permeability data
+    // (calculate_frequency_for_initial_permeability_drop runs O(40) pow() per
+    // call and is invoked 3 times per material). Without this guard, advisers
+    // that scan thousands of cores share only a few materials and end up
+    // rebuilding the same per-material curves thousands of times, which
+    // dominates DMC/CMC core selection wall time.
+    const std::string& materialNameForCache = coreMaterial.get_name();
+    if (complexPermeabilityRealInterps.contains(materialNameForCache) &&
+        complexPermeabilityImaginaryInterps.contains(materialNameForCache)) {
+        double cachedReal = std::max(1., complexPermeabilityRealInterps[materialNameForCache](frequency));
+        if (std::isnan(cachedReal)) {
+            throw NaNResultException("complex Permeability real part must be a number, not NaN");
+        }
+        double cachedImag = complexPermeabilityImaginaryInterps[materialNameForCache](frequency);
+        if (std::isnan(cachedImag)) {
+            throw NaNResultException("complex Permeability imaginary part must be a number, not NaN");
+        }
+        return {cachedReal, cachedImag};
+    }
+
     ComplexPermeabilityData complexPermeabilityData;
     if (!coreMaterial.get_permeability().get_complex()) {
         if (InitialPermeability::has_frequency_dependency(coreMaterial)) {

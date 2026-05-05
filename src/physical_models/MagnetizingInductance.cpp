@@ -143,7 +143,31 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     // If the converter model already computed the magnetizing current
                     // (e.g. DMC summing all winding currents), respect it — don't overwrite.
                     if (excitation.get_magnetizing_current()) {
-                        // Already set — skip derivation
+                        // Already set — skip derivation. But upstream callers
+                        // (MagneticField::get_magnetic_field_strength_gap and
+                        // siblings) persist a *compressed* magnetizing_current
+                        // (compress=true), which keeps only inflection points
+                        // — typically a non-power-of-2 size like 23 for a
+                        // triangular waveform. Resample to a dense
+                        // power-of-2 waveform so the size-check gate below
+                        // and the downstream FFT pipeline see a standardized
+                        // contract.
+                        auto presetMc = excitation.get_magnetizing_current().value();
+                        if (presetMc.get_waveform()) {
+                            auto presetWaveform = presetMc.get_waveform().value();
+                            if (presetWaveform.get_data().size() > 0 && !is_size_power_of_2(presetWaveform.get_data())) {
+                                if (!presetWaveform.get_time()) {
+                                    auto stdMc = Inputs::standardize_waveform(presetMc, excitation.get_frequency());
+                                    presetWaveform = stdMc.get_waveform().value();
+                                }
+                                auto sampled = Inputs::calculate_sampled_waveform(presetWaveform, excitation.get_frequency());
+                                presetMc.set_waveform(sampled);
+                                presetMc.set_harmonics(Inputs::calculate_harmonics_data(sampled, excitation.get_frequency()));
+                                presetMc.set_processed(Inputs::calculate_processed_data(presetMc, sampled, false));
+                                excitation.set_magnetizing_current(presetMc);
+                                operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+                            }
+                        }
                     }
                     else if (numberWindings == 1 && excitation.get_current()) {
                         Inputs::set_current_as_magnetizing_current(operatingPoint);
@@ -181,6 +205,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                                                                                                 addOffset);
 
                         auto sampledMagnetizingCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
+                        // Replace the stored waveform with the resampled (power-of-2)
+                        // version so the size-check gate below (and any downstream
+                        // FFT pipeline) sees a standardized contract.
+                        magnetizingCurrent.set_waveform(sampledMagnetizingCurrentWaveform);
                         magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
                         magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
 
@@ -190,7 +218,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
                     auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
                     if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
-                        throw std::invalid_argument("magnetizing_current_data vector size from voltage is not a power of 2");
+                        throw std::invalid_argument("magnetizing_current_data vector size from voltage is not a power of 2 [size=" + std::to_string(aux.get_data().size()) + "]");
                     }
 
                     if (!operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()->get_waveform()->get_time()) {
@@ -325,11 +353,45 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
         numberTurnsPrimary = std::round(sqrt(desiredMagnetizingInductance * totalReluctance));
 
         if (inputs->get_operating_points().size() > 0) {
-            auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), totalReluctance, numberTurnsPrimary);
-            auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
-            auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
-
-            auto Hoffset = magneticFieldStrength.get_processed().value().get_mutable_offset();
+            // PERF: only the magnetic-field-strength DC offset is needed below to
+            // refine the H-biased initial permeability. The full waveform pipeline
+            // (calculate_magnetic_flux -> _flux_density -> _field_strength) copies
+            // every sample of the magnetizing-current waveform three times and
+            // re-runs Inputs::calculate_basic_processed_data twice (which calls the
+            // sin/cos-heavy try_guess_waveform_label). Doing this per iteration ×
+            // up to 10 iterations × thousands of candidate cores dominates DMC/CMC
+            // core selection wall time. Flux/B/H are purely linear scalings of
+            // the source current waveform, so the H offset can be derived
+            // algebraically from the already-pre-processed current offset:
+            //   B_offset = (I_offset * N / R) / A_eff
+            //   H_offset = B_offset / (µ₀ * µᵢ)
+            auto magnetizingCurrent = operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value();
+            double currentOffset = 0.0;
+            if (magnetizingCurrent.get_processed()) {
+                currentOffset = magnetizingCurrent.get_processed()->get_offset();
+            }
+            else {
+                // Fallback: the rare case where pre-processed data is missing.
+                auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(magnetizingCurrent, totalReluctance, numberTurnsPrimary);
+                auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
+                auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
+                auto Hoffset = magneticFieldStrength.get_processed().value().get_mutable_offset();
+                modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, Hoffset, frequency);
+                if (fabs(currentInitialPermeability - modifiedInitialPermeability) < 1 || timeout == 0) {
+                    break;
+                }
+                currentInitialPermeability = modifiedInitialPermeability;
+                timeout--;
+                continue;
+            }
+            auto constants = OpenMagnetics::Constants();
+            double bOffset = (numberTurnsPrimary > 0 && totalReluctance > 0 && effectiveArea > 0)
+                ? (currentOffset * numberTurnsPrimary / totalReluctance) / effectiveArea
+                : 0.0;
+            double hOffsetValue = (currentInitialPermeability > 0)
+                ? bOffset / (currentInitialPermeability * constants.vacuumPermeability)
+                : 0.0;
+            std::optional<double> Hoffset = hOffsetValue;
             modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, Hoffset, frequency);
 
             if (fabs(currentInitialPermeability - modifiedInitialPermeability) < 1 || timeout == 0) {
