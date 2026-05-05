@@ -1464,6 +1464,12 @@ bool Coil::calculate_custom_thickness_insulation(double thickness) {
             }
             // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
             layer.set_filling_factor(1);
+            // Custom-thickness mechanical-only insulation: no material was
+            // chosen above (this path only knows the requested thickness),
+            // so fall back to the default layer insulation material so
+            // downstream consumers (Temperature, StrayCapacitance) can
+            // read thermal_conductivity / permittivity from the MAS.
+            layer.set_insulation_material(defaults.defaultLayerInsulationMaterial);
             _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
 
             Section section;
@@ -1580,6 +1586,10 @@ bool Coil::calculate_mechanical_insulation() {
                 }
                 // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
                 layer.set_filling_factor(1);
+                // Default-material mechanical insulation: propagate the
+                // chosen default so Temperature/StrayCapacitance can read
+                // thermal_conductivity / permittivity from the MAS.
+                layer.set_insulation_material(static_cast<MAS::InsulationMaterial>(defaultInsulationMaterial));
                 _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
             }
             // _insulationInterSectionsLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
@@ -1722,6 +1732,12 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 }
 
                 layer.set_filling_factor(1);
+                // Propagate the insulation material chosen above so downstream
+                // consumers (Temperature::getInsulationLayerThermalResistance,
+                // StrayCapacitance) have the dielectric/thermal properties
+                // they need. Without this the Temperature plot throws once
+                // it tries to read the layer's thermal_conductivity.
+                layer.set_insulation_material(static_cast<MAS::InsulationMaterial>(chosenInsulationMaterial));
                 _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
             }
             // _insulationInterSectionsLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
@@ -7287,6 +7303,14 @@ std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType cor
  * @return Vector of valid repetition counts to try
  */
 std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
+    // DMC topology (any winding count, any core type): one section per phase,
+    // no bifilar interleave. Single-winding DMCs are plain inductors and
+    // also take repetitions={1} (matches turnsRatios.size()==0 fallback
+    // below, but make the intent explicit).
+    if (inputs.get_design_requirements().get_topology() &&
+        inputs.get_design_requirements().get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE) {
+        return {1};
+    }
     // CMCs on toroids need bifilar winding for common-mode rejection
     if (coreType == CoreType::TOROIDAL) {
         if (inputs.get_design_requirements().get_sub_application() &&
@@ -7377,6 +7401,9 @@ void Coil::set_interlayer_insulation(double layerThickness, std::optional<std::s
     if (material) {
         layer.set_insulation_material(material.value());
     }
+    else {
+        layer.set_insulation_material(defaults.defaultLayerInsulationMaterial);
+    }
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
         layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
         double windingWindowHeight = windingWindows[0].get_height().value();
@@ -7442,6 +7469,9 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
 
     if (material) {
         layer.set_insulation_material(material.value());
+    }
+    else {
+        layer.set_insulation_material(defaults.defaultLayerInsulationMaterial);
     }
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
         layer.set_coordinate_system(CoordinateSystem::CARTESIAN);

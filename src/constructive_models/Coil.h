@@ -479,7 +479,7 @@ inline void adl_serializer<std::variant<OpenMagnetics::Bobbin, std::string>>::to
         case 1:
             j = std::get<std::string>(x);
             break;
-        default: throw std::runtime_error("Input JSON does not conform to schema!");
+        default: throw std::runtime_error("Input JSON does not conform to schema! [Coil.h:482 Bobbin variant]");
     }
 }
 inline void adl_serializer<std::variant<OpenMagnetics::Wire, std::string>>::from_json(const json & j, std::variant<OpenMagnetics::Wire, std::string> & x) {
@@ -498,7 +498,7 @@ inline void adl_serializer<std::variant<OpenMagnetics::Wire, std::string>>::to_j
         case 1:
             j = std::get<std::string>(x);
             break;
-        default: throw std::runtime_error("Input JSON does not conform to schema!");
+        default: throw std::runtime_error("Input JSON does not conform to schema! [Coil.h:501 Wire variant]");
     }
 }
 } // namespace nlohmann
