@@ -156,8 +156,8 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             return std::make_shared<MagneticFilterLeakageInductance>();
         case MagneticFilters::TEMPERATURE:
             return std::make_shared<MagneticFilterTemperature>();
-        case MagneticFilters::TURNS_DENSITY:
-            return std::make_shared<MagneticFilterTurnsDensity>();
+        case MagneticFilters::TURN_COUNT:
+            return std::make_shared<MagneticFilterTurnCount>();
         default:
             throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE, TEMPERATURE}");
     }
@@ -1124,7 +1124,7 @@ std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Magnetic* ma
     return {true, volume};
 }
 
-std::pair<bool, double> MagneticFilterTurnsDensity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+std::pair<bool, double> MagneticFilterTurnCount::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto coil = magnetic->get_coil();
 
     // Sum N across all windings. For a CMC the windings are equal so this is

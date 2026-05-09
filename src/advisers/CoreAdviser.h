@@ -100,7 +100,7 @@ class CoreAdviser {
             COST,
             EFFICIENCY,
             DIMENSIONS,
-            TURNS_DENSITY  // Manufacturability proxy (N_total × characteristic dimension).
+            TURN_COUNT  // Total turns across all windings — fewer turns preferred (CMC/DMC ranking)
                            // Not user-exposed: injected internally by suppression pipelines
                            // to prevent low-µ cores winning by satisfying inductance with
                            // an absurd turn count.
@@ -152,7 +152,7 @@ class CoreAdviser {
                 { CoreAdviserFilters::COST,                  { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", false} } },
-                { CoreAdviserFilters::TURNS_DENSITY,         { {"invert", true}, {"log", false} } }
+                { CoreAdviserFilters::TURN_COUNT,         { {"invert", true}, {"log", false} } }
             };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
         CoreAdviser(std::map<std::string, std::string> models) {
@@ -438,9 +438,9 @@ class CoreAdviser {
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
 
-    class MagneticCoreFilterTurnsDensity : public MagneticCoreFilter {
+    class MagneticCoreFilterTurnCount : public MagneticCoreFilter {
         private:
-            MagneticFilterTurnsDensity _filter;
+            MagneticFilterTurnCount _filter;
         public:
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
@@ -531,7 +531,7 @@ inline void from_json(const json & j, CoreAdviser::CoreAdviserFilters & x) {
     if (j == "Cost" || j == "cost" || j == "COST") x = CoreAdviser::CoreAdviserFilters::COST;
     else if (j == "Efficiency" || j == "efficiency" || j == "EFFICIENCY") x = CoreAdviser::CoreAdviserFilters::EFFICIENCY;
     else if (j == "Dimensions" || j == "dimensions" || j == "DIMENSIONS") x = CoreAdviser::CoreAdviserFilters::DIMENSIONS;
-    else if (j == "TurnsDensity" || j == "turnsDensity" || j == "TURNS_DENSITY") x = CoreAdviser::CoreAdviserFilters::TURNS_DENSITY;
+    else if (j == "TurnCount" || j == "turnCount" || j == "TURN_COUNT") x = CoreAdviser::CoreAdviserFilters::TURN_COUNT;
     else { throw std::runtime_error("Input JSON does not conform to schema! [CoreAdviser.h:522 CoreAdviserFilters from_json]"); }
 }
 
@@ -540,7 +540,7 @@ inline void to_json(json & j, const CoreAdviser::CoreAdviserFilters & x) {
         case CoreAdviser::CoreAdviserFilters::COST: j = "Cost"; break;
         case CoreAdviser::CoreAdviserFilters::EFFICIENCY: j = "Efficiency"; break;
         case CoreAdviser::CoreAdviserFilters::DIMENSIONS: j = "Dimensions"; break;
-        case CoreAdviser::CoreAdviserFilters::TURNS_DENSITY: j = "TurnsDensity"; break;
+        case CoreAdviser::CoreAdviserFilters::TURN_COUNT: j = "TurnCount"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"CoreAdviser::CoreAdviserFilters\": " + std::to_string(static_cast<int>(x)));
     }
 }

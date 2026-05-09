@@ -142,7 +142,7 @@ class MagneticFilterDimensions : public MagneticFilter {
 };
 
 /**
- * @class MagneticFilterTurnsDensity
+ * @class MagneticFilterTurnCount
  * @brief Manufacturability / copper-burden proxy: total turns across all windings.
  *
  * Score = Σ N_i (sum of turns over all windings).
@@ -163,9 +163,9 @@ class MagneticFilterDimensions : public MagneticFilter {
  * filterMinimumImpedance). Returns valid=true with score=0 if no turns have
  * been assigned yet (caller-side gate ensures ordering).
  */
-class MagneticFilterTurnsDensity : public MagneticFilter {
+class MagneticFilterTurnCount : public MagneticFilter {
     public:
-        MagneticFilterTurnsDensity() {};
+        MagneticFilterTurnCount() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 

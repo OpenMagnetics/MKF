@@ -527,7 +527,7 @@ enum class MagneticFilters : int {
     MAGNETOMOTIVE_FORCE,
     LEAKAGE_INDUCTANCE,  // For CMC optimization - minimize leakage for tight coupling
     TEMPERATURE,         // Node-network core temperature (Temperature.cpp, coreOnly mode)
-    TURNS_DENSITY        // N_total × max(width, height, depth) — manufacturability/copper proxy
+    TURN_COUNT        // Total turns across all windings — fewer turns preferred (CMC/DMC ranking)
 };
 
 class MagneticFilterOperation {
@@ -608,7 +608,7 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "MagnetomotiveForce") x = MagneticFilters::MAGNETOMOTIVE_FORCE;
     else if (j == "Leakage Inductance") x = MagneticFilters::LEAKAGE_INDUCTANCE;
     else if (j == "Temperature") x = MagneticFilters::TEMPERATURE;
-    else if (j == "Turns Density") x = MagneticFilters::TURNS_DENSITY;
+    else if (j == "Turn Count") x = MagneticFilters::TURN_COUNT;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -650,7 +650,7 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::MAGNETOMOTIVE_FORCE: j = "MagnetomotiveForce"; break;
         case MagneticFilters::LEAKAGE_INDUCTANCE: j = "Leakage Inductance"; break;
         case MagneticFilters::TEMPERATURE: j = "Temperature"; break;
-        case MagneticFilters::TURNS_DENSITY: j = "Turns Density"; break;
+        case MagneticFilters::TURN_COUNT: j = "Turn Count"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFilters\": " + std::to_string(static_cast<int>(x)));
     }
 }
