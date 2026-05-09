@@ -1112,15 +1112,9 @@ void Temperature::createInsulationLayerNodes() {
                     auto bobbin = std::get<Bobbin>(bobbinOpt);
                     auto secOrient = bobbin.get_winding_window_sections_orientation(0);
                     skipOuterIlNodes = (secOrient == WindingOrientation::CONTIGUOUS);
-                    std::cerr << "[TEMP-DBG] toroidal IL: bobbin.sections_orientation = "
-                              << magic_enum::enum_name(secOrient)
-                              << ", coil.get_winding_orientation = "
-                              << magic_enum::enum_name(coil.get_winding_orientation())
-                              << ", skip=" << skipOuterIlNodes << std::endl;
                 }
             } catch (const std::exception& e) { // IMP-8
                 skipOuterIlNodes = false;
-                std::cerr << "[TEMP-DBG] orientation lookup threw: " << e.what() << std::endl;
             }
             
             // Use same number of segments as toroidal core

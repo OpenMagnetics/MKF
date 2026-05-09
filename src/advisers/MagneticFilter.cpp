@@ -156,6 +156,8 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             return std::make_shared<MagneticFilterLeakageInductance>();
         case MagneticFilters::TEMPERATURE:
             return std::make_shared<MagneticFilterTemperature>();
+        case MagneticFilters::TURNS_DENSITY:
+            return std::make_shared<MagneticFilterTurnsDensity>();
         default:
             throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE, TEMPERATURE}");
     }
@@ -1120,6 +1122,30 @@ std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Magnetic* ma
     }
 
     return {true, volume};
+}
+
+std::pair<bool, double> MagneticFilterTurnsDensity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    auto coil = magnetic->get_coil();
+
+    // Sum N across all windings. For a CMC the windings are equal so this is
+    // 2 × N; for a single inductor it's just N. Fewer total turns ⇒ less
+    // copper burden ⇒ more manufacturable. Using just N (not N×dim) is the
+    // most direct discriminator: a high-µ ferrite on a large core that needs
+    // 13 turns always wins over a low-µ powder core on a small core that
+    // needs 56+ turns, regardless of physical size. The N×dim product can
+    // equalise because the large-core's dimension compensates for fewer turns.
+    double totalTurns = 0;
+    for (const auto& winding : coil.get_functional_description()) {
+        totalTurns += static_cast<double>(winding.get_number_turns());
+    }
+
+    if (totalTurns <= 0) {
+        // Turns not yet assigned — return a neutral, non-rejecting score.
+        // Caller is responsible for ordering (run after add_initial_turns_*).
+        return {true, 0.0};
+    }
+
+    return {true, totalTurns};
 }
 
 std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {

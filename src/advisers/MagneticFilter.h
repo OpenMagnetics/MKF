@@ -141,6 +141,34 @@ class MagneticFilterDimensions : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
+/**
+ * @class MagneticFilterTurnsDensity
+ * @brief Manufacturability / copper-burden proxy: total turns across all windings.
+ *
+ * Score = Σ N_i (sum of turns over all windings).
+ * Lower is better when the score is inverted by the caller. This filter is a
+ * cheap, generic way to penalise candidate cores that *technically* satisfy
+ * an inductance / impedance requirement but only by demanding an absurd turn
+ * count (low-µ powder cores attempting CMC duty, undersized ferrite, etc.).
+ *
+ * Why just N (not N×dim):
+ * Using N×characteristic_dimension equalises when large-core ferrite (e.g.
+ * T140, 13 turns, 0.14m) is compared to small powder (e.g. T27, 56 turns,
+ * 0.027m) because 13×0.14 ≈ 56×0.027 ≈ 1.5. Raw turn count is the cleaner
+ * discriminator: fewer turns always means less wire, lower I²R, and easier
+ * winding, irrespective of core size.
+ *
+ * Read-only: requires N to be already populated on the coil's
+ * functional_description (e.g. via add_initial_turns_by_inductance /
+ * filterMinimumImpedance). Returns valid=true with score=0 if no turns have
+ * been assigned yet (caller-side gate ensures ordering).
+ */
+class MagneticFilterTurnsDensity : public MagneticFilter {
+    public:
+        MagneticFilterTurnsDensity() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
 class MagneticFilterCoreMinimumImpedance : public MagneticFilter {
     private:
         Impedance _impedanceModel;
