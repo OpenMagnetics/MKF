@@ -2792,14 +2792,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     // weight ≤ 0 would short-circuit the filter entirely (no elimination occurs).
     magneticsWithScoring = filterMinimumImpedance.filter_magnetics(&magneticsWithScoring, inputs, 0.001, true);
 
-    // Turns-density manufacturability scoring: the primary ranking signal for
-    // the interference-suppression pipeline. Fewer turns → less copper burden
-    // → easier to wind → more manufacturable. Weight 2.0 ensures this filter
-    // contributes 0–2.0 to the cumulative score, dominating the user's
-    // COST/DIMENSIONS/LOSSES weights (each 0–1 after normalization) so that
-    // high-µ ferrite (13–20 turns) decisively outranks low-µ powder (50–100
-    // turns) regardless of physical size or material cost.
-    magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 2.0, false);
+    // Turn-count scoring: the primary ranking signal for the
+    // interference-suppression pipeline. Fewer turns → less copper burden
+    // → easier to wind. Weight 1.0 keeps this filter on the same scale as
+    // the user's COST/DIMENSIONS/LOSSES weights (each 0–1 after normalization),
+    // so high-µ ferrite (13–20 turns) naturally outranks low-µ powder (50–100
+    // turns) without overriding the user's other preferences entirely.
+    magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 1.0, false);
 
     // Hard-cap candidates after the (cheap) impedance + turns-density filters to
     // keep the expensive downstream filters (saturation, losses, magnetizing-
@@ -3150,8 +3149,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
     // Manufacturability proxy — see filter_available_cores_suppression_application
-    // for rationale. Same internal weight (2.0) here.
-    magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 2, true);
+    // for rationale. Same internal weight (1.0) here.
+    magneticsWithScoring = filterTurnCount.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
 
     if (magneticsWithScoring.size() == 0) {
         return {};
