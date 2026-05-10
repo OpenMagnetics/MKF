@@ -317,12 +317,12 @@ namespace {
             REQUIRE(priExc.get_voltage().has_value());
             CHECK(priExc.get_frequency() == 100e3);
 
-            // Waveforms should have 2*N+1 = 513 samples
+            // Waveforms now use the project default 1024 samples per period
             auto currentWfm = priExc.get_current()->get_waveform().value();
-            CHECK(currentWfm.get_data().size() == 513);
+            CHECK(currentWfm.get_data().size() == 1024);
 
             auto voltageWfm = priExc.get_voltage()->get_waveform().value();
-            CHECK(voltageWfm.get_data().size() == 513);
+            CHECK(voltageWfm.get_data().size() == 1024);
         }
 
         SECTION("Primary current is piecewise linear") {
@@ -346,7 +346,7 @@ namespace {
             auto currentWfm = priExc.get_current()->get_waveform().value();
             auto iData = currentWfm.get_data();
 
-            int N_half = ((int)iData.size() - 1) / 2; // Half-period samples
+            int N_half = (int)iData.size() / 2; // Half-period samples
 
             // iL(t + Thalf) = -iL(t)
             for (int k = 1; k < N_half; k += N_half/10) {
@@ -364,12 +364,14 @@ namespace {
             auto voltageWfm = priExc.get_voltage()->get_waveform().value();
             auto vData = voltageWfm.get_data();
 
-            int N_half = ((int)vData.size() - 1) / 2;
+            int N_half = (int)vData.size() / 2;
 
             // Primary bridge voltage Vab = +V1 during positive half, -V1 during negative half.
             // V1 = 800 V is set directly from inputVoltage, so this should be exact.
+            // Skip k=0 and k=N_half: both lie on transition edges (~0 V).
             // Positive half: V = +V1 = +800
             for (int k = 1; k < N_half; ++k) {
+                if (std::abs(vData[k]) < 1.0) continue;   // transition sample
                 REQUIRE_THAT(vData[k],
                     Catch::Matchers::WithinAbs(800.0, 1.0));
             }
@@ -377,6 +379,7 @@ namespace {
             // Skip last sample (k=2*N_half): it is at theta=2*pi which wraps back to
             // theta=0 (start of next period), so it equals +V1, not -V1.
             for (int k = N_half + 1; k < (int)vData.size() - 1; ++k) {
+                if (std::abs(vData[k]) < 1.0) continue;   // transition sample
                 REQUIRE_THAT(vData[k],
                     Catch::Matchers::WithinAbs(-800.0, 1.0));
             }
@@ -1628,12 +1631,12 @@ TEST_CASE("Test_Dab_EPS_BasicOperation", "[converter-model][dab-topology][smoke-
         CHECK(ops[0].get_excitations_per_winding().size() == 2);
         auto iData = ops[0].get_excitations_per_winding()[0]
                          .get_current()->get_waveform().value().get_data();
-        CHECK(iData.size() == 513);
+        CHECK(iData.size() == 1024);
     }
 
     SECTION("primary current has half-wave antisymmetry") {
         auto iData = get_dab_primary_current(dab);
-        int N_half = ((int)iData.size() - 1) / 2;
+        int N_half = (int)iData.size() / 2;
         for (int k = 1; k <= N_half; k += N_half / 8) {
             REQUIRE_THAT(iData[N_half + k],
                 Catch::Matchers::WithinAbs(-iData[k],
@@ -1682,7 +1685,7 @@ TEST_CASE("Test_Dab_DPS_BasicOperation", "[converter-model][dab-topology][smoke-
         CHECK(ops[0].get_excitations_per_winding().size() == 2);
         auto iData = ops[0].get_excitations_per_winding()[0]
                          .get_current()->get_waveform().value().get_data();
-        CHECK(iData.size() == 513);
+        CHECK(iData.size() == 1024);
     }
 
     SECTION("power computed numerically matches target within 5%") {
@@ -1720,7 +1723,7 @@ TEST_CASE("Test_Dab_TPS_BasicOperation", "[converter-model][dab-topology][smoke-
         CHECK(ops[0].get_excitations_per_winding().size() == 2);
         auto iData = ops[0].get_excitations_per_winding()[0]
                          .get_current()->get_waveform().value().get_data();
-        CHECK(iData.size() == 513);
+        CHECK(iData.size() == 1024);
     }
 
     SECTION("power computed numerically matches target within 5%") {

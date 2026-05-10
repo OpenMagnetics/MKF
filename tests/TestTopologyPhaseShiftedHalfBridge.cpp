@@ -212,10 +212,10 @@ TEST_CASE("Test_Pshb_OperatingPoints_Generation", "[converter-model][pshb-topolo
         CHECK(priExc.get_frequency() == 100e3);
 
         auto currentWfm = priExc.get_current()->get_waveform().value();
-        CHECK(currentWfm.get_data().size() == 513);
+        CHECK(currentWfm.get_data().size() == 1024);
 
         auto voltageWfm = priExc.get_voltage()->get_waveform().value();
-        CHECK(voltageWfm.get_data().size() == 513);
+        CHECK(voltageWfm.get_data().size() == 1024);
     }
 
     SECTION("Primary voltage is 3-level at HALF amplitude") {
