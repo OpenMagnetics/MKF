@@ -438,4 +438,167 @@ namespace {
         CHECK(nrmse < 0.20);
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // Reference-design tests — three TI EVMs spanning low/mid/high power.
+    // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §8 + §15 and REVIEW_PLAN §3.E.
+    //
+    // Each EVM provides a verified Vin/Vout/Iout/Fs operating point. The
+    // *_Values test asserts that Buck's analytical diagnostics
+    // (D, IL_avg, peak, CCM flag) match closed-form values within ±5 %.
+    // The *_PtP test asserts NRMSE between analytical and ngspice
+    // inductor-current waveforms ≤ 0.15.
+    //
+    // η is held at 1.0 and Vd at 0 (synchronous buck, the actual EVM
+    // topology) so analytical reduces to ideal Vout = D·Vin and the test
+    // does not depend on transcribing efficiency curves from EVM UGs.
+    //
+    // Inductor values are plausible CCM picks within the EVM IC's
+    // recommended range (NOT necessarily the exact UG bill of materials,
+    // which is in the User Guide PDF, not the HTML product page).
+    // ──────────────────────────────────────────────────────────────────────
+
+    namespace {
+        struct BuckRefDesignSpec {
+            const char* name;     // EVM identifier
+            double Vin;           // Input voltage [V]
+            double Vout;          // Output voltage [V]
+            double Iout;          // Output current [A]
+            double Fs;            // Switching frequency [Hz]
+            double Lvalue;        // Inductor value [H]
+        };
+
+        // RefDesign1 — Low corner (~10 W). TI TPS54202EVM-716.
+        //   IC TPS54202: 4.5–28 V → 0.6–26 V @ 2 A, 500 kHz fixed.
+        //   EVM presets 8–28 V → 5 V @ 2 A. Test point: 12 V → 5 V @ 2 A.
+        constexpr BuckRefDesignSpec kBuckRefDesign1{
+            "TPS54202EVM-716", 12.0, 5.0, 2.0, 500e3, 22e-6};
+
+        // RefDesign2 — Mid corner (~15 W). TI LMR33630ADDAEVM.
+        //   IC LMR33630: 3.8–36 V → 1–24 V @ 3 A, selectable
+        //   400 kHz / 1.4 MHz / 2.1 MHz. "A" variant runs at 400 kHz.
+        constexpr BuckRefDesignSpec kBuckRefDesign2{
+            "LMR33630ADDAEVM", 12.0, 5.0, 3.0, 400e3, 10e-6};
+
+        // RefDesign3 — High corner (~96 W). TI LM5146-Q1-EVM12V.
+        //   Sync-buck CONTROLLER: 5.5–100 V Vin, 0.8–60 V Vout, 100 kHz–1 MHz.
+        //   EVM preset: 15–85 V → 12 V @ 8 A, 400 kHz. Test at 24 V Vin.
+        constexpr BuckRefDesignSpec kBuckRefDesign3{
+            "LM5146-Q1-EVM12V", 24.0, 12.0, 8.0, 400e3, 22e-6};
+
+        OpenMagnetics::Buck build_buck_from_spec(const BuckRefDesignSpec& s) {
+            OpenMagnetics::Buck b;
+            DimensionWithTolerance iv;
+            iv.set_nominal(s.Vin);
+            iv.set_minimum(s.Vin * 0.95);
+            iv.set_maximum(s.Vin * 1.05);
+            b.set_input_voltage(iv);
+            b.set_diode_voltage_drop(0.0);   // synchronous buck
+            b.set_efficiency(1.0);            // lossless analytical reference
+            b.set_current_ripple_ratio(0.4);
+            BaseOperatingPoint op;
+            op.set_output_voltages({s.Vout});
+            op.set_output_currents({s.Iout});
+            op.set_switching_frequency(s.Fs);
+            op.set_ambient_temperature(25.0);
+            b.set_operating_points({op});
+            return b;
+        }
+
+        void assert_buck_refdesign_values(const BuckRefDesignSpec& s) {
+            auto buck = build_buck_from_spec(s);
+            // Diagnostics reflect the *last* call to
+            // process_operating_points_for_input_voltage(); call directly
+            // with nominal Vin to anchor the Values check there.
+            BaseOperatingPoint op;
+            op.set_output_voltages({s.Vout});
+            op.set_output_currents({s.Iout});
+            op.set_switching_frequency(s.Fs);
+            op.set_ambient_temperature(25.0);
+            buck.process_operating_points_for_input_voltage(s.Vin, op, s.Lvalue);
+
+            // Closed-form expectations (η=1, Vd=0, CCM).
+            double D_exp     = s.Vout / s.Vin;
+            double IL_avg_exp = s.Iout;
+            double tOn_exp   = D_exp / s.Fs;
+            double dIL_exp   = (s.Vin - s.Vout) * tOn_exp / s.Lvalue;
+            double Ipk_exp   = IL_avg_exp + 0.5 * dIL_exp;
+
+            INFO(s.name << " — D=" << buck.get_last_duty_cycle()
+                       << " (exp " << D_exp << ")");
+            INFO(s.name << " — IL_avg=" << buck.get_last_inductor_average_current()
+                       << " A (exp " << IL_avg_exp << " A)");
+            INFO(s.name << " — IL_peak=" << buck.get_last_peak_inductor_current()
+                       << " A (exp " << Ipk_exp << " A)");
+
+            CHECK(buck.get_last_is_ccm());
+            CHECK_THAT(buck.get_last_duty_cycle(),
+                       Catch::Matchers::WithinRel(D_exp, 0.05));
+            CHECK_THAT(buck.get_last_inductor_average_current(),
+                       Catch::Matchers::WithinRel(IL_avg_exp, 0.05));
+            CHECK_THAT(buck.get_last_inductor_peak_to_peak(),
+                       Catch::Matchers::WithinRel(dIL_exp, 0.05));
+            CHECK_THAT(buck.get_last_peak_inductor_current(),
+                       Catch::Matchers::WithinRel(Ipk_exp, 0.05));
+        }
+
+        void assert_buck_refdesign_ptp(const BuckRefDesignSpec& s) {
+            NgspiceRunner runner;
+            if (!runner.is_available()) SKIP("ngspice not available");
+
+            auto buck = build_buck_from_spec(s);
+            // Output cap (registered default 100 µF in
+            // SpiceSimulationConfig) × Rload form an RC settling tail.
+            // 50 settling periods is too short at higher Fs / lower Rload;
+            // bump to 400 to ensure ≥ 8·τ before extraction window opens.
+            buck.set_num_steady_state_periods(400);
+
+            auto analyticalOps = buck.process_operating_points(std::vector<double>{}, s.Lvalue);
+            REQUIRE(!analyticalOps.empty());
+            auto aTime = ptp_current_time(analyticalOps[0], 0);
+            auto aData = ptp_current(analyticalOps[0], 0);
+            REQUIRE(!aData.empty());
+            REQUIRE(!aTime.empty());
+            auto aResampled = ptp_interp(aTime, aData, 256);
+
+            buck.set_num_periods_to_extract(1);
+            auto simOps = buck.simulate_and_extract_operating_points(s.Lvalue);
+            REQUIRE(!simOps.empty());
+            auto sTime = ptp_current_time(simOps[0], 0);
+            auto sData = ptp_current(simOps[0], 0);
+            REQUIRE(!sData.empty());
+            REQUIRE(!sTime.empty());
+            auto sResampled = ptp_interp(sTime, sData, 256);
+
+            double nrmse = ptp_nrmse(aResampled, sResampled);
+            INFO(s.name << " inductor-current NRMSE (analytical vs ngspice): "
+                        << (nrmse * 100.0) << "%");
+            CHECK(nrmse < 0.15);
+        }
+    }  // namespace
+
+    TEST_CASE("Test_Buck_RefDesign1_Values_TPS54202EVM_716",
+              "[converter-model][buck-topology][refdesign][values]") {
+        assert_buck_refdesign_values(kBuckRefDesign1);
+    }
+    TEST_CASE("Test_Buck_RefDesign1_PtP_TPS54202EVM_716",
+              "[converter-model][buck-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_buck_refdesign_ptp(kBuckRefDesign1);
+    }
+    TEST_CASE("Test_Buck_RefDesign2_Values_LMR33630ADDAEVM",
+              "[converter-model][buck-topology][refdesign][values]") {
+        assert_buck_refdesign_values(kBuckRefDesign2);
+    }
+    TEST_CASE("Test_Buck_RefDesign2_PtP_LMR33630ADDAEVM",
+              "[converter-model][buck-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_buck_refdesign_ptp(kBuckRefDesign2);
+    }
+    TEST_CASE("Test_Buck_RefDesign3_Values_LM5146_Q1_EVM12V",
+              "[converter-model][buck-topology][refdesign][values]") {
+        assert_buck_refdesign_values(kBuckRefDesign3);
+    }
+    TEST_CASE("Test_Buck_RefDesign3_PtP_LM5146_Q1_EVM12V",
+              "[converter-model][buck-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_buck_refdesign_ptp(kBuckRefDesign3);
+    }
+
 }  // namespace

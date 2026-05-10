@@ -62,6 +62,18 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER] = dab;
             }
 
+            // Buck — single-switch hard-switched, sync or asynchronous
+            // freewheeling diode. Reference EVMs span 400–500 kHz
+            // (TPS54202EVM-716, LMR33630ADDAEVM, LM5146-Q1-EVM12V), so
+            // the snubber τ = 10 ns mirrors Boost's choice. Output cap
+            // 100 µF matches the integrator-style EVM output stage.
+            {
+                SpiceSimulationConfig buck;
+                buck.snubR = 100.0;        buck.snubC = 100e-12;
+                buck.outputCapacitance = 100e-6;
+                m[MAS::Topologies::BUCK_CONVERTER] = buck;
+            }
+
             return m;
         }();
         return defaults;

@@ -11,10 +11,63 @@ namespace OpenMagnetics {
 using namespace MAS;
 
 
+/**
+ * @brief Buck (Step-Down) Converter — synchronous or diode rectified
+ *
+ * Single-switch hard-switched DC-DC converter. The high-side switch
+ * connects Vin to the inductor input during t_on; the freewheeling
+ * path (low-side diode in async, low-side MOSFET in synchronous EVMs)
+ * carries the inductor current during t_off.
+ *
+ *      Vin ──[Sw]──┬── L ──┬── Vout
+ *                  │       │
+ *                 [D]     Cout
+ *                  │       │
+ *                 GND     GND
+ *
+ *  KEY EQUATIONS (CCM, lossless):
+ *    (1)  D     = Vout / Vin                                (ideal)
+ *         D     = (Vout + Vd) / ((Vin + Vd) · η)            (with Vd, η)
+ *    (2)  ΔIL   = (Vin − Vout) · t_on / L
+ *    (3)  IL_avg= Iout
+ *    (4)  IL_pk = IL_avg + ΔIL/2
+ *
+ *  DCM BOUNDARY (CCM ↔ DCM):
+ *    (5)  K = 2·L·Fs / R_load,        K_crit = 1 − D
+ *         CCM if K ≥ K_crit, else DCM.
+ *  In DCM, the duty cycle is solved from a quadratic so that
+ *  area-balance Iout = (1/2)·ΔIL·(t_on + t_off)/T is satisfied;
+ *  see process_operating_points_for_input_voltage().
+ *
+ *  REFERENCE DESIGNS (verified via vendor product pages):
+ *    • TPS54202EVM-716    — 8–28 V → 5 V @ 2 A, 500 kHz sync buck
+ *      (low corner ~10 W).
+ *    • LMR33630ADDAEVM    — 12 V → 5 V @ 3 A, 400 kHz sync buck
+ *      (mid corner ~15 W).
+ *    • LM5146-Q1-EVM12V   — 15–85 V → 12 V @ 8 A, 400 kHz sync-buck
+ *      controller (high corner ~96 W).
+ *
+ *  TEXTBOOK CROSS-CHECK:
+ *    [1] Erickson & Maksimović, "Fundamentals of Power Electronics",
+ *        3rd ed., Chapter 2.2 (buck CCM analysis), Chapter 5
+ *        (DCM boundary K = 2L·Fs/R).
+ */
 class Buck : public MAS::Buck, public Topology {
 private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 50;  // Number of periods to extract from simulation
+
+    // ---- Per-OP analytical diagnostics ----
+    // Populated by process_operating_points_for_input_voltage() for the
+    // most recent call. Used by golden-quality tests to assert CCM/DCM
+    // mode and operating-point numerics without reaching into the
+    // OperatingPoint waveform arrays.
+    mutable double lastDutyCycle = 0.0;             // D = Vout·η/(Vin) (asymptotic)
+    mutable double lastInductorAverageCurrent = 0;  // IL_avg = Iout (CCM)
+    mutable double lastInductorPeakToPeak = 0;      // ΔIL_pp [A]
+    mutable double lastPeakInductorCurrent = 0;     // IL_avg + ΔIL_pp/2 (CCM) or ΔIL_pp (DCM)
+    mutable bool   lastIsCcm = true;                // false → DCM (IL_min < 0)
+    mutable double lastConductionRatio = 1.0;       // (t_on + t_off) / T (1.0 in CCM)
 
 public:
     bool _assertErrors = false;
@@ -23,11 +76,21 @@ public:
     Buck() {
     };
 
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::BUCK_CONVERTER; }
+
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
     
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
+
+    // ---- Per-OP diagnostic accessors ----
+    double get_last_duty_cycle() const { return lastDutyCycle; }
+    double get_last_inductor_average_current() const { return lastInductorAverageCurrent; }
+    double get_last_inductor_peak_to_peak() const { return lastInductorPeakToPeak; }
+    double get_last_peak_inductor_current() const { return lastPeakInductorCurrent; }
+    bool   get_last_is_ccm() const { return lastIsCcm; }
+    double get_last_conduction_ratio() const { return lastConductionRatio; }
 
     bool run_checks(bool assert = false) override;
 

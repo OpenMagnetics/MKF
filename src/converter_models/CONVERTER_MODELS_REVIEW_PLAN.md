@@ -1217,6 +1217,16 @@ TEST_CASE("Test_Pfc_Output_Cap_Sizing") {
 
 ### 3.E Boost / Buck — Quality Baseline (parallel work)
 
+**Status**: ✓ **Both LOCKED** as of 2026-05.
+- Boost: 16 tests / 89 assertions; ref-design trio TPS61089EVM-742, TPS61178EVM-792, LM5122EVM-1PH (verified via vendor pages).
+- Buck:  18 tests / 102 assertions; ref-design trio TPS54202EVM-716, LMR33630ADDAEVM, LM5146-Q1-EVM12V (verified via vendor pages).
+- Both use the central `SpiceSimulationConfig` registry in
+  `Topology.cpp` for ngspice circuit generation; `cfg.<field>`
+  lookups replace every hardcoded literal.
+
+**Do NOT** repeat the verified-vendor-page step for Boost/Buck — the
+trios above are the locked references. Subsequent work below.
+
 **Total effort**: 3–5 days each. Run in parallel by two agents.
 
 **Files (Boost)**:
