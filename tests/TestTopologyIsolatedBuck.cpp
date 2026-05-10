@@ -332,16 +332,23 @@ namespace {
 
         INFO("Isolated Buck ngspice simulation test passed");
 
-        SECTION("Waveform shape: primary voltage is a pulse (ON ≈ Vin, OFF ≈ 0)") {
+        SECTION("Waveform shape: primary voltage is a pulse (ON ≈ Vin, OFF ≈ -Vo_reflected)") {
             double Vin = 48.0;
+            double Vo  = 5.0;
+            double eta = 0.9;
+            // Expected duty for a Flybuck/Isolated-Buck primary:
+            //   D ≈ Vo / (eta * Vin)  (with N_pri:N_sec ≈ 1:1 here)
+            // For Vo=5, Vin=48, η=0.9 → D ≈ 0.116. Allow generous tolerance for
+            // discretization / startup transient in the analytical waveform.
+            double D_expected = Vo / (eta * Vin);
             int count_on = 0;
             for (double v : priVoltageData) {
                 if (v > 0.5 * Vin) count_on++;
             }
             double frac_on = double(count_on) / priVoltageData.size();
-            INFO("Fraction at Vin: " << frac_on << " (expect ≈ D ≈ 0.2-0.5)");
-            CHECK(frac_on > 0.10);
-            CHECK(frac_on < 0.70);
+            INFO("Fraction at Vin: " << frac_on << " (expect ≈ D ≈ " << D_expected << ")");
+            CHECK(frac_on > 0.5 * D_expected);
+            CHECK(frac_on < 3.0 * D_expected);
         }
 
         SECTION("Waveform shape: primary current ramps up during ON time") {
@@ -522,9 +529,13 @@ namespace {
         CHECK(std::abs(sec2CurrentAvg) < 100.0);
         CHECK(std::abs(sec2CurrentRms) < 1000.0);
         
-        // Validate secondary voltages are approximately correct (within 20% of expected)
-        // Primary output (non-isolated buck): ~5V
-        CHECK(std::abs(priVoltageAvg - expectedPriVoltage) < expectedPriVoltage * 0.2);
+        // Validate winding voltages.
+        // Primary winding voltage is now extracted as a differential (across-winding) probe
+        // V(pri_in) - V(vpri_out), so by volt-second balance the average must be ~0,
+        // and the RMS swing must be a substantial fraction of Vin (48V).
+        CHECK(std::abs(priVoltageAvg) < 1.0);          // volt-second balance
+        CHECK(priVoltageRms > 5.0);                    // bipolar swing of order Vin*sqrt(D(1-D))
+        CHECK(priVoltageRms < 48.0);                   // bounded by Vin
         // Secondary 1: ~5V
         CHECK(std::abs(sec1VoltageAvg - expectedSec1Voltage) < expectedSec1Voltage * 0.2);
         // Secondary 2 (isolated): ~12V
@@ -591,6 +602,92 @@ namespace {
         double nrmse = ptp_nrmse(aResampled, sResampled);
         INFO("Isolated Buck primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
         CHECK(nrmse < 0.35);
+    }
+
+    // SPICE-power sanity regression: catches accidental polarity / probe
+    // bugs in the across-winding voltage definition (Bvpri_diff in
+    // IsolatedBuck::generate_ngspice_circuit). Asserts:
+    //   (a) bipolar V swing centered on 0 (volt-second balance — non-grounded
+    //       winding terminal vpri_out)
+    //   (b) PASSIVE sign convention: avg(V·I) > 0 on the primary
+    //       (energy flowing INTO the winding)
+    //   (c) avg(|V·I|) is on the order of the primary-output power
+    //       (the AP-filter consumer uses |V·I|; an accidental v(node)−GND
+    //       probe collapses this 100–1000× and CoreAdviser advances
+    //       sub-mm³ cores, returning 0 hits in TestMagneticAdviser)
+    TEST_CASE("Test_IsolatedBuck_SpicePowerSanity",
+              "[converter-model][isolated-buck-topology][ngspice-simulation][regression]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        OpenMagnetics::IsolatedBuck isolatedBuck;
+        DimensionWithTolerance iv; iv.set_nominal(48.0);
+        isolatedBuck.set_input_voltage(iv);
+        isolatedBuck.set_diode_voltage_drop(0.5);
+        isolatedBuck.set_efficiency(0.9);
+        isolatedBuck.set_current_ripple_ratio(0.3);
+
+        IsolatedBuckOperatingPoint op;
+        // Single-secondary 5 V @ 5 A configuration (mirrors
+        // Test_IsolatedBuck_Ngspice_Simulation).
+        op.set_output_voltages({5.0, 5.0});
+        op.set_output_currents({0.6, 5.0});
+        op.set_switching_frequency(200e3);
+        op.set_ambient_temperature(25.0);
+        isolatedBuck.set_operating_points({op});
+
+        auto designReqs = isolatedBuck.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) turnsRatios.push_back(tr.get_nominal().value());
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        isolatedBuck.set_num_periods_to_extract(1);
+        auto simOps = isolatedBuck.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+
+        auto& exc = simOps[0].get_excitations_per_winding()[0];
+        REQUIRE(exc.get_voltage().has_value());
+        REQUIRE(exc.get_current().has_value());
+        auto vData = exc.get_voltage()->get_waveform()->get_data();
+        auto iData = exc.get_current()->get_waveform()->get_data();
+        REQUIRE(vData.size() == iData.size());
+        REQUIRE(!vData.empty());
+
+        double sumVI = 0, sumAbsVI = 0, sumV = 0;
+        double vmax = vData[0], vmin = vData[0];
+        for (size_t k = 0; k < vData.size(); ++k) {
+            sumVI    += vData[k] * iData[k];
+            sumAbsVI += std::fabs(vData[k] * iData[k]);
+            sumV     += vData[k];
+            if (vData[k] > vmax) vmax = vData[k];
+            if (vData[k] < vmin) vmin = vData[k];
+        }
+        double avgVI    = sumVI / vData.size();
+        double avgAbsVI = sumAbsVI / vData.size();
+        double avgV     = sumV / vData.size();
+        double swing    = vmax - vmin;
+
+        // Pri-output power ≈ 5 V × 0.6 A = 3 W. Primary-winding processed
+        // power ≈ Pin = (Po_pri + Po_sec)/η for the full converter, which
+        // is dominated by the secondary 5 V × 5 A = 25 W → Pin ≈ 28 W / η.
+        // For the |V·I| sanity bound we just need the result to be a
+        // realistic single-digit-to-tens-of-W magnitude (the broken
+        // node-to-GND probe collapses this to milliwatts).
+        INFO("V max=" << vmax << " min=" << vmin << " avg=" << avgV
+             << "  swing=" << swing
+             << "  avg(V·I)=" << avgVI << " avg(|V·I|)=" << avgAbsVI);
+
+        // (a) bipolar swing — primary sees ≈ +Vin on, ≈ −Vo_reflected off
+        CHECK(swing > 20.0);                              // ≈ Vin + Vo_reflected
+        CHECK(std::fabs(avgV) < 2.0);                     // volt-second balance
+
+        // (b) passive sign — power INTO winding is positive
+        CHECK(avgVI > 0.0);
+
+        // (c) magnitude is realistic (single-digit W or larger), not the
+        //     milliwatt-class collapse seen with v(node)−GND probes
+        CHECK(avgAbsVI > 0.5);
+        CHECK(avgAbsVI < 200.0);
     }
 
 }  // namespace

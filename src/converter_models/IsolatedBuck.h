@@ -11,10 +11,80 @@ namespace OpenMagnetics {
 using namespace MAS;
 
 
+/**
+ * @brief Isolated Buck Converter (also known as "Flybuck" / "Fly-Buck")
+ *
+ * A buck converter whose inductor has been replaced by a coupled
+ * inductor (transformer). The primary winding still acts as the buck
+ * filter inductor and produces the (non-isolated) primary output
+ * V_pri = D · V_in (ideal). Each secondary winding rectifies the
+ * mirror-imaged voltage during the switch OFF interval, giving
+ * isolated outputs whose nominal value is set by the turns ratio:
+ *     V_sec_k = V_pri / N_k − V_diode
+ * Distinct from a true Flyback in that the primary side IS regulated
+ * (it's a real synchronous buck loop) — the secondary outputs are
+ * loosely cross-regulated and depend on the primary loop driving the
+ * primary V_pri to its target. Hence: cheap isolated bias rails.
+ *
+ *      Vin ─[S1]─┬─ Lpri ─┬── V_pri  (regulated, non-isolated)
+ *                │        │            ↓
+ *               [S2/D]   Cpri        Rload_pri
+ *                │        │
+ *               GND      GND
+ *                │
+ *      ╞═════════╪═══════════╡  K=0.99 coupled
+ *                │
+ *                Lsec_k ── D_k ── Vout_k  (isolated)
+ *                                  │
+ *                                 Cout_k − Rload_k
+ *
+ *  KEY EQUATIONS (CCM, lossless):
+ *    (1)  D       = V_pri / V_in                           (ideal)
+ *         D       = V_pri / (V_in · η)                     (with η)
+ *    (2)  ΔIL_mag = (V_in − V_pri) · t_on / Lmag
+ *    (3)  V_sec_k = V_pri / N_k − V_diode                  (nominal)
+ *    (4)  N_k     = V_pri / (V_sec_k + V_diode)            (turns ratio)
+ *    (5)  IL_pri_avg = I_out_pri + Σ I_out_sec_k / N_k     (reflected)
+ *    (6)  IL_pri_pk  = IL_pri_avg + ΔIL_mag / 2
+ *
+ *  DCM BOUNDARY (CCM ↔ DCM):
+ *    Same condition as a regular buck on the primary inductor:
+ *    K = 2·Lmag·Fs / R_load_pri,   K_crit = 1 − D.
+ *    CCM if K ≥ K_crit, else DCM. In a properly-designed Flybuck the
+ *    secondary is sized to keep the primary inductor in CCM under the
+ *    expected load range; the secondaries themselves are always in
+ *    DCM-like rectifier conduction (only conduct during S OFF).
+ *
+ *  REFERENCE DESIGNS (verified via vendor product pages):
+ *    • Low corner  — TI LM5160 "Flybuck Quick Start" (24 V → ±12 V
+ *      bias @ 100 mA, 350 kHz).
+ *    • Mid corner  — TI LM5017 Flybuck app note SNVA674A (48 V → 5 V
+ *      isolated bias @ 1 A, 200 kHz).
+ *    • High corner — TI LM5160-Q1 automotive Flybuck reference
+ *      (60 V → 12 V isolated bias @ 1 A, 350 kHz, AEC-Q100).
+ *
+ *  TEXTBOOK CROSS-CHECK:
+ *    [1] Erickson & Maksimović, "Fundamentals of Power Electronics",
+ *        3rd ed., Ch. 2.2 (buck CCM analysis), Ch. 5 (DCM boundary).
+ *    [2] TI app note SNVA674A "Designing an Isolated Buck (Flybuck)
+ *        Converter" (LM5017 / LM5160).
+ */
 class IsolatedBuck : public MAS::IsolatedBuck, public Topology {
 private:
+    // Simulation tuning
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 5;
+
+    // Per-OP diagnostic outputs (mutable — populated by
+    // process_operating_point_for_input_voltage()). Allow tests and
+    // the Web frontend to inspect what the analytical model decided
+    // without re-running it.
+    mutable double lastDutyCycle = 0.0;                    // D = V_pri·η/V_in (CCM, asymptotic)
+    mutable double lastMagnetizingCurrentRipple = 0.0;     // ΔIL_mag pk-pk [A]
+    mutable double lastPrimaryAverageCurrent = 0.0;        // IL_pri_avg [A]
+    mutable double lastPrimaryPeakCurrent = 0.0;           // IL_pri_pk = avg + ΔIL_mag/2 [A]
+    mutable double lastSecondaryPeakCurrent = 0.0;         // worst-case secondary peak [A]
+    mutable bool   lastIsCcm = true;                       // false → primary inductor entered DCM
 
     mutable std::vector<Waveform> extraLoVoltageWaveforms;
     mutable std::vector<Waveform> extraLoCurrentWaveforms;
@@ -33,13 +103,22 @@ public:
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
+    // Per-OP analytical diagnostics (read-only; populated by
+    // process_operating_point_for_input_voltage()).
+    double get_last_duty_cycle() const { return lastDutyCycle; }
+    double get_last_magnetizing_current_ripple() const { return lastMagnetizingCurrentRipple; }
+    double get_last_primary_average_current() const { return lastPrimaryAverageCurrent; }
+    double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
+    double get_last_secondary_peak_current() const { return lastSecondaryPeakCurrent; }
+    bool   get_last_is_ccm() const { return lastIsCcm; }
+
     bool run_checks(bool assert = false) override;
 
     DesignRequirements process_design_requirements() override;
     std::vector<OperatingPoint> process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) override;
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, const IsolatedBuckOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance);
+    OperatingPoint process_operating_point_for_input_voltage(double inputVoltage, const IsolatedBuckOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance);
     double calculate_duty_cycle(double inputVoltage, double outputVoltage, double efficiency);
 
     std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(

@@ -23,7 +23,7 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint IsolatedBuck::processOperatingPointsForInputVoltage(double inputVoltage, const IsolatedBuckOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance) {
+    OperatingPoint IsolatedBuck::process_operating_point_for_input_voltage(double inputVoltage, const IsolatedBuckOperatingPoint& outputOperatingPoint, const std::vector<double>& turnsRatios, double inductance) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -54,6 +54,23 @@ namespace OpenMagnetics {
         auto primaryVoltageMinimum = -primaryOutputVoltage;
         auto primaryVoltagePeaktoPeak = primaryVoltageMaximum - primaryVoltageMinimum;
 
+        // Populate per-OP analytical diagnostics. Exposed via
+        // get_last_*() accessors so tests / Web frontend can verify the
+        // analytical model without re-deriving the equations. CCM check
+        // uses the standard buck criterion on the primary (magnetizing)
+        // inductor: K = 2·L·Fs/R_load_pri ≥ 1−D.
+        double rLoadPri = (primaryOutputCurrent > 0)
+            ? (primaryOutputVoltage / primaryOutputCurrent)
+            : std::numeric_limits<double>::infinity();
+        double kFactor = 2.0 * inductance * switchingFrequency / rLoadPri;
+        double kCrit   = 1.0 - dutyCycle;
+        lastDutyCycle                 = dutyCycle;
+        lastMagnetizingCurrentRipple  = magnetizingCurrentRipple;
+        lastPrimaryAverageCurrent     = primaryOutputCurrent + totalReflectedSecondaryCurrent;
+        lastPrimaryPeakCurrent        = primaryCurrentMaximum;
+        lastIsCcm                     = (kFactor >= kCrit);
+        lastSecondaryPeakCurrent      = 0.0;  // updated in the secondaries loop below
+
         // Primary
         {
             Waveform currentWaveform;
@@ -74,6 +91,13 @@ namespace OpenMagnetics {
 
             auto secondaryCurrentMaximum = (1 + dutyCycle) / (1 - dutyCycle) * secondaryOutputCurrent - secondaryOutputCurrent;
             auto secondaryCurrentMinimum = 0;
+
+            // Track the worst-case secondary peak across all secondaries
+            // for diagnostic readout.
+            double secPeak = secondaryOutputCurrent + secondaryCurrentMaximum;
+            if (secPeak > lastSecondaryPeakCurrent) {
+                lastSecondaryPeakCurrent = secPeak;
+            }
 
             auto secondaryVoltageMaximum = (inputVoltage - primaryOutputVoltage) / turnsRatios[secondaryIndex] - diodeVoltageDrop;
             auto secondaryVoltageMinimum = -primaryOutputVoltage / turnsRatios[secondaryIndex] + diodeVoltageDrop;
@@ -258,7 +282,7 @@ namespace OpenMagnetics {
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t isolatedbuckOperatingPointIndex = 0; isolatedbuckOperatingPointIndex < get_operating_points().size(); ++isolatedbuckOperatingPointIndex) {
-                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[isolatedbuckOperatingPointIndex], turnsRatios, magnetizingInductance);
+                auto operatingPoint = process_operating_point_for_input_voltage(inputVoltage, get_operating_points()[isolatedbuckOperatingPointIndex], turnsRatios, magnetizingInductance);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
@@ -329,7 +353,7 @@ namespace OpenMagnetics {
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t isolatedbuckOperatingPointIndex = 0; isolatedbuckOperatingPointIndex < get_operating_points().size(); ++isolatedbuckOperatingPointIndex) {
-                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[isolatedbuckOperatingPointIndex], turnsRatios, maximumNeededInductance);
+                auto operatingPoint = process_operating_point_for_input_voltage(inputVoltage, get_operating_points()[isolatedbuckOperatingPointIndex], turnsRatios, maximumNeededInductance);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
@@ -472,6 +496,26 @@ namespace OpenMagnetics {
         // This is the proper topology - inductor in series with output, not to ground
         circuit << "Lpri pri_in vpri_out " << std::scientific << magnetizingInductance << std::fixed << "\n\n";
 
+        // Across-winding differential voltage probe for the primary.
+        // The raw v(pri_in) is the SWITCH-node voltage (≈Vin when S1 ON,
+        // ≈0 when S2 ON / synchronous freewheel) — NOT the actual
+        // voltage across Lpri, which is V(pri_in)−V(vpri_out). Same
+        // class of bug fixed in PushPull commit 4ffd3c28: without this
+        // correction MagneticFilterAreaProduct's powerMean estimate
+        // is far too small (it uses |V·I| over the saved waveform), the
+        // AP filter degrades to a no-op, and CoreAdviser advances cores
+        // that physically cannot fit any wire — the failure mode behind
+        // TestMagneticAdviser.cpp:5008.
+        //
+        // Sign convention: Lpri's first SPICE node = dot, so dot is at
+        // pri_in. The current sense Vpri_sense (sw_node → pri_in)
+        // reports positive i when current flows INTO the dot. Defining
+        // V_winding = V(pri_in) − V(vpri_out) (dot to non-dot) keeps
+        // passive sign convention against this current — i.e.
+        // avg(V·I) > 0 represents power flowing INTO the inductor.
+        circuit << "* Across-winding differential voltage probe (passive sign)\n";
+        circuit << "Bvpri_diff vpri_diff 0 V=V(pri_in)-V(vpri_out)\n\n";
+
         // Secondary windings
         // For flyback action, secondary windings referenced to ground
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
@@ -534,7 +578,7 @@ namespace OpenMagnetics {
         // - secX_in: secondary winding inputs
         // - secX_rect: secondary rectified node (before output cap)
         circuit << "* Output signals\n";
-        circuit << ".save v(sw_node) v(pri_in) v(vpri_out) i(Vpri_sense)";
+        circuit << ".save v(sw_node) v(pri_in) v(vpri_out) v(vpri_diff) i(Vpri_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) v(sec" << secIdx << "_rect) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
@@ -605,9 +649,12 @@ namespace OpenMagnetics {
                 // Define waveform name mapping
                 NgspiceRunner::WaveformNameMapping waveformMapping;
                 
-                // Primary winding - voltage at inductor node (switching node), current through sense resistor
-                // For Flybuck: pri_in is the inductor/switching node
-                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vpri_sense#branch"}});
+                // Primary winding — across-winding differential voltage
+                // V(pri_in)−V(vpri_out) (passive sign w.r.t. Vpri_sense).
+                // Was previously v(pri_in) which is the SWITCH-node
+                // voltage and led to ~3-orders-of-magnitude AP filter
+                // underestimate (3606-class bug; see SPICE comment).
+                waveformMapping.push_back({{"voltage", "vpri_diff"}, {"current", "vpri_sense#branch"}});
                 
                 // Secondary windings
                 for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
