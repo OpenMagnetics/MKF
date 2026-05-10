@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "NgspiceTestHelpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -338,29 +339,23 @@ namespace {
         INFO("Primary voltage max: " << priV_max << " V");
         INFO("Primary current avg: " << priI_avg << " A");
         
-        // Validate primary voltage: should be close to input voltage during ON time
-        CHECK(priV_max > 30.0);  // Should be around 48V
-        CHECK(priV_max < 80.0);
+        // Validate primary input_voltage: §5.1 — this is now the DC source
+        // rail v(vin_dc), NOT a winding-port pulse. Must be flat ≈ Vin_nom.
+        const double VinNom = 48.0;
+        CHECK(priV_max < VinNom * 1.01);
+        CHECK(priV_max > VinNom * 0.99);
 
         INFO("Isolated Buck ngspice simulation test passed");
 
-        SECTION("Waveform shape: primary voltage is a pulse (ON ≈ Vin, OFF ≈ -Vo_reflected)") {
-            double Vin = 48.0;
-            double Vo  = 5.0;
-            double eta = 0.9;
-            // Expected duty for a Flybuck/Isolated-Buck primary:
-            //   D ≈ Vo / (eta * Vin)  (with N_pri:N_sec ≈ 1:1 here)
-            // For Vo=5, Vin=48, η=0.9 → D ≈ 0.116. Allow generous tolerance for
-            // discretization / startup transient in the analytical waveform.
-            double D_expected = Vo / (eta * Vin);
-            int count_on = 0;
-            for (double v : priVoltageData) {
-                if (v > 0.5 * Vin) count_on++;
-            }
-            double frac_on = double(count_on) / priVoltageData.size();
-            INFO("Fraction at Vin: " << frac_on << " (expect ≈ D ≈ " << D_expected << ")");
-            CHECK(frac_on > 0.5 * D_expected);
-            CHECK(frac_on < 3.0 * D_expected);
+        SECTION("Waveform shape: input_voltage is a flat DC source rail (§5.1)") {
+            // No pulse / no bipolar excursions on the converter-port input_voltage.
+            // The pulsed primary winding voltage is checked separately in
+            // TestVoltSecondBalance via simulate_and_extract_operating_points.
+            double priV_min = *std::min_element(priVoltageData.begin(), priVoltageData.end());
+            double priV_avg = std::accumulate(priVoltageData.begin(), priVoltageData.end(), 0.0) / priVoltageData.size();
+            INFO("input_voltage min=" << priV_min << " avg=" << priV_avg);
+            CHECK(priV_min > VinNom * 0.99);
+            CHECK(std::fabs(priV_avg - VinNom) < 0.5);
         }
 
         SECTION("Waveform shape: primary current ramps up during ON time") {
@@ -709,6 +704,55 @@ namespace {
         //     milliwatt-class collapse seen with v(node)−GND probes
         CHECK(avgAbsVI > 0.5);
         CHECK(avgAbsVI < 200.0);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // §5.1 converter-port DC-stream gate (see ConverterPortChecks).
+    //
+    // IsolatedBuck flybuck topology has a known model-accuracy issue on
+    // the ISOLATED secondary rail (the primary buck rail tracks tightly):
+    // duty cycle is set by the primary loop, and the secondary settles
+    // ~30 % below nameplate due to forward-diode drop (~0.5 V on a 5 V
+    // rail) and 0.99 coupling losses. Tracked under
+    // CONVERTER_MODELS_REVIEW_PLAN.md §3.H Phases 5-6 (NRMSE + reference
+    // designs). The §5.1 gate this test enforces is the RIPPLE bound (still
+    // 25 %, default) — a winding-port AC signal smuggled into the
+    // converter-port stream would have ripple/mean ≫ 1, regardless of mean.
+    // ────────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_IsolatedBuck_ConverterPortWaveforms",
+              "[converter-port-waveforms][isolated-buck-topology][ngspice-simulation]") {
+        NgspiceTestHelpers::skip_if_ngspice_unavailable();
+
+        OpenMagnetics::IsolatedBuck ib;
+        const double Vin = 48.0;
+        const std::vector<double> Vout = {5.0, 5.0};
+        const std::vector<double> Iout = {0.6, 5.0};
+        DimensionWithTolerance iv; iv.set_nominal(Vin);
+        ib.set_input_voltage(iv);
+        ib.set_diode_voltage_drop(0.5);
+        ib.set_efficiency(0.9);
+        ib.set_current_ripple_ratio(0.3);
+
+        IsolatedBuckOperatingPoint op;
+        op.set_output_voltages(Vout);
+        op.set_output_currents(Iout);
+        op.set_switching_frequency(200e3);
+        op.set_ambient_temperature(25.0);
+        ib.set_operating_points({op});
+
+        auto designReqs = ib.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios())
+            turnsRatios.push_back(tr.get_nominal().value());
+        const double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        ib.set_num_steady_state_periods(200);
+        auto wfs = ib.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+        REQUIRE(!wfs.empty());
+        for (size_t i = 0; i < wfs.size(); ++i)
+            ConverterPortChecks::check_dc_ports(wfs[i], "IsolatedBuck", i, Vin, Vout, Iout,
+                                                 /*voutMeanTol*/ 0.35,
+                                                 /*ioutMeanTol*/ 0.35);
     }
 
 }  // namespace

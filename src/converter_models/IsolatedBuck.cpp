@@ -403,36 +403,107 @@ namespace OpenMagnetics {
         double magnetizingInductance,
         size_t numberOfPeriods) {
 
+    std::vector<ConverterWaveforms> results;
+
+    NgspiceRunner runner;
+    if (!runner.is_available()) {
+        throw std::runtime_error("ngspice is not available for simulation");
+    }
+
     // Save original value and set the requested number of periods
     int originalNumPeriodsToExtract = get_num_periods_to_extract();
     set_num_periods_to_extract(static_cast<int>(numberOfPeriods));
 
-    auto operatingPoints = process_operating_points(turnsRatios, magnetizingInductance);
-    std::vector<ConverterWaveforms> results;
+    std::vector<double> inputVoltages;
+    std::vector<std::string> inputVoltagesNames;
+    collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
-    for (auto& op : operatingPoints) {
-        ConverterWaveforms wf;
-        wf.set_switching_frequency(op.get_excitations_per_winding()[0].get_frequency());
-        if (op.get_name()) {
-            wf.set_operating_point_name(op.get_name().value());
-        }
-        auto& priExc = op.get_excitations_per_winding()[0];
-        if (priExc.get_voltage() && priExc.get_voltage()->get_waveform()) {
-            wf.set_input_voltage(priExc.get_voltage()->get_waveform().value());
-        }
-        if (priExc.get_current() && priExc.get_current()->get_waveform()) {
-            wf.set_input_current(priExc.get_current()->get_waveform().value());
-        }
-        for (size_t i = 1; i < op.get_excitations_per_winding().size(); ++i) {
-            auto& secExc = op.get_excitations_per_winding()[i];
-            if (secExc.get_voltage() && secExc.get_voltage()->get_waveform()) {
-                wf.get_mutable_output_voltages().push_back(secExc.get_voltage()->get_waveform().value());
+    for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+        for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
+            auto opPoint = get_operating_points()[opIndex];
+
+            std::string netlist = generate_ngspice_circuit(turnsRatios, magnetizingInductance, inputVoltageIndex, opIndex);
+            double switchingFrequency = opPoint.get_switching_frequency();
+
+            SimulationConfig config;
+            config.frequency = switchingFrequency;
+            config.extractOnePeriod = true;
+            config.numberOfPeriods = numberOfPeriods;
+            config.keepTempFiles = false;
+
+            auto simResult = runner.run_simulation(netlist, config);
+            if (!simResult.success) {
+                throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
             }
-            if (secExc.get_current() && secExc.get_current()->get_waveform()) {
-                wf.get_mutable_output_currents().push_back(secExc.get_current()->get_waveform().value());
+
+            std::map<std::string, size_t> nameToIndex;
+            for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+                std::string lower = simResult.waveformNames[i];
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                nameToIndex[lower] = i;
             }
+            auto getWaveform = [&](const std::string& name) -> Waveform {
+                std::string lower = name;
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                auto it = nameToIndex.find(lower);
+                if (it != nameToIndex.end()) return simResult.waveforms[it->second];
+                return Waveform();
+            };
+
+            ConverterWaveforms wf;
+            wf.set_switching_frequency(switchingFrequency);
+            std::string name = inputVoltagesNames[inputVoltageIndex] + " input";
+            if (get_operating_points().size() > 1) {
+                name += " op. point " + std::to_string(opIndex);
+            }
+            wf.set_operating_point_name(name);
+
+            // §5.1 — converter-port stream is DC source / DC filtered outputs.
+            wf.set_input_voltage(getWaveform("vin_dc"));
+            // ngspice convention: i(Vsource) is positive when current flows
+            // from + terminal INTO the source; source-supplied current is
+            // therefore -i(Vin).
+            {
+                Waveform vinI = getWaveform("vin#branch");
+                auto& d = vinI.get_mutable_data();
+                for (auto& x : d) x = -x;
+                wf.set_input_current(vinI);
+            }
+
+            // Output[0] = primary buck output (non-isolated, across Cpri).
+            // Reconstruct Iout = Vout/Rload (DC by design).
+            const auto& voutsNom = opPoint.get_output_voltages();
+            const auto& ioutsNom = opPoint.get_output_currents();
+            const size_t numSecondaries = turnsRatios.size();
+            if (voutsNom.size() != numSecondaries + 1 || ioutsNom.size() != numSecondaries + 1) {
+                throw std::runtime_error(
+                    "IsolatedBuck::simulate_and_extract_topology_waveforms: "
+                    "operating point output_voltages/currents size (" +
+                    std::to_string(voutsNom.size()) + "/" + std::to_string(ioutsNom.size()) +
+                    ") inconsistent with numSecondaries+1 (" + std::to_string(numSecondaries + 1) + ")");
+            }
+
+            // Primary buck output rail.
+            wf.get_mutable_output_voltages().push_back(getWaveform("vpri_out"));
+            {
+                Waveform priIout = getWaveform("vpri_out");
+                const double rLoad = voutsNom[0] / ioutsNom[0];
+                for (auto& v : priIout.get_mutable_data()) v = v / rLoad;
+                wf.get_mutable_output_currents().push_back(priIout);
+            }
+
+            // Each isolated secondary output cap.
+            for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
+                const std::string voutNode = "vout" + std::to_string(secIdx);
+                wf.get_mutable_output_voltages().push_back(getWaveform(voutNode));
+                Waveform secIout = getWaveform(voutNode);
+                const double rLoad = voutsNom[secIdx + 1] / ioutsNom[secIdx + 1];
+                for (auto& v : secIout.get_mutable_data()) v = v / rLoad;
+                wf.get_mutable_output_currents().push_back(secIout);
+            }
+
+            results.push_back(wf);
         }
-        results.push_back(wf);
     }
 
     // Restore original value
@@ -609,7 +680,7 @@ namespace OpenMagnetics {
         // - secX_in: secondary winding inputs
         // - secX_rect: secondary rectified node (before output cap)
         circuit << "* Output signals\n";
-        circuit << ".save v(sw_node) v(pri_in) v(vpri_out) v(vpri_diff) i(Vpri_sense)";
+        circuit << ".save v(sw_node) v(pri_in) v(vpri_out) v(vpri_diff) i(Vpri_sense) v(vin_dc) i(Vin)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) v(sec" << secIdx << "_rect) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
