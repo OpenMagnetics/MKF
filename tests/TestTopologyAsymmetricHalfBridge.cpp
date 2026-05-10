@@ -7,6 +7,7 @@
 // =============================================================================
 
 #include "converter_models/AsymmetricHalfBridge.h"
+#include "ConverterPortChecks.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -2136,4 +2137,45 @@ TEST_CASE("AHB P12: Waveform_Plotting — dump CSV under tests/output (no assert
     f.close();
     // Visual inspection only — no asserts.
     SUCCEED("Wrote " << outFile.string());
+}
+
+
+// ────────────────────────────────────────────────────────────────────────────
+// §5.1 converter-port DC-stream gate. See ConverterPortChecks for the full
+// bound rationale. The signals returned by
+// simulate_and_extract_topology_waveforms() are the DC source / DC filtered
+// output rails — winding-port AC (vab, the Cb+Lk+Lpri tank node) must NEVER
+// appear here. This catches the AHB-specific regression where vab was used
+// in lieu of vin_dc, and i(L_pri) in lieu of i(Vin).
+// ────────────────────────────────────────────────────────────────────────────
+TEST_CASE("Test_AsymmetricHalfBridge_ConverterPortWaveforms",
+          "[converter-port-waveforms][ahb-topology][ngspice-simulation]") {
+    OpenMagnetics::NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available");
+
+    AHB ahb(minimal_valid_ahb());
+    ahb.set_num_periods_to_extract(1);
+    ahb.set_num_steady_state_periods(50);
+    ahb.process_design_requirements();
+    const double n  = ahb.get_computed_turns_ratio();
+    const double Lm = ahb.get_computed_magnetizing_inductance();
+
+    auto wfs = ahb.simulate_and_extract_topology_waveforms({n}, Lm);
+    REQUIRE(!wfs.empty());
+
+    const double Vin  = 100.0;
+    const double Vout = 5.0;
+    const double Iout = 20.0;
+    // AHB SPICE losses (transformer K=0.999, switch RON, diode Vf,
+    // Cb+Lk damping) shift the actual operating point off the analytical
+    // nominal — primary current NRMSE work (P8) documents the same
+    // effect. Vout settles ~10–12 % low at D=0.45, Iout tracks Vout via
+    // Rload. Mirrors the IsolatedBuck flybuck per-test override.
+    constexpr double kAhbVoutMeanTol = 0.15;
+    constexpr double kAhbIoutMeanTol = 0.15;
+    for (size_t i = 0; i < wfs.size(); ++i) {
+        ConverterPortChecks::check_dc_ports(wfs[i], "AsymmetricHalfBridge", i,
+                                            Vin, {Vout}, {Iout},
+                                            kAhbVoutMeanTol, kAhbIoutMeanTol);
+    }
 }

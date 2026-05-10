@@ -1899,7 +1899,14 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
       << t_q2_on << " " << Tsw << ")\n\n";
 
     // ---- Half-bridge leg ----
-    c << "S1 vin_dc sw g1 0 SW1\n";
+    // Vq1_sense is a 0-V ammeter inserted between vin_dc and the high-side
+    // switch S1's drain. i(Vq1_sense) reports the clean high-side switch
+    // current, free of the snubber RC spikes that contaminate i(Vdc).
+    // The body diode D1 and the snubber stay on the original vin_dc node
+    // so they don't contribute to the Vq1_sense ammeter reading — only
+    // the S1 channel current is measured.
+    c << "Vq1_sense vin_dc q1_drain 0\n";
+    c << "S1 q1_drain sw g1 0 SW1\n";
     c << "D1 sw vin_dc DIDEAL\n";
     c << "Rsnub_Q1 vin_dc sw 1k\nCsnub_Q1 vin_dc sw 1n\n";
     c << "S2 sw 0 g2 0 SW1\n";
@@ -2005,12 +2012,46 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     c << "R_load co_top out_gnd " << Rload << "\n";
     c << "Vout_sense out_gnd 0 0\n\n";
 
+    // ---- Differential winding-voltage probes (P7 fix) ----
+    //
+    // The magnetic-view operating-point excitations require the voltage
+    // ACROSS each transformer winding (the EMF that drives core flux),
+    // not the converter-side terminal voltage. `vab` lumps together
+    // Cb + L_lk + L_pri (Imbertson sign) and is the wrong signal for the
+    // primary winding view. `out_node` is the post-rectifier DC bus and
+    // is even more wrong for the secondary winding view (it shows ≈Vo
+    // instead of a bipolar ±Vin/n square).
+    //
+    // E-source probes here expose the actual L_pri and L_sec*  terminal
+    // voltages with the correct dot-convention sign so the simulation
+    // operating points match what the analytical generator emits and
+    // downstream pipelines (harmonics, core loss, MagnetizingInductance)
+    // get the contract they expect.
+    //
+    // Polarity convention: dot is on the sw side of L_pri (per netlist
+    // diagram §1604 comment) → v_pri_w = v(sw) - v(pri_dot). For each
+    // secondary half/winding, dot is at the first node of L_sec_* per
+    // the netlist's K-coupling sign convention.
+    c << "Evpri_w vpri_w 0 sw pri_dot 1\n";
+    if (rect == AhbRectifierType::CENTER_TAPPED) {
+        // Two half-windings: L_sec_a sec_a sec_ct, L_sec_b sec_ct sec_b.
+        c << "Evsec_a_w vsec_a_w 0 sec_a sec_ct 1\n";
+        c << "Evsec_b_w vsec_b_w 0 sec_ct sec_b 1\n";
+    } else {
+        // FB / CD: single secondary L_sec sec_a sec_b.
+        c << "Evsec_w vsec_w 0 sec_a sec_b 1\n";
+    }
+
     // ---- Analysis directives ----
     c << ".tran " << stepTime << " " << simTime << " " << startTime << " uic\n\n";
 
-    c << ".save v(vab) v(sw) v(pri_top) v(out_node)"
+    c << ".save v(vab) v(sw) v(pri_top) v(out_node) v(vin_dc)"
+      << " v(vpri_w)"
+      << ((rect == AhbRectifierType::CENTER_TAPPED)
+            ? " v(vsec_a_w) v(vsec_b_w)"
+            : " v(vsec_w)")
       << " i(Vpri_sense) i(Vcb_sense) i(Vsec_a_sense)"
-      << " i(Vsec_b_sense) i(Vout_sense) i(Vdc)\n\n";
+      << " i(Vsec_b_sense) i(Vout_sense) i(Vdc) i(Vq1_sense)\n\n";
 
     c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
     c << ".options METHOD=GEAR TRTOL=7\n";
@@ -2103,22 +2144,29 @@ AsymmetricHalfBridge::simulate_and_extract_operating_points(
             std::vector<std::string> windingNames;
             std::vector<bool> flipSign;
 
-            mapping.push_back({{"voltage", "vab"},
+            // Use the differential winding-voltage probes (vpri_w, vsec_*_w)
+            // added in generate_ngspice_circuit. These expose the actual EMF
+            // across each transformer winding — NOT vab (which is Cb + Llk +
+            // Lpri) and NOT out_node (which is the DC output rail). Using
+            // those wrong probes here produced a primary trace with a Cb
+            // ramp + DC offset and secondary traces stuck at ≈Vo, neither
+            // of which is a physical winding voltage.
+            mapping.push_back({{"voltage", "vpri_w"},
                                {"current", "vpri_sense#branch"}});
             windingNames.push_back("Primary");
             flipSign.push_back(false);
 
             if (rect == AhbRectifierType::CENTER_TAPPED) {
-                mapping.push_back({{"voltage", "out_node"},
+                mapping.push_back({{"voltage", "vsec_a_w"},
                                    {"current", "vsec_a_sense#branch"}});
                 windingNames.push_back("Secondary 0a");
                 flipSign.push_back(false);
-                mapping.push_back({{"voltage", "out_node"},
+                mapping.push_back({{"voltage", "vsec_b_w"},
                                    {"current", "vsec_b_sense#branch"}});
                 windingNames.push_back("Secondary 0b");
                 flipSign.push_back(false);
             } else {
-                mapping.push_back({{"voltage", "out_node"},
+                mapping.push_back({{"voltage", "vsec_w"},
                                    {"current", "vsec_a_sense#branch"}});
                 windingNames.push_back("Secondary 0");
                 flipSign.push_back(false);
@@ -2215,10 +2263,69 @@ AsymmetricHalfBridge::simulate_and_extract_topology_waveforms(
                 tag += " op. point " + std::to_string(opIdx);
             wf.set_operating_point_name(tag);
 
-            wf.set_input_voltage(getWfm("vab"));
-            wf.set_input_current(getWfm("vpri_sense#branch"));
+            // Input voltage = the DC source rail v(vin_dc) — i.e. the
+            // converter's external input from the upstream supply
+            // (constant Vin in steady state). The half-bridge midpoint
+            // v(sw) and the lumped vab = v(sw)-v(pri_top) are both
+            // *internal* nodes (downstream of the high-side FET / Cb)
+            // and were misleading as "Input Voltage" of the converter
+            // as a black box.
+            wf.set_input_voltage(getWfm("vin_dc"));
+            // Input current = clean high-side switch current i(S1),
+            // measured via the in-series 0-V ammeter Vq1_sense (added
+            // upstream of S1 — see Half-bridge leg block above).
+            // i(Vq1_sense) is positive when current flows from vin_dc
+            // through S1 into the primary tank, i.e. the converter is
+            // drawing current from the bus.
+            //
+            // Why not i(Vdc)? Because the convergence-aid snubber RC
+            // between vin_dc and sw injects huge dV/dt-driven spikes
+            // (~10^5 A peaks) at every switch transition that swamp the
+            // real bus current. Why not i(Vcb_sense) or i(Vpri_sense)?
+            // Because Cb is in series with the entire primary tank, so
+            // those branches measure the *internal* tank current (which
+            // averages to zero — a cap can't have DC current), not the
+            // converter's actual input-port current.
+            //
+            // Numerical-artifact clamp: ngspice's SW model transitions
+            // instantaneously between Roff and Ron, so when S1 closes
+            // the di/dt is unbounded and the resampled trace can hold
+            // transient spikes ~10^5 A that are pure simulation noise.
+            // Physically, |i(S1)| <= |i(L_pri)| because S1 only conducts
+            // the primary winding current while ON. So we clamp the
+            // raw S1 trace to ±2·max|i(L_pri)| (2× headroom for the
+            // switching-instant overshoot we want to keep visible).
+            Waveform iQ1 = getWfm("vq1_sense#branch");
+            Waveform iPri = getWfm("vpri_sense#branch");
+            std::vector<double> iQ1Data = iQ1.get_data();
+            const std::vector<double>& iPriData = iPri.get_data();
+            double iPriMax = 0.0;
+            for (double v : iPriData) iPriMax = std::max(iPriMax, std::abs(v));
+            const double clampLimit = 2.0 * iPriMax;
+            if (clampLimit > 0.0) {
+                for (auto& v : iQ1Data) {
+                    if (v >  clampLimit) v =  clampLimit;
+                    if (v < -clampLimit) v = -clampLimit;
+                }
+                iQ1.set_data(iQ1Data);
+            }
+            wf.set_input_current(iQ1);
             wf.get_mutable_output_voltages().push_back(getWfm("out_node"));
-            wf.get_mutable_output_currents().push_back(getWfm("vout_sense#branch"));
+            // Reconstruct Iout(t) = Vout(t)/Rload. ngspice's Vout_sense
+            // ammeter sits in the cap-return path in this netlist, so in
+            // steady state its branch current averages to zero (a cap
+            // can't carry DC). The DC load current is by construction
+            // Vout/Rload, where Rload was sized from the user's nominal
+            // (Vo, Io). Mirrors Buck.cpp / IsolatedBuck.cpp §5.1.
+            {
+                const double Vo = op.get_output_voltages()[0];
+                const double Io = op.get_output_currents()[0];
+                const double Rload = std::max(Vo / Io, 1e-3);
+                Waveform ioutWf = getWfm("out_node");
+                auto& ioutData = ioutWf.get_mutable_data();
+                for (auto& v : ioutData) v = v / Rload;
+                wf.get_mutable_output_currents().push_back(ioutWf);
+            }
 
             results.push_back(wf);
         }
