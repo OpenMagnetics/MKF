@@ -316,7 +316,17 @@ namespace OpenMagnetics {
         // Inductor with current sense (between input and switch node)
         circuit << "* Inductor with current sense\n";
         circuit << "Vl_sense vin_dc l_in 0\n";
-        circuit << "L1 l_in sw " << std::scientific << inductance << std::fixed << "\n\n";
+        circuit << "L1 l_in sw " << std::scientific << inductance << std::fixed << "\n";
+        // §5.0: across-winding differential probe. The inductor's "other"
+        // terminal (sw) is NOT GND — it bounces between 0 (S1 closed) and
+        // Vout (S1 open via D1). v(l_in)=Vin is constant DC, so saving it
+        // as the winding voltage collapses the bipolar swing entirely
+        // (1.00 → 0.00 normalised volt-second). The differential probe
+        // V(l_in)-V(sw) gives the correct ±Vin-Vout swing with avg=0.
+        // Sign matches passive convention against i(Vl_sense): current
+        // flows vin_dc → l_in (INTO the dot), V_winding = V(l_in)-V(sw)
+        // positive at the dot ⇒ avg(V·I) > 0.
+        circuit << "Bvpri_diff vpri_diff 0 V=V(l_in)-V(sw)\n\n";
         
         // PWM Low-side Switch (ideal)
         circuit << "* PWM Low-side Switch\n";
@@ -361,9 +371,15 @@ namespace OpenMagnetics {
         circuit << "* Transient Analysis\n";
         circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
 
-        // Save signals
+        // Save signals — split into two streams per §5.0:
+        //   - Winding-port stream: v(vpri_diff) i(Vl_sense)
+        //     (consumed by simulate_and_extract_operating_points →
+        //      excitations_per_winding)
+        //   - Converter-port stream: v(vin_dc) v(sw) v(vout) i(Vl_sense)
+        //     (consumed by simulate_and_extract_topology_waveforms →
+        //      ConverterWaveforms; output rails are intentionally DC)
         circuit << "* Output signals\n";
-        circuit << ".save v(sw) v(l_in) v(vout) i(Vl_sense)\n\n";
+        circuit << ".save v(vpri_diff) v(vin_dc) v(sw) v(vout) i(Vl_sense)\n\n";
 
         // Solver options for convergence in switching circuits.
         // METHOD=GEAR + larger TRTOL handles the hard-switching event at
@@ -417,10 +433,11 @@ namespace OpenMagnetics {
                     throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
                 }
                 
-                // For boost, the inductor voltage is Vin - Vsw
-                // We measure the switch node voltage and use input as reference
+                // §5.0: winding-port stream — differential voltage across
+                // the inductor terminals (vpri_diff = V(l_in)-V(sw)),
+                // current via the in-line zero-volt sense source.
                 NgspiceRunner::WaveformNameMapping waveformMapping = {
-                    {{"voltage", "l_in"}, {"current", "vl_sense#branch"}}
+                    {{"voltage", "vpri_diff"}, {"current", "vl_sense#branch"}}
                 };
                 
                 std::vector<std::string> windingNames = {"Primary"};
@@ -471,6 +488,8 @@ std::vector<ConverterWaveforms> Boost::simulate_and_extract_topology_waveforms(d
             
             std::string netlist = generate_ngspice_circuit(inductance, inputVoltageIndex, opIndex);
             double switchingFrequency = opPoint.get_switching_frequency();
+            const double outputVoltage = opPoint.get_output_voltages()[0];
+            const double outputCurrent = opPoint.get_output_currents()[0];
             
             SimulationConfig config;
             config.frequency = switchingFrequency;
@@ -508,11 +527,22 @@ std::vector<ConverterWaveforms> Boost::simulate_and_extract_topology_waveforms(d
             }
             wf.set_operating_point_name(name);
             
-            // Topology signals from generate_ngspice_circuit .save statements
-            wf.set_input_voltage(getWaveform("sw"));
+            // Topology / converter-port signals (§5.0): the converter's
+            // electrical ports — Vin (DC source), Iin (inductor current
+            // = source current for Boost), Vout (rectified output),
+            // Iout (load current). Output current is reconstructed as
+            // v(vout)/Rload; ngspice's diode/cap structure does not
+            // expose Iout directly without an extra Vsense source on
+            // the load.
+            wf.set_input_voltage(getWaveform("vin_dc"));
             wf.set_input_current(getWaveform("vl_sense#branch"));
             wf.get_mutable_output_voltages().push_back(getWaveform("vout"));
-            wf.get_mutable_output_currents().push_back(getWaveform("vl_sense#branch"));
+            // Reconstruct Iout(t) = Vout(t) / Rload (DC by design).
+            Waveform ioutWf = getWaveform("vout");
+            auto& ioutData = ioutWf.get_mutable_data();
+            const double rLoad = outputVoltage / outputCurrent;
+            for (auto& v : ioutData) v = v / rLoad;
+            wf.get_mutable_output_currents().push_back(ioutWf);
             
             results.push_back(wf);
         }
