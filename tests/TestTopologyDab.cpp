@@ -945,14 +945,19 @@ namespace {
             CHECK(!wf.get_output_voltages()[0].get_data().empty());
         }
 
-        SECTION("Simulated primary voltage is bipolar ~±800 V") {
+        SECTION("Simulated converter input is the DC source rail (post §5.0 fix)") {
+            // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §5.0/§5.1: ConverterWaveforms
+            // input_voltage is now the primary DC supply v(vin_dc1) ≈ +800V,
+            // NOT the bipolar bridge AC output v(vab). The latter still lives
+            // on excitations_per_winding[primary].voltage (and is checked by
+            // Test_VoltSecondBalance_Dab). Validate the converter input rail.
             auto waveforms = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm, 2);
             REQUIRE(!waveforms.empty());
             auto vData = waveforms[0].get_input_voltage().get_data();
             double vMax = *std::max_element(vData.begin(), vData.end());
             double vMin = *std::min_element(vData.begin(), vData.end());
-            REQUIRE_THAT(vMax, Catch::Matchers::WithinAbs( 800.0, 80.0));
-            REQUIRE_THAT(vMin, Catch::Matchers::WithinAbs(-800.0, 80.0));
+            REQUIRE_THAT(vMax, Catch::Matchers::WithinAbs(800.0, 8.0));
+            REQUIRE_THAT(vMin, Catch::Matchers::WithinAbs(800.0, 8.0));
         }
 
         SECTION("Simulated peak inductor current matches analytical within 20%") {

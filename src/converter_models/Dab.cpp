@@ -1192,7 +1192,14 @@ std::string Dab::generate_ngspice_circuit(
                 << " " << std::scientific << Cout_i << "\n";
         circuit << "Rload_o" << si << " vout_cap_o" << si << " vout_neg_o" << si
                 << " " << Rload_i << "\n";
-        circuit << "Vsec_sense_o" << si << " vout_neg_o" << si << " 0 0\n\n";
+        circuit << "Vsec_sense_o" << si << " vout_neg_o" << si << " 0 0\n";
+        // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §5.0: probe the actual
+        // across-winding voltage of L_sec_o<si>. Both terminals
+        // (sec_a_o<si>, sec_b_o<si>) are non-GND, so a node-to-GND probe
+        // would smuggle the bridge midpoint DC into the winding stream
+        // (~48 % normAvg violation pre-fix).
+        circuit << "Bvsec_o" << si << "_diff vsec_o" << si
+                << "_diff 0 V=V(sec_a_o" << si << ")-V(sec_b_o" << si << ")\n\n";
     }
 
     // Transient Analysis
@@ -1205,6 +1212,7 @@ std::string Dab::generate_ngspice_circuit(
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
         circuit << " v(sec_a_o" << si << ") v(sec_b_o" << si << ")"
+                << " v(vsec_o" << si << "_diff)"
                 << " v(vin_dc2_o" << si << ") v(vout_cap_o" << si << ")"
                 << " i(Vsec1_sense_o" << si << ") i(Vsec2_sense_o" << si << ")"
                 << " i(Vsec_sense_o" << si << ")";
@@ -1310,7 +1318,7 @@ std::vector<OperatingPoint> Dab::simulate_and_extract_operating_points(
 
             for (size_t outIdx = 0; outIdx < numOutputs; ++outIdx) {
                 std::string si = std::to_string(outIdx + 1);
-                waveformMapping.push_back({{"voltage", "sec_a_o" + si},
+                waveformMapping.push_back({{"voltage", "vsec_o" + si + "_diff"},
                                            {"current", "vsec1_sense_o" + si + "#branch"}});
                 windingNames.push_back("Secondary " + std::to_string(outIdx));
                 flipCurrentSign.push_back(false);
@@ -1392,14 +1400,14 @@ std::vector<ConverterWaveforms> Dab::simulate_and_extract_topology_waveforms(
             }
             wf.set_operating_point_name(name);
             
-            // Names are normalized by NgspiceRunner::parse_raw_file:
-            //   v(node)   -> node
-            //   i(source) -> source#branch
-            // input_voltage: differential bridge output v(vab) (bipolar ±V1).
-            // input_current: AC tank current via Vpri_sense (bipolar). The
-            //   actual DC supply current is also available as i(Vdc1) for
-            //   callers that need it.
-            wf.set_input_voltage(getWaveform("vab"));
+            // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §5.0/§5.1: ConverterWaveforms
+            // is the converter-port stream. input_voltage MUST be the DC
+            // primary supply v(vin_dc1) — NOT the bipolar bridge AC output
+            // v(vab), which belongs in excitations_per_winding[primary].
+            // input_current is the AC tank current via Vpri_sense (still
+            // bipolar; the actual DC supply current is also exposed as
+            // i(Vdc1) for callers that need it).
+            wf.set_input_voltage(getWaveform("vin_dc1"));
             wf.set_input_current(getWaveform("vpri_sense#branch"));
 
             // Multi-secondary output: each output has its own vout_cap_oN and
