@@ -999,6 +999,163 @@ namespace {
         assert_pushpull_refdesign_ptp(kPushPullRefDesign3);
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // Step-up regression — customer-reported failure (frontend defaults
+    // with input voltage min=3 V max=6 V → output 12 V @ 1 A).
+    //
+    // Defaults from
+    // WebFrontend/WebSharedComponents/assets/js/defaults.js
+    // ::defaultPushPullWizardInputs:
+    //   diodeVoltageDrop  = 0.7 V
+    //   currentRippleRatio= 0.3
+    //   dutyCycle         = 0.40   (max-D design hint)
+    //   inductance        = 100 µH
+    //   efficiency        = 0.9
+    //   Vout              = 12 V, Iout = 1 A, Fs = 100 kHz
+    //   turnsRatio        = 1.25   (overridden here — the frontend
+    //                               default is for the 20–30 V case;
+    //                               with Vin 3–6 V we let
+    //                               process_design_requirements compute
+    //                               N from Vin_min/dutyCycle)
+    //
+    // This is the only step-up configuration in the suite (RefDesigns
+    // 1–3 + the baseline PtP test are all step-down or 1:1). Both the
+    // analytical pipeline and the ngspice simulation must complete
+    // without throwing; the diagnostics must report CCM and a duty-cycle
+    // ≤ 0.5 across the Vin sweep.
+    // ──────────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_PushPull_StepUp_FrontendDefaults_3to6V_Analytical",
+              "[converter-model][push-pull-topology][regression]") {
+        OpenMagnetics::PushPull pp;
+        DimensionWithTolerance iv;
+        iv.set_minimum(3.0);
+        iv.set_nominal(4.5);
+        iv.set_maximum(6.0);
+        pp.set_input_voltage(iv);
+        pp.set_diode_voltage_drop(0.7);
+        pp.set_efficiency(0.9);
+        pp.set_current_ripple_ratio(0.3);
+        pp.set_duty_cycle(0.40);
+
+        PushPullOperatingPoint op;
+        op.set_output_voltages({12.0});
+        op.set_output_currents({1.0});
+        op.set_switching_frequency(100e3);
+        op.set_ambient_temperature(25.0);
+        pp.set_operating_points({op});
+
+        // process_design_requirements must succeed even when Vout >> Vin
+        // (the step-up case requires Ns/Np > 1 — i.e. N = Np/Ns < 1).
+        auto designReqs = pp.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        REQUIRE(turnsRatios.size() >= 2);
+        // For Vin_min=3, Vout=12, Vd=0.7, dutyCycle=0.40:
+        //   N = mainSecondaryTurnsRatio = 0.40 · 2 · 3 / (12 + 0.7) ≈ 0.189
+        INFO("Step-up turns ratio (N=Np/Ns): " << turnsRatios[1]);
+        CHECK(turnsRatios[1] > 0.0);
+        CHECK(turnsRatios[1] < 1.0);  // step-up
+
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+        REQUIRE(Lm > 0.0);
+
+        // Analytical pipeline must complete across the 3 V / 4.5 V / 6 V
+        // sweep without throwing the "T1 > period/2" guard. With
+        // dutyCycle=0.40, D at Vin_min sits at 0.40 (sweet spot) and
+        // shrinks at higher Vin.
+        auto ops = pp.process_operating_points(turnsRatios, Lm);
+        REQUIRE(!ops.empty());
+
+        // Diagnostics must reflect a valid CCM operating point at the
+        // last processed Vin (process_operating_points iterates over the
+        // input-voltage sweep; the diagnostics carry the last value).
+        CHECK(pp.get_last_is_ccm());
+        CHECK(pp.get_last_duty_cycle() > 0.0);
+        CHECK(pp.get_last_duty_cycle() <= 0.5);
+        CHECK(pp.get_last_primary_peak_current() > 0.0);
+    }
+
+    TEST_CASE("Test_PushPull_StepUp_FrontendDefaults_3to6V_Ngspice",
+              "[converter-model][push-pull-topology][regression][ngspice-simulation]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        OpenMagnetics::PushPull pp;
+        DimensionWithTolerance iv;
+        iv.set_minimum(3.0);
+        iv.set_nominal(4.5);
+        iv.set_maximum(6.0);
+        pp.set_input_voltage(iv);
+        pp.set_diode_voltage_drop(0.7);
+        pp.set_efficiency(0.9);
+        pp.set_current_ripple_ratio(0.3);
+        pp.set_duty_cycle(0.40);
+
+        PushPullOperatingPoint op;
+        op.set_output_voltages({12.0});
+        op.set_output_currents({1.0});
+        op.set_switching_frequency(100e3);
+        op.set_ambient_temperature(25.0);
+        pp.set_operating_points({op});
+
+        auto designReqs = pp.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) {
+            turnsRatios.push_back(tr.get_nominal().value());
+        }
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        // ngspice must converge on the step-up netlist for every Vin in
+        // the sweep (the customer-reported failure was a "timestep too
+        // small" abort on this exact configuration).
+        pp.set_num_periods_to_extract(1);
+        auto simOps = pp.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+
+        auto sData = ptp_current(simOps[0], 0);
+        REQUIRE(!sData.empty());
+        // Sanity: primary current is non-zero somewhere in the period.
+        double maxAbs = 0.0;
+        for (double v : sData) maxAbs = std::max(maxAbs, std::abs(v));
+        CHECK(maxAbs > 0.0);
+    }
+
+    // The "I know the design I want" frontend path goes through
+    // AdvancedPushPull::process() and feeds the user-supplied
+    // turnsRatio (Np:Ns) directly. The frontend default of 1.25 is
+    // sized for the 20–30 V Vin band; with Vin 3–6 V it implies
+    // D = Vout · N / (2 · Vin) = 12 · 1.25 / 6 = 2.5 — physically
+    // impossible. The model must reject this loudly with a clear
+    // exception (NOT a SPICE crash or a silent fallback).
+    TEST_CASE("Test_PushPull_StepUp_FrontendDefaults_3to6V_TR1p25_Throws",
+              "[converter-model][push-pull-topology][regression]") {
+        OpenMagnetics::AdvancedPushPull app;
+        DimensionWithTolerance iv;
+        iv.set_minimum(3.0);
+        iv.set_nominal(4.5);
+        iv.set_maximum(6.0);
+        app.set_input_voltage(iv);
+        app.set_diode_voltage_drop(0.7);
+        app.set_efficiency(0.9);
+        app.set_current_ripple_ratio(0.3);
+        app.set_duty_cycle(0.40);
+        app.set_desired_inductance(100e-6);
+        app.set_desired_turns_ratios({1.25});
+
+        PushPullOperatingPoint op;
+        op.set_output_voltages({12.0});
+        op.set_output_currents({1.0});
+        op.set_switching_frequency(100e3);
+        op.set_ambient_temperature(25.0);
+        app.set_operating_points({op});
+
+        // Must throw with a descriptive message — not crash ngspice or
+        // silently clamp D to 0.5.
+        CHECK_THROWS(app.process());
+    }
+
 // End of SUITE
 
 }  // namespace
