@@ -1001,7 +1001,11 @@ std::string Dab::generate_ngspice_circuit(
     int numPeriodsTotal = steadyStatePeriods + periodsToExtract;
     double simTime = numPeriodsTotal * period;
     double startTime = steadyStatePeriods * period;
-    double stepTime = period / 200;
+
+    // SPICE configuration knobs (see SpiceSimulationConfig in Topology.h).
+    // Per-instance overrides apply via Topology::set_spice_config().
+    const SpiceSimulationConfig cfg = spice_config();
+    double stepTime = period / cfg.samplesPerPeriod;
 
     std::ostringstream circuit;
 
@@ -1013,8 +1017,10 @@ std::string Dab::generate_ngspice_circuit(
 
     // Switch and diode models. Slightly softer body diode (RS=0.05) and
     // higher SW hysteresis (VH=0.8) reduce switching-event chatter.
-    circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    circuit << ".model DIDEAL D(IS=1e-12 RS=0.05)\n\n";
+    circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH
+            << " RON=" << cfg.swModelRON << " ROFF=" << cfg.swModelROFF << "\n";
+    circuit << ".model DIDEAL D(IS=" << std::scientific << cfg.diodeIS
+            << " RS=" << cfg.diodeRS << std::fixed << ")\n\n";
 
     // DC input voltage
     circuit << "Vdc1 vin_dc1 0 " << V1 << "\n\n";
@@ -1039,10 +1045,10 @@ std::string Dab::generate_ngspice_circuit(
     double secBaseDelay = (outerDelay > 0) ?  outerDelay : 0.0;
 
     auto pulse = [&](const std::string& name, double delay) {
-        circuit << "V" << name << " " << name << " 0 PULSE(0 5 "
-                << std::scientific << delay << std::fixed
-                << " 10n 10n "
-                << std::scientific << tOn << " " << period << std::fixed << ")\n";
+        circuit << "V" << name << " " << name << " 0 PULSE(0 " << cfg.pwmHigh << " "
+                << std::scientific << delay << " "
+                << cfg.pwmRise << " " << cfg.pwmFall << " "
+                << tOn << " " << period << std::fixed << ")\n";
     };
 
     circuit << "* Primary Full Bridge — independent leg PWMs (supports SPS/EPS/DPS/TPS)\n";
@@ -1068,10 +1074,17 @@ std::string Dab::generate_ngspice_circuit(
     circuit << "D4 bridge_b1 vin_dc1 DIDEAL\n";
     // Snubber RC across each switch — absorbs di/dt at switching events,
     // critical for ngspice convergence with 4-position switching (EPS/DPS/TPS).
-    circuit << "Rsnub_q1 vin_dc1 bridge_a1 1k\nCsnub_q1 vin_dc1 bridge_a1 1n\n";
-    circuit << "Rsnub_q2 bridge_a1 0 1k\nCsnub_q2 bridge_a1 0 1n\n";
-    circuit << "Rsnub_q3 vin_dc1 bridge_b1 1k\nCsnub_q3 vin_dc1 bridge_b1 1n\n";
-    circuit << "Rsnub_q4 bridge_b1 0 1k\nCsnub_q4 bridge_b1 0 1n\n\n";
+    {
+        std::ostringstream rs, cs;
+        rs << cfg.snubR;
+        cs << std::scientific << cfg.snubC;
+        const std::string R = rs.str();
+        const std::string C = cs.str();
+        circuit << "Rsnub_q1 vin_dc1 bridge_a1 " << R << "\nCsnub_q1 vin_dc1 bridge_a1 " << C << "\n";
+        circuit << "Rsnub_q2 bridge_a1 0 " << R << "\nCsnub_q2 bridge_a1 0 " << C << "\n";
+        circuit << "Rsnub_q3 vin_dc1 bridge_b1 " << R << "\nCsnub_q3 vin_dc1 bridge_b1 " << C << "\n";
+        circuit << "Rsnub_q4 bridge_b1 0 " << R << "\nCsnub_q4 bridge_b1 0 " << C << "\n\n";
+    }
 
     // Sense primary current (0V source in series between bridge_a1 and pri_out)
     circuit << "Vpri_sense bridge_a1 pri_out 0\n";
@@ -1136,7 +1149,7 @@ std::string Dab::generate_ngspice_circuit(
         double Iout_i = dabOp.get_output_currents()[i];
         if (Iout_i <= 0) Iout_i = 1.0;
         double Rload_i = V2_i / Iout_i;
-        double Cout_i = 47e-6;
+        double Cout_i = cfg.outputCapacitance;
 
         // Per-secondary current senses
         circuit << "Vsec1_sense_o" << si << " trafo_sec_a_o" << si << " sec_a_o" << si << " 0\n";
@@ -1157,14 +1170,21 @@ std::string Dab::generate_ngspice_circuit(
         circuit << "S8_o" << si << " sec_b_o" << si << " 0 pwm_s_r1 0 SW1\n";
         circuit << "D8_o" << si << " sec_b_o" << si << " " << vdc2 << " DIDEAL\n";
         // Snubber RC across each switch
-        circuit << "Rsnub_q5_o" << si << " " << vdc2 << " sec_a_o" << si << " 1k\n";
-        circuit << "Csnub_q5_o" << si << " " << vdc2 << " sec_a_o" << si << " 1n\n";
-        circuit << "Rsnub_q6_o" << si << " sec_a_o" << si << " 0 1k\n";
-        circuit << "Csnub_q6_o" << si << " sec_a_o" << si << " 0 1n\n";
-        circuit << "Rsnub_q7_o" << si << " " << vdc2 << " sec_b_o" << si << " 1k\n";
-        circuit << "Csnub_q7_o" << si << " " << vdc2 << " sec_b_o" << si << " 1n\n";
-        circuit << "Rsnub_q8_o" << si << " sec_b_o" << si << " 0 1k\n";
-        circuit << "Csnub_q8_o" << si << " sec_b_o" << si << " 0 1n\n";
+        {
+            std::ostringstream rs, cs;
+            rs << cfg.snubR;
+            cs << std::scientific << cfg.snubC;
+            const std::string R = rs.str();
+            const std::string C = cs.str();
+            circuit << "Rsnub_q5_o" << si << " " << vdc2 << " sec_a_o" << si << " " << R << "\n";
+            circuit << "Csnub_q5_o" << si << " " << vdc2 << " sec_a_o" << si << " " << C << "\n";
+            circuit << "Rsnub_q6_o" << si << " sec_a_o" << si << " 0 " << R << "\n";
+            circuit << "Csnub_q6_o" << si << " sec_a_o" << si << " 0 " << C << "\n";
+            circuit << "Rsnub_q7_o" << si << " " << vdc2 << " sec_b_o" << si << " " << R << "\n";
+            circuit << "Csnub_q7_o" << si << " " << vdc2 << " sec_b_o" << si << " " << C << "\n";
+            circuit << "Rsnub_q8_o" << si << " sec_b_o" << si << " 0 " << R << "\n";
+            circuit << "Csnub_q8_o" << si << " sec_b_o" << si << " 0 " << C << "\n";
+        }
 
         // Realistic Rload + Cout sink
         circuit << "Resr_o" << si << " " << vdc2 << " vout_cap_o" << si << " 0.05\n";
@@ -1194,8 +1214,11 @@ std::string Dab::generate_ngspice_circuit(
     // Solver options for convergence in switching circuits.
     // METHOD=GEAR + larger TRTOL handle the 4-position switching robustly;
     // higher ITL4 lets the solver retry hard switching transients.
-    circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
-    circuit << ".options METHOD=GEAR TRTOL=7\n";
+    circuit << ".options RELTOL=" << cfg.relTol
+            << " ABSTOL=" << std::scientific << cfg.absTol
+            << " VNTOL=" << cfg.vnTol << std::fixed
+            << " ITL1=" << cfg.itl1 << " ITL4=" << cfg.itl4 << "\n";
+    circuit << ".options METHOD=" << cfg.method << " TRTOL=" << cfg.trTol << "\n";
     // Initial conditions: pre-charge each output capacitor to its target voltage.
     circuit << ".ic";
     for (size_t i = 0; i < numOutputs; ++i) {

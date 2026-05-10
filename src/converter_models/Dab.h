@@ -146,6 +146,8 @@ public:
     Dab(const json& j);
     Dab() {};
 
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER; }
+
     // ---- Simulation tuning ----
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { numPeriodsToExtract = value; }

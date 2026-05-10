@@ -40,6 +40,28 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::BOOST_CONVERTER] = boost;
             }
 
+            // Dab — dual active bridge, 8 switches in two H-bridges +
+            // transformer, 4-corner phase-shift modulation. The original
+            // hand-tuned values from Dab::generate_ngspice_circuit are
+            // mirrored here verbatim so the registry is the single
+            // source of truth. Snubber 1 kΩ/1 nF (τ = 1 µs) is fine at
+            // the 50–250 kHz range Dab operates in. Solver tolerances
+            // are looser than Boost's because the 4-position switching
+            // produces 8 hard-switching events per period instead of 2.
+            {
+                SpiceSimulationConfig dab;
+                dab.swModelVT = 2.5;       dab.swModelVH = 0.8;
+                dab.swModelRON = 0.01;     dab.swModelROFF = 1e6;
+                dab.snubR = 1e3;           dab.snubC = 1e-9;
+                dab.diodeIS = 1e-12;       dab.diodeRS = 0.05;
+                dab.outputCapacitance = 47e-6;
+                dab.relTol = 0.01;         dab.absTol = 1e-7;
+                dab.vnTol = 1e-4;
+                dab.itl1 = 500;            dab.itl4 = 500;
+                dab.method = "GEAR";       dab.trTol = 7.0;
+                m[MAS::Topologies::DUAL_ACTIVE_BRIDGE_CONVERTER] = dab;
+            }
+
             return m;
         }();
         return defaults;

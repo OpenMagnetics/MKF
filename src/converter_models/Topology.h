@@ -127,6 +127,12 @@ struct SpiceSimulationConfig {
     double pwmFall   = 10e-9;     // PULSE fall time [s]
     double swModelVT = 2.5;       // ngspice SW model threshold [V]
     double swModelVH = 0.5;       // ngspice SW model hysteresis [V]
+    // RON/ROFF only emitted by topologies that explicitly include them in
+    // their `.model SW ...` line (e.g. Dab's bridge switches, where finite
+    // RON dampens hard-switching ringing). Boost's single low-side switch
+    // omits these and uses ngspice's defaults.
+    double swModelRON  = 0.01;    // [Ω]
+    double swModelROFF = 1e6;     // [Ω]
 
     // ---- Snubber RC across each switch ----
     double snubR = 100.0;         // [Ω]
