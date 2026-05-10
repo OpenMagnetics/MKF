@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "ConverterPortChecks.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -899,6 +900,65 @@ TEST_CASE("Test_Psfb_Inductance_Round_Trip", "[converter-model][psfb-topology][u
     psfb2.process_design_requirements();
     REQUIRE_THAT(psfb2.get_computed_output_inductance(),
                  Catch::Matchers::WithinRel(user_Lo, 1e-9));
+}
+
+
+// ────────────────────────────────────────────────────────────────────────────
+// §5.1 converter-port DC-stream gate. See ConverterPortChecks for the full
+// bound rationale. The signals returned by
+// simulate_and_extract_topology_waveforms() are the DC source / DC filtered
+// output rails — vab (bridge midpoint) and i(L_pri) must NEVER appear here.
+// ────────────────────────────────────────────────────────────────────────────
+TEST_CASE("Test_Psfb_ConverterPortWaveforms",
+          "[converter-port-waveforms][psfb-topology][ngspice-simulation]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available");
+
+    const double Vin = 400.0, Vout = 12.0, Iout = 50.0;
+    json j;
+    json inputVoltage; inputVoltage["nominal"] = Vin;
+    j["inputVoltage"] = inputVoltage;
+    j["rectifierType"] = "fullBridge";
+    j["seriesInductance"] = 5e-6;
+    j["operatingPoints"] = json::array();
+    {
+        json op;
+        op["ambientTemperature"] = 25.0;
+        op["outputVoltages"] = {Vout};
+        op["outputCurrents"] = {Iout};
+        op["switchingFrequency"] = 100000.0;
+        op["phaseShift"] = 126.0;
+        j["operatingPoints"].push_back(op);
+    }
+
+    OpenMagnetics::Psfb psfb(j);
+    psfb.set_num_periods_to_extract(1);
+    auto req = psfb.process_design_requirements();
+    std::vector<double> tr;
+    for (auto& t : req.get_turns_ratios()) tr.push_back(resolve_dimensional_values(t));
+    const double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+
+    auto wfs = psfb.simulate_and_extract_topology_waveforms(tr, Lm);
+    REQUIRE(!wfs.empty());
+
+    // PSFB SPICE realities cause significant duty-cycle loss vs the
+    // analytical operating point: phase-shift modulation reaches the
+    // primary as a *reduced* effective duty (Lk + transformer K=0.999
+    // freewheel notches eat ~10-30 % of the volt-second product). The
+    // resulting Vout sits well below the 12 V nominal (~8.5 V here);
+    // Iout tracks via Rload=Vo/Io. We allow 0.35 mean tolerance, same
+    // envelope as the IsolatedBuck flybuck-mode secondary (the only
+    // other topology with this magnitude of analytical↔SPICE drift).
+    // The §5.1 gate's job is to catch AC-in-DC-stream regressions,
+    // NOT to enforce steady-state accuracy — that's the PtP NRMSE
+    // test's job (see Test_Psfb_PtP_AnalyticalVsNgspice).
+    constexpr double kPsfbVoutMeanTol = 0.35;
+    constexpr double kPsfbIoutMeanTol = 0.35;
+    for (size_t i = 0; i < wfs.size(); ++i) {
+        ConverterPortChecks::check_dc_ports(wfs[i], "PhaseShiftedFullBridge", i,
+                                            Vin, {Vout}, {Iout},
+                                            kPsfbVoutMeanTol, kPsfbIoutMeanTol);
+    }
 }
 
 
