@@ -17,6 +17,8 @@
 #include <cmath>
 #include <limits>
 
+#include <nlohmann/json.hpp>
+
 using namespace MAS;
 using namespace OpenMagnetics;
 
@@ -415,38 +417,46 @@ namespace {
         INFO("Primary voltage max: " << priV_max << " V");
         INFO("Primary voltage min: " << priV_min << " V");
         
-        // For push-pull, pri_top is a single-ended node (top half of center-tapped primary)
-        // When S1 is ON: pri_top pulled low (~0V)
-        // When S2 is ON: reflected voltage drives pri_top high (~2*Vin = 48V)
-        // Node is never negative — it swings 0V to ~2*Vin
-        CHECK(priV_max > 30.0);  // Should reach ~2*Vin = 48V during opposite switch ON
+        // ConverterWaveforms::input_voltage now reports the differential
+        // ACROSS-WINDING voltage (V(pri_top) − V(vin_dc)), not the raw
+        // node-to-GND voltage. This is the correct physical signal for
+        // every downstream consumer (AP filter, Inputs RMS, magnetizing-
+        // current reconstruction). For an ideal push-pull the half-
+        // winding sees +Vin when its switch is OFF (other half conducts
+        // → reflected polarity) and −Vin when its switch is ON, so the
+        // waveform is bipolar and averages ≈ 0 by volt-second balance.
+        // Vin = 24V in this fixture; we allow generous overshoot from
+        // diode/leakage ringing at the commutation edges.
+        CHECK(priV_max > 15.0);    // Reaches at least ~Vin in the OFF state
         CHECK(priV_max < 100.0);
-        CHECK(priV_min > -2.0);   // Single-ended node: minimum is ~0V
+        CHECK(priV_min < -15.0);   // Reaches at least ~−Vin in the ON state
+        CHECK(priV_min > -100.0);
 
         INFO("Push-Pull ngspice simulation test passed");
 
-        SECTION("Waveform shape: bimodal primary voltage (alternates between 0 and ~2*Vin)") {
-            // pri_top alternates: ~0V when S1 conducting, ~2*Vin=48V when S2 conducting
-            double Vin = 24.0;
-            int count_low = 0, count_high = 0;
+        SECTION("Waveform shape: bipolar primary voltage (alternates between +Vin and -Vin)") {
+            // Differential winding voltage spends comparable time positive
+            // (S2 ON / S1 OFF) and negative (S1 ON / S2 OFF), with brief
+            // dead-time near 0 V.
+            int count_pos = 0, count_neg = 0;
             for (double v : priVoltageData) {
-                if (v < Vin) count_low++;
-                else count_high++;
+                if (v > 5.0) count_pos++;
+                else if (v < -5.0) count_neg++;
             }
-            double frac_low = double(count_low) / priVoltageData.size();
-            double frac_high = double(count_high) / priVoltageData.size();
-            INFO("Fraction near 0V: " << frac_low << ", fraction near 2*Vin: " << frac_high);
-            // Both states must occupy significant time for a balanced push-pull (D ≈ 0.5)
-            CHECK(frac_low > 0.25);
-            CHECK(frac_high > 0.25);
+            double frac_pos = double(count_pos) / priVoltageData.size();
+            double frac_neg = double(count_neg) / priVoltageData.size();
+            INFO("Fraction > +5V: " << frac_pos << ", fraction < -5V: " << frac_neg);
+            CHECK(frac_pos > 0.25);
+            CHECK(frac_neg > 0.25);
         }
 
-        SECTION("Waveform shape: volt-second balance (avg primary voltage ≈ Vin)") {
-            // avg(v_pri_top) = 0*D + 2*Vin*(1-D) ≈ Vin for D ≈ 0.5 push-pull
+        SECTION("Waveform shape: volt-second balance (avg differential primary voltage ≈ 0)") {
+            // For an ideal half-winding in a balanced push-pull,
+            // ∫V_winding dt = 0 over a cycle (otherwise the core
+            // would walk into saturation). Avg should be close to 0.
             double priV_avg = std::accumulate(priVoltageData.begin(), priVoltageData.end(), 0.0) / priVoltageData.size();
-            INFO("Primary voltage avg: " << priV_avg << " V (expect ≈ 24V = Vin for D=0.5)");
-            CHECK(priV_avg > 10.0);
-            CHECK(priV_avg < 35.0);
+            INFO("Differential primary voltage avg: " << priV_avg << " V (expect ≈ 0 for balanced push-pull)");
+            CHECK(std::fabs(priV_avg) < 5.0);
         }
 
         SECTION("Waveform shape: primary current is non-zero and positive (CCM operation)") {
@@ -534,11 +544,11 @@ namespace {
         double cwfV_max = *std::max_element(cwfInputVoltage.begin(), cwfInputVoltage.end());
         double cwfV_min = *std::min_element(cwfInputVoltage.begin(), cwfInputVoltage.end());
 
-        INFO("Converter input voltage (pri_top) max: " << cwfV_max << " V, min: " << cwfV_min << " V");
-        // Note: pri_top node voltage swings between ~0V (S1 ON) and ~Vin (S2 ON via transformer coupling)
-        // It doesn't go significantly negative due to the snubber resistor to ground
+        INFO("Converter differential primary voltage max: " << cwfV_max << " V, min: " << cwfV_min << " V");
+        // ConverterWaveforms::input_voltage is the across-winding
+        // differential V(pri_top)−V(vin_dc): bipolar, ±Vin.
         CHECK(cwfV_max > 15.0);
-        CHECK(cwfV_min < 5.0);  // Allow near-zero minimum (was < -5.0, but pri_top doesn't go negative)
+        CHECK(cwfV_min < -5.0);
 
         // Output voltage should be around 48V (stable)
         REQUIRE(!cwf.get_output_voltages().empty());
@@ -997,6 +1007,86 @@ namespace {
     TEST_CASE("Test_PushPull_RefDesign3_PtP_SN6507",
               "[converter-model][push-pull-topology][refdesign][ngspice-simulation][ptpcomparison]") {
         assert_pushpull_refdesign_ptp(kPushPullRefDesign3);
+    }
+
+    // SPICE-power sanity regression: catches accidental polarity / probe
+    // bugs in the across-winding voltage definition (Bvpri_*_diff in
+    // PushPull::generate_ngspice_circuit). Asserts:
+    //   (a) symmetric bipolar V swing with avg ≈ 0 (volt-second balance)
+    //   (b) PASSIVE sign convention: avg(V·I) > 0 on the primary
+    //       (energy flowing INTO the winding)
+    //   (c) avg(V·I) ≈ Pin/2/η on each half-winding within ±20 %
+    //       (the AP-filter consumer uses |V·I|; this also confirms its
+    //       input magnitude is realistic — the bug behind 3606 made it
+    //       3 orders of magnitude too small)
+    TEST_CASE("Test_PushPull_SpicePowerSanity",
+              "[converter-model][push-pull-topology][ngspice-simulation][regression]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        OpenMagnetics::PushPull pp;
+        DimensionWithTolerance iv; iv.set_nominal(5.0); iv.set_minimum(5.0); iv.set_maximum(5.0);
+        pp.set_input_voltage(iv);
+        pp.set_diode_voltage_drop(0.5);
+        pp.set_efficiency(0.9);
+        pp.set_current_ripple_ratio(0.4);
+        PushPullOperatingPoint op;
+        op.set_output_voltages({3.3}); op.set_output_currents({1.0});
+        op.set_switching_frequency(420e3); op.set_ambient_temperature(25.0);
+        pp.set_operating_points({op});
+        auto designReqs = pp.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios()) turnsRatios.push_back(tr.get_nominal().value());
+        double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        pp.set_num_periods_to_extract(1);
+        auto simOps = pp.simulate_and_extract_operating_points(turnsRatios, Lm);
+        REQUIRE(!simOps.empty());
+
+        auto& exc = simOps[0].get_excitations_per_winding()[0];
+        REQUIRE(exc.get_voltage().has_value());
+        REQUIRE(exc.get_current().has_value());
+        auto vData = exc.get_voltage()->get_waveform()->get_data();
+        auto iData = exc.get_current()->get_waveform()->get_data();
+        REQUIRE(vData.size() == iData.size());
+        REQUIRE(!vData.empty());
+
+        double sumVI = 0, sumAbsVI = 0, sumV = 0;
+        double vmax = vData[0], vmin = vData[0];
+        for (size_t k = 0; k < vData.size(); ++k) {
+            sumVI += vData[k] * iData[k];
+            sumAbsVI += std::fabs(vData[k] * iData[k]);
+            sumV += vData[k];
+            if (vData[k] > vmax) vmax = vData[k];
+            if (vData[k] < vmin) vmin = vData[k];
+        }
+        double avgVI = sumVI / vData.size();
+        double avgAbsVI = sumAbsVI / vData.size();
+        double avgV = sumV / vData.size();
+        double swing = vmax - vmin;
+        double symmetry = std::fabs(vmax + vmin) / swing;
+
+        // Pout = 3.3 V × 1 A. Half-winding power ≈ Pout / (2·η).
+        double expectedPerHalfPower = 3.3 / (2.0 * 0.9);
+
+        INFO("V max=" << vmax << " min=" << vmin << " avg=" << avgV
+             << "  symmetry=" << symmetry
+             << "  avg(V·I)=" << avgVI << " avg(|V·I|)=" << avgAbsVI
+             << "  expectedHalfPower=" << expectedPerHalfPower);
+
+        // (a) bipolar swing roughly symmetric and centered on 0
+        CHECK(swing > 5.0);                               // ≈ 2·Vin
+        CHECK(symmetry < 0.15);                           // |vmax+vmin| < 15 % of swing
+        CHECK(std::fabs(avgV) < 0.1);                     // volt-second balance
+
+        // (b) passive sign — power INTO winding is positive
+        CHECK(avgVI > 0.5);
+
+        // (c) magnitude matches expected half-winding power within ±20 %
+        CHECK(avgVI > 0.8 * expectedPerHalfPower);
+        CHECK(avgVI < 1.2 * expectedPerHalfPower);
+        CHECK(avgAbsVI > 0.8 * expectedPerHalfPower);
+        CHECK(avgAbsVI < 1.2 * expectedPerHalfPower);
     }
 
     // ──────────────────────────────────────────────────────────────────────

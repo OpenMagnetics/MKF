@@ -171,7 +171,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First primary");
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary Half 1");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -228,7 +228,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Second primary");
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary Half 2");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -289,7 +289,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First secondary");
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Secondary 0 Half 1");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -350,7 +350,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Second secondary");
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Secondary 0 Half 2");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -529,7 +529,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First primary");
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary Half 1");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -592,7 +592,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Second primary");
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary Half 2");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -665,7 +665,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "First secondary");
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Secondary 0 Half 1");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -736,7 +736,7 @@ namespace OpenMagnetics {
                     voltageWaveform.set_time(time);
                 }
 
-                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Second secondary");
+                auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Secondary 0 Half 2");
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
 
@@ -1340,6 +1340,35 @@ namespace OpenMagnetics {
         circuit << "Vpri_bot_sense pri_bot sw2_node 0\n";
         circuit << "S2 sw2_node 0 pwm_ctrl2 0 SW1\n\n";
 
+        // Differential across-winding voltage probes.
+        // The raw v(pri_top) / v(pri_bot) signals are node-to-GND voltages
+        // (≈0 V when the corresponding switch is ON, ≈2·Vin when the OTHER
+        // switch is ON, floating in dead-time). They are NOT the actual
+        // voltage across the half-winding, which is what every downstream
+        // consumer (MagneticFilterAreaProduct power estimate, Inputs
+        // processed-data RMS, magnetizing-current reconstruction, …)
+        // expects. The center tap sits at vin_dc.
+        //
+        // Sign convention: the dot of each half is at the SWITCH end
+        // (Lpri_top pri_top vin_dc → dot at pri_top; Lpri_bot vin_dc
+        // pri_bot → dot at pri_bot). The current senses Vpri_top_sense /
+        // Vpri_bot_sense report current LEAVING that dot terminal toward
+        // ground. To match the passive sign convention used by every
+        // downstream consumer (so avg(V·I) > 0 represents power flowing
+        // INTO the winding from the source), we must define
+        //   V_winding = V(center_tap) − V(switch_end)
+        // i.e. positive when the dot end is pulled below the center tap
+        // (= when the corresponding switch is ON and the source is
+        // pushing current into the winding through the center tap).
+        // Without this convention avg(V·I) comes out negative — the
+        // |V·I|-based AP filter is unaffected but anything using signed
+        // power would see backward energy flow. Verified in
+        // Diag_PushPull_SpicePowerSanity that this gives avg(V·I) ≈ +Pin
+        // and a symmetric ±Vin bipolar swing.
+        circuit << "* Across-winding differential voltage probes (passive sign, center tap = vin_dc)\n";
+        circuit << "Bvpri_top_diff vpri_top_diff 0 V=V(vin_dc)-V(pri_top)\n";
+        circuit << "Bvpri_bot_diff vpri_bot_diff 0 V=V(vin_dc)-V(pri_bot)\n\n";
+
         // No RC snubber across S1/S2: the K=0.9999 coupling between the
         // four windings reflects any cap from sw_node → 0 into the
         // secondary diode commutation path, breaking convergence at
@@ -1423,7 +1452,7 @@ namespace OpenMagnetics {
 
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_top) v(pri_bot) i(Vpri_top_sense) i(Vpri_bot_sense)";
+        circuit << ".save v(vpri_top_diff) v(vpri_bot_diff) i(Vpri_top_sense) i(Vpri_bot_sense)";
         circuit << " v(sec_top) v(sec_bot) i(Vsec_top_sense) i(Vsec_bot_sense) i(Vsec_sense) v(vout)\n\n";
 
         // Solver options for convergence in switching circuits.
@@ -1480,11 +1509,11 @@ namespace OpenMagnetics {
                 // Define waveform name mapping for push-pull (4 windings)
                 NgspiceRunner::WaveformNameMapping waveformMapping;
                 
-                // First primary (top)
-                waveformMapping.push_back({{"voltage", "pri_top"}, {"current", "vpri_top_sense#branch"}});
+                // First primary (top) — across-winding differential voltage
+                waveformMapping.push_back({{"voltage", "vpri_top_diff"}, {"current", "vpri_top_sense#branch"}});
                 
-                // Second primary (bottom)
-                waveformMapping.push_back({{"voltage", "pri_bot"}, {"current", "vpri_bot_sense#branch"}});
+                // Second primary (bottom) — across-winding differential voltage
+                waveformMapping.push_back({{"voltage", "vpri_bot_diff"}, {"current", "vpri_bot_sense#branch"}});
                 
                 // First secondary (top)
                 waveformMapping.push_back({{"voltage", "sec_top"}, {"current", "vsec_top_sense#branch"}});
@@ -1492,7 +1521,7 @@ namespace OpenMagnetics {
                 // Second secondary (bottom)
                 waveformMapping.push_back({{"voltage", "sec_bot"}, {"current", "vsec_bot_sense#branch"}});
                 
-                std::vector<std::string> windingNames = {"First primary", "Second primary", "First secondary", "Second secondary"};
+                std::vector<std::string> windingNames = {"Primary Half 1", "Primary Half 2", "Secondary 0 Half 1", "Secondary 0 Half 2"};
                 std::vector<bool> flipCurrentSign(4, false);
                 
                 OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
@@ -1574,7 +1603,7 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("pri_top"));
+            wf.set_input_voltage(getWaveform("vpri_top_diff"));
             wf.set_input_current(getWaveform("vpri_top_sense#branch"));
             
             wf.get_mutable_output_voltages().push_back(getWaveform("vout"));
