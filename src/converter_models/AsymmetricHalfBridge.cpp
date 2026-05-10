@@ -137,7 +137,7 @@ bool AsymmetricHalfBridge::run_checks(bool assertErrors) {
 // =========================================================================
 
 namespace {
-[[noreturn]] void not_implemented(const char* method, const char* phase) {
+[[noreturn, maybe_unused]] void not_implemented(const char* method, const char* phase) {
     throw std::runtime_error(
         std::string("AsymmetricHalfBridge: ") + method +
         " not implemented yet (see ASYMMETRIC_HALF_BRIDGE_PLAN.md " +
@@ -176,8 +176,6 @@ DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
 
     AhbRectifierType rect = get_rectifier_type().value_or(
         AhbRectifierType::CENTER_TAPPED);
-    if (rect == AhbRectifierType::AHB_FLYBACK)
-        not_implemented("process_design_requirements: AHB_FLYBACK", "P10");
 
     // ---- Pull operating-point envelope ----
     auto& inputVoltage = get_input_voltage();
@@ -199,12 +197,29 @@ DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
         throw std::runtime_error(
             "AsymmetricHalfBridge::process_design_requirements: at least "
             "one operating point required");
-    if (ops[0].get_output_voltages().size() != 1 ||
-        ops[0].get_output_currents().size() != 1)
-        not_implemented("process_design_requirements: multi-output", "P11");
+    const bool isMultiOutput = (ops[0].get_output_voltages().size() > 1 ||
+                                ops[0].get_output_currents().size() > 1);
 
-    const double Vo  = ops[0].get_output_voltages()[0];
-    const double Io  = ops[0].get_output_currents()[0];
+    // Effective single-output proxy used for primary sizing under
+    // multi-output (V6). We size the primary against TOTAL output power
+    // and a representative voltage (max of the per-output voltages, so
+    // the worst-case Vsec swing is covered).
+    double Vo_eff = ops[0].get_output_voltages()[0];
+    double Io_eff = ops[0].get_output_currents()[0];
+    if (isMultiOutput) {
+        double P_total = 0.0;
+        double V_rep   = 0.0;
+        for (size_t i = 0; i < ops[0].get_output_voltages().size(); ++i) {
+            const double Vo_i = ops[0].get_output_voltages()[i];
+            const double Io_i = ops[0].get_output_currents()[i];
+            P_total += Vo_i * Io_i;
+            V_rep    = std::max(V_rep, Vo_i);
+        }
+        Vo_eff = V_rep;
+        Io_eff = (V_rep > 0.0) ? P_total / V_rep : 0.0;
+    }
+    const double Vo  = Vo_eff;
+    const double Io  = Io_eff;
     const double fsw = ops[0].get_switching_frequency();
     if (!(Vo > 0.0))  throw std::runtime_error("Vo must be > 0");
     if (!(Io > 0.0))  throw std::runtime_error("Io must be > 0");
@@ -224,68 +239,121 @@ DesignRequirements AsymmetricHalfBridge::process_design_requirements() {
     const double n = compute_turns_ratio(Vin_min, Vo, D_max, Vd, rect);
     computedTurnsRatio = n;
 
-    // ---- S2: output inductor ----
-    const bool isCD = (rect == AhbRectifierType::CURRENT_DOUBLER);
-    const double Io_per_inductor = isCD ? Io / 2.0 : Io;
-    const double dILo_target = 0.30 * Io_per_inductor;
-    const double Lo = compute_lo_min(Vo, D_nom, dILo_target, fsw);
-    computedOutputInductance = Lo;
+    // ---- AHB-Flyback (V5) sizing branch ---------------------------------
+    // Two-switch / active-clamp flyback: NO Lo, NO Cb. Lm carries the
+    // energy storage (mean(iLm) > 0). Output cap sized for flyback ripple
+    // (rectified secondary current is iLm·n during (1-D)·Tsw only, so
+    // Co supplies the full Io during D·Tsw).
+    if (rect == AhbRectifierType::AHB_FLYBACK) {
+        // Magnetizing inductance: target 30% pp ripple ratio of mean iLm.
+        //   I_Lm,avg  = Io / (n · (1-D))                  (flyback CCM)
+        //   dILm,pp   = Vin · D · Tsw / Lm
+        //   ratio = dILm,pp / I_Lm,avg = Vin·D·n·(1-D)·Tsw / (Lm·Io)
+        //   => Lm = Vin·D·n·(1-D)·Tsw / (0.30 · Io)
+        // Sized at Vin_max so the worst-case ripple stays within budget.
+        const double ratio_target = 0.30;
+        const double Lm_v5 = (Vin_max * D_nom * n * (1.0 - D_nom) * Tsw) /
+                              (ratio_target * std::max(Io, 1e-6));
+        computedMagnetizingInductance = Lm_v5;
+        computedOutputInductance      = 0.0;   // no Lo
+        computedDcBlockingCapacitance = 0.0;   // no Cb (active-clamp flyback)
 
-    // ---- S4: magnetizing inductance for ZVS at min load ----
-    // Mirrors PSHB heuristic: target Im_pk = 10 % of primary load current.
-    // Sized at Vin_max so the volt-second drives a sufficient Im across
-    // the half-cycle even at the worst-case operating point.
-    const double Io_pri = Io / n;
-    const double Im_target = std::max(0.10 * Io_pri, 1e-3);
-    const double Lm = compute_lm_min_for_zvs(Vin_max, D_nom, Tsw, Im_target);
-    computedMagnetizingInductance = Lm;
+        // Output cap: standard flyback Co sizing — Co supplies Io during
+        // the entire ON interval D·Tsw plus the discontinuous-conduction
+        // gap. Worst case: Co = Io · D / (fsw · ΔVo).
+        const double dVo_target_v5 = std::max(0.01 * Vo, 1e-3);
+        computedOutputCapacitance   = (Io * D_nom) / (fsw * dVo_target_v5);
 
-    // ---- S3: DC-blocking cap (≤ 5 % ripple of V_Cb,nom) ----
-    // I_pri peak ≈ Io/n + Im_pk. Use the worst-case Vin_max for V_Cb sizing.
-    const double dILm_pp_max  = (1.0 - D_nom) * Vin_max * D_nom * Tsw / Lm;
-    const double Iprimary_pk  = Io_pri + dILm_pp_max / 2.0;
-    const double VCb_nom      = (1.0 - D_nom) * Vin_nom;
-    const double dVCb_target  = std::max(0.05 * VCb_nom, 1e-3);
-    const double Cb = compute_cb_min(Iprimary_pk, D_nom, dVCb_target, fsw);
-    computedDcBlockingCapacitance = Cb;
+        computedDutyCycle = D_nom;
+        computedDeadTime  = compute_dead_time(
+            computedLeakageInductance + Lm_v5, mosfetCoss);
+    }
+    else {
+        // ---- S2: output inductor ----
+        const bool isCD = (rect == AhbRectifierType::CURRENT_DOUBLER);
+        const double Io_per_inductor = isCD ? Io / 2.0 : Io;
+        const double dILo_target = 0.30 * Io_per_inductor;
+        const double Lo = compute_lo_min(Vo, D_nom, dILo_target, fsw);
+        computedOutputInductance = Lo;
 
-    // ---- S5: output cap (1 % output ripple) ----
-    // Standard buck cap sizing: ΔVo = ΔILo / (8 · fsw · Co)  →
-    // Co = ΔILo / (8 · fsw · ΔVo_target). For CD the rectified ripple
-    // frequency at the cap is 2·fsw, but we conservatively use fsw here
-    // — exact value is tuned in P9 simulation if needed.
-    const double dILo_pp_total = isCD ? 2.0 * dILo_target : dILo_target;
-    const double dVo_target    = std::max(0.01 * Vo, 1e-3);
-    computedOutputCapacitance  = dILo_pp_total / (8.0 * fsw * dVo_target);
+        // ---- S4: magnetizing inductance for ZVS at min load ----
+        // Mirrors PSHB heuristic: target Im_pk = 10 % of primary load current.
+        // Sized at Vin_max so the volt-second drives a sufficient Im across
+        // the half-cycle even at the worst-case operating point.
+        const double Io_pri = Io / n;
+        const double Im_target = std::max(0.10 * Io_pri, 1e-3);
+        const double Lm = compute_lm_min_for_zvs(Vin_max, D_nom, Tsw, Im_target);
+        computedMagnetizingInductance = Lm;
 
-    // ---- Dead-time (resonant tank Llk + Lm per AHB physics, P5 refinement) ----
-    computedDutyCycle = D_nom;
-    computedDeadTime  = compute_dead_time(computedLeakageInductance + Lm,
-                                          mosfetCoss);
+        // ---- S3: DC-blocking cap (≤ 5 % ripple of V_Cb,nom) ----
+        // I_pri peak ≈ Io/n + Im_pk. Use the worst-case Vin_max for V_Cb sizing.
+        const double dILm_pp_max  = (1.0 - D_nom) * Vin_max * D_nom * Tsw / Lm;
+        const double Iprimary_pk  = Io_pri + dILm_pp_max / 2.0;
+        const double VCb_nom      = (1.0 - D_nom) * Vin_nom;
+        const double dVCb_target  = std::max(0.05 * VCb_nom, 1e-3);
+        const double Cb = compute_cb_min(Iprimary_pk, D_nom, dVCb_target, fsw);
+        computedDcBlockingCapacitance = Cb;
+
+        // ---- S5: output cap (1 % output ripple) ----
+        // Standard buck cap sizing: ΔVo = ΔILo / (8 · fsw · Co)  →
+        // Co = ΔILo / (8 · fsw · ΔVo_target). For CD the rectified ripple
+        // frequency at the cap is 2·fsw, but we conservatively use fsw here
+        // — exact value is tuned in P9 simulation if needed.
+        const double dILo_pp_total = isCD ? 2.0 * dILo_target : dILo_target;
+        const double dVo_target    = std::max(0.01 * Vo, 1e-3);
+        computedOutputCapacitance  = dILo_pp_total / (8.0 * fsw * dVo_target);
+
+        // ---- Dead-time (resonant tank Llk + Lm per AHB physics, P5 refinement) ----
+        computedDutyCycle = D_nom;
+        computedDeadTime  = compute_dead_time(computedLeakageInductance + Lm,
+                                              mosfetCoss);
+    }
+    const double Lm_for_dr = computedMagnetizingInductance;
 
     // ---- Build DesignRequirements ----
     DesignRequirements designRequirements;
     designRequirements.get_mutable_turns_ratios().clear();
     {
-        DimensionWithTolerance nTol;
-        nTol.set_nominal(roundFloat(n, 2));
-        designRequirements.get_mutable_turns_ratios().push_back(nTol);
+        // Per-output turns ratios: each secondary feeds its own Vo_i and
+        // therefore needs its own n_i. For single-output this collapses
+        // to one ratio (with CT duplicating it).
+        std::vector<double> n_per_output;
+        if (isMultiOutput) {
+            for (size_t i = 0; i < ops[0].get_output_voltages().size(); ++i) {
+                const double Vo_i = ops[0].get_output_voltages()[i];
+                if (!(Vo_i > 0.0))
+                    throw std::runtime_error(
+                        "AsymmetricHalfBridge::process_design_requirements: "
+                        "outputVoltages[" + std::to_string(i) + "] must be > 0");
+                n_per_output.push_back(
+                    compute_turns_ratio(Vin_min, Vo_i, D_max, Vd, rect));
+            }
+        } else {
+            n_per_output.push_back(n);
+        }
+
+        for (double n_i : n_per_output) {
+            DimensionWithTolerance nTol;
+            nTol.set_nominal(roundFloat(n_i, 2));
+            designRequirements.get_mutable_turns_ratios().push_back(nTol);
+        }
         // For CENTER_TAPPED there are two physical secondary windings
-        // (Sec_a, Sec_b) and several places in the coil/adviser pipeline
-        // size winding-count from turns_ratios.size()+1 (e.g.
+        // (Sec_a, Sec_b) per output and several places in the coil/adviser
+        // pipeline size winding-count from turns_ratios.size()+1 (e.g.
         // Coil::get_patterns, MagneticAdviser::numberWindings,
-        // MagneticFilterEstimatedCost). Pushing the same ratio twice
-        // keeps that arithmetic consistent with the actual functional
-        // description so the section algorithm allocates one slot to
-        // each half. wound_with then collapses the pair back into a
-        // single secondary group.
-        if (rect == AhbRectifierType::CENTER_TAPPED) {
+        // MagneticFilterEstimatedCost). Duplicate the FIRST ratio to keep
+        // that arithmetic consistent with the single-secondary CT usage;
+        // multi-output CT is not commonly built, so we only duplicate the
+        // primary CT entry to preserve V1 behaviour.
+        if (rect == AhbRectifierType::CENTER_TAPPED && !isMultiOutput) {
+            DimensionWithTolerance nTol;
+            nTol.set_nominal(roundFloat(n_per_output[0], 2));
             designRequirements.get_mutable_turns_ratios().push_back(nTol);
         }
     }
 
     DimensionWithTolerance lmTol;
-    lmTol.set_nominal(roundFloat(Lm, 10));
+    lmTol.set_nominal(roundFloat(Lm_for_dr, 10));
     designRequirements.set_magnetizing_inductance(lmTol);
 
     if (computedLeakageInductance > 0.0) {
@@ -429,28 +497,64 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
             "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
             "magnetizingInductance must be > 0");
 
-    // P4 scope: CT / FB / CD secondary, single output. AHB-Flyback is
-    // a different storage topology (Lm carries the energy, no Lo) and
-    // lands in P10. Multi-output (V6) lands in P11.
+    // V5 (AHB-Flyback) is a different storage topology — Lm carries the
+    // energy, no Lo, no series Cb (active-clamp / two-switch flyback).
+    // Dispatched to a dedicated branch below. V6 multi-output is handled
+    // inline by extending the per-secondary loop.
     AhbRectifierType rect = get_rectifier_type().value_or(
         AhbRectifierType::CENTER_TAPPED);
-    if (rect == AhbRectifierType::AHB_FLYBACK)
-        not_implemented("process_operating_point_for_input_voltage: "
-                        "AHB_FLYBACK", "P10");
-    if (opPoint.get_output_voltages().size() != 1 ||
-        opPoint.get_output_currents().size() != 1)
-        not_implemented("process_operating_point_for_input_voltage: "
-                        "multi-output", "P11");
-    if (turnsRatios.size() != 1)
+    const size_t numOutputs = opPoint.get_output_voltages().size();
+    if (opPoint.get_output_currents().size() != numOutputs)
         throw std::invalid_argument(
             "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
-            "single secondary required (got " +
-            std::to_string(turnsRatios.size()) + ")");
+            "outputVoltages / outputCurrents length mismatch");
+    if (numOutputs == 0)
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+            "operating point must specify at least one output");
+    if (turnsRatios.size() != numOutputs)
+        throw std::invalid_argument(
+            "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+            "turnsRatios.size() (" + std::to_string(turnsRatios.size()) +
+            ") must match outputs (" + std::to_string(numOutputs) + ")");
+
+    // Multi-output cross-regulation in AHB is materially worse than buck-
+    // family converters (asymmetric secondary voltage, V_Cb shared across
+    // all secondaries). Per Guide §4.7 we emit a one-shot warning so the
+    // user knows the per-output current waveforms are an approximation.
+    if (numOutputs > 1) {
+        static thread_local bool ahbMultiOutWarned = false;
+        if (!ahbMultiOutWarned) {
+            std::cerr << "[AHB] multi-output configuration detected ("
+                      << numOutputs << " outputs) — per-output current "
+                         "waveforms are approximate (load-share projection "
+                         "of primary reflected current). Cross-regulation "
+                         "is poor in AHB without per-secondary feedback; "
+                         "supply per-secondary leakage inductance for a "
+                         "more accurate magnetic-loss estimate."
+                      << std::endl;
+            ahbMultiOutWarned = true;
+        }
+    }
 
     const double Vin = inputVoltage;
     const double D   = opPoint.get_duty_cycle();
-    const double Vo  = opPoint.get_output_voltages()[0];
-    const double Io  = opPoint.get_output_currents()[0];
+    // For multi-output, project ALL outputs to a single equivalent load
+    // referenced to output #0 (the controlling output). The primary side
+    // sees the total reflected power; per-output secondary current
+    // waveforms are recovered after the standard OP is built using the
+    // load-share formula:  i_sec_k = (Vo_k·Io_k / Σ Vo_j·Io_j) · n_k · iPri.
+    // (Mirrors Dab.cpp:842-906 multi-output projection.)
+    const auto& outV = opPoint.get_output_voltages();
+    const auto& outI = opPoint.get_output_currents();
+    const double Vo  = outV[0];
+    double IoEff = outI[0];
+    double totalPower = 0.0;
+    for (size_t k = 0; k < outV.size() && k < outI.size(); ++k)
+        totalPower += outV[k] * outI[k];
+    if (outV.size() > 1 && Vo > 0.0)
+        IoEff = totalPower / Vo;
+    const double Io  = IoEff;
     const double fsw = opPoint.get_switching_frequency();
     if (!(D > 0.0 && D < 1.0))
         throw std::invalid_argument(
@@ -460,6 +564,151 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
         throw std::invalid_argument(
             "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
             "switchingFrequency must be > 0");
+
+    // ---------------------------------------------------------------------
+    // V5 AHB-Flyback path (no Lo, no Cb, Lm = energy storage).
+    // ---------------------------------------------------------------------
+    // Two-switch / active-clamp flyback interpretation (selected per
+    // ASYMMETRIC_HALF_BRIDGE_PLAN.md §4 V5 row):
+    //   - During Q1 ON (D·Tsw): v_pri = +Vin, secondary diode OFF, Lm
+    //     ramps with slope +Vin/Lm.
+    //   - During Q2 ON ((1-D)·Tsw): secondary diode forward-biased,
+    //     reflected v_pri = -Vo·n, Lm ramps with slope -Vo·n/Lm.
+    //   - Volt-second balance: Vin·D = Vo·n·(1-D) → Vo = D·Vin/((1-D)·n)
+    //     (matches static helper compute_conversion_ratio for AHB_FLYBACK).
+    //   - Mean iLm = Io / (n·(1-D))  (CCM flyback). Mean i_pri = D·iLm
+    //     (NON-zero because no series Cb).
+    //   - During Q2 ON, primary current goes to ZERO (ampere-turn balance:
+    //     all transformer current is on the secondary side).
+    if (rect == AhbRectifierType::AHB_FLYBACK) {
+        if (numOutputs != 1)
+            throw std::invalid_argument(
+                "AsymmetricHalfBridge::process_operating_point_for_input_voltage: "
+                "AHB_FLYBACK does not support multi-output");
+
+    const double n   = turnsRatios[0];
+    const double Lm  = magnetizingInductance;
+
+
+        const double Tsw = 1.0 / fsw;
+        const double tA  = D * Tsw;
+        const double tC  = (1.0 - D) * Tsw;
+
+        // Primary voltages: full Vin during Q1, -Vo·n during Q2 (clamped).
+        const double Vpri_pos_v5 = +Vin;
+        const double Vpri_neg_v5 = -Vo * n;
+
+        const double iLm_avg_v5  = Io / (n * std::max(1.0 - D, 1e-9));
+        const double dILm_pp_v5  = Vin * D * Tsw / Lm;
+        const double Im_min_v5   = iLm_avg_v5 - dILm_pp_v5 / 2.0;
+        const double Im_max_v5   = iLm_avg_v5 + dILm_pp_v5 / 2.0;
+        const bool   isDCM_v5    = (Im_min_v5 < 0.0);
+
+        const int N = 128;
+        std::vector<double> time, vPri, iPri, iLm, vSec, iSec, vCo, iCo;
+        time.reserve(2 * N + 3);
+        for (auto* v : {&vPri, &iPri, &iLm, &vSec, &iSec, &vCo, &iCo})
+            v->reserve(2 * N + 3);
+
+        // Interval A (Q1 ON): primary current = iLm, secondary OFF.
+        for (int k = 0; k <= N; ++k) {
+            const double frac = static_cast<double>(k) / N;
+            const double t    = frac * tA;
+            const double i_lm = Im_min_v5 + frac * dILm_pp_v5;
+            time.push_back(t);
+            vPri.push_back(Vpri_pos_v5);
+            iLm .push_back(i_lm);
+            iPri.push_back(i_lm);
+            // Secondary diode OFF: secondary winding voltage swings to
+            // +Vin/n (reflected primary), no current.
+            vSec.push_back(+Vin / n);
+            iSec.push_back(0.0);
+            vCo .push_back(Vo);
+            iCo .push_back(-Io);            // Co supplies Io alone
+        }
+        // Discontinuity duplicate at end of A.
+        time.push_back(tA);
+        vPri.push_back(Vpri_neg_v5);
+        iLm .push_back(Im_max_v5);
+        iPri.push_back(0.0);                // primary opens (sec takes over)
+        vSec.push_back(-Vpri_neg_v5 / n);   // = +Vo (forward-bias)
+        iSec.push_back(Im_max_v5 * n);
+        vCo .push_back(Vo);
+        iCo .push_back(Im_max_v5 * n - Io);
+
+        // Interval C (Q2 ON): primary current = 0, secondary current = iLm·n.
+        for (int k = 1; k <= N; ++k) {
+            const double frac = static_cast<double>(k) / N;
+            const double t    = tA + frac * tC;
+            const double i_lm = Im_max_v5 - frac * dILm_pp_v5;
+            time.push_back(t);
+            vPri.push_back(Vpri_neg_v5);
+            iLm .push_back(i_lm);
+            iPri.push_back(0.0);
+            vSec.push_back(+Vo);
+            iSec.push_back(i_lm * n);
+            vCo .push_back(Vo);
+            iCo .push_back(i_lm * n - Io);
+        }
+
+        // ---- Diagnostics for V5 ----
+        // Switch RMS (asymmetric): Q1 carries iLm during A; Q2 carries the
+        // small reverse-recovery during C (≈0 ideal). Use rms_of for
+        // accuracy on Q1; Q2 stays effectively zero in this idealisation.
+        const double Iq1_rms_v5 = rms_of(iPri, 0, static_cast<size_t>(N), time)
+                                  * std::sqrt(D);
+        const double Iq2_rms_v5 = 0.0;
+
+        const double Llk_v5 = (computedLeakageInductance > 0.0)
+                              ? computedLeakageInductance : 1e-6;
+        const double zvs_v5 = compute_zvs_energy_balance(
+            Llk_v5, /*Lm_refl=*/Lm, std::abs(Im_max_v5), mosfetCoss, Vin);
+
+        lastDutyCycle                  = D;
+        lastConversionRatio            = Vo / Vin;
+        lastDcBlockingCapVoltage       = 0.0;     // no Cb in V5
+        lastPrimaryPeakVoltagePositive = Vpri_pos_v5;
+        lastPrimaryPeakVoltageNegative = Vpri_neg_v5;
+        lastSwitchPeakVoltageQ1        = Vin;
+        // Q2 sees Vin + reflected secondary clamp = Vin + Vo·n during Q1 ON.
+        lastSwitchPeakVoltageQ2        = Vin + Vo * n;
+        lastSwitchRmsCurrentQ1         = Iq1_rms_v5;
+        lastSwitchRmsCurrentQ2         = Iq2_rms_v5;
+        lastZvsMargin                  = zvs_v5;
+        lastResonantTransitionTime     = compute_dead_time(Llk_v5 + Lm, mosfetCoss);
+        lastSteadyStateFluxExcursion   = Vin * D * Tsw;   // single-polarity
+        lastTransientFluxExcursionEstimate = 0.0;
+        lastMagnetizingCurrentRipple   = dILm_pp_v5;
+        lastOutputInductorRipple       = 0.0;
+        lastOperatingMode              = isDCM_v5 ? 1 : 0;
+        lastRectifierType              = 3;       // 3 = AHB_FLYBACK
+
+        OperatingPoint operatingPoint;
+        auto wfm = [](const std::vector<double>& d, const std::vector<double>& t) {
+            Waveform w;
+            w.set_ancillary_label(WaveformLabel::CUSTOM);
+            w.set_data(d);
+            w.set_time(t);
+            return w;
+        };
+        operatingPoint.get_mutable_excitations_per_winding().push_back(
+            complete_excitation(wfm(iPri, time), wfm(vPri, time), fsw, "Primary"));
+        operatingPoint.get_mutable_excitations_per_winding().push_back(
+            complete_excitation(wfm(iSec, time), wfm(vSec, time), fsw, "Secondary 0"));
+
+        OperatingConditions conditions;
+        conditions.set_ambient_temperature(opPoint.get_ambient_temperature());
+        conditions.set_cooling(std::nullopt);
+        operatingPoint.set_conditions(conditions);
+
+        // V5 has no Lo, no Lo2, no Cb. Push placeholder waveforms (Co only)
+        // so get_extra_components_inputs callers stay consistent in size.
+        // The Lo-vector remains empty, signalling "no Lo extra component".
+        extraCbVoltageWaveforms.push_back(wfm(vCo, time));   // Co stand-in
+        extraCbCurrentWaveforms.push_back(wfm(iCo, time));
+
+        return operatingPoint;
+    }
 
     const double n   = turnsRatios[0];
     const double Lm  = magnetizingInductance;
@@ -771,6 +1020,46 @@ OperatingPoint AsymmetricHalfBridge::process_operating_point_for_input_voltage(
         operatingPoint.get_mutable_excitations_per_winding().push_back(
             complete_excitation(wfm(iSec, time), wfm(vSec, time), fsw,
                                 "Secondary 0"));
+    }
+
+    // ---- V6 multi-output: per-secondary load-share projection ----
+    // The primary current already reflects the TOTAL load (Io was overridden
+    // to the power-equivalent at Vo_0 above). The standard secondary
+    // excitations above carry currents scaled to that total. Replace them
+    // with per-output excitations using the load-share formula:
+    //     share_k = Vo_k·Io_k / Σ Vo_j·Io_j
+    //     i_sec_k = share_k · n_k · iPri    (ampere-turn balance)
+    // Per-output voltage = Vo_k square wave with same A/C polarity as
+    // primary reflected. This matches the Dab.cpp multi-output pattern.
+    if (outV.size() > 1 && totalPower > 0.0) {
+        // Pop the standard secondary excitations (CT pops 2, FB/CD pops 1).
+        auto& exc = operatingPoint.get_mutable_excitations_per_winding();
+        const size_t numToPop =
+            (rect == AhbRectifierType::CENTER_TAPPED) ? 2u : 1u;
+        for (size_t i = 0; i < numToPop && !exc.empty(); ++i) exc.pop_back();
+
+        for (size_t k = 0; k < outV.size() && k < turnsRatios.size(); ++k) {
+            const double Vo_k = outV[k];
+            const double Io_k = (k < outI.size()) ? outI[k] : 0.0;
+            const double n_k  = turnsRatios[k];
+            if (n_k <= 0.0) continue;
+            const double share = (Vo_k * Io_k) / totalPower;
+            std::vector<double> iSec_k(iPri.size());
+            std::vector<double> vSec_k(vPri.size());
+            for (size_t i = 0; i < iPri.size(); ++i) {
+                // Sign convention matches "Secondary 0" (positive when
+                // diode forward-biased during interval A).
+                iSec_k[i] = share * n_k * iPri[i];
+                // Secondary voltage: scale primary voltage by 1/n_k and
+                // re-anchor to ±Vo_k (during diode-OFF, sec voltage = -Vo_k;
+                // diode-ON, +Vo_k). For the analytical PWL waveform here
+                // we approximate vSec_k_during_A = +Vo_k, _during_C = -Vo_k.
+                vSec_k[i] = (vPri[i] > 0.0) ? +Vo_k : -Vo_k;
+            }
+            const std::string label = "Secondary " + std::to_string(k);
+            exc.push_back(complete_excitation(
+                wfm(iSec_k, time), wfm(vSec_k, time), fsw, label));
+        }
     }
 
     OperatingConditions conditions;
@@ -1358,8 +1647,6 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
     // ---- Validation (Guide §5: throw loudly on malformed inputs) ----
     AhbRectifierType rect = get_rectifier_type().value_or(
         AhbRectifierType::CENTER_TAPPED);
-    if (rect == AhbRectifierType::AHB_FLYBACK)
-        not_implemented("generate_ngspice_circuit: AHB_FLYBACK", "P10");
     if (turnsRatios.empty())
         throw std::invalid_argument(
             "AsymmetricHalfBridge::generate_ngspice_circuit: turnsRatios empty");
@@ -1388,12 +1675,37 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
             "operating point required");
     const auto& op = ops[std::min(operatingPointIndex, ops.size() - 1)];
 
-    if (op.get_output_voltages().size() != 1 ||
-        op.get_output_currents().size() != 1)
-        not_implemented("generate_ngspice_circuit: multi-output", "P11");
-
-    const double Vo  = op.get_output_voltages()[0];
-    const double Io  = op.get_output_currents()[0];
+    // V6 multi-output netlist policy: collapse all outputs into a single
+    // power-equivalent load referenced to output #0 (the controlling rail).
+    // Per-secondary leakage / cross-regulation is NOT modelled in SPICE —
+    // the analytical model already emits per-output secondary excitations
+    // via load-share projection. Warn once so the user knows.
+    const auto& outV_n = op.get_output_voltages();
+    const auto& outI_n = op.get_output_currents();
+    if (outV_n.empty() || outI_n.empty() ||
+        outV_n.size() != outI_n.size())
+        throw std::runtime_error(
+            "AsymmetricHalfBridge::generate_ngspice_circuit: outputVoltages "
+            "/ outputCurrents must be non-empty and equal length");
+    if (outV_n.size() > 1) {
+        static thread_local bool ahbMultiOutNetlistWarned = false;
+        if (!ahbMultiOutNetlistWarned) {
+            std::cerr << "[AHB] generate_ngspice_circuit: multi-output "
+                         "configuration collapsed to single power-equivalent "
+                         "load on output #0 (per-secondary cross-regulation "
+                         "is not simulated in SPICE; use the analytical "
+                         "process_operating_points for per-output waveforms)."
+                      << std::endl;
+            ahbMultiOutNetlistWarned = true;
+        }
+    }
+    double totalPower_n = 0.0;
+    for (size_t k = 0; k < outV_n.size(); ++k)
+        totalPower_n += outV_n[k] * outI_n[k];
+    const double Vo  = outV_n[0];
+    const double Io  = (outV_n.size() > 1 && Vo > 0.0)
+                       ? totalPower_n / Vo
+                       : outI_n[0];
     const double fsw = op.get_switching_frequency();
     const double D   = op.get_duty_cycle();
     if (!(D > 0.0 && D < 1.0))
@@ -1407,6 +1719,100 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
 
     const double n   = turnsRatios[0];
     const double Lm  = magnetizingInductance;
+
+    // ====================================================================
+    // V5 — AHB_FLYBACK (active-clamp / two-switch flyback) netlist branch.
+    // Topology: Q1 main switch (high-side, gate g1) energises L_pri (sw→0)
+    // during D·Tsw. During (1-D)·Tsw the primary energy transfers to the
+    // secondary via the coupled flyback diode. Q2 + C_clamp form the
+    // active-clamp branch parallel to L_pri (catches leakage ringing and
+    // recycles energy; clamp cap charges to ≈ Vo·n in steady state).
+    // No series Cb, no Lo. Vo = D·Vin / ((1-D)·n).  Mirrors V5 analytical
+    // model in process_operating_point_for_input_voltage.
+    // ====================================================================
+    if (rect == AhbRectifierType::AHB_FLYBACK) {
+        const double Tsw_v5 = 1.0 / fsw;
+        const double tA_v5  = D * Tsw_v5;
+        constexpr double T_DEAD_V5 = 50e-9;
+        const double t_q1_on_v5 = std::max(tA_v5 - T_DEAD_V5, 1e-9);
+        const double t_q2_on_v5 = std::max((1.0 - D) * Tsw_v5 - T_DEAD_V5, 1e-9);
+        const double dILm_pp_v5 = Vin * D * Tsw_v5 / Lm;
+        const double iLm_avg_v5 = Io / (n * std::max(1.0 - D, 1e-9));
+        const double iLm_init_v5 = iLm_avg_v5 - dILm_pp_v5 / 2.0;
+        const double Vclamp_dc_v5 = Vo * n;
+        const double C_clamp_v5 = std::max(
+            (iLm_avg_v5 + dILm_pp_v5 / 2.0) * D * Tsw_v5
+                / std::max(0.05 * Vclamp_dc_v5, 1e-3),
+            1e-9);
+        double Co_v5 = computedOutputCapacitance;
+        if (Co_v5 <= 0.0)
+            Co_v5 = Io * D / (fsw * std::max(0.01 * Vo, 1e-3));
+        const double Rload_v5 = std::max(Vo / Io, 1e-3);
+
+        const int periodsToExtract = numPeriodsToExtract;
+        const int steadyStatePeriods = numSteadyStatePeriods;
+        const int numPeriodsTotal = steadyStatePeriods + periodsToExtract;
+        const double simTime_v5   = numPeriodsTotal * Tsw_v5;
+        const double startTime_v5 = steadyStatePeriods * Tsw_v5;
+        const double stepTime_v5  = Tsw_v5 / 200.0;
+
+        std::ostringstream c;
+        c << std::scientific;
+        c << "* AHB V5 — AHB_FLYBACK (active-clamp / two-switch flyback)\n";
+        c << "* Vin=" << Vin << " V, Vo=" << Vo << " V, Io=" << Io
+          << " A, fsw=" << (fsw / 1e3) << " kHz, D=" << D << ", n=" << n << "\n";
+        c << "* Lm=" << (Lm * 1e6) << " uH, Cclamp=" << (C_clamp_v5 * 1e6)
+          << " uF, Co=" << (Co_v5 * 1e6) << " uF\n";
+        c << "* IC: i_Lm=" << iLm_init_v5 << " A, V_Cclamp=" << Vclamp_dc_v5
+          << " V, V_Co=" << Vo << " V\n\n";
+
+        c << ".model SW1 SW VT=2.5 VH=0.8 RON=1m ROFF=1Meg\n";
+        c << ".model DIDEAL D(IS=1e-12 RS=0.001 BV=1000 IBV=1e-12)\n\n";
+
+        c << "Vdc vin_dc 0 " << Vin << "\n\n";
+
+        c << "Vpwm_Q1 g1 0 PULSE(0 5 0 10n 10n " << t_q1_on_v5 << " " << Tsw_v5 << ")\n";
+        c << "Vpwm_Q2 g2 0 PULSE(0 5 " << (tA_v5 + T_DEAD_V5) << " 10n 10n "
+          << t_q2_on_v5 << " " << Tsw_v5 << ")\n\n";
+
+        c << "S1 vin_dc sw g1 0 SW1\n";
+        c << "D1 sw vin_dc DIDEAL\n";
+        c << "Rsnub_Q1 vin_dc sw 1k\nCsnub_Q1 vin_dc sw 1n\n";
+        c << "S2 sw clamp_lo g2 0 SW1\n";
+        c << "D2 clamp_lo sw DIDEAL\n";
+        c << "Rsnub_Q2 sw clamp_lo 1k\nCsnub_Q2 sw clamp_lo 1n\n";
+        c << "C_clamp clamp_lo 0 " << C_clamp_v5 << " IC=" << Vclamp_dc_v5 << "\n";
+        c << "R_clamp_bleed clamp_lo 0 1Meg\n\n";
+
+        c << "Vpri_sense sw pri_top 0\n";
+        c << "L_pri pri_top 0 " << Lm << " IC=" << iLm_init_v5 << "\n";
+        c << "Evab vab 0 sw 0 1\n\n";
+
+        constexpr double K_COUPLING_V5 = 0.999;
+        const double Lsec_v5 = Lm / (n * n);
+        c << "L_sec sec_a sec_b " << Lsec_v5 << "\n";
+        c << "K1 L_pri L_sec " << K_COUPLING_V5 << "\n";
+        c << "Vsec_a_sense sec_b sec_d 0\n";
+        c << "D_fly sec_d co_top DIDEAL\n";
+        c << "R_sec_anchor sec_a 0 1Meg\n\n";
+
+        c << "R_co_esr co_top co_top_esr 1m\n";
+        c << "C_o co_top_esr out_gnd " << Co_v5 << " IC=" << Vo << "\n";
+        c << "R_load co_top out_gnd " << Rload_v5 << "\n";
+        c << "Vout_sense out_gnd 0 0\n\n";
+
+        c << ".tran " << stepTime_v5 << " " << simTime_v5 << " "
+          << startTime_v5 << " uic\n\n";
+        c << ".save v(vab) v(sw) v(co_top) i(Vpri_sense) i(Vsec_a_sense)"
+          << " i(Vout_sense) i(Vdc)\n\n";
+        c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
+        c << ".options METHOD=GEAR TRTOL=7\n";
+        c << ".nodeset v(co_top)=" << Vo
+          << " v(clamp_lo)=" << Vclamp_dc_v5 << "\n\n";
+        c << ".end\n";
+        return c.str();
+    }
+
     // Explicit L_lk is set to a tiny "wire-stub" value (1 nH). The
     // dominant primary leakage in the SPICE model comes from the K=0.999
     // coupling factor between primary and secondaries (Llk_eff ≈ Lm·(1-K²)
@@ -1529,11 +1935,18 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
         c << "K2 L_pri L_sec_b " << K_COUPLING << "\n";
         c << "K3 L_sec_a L_sec_b " << K_COUPLING << "\n";
         // Diodes from each half to the rectifier output node, ct-tap to gnd
-        // through Vct sense for diagnostic.
+        // through Vct sense for diagnostic. With useSynchronousRectifier the
+        // diodes are replaced by SW switches gated complementary to their
+        // conducting interval (S_ra conducts during Q1 OFF / Q2 ON ⇒ gate=g2).
         c << "Vsec_a_sense sec_a sec_a_d 0\n";
         c << "Vsec_b_sense sec_b sec_b_d 0\n";
-        c << "D_ra sec_a_d out_rect DIDEAL\n";
-        c << "D_rb sec_b_d out_rect DIDEAL\n";
+        if (useSynchronousRectifier) {
+            c << "S_ra sec_a_d out_rect g2 0 SW1\n";
+            c << "S_rb sec_b_d out_rect g1 0 SW1\n";
+        } else {
+            c << "D_ra sec_a_d out_rect DIDEAL\n";
+            c << "D_rb sec_b_d out_rect DIDEAL\n";
+        }
         c << "Vct_sense out_gnd sec_ct 0\n";
         c << "L_o out_rect out_node " << Lo << " IC=" << iLo_init << "\n";
         c << "R_lo_dcr out_node out_node_after_dcr 1m\n";
@@ -1543,11 +1956,21 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
         c << "K1 L_pri L_sec " << K_COUPLING << "\n";
         c << "Vsec_a_sense sec_a sec_a_d 0\n";
         c << "Vsec_b_sense sec_b sec_b_d 0\n";
-        // 4-diode bridge.
-        c << "D_r1 sec_a_d out_rect DIDEAL\n";
-        c << "D_r2 sec_b_d out_rect DIDEAL\n";
-        c << "D_r3 out_gnd sec_a_d DIDEAL\n";
-        c << "D_r4 out_gnd sec_b_d DIDEAL\n";
+        // 4-diode bridge. SR variant pairs each diode with the gate of the
+        // primary switch driving the conducting half-cycle: D_r1/D_r4 conduct
+        // during Q1 ON (sec_a positive) ⇒ gate g1; D_r2/D_r3 during Q2 ON
+        // (sec_b positive) ⇒ gate g2.
+        if (useSynchronousRectifier) {
+            c << "S_r1 sec_a_d out_rect g1 0 SW1\n";
+            c << "S_r2 sec_b_d out_rect g2 0 SW1\n";
+            c << "S_r3 out_gnd sec_a_d g2 0 SW1\n";
+            c << "S_r4 out_gnd sec_b_d g1 0 SW1\n";
+        } else {
+            c << "D_r1 sec_a_d out_rect DIDEAL\n";
+            c << "D_r2 sec_b_d out_rect DIDEAL\n";
+            c << "D_r3 out_gnd sec_a_d DIDEAL\n";
+            c << "D_r4 out_gnd sec_b_d DIDEAL\n";
+        }
         c << "L_o out_rect out_node " << Lo << " IC=" << iLo_init << "\n";
         c << "R_lo_dcr out_node out_node_after_dcr 1m\n";
     } else { // CURRENT_DOUBLER
@@ -1560,8 +1983,15 @@ std::string AsymmetricHalfBridge::generate_ngspice_circuit(
         c << "L_o  sec_a_d out_node " << Lo << " IC=" << iLo_init << "\n";
         c << "L_o2 sec_b_d out_node " << Lo << " IC=" << iLo_init << "\n";
         // Freewheel diodes anchor each Lo's input to gnd during off-half.
-        c << "D_r1 out_gnd sec_a_d DIDEAL\n";
-        c << "D_r2 out_gnd sec_b_d DIDEAL\n";
+        // SR: D_r1 freewheels Lo1 (sec_a) during Q2 ON ⇒ gate g2;
+        //     D_r2 freewheels Lo2 (sec_b) during Q1 ON ⇒ gate g1.
+        if (useSynchronousRectifier) {
+            c << "S_r1 out_gnd sec_a_d g2 0 SW1\n";
+            c << "S_r2 out_gnd sec_b_d g1 0 SW1\n";
+        } else {
+            c << "D_r1 out_gnd sec_a_d DIDEAL\n";
+            c << "D_r2 out_gnd sec_b_d DIDEAL\n";
+        }
         // Single shared Co/Rload.
         c << "R_lo_dcr out_node out_node_after_dcr 1m\n";
     }

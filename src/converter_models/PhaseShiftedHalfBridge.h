@@ -64,8 +64,8 @@ using namespace MAS;
  *     (D / 1−D), a DC-blocking capacitor in series with the primary,
  *     and a 2-level *asymmetric* primary voltage [+(1−D)·Vin, −D·Vin].
  *     AHB conversion ratio is Vo = 2·D·(1−D)·Vin/n, NOT this model's
- *     Vo = (Vin/2)·D_eff/n. See the planned `AsymmetricHalfBridge`
- *     class (`ASYMMETRIC_HALF_BRIDGE_PLAN.md`).
+ *     Vo = (Vin/2)·D_eff/n. See the `AsymmetricHalfBridge` class
+ *     (`AsymmetricHalfBridge.h`, `ASYMMETRIC_HALF_BRIDGE_PLAN.md`).
  *
  * (3) NOT a half-bridge LLC: that uses a resonant Lr+Cr+Lm tank with
  *     frequency modulation (no PWM duty). This model is hard-switched

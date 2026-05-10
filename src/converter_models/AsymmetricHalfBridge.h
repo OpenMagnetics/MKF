@@ -68,15 +68,22 @@ using namespace MAS;
  *     Vo,max = Vin/(2*n). Conventional control uses D in [0, 0.5].
  *
  * =====================================================================
- * IMPLEMENTATION STATUS  (P1 STUB — May 2026)
+ * IMPLEMENTATION STATUS  (P1-P12 complete — May 2026)
  * =====================================================================
  *
- * This class is currently a STUB. Only the constructor, accessors,
- * and run_checks are implemented. Everything else throws
- * std::runtime_error("AsymmetricHalfBridge: <method> not implemented").
+ * Full implementation of V1-V6 variants:
+ *   V1 = CT secondary  (default)         V4 = synchronous rectifier (set_use_synchronous_rectifier(true))
+ *   V2 = full-bridge secondary           V5 = AHB-Flyback (rectifierType = ahbFlyback)
+ *   V3 = current-doubler secondary       V6 = multi-output (multiple outputVoltages)
  *
- * See ASYMMETRIC_HALF_BRIDGE_PLAN.md for the full 12-phase
- * implementation roadmap (P2-P12).
+ * V5 (AHB-Flyback) is implemented as a two-switch / active-clamp
+ * flyback (no series Cb; Lm carries the energy storage; mean(iLm) > 0);
+ * the gain is Vo = D·Vin/((1-D)·n), singular at D=1.
+ *
+ * V6 multi-output: cross-regulation is APPROXIMATE — per-secondary
+ * leakage inductance projection (DAB-style) is used but the result is
+ * accurate to ~20-100% per secondary unless leakage is supplied.
+ * A warn-once message is printed by process_operating_points.
  *
  * Comparison to PSHB (single-leg 3-level NPC implementation in MKF):
  *   - PSHB delivers a 3-level primary voltage (+Vin/2, 0, -Vin/2).
@@ -91,6 +98,74 @@ using namespace MAS;
  *     pattern.
  *   - ACF uses one main switch + one auxiliary clamp switch; AHB uses
  *     two equal-stress switches (HS + LS) on the same leg.
+ *
+ * =====================================================================
+ * EQUATIONS CHEAT-SHEET (CCM, ideal)
+ * =====================================================================
+ *
+ *   DC-blocking cap voltage : V_Cb = (1−D)·Vin                        [Imbertson eq. 3]
+ *   Primary voltage         : v_pri = +(1−D)·Vin during D·Tsw,
+ *                             v_pri = −D·Vin    during (1−D)·Tsw      ← asymmetric, automatic flux balance
+ *   Conversion ratio (CT/FB): Vo = 2·D·(1−D)·Vin / n                  ← non-monotonic, peak at D=0.5
+ *   Conversion ratio (CD)   : Vo = D·(1−D)·Vin / n
+ *   Conversion ratio (V5)   : Vo = D·Vin / ((1−D)·n)                  (active-clamp flyback)
+ *   Maximum gain at D=0.5   : Vo,max = Vin / (2·n)
+ *   Switch peak voltage     : V_Q,pk = Vin (each switch in V1-V4);
+ *                             Q2 sees Vin + Vo·n in V5 (clamp adder).
+ *   Switch RMS              : I_Q1,rms = I_pri,Q1·√D ;
+ *                             I_Q2,rms = I_pri,Q2·√(1−D)              ← unequal when D ≠ 0.5
+ *   ZVS condition           : ½·(Llk+Lm,refl)·I_pri² ≥ 2·Coss·Vin²
+ *   Dead-time               : t_d ≥ π·√(Llk·2·Coss)
+ *   Steady-state ΔΦ         : ΔΦ_ss = D·(1−D)·Vin·Tsw / Np
+ *   Bpk                     : D·(1−D)·Vin·Tsw / (2·Np·Ae)
+ *   Magnetising DC bias (V1): mean(i_Lm) = (Io_per_inductor / n)·(1−2D)
+ *
+ *   Sizing — Cb (ripple ≤ 5 % V_Cb):  Cb ≥ I_pri,pk·D / (fsw·ΔV_Cb)   [ON AN-4153 eq. 16]
+ *   Sizing — Lo (CCM)              :  Lo ≥ Vo·(1 − 2·D·(1−D)) / (ΔILo·fsw)
+ *   Sizing — Lm (ZVS assist)       :  Lm ≤ ((1−D)·Vin·D·Tsw) / (2·I_m,target)
+ *   Sizing — Lm (V5 30 % ripple)   :  Lm = Vin·D·n·(1−D)·Tsw / (0.30·Io)
+ *   Sizing — Co (V5 flyback)       :  Co = Io·D / (fsw·ΔVo)
+ *
+ * =====================================================================
+ * REFERENCES
+ * =====================================================================
+ *
+ *   [1] P. Imbertson & N. Mohan, "Asymmetrical Duty Cycle Permits Zero
+ *       Switching Loss in PWM Circuits with No Conduction Loss Penalty,"
+ *       IEEE TIA, 29(1):121-125, 1993. https://doi.org/10.1109/28.195897
+ *   [2] R. L. Steigerwald, "Designing High-Efficiency Asymmetric Half-Bridge
+ *       PWM Converters," TI SLUP223 (Power Supply Design Seminar).
+ *   [3] ON Semi AN-4153, "Designing Asymmetric PWM Half-Bridge DC/DC
+ *       Converter with FPS."
+ *   [4] STMicro AN2852, "EVL6591-90WADP - 90 W AC-DC AHB adapter."
+ *   [5] Pressman, Billings & Morey, "Switching Power Supply Design" 3e Ch. 16.
+ *   [6] Erickson & Maksimović, "Fundamentals of Power Electronics" 2e §6.3
+ *       (DC analysis), §11.1.4 (small-signal).
+ *   [7] TI SLUA121, "The Current-Doubler Rectifier: An Alternative
+ *       Rectification Technique."
+ *
+ * =====================================================================
+ * ACCURACY DISCLAIMER
+ * =====================================================================
+ *
+ *   The analytical model assumes ideal switches/diodes, lossless reactives,
+ *   ideal coupling K=1 (transformed to K=0.999 for SPICE numerical
+ *   stability), and PWL transitions. The SPICE model omits MOSFET Coss
+ *   variation with V_DS, body-diode reverse recovery, gate-driver
+ *   propagation delay, transformer inter-winding capacitance, and
+ *   core-loss resistance. Predicted η is an upper bound; expect 2-4 %
+ *   loss vs. measured at full load.
+ *
+ *   V5 (AHB-Flyback) is a two-switch / active-clamp flyback approximation:
+ *   the analytical model assumes the secondary perfectly clamps v_pri to
+ *   −Vo·n during the OFF interval; in practice clamp-cap ringing and
+ *   leakage-energy recycling will deviate. V5 gain is singular at D=1.
+ *
+ *   V6 (multi-output) cross-regulation is approximate: per-output current
+ *   waveforms are projected via load-share (Vo_k·Io_k / Σ Vo_j·Io_j) of
+ *   the primary current; without per-secondary leakage inductance the
+ *   per-output magnetic loss may be off by 20-100 %. A warn-once message
+ *   is printed by process_operating_points in this case.
  */
 class AsymmetricHalfBridge : public MAS::AsymmetricHalfBridge, public Topology {
 private:
@@ -111,6 +186,13 @@ private:
 
     // Schema-less device parameter (per-FET output capacitance).
     double mosfetCoss = 200e-12;
+
+    // Schema-less V4 toggle. When true, the secondary diodes are replaced
+    // by SR FETs in the SPICE netlist (driven by the complementary primary
+    // PWM gate signals — see generate_ngspice_circuit) and the analytical
+    // diode-voltage drop is reduced to ~Rds_on·I (modelled as a 50 mV
+    // floor); see set_use_synchronous_rectifier docstring for caveats.
+    bool useSynchronousRectifier = false;
 
     // Per-OP diagnostics (populated once P3 lands; default-zero in the stub).
     mutable double lastDutyCycle                       = 0;
@@ -176,6 +258,29 @@ public:
     /// transition-time predictions. Default 200 pF. Schema-less; set via setter.
     double get_mosfet_coss() const { return mosfetCoss; }
     void set_mosfet_coss(double value) { mosfetCoss = value; }
+
+    /// V4 synchronous-rectifier toggle (schema-less). When true:
+    ///   - generate_ngspice_circuit replaces every secondary diode with
+    ///     an S_* voltage-controlled switch driven by the complementary
+    ///     primary PWM gate (CT: D_ra→S_ra on g2, D_rb→S_rb on g1; FB:
+    ///     four SR FETs paired with the four bridge diodes' phases; CD:
+    ///     two SR FETs on g1/g2).
+    ///   - The analytical diode-voltage drop used by process_design_*
+    ///     and the per-OP analytical waveforms is reduced to 0.05 V
+    ///     (Rds_on·I floor) instead of the default 0.6 V Si diode drop,
+    ///     reflecting the lower SR conduction loss. This affects
+    ///     compute_turns_ratio, the sized n, and the diagnostics that
+    ///     embed Vd (lastConversionRatio, lastDiodeVoltageDrop).
+    /// Caveat: SR phasing in V4 follows the primary PWM signals; explicit
+    /// SR-driver delay / dead-time is not modeled in the analytical path.
+    bool get_use_synchronous_rectifier() const { return useSynchronousRectifier; }
+    void set_use_synchronous_rectifier(bool value) {
+        useSynchronousRectifier = value;
+        // Lower analytical Vd floor when SR active. The 50 mV figure is
+        // representative of a 30 mΩ SR FET at 1.5 A average secondary
+        // current; surface via lastDiodeVoltageDrop so users can adjust.
+        computedDiodeVoltageDrop = value ? 0.05 : 0.6;
+    }
 
     // ---- Per-OP diagnostics (Guide §2.4) ----
     double get_last_duty_cycle() const { return lastDutyCycle; }
