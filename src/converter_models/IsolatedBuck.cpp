@@ -99,8 +99,39 @@ namespace OpenMagnetics {
                 lastSecondaryPeakCurrent = secPeak;
             }
 
-            auto secondaryVoltageMaximum = (inputVoltage - primaryOutputVoltage) / turnsRatios[secondaryIndex] - diodeVoltageDrop;
-            auto secondaryVoltageMinimum = -primaryOutputVoltage / turnsRatios[secondaryIndex] + diodeVoltageDrop;
+            // Flybuck-mode secondary winding voltage (NOT forward-mode).
+            //
+            // Topology refresher: in IsolatedBuck (flybuck), the primary IS
+            // the buck inductor. The secondary winding is COUPLED into that
+            // same magnetic, with a flyback-style rectifier on the output.
+            // The secondary diode therefore conducts during the FREEWHEEL
+            // (OFF) interval — the opposite of a forward converter.
+            //
+            // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §5.0, this signal lands in
+            // excitations_per_winding[secondary].voltage and is checked by
+            // Test_VoltSecondBalance_IsolatedBuck. Pre-fix this code emitted
+            // the forward-mode formula (max during ON = +(Vin−Vp)/n−Vd, min
+            // during OFF = −Vp/n+Vd), which violates volt-second balance by
+            // ~89 % of peak — observable as the failing analytical check.
+            //
+            //   ON  (S1 closed): V_pri,winding = +(Vin − Vp_pri)
+            //                    V_sec,winding = −(Vin − Vp_pri)/n
+            //                    (dot of Lsec is at GND in the netlist, so
+            //                     it inverts; secondary diode reverse-biased)
+            //   OFF (freewheel): V_pri,winding = −Vp_pri
+            //                    V_sec,winding = +Vp_pri/n
+            //                    Diode then conducts and the winding terminal
+            //                    clamps to Vout_sec + Vd, i.e. the winding-
+            //                    side voltage seen by the inductor port is
+            //                    +Vp_pri/n minus the resistive Vd loss.
+            //
+            // Sanity (ideal, Vd→0, D = Vp_pri/Vin):
+            //   D·V_on + (1−D)·V_off
+            //     = D·[−(Vin−Vp)/n] + (1−D)·[Vp/n]
+            //     = (1/n)·[−D·Vin + D·Vp + Vp − D·Vp]
+            //     = (1/n)·[Vp − D·Vin]  =  0.    ✓
+            auto secondaryVoltageMinimum = -(inputVoltage - primaryOutputVoltage) / turnsRatios[secondaryIndex];
+            auto secondaryVoltageMaximum =  primaryOutputVoltage / turnsRatios[secondaryIndex] - diodeVoltageDrop;
 
             // Current
             {
@@ -656,10 +687,15 @@ namespace OpenMagnetics {
                 // underestimate (3606-class bug; see SPICE comment).
                 waveformMapping.push_back({{"voltage", "vpri_diff"}, {"current", "vpri_sense#branch"}});
                 
-                // Secondary windings
+                // Secondary windings: probe the across-Lsec voltage. Each
+                // Lsec<N> in the netlist is `Lsec<N> 0 sec<N>_in`, so its
+                // far terminal is GND and v(sec<N>_in) IS the differential
+                // winding voltage (per §5.0). Previously this used
+                // sec<N>_rect — the post-diode/post-Cout rectified node —
+                // which is downstream of the rectifier and a §5.0 violation
+                // (~98 % normAvg violation pre-fix).
                 for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-                    // Use secX_rect for secondary voltage (rectified node before output cap)
-                    std::string voltageName = "sec" + std::to_string(secIdx) + "_rect";
+                    std::string voltageName = "sec" + std::to_string(secIdx) + "_in";
                     std::string currentName = "vsec_sense" + std::to_string(secIdx) + "#branch";
                     waveformMapping.push_back({{"voltage", voltageName}, {"current", currentName}});
                 }
