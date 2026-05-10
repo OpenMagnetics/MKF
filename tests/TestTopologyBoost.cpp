@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "NgspiceTestHelpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -475,6 +476,35 @@ namespace {
     TEST_CASE("Test_Boost_RefDesign3_PtP_LM5122EVM_1PH",
               "[converter-model][boost-topology][refdesign][ngspice-simulation][ptpcomparison]") {
         assert_boost_refdesign_ptp(kRefDesign3);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // §5.1 converter-port DC-stream gate (see ConverterPortChecks).
+    // ────────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_Boost_ConverterPortWaveforms",
+              "[converter-port-waveforms][boost-topology][ngspice-simulation]") {
+        NgspiceTestHelpers::skip_if_ngspice_unavailable();
+
+        OpenMagnetics::Boost boost;
+        const double Vin = 12.0, Vout = 24.0, Iout = 1.0;
+        DimensionWithTolerance iv; iv.set_nominal(Vin);
+        boost.set_input_voltage(iv);
+        boost.set_efficiency(0.92);
+        boost.set_current_ripple_ratio(0.3);
+
+        BaseOperatingPoint op;
+        op.set_output_voltages({Vout});
+        op.set_output_currents({Iout});
+        op.set_switching_frequency(250e3);
+        op.set_ambient_temperature(25.0);
+        boost.set_operating_points({op});
+
+        const double Lm = boost.process_design_requirements()
+                               .get_magnetizing_inductance().get_minimum().value();
+        auto wfs = boost.simulate_and_extract_topology_waveforms(Lm);
+        REQUIRE(!wfs.empty());
+        for (size_t i = 0; i < wfs.size(); ++i)
+            ConverterPortChecks::check_dc_ports(wfs[i], "Boost", i, Vin, {Vout}, {Iout});
     }
 
 }  // namespace

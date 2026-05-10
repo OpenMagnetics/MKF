@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "NgspiceTestHelpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -1802,6 +1803,38 @@ TEST_CASE("Test_Dab_DPS_SymmetricShifts", "[converter-model][dab-topology][smoke
         double P_check = Dab::compute_power_general(V1, V2, N, phi_dps, D_rad, D_rad, Fs, L);
         REQUIRE_THAT(P_check, Catch::Matchers::WithinRel(P, 0.05));
     }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// §5.1 converter-port DC-stream gate (see ConverterPortChecks).
+// ────────────────────────────────────────────────────────────────────────
+TEST_CASE("Test_Dab_ConverterPortWaveforms",
+          "[converter-port-waveforms][dab-topology][ngspice-simulation]") {
+    NgspiceTestHelpers::skip_if_ngspice_unavailable();
+
+    OpenMagnetics::Dab dab;
+    const double Vin = 400.0, Vout = 48.0, Iout = 10.0;
+    MAS::DimensionWithTolerance iv; iv.set_nominal(Vin);
+    dab.set_input_voltage(iv);
+    dab.set_efficiency(0.95);
+
+    OpenMagnetics::DabOperatingPoint op;
+    op.set_output_voltages({Vout});
+    op.set_output_currents({Iout});
+    op.set_switching_frequency(100e3);
+    op.set_ambient_temperature(25.0);
+    dab.set_operating_points({op});
+
+    auto designReqs = dab.process_design_requirements();
+    std::vector<double> turnsRatios;
+    for (auto& tr : designReqs.get_turns_ratios())
+        turnsRatios.push_back(tr.get_nominal().value());
+    const double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+    auto wfs = dab.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+    REQUIRE(!wfs.empty());
+    for (size_t i = 0; i < wfs.size(); ++i)
+        ConverterPortChecks::check_dc_ports(wfs[i], "DAB", i, Vin, {Vout}, {Iout});
 }
 
 } // anonymous namespace

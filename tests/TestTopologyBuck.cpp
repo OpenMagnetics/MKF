@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "NgspiceTestHelpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -603,6 +604,38 @@ namespace {
     TEST_CASE("Test_Buck_RefDesign3_PtP_LM5146_Q1_EVM12V",
               "[converter-model][buck-topology][refdesign][ngspice-simulation][ptpcomparison]") {
         assert_buck_refdesign_ptp(kBuckRefDesign3);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // §5.1 converter-port DC-stream gate. See ConverterPortChecks for the
+    // full bound rationale. The signals returned by
+    // simulate_and_extract_topology_waveforms() are the DC source / DC
+    // filtered output rails — winding-port AC must NEVER appear here.
+    // ────────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_Buck_ConverterPortWaveforms",
+              "[converter-port-waveforms][buck-topology][ngspice-simulation]") {
+        NgspiceTestHelpers::skip_if_ngspice_unavailable();
+
+        OpenMagnetics::Buck buck;
+        const double Vin = 48.0, Vout = 12.0, Iout = 2.0;
+        DimensionWithTolerance iv; iv.set_nominal(Vin);
+        buck.set_input_voltage(iv);
+        buck.set_efficiency(0.92);
+        buck.set_current_ripple_ratio(0.3);
+
+        BaseOperatingPoint op;
+        op.set_output_voltages({Vout});
+        op.set_output_currents({Iout});
+        op.set_switching_frequency(250e3);
+        op.set_ambient_temperature(25.0);
+        buck.set_operating_points({op});
+
+        const double Lm = buck.process_design_requirements()
+                              .get_magnetizing_inductance().get_minimum().value();
+        auto wfs = buck.simulate_and_extract_topology_waveforms(Lm);
+        REQUIRE(!wfs.empty());
+        for (size_t i = 0; i < wfs.size(); ++i)
+            ConverterPortChecks::check_dc_ports(wfs[i], "Buck", i, Vin, {Vout}, {Iout});
     }
 
 }  // namespace

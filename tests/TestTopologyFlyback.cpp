@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "NgspiceTestHelpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -1764,6 +1765,44 @@ namespace {
     TEST_CASE("Test_Flyback_RefDesign3_PtP_TIDA_00709",
               "[converter-model][flyback-topology][refdesign][ngspice-simulation][ptpcomparison]") {
         assert_flyback_refdesign_ptp(kFlybackRefDesign3);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // §5.1 converter-port DC-stream gate (see ConverterPortChecks).
+    // Flyback Cout RC settles slowly at 100kHz/100µF — bump steady-state
+    // periods like the volt-second audit does.
+    // ────────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_Flyback_ConverterPortWaveforms",
+              "[converter-port-waveforms][flyback-topology][ngspice-simulation]") {
+        NgspiceTestHelpers::skip_if_ngspice_unavailable();
+
+        OpenMagnetics::Flyback fb;
+        const double Vin = 48.0, Vout = 12.0, Iout = 1.0;
+        DimensionWithTolerance iv; iv.set_nominal(Vin);
+        fb.set_input_voltage(iv);
+        fb.set_diode_voltage_drop(0.5);
+        fb.set_efficiency(0.9);
+        fb.set_current_ripple_ratio(0.3);
+        fb.set_maximum_duty_cycle(0.5);
+
+        OpenMagnetics::FlybackOperatingPoint op;
+        op.set_output_voltages({Vout});
+        op.set_output_currents({Iout});
+        op.set_switching_frequency(100e3);
+        op.set_ambient_temperature(25.0);
+        fb.set_operating_points({op});
+
+        auto designReqs = fb.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios())
+            turnsRatios.push_back(tr.get_nominal().value());
+        const double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        fb.set_num_steady_state_periods(200);
+        auto wfs = fb.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+        REQUIRE(!wfs.empty());
+        for (size_t i = 0; i < wfs.size(); ++i)
+            ConverterPortChecks::check_dc_ports(wfs[i], "Flyback", i, Vin, {Vout}, {Iout});
     }
 
 }  // namespace
