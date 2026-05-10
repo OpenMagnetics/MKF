@@ -104,19 +104,16 @@ TEST_CASE("AHB P1: run_checks rejects missing input-voltage spec", "[ahb-topolog
 
 
 TEST_CASE("AHB P1: schema + setters reject out-of-range duty cycle", "[ahb-topology][P1]") {
-    // The AHB constructor validates dutyCycle ∈ [0,1] for every operating
-    // point — malformed JSON is rejected up front. The MAS schema setter
-    // for OperatingPoint::set_duty_cycle is lenient (no constraint check),
-    // so for in-place mutation we rely on run_checks to surface the error.
+    // The schema bounds dutyCycle to [0,1] via "minimum"/"maximum" in
+    // asymmetricHalfBridge.json; quicktype emits a CheckConstraint guard
+    // in BOTH from_json AND set_duty_cycle. Verify both layers reject 1.5.
     json j = minimal_valid_ahb();
     j["operatingPoints"][0]["dutyCycle"] = 1.5;
     CHECK_THROWS(AHB(j));
 
     AHB ahb(minimal_valid_ahb());
     auto& ops = ahb.get_mutable_operating_points();
-    ops[0].set_duty_cycle(1.5);                       // schema setter: no check
-    CHECK(ahb.run_checks(false) == false);
-    CHECK_THROWS_AS(ahb.run_checks(true), std::runtime_error);
+    CHECK_THROWS(ops[0].set_duty_cycle(1.5));
 }
 
 

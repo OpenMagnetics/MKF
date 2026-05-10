@@ -15,20 +15,10 @@ namespace OpenMagnetics {
 // Constructors
 // =========================================================================
 AsymmetricHalfBridge::AsymmetricHalfBridge(const json& j) {
+    // Range-bounded fields (e.g. dutyCycle ∈ [0,1]) are validated by the
+    // schema-generated setters in MAS.hpp via CheckConstraint(...), which
+    // throw on out-of-range JSON during from_json deserialization.
     from_json(j, *static_cast<MAS::AsymmetricHalfBridge*>(this));
-    // Validate range-bounded fields immediately so malformed JSON is
-    // rejected at construction (matches the user-facing contract: "no
-    // fallbacks, no defaults, no silent shortcuts"). The MAS schema
-    // setters do not enforce duty_cycle ∈ [0,1] for OperatingPoint, so
-    // we re-check here.
-    for (auto& op : get_operating_points()) {
-        const double D = op.get_duty_cycle();
-        if (!(D >= 0.0 && D <= 1.0)) {
-            throw std::runtime_error(
-                "AsymmetricHalfBridge: dutyCycle must lie in [0, 1] "
-                "(got " + std::to_string(D) + ")");
-        }
-    }
 }
 
 AdvancedAsymmetricHalfBridge::AdvancedAsymmetricHalfBridge(const json& j) {
