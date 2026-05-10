@@ -99,6 +99,52 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::FLYBACK_CONVERTER] = flyback;
             }
 
+            // PushPull — center-tapped primary, two low-side switches 180°
+            // out of phase, D ≤ 0.5. Reference designs span TI push-pull
+            // transformer drivers SN6501 (410 kHz internal osc), SN6505B
+            // (420 kHz), and SN6507 (programmable 100 kHz–2 MHz, wide-Vin
+            // 3–36 V). Snubber R/C kept at 1 kΩ / 100 pF for symmetry
+            // with Flyback/Dab but the *primary-switch* snubber is NOT
+            // emitted by generate_ngspice_circuit() — see PushPull.cpp:
+            // any cap from sw_node → 0 reflects through the K=0.9999
+            // four-winding coupling into the secondary-diode
+            // commutation path and breaks convergence at dsec_top. The
+            // existing 1 MΩ "convergence helpers" on each winding
+            // terminal plus the secondary RC diode snubbers (both
+            // retained from the original hand-tuned netlist) provide
+            // sufficient damping. snubR/snubC are still registered so
+            // future MagneticAdviser passes that build a real magnetic
+            // (with measurable leakage) can re-enable a primary snubber
+            // without revisiting this comment. outputCapacitance =
+            // 100 µF matches the LC-filter buck-derived secondary side
+            // (forward-class topology, not energy-storage flyback).
+            // Solver tolerances are looser than Boost/Buck (RELTOL 0.003,
+            // ABSTOL 1e-7, VNTOL 1e-4, ITL1/ITL4 500/200) — matches
+            // Dab's "many simultaneous switching events" tier: two
+            // switches and two rectifier diodes commutate per Tsw on a
+            // K=0.9999 multi-coupled transformer, which is too stiff for
+            // Boost-tight tolerances. diodeRS=0.01 (vs Flyback's default
+            // 1e-6) damps the rectifier reverse-recovery node enough to
+            // clear "timestep too small" at commutation. METHOD=TRAP
+            // (trapezoidal, ngspice default) mirrors the converter's
+            // pre-registry hand-tuned netlist: GEAR was tried but the
+            // simultaneous secondary-diode commutation against the
+            // multi-coupled transformer pushes the GEAR step length
+            // below 1 fs and aborts with "timestep too small"
+            // (especially in step-up configurations like 24 V → 48 V).
+            {
+                SpiceSimulationConfig pushPull;
+                pushPull.swModelVT = 2.5;      pushPull.swModelVH = 0.01;
+                pushPull.snubR = 1e3;          pushPull.snubC = 100e-12;
+                pushPull.diodeIS = 1e-14;      pushPull.diodeRS = 0.01;
+                pushPull.outputCapacitance = 100e-6;
+                pushPull.relTol = 0.003;       pushPull.absTol = 1e-7;
+                pushPull.vnTol  = 1e-4;
+                pushPull.itl1 = 500;           pushPull.itl4 = 200;
+                pushPull.method = "TRAP";      pushPull.trTol = 7.0;
+                m[MAS::Topologies::PUSH_PULL_CONVERTER] = pushPull;
+            }
+
             return m;
         }();
         return defaults;
