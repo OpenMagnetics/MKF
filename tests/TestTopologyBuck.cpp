@@ -332,36 +332,40 @@ namespace {
         double i_min = *std::min_element(currentData.begin(), currentData.end());
         double i_avg = std::accumulate(currentData.begin(), currentData.end(), 0.0) / currentData.size();
         
-        INFO("Inductor voltage max: " << v_max << " V");
-        INFO("Inductor voltage min: " << v_min << " V");
-        INFO("Inductor current max: " << i_max << " A");
-        INFO("Inductor current min: " << i_min << " A");
-        INFO("Inductor current avg: " << i_avg << " A");
-        
-        // For Buck, inductor voltage swings between (Vin - Vout) and -Vout
-        // Vin = 24V, Vout = 5V, so voltage should be around 19V and -5V
-        CHECK(v_max > 15.0);  // Should be around 19V during switch ON
-        CHECK(v_max < 25.0);
-        
-        CHECK(v_min < 0.0);  // Should be negative during switch OFF
-        CHECK(v_min > -10.0);
-        
+        INFO("Converter input voltage max: " << v_max << " V");
+        INFO("Converter input voltage min: " << v_min << " V");
+        INFO("Converter input current max: " << i_max << " A");
+        INFO("Converter input current min: " << i_min << " A");
+        INFO("Converter input current avg: " << i_avg << " A");
+
+        // §5.0: simulate_and_extract_topology_waveforms returns the
+        // converter-port stream — set_input_voltage is the DC source
+        // voltage (Vin), not the switch-node voltage. For Buck:
+        //   Vin (input)  = DC ≈ 24 V (with output cap and 1 V scale ripple)
+        //   Iin (input)  = inductor current = average ≈ Iout in CCM
+        // Inductor (winding) voltage is in excitations_per_winding and is
+        // tested by Test_VoltSecondBalance_Buck and elsewhere.
+        const double Vin_expected = 24.0;
+        CHECK(v_max < Vin_expected * 1.1);   // ≤ 26.4 V — Vin DC
+        CHECK(v_min > Vin_expected * 0.9);   // ≥ 21.6 V — DC, no bipolar swing
+
         // Average inductor current should be close to output current
         CHECK(i_avg > 1.5);  // Should be around 2A
         CHECK(i_avg < 2.5);
-        
-        // In CCM, current should not go to zero
+
+        // In CCM, inductor current should not go to zero
         CHECK(i_min > 0.0);
 
         INFO("Buck ngspice simulation test passed");
 
-        SECTION("Waveform shape: volt-second balance (avg switch voltage ≈ Vout)") {
-            // For Buck: avg(v_sw) = Vin * D = Vout at steady-state (volt-second balance)
-            // v_sw = Vin during switch ON, 0V during switch OFF (freewheeling)
-            double v_sw_avg = std::accumulate(voltageData.begin(), voltageData.end(), 0.0) / voltageData.size();
-            INFO("Switch node avg voltage: " << v_sw_avg << " V (expect ≈ 5V = Vout)");
-            CHECK(v_sw_avg > 3.0);
-            CHECK(v_sw_avg < 8.0);
+        SECTION("Converter port: input voltage ≈ Vin (DC)") {
+            // §5.0 — input_voltage on ConverterWaveforms is the DC bus,
+            // NOT the switch node. Volt-second balance does NOT apply to
+            // a DC source.
+            double v_in_avg = std::accumulate(voltageData.begin(), voltageData.end(), 0.0) / voltageData.size();
+            INFO("Converter input avg voltage: " << v_in_avg << " V (expect ≈ "
+                 << Vin_expected << " V = Vin DC)");
+            CHECK(std::abs(v_in_avg - Vin_expected) < 0.1 * Vin_expected);
         }
 
         SECTION("Waveform shape: triangular inductor current (single peak per period)") {

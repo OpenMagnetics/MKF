@@ -335,7 +335,15 @@ namespace OpenMagnetics {
         // Inductor with current sense
         circuit << "* Inductor with current sense\n";
         circuit << "Vl_sense sw l_in 0\n";
-        circuit << "L1 l_in vout " << std::scientific << inductance << std::fixed << "\n\n";
+        circuit << "L1 l_in vout " << std::scientific << inductance << std::fixed << "\n";
+        // §5.0: across-winding differential probe. The inductor's "other"
+        // terminal (vout) is NOT GND. v(sw) avg ≈ D·Vin = Vout, which
+        // collapses the bipolar swing in the winding-port stream.
+        // Differential V(l_in)-V(vout) gives the correct ±Vin/Vout swing
+        // with avg = 0. Vl_sense = (sw → l_in) so i(Vl_sense) > 0 flows
+        // INTO L1's l_in terminal (= dot). V_winding = V(l_in)-V(vout)
+        // is +ve at the dot ⇒ avg(V·I) > 0 (passive convention).
+        circuit << "Bvpri_diff vpri_diff 0 V=V(l_in)-V(vout)\n\n";
         
         // Output capacitor and load
         if (outputCurrent <= 0.0) {
@@ -354,9 +362,11 @@ namespace OpenMagnetics {
         circuit << "* Transient Analysis\n";
         circuit << ".tran " << std::scientific << stepTime << " " << simTime << " " << startTime << std::fixed << "\n\n";
         
-        // Save signals
+        // Save signals — split per §5.0:
+        //   - Winding-port: v(vpri_diff) i(Vl_sense)
+        //   - Converter-port: v(vin_dc) v(sw) v(vout) i(Vl_sense)
         circuit << "* Output signals\n";
-        circuit << ".save v(sw) v(l_in) v(vout) i(Vl_sense)\n\n";
+        circuit << ".save v(vpri_diff) v(vin_dc) v(sw) v(vout) i(Vl_sense)\n\n";
         
         // Solver options for convergence in switching circuits.
         // METHOD=GEAR + larger TRTOL handles the hard-switching event at
@@ -410,10 +420,10 @@ namespace OpenMagnetics {
                     throw std::runtime_error("Simulation failed: " + simResult.errorMessage);
                 }
                 
-                // Buck has only one winding (the inductor)
-                // The inductor voltage is the difference between switch node and output
+                // §5.0: winding-port stream — differential voltage across
+                // L1 terminals (l_in → vout), passive-convention current.
                 NgspiceRunner::WaveformNameMapping waveformMapping = {
-                    {{"voltage", "sw"}, {"current", "vl_sense#branch"}}
+                    {{"voltage", "vpri_diff"}, {"current", "vl_sense#branch"}}
                 };
                 
                 std::vector<std::string> windingNames = {"Primary"};
@@ -464,6 +474,8 @@ namespace OpenMagnetics {
             
             std::string netlist = generate_ngspice_circuit(inductance, inputVoltageIndex, opIndex);
             double switchingFrequency = opPoint.get_switching_frequency();
+            const double outputVoltage = opPoint.get_output_voltages()[0];
+            const double outputCurrent = opPoint.get_output_currents()[0];
             
             SimulationConfig config;
             config.frequency = switchingFrequency;
@@ -498,11 +510,20 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("sw"));
+            // §5.0 converter-port stream — Vin (DC source), Iin (= switch
+            // current = inductor current during ON; for the converter
+            // input we report the average inductor current, which equals
+            // Iout for an ideal Buck), Vout / Iout (DC by design).
+            wf.set_input_voltage(getWaveform("vin_dc"));
             wf.set_input_current(getWaveform("vl_sense#branch"));
-            
+
             wf.get_mutable_output_voltages().push_back(getWaveform("vout"));
-            wf.get_mutable_output_currents().push_back(getWaveform("vl_sense#branch"));
+            // Reconstruct Iout(t) = Vout(t) / Rload (DC by design).
+            Waveform ioutWf = getWaveform("vout");
+            auto& ioutData = ioutWf.get_mutable_data();
+            const double rLoad = outputVoltage / outputCurrent;
+            for (auto& v : ioutData) v = v / rLoad;
+            wf.get_mutable_output_currents().push_back(ioutWf);
             
             results.push_back(wf);
         }

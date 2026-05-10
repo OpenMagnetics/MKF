@@ -1141,17 +1141,22 @@ TEST_CASE("Buck converter simulation", "[ngspice-runner][buck-topology][smoke-te
     double v_min = *std::min_element(voltageData.begin(), voltageData.end());
     double i_avg = std::accumulate(currentData.begin(), currentData.end(), 0.0) / currentData.size();
 
-    INFO("Inductor voltage: min=" << v_min << " max=" << v_max);
-    INFO("Inductor current avg: " << i_avg);
+    INFO("Converter input voltage: min=" << v_min << " max=" << v_max);
+    INFO("Inductor (input) current avg: " << i_avg);
 
-    // For Buck, inductor voltage swings between (Vin - Vout) and -Vout
-    CHECK(v_max > 0.0);  // Should be positive during switch ON
-    CHECK(v_min < 0.0);  // Should be negative during switch OFF
-    
-    // Average inductor current should be close to output current
-    CHECK(i_avg > 1.5);  // Should be around 2A
+    // Post §5.0 fix: input_voltage on the converter-port stream is the DC
+    // source v(vin_dc) ≈ 24V (NOT the inductor swing v(sw)). Inductor
+    // bipolar voltage now lives on the per-winding excitation, not here.
+    CHECK(v_max > 23.5);
+    CHECK(v_max < 24.5);
+    CHECK(v_min > 23.5);   // DC source: ripple-free, min ≈ max
+    CHECK(v_min < 24.5);
+
+    // input_current is the inductor branch current. Average ≈ Iout = 2A;
+    // allow margin for startup transient inside the captured window.
+    CHECK(i_avg > 1.0);
     CHECK(i_avg < 2.5);
-    
+
     INFO("Buck converter simulation passed");
 }
 
