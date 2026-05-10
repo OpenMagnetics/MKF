@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "NgspiceTestHelpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -417,49 +418,34 @@ namespace {
         INFO("Primary voltage max: " << priV_max << " V");
         INFO("Primary voltage min: " << priV_min << " V");
         
-        // ConverterWaveforms::input_voltage now reports the differential
-        // ACROSS-WINDING voltage (V(pri_top) − V(vin_dc)), not the raw
-        // node-to-GND voltage. This is the correct physical signal for
-        // every downstream consumer (AP filter, Inputs RMS, magnetizing-
-        // current reconstruction). For an ideal push-pull the half-
-        // winding sees +Vin when its switch is OFF (other half conducts
-        // → reflected polarity) and −Vin when its switch is ON, so the
-        // waveform is bipolar and averages ≈ 0 by volt-second balance.
-        // Vin = 24V in this fixture; we allow generous overshoot from
-        // diode/leakage ringing at the commutation edges.
-        CHECK(priV_max > 15.0);    // Reaches at least ~Vin in the OFF state
-        CHECK(priV_max < 100.0);
-        CHECK(priV_min < -15.0);   // Reaches at least ~−Vin in the ON state
-        CHECK(priV_min > -100.0);
+        // ConverterWaveforms::input_voltage is the §5.1 converter-port
+        // signal — the DC input source rail v(vin_dc) — NOT a winding-port
+        // AC voltage. For this fixture Vin=24V (nominal), so it must be a
+        // flat ≈+24V DC trace. Bipolar winding voltage checks belong on the
+        // OperatingPoint stream returned by simulate_and_extract_operating_points
+        // (covered separately in TestVoltSecondBalance).
+        const double VinNom = 24.0;
+        CHECK(priV_max < VinNom * 1.01);
+        CHECK(priV_max > VinNom * 0.99);
+        CHECK(priV_min < VinNom * 1.01);
+        CHECK(priV_min > VinNom * 0.99);
 
         INFO("Push-Pull ngspice simulation test passed");
 
-        SECTION("Waveform shape: bipolar primary voltage (alternates between +Vin and -Vin)") {
-            // Differential winding voltage spends comparable time positive
-            // (S2 ON / S1 OFF) and negative (S1 ON / S2 OFF), with brief
-            // dead-time near 0 V.
-            int count_pos = 0, count_neg = 0;
-            for (double v : priVoltageData) {
-                if (v > 5.0) count_pos++;
-                else if (v < -5.0) count_neg++;
-            }
-            double frac_pos = double(count_pos) / priVoltageData.size();
-            double frac_neg = double(count_neg) / priVoltageData.size();
-            INFO("Fraction > +5V: " << frac_pos << ", fraction < -5V: " << frac_neg);
-            CHECK(frac_pos > 0.25);
-            CHECK(frac_neg > 0.25);
+        SECTION("Waveform shape: input_voltage is a flat DC source rail (§5.1)") {
+            // No bipolar excursions on the converter-port input_voltage.
+            int count_neg = 0;
+            for (double v : priVoltageData) if (v < 0.0) count_neg++;
+            CHECK(count_neg == 0);
         }
 
-        SECTION("Waveform shape: volt-second balance (avg differential primary voltage ≈ 0)") {
-            // For an ideal half-winding in a balanced push-pull,
-            // ∫V_winding dt = 0 over a cycle (otherwise the core
-            // would walk into saturation). Avg should be close to 0.
+        SECTION("Waveform shape: input_voltage mean ≈ Vin_nom (DC source)") {
             double priV_avg = std::accumulate(priVoltageData.begin(), priVoltageData.end(), 0.0) / priVoltageData.size();
-            INFO("Differential primary voltage avg: " << priV_avg << " V (expect ≈ 0 for balanced push-pull)");
-            CHECK(std::fabs(priV_avg) < 5.0);
+            INFO("Converter-port input_voltage avg: " << priV_avg << " V (expect ≈ Vin_nom = 24V)");
+            CHECK(std::fabs(priV_avg - VinNom) < 0.5);
         }
 
-        SECTION("Waveform shape: primary current is non-zero and positive (CCM operation)") {
+        SECTION("Waveform shape: input current is non-zero and positive (CCM operation)") {
             auto& priCurrentData = converterWaveforms[0].get_input_current().get_data();
             if (!priCurrentData.empty()) {
                 double priI_avg = std::accumulate(priCurrentData.begin(), priCurrentData.end(), 0.0) / priCurrentData.size();
@@ -544,11 +530,12 @@ namespace {
         double cwfV_max = *std::max_element(cwfInputVoltage.begin(), cwfInputVoltage.end());
         double cwfV_min = *std::min_element(cwfInputVoltage.begin(), cwfInputVoltage.end());
 
-        INFO("Converter differential primary voltage max: " << cwfV_max << " V, min: " << cwfV_min << " V");
-        // ConverterWaveforms::input_voltage is the across-winding
-        // differential V(pri_top)−V(vin_dc): bipolar, ±Vin.
-        CHECK(cwfV_max > 15.0);
-        CHECK(cwfV_min < -5.0);
+        INFO("Converter input_voltage (DC source rail) max: " << cwfV_max << " V, min: " << cwfV_min << " V");
+        // §5.1: ConverterWaveforms::input_voltage is the DC source rail
+        // v(vin_dc), NOT a winding-port AC. Must be flat ≈ Vin_nom (24V).
+        CHECK(cwfV_max < 24.0 * 1.01);
+        CHECK(cwfV_max > 24.0 * 0.99);
+        CHECK(cwfV_min > 24.0 * 0.99);
 
         // Output voltage should be around 48V (stable)
         REQUIRE(!cwf.get_output_voltages().empty());
@@ -1244,6 +1231,40 @@ namespace {
         // Must throw with a descriptive message — not crash ngspice or
         // silently clamp D to 0.5.
         CHECK_THROWS(app.process());
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // §5.1 converter-port DC-stream gate (see ConverterPortChecks).
+    // ────────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_PushPull_ConverterPortWaveforms",
+              "[converter-port-waveforms][push-pull-topology][ngspice-simulation]") {
+        NgspiceTestHelpers::skip_if_ngspice_unavailable();
+
+        OpenMagnetics::PushPull pp;
+        const double Vin = 24.0, Vout = 5.0, Iout = 1.0;
+        DimensionWithTolerance iv; iv.set_nominal(Vin);
+        pp.set_input_voltage(iv);
+        pp.set_diode_voltage_drop(0.5);
+        pp.set_efficiency(0.9);
+        pp.set_current_ripple_ratio(0.4);
+
+        PushPullOperatingPoint op;
+        op.set_output_voltages({Vout});
+        op.set_output_currents({Iout});
+        op.set_switching_frequency(420e3);
+        op.set_ambient_temperature(25.0);
+        pp.set_operating_points({op});
+
+        auto designReqs = pp.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : designReqs.get_turns_ratios())
+            turnsRatios.push_back(tr.get_nominal().value());
+        const double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto wfs = pp.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+        REQUIRE(!wfs.empty());
+        for (size_t i = 0; i < wfs.size(); ++i)
+            ConverterPortChecks::check_dc_ports(wfs[i], "PushPull", i, Vin, {Vout}, {Iout});
     }
 
 // End of SUITE

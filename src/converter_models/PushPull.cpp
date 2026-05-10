@@ -1453,7 +1453,8 @@ namespace OpenMagnetics {
         // Save signals
         circuit << "* Output signals\n";
         circuit << ".save v(vpri_top_diff) v(vpri_bot_diff) i(Vpri_top_sense) i(Vpri_bot_sense)";
-        circuit << " v(sec_top) v(sec_bot) i(Vsec_top_sense) i(Vsec_bot_sense) i(Vsec_sense) v(vout)\n\n";
+        circuit << " v(sec_top) v(sec_bot) i(Vsec_top_sense) i(Vsec_bot_sense) i(Vsec_sense) v(vout)";
+        circuit << " v(vin_dc) i(Vin)\n\n";
 
         // Solver options for convergence in switching circuits.
         // METHOD=GEAR + larger TRTOL handles the simultaneous
@@ -1603,9 +1604,22 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("vpri_top_diff"));
-            wf.set_input_current(getWaveform("vpri_top_sense#branch"));
-            
+            // §5.1 — converter-port stream is DC source / DC filtered output.
+            // Vin source is `Vin vin_dc 0 <V>` so v(vin_dc) is the DC rail and
+            // i(Vin) is the (negated) source current. Vout is the filtered cap
+            // node; output current = i(Vsec_sense) which is the inductor /
+            // load current after the LC filter.
+            wf.set_input_voltage(getWaveform("vin_dc"));
+            // i(Vin) follows ngspice's convention: positive current flows from
+            // + terminal through the source, so source-supplied current is
+            // -i(Vin). Reconstruct as Pin/Vin via the negated branch.
+            {
+                Waveform vinI = getWaveform("vin#branch");
+                auto& d = vinI.get_mutable_data();
+                for (auto& x : d) x = -x;
+                wf.set_input_current(vinI);
+            }
+
             wf.get_mutable_output_voltages().push_back(getWaveform("vout"));
             wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense#branch"));
             
