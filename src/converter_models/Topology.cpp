@@ -74,6 +74,31 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::BUCK_CONVERTER] = buck;
             }
 
+            // Flyback — single primary-switch isolated converter, energy
+            // stored in coupled inductor airgap. Hard-switched at 50 kHz
+            // – 200 kHz typical (current-mode controllers like UCC28C44,
+            // LM5021, LM5180). Output capacitance 10 µF reflects the
+            // smaller filter caps typical of low-power flybacks (vs the
+            // 100 µF used in non-isolated buck/boost EVMs); the
+            // demag-pulse-driven current ramp on the secondary doesn't
+            // need as much bulk smoothing because peak current is
+            // already metered by the controller. Snubber τ = 100 ns
+            // (1 kΩ × 100 pF) is large enough to absorb leakage-induced
+            // ringing at switch turn-off — more aggressive than Boost
+            // because flybacks always have measurable leakage from the
+            // airgap. GEAR + TRTOL = 7 needed: the ideal-coupling
+            // Lp/Ls coupled-inductor model produces near-step changes
+            // in iL at every switching edge, which trapezoidal
+            // integration handles poorly.
+            {
+                SpiceSimulationConfig flyback;
+                flyback.swModelVT = 2.5;       flyback.swModelVH = 0.5;
+                flyback.snubR = 1e3;           flyback.snubC = 100e-12;
+                flyback.outputCapacitance = 10e-6;
+                flyback.method = "GEAR";       flyback.trTol = 7.0;
+                m[MAS::Topologies::FLYBACK_CONVERTER] = flyback;
+            }
+
             return m;
         }();
         return defaults;

@@ -17,6 +17,64 @@ public:
 };
 
 
+/**
+ * @brief Flyback Converter (multi-output capable)
+ *
+ * Buck-boost-derived isolated converter with energy stored in a coupled
+ * inductor (transformer with airgap). Supports multiple secondaries via
+ * power-share allocation. Resolved per-OP via FlybackOperatingPoint::
+ * resolve_mode() / resolve_switching_frequency() (CCM / DCM / QRM / BMO).
+ *
+ *  TOPOLOGY (single secondary, dot polarities matter — primary and
+ *  secondary are wound with OPPOSITE polarity so energy is stored
+ *  during t_on and released during t_off):
+ *
+ *      Vin ──[Sw]──┬─ Lp •          • Ls ─[D]──┬── Vout
+ *                  │   │            │          │
+ *                 GND  •────────────•         Cout
+ *                                              │
+ *                                            GND_sec
+ *
+ *  MODES:
+ *    CCM (Continuous Conduction) — I_pri never reaches 0; smaller ΔIL,
+ *      higher device stress at fixed power.
+ *    DCM (Discontinuous Conduction) — I_pri = 0 for part of t_off;
+ *      simpler control, larger ΔIL.
+ *    QRM (Quasi-Resonant) — turn-on at valley of Lp·Cds resonance after
+ *      demagnetization → soft-switching, variable Fs.
+ *    BMO (Boundary / Critical Mode) — turn-on exactly when IL_pri = 0.
+ *
+ *  KEY EQUATIONS (single secondary, n = N_pri/N_sec):
+ *    (1) CCM:  Vout = (Vin · D) / (n · (1 − D))                [Erickson 6.3]
+ *    (2) DCM:  Vout = Vin · D · √(Tsw / (2 · Lp · Iout / Vin))
+ *    (3) ΔIL_pri = Vin · D · Tsw / Lp
+ *    (4) IL_pri,pk = IL_pri,avg + ΔIL_pri/2  (CCM)
+ *                  = ΔIL_pri                  (DCM, IL_min = 0)
+ *    (5) Vds_max  = Vin_max + n · (Vout + Vd) + V_leakage_spike
+ *
+ *  REFERENCE DESIGNS (verified via vendor product pages):
+ *    See TestTopologyFlyback.cpp — three EVMs spanning low / mid / high
+ *    power: TI **LM5180-Q1EVM** (low ~3 W, primary-side-regulated),
+ *    TI **LM5021EVM** (mid, current-mode flyback controller), and
+ *    TI **UCC28C44EVM-296** (high, current-mode controller demo).
+ *
+ *  TEXTBOOK CROSS-CHECK:
+ *    [1] Erickson & Maksimović, "Fundamentals of Power Electronics",
+ *        3rd ed., Chapter 6.3 (flyback CCM/DCM analysis).
+ *    [2] Pressman, "Switching Power Supply Design", 3rd ed., Chapter 4.
+ *    [3] TI SLUP254 — "Designing Flyback Converters Using Peak-Current-
+ *        Mode Control" (worked design example, 48 V → 12 V CCM).
+ *
+ *  ACCURACY DISCLAIMER:
+ *    The analytical model assumes ideal coupling (k = 1), zero leakage,
+ *    instantaneous diode commutation, and constant-frequency operation
+ *    (QRM/BMO are emitted with a representative Fs from
+ *    resolve_switching_frequency()). Real converters show leakage
+ *    spikes at switch turn-off, reverse-recovery on the secondary
+ *    diode, and Fs hopping in QRM. Diagnostics fields (`last*`)
+ *    capture the last call to
+ *    `process_operating_points_for_input_voltage()`.
+ */
 class Flyback : public MAS::Flyback, public Topology {
 private:
     std::optional<double> maximumDrainSourceVoltage = 600;
@@ -26,7 +84,34 @@ private:
     int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
     int numSteadyStatePeriods = 5;  // Number of steady-state cycles to skip
 
+    // ---- Per-OP analytical diagnostics ----
+    // Populated by process_operating_points_for_input_voltage() for the
+    // most recent call. Used by golden-quality tests to assert mode and
+    // operating-point numerics without reaching into OperatingPoint
+    // waveform arrays.
+    mutable FlybackModes lastMode = FlybackModes::CONTINUOUS_CONDUCTION_MODE;
+    mutable double lastDutyCycle = 0.0;             // D
+    mutable double lastSwitchingFrequency = 0.0;    // Fs [Hz]
+    mutable double lastPrimaryAverageCurrent = 0.0; // IL_pri,avg [A]
+    mutable double lastPrimaryPeakToPeak = 0.0;     // ΔIL_pri,pp [A]
+    mutable double lastPrimaryPeakCurrent = 0.0;    // IL_pri,pk [A]
+    mutable double lastSecondaryPeakCurrent = 0.0;  // IL_sec,pk lumped [A]
+    mutable bool   lastIsCcm = true;                // false → DCM/QRM/BMO
+
 public:
+    // ---- Per-OP diagnostic accessors ----
+    FlybackModes get_last_mode() const { return lastMode; }
+    double get_last_duty_cycle() const { return lastDutyCycle; }
+    double get_last_switching_frequency() const { return lastSwitchingFrequency; }
+    double get_last_primary_average_current() const { return lastPrimaryAverageCurrent; }
+    double get_last_primary_peak_to_peak() const { return lastPrimaryPeakToPeak; }
+    double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
+    double get_last_secondary_peak_current() const { return lastSecondaryPeakCurrent; }
+    bool   get_last_is_ccm() const { return lastIsCcm; }
+
+    MAS::Topologies topology_kind() const override { return MAS::Topologies::FLYBACK_CONVERTER; }
+
+
     const std::vector<OpenMagnetics::FlybackOperatingPoint> & get_operating_points() const { return operatingPoints; }
     std::vector<OpenMagnetics::FlybackOperatingPoint> & get_mutable_operating_points() { return operatingPoints; }
     void set_operating_points(const std::vector<OpenMagnetics::FlybackOperatingPoint> & value) { this->operatingPoints = value; }

@@ -792,7 +792,14 @@ TEST_CASE("Flyback ideal vs real magnetic comparison", "[ngspice-runner][flyback
     
     // Primary max voltage should match Vin closely (switch ON applies Vin across primary)
     CHECK(std::abs(idealPriVmax - 24.0) < 1.0);  // Ideal should be near Vin
-    CHECK(std::abs(realPriVmax - 24.0) < 1.0);   // Real should also be near Vin
+    // Real-magnetic v(pri_in) sees a turn-off leakage spike (Lk·di/dt) on
+    // top of Vin during the switching transition. With GEAR integration
+    // and the snubber RC sized for low-Fs flybacks
+    // (SpiceSimulationConfig defaults), the spike resolves cleanly
+    // instead of being numerically damped — so peak v(pri_in) can run
+    // 2–4× Vin. Bound it to a generous physical envelope.
+    CHECK(realPriVmax > 20.0);
+    CHECK(realPriVmax < 5.0 * 24.0);
     
     // Compare primary current waveforms
     auto idealPriI = idealOps[0].get_excitations_per_winding()[0].get_current()->get_waveform()->get_data();

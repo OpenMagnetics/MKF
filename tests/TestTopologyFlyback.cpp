@@ -1577,4 +1577,190 @@ namespace {
         CHECK(nrmse < 0.25);
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // Reference-design tests — three TI EVMs spanning low/mid/high power.
+    // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §8 + §15 and REVIEW_PLAN §3.F.
+    //
+    // Each EVM provides a verified Vin/Vout/Iout operating point. The
+    // *_Values test asserts that Flyback's analytical diagnostics (D,
+    // Ipri_avg, Ipri_pk, CCM flag) match closed-form values within ±5 %.
+    // The *_PtP test asserts NRMSE between analytical and ngspice
+    // primary-winding current waveforms ≤ 0.25 (matches existing CCM
+    // PtP slack — leakage spike + RC settling tolerance).
+    //
+    // η=1 and Vd=0 (lossless analytical reference) so closed-form
+    // reduces to D = Vor/(Vin+Vor) where Vor = N·Vout, decoupling the
+    // test from EVM efficiency curves not published on TI HTML pages.
+    //
+    // Turns ratios + Lm are plausible CCM picks within the EVM IC's
+    // recommended operating range (NOT necessarily the exact EVM BOM,
+    // which is in the EVM User Guide PDF, not the HTML product page).
+    // Switching frequencies are within each controller's documented
+    // operating range.
+    // ──────────────────────────────────────────────────────────────────────
+
+    namespace {
+        struct FlybackRefDesignSpec {
+            const char* name;     // EVM identifier
+            double Vin;           // Input voltage [V]
+            double Vout;          // Output voltage [V]
+            double Iout;          // Output current [A]
+            double Fs;            // Switching frequency [Hz]
+            double N;             // Turns ratio Np:Ns
+            double ripple;        // currentRippleRatio (CCM, ratio < 1)
+        };
+
+        // RefDesign1 — Low corner (~1.2 W). TI PMP30817.
+        //   10–30 V DC → 6 V / 12 V dual @ 200 mA each (LM5180 BCM flyback,
+        //   100-V switch, no opto, no aux winding). Test point: 24 V → 6 V
+        //   @ 200 mA on primary 6 V output (single-output simplification).
+        //   LM5180 BCM frequency varies with load; pick 250 kHz mid-range.
+        constexpr FlybackRefDesignSpec kFlybackRefDesign1{
+            "PMP30817", 24.0, 6.0, 0.2, 250e3, 3.0, 0.4};
+
+        // RefDesign2 — Mid corner (~3 W). TI LM5180EVM-DUAL.
+        //   10–65 V DC → 15 V / −7.7 V dual @ 200 mA (LM5180 BCM flyback,
+        //   100-V switch, primary-side regulation). Test at 24 V → 15 V
+        //   @ 200 mA (positive output). LM5180 BCM Fs ~100–350 kHz; use
+        //   200 kHz consistent with the design tool defaults.
+        constexpr FlybackRefDesignSpec kFlybackRefDesign2{
+            "LM5180EVM-DUAL", 24.0, 15.0, 0.2, 200e3, 1.5, 0.4};
+
+        // RefDesign3 — High corner (~33 W). TI TIDA-00709.
+        //   Universal AC or wide DC → 12 V / 2.75 A main + 12 V / 0.25 A
+        //   aux (UCC28740 QR flyback w/ UCC24636 SR, > 90 % efficiency).
+        //   Modeled here as CCM at 120 V DC bulk → 12 V / 2.75 A. UCC28740
+        //   QR Fs ≤ 130 kHz; 70 kHz is typical mid-load operating point.
+        constexpr FlybackRefDesignSpec kFlybackRefDesign3{
+            "TIDA-00709", 120.0, 12.0, 2.75, 70e3, 8.0, 0.4};
+
+        OpenMagnetics::Flyback build_flyback_from_spec(const FlybackRefDesignSpec& s) {
+            OpenMagnetics::Flyback f;
+            DimensionWithTolerance iv;
+            iv.set_nominal(s.Vin);
+            iv.set_minimum(s.Vin * 0.95);
+            iv.set_maximum(s.Vin * 1.05);
+            f.set_input_voltage(iv);
+            f.set_diode_voltage_drop(0.0);  // lossless analytical reference
+            f.set_efficiency(1.0);
+            f.set_current_ripple_ratio(s.ripple);
+            f.set_maximum_duty_cycle(0.5);
+            f.set_maximum_drain_source_voltage(s.Vin + s.N * s.Vout + 50.0);
+            OpenMagnetics::FlybackOperatingPoint op;
+            op.set_output_voltages({s.Vout});
+            op.set_output_currents({s.Iout});
+            op.set_switching_frequency(s.Fs);
+            op.set_ambient_temperature(25.0);
+            f.set_operating_points(std::vector<OpenMagnetics::FlybackOperatingPoint>{op});
+            return f;
+        }
+
+        // Lm chosen so ΔIL_pp(Lm) = 2·ripple·centerPriRamp — keeps ngspice
+        // ripple consistent with the analytical currentRippleRatio so PtP
+        // shape matches.
+        double flyback_consistent_lm(const FlybackRefDesignSpec& s) {
+            double Vor    = s.N * s.Vout;
+            double D      = Vor / (s.Vin + Vor);
+            double center = (s.Iout / s.N) / (1.0 - D);
+            double dIL    = 2.0 * s.ripple * center;
+            return s.Vin * D / (s.Fs * dIL);
+        }
+
+        void assert_flyback_refdesign_values(const FlybackRefDesignSpec& s) {
+            auto flyback = build_flyback_from_spec(s);
+            double Lm = flyback_consistent_lm(s);
+
+            OpenMagnetics::FlybackOperatingPoint op;
+            op.set_output_voltages({s.Vout});
+            op.set_output_currents({s.Iout});
+            op.set_switching_frequency(s.Fs);
+            op.set_ambient_temperature(25.0);
+            flyback.process_operating_points_for_input_voltage(
+                s.Vin, op, std::vector<double>{s.N}, Lm);
+
+            // Closed-form expectations (η=1, Vd=0, CCM, single secondary).
+            double Vor       = s.N * s.Vout;
+            double D_exp     = Vor / (s.Vin + Vor);
+            double center_exp= (s.Iout / s.N) / (1.0 - D_exp);
+            double dIL_exp   = 2.0 * s.ripple * center_exp;
+            double Ipk_exp   = center_exp + 0.5 * dIL_exp;
+
+            INFO(s.name << " — D=" << flyback.get_last_duty_cycle()
+                       << " (exp " << D_exp << ")");
+            INFO(s.name << " — Ipri_avg(on)=" << flyback.get_last_primary_average_current()
+                       << " A (exp " << center_exp << " A)");
+            INFO(s.name << " — Ipri_pk=" << flyback.get_last_primary_peak_current()
+                       << " A (exp " << Ipk_exp << " A)");
+
+            CHECK(flyback.get_last_is_ccm());
+            CHECK_THAT(flyback.get_last_duty_cycle(),
+                       Catch::Matchers::WithinRel(D_exp, 0.05));
+            CHECK_THAT(flyback.get_last_primary_average_current(),
+                       Catch::Matchers::WithinRel(center_exp, 0.05));
+            CHECK_THAT(flyback.get_last_primary_peak_to_peak(),
+                       Catch::Matchers::WithinRel(dIL_exp, 0.05));
+            CHECK_THAT(flyback.get_last_primary_peak_current(),
+                       Catch::Matchers::WithinRel(Ipk_exp, 0.05));
+        }
+
+        void assert_flyback_refdesign_ptp(const FlybackRefDesignSpec& s) {
+            NgspiceRunner runner;
+            if (!runner.is_available()) SKIP("ngspice not available");
+
+            auto flyback = build_flyback_from_spec(s);
+            double Lm = flyback_consistent_lm(s);
+            // RC settling at the output (registered Cout=10 µF) requires
+            // many periods; mirror Buck pattern at 400.
+            flyback.set_num_steady_state_periods(400);
+
+            std::vector<double> tr{s.N};
+            auto analyticalOps = flyback.process_operating_points(tr, Lm);
+            REQUIRE(!analyticalOps.empty());
+            auto aTime = ptp_current_time(analyticalOps[0], 0);
+            auto aData = ptp_current(analyticalOps[0], 0);
+            REQUIRE(!aData.empty());
+            REQUIRE(!aTime.empty());
+            auto aResampled = ptp_interp(aTime, aData, 256);
+
+            flyback.set_num_periods_to_extract(1);
+            auto simOps = flyback.simulate_and_extract_operating_points(tr, Lm);
+            REQUIRE(!simOps.empty());
+            auto sTime = ptp_current_time(simOps[0], 0);
+            auto sData = ptp_current(simOps[0], 0);
+            REQUIRE(!sData.empty());
+            REQUIRE(!sTime.empty());
+            auto sResampled = ptp_interp(sTime, sData, 256);
+
+            double nrmse = ptp_nrmse(aResampled, sResampled);
+            INFO(s.name << " primary-current NRMSE (analytical vs ngspice): "
+                        << (nrmse * 100.0) << "%");
+            CHECK(nrmse < 0.25);
+        }
+    }  // namespace
+
+    TEST_CASE("Test_Flyback_RefDesign1_Values_PMP30817",
+              "[converter-model][flyback-topology][refdesign][values]") {
+        assert_flyback_refdesign_values(kFlybackRefDesign1);
+    }
+    TEST_CASE("Test_Flyback_RefDesign1_PtP_PMP30817",
+              "[converter-model][flyback-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_flyback_refdesign_ptp(kFlybackRefDesign1);
+    }
+    TEST_CASE("Test_Flyback_RefDesign2_Values_LM5180EVM_DUAL",
+              "[converter-model][flyback-topology][refdesign][values]") {
+        assert_flyback_refdesign_values(kFlybackRefDesign2);
+    }
+    TEST_CASE("Test_Flyback_RefDesign2_PtP_LM5180EVM_DUAL",
+              "[converter-model][flyback-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_flyback_refdesign_ptp(kFlybackRefDesign2);
+    }
+    TEST_CASE("Test_Flyback_RefDesign3_Values_TIDA_00709",
+              "[converter-model][flyback-topology][refdesign][values]") {
+        assert_flyback_refdesign_values(kFlybackRefDesign3);
+    }
+    TEST_CASE("Test_Flyback_RefDesign3_PtP_TIDA_00709",
+              "[converter-model][flyback-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_flyback_refdesign_ptp(kFlybackRefDesign3);
+    }
+
 }  // namespace
