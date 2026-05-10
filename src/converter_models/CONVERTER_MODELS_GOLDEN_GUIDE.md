@@ -296,7 +296,86 @@ Extra-component waveforms (Lo, Lr, Cb) reuse the same grid.
 
 ## 5. SPICE netlist (generate_ngspice_circuit)
 
-A converter's SPICE netlist must satisfy ALL of:
+### 5.0 The winding-port vs converter-port rule (CRITICAL)
+
+**Every signal that ends up in `excitations_per_winding[i].voltage` /
+`excitations_per_winding[i].current` MUST be measured at the magnetic
+component's *winding ports* — i.e. the two terminals of the inductor
+or transformer winding inside the magnetic — and NEVER at a
+downstream converter node such as a rectified output capacitor, a
+filtered output rail, an averaged DC bus, or anything past the
+secondary-side rectifier.**
+
+The output rails (rectified Vout, post-LC Iout, DC link) are also
+worth capturing, but they belong to the **separate** converter-level
+waveform stream returned by
+`simulate_and_extract_topology_waveforms` (consumed by the frontend's
+*Converter Waveforms* section), and they MUST be tested independently
+of winding signals.
+
+Why this matters:
+
+1. The MKF magnetic-design pipeline (`MagneticFilterAreaProduct`,
+   `CoreAdviser`, `WindingLossesAdviser`, …) consumes
+   `excitations_per_winding`. It assumes each entry is a true winding
+   v(t) / i(t) so that `|V·I|`, volt-second product, RMS current and
+   peak flux are physically meaningful. Feeding a rectified-output
+   node into this stream collapses `|V·I|` by 100×–1000× (the
+   secondary "voltage" looks like a flat DC), defeats the
+   area-product filter, and lets `CoreAdviser` advance sub-mm³ cores
+   that never could have built the winding. This bug class struck
+   PushPull (commit `4ffd3c28`) and IsolatedBuck (commit `22bfee9e`)
+   independently.
+2. The frontend's *Magnetic* view shows the winding waveforms; the
+   *Converter* view shows the rectified rails. Conflating the two
+   strands silently breaks both.
+3. Volt-second balance must hold on every true winding signal in
+   steady state (`|avg(v_winding)| < ε · |v_winding|_peak`). It
+   intentionally does **not** hold on rectified outputs (Vout averages
+   to Vo, by design). The cross-topology
+   `Test_<Topo>_VoltSecondBalance_AllWindings` (§8) is the gate.
+
+Mechanical rules in the netlist:
+
+- **Primary winding voltage** = differential across the primary
+  inductor's terminals. If `Lpri A B`, emit
+  `Bvpri_diff vpri_diff 0 V=V(A)-V(B)` and `.save v(vpri_diff)`.
+  NEVER `.save v(A)` — that is node-to-GND and is wrong whenever B
+  is not GND (PushPull center tap, IsolatedBuck output node, any
+  bridge midpoint).
+- **Primary winding current** = `i(Vpri_sense)` of a 0-V series
+  source on the primary winding branch, with sign matched to the
+  passive convention against the differential voltage probe (so
+  that `avg(V·I) > 0` on average over a switching period — the
+  winding absorbs energy from the source).
+- **Secondary winding voltage** = differential across the secondary
+  inductor's terminals (`Bvsec<N>_diff vsec<N>_diff 0
+  V=V(<dot>)-V(<other>)`). NEVER `v(sec<N>_rect)`,
+  `v(out_node_o<N>)`, or any node past the rectifier.
+- **Secondary winding current** = `i(Vsec<N>_sense)` of a 0-V
+  series source in the secondary winding branch (between the
+  winding and the rectifier), passive-convention to the
+  differential voltage probe.
+- **Output-rail voltage / current** (Vout, ILout) — emit
+  `.save v(out_node_o<N>) i(Vout_sense_o<N>)` so they are
+  available, but they go to
+  `simulate_and_extract_topology_waveforms`'s
+  `output_voltages` / `output_currents` slots, NOT into
+  `excitations_per_winding`.
+
+`waveformMapping` in `simulate_and_extract_operating_points` MUST
+list only winding-port signals for each winding. Any output-rail
+signal listed there is a bug, not a feature.
+
+Verify per topology with the **passive-sign sanity test**:
+`avg(V_winding · I_winding) > 0` and within ±20 % of the expected
+per-winding processed power. A negative `avg(V·I)` means the probe
+polarity is reversed (flip the sign in the `B` source or swap the
+current sense's terminal order).
+
+### 5.1 Checklist
+
+
 
 - [ ] **Switch model**: `.model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg`
       (DAB pattern). VH=0.8 reduces switching-event chatter.
@@ -333,10 +412,23 @@ A converter's SPICE netlist must satisfy ALL of:
       A zero `Io` in the operating point would otherwise crash ngspice.
 - [ ] **Time step**: `stepTime = period / 200` (DAB pattern). Use
       `period / 500` only if the topology has very fast resonant ringing.
-- [ ] **Saved signals**: `.save v(vab) v(<midpoints>) i(Vpri_sense)
-      i(Vdc) v(out_node_oN) i(Vsec1_sense_oN) i(Vsec2_sense_oN)
-      i(Vout_sense_oN)`. Match what `simulate_and_extract_operating_points`
-      and `simulate_and_extract_topology_waveforms` expect.
+- [ ] **Saved signals — winding-port stream (consumed by
+      `excitations_per_winding`):**
+      `v(vpri_diff) i(Vpri_sense)
+       v(vsec1_diff) i(Vsec1_sense_o1)
+       v(vsec2_diff) i(Vsec2_sense_o2) …`
+      One differential voltage probe + one current sense per winding.
+      See **§5.0**: NEVER substitute `v(<rect_node>)` or
+      `v(<out_node>)` here. Sign must be passive
+      (`avg(V·I) > 0`).
+- [ ] **Saved signals — converter-port stream (consumed by
+      `simulate_and_extract_topology_waveforms`):**
+      `v(vab) v(<midpoints>) i(Vdc)
+       v(out_node_o1) i(Vout_sense_o1)
+       v(out_node_o2) i(Vout_sense_o2) …`
+      Match what `simulate_and_extract_topology_waveforms` expects.
+      These are for the *Converter Waveforms* frontend section and
+      are tested independently of the winding signals.
 - [ ] **Comment header**: a `*` comment block at the top with topology
       name, key parameters (Vin, Vo, Fs, Deff/φ/D3, n, L*, rectifier
       type), and the literal "generated by OpenMagnetics" tag.
@@ -344,6 +436,11 @@ A converter's SPICE netlist must satisfy ALL of:
 ---
 
 ## 6. simulate_and_extract_operating_points (mandatory pattern)
+
+This function fills `excitations_per_winding`, the **winding-port
+stream** (see §5.0). The `WaveformNameMapping` it builds MUST
+reference only the differential voltage probes (`v(v<winding>_diff)`)
+and the per-winding current senses — never an output-rail node.
 
 DO NOT just call `process_operating_points()` and label the result
 "SPICE". The function must:
@@ -366,6 +463,13 @@ node-name substitutions for the topology.
 ---
 
 ## 7. simulate_and_extract_topology_waveforms
+
+This function fills the **converter-port stream** (see §5.0):
+input voltage / current at the DC source, output voltage / current
+at every rectified rail, and bridge-midpoint waveforms. It feeds
+the frontend's *Converter Waveforms* view and is tested
+independently of the winding signals (see
+`Test_<Topo>_ConverterPortWaveforms` in §8).
 
 Required to round-trip the SPICE waveforms back through MAS for
 converter-level (not winding-level) validation. Common bugs:
@@ -431,6 +535,26 @@ Mirror the DAB test set. The minimum required `TEST_CASE`s are:
 - [ ] `Test_<Topo>_SPICE_Netlist` — netlist parses, contains snubbers,
       contains `.options METHOD=GEAR`, contains the right rectifier
       diode count.
+- [ ] `Test_<Topo>_VoltSecondBalance_AllWindings` — for **every**
+      winding (primary + every secondary), assert
+      `|avg(v_winding) · T_period| / (peak(|v_winding|) · T_period)
+      < 0.02` (≤ 2 %), in **both** the analytical and the
+      simulated path. This is the gate for §5.0: it catches any
+      probe that accidentally references a converter-port node
+      (rectified output, DC bus, etc.) instead of the winding
+      terminals. Skip the SPICE half only if `NgspiceRunner` is
+      unavailable; never relax the bound.
+- [ ] `Test_<Topo>_ConverterPortWaveforms` — independently of the
+      winding-port test, assert the *converter-port* stream from
+      `simulate_and_extract_topology_waveforms`:
+      `avg(v(out_node_o<N>)) ≈ Vo<N>` within ±5 %,
+      `avg(i(Vout_sense_o<N>)) ≈ Io<N>` within ±5 %, output ripple
+      within the design spec. Output rails MUST NOT volt-second
+      balance to zero — they are DC by design.
+- [ ] `Test_<Topo>_SpicePowerSanity` — for the primary winding,
+      assert `avg(V·I) > 0` (passive sign) and within ±20 % of
+      expected processed power. Catches polarity flips in either
+      the differential voltage probe or the current sense.
 - [ ] `Test_<Topo>_PtP_AnalyticalVsNgspice` — primary-current shape
       NRMSE (DAB helper `ptp_nrmse`) ≤ **0.15** for all DAB-quality
       converters. The threshold is non-negotiable: it is the marker
@@ -539,6 +663,27 @@ default to typical values and are not exposed through JSON.
      multiple calls.
 - ❌ **Topology label conflation** (PSHB vs AHB, LLC HB vs PSHB,
      SRC vs LLC). Add a Disambiguation note in the header docstring.
+- ❌ **Saving a converter-port node as the winding voltage.**
+     `.save v(sec1_rect)` / `.save v(out_node_o1)` then feeding it
+     into `excitations_per_winding[k].voltage` is wrong even when
+     `|V·I|` happens to look "close to Pout" — it collapses the
+     bipolar swing, breaks volt-second balance on the magnetic
+     model, and silently invalidates every downstream filter
+     (`AreaProduct`, `WindingLosses`, core-loss integration). See
+     **§5.0**. The winding stream and the converter-port stream
+     are distinct and must stay distinct.
+- ❌ **Saving `v(node)` as a winding voltage when the other
+     winding terminal is not GND.** Always emit a
+     `Bv<name>_diff <name>_diff 0 V=V(<dot>)-V(<other>)`
+     behavioral source and save *that*. Bug class confirmed in
+     PushPull (`4ffd3c28`) and IsolatedBuck (`22bfee9e`); the
+     symptom is `Test_MagneticAdviserFromConverter_<Topo>`
+     returning 0 cores.
+- ❌ **Reversed passive sign on the winding probe.**
+     `avg(V_winding · I_winding) < 0` means the topology is
+     reporting energy *leaving* the winding on average — a probe
+     bug, not physics. Flip the sign of the `B` source or swap
+     the current sense's terminal order.
 
 ---
 
