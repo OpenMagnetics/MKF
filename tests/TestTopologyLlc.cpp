@@ -1850,3 +1850,119 @@ namespace {
         }
     }
 }
+
+// =============================================================================
+// LLC waveform validation tests (merged from TestTopologyWaveforms.cpp)
+// =============================================================================
+
+namespace {
+
+bool validateLlcWaveformData(const std::vector<double>& data, const std::string& name) {
+    if (data.empty()) return false;
+    for (size_t i = 0; i < data.size(); ++i) {
+        if (std::isnan(data[i]) || std::isinf(data[i])) return false;
+    }
+    (void)name;
+    return true;
+}
+
+TEST_CASE("LLC Analytical Waveforms", "[topology][llc][analytical]") {
+    json llcJson;
+    llcJson["inputVoltage"]["nominal"] = 400.0;
+    llcJson["inputVoltage"]["tolerance"] = 0.1;
+    llcJson["minSwitchingFrequency"] = 80000.0;
+    llcJson["maxSwitchingFrequency"] = 120000.0;
+    llcJson["resonantFrequency"] = 100000.0;
+    llcJson["qualityFactor"] = 0.4;
+    llcJson["integratedResonantInductor"] = true;
+    llcJson["magnetizingInductance"] = 200e-6;
+    llcJson["turnsRatio"] = 4.0;
+    llcJson["ambientTemperature"] = 25.0;
+    llcJson["efficiency"] = 0.97;
+    llcJson["insulationType"] = "basic";
+
+    json opJson;
+    opJson["outputVoltages"] = json::array({48.0});
+    opJson["outputCurrents"] = json::array({500.0 / 48.0});
+    opJson["switchingFrequency"] = 100000.0;
+    opJson["ambientTemperature"] = 25.0;
+    llcJson["operatingPoints"] = json::array({opJson});
+
+    Llc llc(llcJson);
+
+    auto designRequirements = llc.process_design_requirements();
+    REQUIRE_FALSE(designRequirements.get_turns_ratios().empty());
+
+    std::vector<double> turnsRatios;
+    for (const auto& tr : designRequirements.get_turns_ratios()) {
+        if (tr.get_nominal().has_value())
+            turnsRatios.push_back(tr.get_nominal().value());
+    }
+
+    auto operatingPoints = llc.process_operating_points(turnsRatios, 200e-6);
+    REQUIRE_FALSE(operatingPoints.empty());
+
+    for (const auto& op : operatingPoints) {
+        REQUIRE_FALSE(op.get_excitations_per_winding().empty());
+        for (const auto& excitation : op.get_excitations_per_winding()) {
+            if (excitation.get_current() && excitation.get_current().value().get_waveform()) {
+                auto waveform = excitation.get_current().value().get_waveform().value();
+                REQUIRE(validateLlcWaveformData(waveform.get_data(), "LLC Current"));
+            }
+            if (excitation.get_voltage() && excitation.get_voltage().value().get_waveform()) {
+                auto waveform = excitation.get_voltage().value().get_waveform().value();
+                REQUIRE(validateLlcWaveformData(waveform.get_data(), "LLC Voltage"));
+            }
+        }
+    }
+}
+
+TEST_CASE("LLC Simulated Waveforms", "[topology][llc][simulation]") {
+#ifndef ENABLE_NGSPICE
+    SKIP("ngspice is not enabled, skipping simulation test");
+#endif
+
+    json llcJson;
+    llcJson["inputVoltage"]["nominal"] = 400.0;
+    llcJson["inputVoltage"]["tolerance"] = 0.1;
+    llcJson["minSwitchingFrequency"] = 80000.0;
+    llcJson["maxSwitchingFrequency"] = 120000.0;
+    llcJson["resonantFrequency"] = 100000.0;
+    llcJson["qualityFactor"] = 0.4;
+    llcJson["integratedResonantInductor"] = true;
+    llcJson["magnetizingInductance"] = 200e-6;
+    llcJson["turnsRatio"] = 4.0;
+    llcJson["ambientTemperature"] = 25.0;
+    llcJson["efficiency"] = 0.97;
+    llcJson["insulationType"] = "basic";
+
+    json opJson;
+    opJson["outputVoltages"] = json::array({48.0});
+    opJson["outputCurrents"] = json::array({500.0 / 48.0});
+    opJson["switchingFrequency"] = 100000.0;
+    opJson["ambientTemperature"] = 25.0;
+    llcJson["operatingPoints"] = json::array({opJson});
+
+    Llc llc(llcJson);
+
+    auto designRequirements = llc.process_design_requirements();
+    std::vector<double> turnsRatios;
+    for (const auto& tr : designRequirements.get_turns_ratios()) {
+        if (tr.get_nominal().has_value())
+            turnsRatios.push_back(tr.get_nominal().value());
+    }
+
+    auto operatingPoints = llc.simulate_and_extract_operating_points(turnsRatios, 200e-6);
+    REQUIRE_FALSE(operatingPoints.empty());
+
+    for (const auto& op : operatingPoints) {
+        for (const auto& excitation : op.get_excitations_per_winding()) {
+            if (excitation.get_current() && excitation.get_current().value().get_waveform()) {
+                auto waveform = excitation.get_current().value().get_waveform().value();
+                REQUIRE(validateLlcWaveformData(waveform.get_data(), "LLC Simulated Current"));
+            }
+        }
+    }
+}
+
+} // namespace waveform tests

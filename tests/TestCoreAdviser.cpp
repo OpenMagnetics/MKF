@@ -7,8 +7,10 @@
 #include "TestingUtils.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
+#include "converter_models/Flyback.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <algorithm>
 #include <filesystem>
@@ -2746,6 +2748,210 @@ TEST_CASE("Test_CoreAdviser_Temperature_Filter", "[adviser][core-adviser][availa
     }
 
     settings.reset();
+}
+
+// =============================================================================
+// Flyback Core Adviser tests (merged from TestFlybackCoreAdviser.cpp)
+// =============================================================================
+
+TEST_CASE("Flyback Core Adviser - Default Values", "[core-adviser][flyback-topology][default-values]") {
+    // Default flyback values from WebFrontend/WebSharedComponents/assets/js/defaults.js
+    json flybackJson;
+    flybackJson["inputVoltage"]["minimum"] = 120.0;
+    flybackJson["inputVoltage"]["maximum"] = 375.0;
+    flybackJson["diodeVoltageDrop"] = 0.7;
+    flybackJson["maximumDrainSourceVoltage"] = 600.0;
+    flybackJson["maximumDutyCycle"] = 0.5;
+    flybackJson["currentRippleRatio"] = 1.0;
+    flybackJson["inductance"] = 200e-6;  // 200 µH
+    flybackJson["dutyCycleRange"][0] = 0.5;
+    flybackJson["dutyCycleRange"][1] = 0.3;
+    flybackJson["deadTime"] = 0.0;
+    flybackJson["efficiency"] = 0.85;
+    flybackJson["numberOfOutputs"] = 1;
+
+    json outputParams;
+    outputParams["outputVoltages"] = json::array({12.0});
+    outputParams["outputCurrents"] = json::array({5.0});
+    outputParams["switchingFrequency"] = 100000.0;  // 100 kHz
+    outputParams["ambientTemperature"] = 25.0;
+    flybackJson["operatingPoints"] = json::array({outputParams});
+
+    flybackJson["insulationType"] = "basic";
+    flybackJson["insulation"]["cti"] = "groupII";
+    flybackJson["insulation"]["pollutionDegree"] = "PD2";
+    flybackJson["insulation"]["overvoltageCategory"] = "III";
+    flybackJson["insulation"]["altitude"]["maximum"] = 2000.0;
+    flybackJson["insulation"]["mainSupplyVoltage"]["maximum"] = 400.0;
+    flybackJson["insulation"]["standards"] = json::array({"IEC 60664-1"});
+
+    OpenMagnetics::Flyback flyback(flybackJson);
+    auto inputs = flyback.process();
+
+    REQUIRE_FALSE(inputs.get_operating_points().empty());
+
+    auto& firstOp = inputs.get_operating_points()[0];
+    REQUIRE_FALSE(firstOp.get_excitations_per_winding().empty());
+
+    auto& firstExc = firstOp.get_excitations_per_winding()[0];
+    double frequency = firstExc.get_frequency();
+    REQUIRE(std::isfinite(frequency));
+    REQUIRE(frequency > 0);
+    REQUIRE(frequency == 100000.0);
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0.4;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0.3;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 0.3;
+
+    try {
+        auto results = coreAdviser.get_advised_core(inputs, weights, 5);
+        REQUIRE_FALSE(results.empty());
+    }
+    catch (const std::exception& e) {
+        FAIL("Core adviser threw exception: " << std::string(e.what()));
+    }
+}
+
+TEST_CASE("Flyback Inputs - Frequency Validation", "[flyback-topology][frequency][validation]") {
+    json flybackJson;
+    flybackJson["inputVoltage"]["minimum"] = 120.0;
+    flybackJson["inputVoltage"]["maximum"] = 375.0;
+    flybackJson["diodeVoltageDrop"] = 0.7;
+    flybackJson["maximumDrainSourceVoltage"] = 600.0;
+    flybackJson["maximumDutyCycle"] = 0.5;
+    flybackJson["currentRippleRatio"] = 1.0;
+    flybackJson["inductance"] = 200e-6;
+
+    json outputParams;
+    outputParams["outputVoltages"] = json::array({12.0});
+    outputParams["outputCurrents"] = json::array({5.0});
+    outputParams["switchingFrequency"] = 100000.0;
+    outputParams["ambientTemperature"] = 25.0;
+    flybackJson["operatingPoints"] = json::array({outputParams});
+
+    flybackJson["insulationType"] = "basic";
+    flybackJson["efficiency"] = 0.85;
+
+    OpenMagnetics::Flyback flyback(flybackJson);
+    auto inputs = flyback.process();
+
+    json inputsJson;
+    to_json(inputsJson, inputs);
+
+    REQUIRE(inputsJson.contains("operatingPoints"));
+    REQUIRE(!inputsJson["operatingPoints"].empty());
+    auto& firstOp = inputsJson["operatingPoints"][0];
+    REQUIRE(firstOp.contains("excitationsPerWinding"));
+    REQUIRE(!firstOp["excitationsPerWinding"].empty());
+    auto& firstExc = firstOp["excitationsPerWinding"][0];
+    REQUIRE(firstExc.contains("frequency"));
+    double freq = firstExc["frequency"].get<double>();
+    REQUIRE(std::isfinite(freq));
+    REQUIRE(freq > 0);
+
+    OpenMagnetics::Inputs inputs2(inputsJson);
+    double freq2 = inputs2.get_operating_points()[0].get_excitations_per_winding()[0].get_frequency();
+    REQUIRE(std::isfinite(freq2));
+    REQUIRE(freq2 > 0);
+    REQUIRE(freq2 == 100000.0);
+}
+
+// =============================================================================
+// CMC core adviser smoke test (merged from TestCoreAdviserCmcBug.cpp)
+// =============================================================================
+
+TEST_CASE("Test_CoreAdviser_CMC_Simplified_Inputs", "[adviser][core-adviser][cmc][smoke-test]") {
+    clear_databases();
+    settings.set_use_concentric_cores(false);
+    settings.set_use_toroidal_cores(true);
+    settings.set_use_only_cores_in_stock(false);
+
+    OpenMagnetics::Inputs inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        150000,    // frequency
+        0.001,     // magnetizingInductance (1 mH)
+        25,        // temperature
+        WaveformLabel::SINUSOIDAL,
+        {1.0},     // peakToPeaks
+        0.5,       // dutyCycle
+        5.0,       // dcCurrent (operating current)
+        {}         // turnsRatios
+    );
+
+    ImpedancePoint impedancePoint;
+    impedancePoint.set_magnitude(1000);
+    ImpedanceAtFrequency impedanceAtFrequency;
+    impedanceAtFrequency.set_frequency(150000);
+    impedanceAtFrequency.set_impedance(impedancePoint);
+    inputs.get_mutable_design_requirements().set_minimum_impedance(std::vector<ImpedanceAtFrequency>{impedanceAtFrequency});
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(0.001061033);
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    coreAdviser.set_application(Application::INTERFERENCE_SUPPRESSION);
+    auto cores = load_test_data();
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 10);
+
+    CHECK(masMagnetics.size() > 0);
+
+    settings.reset();
+}
+
+// =============================================================================
+// DMC hang regression test (merged from TestCoreAdviserDmcHang.cpp)
+// =============================================================================
+
+TEST_CASE("Test_CoreAdviser_DMC_Default_Wizard_Hang_Repro",
+          "[adviser][core-adviser][dmc][bug][slow]") {
+    clear_databases();
+
+    auto fixturePath = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(), "dmc/dmc_default_inputs.json");
+    INFO("Loading fixture: " << fixturePath);
+    REQUIRE(std::filesystem::exists(fixturePath));
+
+    std::ifstream f(fixturePath);
+    json inputsJson = json::parse(f);
+    OpenMagnetics::Inputs inputs{inputsJson};
+
+    auto dr = inputs.get_design_requirements();
+    REQUIRE(dr.get_application().has_value());
+    CHECK(dr.get_application().value() == Application::INTERFERENCE_SUPPRESSION);
+    CHECK(dr.get_topology().has_value());
+    CHECK(dr.get_topology().value() == Topologies::DIFFERENTIAL_MODE_CHOKE);
+
+    Settings::GetInstance().set_coil_delimit_and_compact(true);
+    Settings::GetInstance().set_use_toroidal_cores(true);
+    Settings::GetInstance().set_use_only_cores_in_stock(false);
+    Settings::GetInstance().set_use_concentric_cores(false);
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0.40;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0.30;
+    weights[CoreAdviser::CoreAdviserFilters::COST]       = 0.30;
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    coreAdviser.set_application(Application::INTERFERENCE_SUPPRESSION);
+
+    auto t0 = std::chrono::steady_clock::now();
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 1);
+    auto elapsedMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+
+    CHECK(masMagnetics.size() > 0);
+    // Frontend goal: < 10 seconds for default DMC.
+    CHECK(elapsedMs < 10000);
+
+    Settings::GetInstance().reset();
 }
 
 }  // namespace

@@ -1548,4 +1548,252 @@ namespace {
         }
     }
 
+// =============================================================================
+// Advanced DAB modulation tests (EPS/DPS/TPS) — merged from TestTopologyDabAdvanced.cpp
+// =============================================================================
+
+static json make_dab_advanced_json(double phaseShiftDeg,
+                                   double D1_deg = 0.0,
+                                   double D2_deg = -1.0,
+                                   const std::string& modType = "SPS")
+{
+    json dabJson;
+    json inputVoltage;
+    inputVoltage["nominal"] = 800.0;
+    dabJson["inputVoltage"] = inputVoltage;
+    dabJson["seriesInductance"] = 35e-6;
+    dabJson["useLeakageInductance"] = false;
+    dabJson["operatingPoints"] = json::array();
+
+    json op;
+    op["ambientTemperature"] = 25.0;
+    op["outputVoltages"] = {500.0};
+    op["outputCurrents"] = {20.0};
+    op["innerPhaseShift3"] = phaseShiftDeg;
+    op["switchingFrequency"] = 100000;
+    op["modulationType"] = modType;
+    if (D1_deg > 0.0)
+        op["innerPhaseShift1"] = D1_deg;
+    if (D2_deg >= 0.0)
+        op["innerPhaseShift2"] = D2_deg;
+
+    dabJson["operatingPoints"].push_back(op);
+    return dabJson;
+}
+
+static std::vector<double> get_dab_primary_current(OpenMagnetics::Dab& dab) {
+    auto req = dab.process_design_requirements();
+    std::vector<double> turnsRatios;
+    for (auto& tr : req.get_turns_ratios())
+        turnsRatios.push_back(resolve_dimensional_values(tr));
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    auto ops = dab.process_operating_points(turnsRatios, Lm);
+    return ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value().get_data();
+}
+
+TEST_CASE("Test_Dab_EPS_BasicOperation", "[converter-model][dab-topology][smoke-test]") {
+    double V1 = 800.0, V2 = 500.0, N = 800.0/500.0;
+    double Fs = 100e3, L = 35e-6;
+    double D1_rad = 20.0 * M_PI / 180.0;
+    double D2_rad = 0.0;
+    double P = 10e3;
+
+    double phi = Dab::compute_phase_shift_general(V1, V2, N, D1_rad, D2_rad, Fs, L, P);
+    double phi_deg = phi * 180.0 / M_PI;
+
+    json dabJson = make_dab_advanced_json(phi_deg, 20.0, -1.0, "EPS");
+    OpenMagnetics::Dab dab(dabJson);
+
+    SECTION("run_checks passes") {
+        CHECK(dab.run_checks(false) == true);
+    }
+
+    SECTION("process_design_requirements returns valid L and N") {
+        auto req = dab.process_design_requirements();
+        double computedL = dab.get_computed_series_inductance();
+        double computedN = resolve_dimensional_values(req.get_turns_ratios()[0]);
+        CHECK(computedL > 0);
+        REQUIRE_THAT(computedN, Catch::Matchers::WithinAbs(1.6, 1.6 * 0.02));
+    }
+
+    SECTION("waveform has correct number of excitations and samples") {
+        auto req = dab.process_design_requirements();
+        std::vector<double> trv;
+        for (auto& tr : req.get_turns_ratios())
+            trv.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+        auto ops = dab.process_operating_points(trv, Lm);
+
+        REQUIRE(!ops.empty());
+        CHECK(ops[0].get_excitations_per_winding().size() == 2);
+        auto iData = ops[0].get_excitations_per_winding()[0]
+                         .get_current()->get_waveform().value().get_data();
+        CHECK(iData.size() == 513);
+    }
+
+    SECTION("primary current has half-wave antisymmetry") {
+        auto iData = get_dab_primary_current(dab);
+        int N_half = ((int)iData.size() - 1) / 2;
+        for (int k = 1; k <= N_half; k += N_half / 8) {
+            REQUIRE_THAT(iData[N_half + k],
+                Catch::Matchers::WithinAbs(-iData[k],
+                    std::max(0.1, std::abs(iData[k]) * 0.05)));
+        }
+    }
+
+    SECTION("primary current crosses zero (bidirectional)") {
+        auto iData = get_dab_primary_current(dab);
+        CHECK(*std::max_element(iData.begin(), iData.end()) > 0);
+        CHECK(*std::min_element(iData.begin(), iData.end()) < 0);
+    }
+
+    SECTION("power computed numerically matches target within 5%") {
+        double P_computed = Dab::compute_power_general(V1, V2, N, phi, D1_rad, D2_rad, Fs, L);
+        REQUIRE_THAT(P_computed, Catch::Matchers::WithinRel(P, 0.05));
+    }
+}
+
+TEST_CASE("Test_Dab_DPS_BasicOperation", "[converter-model][dab-topology][smoke-test]") {
+    double V1 = 800.0, V2 = 500.0, N = 800.0/500.0;
+    double Fs = 100e3, L = 35e-6;
+    double D1_rad = 20.0 * M_PI / 180.0;
+    double D2_rad = 20.0 * M_PI / 180.0;
+    double P = 10e3;
+
+    double phi = Dab::compute_phase_shift_general(V1, V2, N, D1_rad, D2_rad, Fs, L, P);
+    double phi_deg = phi * 180.0 / M_PI;
+
+    json dabJson = make_dab_advanced_json(phi_deg, 20.0, -1.0, "DPS");
+    OpenMagnetics::Dab dab(dabJson);
+
+    SECTION("run_checks passes") {
+        CHECK(dab.run_checks(false) == true);
+    }
+
+    SECTION("waveform has correct number of excitations and samples") {
+        auto req = dab.process_design_requirements();
+        std::vector<double> trv;
+        for (auto& tr : req.get_turns_ratios())
+            trv.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+        auto ops = dab.process_operating_points(trv, Lm);
+
+        REQUIRE(!ops.empty());
+        CHECK(ops[0].get_excitations_per_winding().size() == 2);
+        auto iData = ops[0].get_excitations_per_winding()[0]
+                         .get_current()->get_waveform().value().get_data();
+        CHECK(iData.size() == 513);
+    }
+
+    SECTION("power computed numerically matches target within 5%") {
+        double P_computed = Dab::compute_power_general(V1, V2, N, phi, D1_rad, D2_rad, Fs, L);
+        REQUIRE_THAT(P_computed, Catch::Matchers::WithinRel(P, 0.05));
+    }
+}
+
+TEST_CASE("Test_Dab_TPS_BasicOperation", "[converter-model][dab-topology][smoke-test]") {
+    double V1 = 800.0, V2 = 500.0, N = 800.0/500.0;
+    double Fs = 100e3, L = 35e-6;
+    double D1_rad = 20.0 * M_PI / 180.0;
+    double D2_rad = 15.0 * M_PI / 180.0;
+    double P = 10e3;
+
+    double phi = Dab::compute_phase_shift_general(V1, V2, N, D1_rad, D2_rad, Fs, L, P);
+    double phi_deg = phi * 180.0 / M_PI;
+
+    json dabJson = make_dab_advanced_json(phi_deg, 20.0, 15.0, "TPS");
+    OpenMagnetics::Dab dab(dabJson);
+
+    SECTION("run_checks passes") {
+        CHECK(dab.run_checks(false) == true);
+    }
+
+    SECTION("waveform has correct number of excitations and samples") {
+        auto req = dab.process_design_requirements();
+        std::vector<double> trv;
+        for (auto& tr : req.get_turns_ratios())
+            trv.push_back(resolve_dimensional_values(tr));
+        double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+        auto ops = dab.process_operating_points(trv, Lm);
+
+        REQUIRE(!ops.empty());
+        CHECK(ops[0].get_excitations_per_winding().size() == 2);
+        auto iData = ops[0].get_excitations_per_winding()[0]
+                         .get_current()->get_waveform().value().get_data();
+        CHECK(iData.size() == 513);
+    }
+
+    SECTION("power computed numerically matches target within 5%") {
+        double P_computed = Dab::compute_power_general(V1, V2, N, phi, D1_rad, D2_rad, Fs, L);
+        REQUIRE_THAT(P_computed, Catch::Matchers::WithinRel(P, 0.05));
+    }
+}
+
+TEST_CASE("Test_Dab_EPS_ReducedCirculatingCurrent", "[converter-model][dab-topology][smoke-test]") {
+    double V1 = 800.0, V2 = 500.0, N = 800.0/500.0;
+    double Fs = 100e3, L = 35e-6;
+    double P_light = 2e3;
+
+    double phi_sps = Dab::compute_phase_shift(V1, V2, N, Fs, L, P_light);
+    double D1_sps = 0.0, D2_sps = 0.0;
+    double P_sps_check = Dab::compute_power_general(V1, V2, N, phi_sps, D1_sps, D2_sps, Fs, L);
+
+    double D1_eps = 30.0 * M_PI / 180.0;
+    double D2_eps = 0.0;
+    double phi_eps = Dab::compute_phase_shift_general(V1, V2, N, D1_eps, D2_eps, Fs, L, P_light);
+    double P_eps_check = Dab::compute_power_general(V1, V2, N, phi_eps, D1_eps, D2_eps, Fs, L);
+
+    REQUIRE_THAT(P_sps_check, Catch::Matchers::WithinRel(P_light, 0.05));
+    REQUIRE_THAT(P_eps_check, Catch::Matchers::WithinRel(P_light, 0.05));
+
+    json spsJson = make_dab_advanced_json(phi_sps * 180.0 / M_PI, 0.0, -1.0, "SPS");
+    OpenMagnetics::Dab dabSps(spsJson);
+    auto iSps = get_dab_primary_current(dabSps);
+
+    json epsJson = make_dab_advanced_json(phi_eps * 180.0 / M_PI, 30.0, -1.0, "EPS");
+    OpenMagnetics::Dab dabEps(epsJson);
+    auto iEps = get_dab_primary_current(dabEps);
+
+    CHECK(*std::max_element(iSps.begin(), iSps.end()) > 0.0);
+    CHECK(*std::max_element(iEps.begin(), iEps.end()) > 0.0);
+}
+
+TEST_CASE("Test_Dab_DPS_SymmetricShifts", "[converter-model][dab-topology][smoke-test]") {
+    double V1 = 800.0, V2 = 500.0, N = 800.0/500.0;
+    double Fs = 100e3, L = 35e-6;
+    double P = 10e3;
+
+    double D_rad = 20.0 * M_PI / 180.0;
+    double phi_dps = Dab::compute_phase_shift_general(V1, V2, N, D_rad, D_rad, Fs, L, P);
+    double phi_dps_deg = phi_dps * 180.0 / M_PI;
+
+    json dpsJson_implicit = make_dab_advanced_json(phi_dps_deg, 20.0, -1.0, "DPS");
+    OpenMagnetics::Dab dabImplicit(dpsJson_implicit);
+
+    json dpsJson_explicit = make_dab_advanced_json(phi_dps_deg, 20.0, 20.0, "TPS");
+    OpenMagnetics::Dab dabExplicit(dpsJson_explicit);
+
+    SECTION("run_checks pass for both") {
+        CHECK(dabImplicit.run_checks(false) == true);
+        CHECK(dabExplicit.run_checks(false) == true);
+    }
+
+    SECTION("implicit DPS D2 == D1 gives same waveform as TPS D1=D2") {
+        auto iImplicit = get_dab_primary_current(dabImplicit);
+        auto iExplicit = get_dab_primary_current(dabExplicit);
+
+        REQUIRE(iImplicit.size() == iExplicit.size());
+        for (size_t k = 0; k < iImplicit.size(); ++k) {
+            REQUIRE_THAT(iImplicit[k],
+                Catch::Matchers::WithinAbs(iExplicit[k],
+                    std::max(0.01, std::abs(iExplicit[k]) * 0.001)));
+        }
+    }
+
+    SECTION("DPS power matches target within 5%") {
+        double P_check = Dab::compute_power_general(V1, V2, N, phi_dps, D_rad, D_rad, Fs, L);
+        REQUIRE_THAT(P_check, Catch::Matchers::WithinRel(P, 0.05));
+    }
+}
+
 } // anonymous namespace
