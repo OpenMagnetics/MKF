@@ -1389,6 +1389,56 @@ TEST_CASE("Test_Boost_Spice_Netlist") {
 
 Buck — analogous tests, including a sync-rect mode test.
 
+#### Phase 5: Three industry reference designs (1.5 days each)
+
+Per GOLDEN_GUIDE §8 + §15, every DAB-quality converter must reproduce
+**three** independently-published reference designs spanning the
+topology's power envelope, each with a paired Values + PtP test.
+
+**Boost — verified industry references** (all three confirmed via TI
+vendor product pages May 2026; topology = synchronous boost; each
+EVM has a published User Guide with measured efficiency / ripple /
+transient data):
+
+1. **Low corner ~25 W**: TI **TPS61089EVM-742** (Vin 2.7–12 V →
+   Vout 4.5–12.6 V, 7 A peak switch current, Fsw 200 kHz–2.2 MHz
+   adjustable). EVM User Guide **SLVUAM6** (Apr 7 2016).
+2. **Mid corner ~32 W**: TI **TPS61178EVM-792** (Vin 6–12 V →
+   Vout 16 V @ 2 A, 96 % peak efficiency, 20 V / 10 A integrated
+   sync-boost IC). Datasheet rev. E (09 Aug 2019).
+3. **High corner ~108 W**: TI **LM5122EVM-1PH** (Vin 9–20 V →
+   Vout 24 V @ 4.5 A, 65 V wide-Vin sync-boost controller, peak
+   current-mode). EVM User Guide on TI product page; controller
+   datasheet rev. H (09 Jun 2017).
+
+> ❌ **Do not use** TIDA-00834 (16-bit SAR ADC frontend) or DC2461A
+> (LTC5548 microwave mixer demo) — both were proposed from memory
+> in earlier drafts and turned out to be unrelated topologies.
+> All future candidate references **must** be verified against the
+> vendor's HTML product page before being added here.
+
+For each design `<N>` ∈ {1, 2, 3} add:
+
+```cpp
+TEST_CASE("Test_Boost_RefDesign<N>_Values") {
+    // Build MAS Inputs from published spec (Vin, Vo, Iout, Fsw, ΔIL%).
+    // Run Boost::process() → assert L, D, Ipri_rms, ΔVo within ±5 %
+    // of the published numbers. Cite source in the test comment.
+}
+
+TEST_CASE("Test_Boost_RefDesign<N>_PtP") {
+    // Same OP, run process_operating_points + simulate_and_extract,
+    // assert ptp_nrmse(iL_analytical, iL_spice) ≤ 0.15.
+}
+```
+
+**Buck — candidate references**:
+1. **Low corner**: TI **TPS54202** EVM (12 V → 5 V @ 2 A, 500 kHz).
+2. **Mid corner**: TI **SLVA477B** "Basic Calculation of a Buck
+   Converter's Power Stage" (12 V → 3.3 V @ 3 A, 500 kHz).
+3. **High corner**: Erickson **Example 6.2** (28 V → 15 V @ 5 A)
+   or Pressman ch. 1.4 worked example.
+
 **Acceptance per model**:
 - [ ] Header docstring with ASCII, equations (M=D for buck, M=1/(1-D) for boost), references
 - [ ] Snubber RC across switch in SPICE
@@ -1396,6 +1446,8 @@ Buck — analogous tests, including a sync-rect mode test.
 - [ ] `.options METHOD=GEAR TRTOL=7`
 - [ ] Diagnostic fields `lastPeakInductorCurrent`, `lastIsCcm`, etc.
 - [ ] ≥ 6 tests including PtP NRMSE ≤ 0.15 and DCM boundary
+- [ ] **3 published industry reference designs**, each with paired
+      `*_Values` (within 5 %) and `*_PtP` (NRMSE ≤ 0.15) tests
 - [ ] All tests pass
 
 ---
@@ -1499,6 +1551,20 @@ TEST_CASE("Test_Flyback_PtP_AnalyticalVsNgspice") {
 }
 ```
 
+#### Phase 5: Three industry reference designs (1.5 days)
+
+Per GOLDEN_GUIDE §8 + §15. **Flyback — candidate references**:
+1. **Low corner**: TI **UCC28704** EVM (85–265 Vac → 5 V @ 1 A,
+   primary-side regulated, ~50 kHz). Datasheet SLUSBW3.
+2. **Mid corner**: TI **SLUP254** "Designing Flyback Converters
+   Using Peak-Current-Mode Control" worked example (48 V → 12 V
+   @ 5 A, 100 kHz CCM).
+3. **High corner**: Pressman 3rd ed. **Example 4-3** (multi-output
+   ATX flyback, 200 W) **or** ON Semi AND9370 (180 W LED driver).
+
+For each, add `Test_Flyback_RefDesign<N>_Values` and
+`Test_Flyback_RefDesign<N>_PtP` per the GOLDEN_GUIDE §8 template.
+
 **Acceptance**:
 - [ ] Header docstring complete
 - [ ] Snubber RC across primary switch
@@ -1506,7 +1572,8 @@ TEST_CASE("Test_Flyback_PtP_AnalyticalVsNgspice") {
 - [ ] GEAR + TRTOL in solver options
 - [ ] `lastMode`, `lastPrimaryPeakCurrent`, `lastEfficiency` populated
 - [ ] PtP NRMSE test passes < 0.15
-- [ ] All 24 tests pass
+- [ ] **3 industry reference designs** with paired Values + PtP tests
+- [ ] All ≥ 24 tests pass
 
 ---
 
@@ -1595,6 +1662,19 @@ Same as Flyback Phase 4.
 
 Find R_load in netlist; wrap with `std::max(..., 1e-3)`.
 
+#### Phase 7: Three industry reference designs (1.5 days)
+
+Per GOLDEN_GUIDE §8 + §15. **PushPull — candidate references**:
+1. **Low corner**: TI **SN6505B** transformer-driver app note
+   SLLSEC2 (3.3 V → ±15 V @ 100 mA isolated bias, 410 kHz).
+2. **Mid corner**: Pressman 3rd ed. **ch. 5 example** (48 V → 5 V
+   @ 50 A telecom push-pull, 100 kHz, current-mode).
+3. **High corner**: TI **TIDA-01605** or Vicor reference (low-Vin
+   high-current automotive 12 V → 48 V @ 500 W push-pull) **or**
+   Erickson Example 6.5.
+
+Add `Test_PushPull_RefDesign<N>_Values` + `Test_PushPull_RefDesign<N>_PtP`.
+
 **Acceptance**:
 - [ ] Header docstring complete
 - [ ] Snubbers on primary switches (S1, S2)
@@ -1602,6 +1682,7 @@ Find R_load in netlist; wrap with `std::max(..., 1e-3)`.
 - [ ] R_load guard
 - [ ] `extraLo*Waveforms` populated
 - [ ] PtP NRMSE < 0.15
+- [ ] **3 industry reference designs** with paired Values + PtP tests
 - [ ] All ≥ 9 tests pass
 
 ---
@@ -1669,6 +1750,29 @@ Standard `last*` fields per snippet 2.2.
 - IsolatedBuck: add NRMSE PtP test (already has multi-output test).
 - IsolatedBuckBoost: add multi-output test + NRMSE PtP test.
 
+#### Phase 6: Three industry reference designs (1.5 days each)
+
+Per GOLDEN_GUIDE §8 + §15.
+
+**IsolatedBuck (Flybuck) — candidate references**:
+1. **Low corner**: TI **LM5160** "Flybuck Quick Start" SNVA674
+   (24 V → ±12 V @ 100 mA bias, 350 kHz).
+2. **Mid corner**: TI **LM5017** Flybuck app note SNVA674A
+   (48 V → 5 V @ 1 A isolated, 200 kHz).
+3. **High corner**: TI **LM5160-Q1** automotive Flybuck
+   reference (60 V → 12 V @ 1 A, 350 kHz, AEC-Q100).
+
+**IsolatedBuckBoost — candidate references**:
+1. **Low corner**: Maxim **MAX17498** isolated buck-boost EVKit
+   (4.5–36 V → 5 V @ 0.5 A).
+2. **Mid corner**: TI **LM5180** "Isolated PSR Flyback / Buck-
+   Boost" app note SNVA827 (24 V → 12 V @ 1 A).
+3. **High corner**: Erickson **ch. 6.1.3** isolated CUK / SEPIC
+   variant **or** an academic reference (e.g. IEEE TPE paper on
+   automotive 48 V ↔ 12 V isolated bidirectional buck-boost).
+
+Add `Test_<Topo>_RefDesign<N>_Values` + `..._PtP` for each.
+
 **Acceptance per model**:
 - [ ] Header docstring complete
 - [ ] Snake_case method names
@@ -1677,6 +1781,7 @@ Standard `last*` fields per snippet 2.2.
 - [ ] Diagnostic fields populated
 - [ ] PtP NRMSE < 0.15
 - [ ] Multi-output test (both)
+- [ ] **3 industry reference designs** with paired Values + PtP tests
 
 ---
 
@@ -1757,6 +1862,30 @@ Tighten existing PtP threshold to 0.15. Add:
 - Multi-output test (forwards can have multiple secondaries)
 - For TwoSwitch: D=0.5 boundary test
 
+#### Phase 6: Three industry reference designs (1.5 days each)
+
+Per GOLDEN_GUIDE §8 + §15.
+
+**SingleSwitchForward — candidate references**:
+1. **Low corner**: TI **UCC2897A** active-clamp forward EVM
+   SLUU373 (36–75 V → 3.3 V @ 30 A telecom, 250 kHz).
+2. **Mid corner**: Pressman 3rd ed. **ch. 2** worked example
+   (48 V → 5 V @ 20 A, single-ended forward with reset winding).
+3. **High corner**: Erickson **Example 6.4** (multi-output forward
+   with output inductor) **or** Infineon AN-1023 (200 W forward
+   with active-clamp reset).
+
+**TwoSwitchForward — candidate references**:
+1. **Low corner**: TI **TIDA-00951** ref design (24 V → 12 V
+   @ 5 A, 200 kHz, two-switch forward).
+2. **Mid corner**: Pressman 3rd ed. **ch. 2.4** two-switch forward
+   worked example (48 V → 12 V @ 25 A telecom).
+3. **High corner**: Infineon **AN_1612_PL52_1701_115850**
+   "1.6 kW Two-Switch Forward" reference design **or** an IEEE
+   paper on EV-charger two-switch forward (≥ 1 kW, 400 V input).
+
+Add `Test_<Topo>_RefDesign<N>_Values` + `..._PtP` for each.
+
 **Acceptance per model**:
 - [ ] Header docstring complete with demag-winding ASCII (single) or 2-diode reset note (two)
 - [ ] Snubbers fixed (1k+1n, not 1MEG)
@@ -1764,6 +1893,7 @@ Tighten existing PtP threshold to 0.15. Add:
 - [ ] Diagnostic fields populated
 - [ ] PtP NRMSE < 0.15
 - [ ] Multi-output test added
+- [ ] **3 industry reference designs** with paired Values + PtP tests
 - [ ] All ≥ 5 tests per topology pass
 
 ---

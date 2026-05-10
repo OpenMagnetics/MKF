@@ -5,6 +5,10 @@
 #include "processors/Inputs.h"
 #include "support/Utils.h"
 #include "constructive_models/Magnetic.h"
+#include <map>
+#include <optional>
+#include <stdexcept>
+#include <string>
 
 using namespace MAS;
 
@@ -94,9 +98,107 @@ enum class ExtraComponentsMode {
     REAL
 };
 
+/**
+ * @brief Configuration knobs for ngspice circuit generation.
+ *
+ * Centralizes every value that previously lived as a magic number inside
+ * each topology's `generate_ngspice_circuit()` (PWM levels, switch model
+ * thresholds, snubber RC, diode model, output filter, solver options).
+ *
+ * Two override points:
+ *   1. **Per-topology defaults** — registered in
+ *      `Topology.cpp::spice_simulation_defaults()`. Every topology MUST
+ *      have an entry; missing entries throw rather than silently fall
+ *      back to the universal struct defaults below (per the
+ *      "no-fallbacks" rule).
+ *   2. **Per-instance overrides** — call `set_spice_config()` on a
+ *      topology instance to override any subset of fields, e.g. for
+ *      tests that want a smaller `outputCapacitance` to shorten the
+ *      RC settling tail.
+ *
+ * Usage inside a topology's circuit generator:
+ *   auto cfg = spice_config();
+ *   circuit << ".model SW1 SW VT=" << cfg.swModelVT << ...;
+ */
+struct SpiceSimulationConfig {
+    // ---- Drive / switch ----
+    double pwmHigh   = 5.0;       // PULSE high-level [V]
+    double pwmRise   = 10e-9;     // PULSE rise time [s]
+    double pwmFall   = 10e-9;     // PULSE fall time [s]
+    double swModelVT = 2.5;       // ngspice SW model threshold [V]
+    double swModelVH = 0.5;       // ngspice SW model hysteresis [V]
+
+    // ---- Snubber RC across each switch ----
+    double snubR = 100.0;         // [Ω]
+    double snubC = 100e-12;       // [F]
+
+    // ---- Output diode model (.model DIDEAL D(...)) ----
+    double diodeIS = 1e-14;       // saturation current [A]
+    double diodeRS = 1e-6;        // series resistance [Ω]
+
+    // ---- Output filter ----
+    double outputCapacitance              = 100e-6;  // [F]
+    double outputCapInitialChargeFraction = 1.0;     // IC = Vout * fraction
+
+    // ---- Solver / transient ----
+    int    samplesPerPeriod = 200;
+    double relTol  = 1e-3;
+    double absTol  = 1e-9;
+    double vnTol   = 1e-6;
+    int    itl1    = 1000;
+    int    itl4    = 1000;
+    std::string method = "GEAR";
+    double trTol   = 7.0;
+};
+
+/**
+ * @brief Central registry of per-topology default `SpiceSimulationConfig`s.
+ *
+ * Every concrete topology that emits ngspice netlists must have an entry
+ * here. The registry is keyed by `MAS::Topologies` so the compiler
+ * catches typos.
+ */
+const std::map<MAS::Topologies, SpiceSimulationConfig>& spice_simulation_defaults();
+
+/**
+ * @brief Look up the default SpiceSimulationConfig for a given topology.
+ *        Throws if the topology is not registered (no silent fallback).
+ */
+SpiceSimulationConfig get_default_spice_config(MAS::Topologies t);
+
 class Topology {
 public:
     bool _assertErrors = false;
+
+private:
+    std::optional<SpiceSimulationConfig> _spiceOverride;
+
+public:
+    /**
+     * @brief Identify which MAS topology enum this concrete subclass
+     *        represents. Used by `spice_config()` to look up defaults.
+     *        Not pure-virtual to avoid breaking the few topologies that
+     *        currently don't generate SPICE; those will throw if their
+     *        `spice_config()` is called.
+     */
+    virtual MAS::Topologies topology_kind() const {
+        throw std::logic_error(
+            "topology_kind() not overridden — this topology does not "
+            "support ngspice circuit generation");
+    }
+
+    /**
+     * @brief Get the active `SpiceSimulationConfig`: per-instance
+     *        override if set, otherwise the registered default.
+     */
+    SpiceSimulationConfig spice_config() const {
+        if (_spiceOverride.has_value()) return _spiceOverride.value();
+        return get_default_spice_config(topology_kind());
+    }
+
+    void set_spice_config(SpiceSimulationConfig cfg) { _spiceOverride = std::move(cfg); }
+    void clear_spice_config() { _spiceOverride.reset(); }
+    bool has_spice_config_override() const { return _spiceOverride.has_value(); }
 
 
     /**

@@ -315,4 +315,166 @@ namespace {
         CHECK(nrmse < 0.20);
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // GOLDEN-QUALITY: Three industry reference designs
+    // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §8 + §15 and REVIEW_PLAN §3.E.
+    //
+    // Each EVM provides a verified Vin/Vout/Iout/Fs operating point. The
+    // *_Values test asserts that Boost's analytical diagnostics
+    // (D, IL_avg, peak, CCM flag) match closed-form values within ±5 %.
+    // The *_PtP test asserts NRMSE between analytical and ngspice
+    // inductor-current waveforms ≤ 0.15.
+    //
+    // η is held at 1.0 and Vd at 0 (synchronous boost) so the analytical
+    // formulas reduce to the textbook ideal boost equations and the test
+    // does not require transcribing efficiency-curve points from UGs.
+    // ──────────────────────────────────────────────────────────────────────
+
+    namespace {
+        struct BoostRefDesignSpec {
+            const char* name;     // EVM identifier
+            double Vin;           // Input voltage [V]
+            double Vout;          // Output voltage [V]
+            double Iout;          // Output current [A]
+            double Fs;            // Switching frequency [Hz]
+            double Lvalue;        // Inductor value [H] — explicit, not computed
+        };
+
+        // RefDesign1 — Low corner (~25 W). TI TPS61089EVM-742, UG SLVUAM6.
+        //   IC operating window: Vin 2.7–12 V, Vout 4.5–12.6 V, 7 A peak,
+        //   Fs 200 kHz–2.2 MHz. Test point chosen within EVM window.
+        constexpr BoostRefDesignSpec kRefDesign1{
+            "TPS61089EVM-742", 5.0, 9.0, 2.0, 400e3, 4.7e-6};
+
+        // RefDesign2 — Mid corner (~32 W). TI TPS61178EVM-792.
+        //   EVM optimised for Vin 6–12 V → Vout 16 V @ 2 A, 96 % peak η,
+        //   IC TPS61178 (20 V / 10 A sync boost), Fs up to 2.2 MHz.
+        constexpr BoostRefDesignSpec kRefDesign2{
+            "TPS61178EVM-792", 7.2, 16.0, 2.0, 300e3, 6.8e-6};
+
+        // RefDesign3 — High corner (~108 W). TI LM5122EVM-1PH.
+        //   EVM provides Vin 9–20 V → Vout 24 V @ 4.5 A from a 65 V
+        //   sync-boost controller. Test point at Vin = 12 V mid-range.
+        constexpr BoostRefDesignSpec kRefDesign3{
+            "LM5122EVM-1PH", 12.0, 24.0, 4.5, 250e3, 10e-6};
+
+        OpenMagnetics::Boost build_boost_from_spec(const BoostRefDesignSpec& s) {
+            OpenMagnetics::Boost b;
+            DimensionWithTolerance iv;
+            iv.set_nominal(s.Vin);
+            iv.set_minimum(s.Vin * 0.95);
+            iv.set_maximum(s.Vin * 1.05);
+            b.set_input_voltage(iv);
+            b.set_diode_voltage_drop(0.0);   // synchronous boost
+            b.set_efficiency(1.0);            // lossless analytical reference
+            b.set_current_ripple_ratio(0.4);
+            BaseOperatingPoint op;
+            op.set_output_voltages({s.Vout});
+            op.set_output_currents({s.Iout});
+            op.set_switching_frequency(s.Fs);
+            op.set_ambient_temperature(25.0);
+            b.set_operating_points({op});
+            return b;
+        }
+
+        void assert_boost_refdesign_values(const BoostRefDesignSpec& s) {
+            auto boost = build_boost_from_spec(s);
+            // Diagnostics reflect the *last* call to
+            // process_operating_points_for_input_voltage(); calling it
+            // directly with the nominal Vin guarantees the Values check
+            // is anchored at the nominal operating point rather than at
+            // whichever corner (min/nom/max) the iterator visits last.
+            BaseOperatingPoint op;
+            op.set_output_voltages({s.Vout});
+            op.set_output_currents({s.Iout});
+            op.set_switching_frequency(s.Fs);
+            op.set_ambient_temperature(25.0);
+            boost.process_operating_points_for_input_voltage(s.Vin, op, s.Lvalue);
+
+            // Closed-form expectations (η=1, Vd=0, CCM).
+            double D_exp     = 1.0 - s.Vin / s.Vout;
+            double IL_avg_exp = s.Iout * s.Vout / s.Vin;
+            double tOn_exp   = D_exp / s.Fs;
+            double dIL_exp   = s.Vin * tOn_exp / s.Lvalue;
+            double Ipk_exp   = IL_avg_exp + 0.5 * dIL_exp;
+
+            INFO(s.name << " — D=" << boost.get_last_duty_cycle()
+                       << " (exp " << D_exp << ")");
+            INFO(s.name << " — IL_avg=" << boost.get_last_inductor_average_current()
+                       << " A (exp " << IL_avg_exp << " A)");
+            INFO(s.name << " — IL_peak=" << boost.get_last_peak_inductor_current()
+                       << " A (exp " << Ipk_exp << " A)");
+
+            CHECK(boost.get_last_is_ccm());
+            CHECK_THAT(boost.get_last_duty_cycle(),
+                       Catch::Matchers::WithinRel(D_exp, 0.05));
+            CHECK_THAT(boost.get_last_inductor_average_current(),
+                       Catch::Matchers::WithinRel(IL_avg_exp, 0.05));
+            CHECK_THAT(boost.get_last_inductor_peak_to_peak(),
+                       Catch::Matchers::WithinRel(dIL_exp, 0.05));
+            CHECK_THAT(boost.get_last_peak_inductor_current(),
+                       Catch::Matchers::WithinRel(Ipk_exp, 0.05));
+        }
+
+        void assert_boost_refdesign_ptp(const BoostRefDesignSpec& s) {
+            NgspiceRunner runner;
+            if (!runner.is_available()) SKIP("ngspice not available");
+
+            auto boost = build_boost_from_spec(s);
+            // Output cap (100 µF, hardcoded in generate_ngspice_circuit) and
+            // R_load = Vout / Iout form an RC settling tail of τ ≈ R·C.
+            // Default 50 settling periods is too short at higher Fs; bump
+            // to 400 so even the 400 kHz / 4.5 Ω corner sees ≥ 8·τ before
+            // the extraction window opens.
+            boost.set_num_steady_state_periods(400);
+
+            auto analyticalOps = boost.process_operating_points(std::vector<double>{}, s.Lvalue);
+            REQUIRE(!analyticalOps.empty());
+            auto aTime = ptp_current_time(analyticalOps[0], 0);
+            auto aData = ptp_current(analyticalOps[0], 0);
+            REQUIRE(!aData.empty());
+            REQUIRE(!aTime.empty());
+            auto aResampled = ptp_interp(aTime, aData, 256);
+
+            boost.set_num_periods_to_extract(1);
+            auto simOps = boost.simulate_and_extract_operating_points(s.Lvalue);
+            REQUIRE(!simOps.empty());
+            auto sTime = ptp_current_time(simOps[0], 0);
+            auto sData = ptp_current(simOps[0], 0);
+            REQUIRE(!sData.empty());
+            REQUIRE(!sTime.empty());
+            auto sResampled = ptp_interp(sTime, sData, 256);
+
+            double nrmse = ptp_nrmse(aResampled, sResampled);
+            INFO(s.name << " inductor-current NRMSE (analytical vs ngspice): "
+                        << (nrmse * 100.0) << "%");
+            CHECK(nrmse < 0.15);
+        }
+    }  // namespace
+
+    TEST_CASE("Test_Boost_RefDesign1_Values_TPS61089EVM_742",
+              "[converter-model][boost-topology][refdesign][values]") {
+        assert_boost_refdesign_values(kRefDesign1);
+    }
+    TEST_CASE("Test_Boost_RefDesign1_PtP_TPS61089EVM_742",
+              "[converter-model][boost-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_boost_refdesign_ptp(kRefDesign1);
+    }
+    TEST_CASE("Test_Boost_RefDesign2_Values_TPS61178EVM_792",
+              "[converter-model][boost-topology][refdesign][values]") {
+        assert_boost_refdesign_values(kRefDesign2);
+    }
+    TEST_CASE("Test_Boost_RefDesign2_PtP_TPS61178EVM_792",
+              "[converter-model][boost-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_boost_refdesign_ptp(kRefDesign2);
+    }
+    TEST_CASE("Test_Boost_RefDesign3_Values_LM5122EVM_1PH",
+              "[converter-model][boost-topology][refdesign][values]") {
+        assert_boost_refdesign_values(kRefDesign3);
+    }
+    TEST_CASE("Test_Boost_RefDesign3_PtP_LM5122EVM_1PH",
+              "[converter-model][boost-topology][refdesign][ngspice-simulation][ptpcomparison]") {
+        assert_boost_refdesign_ptp(kRefDesign3);
+    }
+
 }  // namespace

@@ -386,9 +386,31 @@ converter-level (not winding-level) validation. Common bugs:
 
 Mirror the DAB test set. The minimum required `TEST_CASE`s are:
 
-- [ ] `Test_<Topo>_<Reference>_Reference_Design` — reproduce one
-      operating point from a published reference (TI app note,
-      academic paper) within 5 %.
+- [ ] **Three industry reference designs** (mandatory for DAB-quality).
+      Pick three independently-published designs that span the
+      topology's realistic power / voltage envelope — typically:
+      1. **Low corner** — small commercial design (TI/ON/Infineon
+         eval board, ≤ 50 W or low Vin).
+      2. **Mid corner** — typical application (TI/ADI/STMicro app
+         note, 100 W – 1 kW industrial / automotive).
+      3. **High corner** — high-power or academic reference (IEEE
+         paper, vendor reference design, ≥ 1 kW or high Vin).
+      Cite each source fully (vendor + part number + page, or
+      author + venue + year + page). For **each** of the three
+      designs, add **two** test cases:
+      - `Test_<Topo>_RefDesign<N>_Values` — instantiate the design
+         in MAS, run the design solver + analytical OP, assert the
+         published numbers (Vo, Io, Ipri_rms, Lm/Lo/Lr, turns
+         ratio, ZVS margin where stated) are reproduced within
+         **5 %**.
+      - `Test_<Topo>_RefDesign<N>_PtP` — run the same operating
+         point through SPICE and assert primary-current
+         `ptp_nrmse` ≤ **0.15** vs the analytical waveform.
+
+      Total: **6 reference-design tests** per converter (3 designs ×
+      {Values, PtP}). This is the single most effective gate
+      against silent regressions and is the deciding criterion for
+      promoting a model to "DAB-quality".
 - [ ] `Test_<Topo>_Design_Requirements` — verify turns-ratio, Lm, Lr
       / Lo, are positive and within sane ranges; round-trip a power
       target through the design solver.
@@ -611,8 +633,14 @@ Final pre-merge checklist:
 
 - [ ] Builds clean (`ninja -j2 MKF_tests` returns 0).
 - [ ] All `TestTopology<Topo>` cases pass.
-- [ ] At least one `*_PtP_AnalyticalVsNgspice` test runs and the NRMSE
-      is ≤ 0.15.
+- [ ] **≥ 3 published industry reference designs** reproduced —
+      each within 5 % on the published numbers (Vo, Ipri_rms, Lm,
+      Lo, Lr, turns ratio, ZVS margin) **and** each with a paired
+      `*_PtP` test whose primary-current NRMSE ≤ 0.15. The three
+      designs must span the topology's power / voltage envelope
+      (low / mid / high corner) and come from independent sources
+      (vendor app note + textbook + IEEE paper, or three independent
+      vendors). This is the deciding criterion for "DAB-quality".
 - [ ] At least one ZVS-boundary test where `lastZvsMarginLagging`
       changes sign at the predicted Lk.
 - [ ] Schema fields documented in `MAS/schemas/inputs/topologies/`.

@@ -4,9 +4,58 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include <magic_enum.hpp>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
+
+    // ----------------------------------------------------------------
+    // SpiceSimulationConfig — central registry of per-topology defaults.
+    //
+    // Every topology that generates an ngspice netlist registers its
+    // tuned values here. The struct's in-class defaults reflect a
+    // generic "single-switch hard-switched DC-DC" baseline; topologies
+    // diverge from those for documented physical reasons (snubber τ vs
+    // Fs range, output cap vs power level, solver tolerances vs
+    // switching events per period, etc.).
+    //
+    // Adding a new topology: insert a new entry below and override
+    // `Topology::topology_kind()` in the concrete class.
+    // ----------------------------------------------------------------
+    const std::map<MAS::Topologies, SpiceSimulationConfig>&
+    spice_simulation_defaults() {
+        static const std::map<MAS::Topologies, SpiceSimulationConfig> defaults = [] {
+            std::map<MAS::Topologies, SpiceSimulationConfig> m;
+
+            // Boost — single-switch hard-switched, Fs 200 kHz – 2.2 MHz
+            // (driven by reference-design EVMs TPS61089EVM-742,
+            // TPS61178EVM-792, LM5122EVM-1PH). At 400 kHz a 1 µs snubber
+            // τ would consume 40 % of the switching period and visibly
+            // distort the inductor-current waveform, so the snubber is
+            // sized for τ = 10 ns (negligible at all supported Fs).
+            {
+                SpiceSimulationConfig boost;
+                boost.snubR = 100.0;       boost.snubC = 100e-12;
+                boost.outputCapacitance = 100e-6;
+                m[MAS::Topologies::BOOST_CONVERTER] = boost;
+            }
+
+            return m;
+        }();
+        return defaults;
+    }
+
+    SpiceSimulationConfig get_default_spice_config(MAS::Topologies t) {
+        const auto& m = spice_simulation_defaults();
+        auto it = m.find(t);
+        if (it == m.end()) {
+            throw std::invalid_argument(
+                std::string("No SpiceSimulationConfig registered for topology ") +
+                std::string(magic_enum::enum_name(t)) +
+                ". Add an entry in Topology.cpp::spice_simulation_defaults().");
+        }
+        return it->second;
+    }
 
     Topology::Topology(const json& j) {
         // Base class constructor - derived classes should handle their own JSON deserialization
