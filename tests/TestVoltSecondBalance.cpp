@@ -235,6 +235,8 @@ TEST_CASE("Test_VoltSecondBalance_Flyback", "[volt-second-balance][flyback-topol
     SECTION("SPICE path") {
         NgspiceRunner runner;
         if (!runner.is_available()) SKIP("ngspice not available");
+        fb.set_num_steady_state_periods(200);
+        fb.set_num_periods_to_extract(1);
         auto ops = fb.simulate_and_extract_operating_points(turnsRatios, Lm);
         check_all_windings(ops, "Flyback", "SPICE", kSpiceEps, /*expectedWindings*/ 2);
     }

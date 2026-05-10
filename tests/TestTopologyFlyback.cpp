@@ -1113,12 +1113,16 @@ namespace {
         INFO("Secondary voltage max: " << secV_max << " V");
         INFO("Secondary current avg: " << secI_avg << " A");
         
-        // Validate primary voltage: should be close to input voltage during ON time
-        CHECK(priV_max > 40.0);  // Should be around 48V
-        CHECK(priV_max < 60.0);
-        
-        // Validate primary voltage goes negative during OFF time (reflected voltage)
-        CHECK(priV_min < -10.0);  // Reflected voltage
+        // Post §5.0 fix (CONVERTER_MODELS_GOLDEN_GUIDE.md §5.0/§5.1):
+        // ConverterWaveforms.input_voltage is now the DC source v(vin_dc),
+        // not the bipolar across-Lpri swing. The bipolar primary winding
+        // voltage is exposed instead via simulate_and_extract_operating_points
+        // → excitations_per_winding[primary].voltage. Validate the converter
+        // input rail here.
+        CHECK(priV_max > 47.5);
+        CHECK(priV_max < 48.5);
+        CHECK(priV_min > 47.5);   // DC source: ripple-free
+        CHECK(priV_min < 48.5);
         
         // Validate secondary voltage is around output voltage + diode drop
         CHECK(secV_max > 8.0);  // Should be around 12.5V (accounting for SPICE diode drops)
@@ -1172,15 +1176,14 @@ namespace {
             }
         }
 
-        SECTION("Waveform shape: primary voltage has correct CCM polarity") {
-            // During ON time: primary voltage ≈ +Vin (switch connects primary to ground)
-            // During OFF time: primary voltage ≈ -(Vout/n) (reflected output voltage, negative)
-            CHECK(priV_max > 40.0);   // ON-time voltage ≈ Vin = 48V
-            CHECK(priV_min < -10.0);  // OFF-time reflected voltage (negative)
-            // The average primary voltage should be approximately 0 (volt-second balance)
-            double priV_avg = std::accumulate(priVoltageData.begin(), priVoltageData.end(), 0.0) / priVoltageData.size();
-            INFO("Primary voltage avg: " << priV_avg << " V (expect ≈ 0 for volt-second balance)");
-            CHECK(std::abs(priV_avg) < 0.2 * priV_max);  // avg < 20% of peak (approximately balanced)
+        SECTION("Waveform shape: input_voltage is the DC source (post §5.0 fix)") {
+            // Post §5.0: input_voltage on ConverterWaveforms is the DC input
+            // rail (v(vin_dc)), not the bipolar across-Lpri swing. The latter
+            // now lives on excitations_per_winding[primary].voltage.
+            CHECK(priV_max > 47.5);
+            CHECK(priV_max < 48.5);
+            CHECK(priV_min > 47.5);
+            CHECK(priV_min < 48.5);
         }
     }
 

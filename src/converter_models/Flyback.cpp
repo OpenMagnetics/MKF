@@ -403,7 +403,7 @@ namespace OpenMagnetics {
         
         // Save primary and all secondary voltages and currents
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_in)";
+        circuit << ".save v(pri_in) v(vin_dc)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) v(vout" << secIdx << ") i(Vsec_sense" << secIdx << ")";
         }
@@ -670,7 +670,7 @@ namespace OpenMagnetics {
         
         // Save primary and all secondary voltages and currents
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_in)";
+        circuit << ".save v(pri_in) v(vin_dc)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) v(vout" << secIdx << ") i(Vsec_sense" << secIdx << ")";
         }
@@ -857,9 +857,14 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("pri_in"));
+            // Per CONVERTER_MODELS_GOLDEN_GUIDE.md §5.0/§5.1: ConverterWaveforms is
+            // the converter-port stream. input_voltage MUST be the DC source
+            // (v(vin_dc)), NOT the bipolar across-Lpri swing v(pri_in) — the
+            // latter belongs in excitations_per_winding[primary] (and is
+            // already exposed via simulate_and_extract_operating_points).
+            wf.set_input_voltage(getWaveform("vin_dc"));
             wf.set_input_current(getWaveform("vpri_sense#branch"));
-            
+
             for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
                 wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense" + std::to_string(secIdx) + "#branch"));
