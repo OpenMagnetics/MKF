@@ -103,7 +103,21 @@ void assert_tuning_sane(const RefDesign& d) {
     CHECK(t.gi_fc_hz > d.fsw / 100.0);
 
     // Warm-start ICs must be physically meaningful.
-    CHECK(t.ic_vbus == d.vbus);
+    // ic_vbus = Vbus_nom: emulates the inrush-bypass relay / soft-start
+    // hardware sequence used by every production PFC (TI SLUA479, ON
+    // NCP1654 app-note §5).  Pre-charging Cbus to Vpk and then letting
+    // the boost loop pump it up to Vbus_nom is feasible in principle, but
+    // every line-cycle peak of the un-boosted phase drives a large
+    // bridge-conduction current pulse through the inductor that the
+    // current EA sees as i_sense ≫ i_ref → hard anti-windup → vc_i
+    // locked at 0 → gate dead-locked OFF → the loop never actually
+    // engages within a 3-cycle simulation window.  Pre-charging to the
+    // regulated value sidesteps the bridge-inrush window: D1 is reverse
+    // biased throughout (vsw < vbus until the gate switches), so the
+    // *only* current the EA sees is what the gate commands, and the loop
+    // can engage cleanly while Cbus discharges slowly through Rload.
+    CHECK_THAT(t.ic_vbus,
+               Catch::Matchers::WithinRel(d.vbus, 1e-6));
     CHECK_THAT(t.ic_vff,
                Catch::Matchers::WithinRel(2.0 * std::sqrt(2.0) * d.vrms / M_PI, 0.01));
 

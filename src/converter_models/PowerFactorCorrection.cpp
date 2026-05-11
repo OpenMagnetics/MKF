@@ -951,7 +951,9 @@ namespace OpenMagnetics {
         c << ".param v_high="           << sci(t.pwm_v_high)     << "\n";
         c << ".param pwm_t_rise="       << sci(t.pwm_t_rise)     << "\n";
         c << ".param ic_vbus="          << sci(t.ic_vbus)        << "\n";
-        c << ".param ic_vea="           << sci(t.ic_vea)         << "\n\n";
+        c << ".param ic_vea="           << sci(t.ic_vea)         << "\n";
+        c << ".param ic_vc_i="          << sci(t.ic_vc_i)        << "\n";
+        c << ".param t_ss_release="     << sci(t.t_ss_release)   << "\n\n";
 
         // ── Subckt prelude (OPAMP_IDEAL + COMPARATOR_IDEAL) ─────────────
         c << "* ─── Reusable subcircuits ──────────────────────────────────\n";
@@ -965,8 +967,20 @@ namespace OpenMagnetics {
         c << "L1        l_in     sw    {l_ind}\n";
         c << ".model SW1 SW (VT=0.5 VH=0.1 RON=10m ROFF=1MEG)\n";
         c << "S1        sw  0    gate 0 SW1\n";
-        c << "Rsnub_s1  sw  0    100\n";
-        c << "Csnub_s1  sw  0    100p\n";
+        // Series-RC snubber across the switch (R in series with C, NOT both
+        // shunted to 0).  When S1 is OFF and D1 is reverse-biased (vin_rect <
+        // vbus), the inductor current must reach 0 before the cycle ends; if
+        // the snubber R were directly to ground (the "parallel-RC" pattern
+        // used elsewhere in this codebase) it would carry vpk/Rsnub of DC
+        // current at every line-cycle peak — for Rsnub=100 Ω that's >3 A,
+        // dwarfing the 0.6 A i_ref and locking the current EA into hard
+        // anti-windup at vc_i = 0.  In a real boost the inductor *can* fully
+        // demagnetize each cycle (DCM near the line zero-crossings); in CCM
+        // the diode keeps conducting into vbus.  The series-RC pattern blocks
+        // DC and only damps switching-edge ringing, which is the textbook
+        // role of an RC snubber (Erickson §A.2; Basso 2008 §4.5).
+        c << "Rsnub_s1  sw   snub_n  100\n";
+        c << "Csnub_s1  snub_n 0     100p\n";
         c << ".model DIDEAL D (IS=1e-12 RS=1m N=1)\n";
         c << "D1        sw  vbus DIDEAL\n";
         c << "Cout      vbus 0   {cbus}  IC={ic_vbus}\n";
@@ -975,13 +989,24 @@ namespace OpenMagnetics {
         // ── Voltage error amp (Block 1) ─────────────────────────────────
         c << "* ─── Voltage error amp (Gv) — type-II ─────────────────────\n";
         c << "B_div     vbus_div 0  V=V(vbus)*k_div\n";
-        c << "V_ref_v   vref_v   0  {vref}\n";
+        // Soft-start: ramp the EA reference linearly from
+        //   vref(0)  = Vpk · k_div   (= ic_vbus · k_div, so error is 0 at t=0+)
+        //   vref(t)  = vref          (= 2.5 V) for t ≥ t_ss_release
+        // This grows the bus-voltage target gradually from the bridge
+        // equilibrium (Vpk) up to Vbus_nom, which keeps the inrush
+        // current that flows into Cbus during the boost-up bounded.
+        // Without the ramp, the EA must close from a 75-V target gap,
+        // pumping >3 A through L1 each line peak — the current EA reads
+        // i_sense >> i_ref and winds C_fb_zi negative within the first
+        // line cycle, dead-locking vc_i at 0 forever (gate OFF).
+        // Per Basso 2012 Ch. 6 + TI SLUA479 (UCC28070 SS architecture).
+        c << "B_vref_v  vref_v   0  V=(vpk*k_div)+(vref-vpk*k_div)*min(1, time/t_ss_release)\n";
         c << "R_in_v    vbus_div vea_n  {gv_rin}\n";
         c << "R_fb_z    vea_n    vea_z  {gv_rz}\n";
         c << "C_fb_z    vea_z    vea    {gv_cz} IC=0\n";
         c << "C_fb_p    vea_n    vea    {gv_cp} IC=0\n";
         c << "X_op_v    vref_v   vea_n  vea OPAMP_IDEAL "
-             "params: A0=1e5 GBW=1e6 VSSPOS={vea_max} VSSNEG={vea_min}\n\n";
+             "params: A0=1e3 GBW=10e6 VSSPOS={vea_max} VSSNEG={vea_min} IC_FILT={ic_vea}\n\n";
 
         // ── Feed-forward (Block 2) ──────────────────────────────────────
         c << "* ─── RMS^2 feed-forward — two LP stages + squarer ─────────\n";
@@ -1001,21 +1026,39 @@ namespace OpenMagnetics {
         c << "B_isense  i_sense  0  V=I(Vl_sense)*rs_sense\n";
         c << "R_in_i    i_sense  ic_n   {gi_rin}\n";
         c << "R_fb_zi   ic_n     ic_z   {gi_rz}\n";
-        c << "C_fb_zi   ic_z     vc_i   {gi_cz} IC=0\n";
+        // Pre-bias the integrator capacitor C_fb_zi to ic_vc_i. ic_z sits at
+        // virtual ground (≈ V(i_ref) ≈ 0 at startup), and V_cap = V(ic_z) -
+        // V(vc_i). For vc_i to start at +ic_vc_i, V_cap must start at
+        // -ic_vc_i. Without this pre-bias, the integrator state is washed
+        // out within ~1 µs (the opamp's internal R_pole·C_pole) and the
+        // current EA cannot remember its operating point through the
+        // first inrush event of the line cycle (which would otherwise
+        // wind C_fb_zi irreversibly negative — gate dead-locked OFF).
+        c << "C_fb_zi   ic_z     vc_i   {gi_cz} IC=-{ic_vc_i}\n";
         c << "C_fb_pi   ic_n     vc_i   {gi_cp} IC=0\n";
         c << "X_op_i    i_ref    ic_n   vc_i OPAMP_IDEAL "
-             "params: A0=1e5 GBW=10e6 VSSPOS={v_pk_saw} VSSNEG=0\n\n";
+             // Current EA: fc_i = fsw/10 — internal opamp pole must sit
+             // ≥ 10·fc_i. A0=1e3, GBW=100 MHz → fp = 100 kHz. IC_FILT
+             // intentionally NOT set on the current EA — it is washed
+             // out in 1.6 µs by the natural feedback dynamics; the real
+             // integrator state lives on C_fb_zi above (see IC=-{ic_vc_i}).
+             "params: A0=1e3 GBW=100e6 VSSPOS={v_pk_saw} VSSNEG=0\n\n";
 
         // ── Oscillator + PWM comparator (Blocks 5–6) ────────────────────
         c << "* ─── Sawtooth + PWM comparator ────────────────────────────\n";
         c << "V_saw     saw 0   PULSE(0 {v_pk_saw} 0 {tsw-pwm_t_rise} "
              "{pwm_t_rise} {pwm_t_rise} {tsw})\n";
-        c << "B_gate    gate 0  V=(V(vc_i) > V(saw)) ? v_high : 0\n\n";
+        c << "B_gate    gate    0  V=(V(vc_i) > V(saw)) ? v_high : 0\n\n";
 
         // ── Initial conditions ──────────────────────────────────────────
+        // Note: vea / vc_i / vrms_ff are B-source outputs and CANNOT be
+        // ICed directly — `.ic v(vea)=...` is silently dropped by ngspice.
+        // The opamp warm-start is applied via the IC_FILT subckt parameter
+        // on the X_op_v / X_op_i instances above (sets the internal `filt`
+        // capacitor — that IS a state node). vrms_ff = vff2² follows
+        // automatically from vff1 / vff2 capacitor ICs.
         c << "* ─── Initial conditions (warm start to analytical SS) ────\n";
-        c << ".ic v(vbus)={ic_vbus} v(vea)={ic_vea} "
-             "v(vff1)={ic_vff} v(vff2)={ic_vff}\n\n";
+        c << ".ic v(vbus)={ic_vbus} v(vff1)={ic_vff} v(vff2)={ic_vff}\n\n";
 
         // ── Transient analysis + solver options ─────────────────────────
         const double simTime = numberOfLineCycles * tline;
@@ -1024,7 +1067,7 @@ namespace OpenMagnetics {
         c << ".tran " << sci(maxStep) << " " << sci(simTime) << " 0 "
           << sci(maxStep) << " uic\n";
         c << ".save i(vl_sense) v(vin_rect) v(vbus) v(vea) v(vrms_ff) "
-             "v(i_ref) v(i_sense) v(vc_i) v(saw) v(gate)\n";
+             "v(i_ref) v(i_sense) v(vc_i) v(vref_v) v(saw) v(gate)\n";
         c << ".options METHOD=GEAR TRTOL=7 RELTOL=1e-3 ABSTOL=1e-9 VNTOL=1e-6\n";
         c << ".options ITL1=500 ITL4=200\n";
         c << ".end\n";

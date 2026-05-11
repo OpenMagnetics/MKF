@@ -27,27 +27,57 @@
 namespace OpenMagnetics {
 
 /**
- * @brief OPAMP_IDEAL — single-pole opamp with output rail clamp.
+ * @brief OPAMP_IDEAL — single-pole opamp with output rail clamp
+ *        AND anti-windup on the internal state.
  *
  * Pins: vp vn vo
  * Params: A0 (DC open-loop gain, V/V), GBW (unity-gain bandwidth, Hz),
- *         VSSPOS (positive rail, V), VSSNEG (negative rail, V).
+ *         VSSPOS (positive rail, V), VSSNEG (negative rail, V),
+ *         IC_FILT (initial voltage on the internal `filt` state node, V —
+ *                  use this for warm-start; .ic on the external `vo` pin
+ *                  is silently ignored because `vo` is a B-source output,
+ *                  not a state variable).
  *
  * Topology:
- *   diff = A0 · (V(vp) − V(vn))                    (B-source, no filtering)
- *   filt = LP(diff, fp = GBW/A0)                   (RC pole; unity-crossover at GBW)
- *   vo   = clamp(V(filt), VSSNEG, VSSPOS)          (B-source rail limiter)
+ *   diff = A0·(V(vp)−V(vn))                          (B-source, no clamp)
+ *   filt = LP(diff, fp = GBW/A0)                     (RC pole)
+ *   vo   = clamp(V(filt), VSSNEG, VSSPOS)            (B-source rail clamp)
+ *   anti-windup: a high-gain B-source pulls filt back inside
+ *                [VSSNEG, VSSPOS] whenever it tries to wind past a rail.
+ *                Linear-region behavior (when filt is between rails) is
+ *                untouched — the AW source contributes zero current.
  *
- * Validated against:
+ * Why anti-windup matters: when the opamp is wrapped in a control loop
+ * where an external constraint (comparator saturation, load nonlinearity,
+ * boost current sat at line zero crossing) prevents the loop from
+ * converging, an unbounded integrator state can wind to ±∞ and pin
+ * the output at one rail for many time constants after the constraint
+ * releases. Empirically (PFC NCP1654 startup), without AW the current EA
+ * filt wound to −5 V within 0.2 ms and never recovered — gate stayed
+ * permanently at 0, no boost action. With AW, filt is hard-bounded to
+ * the linear-control range and recovers in one EA time constant.
+ *
+ * Validated against (TestSpiceSubcircuits.cpp):
  *   - DC accuracy: open-loop gain |Δvo/Δvd| ≈ A0 for vd in linear range
  *   - Voltage-follower bandwidth: closed-loop −3 dB at fc ≈ GBW
  *   - Rail clamp: vo saturates at VSSPOS / VSSNEG when input drives past
+ *   - Warm-start IC: `IC_FILT={value}` instance param sets vo at t=0
  */
 inline constexpr const char* SPICE_SUBCKT_OPAMP_IDEAL = R"NGSPICE(
-.subckt OPAMP_IDEAL vp vn vo params: A0=1e5 GBW=1e6 VSSPOS=5 VSSNEG=0
+.subckt OPAMP_IDEAL vp vn vo params: A0=1e5 GBW=1e6 VSSPOS=5 VSSNEG=0 IC_FILT=0
 B_diff diff 0 V = A0 * (V(vp) - V(vn))
 R_pole diff filt 1k
-C_pole filt 0 {A0/(6.283185307*1k*GBW)}
+C_pole filt 0 {A0/(6.283185307*1k*GBW)} IC={IC_FILT}
+* Anti-windup rail clamps — near-ideal diodes with Vt=25mV·0.05=1.25 mV.
+* When filt would exceed VSSPOS, D_aw_p conducts strongly to rail_p,
+* draining whatever current the upstream R_pole pushes through. Same on
+* the negative rail with D_aw_n. In the linear region (VSSNEG < filt <
+* VSSPOS), both diodes are reverse-biased and contribute zero current.
+.model DAWIDEAL D (IS=1e-12 RS=1m N=0.05)
+V_rail_p_aw rail_p_aw 0 {VSSPOS}
+V_rail_n_aw rail_n_aw 0 {VSSNEG}
+D_aw_p filt        rail_p_aw DAWIDEAL
+D_aw_n rail_n_aw   filt      DAWIDEAL
 B_clamp vo 0 V = min(VSSPOS, max(VSSNEG, V(filt)))
 .ends OPAMP_IDEAL
 )NGSPICE";

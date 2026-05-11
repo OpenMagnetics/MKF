@@ -267,9 +267,34 @@ struct PfcControllerTuning {
     double pwm_t_rise   = 1e-9;     ///< Sawtooth reset edge [s]
 
     // ── Initial conditions (warm start) ─────────────────────────────────
-    double ic_vbus    = 0.0;        ///< = Vbus_nom
+    double ic_vbus    = 0.0;        ///< = Vpk (rectified peak — bridge clamp)
     double ic_vea     = 0.0;        ///< = vea_nom
     double ic_vff     = 0.0;        ///< = (2√2/π) · Vrms_nom — mean(|vin|)
+    double ic_vc_i    = 0.0;        ///< = D_target · V_pk_saw
+                                    ///<   D_target = 1 − Vpk/Vbus_nom
+                                    ///<   (NOT D_avg — D_avg over-pumps Cbus
+                                    ///<   to Vpk/(1−D_avg) at start; D_target
+                                    ///<   = duty needed to hold Vbus = Vbus_nom
+                                    ///<   exactly at the line peak).
+
+    // ── Soft-start (NEW: boost-action establishment) ────────────────────
+    // During the first t_ss_release seconds, the PWM control voltage seen
+    // by the comparator is clamped from BELOW by a linearly-decaying floor
+    //
+    //   ss_floor(t) = ic_vc_i · max(0, 1 − t/t_ss_release)
+    //
+    // This forces the gate to fire at duty ≈ D_target initially (boosting
+    // Cbus from Vpk up to Vbus_nom without overshoot), and gracefully
+    // hands control back to the current EA as the floor decays. Without
+    // this, the inrush charge pulse via L1+D1 each line cycle drives the
+    // current EA's integrator capacitor C_fb_zi irreversibly negative
+    // (i_sense > i_ref always when no boost action), deadlocking the
+    // gate at OFF for the entire simulation.
+    //
+    // 30 ms = 1.5 line cycles at 50 Hz — long enough to span 3 inrush
+    // events (rising-edge of each rectified half-cycle) so steady-state
+    // operating point is established before the floor releases.
+    double t_ss_release = 30e-3;    ///< Soft-start release time [s]
 };
 
 /**
