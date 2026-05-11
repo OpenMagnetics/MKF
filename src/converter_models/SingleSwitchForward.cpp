@@ -572,7 +572,7 @@ namespace OpenMagnetics {
         
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_in) i(Vpri_sense) v(demag_in) i(Vdemag_sense)";
+        circuit << ".save v(pri_in) i(Vpri_sense) v(demag_in) i(Vdemag_sense) v(vin_dc) i(Vin)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
@@ -734,12 +734,35 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("pri_in"));
-            wf.set_input_current(getWaveform("vpri_sense#branch"));
-            
-            for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
+            // §5.1 converter-port stream — vin_dc / -i(Vin) (DC source
+            // rail), NOT pri_in (primary winding top — bipolar AC,
+            // alternates between vin_dc when ON and reflected demag node
+            // when OFF) / i(Vpri_sense) (primary winding current, AC).
+            wf.set_input_voltage(getWaveform("vin_dc"));
+            Waveform iInWf = getWaveform("vin#branch");
+            auto& iInData = iInWf.get_mutable_data();
+            for (auto& v : iInData) v = -v;
+            wf.set_input_current(iInWf);
+
+            for (size_t secIdx = 0; secIdx + 1 < turnsRatios.size(); ++secIdx) {
+                // turnsRatios[0] is the demagnetization-winding ratio;
+                // physical secondaries are indexed 0..numSec-1 in the
+                // netlist (vout0, vout1, ...) and start at
+                // turnsRatios[1]. Iterating turnsRatios.size() (the old
+                // bound) produced an empty extra entry per OP.
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
-                wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense" + std::to_string(secIdx) + "#branch"));
+                // Reconstruct Iout(t) = Vout(t)/Rload (DC by design).
+                // Mirrors Buck.cpp / IsolatedBuck.cpp / AHB §5.1. Avoids
+                // the i(Vsec_sense#branch) approach because that branch
+                // is sensitive to inductor-startup transients within the
+                // extraction window for some operating points.
+                const double Vo_i = opPoint.get_output_voltages()[secIdx];
+                const double Io_i = opPoint.get_output_currents()[secIdx];
+                const double Rload_i = std::max(Vo_i / Io_i, 1e-3);
+                Waveform ioutWf = getWaveform("vout" + std::to_string(secIdx));
+                auto& ioutData = ioutWf.get_mutable_data();
+                for (auto& v : ioutData) v = v / Rload_i;
+                wf.get_mutable_output_currents().push_back(ioutWf);
             }
             
             results.push_back(wf);

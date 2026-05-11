@@ -610,7 +610,7 @@ namespace OpenMagnetics {
         
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_in) i(Vpri_sense)";
+        circuit << ".save v(pri_in) i(Vpri_sense) v(vin_dc) i(Vin)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
@@ -764,12 +764,26 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("pri_in"));
-            wf.set_input_current(getWaveform("vpri_sense#branch"));
-            
+            // §5.1 converter-port stream — vin_dc / -i(Vin) (DC source
+            // rail), NOT pri_in / i(Vpri_sense) (primary winding, AC).
+            wf.set_input_voltage(getWaveform("vin_dc"));
+            Waveform iInWf = getWaveform("vin#branch");
+            auto& iInData = iInWf.get_mutable_data();
+            for (auto& v : iInData) v = -v;
+            wf.set_input_current(iInWf);
+
+            // TwoSwitchForward has no demag winding — every entry in
+            // turnsRatios is a physical secondary (numSec = size()).
             for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
-                wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense" + std::to_string(secIdx) + "#branch"));
+                // Reconstruct Iout(t) = Vout(t)/Rload (DC by design).
+                const double Vo_i = opPoint.get_output_voltages()[secIdx];
+                const double Io_i = opPoint.get_output_currents()[secIdx];
+                const double Rload_i = std::max(Vo_i / Io_i, 1e-3);
+                Waveform ioutWf = getWaveform("vout" + std::to_string(secIdx));
+                auto& ioutData = ioutWf.get_mutable_data();
+                for (auto& v : ioutData) v = v / Rload_i;
+                wf.get_mutable_output_currents().push_back(ioutWf);
             }
             
             results.push_back(wf);

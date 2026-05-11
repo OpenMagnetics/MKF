@@ -6,6 +6,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "ConverterPortChecks.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -640,88 +641,104 @@ namespace {
         
         REQUIRE(!converterWaveforms.empty());
         
-        // Verify we have excitations
-        // ConverterWaveforms doesn't have excitations_per_winding - check input/output instead
+        // Verify we have converter-port stream populated.
     REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
-        
-        // Get primary excitation
-        // Primary excitation data is now directly in ConverterWaveforms
-        // Voltage data is directly available in ConverterWaveforms
-        // Current data is directly available in ConverterWaveforms
-        
-        // Extract waveform data
-        auto priVoltageData = converterWaveforms[0].get_input_voltage().get_data();
-        auto priCurrentData = converterWaveforms[0].get_input_current().get_data();
-        
-        // Calculate statistics
-        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
-        double priI_max = *std::max_element(priCurrentData.begin(), priCurrentData.end());
-        double priI_min = *std::min_element(priCurrentData.begin(), priCurrentData.end());
-        
-        INFO("Primary voltage max: " << priV_max << " V");
-        INFO("Primary current max: " << priI_max << " A");
-        INFO("Primary current min: " << priI_min << " A");
-        
-        // Validate primary voltage: should be close to input voltage during ON time
-        CHECK(priV_max > 30.0);  // Should be around 48V
-        CHECK(priV_max < 80.0);
-        
-        // In CCM, current should stay positive (allow for numerical noise)
-        CHECK(priI_min > -0.001);
 
-        // Validate we have reasonable peak current
-        CHECK(priI_max > 0.5);
-        CHECK(priI_max < 10.0);
+        // §5.1: ConverterWaveforms exposes the *converter* ports — DC
+        // source rail (Vin), DC filtered output. The primary-winding
+        // waveform (the sawtooth ramp / 0-Vin pulse) lives on the
+        // winding-port stream, accessed via simulate_and_extract_operating_points.
+        auto vinData = converterWaveforms[0].get_input_voltage().get_data();
+        auto iinData = converterWaveforms[0].get_input_current().get_data();
+
+        double vinMean = std::accumulate(vinData.begin(), vinData.end(), 0.0) / vinData.size();
+        double iinMean = std::accumulate(iinData.begin(), iinData.end(), 0.0) / iinData.size();
+        INFO("Input voltage (DC bus) mean: " << vinMean << " V (nom 48)");
+        INFO("Input current (bus draw) mean: " << iinMean << " A");
+
+        // Vin rail should be flat ≈ 48 V.
+        CHECK(std::fabs(vinMean - 48.0) / 48.0 < 0.01);
+        // Bus current draws positive average power.
+        CHECK(iinMean > 0.0);
 
         INFO("Single Switch Forward ngspice simulation test passed");
 
-        SECTION("Waveform shape: primary voltage is a pulse (ON ≈ Vin, OFF ≈ 0 or reset)") {
-            // Forward converter: pri_in = Vin during ON, ~0 (or clamped) during OFF
+        SECTION("Primary winding voltage waveform is a pulse (ON ≈ Vin, OFF ≈ reset)") {
+            // Winding-port stream lives in get_excitations_per_winding,
+            // populated by simulate_and_extract_operating_points.
+            auto ops = forward.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+            REQUIRE(!ops.empty());
+            REQUIRE(!ops[0].get_excitations_per_winding().empty());
+            auto& priExc = ops[0].get_excitations_per_winding()[0];
+            REQUIRE(priExc.get_voltage().has_value());
+            REQUIRE(priExc.get_voltage()->get_waveform().has_value());
+            auto vPri = priExc.get_voltage()->get_waveform()->get_data();
             double Vin = 48.0;
             int count_on = 0;
-            for (double v : priVoltageData) {
+            for (double v : vPri) {
                 if (v > 0.5 * Vin) count_on++;
             }
-            double frac_on = double(count_on) / priVoltageData.size();
-            INFO("Fraction at Vin: " << frac_on << " (expect ≈ D = 0.4)");
-            // Duty cycle D=0.4: roughly 30-55% of samples should be near Vin
+            double frac_on = double(count_on) / vPri.size();
+            INFO("Primary-winding fraction at +Vin: " << frac_on << " (D=0.4 expected)");
             CHECK(frac_on > 0.20);
             CHECK(frac_on < 0.60);
         }
 
-        SECTION("Waveform shape: primary current ramps up during ON time (sawtooth in CCM)") {
-            // Current rises during ON time: slope ≈ Vin/Lm
-            auto peak_it = std::max_element(priCurrentData.begin(), priCurrentData.end());
-            int peak_idx = (int)std::distance(priCurrentData.begin(), peak_it);
-            int N = (int)priCurrentData.size();
+        SECTION("Primary winding current ramps up during ON time (sawtooth in CCM)") {
+            auto ops = forward.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+            REQUIRE(!ops.empty());
+            auto& priExc = ops[0].get_excitations_per_winding()[0];
+            REQUIRE(priExc.get_current().has_value());
+            REQUIRE(priExc.get_current()->get_waveform().has_value());
+            auto iPri = priExc.get_current()->get_waveform()->get_data();
+
+            auto peak_it = std::max_element(iPri.begin(), iPri.end());
+            int peak_idx = (int)std::distance(iPri.begin(), peak_it);
+            int N = (int)iPri.size();
 
             double rising_sum = 0.0;
             for (int k = 1; k <= peak_idx; ++k)
-                rising_sum += priCurrentData[k] - priCurrentData[k-1];
+                rising_sum += iPri[k] - iPri[k-1];
 
             double falling_sum = 0.0;
             for (int k = peak_idx + 1; k < N; ++k)
-                falling_sum += priCurrentData[k] - priCurrentData[k-1];
+                falling_sum += iPri[k] - iPri[k-1];
 
             INFO("Rising sum: " << rising_sum << " A, falling sum: " << falling_sum << " A");
             CHECK(rising_sum > 0.0);
             CHECK(falling_sum < 0.0);
         }
 
-        SECTION("Waveform shape: ON-time current slope matches Vin/Lm") {
+        SECTION("ON-time primary-winding current slope matches Vin/Lm") {
+            // Use a single-period extraction so the dt math below
+            // (one switching period spans N samples) is correct.
+            // Default numPeriodsToExtract=5 would give dt=5/(fs*N).
+            const int origNumPeriods = forward.get_num_periods_to_extract();
+            forward.set_num_periods_to_extract(1);
+            auto ops = forward.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+            forward.set_num_periods_to_extract(origNumPeriods);
+            REQUIRE(!ops.empty());
+            auto& priExc = ops[0].get_excitations_per_winding()[0];
+            auto iPri = priExc.get_current()->get_waveform()->get_data();
+
             double Vin = 48.0, fs = 200e3;
-            int N = (int)priCurrentData.size();
+            int N = (int)iPri.size();
             double dt = 1.0 / (fs * N);
 
-            auto peak_it = std::max_element(priCurrentData.begin(), priCurrentData.end());
-            int peak_idx = (int)std::distance(priCurrentData.begin(), peak_it);
+            // Compute slope from local-min to local-max within one ramp,
+            // not from sample 0 to global peak (which crosses the OFF
+            // discontinuity in multi-period extraction).
+            auto min_it = std::min_element(iPri.begin(), iPri.end());
+            int min_idx = (int)std::distance(iPri.begin(), min_it);
+            auto max_it = std::max_element(iPri.begin() + min_idx, iPri.end());
+            int max_idx = (int)std::distance(iPri.begin(), max_it);
 
-            if (peak_idx > 5) {
-                double slope_A_per_s = (priCurrentData[peak_idx] - priCurrentData[0]) / (peak_idx * dt);
+            if (max_idx > min_idx + 5) {
+                double slope_A_per_s = (iPri[max_idx] - iPri[min_idx]) / ((max_idx - min_idx) * dt);
                 double expected = Vin / magnetizingInductance;
                 double err = std::abs(slope_A_per_s - expected) / expected;
                 INFO("di/dt: " << slope_A_per_s << " A/s, Vin/Lm: " << expected << ", error: " << (err*100) << "%");
-                CHECK(err < 0.50);  // 50%: waveform extraction phase offset causes slope error
+                CHECK(err < 0.50);  // 50%: ngspice timestep + small load-reflected component
             }
         }
     }
@@ -780,39 +797,38 @@ namespace {
         
         REQUIRE(!converterWaveforms.empty());
         
-        // Verify we have excitations
-        // ConverterWaveforms doesn't have excitations_per_winding - check input/output instead
+        // Verify we have converter-port stream populated.
     REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
-        
-        // Get primary excitation
-        // Primary excitation data is now directly in ConverterWaveforms
-        // Voltage data is directly available in ConverterWaveforms
-        // Current data is directly available in ConverterWaveforms
-        
-        // Extract waveform data
-        auto priVoltageData = converterWaveforms[0].get_input_voltage().get_data();
-        
-        // Calculate statistics
-        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
-        
-        INFO("Primary voltage max: " << priV_max << " V");
-        
-        // Validate primary voltage: should be close to input voltage during ON time
-        CHECK(priV_max > 30.0);  // Should be around 48V
-        CHECK(priV_max < 80.0);
+
+        // §5.1: Converter-port stream is the DC source rail. Pulse-shape
+        // primary-winding checks live in the winding-port stream
+        // (simulate_and_extract_operating_points), exercised below.
+        auto vinData = converterWaveforms[0].get_input_voltage().get_data();
+        double vinMean = std::accumulate(vinData.begin(), vinData.end(), 0.0) / vinData.size();
+        INFO("Input voltage (DC bus) mean: " << vinMean << " V (nom 48)");
+        CHECK(std::fabs(vinMean - 48.0) / 48.0 < 0.01);
 
         INFO("Two Switch Forward ngspice simulation test passed");
 
-        SECTION("Waveform shape: two-switch forward primary voltage pulse (ON ≈ Vin, OFF ≈ 0)") {
+        SECTION("Two-switch-forward primary-winding voltage pulse (ON ≈ Vin, OFF ≈ 0)") {
+            // Winding-port stream via simulate_and_extract_operating_points.
+            auto ops = forward.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+            REQUIRE(!ops.empty());
+            auto& priExc = ops[0].get_excitations_per_winding()[0];
+            REQUIRE(priExc.get_voltage().has_value());
+            REQUIRE(priExc.get_voltage()->get_waveform().has_value());
+            auto vPri = priExc.get_voltage()->get_waveform()->get_data();
+
             double Vin = 48.0;
             int count_on = 0, count_off = 0;
-            for (double v : priVoltageData) {
+            for (double v : vPri) {
                 if (v > 0.5 * Vin) count_on++;
                 else if (v < 5.0) count_off++;
             }
-            double frac_on = double(count_on) / priVoltageData.size();
-            double frac_off = double(count_off) / priVoltageData.size();
-            INFO("Fraction at Vin: " << frac_on << ", fraction near 0V: " << frac_off << " (D=0.4 expected)");
+            double frac_on = double(count_on) / vPri.size();
+            double frac_off = double(count_off) / vPri.size();
+            INFO("Primary-winding fraction at +Vin: " << frac_on
+                 << ", fraction near 0V: " << frac_off << " (D=0.4 expected)");
             CHECK(frac_on > 0.20);
             CHECK(frac_on < 0.60);
             // Two-switch forward: OFF voltage clamped to 0 by demagnetizing diodes
@@ -901,7 +917,13 @@ namespace {
         CHECK(secV_max > 5.0);    // Positive during ON time
         CHECK(secV_min < -1.0);   // Should go negative during reset
 
-        // Also verify converter-level waveforms
+        // §5.1: converter-port input_voltage is now the DC source rail
+        // (vin_dc, flat ≈ Vin). The "drops to 0 during reset" pulse-pattern
+        // assertion that used to live here against cwf.get_input_voltage()
+        // was inspecting winding-port behavior smuggled into the
+        // converter-port stream — exactly the bug §5.1 forbids. The
+        // primary-winding voltage swing is already validated above via
+        // simulate_and_extract_operating_points.
         auto converterWaveforms = forward.simulate_and_extract_topology_waveforms(turnsRatios, magnetizingInductance);
         REQUIRE(!converterWaveforms.empty());
 
@@ -909,12 +931,11 @@ namespace {
         auto cwfInputVoltage = cwf.get_input_voltage().get_data();
         REQUIRE(!cwfInputVoltage.empty());
 
-        double cwfV_max = *std::max_element(cwfInputVoltage.begin(), cwfInputVoltage.end());
-        double cwfV_min = *std::min_element(cwfInputVoltage.begin(), cwfInputVoltage.end());
-
-        INFO("Converter input voltage max: " << cwfV_max << " V, min: " << cwfV_min << " V");
-        CHECK(cwfV_max > 30.0);
-        CHECK(cwfV_min < 5.0);    // Must drop near zero during demagnetization
+        double cwfV_mean = std::accumulate(cwfInputVoltage.begin(),
+                                           cwfInputVoltage.end(), 0.0)
+                          / cwfInputVoltage.size();
+        INFO("Converter input voltage (DC bus) mean: " << cwfV_mean << " V (nom 48)");
+        CHECK(std::fabs(cwfV_mean - 48.0) / 48.0 < 0.01);
 
         // Output voltage should be around 12V (stable)
         REQUIRE(!cwf.get_output_voltages().empty());
@@ -983,57 +1004,55 @@ namespace {
         
         REQUIRE(!converterWaveforms.empty());
         
-        // Verify we have excitations
-        // ConverterWaveforms doesn't have excitations_per_winding - check input/output instead
+        // Verify we have converter-port stream populated.
     REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
-        
-        // Get primary excitation
-        // Primary excitation data is now directly in ConverterWaveforms
-        // Voltage data is directly available in ConverterWaveforms
-        // Current data is directly available in ConverterWaveforms
-        
-        // Extract waveform data
-        auto priVoltageData = converterWaveforms[0].get_input_voltage().get_data();
-        auto priCurrentData = converterWaveforms[0].get_input_current().get_data();
-        
-        // Calculate statistics
-        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
-        double priV_min = *std::min_element(priVoltageData.begin(), priVoltageData.end());
-        double priI_avg = std::accumulate(priCurrentData.begin(), priCurrentData.end(), 0.0) / priCurrentData.size();
-        
-        INFO("Primary voltage max: " << priV_max << " V");
-        INFO("Primary voltage min: " << priV_min << " V");
-        INFO("Primary current avg: " << priI_avg << " A");
-        
-        // Validate primary voltage: should be close to input voltage during ON time
-        CHECK(priV_max > 30.0);  // Should be around 48V
-        CHECK(priV_max < 80.0);
-        
-        // Active clamp should have negative voltage during reset
-        CHECK(priV_min < 0.0);
+
+        // §5.1: ConverterWaveforms exposes the DC source rail (vin_dc),
+        // not the primary winding. Primary-winding pulse / clamp checks
+        // live in the winding-port stream (simulate_and_extract_operating_points).
+        auto vinData = converterWaveforms[0].get_input_voltage().get_data();
+        auto iinData = converterWaveforms[0].get_input_current().get_data();
+        double vinMean = std::accumulate(vinData.begin(), vinData.end(), 0.0) / vinData.size();
+        double iinMean = std::accumulate(iinData.begin(), iinData.end(), 0.0) / iinData.size();
+        INFO("Input voltage (DC bus) mean: " << vinMean << " V (nom 48)");
+        INFO("Input current (bus draw) mean: " << iinMean << " A");
+        CHECK(std::fabs(vinMean - 48.0) / 48.0 < 0.01);
+        CHECK(iinMean > 0.0);
 
         INFO("Active Clamp Forward ngspice simulation test passed");
 
-        SECTION("Waveform shape: active-clamp primary voltage has ON pulse and negative reset") {
+        SECTION("Active-clamp primary-winding voltage: ON pulse and negative clamp reset") {
+            auto ops = forward.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+            REQUIRE(!ops.empty());
+            auto& priExc = ops[0].get_excitations_per_winding()[0];
+            REQUIRE(priExc.get_voltage().has_value());
+            REQUIRE(priExc.get_voltage()->get_waveform().has_value());
+            auto vPri = priExc.get_voltage()->get_waveform()->get_data();
+
             double Vin = 48.0;
             int count_on = 0, count_neg = 0;
-            for (double v : priVoltageData) {
+            for (double v : vPri) {
                 if (v > 0.5 * Vin) count_on++;
                 if (v < -5.0) count_neg++;
             }
-            double frac_on = double(count_on) / priVoltageData.size();
-            double frac_neg = double(count_neg) / priVoltageData.size();
-            INFO("Fraction at Vin: " << frac_on << ", fraction negative: " << frac_neg);
+            double frac_on = double(count_on) / vPri.size();
+            double frac_neg = double(count_neg) / vPri.size();
+            INFO("Primary-winding fraction at +Vin: " << frac_on
+                 << ", fraction <-5V: " << frac_neg);
             CHECK(frac_on > 0.20);   // D ≈ 0.45
             CHECK(frac_neg >= 0);    // Active clamp may produce negative reset voltage
-            // Verify minimum voltage is indeed negative (active clamp resets core)
-            double priV_min_local = *std::min_element(priVoltageData.begin(), priVoltageData.end());
-            INFO("Primary voltage min: " << priV_min_local << " V");
-            CHECK(priV_min_local < 0.0);  // Active clamp produces negative reset
+            double vPri_min = *std::min_element(vPri.begin(), vPri.end());
+            INFO("Primary-winding voltage min: " << vPri_min << " V");
+            CHECK(vPri_min < 0.0);   // Active clamp produces negative reset
         }
 
-        SECTION("Waveform shape: active-clamp primary current: avg > 0 (net energy transfer)") {
-            CHECK(priI_avg > 0.1);
+        SECTION("Active-clamp primary-winding current: avg > 0 (net energy transfer)") {
+            auto ops = forward.simulate_and_extract_operating_points(turnsRatios, magnetizingInductance);
+            REQUIRE(!ops.empty());
+            auto iPri = ops[0].get_excitations_per_winding()[0].get_current()->get_waveform()->get_data();
+            double iPri_avg = std::accumulate(iPri.begin(), iPri.end(), 0.0) / iPri.size();
+            INFO("Primary-winding current avg: " << iPri_avg << " A");
+            CHECK(iPri_avg > 0.1);
         }
     }
 
@@ -1262,6 +1281,148 @@ namespace {
         // that the simulation shows as a smooth transition — 50% threshold accounts for this.
         INFO("Two Switch Forward primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
         CHECK(nrmse < 0.50);
+    }
+
+
+    // ─────────────────────────────────────────────────────────────────
+    // §5.1 converter-port DC-stream gate. See ConverterPortChecks for
+    // the full bound rationale. Catches the AC-in-DC-stream regression
+    // where pri_in (winding top, bipolar AC) and i(Vpri_sense) (winding
+    // current, bipolar AC) were sourcing the converter's input port.
+    // ─────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_SingleSwitchForward_ConverterPortWaveforms",
+              "[converter-port-waveforms][single-switch-forward-topology][ngspice-simulation]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        const double Vin = 48.0, Vout = 5.0, Iout = 5.0;
+        OpenMagnetics::SingleSwitchForward forward;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(Vin);
+        forward.set_input_voltage(inputVoltage);
+        forward.set_diode_voltage_drop(0.5);
+        forward.set_efficiency(0.9);
+        forward.set_current_ripple_ratio(0.3);
+        forward.set_duty_cycle(0.4);
+
+        ForwardOperatingPoint opPoint;
+        opPoint.set_output_voltages({Vout});
+        opPoint.set_output_currents({Iout});
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        forward.set_operating_points({opPoint});
+
+        auto designReqs = forward.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios())
+            turnsRatios.push_back(tr.get_nominal().value());
+        const double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto wfs = forward.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+        REQUIRE(!wfs.empty());
+
+        // SSF SPICE droop is non-trivial (~25 % at this D=0.4 fixture)
+        // due to magnetizing-leg energy circulation, diode Vf, and the
+        // analytical-vs-SPICE operating-point split documented in
+        // Test_SingleSwitchForward_PtP_AnalyticalVsNgspice. Allow 0.30
+        // mean tolerance — same envelope as the IsolatedBuck flybuck
+        // secondary, slightly tighter than PSFB. The §5.1 gate's job is
+        // to catch AC-in-DC-stream regressions (e.g. v(pri_in) as
+        // input_voltage), NOT to enforce steady-state accuracy.
+        constexpr double kSsfVoutMeanTol = 0.30;
+        constexpr double kSsfIoutMeanTol = 0.30;
+        for (size_t i = 0; i < wfs.size(); ++i) {
+            ConverterPortChecks::check_dc_ports(wfs[i], "SingleSwitchForward", i,
+                                                Vin, {Vout}, {Iout},
+                                                kSsfVoutMeanTol, kSsfIoutMeanTol);
+        }
+    }
+
+    TEST_CASE("Test_TwoSwitchForward_ConverterPortWaveforms",
+              "[converter-port-waveforms][two-switch-forward-topology][ngspice-simulation]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        const double Vin = 48.0, Vout = 5.0, Iout = 5.0;
+        OpenMagnetics::TwoSwitchForward forward;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(Vin);
+        forward.set_input_voltage(inputVoltage);
+        forward.set_diode_voltage_drop(0.5);
+        forward.set_efficiency(0.9);
+        forward.set_current_ripple_ratio(0.3);
+        forward.set_duty_cycle(0.4);
+
+        ForwardOperatingPoint opPoint;
+        opPoint.set_output_voltages({Vout});
+        opPoint.set_output_currents({Iout});
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        forward.set_operating_points({opPoint});
+
+        auto designReqs = forward.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios())
+            turnsRatios.push_back(tr.get_nominal().value());
+        const double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto wfs = forward.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+        REQUIRE(!wfs.empty());
+
+        // Same envelope as SSF — TSF shares the forward-family SPICE
+        // droop pattern (Lm energy recycle via clamp diodes, diode Vf,
+        // analytical-vs-SPICE op split). The §5.1 gate's job is to
+        // catch AC-in-DC-stream regressions, NOT enforce steady-state.
+        constexpr double kTsfVoutMeanTol = 0.30;
+        constexpr double kTsfIoutMeanTol = 0.30;
+        for (size_t i = 0; i < wfs.size(); ++i) {
+            ConverterPortChecks::check_dc_ports(wfs[i], "TwoSwitchForward", i,
+                                                Vin, {Vout}, {Iout},
+                                                kTsfVoutMeanTol, kTsfIoutMeanTol);
+        }
+    }
+
+    TEST_CASE("Test_ActiveClampForward_ConverterPortWaveforms",
+              "[converter-port-waveforms][active-clamp-forward-topology][ngspice-simulation]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        const double Vin = 48.0, Vout = 5.0, Iout = 5.0;
+        OpenMagnetics::ActiveClampForward forward;
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(Vin);
+        forward.set_input_voltage(inputVoltage);
+        forward.set_diode_voltage_drop(0.5);
+        forward.set_efficiency(0.9);
+        forward.set_current_ripple_ratio(0.3);
+        forward.set_duty_cycle(0.45);
+
+        ForwardOperatingPoint opPoint;
+        opPoint.set_output_voltages({Vout});
+        opPoint.set_output_currents({Iout});
+        opPoint.set_switching_frequency(200000.0);
+        opPoint.set_ambient_temperature(25.0);
+        forward.set_operating_points({opPoint});
+
+        auto designReqs = forward.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (const auto& tr : designReqs.get_turns_ratios())
+            turnsRatios.push_back(tr.get_nominal().value());
+        const double Lm = designReqs.get_magnetizing_inductance().get_minimum().value();
+
+        auto wfs = forward.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+        REQUIRE(!wfs.empty());
+
+        // ACF has an active clamp leg that recirculates Lm energy each
+        // cycle — slightly less droop than SSF/TSF but still subject to
+        // diode Vf and analytical-vs-SPICE op-split. Same 0.30 envelope.
+        constexpr double kAcfVoutMeanTol = 0.30;
+        constexpr double kAcfIoutMeanTol = 0.30;
+        for (size_t i = 0; i < wfs.size(); ++i) {
+            ConverterPortChecks::check_dc_ports(wfs[i], "ActiveClampForward", i,
+                                                Vin, {Vout}, {Iout},
+                                                kAcfVoutMeanTol, kAcfIoutMeanTol);
+        }
     }
 
 }  // namespace
