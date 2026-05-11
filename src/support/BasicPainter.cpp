@@ -1055,7 +1055,6 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
     auto sectionOrientation = windingWindows[0].get_sections_orientation();
-    double largestThickness = 0;
 
     double windingWindowRadialHeight = processedDescription.get_width() / 2 - mainColumn.get_width();
     for (size_t i = 0; i < sections.size(); ++i){
@@ -1077,7 +1076,6 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     }
                     double leftAngle = sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2;
                     double rightAngle = sections[nextSectionIndex].get_coordinates()[1] - sections[nextSectionIndex].get_dimensions()[1] / 2;
-                    largestThickness = std::max(largestThickness, rectangleThickness);
 
                     if (i >= sections.size() - 2) {
                         rightAngle += 360;
@@ -1144,10 +1142,6 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                 }
             }
         }
-    }
-
-    if (drawSpacer) {
-        paint_circle(0, 0, largestThickness, "spacer", nullptr);
     }
 }
 
