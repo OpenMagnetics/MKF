@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -224,20 +225,32 @@ void run_one(const Spec& s) {
     // CurrentLoop) packed by simulate_with_ngspice_switching.  The default
     // trim-to-last-line-cycle keeps SVGs to a single 20 ms window of the
     // steady-state output.
-    auto outDir = std::filesystem::path{
-        std::source_location::current().file_name()
-    }.parent_path() / ".." / "output" / "pfc_phase4";
-    std::filesystem::create_directories(outDir);
-    auto outFile = outDir / (std::string(s.name) + "_waveforms.svg");
+    //
+    // SVG emission is opt-in via the `MKF_PFC_EMIT_SVG` environment
+    // variable.  The stacked plots run 8–16 MB each (NCP1654 ≈ 16 MB,
+    // UCC28180 ≈ 12 MB, L4981 ≈ 8 MB) and re-running this exploratory
+    // harness should not silently bloat the workspace.  Set
+    //   `MKF_PFC_EMIT_SVG=1` (any non-empty value) to write the files;
+    // leave unset to skip the second simulate-and-paint pass entirely.
+    const char* emitSvg = std::getenv("MKF_PFC_EMIT_SVG");
+    if (emitSvg && emitSvg[0] != '\0') {
+        auto outDir = std::filesystem::path{
+            std::source_location::current().file_name()
+        }.parent_path() / ".." / "output" / "pfc_phase4";
+        std::filesystem::create_directories(outDir);
+        auto outFile = outDir / (std::string(s.name) + "_waveforms.svg");
 
-    auto op = pfc.simulate_with_ngspice_switching(s.L, s.cycles);
-    Painter painter(outFile, false, true);
-    painter.paint_operating_point_waveforms(
-        op,
-        std::string(s.name) + " — last line cycle (steady state)",
-        1400.0, 1000.0);
-    painter.export_svg();
-    std::cout << "  SVG: " << outFile.string() << "\n";
+        auto op = pfc.simulate_with_ngspice_switching(s.L, s.cycles);
+        Painter painter(outFile, false, true);
+        painter.paint_operating_point_waveforms(
+            op,
+            std::string(s.name) + " — last line cycle (steady state)",
+            1400.0, 1000.0);
+        painter.export_svg();
+        std::cout << "  SVG: " << outFile.string() << "\n";
+    } else {
+        std::cout << "  SVG: skipped (set MKF_PFC_EMIT_SVG=1 to emit)\n";
+    }
 }
 
 } // namespace
