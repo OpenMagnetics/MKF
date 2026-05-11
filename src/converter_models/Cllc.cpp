@@ -687,7 +687,7 @@ double get_value_or(T&& val, double default_val) {
 
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_trafo_in) v(node_b) i(Vpri_sense)"
+        circuit << ".save v(vin_p) v(pri_trafo_in) v(node_b) i(Vin) i(Vpri_sense)"
                 << " v(sec_trafo_p) v(sec_trafo_n) i(Vsec_sense)"
                 << " v(vout_p) v(vout_n)\n\n";
 
@@ -867,10 +867,31 @@ double get_value_or(T&& val, double default_val) {
                 }
                 wf.set_operating_point_name(name);
 
-                wf.set_input_voltage(getWaveform("pri_trafo_in"));
-                wf.set_input_current(getWaveform("vpri_sense#branch"));
+                // §5.1 converter-port stream — vin_p / -i(Vin) (DC source
+                // rail and bus current), NOT pri_trafo_in (resonant tank
+                // node, bipolar AC) / i(Vpri_sense) (bipolar primary tank
+                // current). ngspice convention: i(Vin) is positive into
+                // Vin's + terminal, so converter draw is -i(Vin).
+                wf.set_input_voltage(getWaveform("vin_p"));
+                Waveform iInWf = getWaveform("vin#branch");
+                auto& iInData = iInWf.get_mutable_data();
+                for (auto& v : iInData) v = -v;
+                wf.set_input_current(iInWf);
+
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout_p"));
-                wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense#branch"));
+                // Reconstruct Iout(t) = Vout(t)/Rload (DC by design).
+                // i(Vsec_sense) is the bipolar secondary tank current
+                // (averages to zero in steady state — full-bridge
+                // rectified). Mirrors Buck/AHB/PSFB §5.1.
+                {
+                    const double Vo = opPoint.get_output_voltages()[0];
+                    const double Io = opPoint.get_output_currents()[0];
+                    const double Rload = std::max(Vo / Io, 1e-3);
+                    Waveform ioutWf = getWaveform("vout_p");
+                    auto& ioutData = ioutWf.get_mutable_data();
+                    for (auto& v : ioutData) v = v / Rload;
+                    wf.get_mutable_output_currents().push_back(ioutWf);
+                }
 
                 results.push_back(wf);
             }

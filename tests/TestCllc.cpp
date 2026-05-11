@@ -29,6 +29,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "ConverterPortChecks.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -618,9 +619,10 @@ namespace {
         /**
          * Run ngspice simulation of the CLLC converter and validate:
          *   - Simulation completes successfully
-         *   - Primary voltage shows switching behavior
-         *   - Output voltage is approximately correct
-         *   - Reasonable current magnitudes
+         *   - §5.1 converter port: input is DC rail (Vin, ~Iin), output is
+         *     filtered DC rail (Vout, Iout = Vout/Rload).
+         *   - §5.0 winding port (separate SECTION): primary excitation is
+         *     bipolar (resonant-tank voltage / current).
          */
         NgspiceRunner runner;
         if (!runner.is_available()) {
@@ -647,28 +649,54 @@ namespace {
         REQUIRE(!converterWaveforms.empty());
         REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
 
-        auto priVoltageData = converterWaveforms[0].get_input_voltage().get_data();
-        auto priCurrentData = converterWaveforms[0].get_input_current().get_data();
+        SECTION("Converter port — flat DC input rail (§5.1)") {
+            // CLLC sweeps min/nom/max input voltages (360/400/420 V from
+            // create_small_power_cllc_json). collect_input_voltages emits
+            // [nominal, minimum, maximum] in that order.
+            const std::vector<double> vinExpected = {400.0, 360.0, 420.0};
+            REQUIRE(converterWaveforms.size() == vinExpected.size());
+            for (size_t k = 0; k < converterWaveforms.size(); ++k) {
+                auto vin = converterWaveforms[k].get_input_voltage().get_data();
+                REQUIRE(!vin.empty());
+                double mean = 0;
+                for (double v : vin) mean += v;
+                mean /= vin.size();
+                INFO("CLLC OP " << k << " input_voltage mean=" << mean
+                     << " (nom " << vinExpected[k] << ")");
+                CHECK(std::fabs(mean - vinExpected[k]) / vinExpected[k] < 0.01);
+            }
+        }
 
-        double priV_max = *std::max_element(priVoltageData.begin(), priVoltageData.end());
-        double priV_min = *std::min_element(priVoltageData.begin(), priVoltageData.end());
+        SECTION("Output voltage stable, around nominal") {
+            for (size_t k = 0; k < converterWaveforms.size(); ++k) {
+                REQUIRE(!converterWaveforms[k].get_output_voltages().empty());
+                auto outVoltageData = converterWaveforms[k].get_output_voltages()[0].get_data();
+                REQUIRE(!outVoltageData.empty());
+                double outV_avg = 0;
+                for (double v : outVoltageData) outV_avg += v;
+                outV_avg /= outVoltageData.size();
+                INFO("CLLC OP " << k << " output_voltage mean=" << outV_avg << " V (nom 48 V)");
+                CHECK(outV_avg > 20);
+                CHECK(outV_avg < 100);
+            }
+        }
 
-        INFO("Simulated primary voltage max: " << priV_max << " V, min: " << priV_min << " V");
-
-        // Primary voltage should show switching behavior (±Vin range)
-        CHECK(priV_max > 100);   // Should be significant
-        CHECK(priV_min < -100);  // Should show bipolar behavior
-
-        // Check output voltage
-        REQUIRE(!converterWaveforms[0].get_output_voltages().empty());
-        auto outVoltageData = converterWaveforms[0].get_output_voltages()[0].get_data();
-        if (!outVoltageData.empty()) {
-            double outV_avg = 0;
-            for (double v : outVoltageData) outV_avg += v;
-            outV_avg /= outVoltageData.size();
-            INFO("Simulated output voltage average: " << outV_avg << " V");
-            CHECK(outV_avg > 20);   // Should be around 48V
-            CHECK(outV_avg < 100);
+        SECTION("Winding-port primary excitation is bipolar (§5.0)") {
+            // Pulse / bipolar behavior belongs to the winding port, NOT
+            // the converter port. Source the per-winding excitation
+            // through simulate_and_extract_operating_points().
+            auto ops = cllc.simulate_and_extract_operating_points(
+                turnsRatios, params.magnetizingInductance);
+            REQUIRE(!ops.empty());
+            auto& exc = ops[0].get_excitations_per_winding()[0];
+            REQUIRE(exc.get_voltage().has_value());
+            REQUIRE(exc.get_voltage()->get_waveform().has_value());
+            auto priV = exc.get_voltage()->get_waveform()->get_data();
+            double pmax = *std::max_element(priV.begin(), priV.end());
+            double pmin = *std::min_element(priV.begin(), priV.end());
+            INFO("Primary winding voltage max=" << pmax << " V, min=" << pmin << " V");
+            CHECK(pmax > 100);
+            CHECK(pmin < -100);
         }
 
         INFO("CLLC ngspice simulation test passed");
@@ -887,6 +915,63 @@ namespace {
         CHECK(netlist.find("Cout") != std::string::npos);
         CHECK(netlist.find(".tran") != std::string::npos);
         CHECK(netlist.find(".end") != std::string::npos);
+    }
+
+
+    // ────────────────────────────────────────────────────────────────────
+    // §5.1 converter-port DC-stream gate. See ConverterPortChecks for the
+    // full bound rationale. The signals returned by
+    // simulate_and_extract_topology_waveforms() are the DC source / DC
+    // filtered output rails — pri_trafo_in (resonant tank node) and
+    // i(Vpri_sense) (bipolar tank current) must NEVER appear here.
+    // ────────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_Cllc_ConverterPortWaveforms",
+              "[converter-port-waveforms][cllc-topology][ngspice-simulation]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        // Use a single-input json (avoid min/nom/max sweep so we can
+        // assert against a single Vin nominal).
+        const double Vin = 400.0, Vout = 48.0, Iout = 10.0;
+        json cllcJson;
+        json inputVoltage; inputVoltage["nominal"] = Vin;
+        cllcJson["inputVoltage"] = inputVoltage;
+        cllcJson["maxSwitchingFrequency"] = 400000;
+        cllcJson["minSwitchingFrequency"] = 100000;
+        cllcJson["efficiency"] = 0.95;
+        cllcJson["qualityFactor"] = 0.3;
+        cllcJson["symmetricDesign"] = true;
+        cllcJson["bidirectional"] = true;
+        cllcJson["operatingPoints"] = json::array();
+        {
+            json opJson;
+            opJson["outputVoltages"] = {Vout};
+            opJson["outputCurrents"] = {Iout};
+            opJson["switchingFrequency"] = 200000.0;
+            opJson["ambientTemperature"] = 25.0;
+            opJson["powerFlow"] = "forward";
+            cllcJson["operatingPoints"].push_back(opJson);
+        }
+
+        OpenMagnetics::CllcConverter cllc(cllcJson);
+        cllc.set_num_periods_to_extract(1);
+        auto params = cllc.calculate_resonant_parameters();
+        std::vector<double> tr = {params.turnsRatio};
+
+        auto wfs = cllc.simulate_and_extract_topology_waveforms(tr, params.magnetizingInductance);
+        REQUIRE(!wfs.empty());
+
+        // CLLC is a resonant converter; the SPICE realities (tank Q,
+        // diode bridge drops, finite K=0.9999 coupling) lead to ~10-30 %
+        // gap between analytical and steady-state DC. Same envelope as
+        // LLC §5.1 (0.30).
+        constexpr double kCllcVoutMeanTol = 0.30;
+        constexpr double kCllcIoutMeanTol = 0.30;
+        for (size_t i = 0; i < wfs.size(); ++i) {
+            ConverterPortChecks::check_dc_ports(wfs[i], "CllcConverter", i,
+                                                Vin, {Vout}, {Iout},
+                                                kCllcVoutMeanTol, kCllcIoutMeanTol);
+        }
     }
 
 } // anonymous namespace
