@@ -1077,7 +1077,8 @@ namespace OpenMagnetics {
 
     OperatingPoint PowerFactorCorrection::simulate_with_ngspice_switching(
             double inductance,
-            int numberOfLineCycles) {
+            int numberOfLineCycles,
+            bool trimToLastLineCycle) {
         NgspiceRunner runner;
         if (!runner.is_available()) {
             throw std::runtime_error(
@@ -1131,13 +1132,125 @@ namespace OpenMagnetics {
             throw std::runtime_error(e.str());
         }
 
-        // Wrap into an OperatingPoint with one excitation carrying i_L.
+        // ── Optional trim to last full line cycle ───────────────────────
+        // The simulator always returns the full transient (soft-start +
+        // any number of line cycles).  Downstream consumers — Painter's
+        // composite SVG renderer, THD/PF analysers, PtP comparators —
+        // almost always want only the *steady-state* portion: one full
+        // line period, starting at a zero-crossing so the half-sine
+        // envelope is complete.  When trimToLastLineCycle is true (the
+        // default) we slice every saved waveform to t ∈ [t_end − Tline,
+        // t_end] before packing it into the OperatingPoint.  Set the
+        // parameter to false to retain the full simulation history (the
+        // diagnostic harness in TestPfcPhase4Explore.cpp does this so it
+        // can also report startup metrics).
+        const double tline = 1.0 / get_line_frequency_required();
+        std::vector<Waveform> trimmedWaveforms;
+        std::vector<std::string> trimmedNames;
+        if (trimToLastLineCycle) {
+            // Pick the time vector from the inductor-current waveform —
+            // every saved signal shares the same simulator time grid.
+            auto tOpt = iLwf->get_time();
+            if (!tOpt.has_value() || tOpt->empty()) {
+                throw std::runtime_error(
+                    "PowerFactorCorrection::simulate_with_ngspice_switching:"
+                    " inductor-current waveform has no time vector — "
+                    "cannot trim to last line cycle");
+            }
+            const auto& tFull = tOpt.value();
+            const double tEnd = tFull.back();
+            const double tBeg = std::max(tFull.front(), tEnd - tline);
+            // Find first sample with t >= tBeg.
+            auto itBeg = std::lower_bound(tFull.begin(), tFull.end(), tBeg);
+            const size_t iBeg = std::distance(tFull.begin(), itBeg);
+
+            trimmedWaveforms.reserve(sim.waveforms.size());
+            trimmedNames.reserve(sim.waveforms.size());
+            for (size_t k = 0; k < sim.waveforms.size(); ++k) {
+                const auto& src = sim.waveforms[k];
+                auto srcT = src.get_time();
+                const auto& srcD = src.get_data();
+                Waveform w;
+                if (srcT.has_value() && srcT->size() == srcD.size()
+                                     && srcD.size() >= iBeg) {
+                    std::vector<double> tNew(srcT->begin() + iBeg,
+                                             srcT->end());
+                    std::vector<double> dNew(srcD.begin()  + iBeg,
+                                             srcD.end());
+                    w.set_time(tNew);
+                    w.set_data(dNew);
+                } else {
+                    // No time vector or mismatched length — keep as-is.
+                    w = src;
+                }
+                trimmedWaveforms.push_back(std::move(w));
+                trimmedNames.push_back(sim.waveformNames[k]);
+            }
+        } else {
+            trimmedWaveforms = sim.waveforms;
+            trimmedNames     = sim.waveformNames;
+        }
+
+        // Re-resolve iL after trimming so the OperatingPoint and downstream
+        // signal lookups all share the same (trimmed or full) time axis.
+        const Waveform* iLtrim = nullptr;
+        for (size_t k = 0; k < trimmedNames.size(); ++k) {
+            if (matchesILSense(trimmedNames[k])) {
+                iLtrim = &trimmedWaveforms[k];
+                break;
+            }
+        }
+
+        // Wrap into an OperatingPoint with three diagnostic "windings" so
+        // that downstream consumers (e.g. Painter::paint_operating_point_
+        // waveforms) can render every loop signal in a single composite
+        // SVG.  ngspice's saved nodes are mapped onto the
+        // OperatingPointExcitation V/I pair as follows:
+        //
+        //   Winding 0  PowerStage      V = vbus       I = i(vl_sense)
+        //   Winding 1  VoltageLoop     V = vea        I = i_ref
+        //   Winding 2  CurrentLoop     V = vc_i       I = i_sense
+        //
+        // (The V/I labelling is purely diagrammatic — vea / vc_i are
+        // controller signals, not winding voltages — but it lets the
+        // existing OperatingPoint plumbing carry them through unchanged.)
+        auto findByName = [&](const std::string& key) -> const Waveform* {
+            std::string k = key;
+            std::transform(k.begin(), k.end(), k.begin(),
+                           [](unsigned char c){ return std::tolower(c); });
+            for (size_t i = 0; i < trimmedNames.size(); ++i) {
+                std::string n = trimmedNames[i];
+                std::transform(n.begin(), n.end(), n.begin(),
+                               [](unsigned char c){ return std::tolower(c); });
+                if (n.find(k) != std::string::npos) return &trimmedWaveforms[i];
+            }
+            return nullptr;
+        };
+        auto makeExc = [&](const std::string& name,
+                           const Waveform* vWf,
+                           const Waveform* iWf) {
+            OperatingPointExcitation e;
+            e.set_name(name);
+            if (vWf) {
+                SignalDescriptor s;
+                s.set_waveform(*vWf);
+                e.set_voltage(s);
+            }
+            if (iWf) {
+                SignalDescriptor s;
+                s.set_waveform(*iWf);
+                e.set_current(s);
+            }
+            return e;
+        };
+
         OperatingPoint op;
-        OperatingPointExcitation exc;
-        SignalDescriptor curSig;
-        curSig.set_waveform(*iLwf);
-        exc.set_current(curSig);
-        op.get_mutable_excitations_per_winding().push_back(exc);
+        op.get_mutable_excitations_per_winding().push_back(
+            makeExc("PowerStage",  findByName("vbus"), iLtrim));
+        op.get_mutable_excitations_per_winding().push_back(
+            makeExc("VoltageLoop", findByName("vea"),  findByName("i_ref")));
+        op.get_mutable_excitations_per_winding().push_back(
+            makeExc("CurrentLoop", findByName("vc_i"), findByName("i_sense")));
         return op;
     }
 

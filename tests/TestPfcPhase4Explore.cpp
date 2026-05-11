@@ -8,13 +8,16 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <source_location>
 #include <string>
 #include <vector>
 
 #include "converter_models/PowerFactorCorrection.h"
 #include "processors/NgspiceRunner.h"
+#include "support/Painter.h"
 
 using namespace OpenMagnetics;
 
@@ -216,6 +219,25 @@ void run_one(const Spec& s) {
     std::cout << "  iL NRMSE raw / envelope vs ideal sin = "
               << 100.0*nrmse_raw << " % / "
               << 100.0*nrmse_env << " %\n";
+
+    // Stack-plot the 3 diagnostic windings (PowerStage / VoltageLoop /
+    // CurrentLoop) packed by simulate_with_ngspice_switching.  The default
+    // trim-to-last-line-cycle keeps SVGs to a single 20 ms window of the
+    // steady-state output.
+    auto outDir = std::filesystem::path{
+        std::source_location::current().file_name()
+    }.parent_path() / ".." / "output" / "pfc_phase4";
+    std::filesystem::create_directories(outDir);
+    auto outFile = outDir / (std::string(s.name) + "_waveforms.svg");
+
+    auto op = pfc.simulate_with_ngspice_switching(s.L, s.cycles);
+    Painter painter(outFile, false, true);
+    painter.paint_operating_point_waveforms(
+        op,
+        std::string(s.name) + " — last line cycle (steady state)",
+        1400.0, 1000.0);
+    painter.export_svg();
+    std::cout << "  SVG: " << outFile.string() << "\n";
 }
 
 } // namespace

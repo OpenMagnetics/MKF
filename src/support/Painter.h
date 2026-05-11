@@ -691,6 +691,19 @@ class Painter{
 
     void paint_curve(Curve2D curve2D, bool logScale = false);
 
+    /**
+     * @brief Stack-plot all winding excitations of an OperatingPoint into one SVG.
+     *
+     * Forwards to BasicPainter::paint_operating_point_waveforms.  Throws if the
+     * active painter backend is AdvancedPainter (only BasicPainter implements
+     * waveform stack plots).  Returned string is also written to the file the
+     * Painter was constructed with via export_svg().
+     */
+    std::string paint_operating_point_waveforms(
+        const OperatingPoint& operatingPoint,
+        const std::string& title = "Operating Point Waveforms",
+        double width = 1200,
+        double height = 800);
 };
 
 } // namespace OpenMagnetics

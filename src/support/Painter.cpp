@@ -995,5 +995,22 @@ std::pair<double, double> Painter::get_pixel_dimensions(Magnetic magnetic) {
     return {pixelXDimension, pixelYDimension};
 }
 
+std::string Painter::paint_operating_point_waveforms(
+    const OperatingPoint& operatingPoint,
+    const std::string& title,
+    double width,
+    double height)
+{
+    auto* basic = dynamic_cast<BasicPainter*>(_painter.get());
+    if (basic == nullptr) {
+        throw std::runtime_error(
+            "Painter::paint_operating_point_waveforms requires the BasicPainter "
+            "backend; the active painter is not BasicPainter (likely "
+            "AdvancedPainter).  Construct Painter with useAdvancedPainter=false "
+            "and addProportionForColorBar=false, showTicks=false.");
+    }
+    return basic->paint_operating_point_waveforms(operatingPoint, title, width, height);
+}
+
 
 } // namespace OpenMagnetics

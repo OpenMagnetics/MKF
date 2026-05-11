@@ -276,9 +276,24 @@ public:
      *        vin_rect). Convenience wrapper over
      *        `generate_ngspice_switching_circuit` + NgspiceRunner. Throws
      *        if ngspice is unavailable or the simulation fails.
+     *
+     * @param inductance              Boost-inductor value [H].
+     * @param numberOfLineCycles      How many full line cycles to simulate
+     *                                (the warm-start transient consumes
+     *                                the first ~1-2 cycles).
+     * @param trimToLastLineCycle     If true (default), the returned
+     *                                OperatingPoint contains only the
+     *                                *final* full line period of every
+     *                                waveform — the steady-state portion
+     *                                that downstream consumers (Painter,
+     *                                THD/PF analysers, PtP comparators)
+     *                                actually want.  Pass false to keep
+     *                                the full simulation history including
+     *                                the soft-start transient.
      */
     OperatingPoint simulate_with_ngspice_switching(double inductance,
-                                                    int numberOfLineCycles = 3);
+                                                    int numberOfLineCycles = 3,
+                                                    bool trimToLastLineCycle = true);
 
 private:
     // MKF-only field — number of mains periods to synthesize per operating
