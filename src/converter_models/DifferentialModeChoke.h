@@ -107,10 +107,19 @@ public:
 
     /**
      * @brief Simulate DMC and extract waveforms.
+     *
+     * @param numberOfPeriods  Number of steady-state periods to extract per
+     *                         frequency (defaults to 1). Mirrors the
+     *                         pattern used by every other converter
+     *                         (Buck, Boost, AHB, Cllc, ...): the ngspice
+     *                         runner is configured with extractOnePeriod
+     *                         + numberOfPeriods so the caller never has
+     *                         to tile waveforms post-hoc.
      */
     std::vector<DmcSimulationWaveforms> simulate_and_extract_waveforms(
         double inductance,
-        const std::vector<double>& frequencies);
+        const std::vector<double>& frequencies,
+        size_t numberOfPeriods = 1);
 
     /**
      * @brief Simulate and extract operating points from simulation.

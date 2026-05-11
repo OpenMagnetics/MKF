@@ -371,7 +371,8 @@ namespace OpenMagnetics {
 
     std::vector<DmcSimulationWaveforms> DifferentialModeChoke::simulate_and_extract_waveforms(
         double inductance,
-        const std::vector<double>& frequencies) {
+        const std::vector<double>& frequencies,
+        size_t numberOfPeriods) {
 
         std::vector<DmcSimulationWaveforms> results;
 
@@ -386,7 +387,13 @@ namespace OpenMagnetics {
             SimulationConfig config;
             config.frequency = frequency;
             config.keepTempFiles = false;
-            config.extractOnePeriod = false;
+            // Match the convention used by Buck/Boost/AHB/Cllc/etc.:
+            // let ngspice extract exactly the requested number of
+            // steady-state periods. Previously this set
+            // extractOnePeriod=false, returning ~20 raw cycles and
+            // forcing the JS frontend to extract+tile manually.
+            config.extractOnePeriod = true;
+            config.numberOfPeriods = numberOfPeriods;
 
             auto simResult = runner.run_simulation(netlist, config);
 
