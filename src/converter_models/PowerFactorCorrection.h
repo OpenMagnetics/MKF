@@ -238,6 +238,48 @@ public:
         double inductance,
         size_t numberOfCycles = 1);
 
+    /**
+     * @brief Generate a real switching boost-PFC ngspice netlist driven by
+     *        a native average-current-mode controller (built from
+     *        OPAMP_IDEAL / B-source primitives — no vendor IP). Unlike
+     *        `generate_ngspice_circuit`, which emits a behavioural-source
+     *        synthesis of the analytical model, this method produces a
+     *        full switching circuit with a real boost stage (B_vin
+     *        rectified-sine source → L1 → ideal switch S1 → ideal diode D1
+     *        → Cbus → Rload) and the six-block analog controller documented
+     *        in `PfcControllerDesign.h` (voltage error amp, RMS² feed-
+     *        forward, multiplier, current error amp, sawtooth, PWM
+     *        comparator). Initial conditions warm-start every state
+     *        variable to its analytical steady-state value so the
+     *        simulation begins in the operating regime instead of having
+     *        to settle from cold start.
+     *
+     * Throws for non-BOOST variants (TOTEM_POLE / INTERLEAVED_BOOST require
+     * topology-specific switching netlists and are out of scope here), and
+     * for any missing required spec field (no fallbacks).
+     *
+     * @param inductance       Boost inductance [H]
+     * @param numberOfLineCycles Number of line cycles to simulate (typ. 3 —
+     *                           Cbus envelope settles within ~1 cycle from
+     *                           warm-start ICs; the last cycle is the one
+     *                           the test consumes).
+     * @return                 Complete ngspice netlist string (transient
+     *                         analysis only; no .control block).
+     */
+    std::string generate_ngspice_switching_circuit(double inductance,
+                                                    int numberOfLineCycles = 3);
+
+    /**
+     * @brief Run the switching boost-PFC netlist via NgspiceRunner and
+     *        return an OperatingPoint whose primary excitation contains the
+     *        boost-inductor current waveform (along with vbus and
+     *        vin_rect). Convenience wrapper over
+     *        `generate_ngspice_switching_circuit` + NgspiceRunner. Throws
+     *        if ngspice is unavailable or the simulation fails.
+     */
+    OperatingPoint simulate_with_ngspice_switching(double inductance,
+                                                    int numberOfLineCycles = 3);
+
 private:
     // MKF-only field — number of mains periods to synthesize per operating
     // point. Not part of the MAS schema (it's a simulation knob, not a

@@ -1,10 +1,14 @@
 #include "converter_models/PowerFactorCorrection.h"
+#include "converter_models/PfcControllerDesign.h"
+#include "converter_models/PfcControllerSubcircuits.h"
+#include "processors/NgspiceRunner.h"
 #include "support/Utils.h"
 #include <cfloat>
 #include <cmath>
 #include <numbers>
 #include <numeric>
 #include <algorithm>
+#include <iomanip>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
@@ -807,6 +811,291 @@ namespace OpenMagnetics {
         }
 
         return results;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Switching boost-PFC netlist + ngspice runner.
+    //
+    // Unlike `generate_ngspice_circuit`, which emits a behavioural-source
+    // synthesis of the analytical model, the methods below build a true
+    // switching boost converter (B_vin rectified-sine source → L1 → ideal
+    // SW S1 → ideal D1 → Cbus → Rload) driven by the native
+    // average-current-mode controller documented in
+    // `PfcControllerDesign.h` (six analog blocks: voltage error amp,
+    // RMS² feed-forward, multiplier, current error amp, sawtooth, PWM
+    // comparator). All controller component values come from
+    // `derive_pfc_controller_tuning()` in closed form from the converter
+    // spec; subcircuits (OPAMP_IDEAL, COMPARATOR_IDEAL) come from
+    // `PfcControllerSubcircuits.h`. Initial conditions warm-start every
+    // state variable to its analytical steady-state value to skip the
+    // multi-line-cycle Cbus charging transient.
+    //
+    // The intent is to drive an INDEPENDENT (switching-circuit) check of
+    // the PFC analytical model, used by the §3.D Phase 6 industry
+    // reference-design PtP gates.
+    // ─────────────────────────────────────────────────────────────────────
+
+    namespace {
+        // sci(n): force scientific notation regardless of stream state. Used
+        // to keep .param strings stable across compilers / locales (some
+        // glibc locales render e.g. 0.0001 as "0,0001" by default).
+        std::string sci(double v) {
+            std::ostringstream o;
+            o.imbue(std::locale::classic());
+            o << std::scientific << std::setprecision(8) << v;
+            return o.str();
+        }
+    } // namespace
+
+    std::string PowerFactorCorrection::generate_ngspice_switching_circuit(
+            double inductance,
+            int numberOfLineCycles) {
+        validate_topology_variant();
+        const auto variant = get_topology_variant_or_default();
+        if (variant != PfcTopologyVariants::BOOST) {
+            throw std::runtime_error(
+                "PowerFactorCorrection::generate_ngspice_switching_circuit: "
+                "only the BOOST variant is supported by the native switching "
+                "controller; TOTEM_POLE / INTERLEAVED_BOOST require their own "
+                "switching netlists (out of scope here).");
+        }
+        if (!std::isfinite(inductance) || inductance <= 0.0) {
+            throw std::invalid_argument(
+                "PowerFactorCorrection::generate_ngspice_switching_circuit: "
+                "inductance must be positive and finite (got " +
+                std::to_string(inductance) + ")");
+        }
+        if (numberOfLineCycles < 1) numberOfLineCycles = 1;
+
+        // ── Spec resolution ─────────────────────────────────────────────
+        auto inputVoltage = get_input_voltage();
+        double vrmsNom;
+        if (inputVoltage.get_nominal().has_value()) {
+            vrmsNom = inputVoltage.get_nominal().value();
+        } else {
+            vrmsNom = resolve_dimensional_values(inputVoltage, DimensionalValues::NOMINAL);
+        }
+        const double vbusNom = get_output_voltage();
+        const double pout    = get_output_power();
+        const double fsw     = get_switching_frequency();
+        const double fline   = get_line_frequency_required();
+        if (pout <= 0.0) {
+            throw std::invalid_argument(
+                "PowerFactorCorrection::generate_ngspice_switching_circuit: "
+                "output power must be positive (got " + std::to_string(pout) + ")");
+        }
+        auto bulkCapOpt = MAS::PowerFactorCorrection::get_bulk_capacitance();
+        if (!bulkCapOpt.has_value()) {
+            throw std::runtime_error(
+                "PowerFactorCorrection::generate_ngspice_switching_circuit: "
+                "bulkCapacitance is required for the switching netlist "
+                "(set via set_bulk_capacitance() or JSON 'bulkCapacitance'). "
+                "Typical sizing for a boost-PFC: 1–2 µF/W.");
+        }
+        const double cbus  = bulkCapOpt.value();
+        const double vpk   = std::sqrt(2.0) * vrmsNom;
+        const double rload = vbusNom * vbusNom / pout;
+        const double tsw   = 1.0 / fsw;
+        const double tline = 1.0 / fline;
+
+        // ── Controller tuning (closed-form from spec) ──────────────────
+        const PfcControllerTuning t = derive_pfc_controller_tuning(
+            vrmsNom, vbusNom, pout, fsw, fline, inductance);
+
+        std::ostringstream c;
+        c.imbue(std::locale::classic());
+
+        // ── Header ──────────────────────────────────────────────────────
+        c << "* PFC Boost Switching Converter (native average-current-mode controller)\n";
+        c << "* Generated by OpenMagnetics — see PfcControllerDesign.h\n";
+        c << "* Vrms=" << vrmsNom << " V, Vbus=" << vbusNom << " V, Pout=" << pout
+          << " W, Fsw=" << (fsw/1e3) << " kHz, fline=" << fline
+          << " Hz, L=" << (inductance*1e6) << " uH, Cbus=" << (cbus*1e6)
+          << " uF, Rload=" << rload << " Ohm\n";
+        c << "* Cycles to simulate: " << numberOfLineCycles
+          << " (line period = " << (tline*1e3) << " ms)\n\n";
+
+        // ── Parameters ──────────────────────────────────────────────────
+        c << ".param vpk="              << sci(vpk)              << "\n";
+        c << ".param vbus_nom="         << sci(vbusNom)          << "\n";
+        c << ".param fline="            << sci(fline)            << "\n";
+        c << ".param fsw="              << sci(fsw)              << "\n";
+        c << ".param tsw="              << sci(tsw)              << "\n";
+        c << ".param l_ind="            << sci(inductance)       << "\n";
+        c << ".param cbus="             << sci(cbus)             << "\n";
+        c << ".param rload="            << sci(rload)            << "\n\n";
+
+        c << ".param vref="             << sci(t.vref)           << "\n";
+        c << ".param k_div="            << sci(t.k_div)          << "\n";
+        c << ".param vea_min="          << sci(t.vea_min)        << "\n";
+        c << ".param vea_max="          << sci(t.vea_max)        << "\n";
+        c << ".param gv_rz="            << sci(t.gv_rz)          << "\n";
+        c << ".param gv_rin="           << sci(t.gv_rz)          << "  ; mid-band gain = 1\n";
+        c << ".param gv_cz="            << sci(t.gv_cz)          << "\n";
+        c << ".param gv_cp="            << sci(t.gv_cp)          << "\n\n";
+
+        c << ".param ff_r="             << sci(t.ff_r)           << "\n";
+        c << ".param ff_c="             << sci(t.ff_c)           << "\n";
+        c << ".param vrms_ff_floor="    << sci(t.vrms_ff_floor)  << "\n";
+        c << ".param ic_vff="           << sci(t.ic_vff)         << "\n\n";
+
+        c << ".param g_mul="            << sci(t.g_mul)          << "\n";
+        c << ".param rs_sense="         << sci(t.rs_sense)       << "\n\n";
+
+        c << ".param gi_rz="            << sci(t.gi_rz)          << "\n";
+        c << ".param gi_rin="           << sci(t.gi_rin)         << "\n";
+        c << ".param gi_cz="            << sci(t.gi_cz)          << "\n";
+        c << ".param gi_cp="            << sci(t.gi_cp)          << "\n\n";
+
+        c << ".param v_pk_saw="         << sci(t.pwm_v_pk_saw)   << "\n";
+        c << ".param v_high="           << sci(t.pwm_v_high)     << "\n";
+        c << ".param pwm_t_rise="       << sci(t.pwm_t_rise)     << "\n";
+        c << ".param ic_vbus="          << sci(t.ic_vbus)        << "\n";
+        c << ".param ic_vea="           << sci(t.ic_vea)         << "\n\n";
+
+        // ── Subckt prelude (OPAMP_IDEAL + COMPARATOR_IDEAL) ─────────────
+        c << "* ─── Reusable subcircuits ──────────────────────────────────\n";
+        c << spice_subckt_prelude_pfc_controller();
+        c << "\n";
+
+        // ── Power stage ─────────────────────────────────────────────────
+        c << "* ─── Power stage (Boost) ───────────────────────────────────\n";
+        c << "B_vin     vin_rect 0     V=vpk*abs(sin(2*3.141592653589793*fline*time))\n";
+        c << "Vl_sense  vin_rect l_in  0          ; in-line current sense\n";
+        c << "L1        l_in     sw    {l_ind}\n";
+        c << ".model SW1 SW (VT=0.5 VH=0.1 RON=10m ROFF=1MEG)\n";
+        c << "S1        sw  0    gate 0 SW1\n";
+        c << "Rsnub_s1  sw  0    100\n";
+        c << "Csnub_s1  sw  0    100p\n";
+        c << ".model DIDEAL D (IS=1e-12 RS=1m N=1)\n";
+        c << "D1        sw  vbus DIDEAL\n";
+        c << "Cout      vbus 0   {cbus}  IC={ic_vbus}\n";
+        c << "Rload     vbus 0   {rload}\n\n";
+
+        // ── Voltage error amp (Block 1) ─────────────────────────────────
+        c << "* ─── Voltage error amp (Gv) — type-II ─────────────────────\n";
+        c << "B_div     vbus_div 0  V=V(vbus)*k_div\n";
+        c << "V_ref_v   vref_v   0  {vref}\n";
+        c << "R_in_v    vbus_div vea_n  {gv_rin}\n";
+        c << "R_fb_z    vea_n    vea_z  {gv_rz}\n";
+        c << "C_fb_z    vea_z    vea    {gv_cz} IC=0\n";
+        c << "C_fb_p    vea_n    vea    {gv_cp} IC=0\n";
+        c << "X_op_v    vref_v   vea_n  vea OPAMP_IDEAL "
+             "params: A0=1e5 GBW=1e6 VSSPOS={vea_max} VSSNEG={vea_min}\n\n";
+
+        // ── Feed-forward (Block 2) ──────────────────────────────────────
+        c << "* ─── RMS^2 feed-forward — two LP stages + squarer ─────────\n";
+        c << "R_ff1     vin_rect vff1   {ff_r}\n";
+        c << "C_ff1     vff1     0      {ff_c} IC={ic_vff}\n";
+        c << "R_ff2     vff1     vff2   {ff_r}\n";
+        c << "C_ff2     vff2     0      {ff_c} IC={ic_vff}\n";
+        c << "B_squarer vrms_ff  0      V=V(vff2)*V(vff2)\n\n";
+
+        // ── Multiplier (Block 3) ────────────────────────────────────────
+        c << "* ─── Multiplier — i_ref = G_mul · vea · vin_rect / vrms_ff ─\n";
+        c << "B_iref    i_ref    0  "
+             "V=g_mul*V(vea)*V(vin_rect)/max(V(vrms_ff),vrms_ff_floor)*rs_sense\n\n";
+
+        // ── Current sense + error amp (Block 4) ─────────────────────────
+        c << "* ─── Current sense + Gi (type-II) ─────────────────────────\n";
+        c << "B_isense  i_sense  0  V=I(Vl_sense)*rs_sense\n";
+        c << "R_in_i    i_sense  ic_n   {gi_rin}\n";
+        c << "R_fb_zi   ic_n     ic_z   {gi_rz}\n";
+        c << "C_fb_zi   ic_z     vc_i   {gi_cz} IC=0\n";
+        c << "C_fb_pi   ic_n     vc_i   {gi_cp} IC=0\n";
+        c << "X_op_i    i_ref    ic_n   vc_i OPAMP_IDEAL "
+             "params: A0=1e5 GBW=10e6 VSSPOS={v_pk_saw} VSSNEG=0\n\n";
+
+        // ── Oscillator + PWM comparator (Blocks 5–6) ────────────────────
+        c << "* ─── Sawtooth + PWM comparator ────────────────────────────\n";
+        c << "V_saw     saw 0   PULSE(0 {v_pk_saw} 0 {tsw-pwm_t_rise} "
+             "{pwm_t_rise} {pwm_t_rise} {tsw})\n";
+        c << "B_gate    gate 0  V=(V(vc_i) > V(saw)) ? v_high : 0\n\n";
+
+        // ── Initial conditions ──────────────────────────────────────────
+        c << "* ─── Initial conditions (warm start to analytical SS) ────\n";
+        c << ".ic v(vbus)={ic_vbus} v(vea)={ic_vea} "
+             "v(vff1)={ic_vff} v(vff2)={ic_vff}\n\n";
+
+        // ── Transient analysis + solver options ─────────────────────────
+        const double simTime = numberOfLineCycles * tline;
+        const double maxStep = tsw / 40.0;
+        c << "* ─── Analysis ──────────────────────────────────────────────\n";
+        c << ".tran " << sci(maxStep) << " " << sci(simTime) << " 0 "
+          << sci(maxStep) << " uic\n";
+        c << ".save i(vl_sense) v(vin_rect) v(vbus) v(vea) v(vrms_ff) "
+             "v(i_ref) v(i_sense) v(vc_i) v(saw) v(gate)\n";
+        c << ".options METHOD=GEAR TRTOL=7 RELTOL=1e-3 ABSTOL=1e-9 VNTOL=1e-6\n";
+        c << ".options ITL1=500 ITL4=200\n";
+        c << ".end\n";
+
+        return c.str();
+    }
+
+    OperatingPoint PowerFactorCorrection::simulate_with_ngspice_switching(
+            double inductance,
+            int numberOfLineCycles) {
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            throw std::runtime_error(
+                "PowerFactorCorrection::simulate_with_ngspice_switching: "
+                "ngspice is not available on this system");
+        }
+
+        const std::string netlist =
+            generate_ngspice_switching_circuit(inductance, numberOfLineCycles);
+
+        SimulationConfig config;
+        // Switching netlist already specifies the full transient window
+        // (numberOfLineCycles · Tline). We want the entire raw waveform
+        // back; the caller windows it to the cycle of interest.
+        config.frequency        = get_line_frequency_required();
+        config.extractOnePeriod = false;
+        config.numberOfPeriods  = static_cast<size_t>(std::max(1, numberOfLineCycles));
+        config.keepTempFiles    = false;
+        // 3 line cycles × thousands of switching events: raise timeout.
+        config.timeout          = 300.0;
+
+        auto sim = runner.run_simulation(netlist, config);
+        if (!sim.success) {
+            throw std::runtime_error(
+                "PowerFactorCorrection::simulate_with_ngspice_switching: "
+                "ngspice simulation failed: " + sim.errorMessage);
+        }
+
+        // Locate the inductor-current waveform — ngspice typically returns
+        // i(vl_sense) (or vl_sense#branch in some builds). Case-insensitive
+        // suffix match on "vl_sense" hits both forms.
+        auto matchesILSense = [](const std::string& n) {
+            std::string s = n;
+            std::transform(s.begin(), s.end(), s.begin(),
+                           [](unsigned char c){ return std::tolower(c); });
+            return s.find("vl_sense") != std::string::npos;
+        };
+        const Waveform* iLwf = nullptr;
+        for (size_t k = 0; k < sim.waveformNames.size(); ++k) {
+            if (matchesILSense(sim.waveformNames[k])) {
+                iLwf = &sim.waveforms[k];
+                break;
+            }
+        }
+        if (!iLwf) {
+            std::ostringstream e;
+            e << "PowerFactorCorrection::simulate_with_ngspice_switching: "
+                 "inductor-current waveform 'i(vl_sense)' not found in "
+                 "ngspice output. Available names:";
+            for (const auto& n : sim.waveformNames) e << " " << n;
+            throw std::runtime_error(e.str());
+        }
+
+        // Wrap into an OperatingPoint with one excitation carrying i_L.
+        OperatingPoint op;
+        OperatingPointExcitation exc;
+        SignalDescriptor curSig;
+        curSig.set_waveform(*iLwf);
+        exc.set_current(curSig);
+        op.get_mutable_excitations_per_winding().push_back(exc);
+        return op;
     }
 
 } // namespace OpenMagnetics
