@@ -201,12 +201,16 @@ TEST_CASE("Test_Psfb_OperatingPoints_Generation", "[converter-model][psfb-topolo
         REQUIRE(priExc.get_voltage().has_value());
         CHECK(priExc.get_frequency() == 100e3);
 
-        // Waveforms should have 2*256+1 = 513 samples
+        // PSFB generates 2*256+1 = 513 raw samples, then
+        // Topology::complete_excitation (see Topology.cpp:181-187) resamples
+        // every excitation onto a power-of-2 grid via
+        // Inputs::calculate_sampled_waveform — so the consumer-facing length
+        // is the next power of 2 >= 513, i.e. 1024.
         auto currentWfm = priExc.get_current()->get_waveform().value();
-        CHECK(currentWfm.get_data().size() == 513);
+        CHECK(currentWfm.get_data().size() == 1024);
 
         auto voltageWfm = priExc.get_voltage()->get_waveform().value();
-        CHECK(voltageWfm.get_data().size() == 513);
+        CHECK(voltageWfm.get_data().size() == 1024);
     }
 
     SECTION("Primary voltage is 3-level") {
