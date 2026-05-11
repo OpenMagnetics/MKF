@@ -44,7 +44,7 @@ namespace OpenMagnetics {
 
         auto inputVoltage = get_input_voltage();
         double outputVoltage = get_output_voltage();
-        double efficiency   = get_efficiency_or_default();
+        double efficiency   = get_efficiency_required();
 
         // Check that output voltage is greater than peak input voltage
         double vinPeakMax = resolve_dimensional_values(inputVoltage, DimensionalValues::MAXIMUM) * std::sqrt(2);
@@ -72,7 +72,7 @@ namespace OpenMagnetics {
     double PowerFactorCorrection::calculate_duty_cycle(double vinPeak, double /*vout*/) {
         // For boost PFC: D = 1 - Vin/Vout
         // Accounting for diode drop: D = 1 - Vin/(Vout + Vd)
-        return 1.0 - vinPeak / (get_output_voltage() + get_diode_voltage_drop_or_default());
+        return 1.0 - vinPeak / (get_output_voltage() + get_diode_voltage_drop_required());
     }
 
     double PowerFactorCorrection::calculate_inductance_ccm() {
@@ -88,7 +88,7 @@ namespace OpenMagnetics {
         double D = calculate_duty_cycle(vinPeakMin, outputVoltage);
 
         // Calculate input power (accounting for efficiency)
-        double pinAvg = get_output_power() / get_efficiency_or_default();
+        double pinAvg = get_output_power() / get_efficiency_required();
 
         // Calculate average input current at minimum voltage
         if (vinRmsMin <= 0) {
@@ -100,7 +100,7 @@ namespace OpenMagnetics {
         double iLpeak = iinAvg * std::sqrt(2);
 
         // Calculate ripple current based on ratio
-        double deltaI = iLpeak * get_current_ripple_ratio_or_default();
+        double deltaI = iLpeak * get_current_ripple_ratio_required();
 
         // CCM inductance formula
         double L = vinPeakMin * D / (deltaI * get_switching_frequency());
@@ -114,7 +114,7 @@ namespace OpenMagnetics {
         double vinPeakMin = vinRmsMin * std::sqrt(2);
 
         double D      = calculate_duty_cycle(vinPeakMin, get_output_voltage());
-        double pinAvg = get_output_power() / get_efficiency_or_default();
+        double pinAvg = get_output_power() / get_efficiency_required();
 
         double L = pow(vinPeakMin, 2) * pow(D, 2) / (2 * pinAvg * get_switching_frequency());
         return L;
@@ -126,7 +126,7 @@ namespace OpenMagnetics {
         double vinPeakMin = vinRmsMin * std::sqrt(2);
 
         double D      = calculate_duty_cycle(vinPeakMin, get_output_voltage());
-        double pinAvg = get_output_power() / get_efficiency_or_default();
+        double pinAvg = get_output_power() / get_efficiency_required();
         double iinAvg = pinAvg / vinRmsMin;
         double iLpeak = iinAvg * std::sqrt(2) * 2;  // Peak current is 2x average in CrCM
 
@@ -137,7 +137,7 @@ namespace OpenMagnetics {
     double PowerFactorCorrection::calculate_peak_current(double vinPeak, double inductance) {
         double D = calculate_duty_cycle(vinPeak, get_output_voltage());
 
-        double pinAvg = get_output_power() / get_efficiency_or_default();
+        double pinAvg = get_output_power() / get_efficiency_required();
         double iinRms = pinAvg / (vinPeak / std::sqrt(2));
         double iAvg = iinRms * std::sqrt(2);
 
@@ -220,9 +220,9 @@ namespace OpenMagnetics {
         double outputVoltage     = get_output_voltage();
         double outputPower       = get_output_power();
         double switchingFrequency= get_switching_frequency();
-        double lineFrequency     = get_line_frequency_or_default();
-        double diodeVoltageDrop  = get_diode_voltage_drop_or_default();
-        double efficiency        = get_efficiency_or_default();
+        double lineFrequency     = get_line_frequency_required();
+        double diodeVoltageDrop  = get_diode_voltage_drop_required();
+        double efficiency        = get_efficiency_required();
         double ambientTemperature= get_ambient_temperature();
 
         double pinAvg     = outputPower / efficiency;
@@ -341,7 +341,7 @@ namespace OpenMagnetics {
         double vout    = get_output_voltage();
         double pout    = get_output_power();
         double switchingFrequency = get_switching_frequency();
-        double lineFrequency      = get_line_frequency_or_default();
+        double lineFrequency      = get_line_frequency_required();
 
         double iPeak = std::sqrt(2) * pout / vinRms;
         double tSw   = 1.0 / switchingFrequency;
@@ -384,7 +384,7 @@ namespace OpenMagnetics {
                                                                                    int numberOfCycles) {
         PfcSimulationWaveforms waveforms;
         double switchingFrequency = get_switching_frequency();
-        double lineFrequency      = get_line_frequency_or_default();
+        double lineFrequency      = get_line_frequency_required();
         waveforms.switchingFrequency = switchingFrequency;
         waveforms.lineFrequency      = lineFrequency;
 
@@ -484,7 +484,7 @@ namespace OpenMagnetics {
         }
 
         double switchingFrequency = get_switching_frequency();
-        double lineFrequency      = get_line_frequency_or_default();
+        double lineFrequency      = get_line_frequency_required();
         double ambientTemperature = get_ambient_temperature();
 
         Waveform currentWaveform;
@@ -568,10 +568,24 @@ namespace OpenMagnetics {
         }
 
         const double switchingFrequency = get_switching_frequency();
-        const double lineFrequency      = get_line_frequency_or_default();
+        const double lineFrequency      = get_line_frequency_required();
         const double vout               = get_output_voltage();
         const double pout               = get_output_power();
-        const double efficiency         = get_efficiency_or_default();
+        const double efficiency         = get_efficiency_required();
+
+        // Bulk-capacitance is required for the §5.1 converter-port output
+        // model (without it the DC bus would be modelled as flat, which
+        // hides the twice-line-frequency ripple that drives bulk-cap
+        // sizing). Per the repo "no fallbacks — throw" rule, throw if unset.
+        auto bulkCapOpt = MAS::PowerFactorCorrection::get_bulk_capacitance();
+        if (!bulkCapOpt.has_value()) {
+            throw std::runtime_error(
+                "PowerFactorCorrection::simulate_and_extract_topology_waveforms: "
+                "bulkCapacitance is required (set via set_bulk_capacitance() or "
+                "the JSON field 'bulkCapacitance'). Typical sizing: 1–4 µF/W for "
+                "400 V bus / 20 ms hold-up.");
+        }
+        const double bulkCapacitance = bulkCapOpt.value();
 
         const double linePeriod      = 1.0 / lineFrequency;
         const double switchingPeriod = 1.0 / switchingFrequency;
@@ -586,15 +600,36 @@ namespace OpenMagnetics {
             const double vinPeak = vinRms * std::sqrt(2.0);
             // Average input current (RMS, ideal PF=1): I_in_rms = P_in / V_in_rms,
             // P_in = P_out / η. Peak of the |sin| envelope is √2·I_in_rms.
-            const double iLinePeak = std::sqrt(2.0) * (pout / efficiency) / vinRms;
-            // Load current (constant DC).
+            const double pinAvg    = pout / efficiency;
+            const double iLinePeak = std::sqrt(2.0) * pinAvg / vinRms;
+            // Load current (mean DC; the instantaneous value tracks Vbus(t)/Rload below).
             const double iLoad = pout / vout;
+            const double rLoad = vout / iLoad;
+
+            // ──────────────────────────────────────────────────────────────
+            // DC bus ripple — linearised state-variable model.
+            //
+            // Bulk-cap ODE:  Cbus · dVbus/dt = i_diode(t) - Vbus(t)/Rload
+            // where the cycle-averaged diode current
+            //   i_diode_avg(t) = i_line(t)·(1−D(t)) = (Pin_avg / Vbus)·(1 − cos 2ωt)
+            // Linearising around Vbus ≈ Vbus_nom (small ripple, ω >> 1/(Rload·Cbus)):
+            //   ΔV(t) ≈ −[Pin_avg / (2·ω_line·Cbus·Vbus_nom)] · sin(2·ω_line·t)
+            // so the peak-to-peak bus ripple is
+            //   ΔVbus_pp ≈ Pout / (π · f_line · Cbus · Vbus)
+            // This is the textbook "low-frequency bus ripple" formula used to
+            // size Cbus for both ripple-current rating and the 2·f_line hum-loop
+            // shaping in the voltage loop (Erickson §17, TI SLUA754).
+            //
+            // Mean of Vbus(t) remains Vbus_nom (sinusoid is zero-mean), so
+            // ConverterPortChecks::check_pfc_ports still passes.
+            // ──────────────────────────────────────────────────────────────
+            const double rippleAmpPk = pinAvg / (2.0 * omegaLine * bulkCapacitance * vout);
 
             std::vector<double> time(numPoints);
             std::vector<double> vinData(numPoints);
             std::vector<double> iinData(numPoints);
-            std::vector<double> voutData(numPoints, vout);
-            std::vector<double> ioutData(numPoints, iLoad);
+            std::vector<double> voutData(numPoints);
+            std::vector<double> ioutData(numPoints);
 
             for (size_t i = 0; i < numPoints; ++i) {
                 const double t       = i * timeStep;
@@ -613,6 +648,10 @@ namespace OpenMagnetics {
                 const double tri       = (phase < 0.5) ? (-1.0 + 4.0 * phase)
                                                        : ( 3.0 - 4.0 * phase);
                 iinData[i] = iEnv + rippleAmp * tri;
+
+                const double vbus = vout - rippleAmpPk * std::sin(2.0 * omegaLine * t);
+                voutData[i] = vbus;
+                ioutData[i] = vbus / rLoad;
             }
 
             ConverterWaveforms wf;

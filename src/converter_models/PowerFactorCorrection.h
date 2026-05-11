@@ -47,10 +47,13 @@ struct PfcSimulationWaveforms {
  * inductance sizing for CCM/DCM/CrCM, operating-point waveform synthesis with
  * envelope-plus-ripple shape, and ngspice circuit generation/extraction.
  *
- * Default fallbacks (currentRippleRatio=0.3, efficiency=0.95, lineFrequency=50,
- * diodeVoltageDrop=0.6) are applied at the read site via value_or() so they
- * stay close to the formulas that consume them, instead of being silently
- * stamped on the MAS object during construction.
+ * Per the repository "no fallbacks / no defaults / no silent shortcuts — throw"
+ * rule (CLAUDE.md), every optional MAS field that this engineering layer needs
+ * unconditionally is exposed through a `*_required()` accessor that throws
+ * `std::runtime_error` if the optional is unset. The schema-level defaults
+ * (`currentRippleRatio=0.3`, `efficiency=0.95`, `lineFrequency=50`,
+ * `diodeVoltageDrop=0.6`) are NOT applied silently at the read site — they
+ * must be either explicitly set by the caller or written into the JSON.
  */
 class PowerFactorCorrection : public Topology, public MAS::PowerFactorCorrection {
 public:
@@ -86,20 +89,42 @@ public:
     std::string determine_actual_mode(double inductance);
 
     // ------------------------------------------------------------------
-    // Compatibility accessors with explicit defaults for fields that are
-    // optional in MAS but used unconditionally by MKF formulas.
+    // Required-field accessors — throw if the underlying MAS optional is
+    // unset. Naming convention: `*_required()`. Use these instead of the
+    // raw `MAS::PowerFactorCorrection::get_*()` accessors anywhere the
+    // engineering math assumes the field is populated.
     // ------------------------------------------------------------------
-    double get_line_frequency_or_default() const {
-        return MAS::PowerFactorCorrection::get_line_frequency().value_or(50.0);
+    double get_line_frequency_required() const {
+        auto v = MAS::PowerFactorCorrection::get_line_frequency();
+        if (!v.has_value())
+            throw std::runtime_error(
+                "PowerFactorCorrection: lineFrequency is required (set via "
+                "set_line_frequency() or the JSON field 'lineFrequency')");
+        return v.value();
     }
-    double get_current_ripple_ratio_or_default() const {
-        return MAS::PowerFactorCorrection::get_current_ripple_ratio().value_or(0.3);
+    double get_current_ripple_ratio_required() const {
+        auto v = MAS::PowerFactorCorrection::get_current_ripple_ratio();
+        if (!v.has_value())
+            throw std::runtime_error(
+                "PowerFactorCorrection: currentRippleRatio is required (set via "
+                "set_current_ripple_ratio() or the JSON field 'currentRippleRatio')");
+        return v.value();
     }
-    double get_efficiency_or_default() const {
-        return MAS::PowerFactorCorrection::get_efficiency().value_or(0.95);
+    double get_efficiency_required() const {
+        auto v = MAS::PowerFactorCorrection::get_efficiency();
+        if (!v.has_value())
+            throw std::runtime_error(
+                "PowerFactorCorrection: efficiency is required (set via "
+                "set_efficiency() or the JSON field 'efficiency')");
+        return v.value();
     }
-    double get_diode_voltage_drop_or_default() const {
-        return MAS::PowerFactorCorrection::get_diode_voltage_drop().value_or(0.6);
+    double get_diode_voltage_drop_required() const {
+        auto v = MAS::PowerFactorCorrection::get_diode_voltage_drop();
+        if (!v.has_value())
+            throw std::runtime_error(
+                "PowerFactorCorrection: diodeVoltageDrop is required (set via "
+                "set_diode_voltage_drop() or the JSON field 'diodeVoltageDrop')");
+        return v.value();
     }
 
     /**

@@ -40,6 +40,10 @@ constexpr double kFsw       = 100e3;
 constexpr double kFline     = 50.0;
 constexpr double kEta       = 0.95;
 constexpr double kRipple    = 0.3;
+constexpr double kVdiode    = 0.6;
+// 500 µF bulk cap → ΔVbus_pp = Pout / (π·fline·Cbus·Vbus)
+//                  = 500 / (π·50·500e-6·400) ≈ 15.9 V_pp (~4 % of Vbus).
+constexpr double kCbus      = 500e-6;
 
 OpenMagnetics::PowerFactorCorrection make_default_pfc(bool sweepInputVoltage = true) {
     OpenMagnetics::PowerFactorCorrection pfc;
@@ -56,6 +60,8 @@ OpenMagnetics::PowerFactorCorrection make_default_pfc(bool sweepInputVoltage = t
     pfc.set_line_frequency(kFline);
     pfc.set_efficiency(kEta);
     pfc.set_current_ripple_ratio(kRipple);
+    pfc.set_diode_voltage_drop(kVdiode);
+    pfc.set_bulk_capacitance(kCbus);
     pfc.set_mode(PfcModes::CONTINUOUS_CONDUCTION_MODE);
     pfc.set_ambient_temperature(25.0);
     return pfc;
@@ -144,6 +150,27 @@ TEST_CASE("Test_Pfc_ConverterPortWaveforms",
     for (size_t i = 0; i < wfs.size(); ++i) {
         ConverterPortChecks::check_pfc_ports(wfs[i], "PFC", i,
                                              vinSweep[i], kVbus, iLoadNom);
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Cbus state-variable model: bus voltage should exhibit a twice-line-
+    // frequency ripple of amplitude
+    //   ΔVbus_pk = Pin_avg / (2·ω_line·Cbus·Vbus)
+    //            = (Pout/η) / (2·2π·fline·Cbus·Vbus)
+    // For the parameters above (500 W / 0.95 / 50 Hz / 500 µF / 400 V):
+    //   ΔVbus_pk ≈ 8.4 V    (peak-to-peak ≈ 16.8 V, ~4 % of Vbus)
+    // ───────────────────────────────────────────────────────────────────
+    const double expectedRipplePk = (kPout / kEta) /
+                                    (2.0 * 2.0 * M_PI * kFline * kCbus * kVbus);
+    for (size_t i = 0; i < wfs.size(); ++i) {
+        const auto& d = wfs[i].get_output_voltages()[0].get_data();
+        const double vMax = *std::max_element(d.begin(), d.end());
+        const double vMin = *std::min_element(d.begin(), d.end());
+        const double actualPk = 0.5 * (vMax - vMin);
+        INFO("PFC OP " << i << " Vbus ripple pk: actual=" << actualPk
+             << " V, expected=" << expectedRipplePk << " V");
+        CHECK(actualPk > 0.7 * expectedRipplePk);
+        CHECK(actualPk < 1.3 * expectedRipplePk);
     }
 }
 
