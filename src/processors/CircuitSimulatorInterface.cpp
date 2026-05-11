@@ -245,9 +245,69 @@ void CircuitSimulatorExporter::winding_rosano_func(double *p, double *x, int m, 
     }
 }
 
-std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_rosano(Magnetic magnetic, double temperature) {
+// Rosano RLC winding model: Z = Rdc + sum_{k=0}^{nRL-1}(Rk || jwLk) + (Rn || (jwLn + 1/(jwCn)))
+// Extended model with one RLC stage for better high-frequency fitting.
+// nStages: total number of stages
+// nRLCStages: number of RLC stages (1 = one RLC stage at the end, 0 = all RL stages)
+// coefficients layout:
+//   - If nRLCStages=0: [R1, L1, R2, L2, ..., Rn, Ln] (2*nStages params)
+//   - If nRLCStages=1: [R1, L1, ..., R(n-1), L(n-1), Rn, Ln, Cn] (2*nStages+1 params)
+// Rdc is passed separately.
+double CircuitSimulatorExporter::winding_rosano_rlc_model(double x[], int nStages, int nRLCStages, double frequency, double dcResistance) {
+    if (nStages < 1) return dcResistance;
+    if (nRLCStages < 0) nRLCStages = 0;
+    if (nRLCStages > 1) nRLCStages = 1;
+
+    int nRLStages = nStages - nRLCStages;
+    int nParams = 2 * nRLStages + 3 * nRLCStages;
+
+    for (int i = 0; i < nParams; ++i)
+        if (x[i] <= 0) return 1e30;
+
+    double w = 2 * std::numbers::pi * frequency;
+    auto Z = std::complex<double>(dcResistance, 0);
+
+    for (int k = 0; k < nRLStages; ++k) {
+        auto Rk = std::complex<double>(x[2 * k], 0);
+        auto Lk = std::complex<double>(0, w * x[2 * k + 1]);
+        Z += parallel(Rk, Lk);
+    }
+
+    if (nRLCStages > 0) {
+        int rlcBase = 2 * nRLStages;
+        double R_n = x[rlcBase];
+        double L_n = x[rlcBase + 1];
+        double C_n = x[rlcBase + 2];
+
+        auto R_branch = std::complex<double>(R_n, 0);
+        auto LC_series = std::complex<double>(0, w * L_n - 1.0 / (w * C_n));
+        Z += parallel(R_branch, LC_series);
+    }
+
+    return Z.real();
+}
+
+typedef struct {
+    double* dcResistanceAndFrequencies;
+    int nStages;
+    int nRLCStages;
+} WindingRosanoRLCFitData;
+
+void CircuitSimulatorExporter::winding_rosano_rlc_func(double *p, double *x, int m, int n, void *data) {
+    auto* fitData = static_cast<WindingRosanoRLCFitData*>(data);
+    double dcResistance = fitData->dcResistanceAndFrequencies[0];
+
+    for (int i = 0; i < n; ++i) {
+        double val = CircuitSimulatorExporter::winding_rosano_rlc_model(p, fitData->nStages, fitData->nRLCStages,
+                                               fitData->dcResistanceAndFrequencies[i + 1], dcResistance);
+        x[i] = (val > 0) ? std::log(val) : -50.0;
+    }
+}
+
+std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_rosano(Magnetic magnetic, double temperature, bool useRLCStages) {
     const size_t nStages = 6;
-    const size_t numberUnknowns = 2 * nStages;   // [R1,L1, R2,L2, ..., R6,L6]
+    const size_t numberUnknownsRL = 2 * nStages;       // [R1,L1, R2,L2, ..., R6,L6]
+    const size_t numberUnknownsRLC = 2 * nStages + 1;  // [R1,L1, ..., R5,L5, R6,L6,C6] - one RLC stage
     const size_t numberElements = 40;
     const size_t numberElementsPlusOne = numberElements + 1;
     double startingFrequency = 0.1;
@@ -283,17 +343,19 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
 
         double bestError = DBL_MAX;
         std::vector<double> bestCoeffs;
+        bool bestUseRLC = false;
 
         // Grid search over rScale and fScale for physics-informed initialization
         double rScales[] = {0.5, 1.0, 2.0, 5.0};
         double fScales[] = {0.3, 1.0, 3.0};
 
+        // First fit RL-only model (standard Rosano)
         for (double rScale : rScales) {
-            if (bestError < 0.05) break;
+            if (bestError < 0.02) break;
             for (double fScale : fScales) {
-                if (bestError < 0.05) break;
+                if (bestError < 0.02) break;
 
-                double coefficients[numberUnknowns];
+                double coefficients[numberUnknownsRL];
                 double Rrange = std::max(Rmax - Rdc, Rdc * 0.1) * rScale;
 
                 // Distribute 6 transition frequencies geometrically across [fStart, fEnd]
@@ -308,12 +370,12 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
                 double opts[5] = {1e-3, 1e-25, 1e-25, 1e-25, 1e-19};
                 double info[10];
                 eigen_levmar_dif(CircuitSimulatorExporter::winding_rosano_func, coefficients,
-                                 logAcResistances, numberUnknowns, numberElements,
+                                 logAcResistances, numberUnknownsRL, numberElements,
                                  10000, opts, info, nullptr, nullptr,
                                  static_cast<void*>(&dcResistanceAndFrequencies));
 
                 bool allPositive = true;
-                for (size_t i = 0; i < numberUnknowns; ++i)
+                for (size_t i = 0; i < numberUnknownsRL; ++i)
                     if (coefficients[i] <= 0) { allPositive = false; break; }
                 if (!allPositive) continue;
 
@@ -328,10 +390,77 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
 
                 if (errorAverage < bestError) {
                     bestError = errorAverage;
-                    bestCoeffs = std::vector<double>(coefficients, coefficients + numberUnknowns);
+                    bestCoeffs = std::vector<double>(coefficients, coefficients + numberUnknownsRL);
+                    bestUseRLC = false;
                 }
             }
         }
+
+        // Optionally fit RLC model for better high-frequency accuracy
+        if (useRLCStages && bestError > 0.01) {  // Only try RLC if RL fit isn't excellent
+            WindingRosanoRLCFitData rlcFitData;
+            rlcFitData.dcResistanceAndFrequencies = dcResistanceAndFrequencies;
+            rlcFitData.nStages = static_cast<int>(nStages);
+            rlcFitData.nRLCStages = 1;
+
+            for (double rScale : rScales) {
+                if (bestError < 0.01) break;
+                for (double fScale : fScales) {
+                    if (bestError < 0.01) break;
+
+                    double coefficients[numberUnknownsRLC];
+                    double Rrange = std::max(Rmax - Rdc, Rdc * 0.1) * rScale;
+
+                    // 5 RL stages + 1 RLC stage
+                    for (size_t k = 0; k < nStages - 1; ++k) {
+                        double fk = fStart * std::pow(fEnd / fStart, (k + 0.5) / static_cast<double>(nStages)) * fScale;
+                        double wk = 2 * std::numbers::pi * fk;
+                        double Rk = Rrange / static_cast<double>(nStages);
+                        coefficients[2 * k]     = std::max(Rk, 1e-9);
+                        coefficients[2 * k + 1] = std::max(Rk / wk, 1e-15);
+                    }
+                    // Last stage (RLC)
+                    double fk_last = fStart * std::pow(fEnd / fStart, (nStages - 0.5) / static_cast<double>(nStages)) * fScale;
+                    double wk_last = 2 * std::numbers::pi * fk_last;
+                    double Rk_last = Rrange / static_cast<double>(nStages);
+                    int rlcBase = 2 * (nStages - 1);
+                    coefficients[rlcBase]     = std::max(Rk_last, 1e-9);
+                    coefficients[rlcBase + 1] = std::max(Rk_last / wk_last, 1e-15);
+                    coefficients[rlcBase + 2] = std::max(1.0 / (wk_last * Rk_last), 1e-18);
+
+                    double opts[5] = {1e-3, 1e-25, 1e-25, 1e-25, 1e-19};
+                    double info[10];
+                    eigen_levmar_dif(CircuitSimulatorExporter::winding_rosano_rlc_func, coefficients,
+                                     logAcResistances, numberUnknownsRLC, numberElements,
+                                     10000, opts, info, nullptr, nullptr,
+                                     static_cast<void*>(&rlcFitData));
+
+                    bool allPositive = true;
+                    for (size_t i = 0; i < numberUnknownsRLC; ++i)
+                        if (coefficients[i] <= 0) { allPositive = false; break; }
+                    if (!allPositive) continue;
+
+                    double errorAverage = 0;
+                    for (size_t index = 0; index < numFreqs; ++index) {
+                        double modeled = CircuitSimulatorExporter::winding_rosano_rlc_model(
+                            coefficients, static_cast<int>(nStages), 1, frequenciesVector[index], Rdc);
+                        double error = fabs(valuePoints[index] - modeled) / valuePoints[index];
+                        errorAverage += error;
+                    }
+                    errorAverage /= numFreqs;
+
+                    // Only use RLC if it improves error by at least 20%
+                    if (errorAverage < bestError * 0.8) {
+                        bestError = errorAverage;
+                        bestCoeffs = std::vector<double>(coefficients, coefficients + numberUnknownsRLC);
+                        bestUseRLC = true;
+                    }
+                }
+            }
+        }
+
+        // Append marker flag indicating which model was used
+        bestCoeffs.push_back(bestUseRLC ? 1.0 : 0.0);
 
         acResistanceCoefficientsPerWinding.push_back(bestCoeffs);
     }
@@ -792,7 +921,14 @@ std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistan
         return calculate_ac_resistance_coefficients_per_winding_fracpole(magnetic, temperature);
     }
     else if (mode == CircuitSimulatorExporterCurveFittingModes::ROSANO) {
-        return calculate_ac_resistance_coefficients_per_winding_rosano(magnetic, temperature);
+        return calculate_ac_resistance_coefficients_per_winding_rosano(magnetic, temperature, false);
+    }
+    else if (mode == CircuitSimulatorExporterCurveFittingModes::ROSANO_RLC) {
+        // Rosano + one terminal RLC stage. The fitter only commits the
+        // RLC topology when it improves the average error by ≥ 20 % vs
+        // the pure-RL fit, so this mode is a strict superset: worst case
+        // it returns identical coefficients to ROSANO.
+        return calculate_ac_resistance_coefficients_per_winding_rosano(magnetic, temperature, true);
     }
     else {
         return calculate_ac_resistance_coefficients_per_winding_analytical(magnetic, temperature);
@@ -1227,9 +1363,26 @@ std::string emit_winding_rosano_spice(
 
     if (coeffs.size() < 2) return "";
 
-    size_t nStages = coeffs.size() / 2;
+    // Check if RLC model was used (marker flag appended as last element)
+    bool useRLC = false;
+    size_t actualCoeffCount = coeffs.size();
+    if (actualCoeffCount > 0 && coeffs.back() == 1.0) {
+        useRLC = true;
+        actualCoeffCount--;
+    } else if (actualCoeffCount > 0 && coeffs.back() == 0.0) {
+        actualCoeffCount--;
+    }
+
+    size_t nStages;
+    if (useRLC) {
+        nStages = (actualCoeffCount - 1) / 2;  // 5 RL stages + 1 RLC stage
+    } else {
+        nStages = actualCoeffCount / 2;
+    }
+
     std::string s;
-    s += "* Rosano winding AC loss network (" + std::to_string(nStages) + " R||L stages)\n";
+    s += "* Rosano winding AC loss network (" + std::to_string(nStages) + " stages, " +
+         (useRLC ? "RLC" : "RL") + " model)\n";
 
     // Rdc in series (R_0 in Rosano's notation)
     s += "Rdc" + is + " P" + is + "+ Node_Rdc_" + is + " " + to_string(dcResistance, 12) + "\n";
@@ -1239,14 +1392,27 @@ std::string emit_winding_rosano_spice(
         double Rk = coeffs[2 * k];
         double Lk = coeffs[2 * k + 1];
         std::string ks = std::to_string(k + 1);
-        std::string nextNode = (k == nStages - 1) ? "Node_R_Lmag_" + is : ("Node_Rw_" + is + "_" + ks);
+        bool isLastStage = (k == nStages - 1);
+        std::string nextNode = isLastStage ? "Node_R_Lmag_" + is : ("Node_Rw_" + is + "_" + ks);
 
-        if (Rk > 0 && Lk > 0) {
-            s += "Rw" + is + "_" + ks + " " + prevNode + " " + nextNode + " " + to_string(Rk, 12) + "\n";
-            s += "Lw" + is + "_" + ks + " " + prevNode + " " + nextNode + " " + to_string(Lk, 12) + "\n";
+        if (useRLC && isLastStage) {
+            // RLC stage: R || (L + C series)
+            double Ck = coeffs[actualCoeffCount - 1];
+            if (Rk > 0 && Lk > 0 && Ck > 0) {
+                s += "Rw" + is + "_" + ks + " " + prevNode + " " + nextNode + " " + to_string(Rk, 12) + "\n";
+                s += "Lw" + is + "_" + ks + " " + prevNode + " Node_Lw_" + is + "_" + ks + " " + to_string(Lk, 12) + "\n";
+                s += "Cw" + is + "_" + ks + " Node_Lw_" + is + "_" + ks + " " + nextNode + " " + to_string(Ck, 12) + "\n";
+            } else {
+                s += "Rwshort" + is + "_" + ks + " " + prevNode + " " + nextNode + " 1e-9\n";
+            }
         } else {
-            // Degenerate stage: short through
-            s += "Rwshort" + is + "_" + ks + " " + prevNode + " " + nextNode + " 1e-9\n";
+            // RL stage: R || L
+            if (Rk > 0 && Lk > 0) {
+                s += "Rw" + is + "_" + ks + " " + prevNode + " " + nextNode + " " + to_string(Rk, 12) + "\n";
+                s += "Lw" + is + "_" + ks + " " + prevNode + " " + nextNode + " " + to_string(Lk, 12) + "\n";
+            } else {
+                s += "Rwshort" + is + "_" + ks + " " + prevNode + " " + nextNode + " 1e-9\n";
+            }
         }
         prevNode = nextNode;
     }

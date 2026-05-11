@@ -166,8 +166,13 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
             throw std::invalid_argument("Analytical mode not supported in NgSpice");
         }
-        else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::ROSANO) {
-            // Rosano winding model: Rdc + (R1||L1) + ... + (R6||L6) flat series
+        else if (resolvedMode == CircuitSimulatorExporterCurveFittingModes::ROSANO ||
+                 resolvedMode == CircuitSimulatorExporterCurveFittingModes::ROSANO_RLC) {
+            // Rosano winding model: Rdc + (R1||L1) + ... + (Rn||Ln) flat series.
+            // ROSANO_RLC additionally allows the last stage to be R||(L+C
+            // series). The fitter encodes which topology was selected via a
+            // trailing marker flag in the coefficient vector;
+            // emit_winding_rosano_spice decodes and emits the right network.
             const auto& rosanoCoeffs = acResistanceCoefficientsPerWinding[index];
             if (!rosanoCoeffs.empty()) {
                 circuitString += emit_winding_rosano_spice(rosanoCoeffs, is, effectiveResistanceThisWinding);

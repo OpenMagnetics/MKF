@@ -441,6 +441,7 @@ enum class CircuitSimulatorExporterCurveFittingModes : int {
     LADDER,
     FRACPOLE,
     ROSANO,
+    ROSANO_RLC,  // Rosano with one terminal R||(L+C series) stage for high-frequency fit
     AUTO
 };
 
@@ -485,6 +486,14 @@ class CircuitSimulatorExporter {
         // coefficients: [R1, L1, R2, L2, ..., R6, L6]  (12 unknowns, 6 stages)
         static double winding_rosano_model(double x[], double frequency, double dcResistance);
         static void winding_rosano_func(double *p, double *x, int m, int n, void *data);
+
+        // Rosano RLC winding model: Z = Rdc + (R1||L1) + ... + (R(n-1)||L(n-1)) + (Rn||(Ln+Cn))
+        // Extends Rosano model with one RLC stage for better high-frequency accuracy
+        // coefficients: [R1, L1, ..., Rn-1, Ln-1, Rn, Ln, Cn]  (2*n+1 unknowns, n stages with last being RLC)
+        // nStages: total number of parallel stages
+        // nRLCStages: number of RLC stages (currently 0 or 1 supported)
+        static double winding_rosano_rlc_model(double x[], int nStages, int nRLCStages, double frequency, double dcResistance);
+        static void winding_rosano_rlc_func(double *p, double *x, int m, int n, void *data);
 
         static double fracpole_skin_model(double x[], double frequency);
         static void fracpole_skin_func(double *p, double *x, int m, int n, void *data);

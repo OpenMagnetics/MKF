@@ -147,7 +147,8 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
                 circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
             }
         }
-        else if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ROSANO) {
+        else if (resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ROSANO ||
+                 resolvedMode_lt == CircuitSimulatorExporterCurveFittingModes::ROSANO_RLC) {
             const auto& rosanoCoeffs = acResistanceCoefficientsPerWinding[index];
             if (!rosanoCoeffs.empty()) {
                 circuitString += emit_winding_rosano_spice(rosanoCoeffs, is, effectiveResistanceThisWinding);
