@@ -16,6 +16,27 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 20;  // Increased from 5 to ensure steady state
 
+    // Per-OP diagnostic outputs (mutable — populated by
+    // processOperatingPointsForInputVoltage()). Same pattern as
+    // IsolatedBuck — exposes the analytical model's intermediate
+    // results so tests / Web frontend can verify without re-deriving
+    // the equations.
+    //
+    // Topology refresher (η=1, Vd=0):
+    //   D       = Vout / (Vin + Vout)              (flyback duty)
+    //   ΔIm_pp  = Vin · D / (L · Fs)
+    //           = Vin · Vout / ((Vin+Vout) · L · Fs)
+    //   Im_avg  = Iout_pri + Σ Iout_sec / n        (sum of reflected loads)
+    //   Im_pk   = Im_avg + ΔIm_pp / 2
+    //   K       = 2 · L · Fs / R_eff_pri,   K_crit = (1 − D)²
+    //   CCM iff K ≥ K_crit (Erickson §5.2 buck-boost criterion).
+    mutable double lastDutyCycle = 0.0;
+    mutable double lastMagnetizingCurrentRipple = 0.0;
+    mutable double lastPrimaryAverageCurrent = 0.0;
+    mutable double lastPrimaryPeakCurrent = 0.0;
+    mutable double lastSecondaryPeakCurrent = 0.0;
+    mutable bool   lastIsCcm = true;
+
     mutable std::vector<Waveform> extraLoVoltageWaveforms;
     mutable std::vector<Waveform> extraLoCurrentWaveforms;
     mutable std::vector<double>   extraLoInductances;
@@ -32,6 +53,15 @@ public:
     
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
+
+    // Per-OP analytical diagnostics (read-only; populated by
+    // processOperatingPointsForInputVoltage()).
+    double get_last_duty_cycle() const { return lastDutyCycle; }
+    double get_last_magnetizing_current_ripple() const { return lastMagnetizingCurrentRipple; }
+    double get_last_primary_average_current() const { return lastPrimaryAverageCurrent; }
+    double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
+    double get_last_secondary_peak_current() const { return lastSecondaryPeakCurrent; }
+    bool   get_last_is_ccm() const { return lastIsCcm; }
 
     bool run_checks(bool assert = false) override;
 

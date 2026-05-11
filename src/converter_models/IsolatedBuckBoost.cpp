@@ -4,6 +4,7 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "support/Utils.h"
 #include <cfloat>
+#include <limits>
 #include <sstream>
 #include <algorithm>
 #include <cctype>
@@ -60,6 +61,26 @@ namespace OpenMagnetics {
         auto primaryVoltaveMinimum = primaryOutputVoltage - diodeVoltageDrop;
         auto primaryVoltavePeaktoPeak = primaryVoltaveMaximum - primaryVoltaveMinimum;
 
+        // Per-OP analytical diagnostics (mirrors IsolatedBuck.cpp).
+        // R_eff_pri uses the asymptotic Im_avg = Iout + Σ Iout_sec/n
+        // (the same quantity the model uses to centre the triangular
+        // primary current waveform), giving R_eff_pri = Vpri / Im_avg.
+        // CCM criterion: K = 2·L·Fs / R_eff_pri ≥ K_crit = (1−D)²
+        // (Erickson §5.2 buck-boost). This is the standard buck-boost
+        // boundary applied to the magnetizing inductance referred to
+        // the primary side.
+        double rEffPri = (primaryCurrentAverage > 0)
+            ? (primaryVoltaveMaximum / primaryCurrentAverage)
+            : std::numeric_limits<double>::infinity();
+        double kFactor = 2.0 * inductance * switchingFrequency / rEffPri;
+        double kCrit   = (1.0 - dutyCycle) * (1.0 - dutyCycle);
+        lastDutyCycle                 = dutyCycle;
+        lastMagnetizingCurrentRipple  = primaryCurrentPeakToPeak;
+        lastPrimaryAverageCurrent     = primaryCurrentAverage;
+        lastPrimaryPeakCurrent        = primaryCurrentAverage + primaryCurrentPeakToPeak / 2;
+        lastIsCcm                     = (kFactor >= kCrit);
+        lastSecondaryPeakCurrent      = 0.0;  // updated in the secondaries loop below
+
         // Primary
         {
             Waveform currentWaveform;
@@ -81,6 +102,13 @@ namespace OpenMagnetics {
             auto secondaryCurrentMaximum = (1 + dutyCycle) / (1 - dutyCycle) * secondaryOutputCurrent - secondaryOutputCurrent;
             auto secondaryCurrentMinimum = 0;
             auto secondaryCurrentPeakToPeak = secondaryCurrentMaximum - secondaryCurrentMinimum;
+
+            // Track worst-case secondary peak across all secondaries
+            // for diagnostic readout.
+            double secPeak = secondaryOutputCurrent + secondaryCurrentMaximum;
+            if (secPeak > lastSecondaryPeakCurrent) {
+                lastSecondaryPeakCurrent = secPeak;
+            }
 
             auto secondaryVoltaveMaximum = inputVoltage / turnsRatios[secondaryIndex] - diodeVoltageDrop;
             auto secondaryVoltaveMinimum = (primaryOutputVoltage - diodeVoltageDrop) / turnsRatios[secondaryIndex] + diodeVoltageDrop;
