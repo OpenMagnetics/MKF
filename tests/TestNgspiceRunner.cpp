@@ -5,6 +5,9 @@
 #include "converter_models/Flyback.h"
 #include "converter_models/Buck.h"
 #include "converter_models/Boost.h"
+#include "converter_models/CommonModeChoke.h"
+#include "converter_models/DifferentialModeChoke.h"
+#include "converter_models/PowerFactorCorrection.h"
 
 
 #include "converter_models/SingleSwitchForward.h"
@@ -1247,12 +1250,316 @@ TEST_CASE("Boost converter simulation", "[ngspice-runner][boost-topology][smoke-
     INFO("Boost converter simulation passed");
 }
 
-// NOTE: CommonModeChoke, DifferentialModeChoke, and PowerFactorCorrection tests removed
-// because their header files are missing from the repository
+// ==============================================================================
+// Common Mode Choke (CMC) ngspice simulation tests — rewritten against the
+// current MAS::CommonModeChoke / MKF CommonModeChoke API. These cover:
+//   - generate_ngspice_circuit netlist content
+//   - simulate_and_extract_waveforms vector<CmcSimulationWaveforms>
+//   - simulate_and_extract_operating_points
+// CMC has no `set_configuration` (use set_number_of_windings instead) and the
+// minimum_impedance setter takes a non-optional vector<ImpedanceAtFrequency>.
+// ==============================================================================
 
-// Placeholder test to avoid empty test file
-TEST_CASE("Ngspice runner placeholder", "[ngspice-runner][smoke-test]") {
-    REQUIRE(true);
+namespace {
+    void configure_cmc_for_test(OpenMagnetics::CommonModeChoke& cmc) {
+        cmc.set_number_of_windings(2);
+        cmc.set_operating_current(5.0);
+        cmc.set_line_frequency(50.0);
+        cmc.set_ambient_temperature(25.0);
+
+        DimensionWithTolerance voltage;
+        voltage.set_nominal(230.0);
+        cmc.set_operating_voltage(voltage);
+
+        ImpedanceAtFrequency imp;
+        ImpedancePoint impPoint;
+        impPoint.set_magnitude(1000.0);  // 1 kΩ at 100 kHz
+        imp.set_impedance(impPoint);
+        imp.set_frequency(100e3);
+        cmc.set_minimum_impedance({imp});
+    }
+}
+
+TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc-topology][smoke-test]") {
+    OpenMagnetics::CommonModeChoke cmc;
+    configure_cmc_for_test(cmc);
+
+    double inductance = 10e-3;  // 10 mH common-mode inductance
+    std::string netlist = cmc.generate_ngspice_circuit(inductance, 100e3);
+
+    INFO("Generated CMC netlist:\n" << netlist);
+
+    // Title (`* Common Mode Choke EMI Test Circuit - LISN Configuration\n`)
+    // and structural elements that must be present in every CMC netlist.
+    REQUIRE(netlist.find("Common Mode Choke") != std::string::npos);
+    REQUIRE(netlist.find("LISN") != std::string::npos);
+    REQUIRE(netlist.find(".tran") != std::string::npos);
+
+    // Save netlist for inspection
+    auto netlistPath = outputFilePath;
+    netlistPath.append("cmc_lisn_test.cir");
+    std::ofstream netlistFile(netlistPath);
+    if (netlistFile.is_open()) {
+        netlistFile << netlist;
+        netlistFile.close();
+    }
+}
+
+TEST_CASE("CommonModeChoke simulate and extract waveforms", "[ngspice-runner][cmc-topology][smoke-test]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available on this system");
+
+    OpenMagnetics::CommonModeChoke cmc;
+    configure_cmc_for_test(cmc);
+
+    double inductance = 10e-3;
+    std::vector<double> frequencies = {100e3};
+
+    auto waveformsVec = cmc.simulate_and_extract_waveforms(inductance, frequencies);
+    REQUIRE(!waveformsVec.empty());
+
+    const auto& waveforms = waveformsVec[0];
+    REQUIRE(!waveforms.time.empty());
+    REQUIRE(waveforms.time.size() > 10);
+
+    INFO("CMC simulation returned " << waveforms.time.size() << " time points");
+    INFO("CM impedance (theoretical 2π·f·L): " << waveforms.theoreticalImpedance << " Ω");
+
+    // 10 mH at 100 kHz → Z = 2·π·100e3·10e-3 ≈ 6283 Ω
+    CHECK(waveforms.theoreticalImpedance > 6000);
+    CHECK(waveforms.theoreticalImpedance < 6500);
+}
+
+TEST_CASE("CommonModeChoke simulate and extract operating points", "[ngspice-runner][cmc-topology][smoke-test]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available on this system");
+
+    OpenMagnetics::CommonModeChoke cmc;
+    configure_cmc_for_test(cmc);
+
+    double inductance = 10e-3;
+    auto operatingPoints = cmc.simulate_and_extract_operating_points(inductance);
+
+    REQUIRE(!operatingPoints.empty());
+    const auto& op = operatingPoints[0];
+    REQUIRE(!op.get_excitations_per_winding().empty());
+
+    const auto& excitation = op.get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_frequency() > 0);
+    INFO("CMC operating-point frequency: " << excitation.get_frequency() << " Hz");
+}
+
+// ==============================================================================
+// Differential Mode Choke (DMC) ngspice simulation tests — rewritten against the
+// current MAS::DifferentialModeChoke / MKF DifferentialModeChoke API.
+// minimum_inductance / switching_frequency / line_frequency are all optional.
+// ==============================================================================
+
+namespace {
+    void configure_dmc_for_test(OpenMagnetics::DifferentialModeChoke& dmc) {
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(24.0);
+        dmc.set_input_voltage(inputVoltage);
+
+        dmc.set_operating_current(10.0);
+        dmc.set_minimum_inductance(100e-6);   // 100 µH
+        dmc.set_switching_frequency(100e3);
+        dmc.set_line_frequency(50.0);
+        dmc.set_ambient_temperature(25.0);
+    }
+}
+
+TEST_CASE("DifferentialModeChoke generate ngspice circuit", "[ngspice-runner][dmc][smoke-test]") {
+    OpenMagnetics::DifferentialModeChoke dmc;
+    configure_dmc_for_test(dmc);
+
+    double inductance = 100e-6;
+    std::string netlist = dmc.generate_ngspice_circuit(inductance, 100e3);
+
+    INFO("Generated DMC netlist:\n" << netlist);
+
+    // Title (`* Differential Mode Choke LC Filter Test Circuit\n`).
+    REQUIRE(netlist.find("Differential Mode Choke") != std::string::npos);
+    REQUIRE(netlist.find("Filter") != std::string::npos);
+    REQUIRE(netlist.find(".tran") != std::string::npos);
+
+    auto netlistPath = outputFilePath;
+    netlistPath.append("dmc_filter_test.cir");
+    std::ofstream netlistFile(netlistPath);
+    if (netlistFile.is_open()) {
+        netlistFile << netlist;
+        netlistFile.close();
+    }
+}
+
+TEST_CASE("DifferentialModeChoke simulate and extract waveforms", "[ngspice-runner][dmc][smoke-test]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available on this system");
+
+    OpenMagnetics::DifferentialModeChoke dmc;
+    configure_dmc_for_test(dmc);
+
+    double inductance = 100e-6;
+    std::vector<double> frequencies = {100e3};
+
+    auto waveformsVec = dmc.simulate_and_extract_waveforms(inductance, frequencies);
+    REQUIRE(!waveformsVec.empty());
+
+    const auto& waveforms = waveformsVec[0];
+    REQUIRE(!waveforms.time.empty());
+    REQUIRE(waveforms.time.size() > 10);
+
+    INFO("DMC simulation returned " << waveforms.time.size() << " time points");
+    INFO("DM attenuation: " << waveforms.dmAttenuation << " dB");
+
+    // LC filter must reduce ripple — output pk-pk < input pk-pk.
+    if (!waveforms.inputVoltage.empty() && !waveforms.outputVoltage.empty()) {
+        double vinPpk  = *std::max_element(waveforms.inputVoltage.begin(), waveforms.inputVoltage.end()) -
+                         *std::min_element(waveforms.inputVoltage.begin(), waveforms.inputVoltage.end());
+        double voutPpk = *std::max_element(waveforms.outputVoltage.begin(), waveforms.outputVoltage.end()) -
+                         *std::min_element(waveforms.outputVoltage.begin(), waveforms.outputVoltage.end());
+        INFO("Input pk-pk: " << vinPpk << " V, Output pk-pk: " << voutPpk << " V");
+        CHECK(voutPpk < vinPpk);
+    }
+}
+
+TEST_CASE("DifferentialModeChoke simulate and extract operating points", "[ngspice-runner][dmc][smoke-test]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available on this system");
+
+    OpenMagnetics::DifferentialModeChoke dmc;
+    configure_dmc_for_test(dmc);
+
+    double inductance = 100e-6;
+    auto operatingPoints = dmc.simulate_and_extract_operating_points(inductance);
+
+    REQUIRE(!operatingPoints.empty());
+    const auto& op = operatingPoints[0];
+    REQUIRE(!op.get_excitations_per_winding().empty());
+
+    const auto& excitation = op.get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_frequency() > 0);
+    INFO("DMC operating-point frequency: " << excitation.get_frequency() << " Hz");
+}
+
+// ==============================================================================
+// Power Factor Correction (PFC) ngspice simulation tests — rewritten against the
+// current MAS::PowerFactorCorrection schema. Key differences from the legacy
+// pre-MAS API:
+//   - output_voltage is a single double (set_output_voltage), NOT a vector.
+//   - mode is the PfcModes enum, NOT a free-form string.
+// ==============================================================================
+
+namespace {
+    void configure_pfc_for_test(OpenMagnetics::PowerFactorCorrection& pfc) {
+        DimensionWithTolerance inputVoltage;
+        inputVoltage.set_nominal(230.0);  // 230 V RMS AC
+        inputVoltage.set_minimum(185.0);
+        inputVoltage.set_maximum(265.0);
+        pfc.set_input_voltage(inputVoltage);
+
+        pfc.set_output_voltage(400.0);    // 400 V DC bus
+        pfc.set_output_power(500.0);      // 500 W
+        pfc.set_line_frequency(50.0);
+        pfc.set_switching_frequency(100e3);
+        pfc.set_current_ripple_ratio(0.3);
+        pfc.set_efficiency(0.95);
+        pfc.set_diode_voltage_drop(0.7);
+        pfc.set_ambient_temperature(25.0);
+        pfc.set_mode(PfcModes::CONTINUOUS_CONDUCTION_MODE);
+    }
+}
+
+TEST_CASE("PowerFactorCorrection generate ngspice circuit", "[ngspice-runner][pfc][smoke-test]") {
+    OpenMagnetics::PowerFactorCorrection pfc;
+    configure_pfc_for_test(pfc);
+
+    double inductance   = 500e-6;  // 500 µH
+    double dcResistance = 0.1;
+    std::string netlist = pfc.generate_ngspice_circuit(inductance, dcResistance);
+
+    INFO("Generated PFC netlist:\n" << netlist);
+
+    // Behavioural-model markers from PowerFactorCorrection::generate_ngspice_circuit.
+    REQUIRE(netlist.find("PFC Boost") != std::string::npos);
+    REQUIRE(netlist.find(".tran") != std::string::npos);
+    REQUIRE(netlist.find("i_env") != std::string::npos);
+    REQUIRE(netlist.find("i_L")   != std::string::npos);
+
+    auto netlistPath = outputFilePath;
+    netlistPath.append("pfc_boost_test.cir");
+    std::ofstream netlistFile(netlistPath);
+    if (netlistFile.is_open()) {
+        netlistFile << netlist;
+        netlistFile.close();
+    }
+}
+
+TEST_CASE("PowerFactorCorrection simulate and extract waveforms", "[ngspice-runner][pfc][smoke-test]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available on this system");
+
+    OpenMagnetics::PowerFactorCorrection pfc;
+    configure_pfc_for_test(pfc);
+
+    double inductance   = 500e-6;
+    double dcResistance = 0.1;
+
+    PfcSimulationWaveforms waveforms = pfc.simulate_and_extract_waveforms(inductance, dcResistance, 1);
+
+    REQUIRE(!waveforms.time.empty());
+    REQUIRE(waveforms.time.size() > 10);
+
+    INFO("PFC simulation returned " << waveforms.time.size() << " time points");
+    INFO("Simulated efficiency: " << (waveforms.efficiency * 100) << "%");
+    INFO("Simulated power factor: " << waveforms.powerFactor);
+
+    // Inductor current envelope: peak ~ √2·Pin/Vrms = √2·(500/0.95)/230 ≈ 3.24 A
+    if (!waveforms.inductorCurrent.empty()) {
+        double iMax = *std::max_element(waveforms.inductorCurrent.begin(), waveforms.inductorCurrent.end());
+        double iMin = *std::min_element(waveforms.inductorCurrent.begin(), waveforms.inductorCurrent.end());
+        INFO("Inductor current: min=" << iMin << " A, max=" << iMax << " A");
+        double expectedPeak = std::sqrt(2.0) * (500.0 / 0.95) / 230.0;
+        INFO("Expected ~peak (no ripple): " << expectedPeak << " A");
+        CHECK(iMax > 0.5 * expectedPeak);
+    }
+
+    // Input voltage tracks rectified sine — peak ≈ √2·Vrms.
+    if (!waveforms.inputVoltage.empty()) {
+        double vinMax = *std::max_element(waveforms.inputVoltage.begin(), waveforms.inputVoltage.end());
+        double expectedVinPeak = 230.0 * std::sqrt(2.0);
+        INFO("Input voltage peak: " << vinMax << " V, expected ~" << expectedVinPeak);
+        CHECK(vinMax > expectedVinPeak * 0.8);
+        CHECK(vinMax < expectedVinPeak * 1.2);
+    }
+}
+
+TEST_CASE("PowerFactorCorrection simulate and extract operating points", "[ngspice-runner][pfc][smoke-test]") {
+    NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available on this system");
+
+    OpenMagnetics::PowerFactorCorrection pfc;
+    configure_pfc_for_test(pfc);
+
+    double inductance = 500e-6;
+    auto operatingPoints = pfc.simulate_and_extract_operating_points(inductance);
+
+    REQUIRE(!operatingPoints.empty());
+    const auto& op = operatingPoints[0];
+    REQUIRE(!op.get_excitations_per_winding().empty());
+
+    const auto& excitation = op.get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_frequency() > 0);
+    INFO("PFC operating-point frequency: " << excitation.get_frequency() << " Hz");
+
+    if (excitation.get_current().has_value()) {
+        auto current = excitation.get_current().value();
+        if (current.get_waveform().has_value()) {
+            auto wf = current.get_waveform().value();
+            INFO("Current waveform has " << wf.get_data().size() << " points");
+            REQUIRE(wf.get_data().size() > 100);
+        }
+    }
 }
 
 #if 0
@@ -1262,7 +1569,7 @@ TEST_CASE("Ngspice runner placeholder", "[ngspice-runner][smoke-test]") {
 
 TEST_CASE("CommonModeChoke generate ngspice circuit", "[ngspice-runner][cmc-topology][smoke-test]") {
     // Create CMC topology
-    CommonModeChoke cmc;
+    OpenMagnetics::CommonModeChoke cmc;
     
     // Setup typical EMI filter parameters
     cmc.set_configuration(CmcConfiguration::SINGLE_PHASE);
@@ -1310,7 +1617,7 @@ TEST_CASE("CommonModeChoke simulate and extract waveforms", "[ngspice-runner][cm
         SKIP("ngspice not available on this system");
     }
     
-    CommonModeChoke cmc;
+    OpenMagnetics::CommonModeChoke cmc;
     
     cmc.set_configuration(CmcConfiguration::SINGLE_PHASE);
     cmc.set_operating_current(5.0);
@@ -1368,7 +1675,7 @@ TEST_CASE("CommonModeChoke simulate and extract operating points", "[ngspice-run
         SKIP("ngspice not available on this system");
     }
     
-    CommonModeChoke cmc;
+    OpenMagnetics::CommonModeChoke cmc;
     
     cmc.set_configuration(CmcConfiguration::SINGLE_PHASE);
     cmc.set_operating_current(5.0);
@@ -1415,7 +1722,7 @@ TEST_CASE("CommonModeChoke simulate and extract operating points", "[ngspice-run
 // ==============================================================================
 
 TEST_CASE("DifferentialModeChoke generate ngspice circuit", "[ngspice-runner][dmc][smoke-test]") {
-    DifferentialModeChoke dmc;
+    OpenMagnetics::DifferentialModeChoke dmc;
     
     // Setup typical DMC parameters
     DimensionWithTolerance inputVoltage;
@@ -1456,7 +1763,7 @@ TEST_CASE("DifferentialModeChoke simulate and extract waveforms", "[ngspice-runn
         SKIP("ngspice not available on this system");
     }
     
-    DifferentialModeChoke dmc;
+    OpenMagnetics::DifferentialModeChoke dmc;
     
     DimensionWithTolerance inputVoltage;
     inputVoltage.set_nominal(24.0);
@@ -1505,7 +1812,7 @@ TEST_CASE("DifferentialModeChoke simulate and extract operating points", "[ngspi
         SKIP("ngspice not available on this system");
     }
     
-    DifferentialModeChoke dmc;
+    OpenMagnetics::DifferentialModeChoke dmc;
     
     DimensionWithTolerance inputVoltage;
     inputVoltage.set_nominal(24.0);
@@ -1538,7 +1845,7 @@ TEST_CASE("DifferentialModeChoke simulate and extract operating points", "[ngspi
 // ==============================================================================
 
 TEST_CASE("PowerFactorCorrection generate ngspice circuit", "[ngspice-runner][pfc][smoke-test]") {
-    PowerFactorCorrection pfc;
+    OpenMagnetics::PowerFactorCorrection pfc;
     
     // Setup typical PFC boost converter parameters
     DimensionWithTolerance inputVoltage;
@@ -1586,7 +1893,7 @@ TEST_CASE("PowerFactorCorrection simulate and extract waveforms", "[ngspice-runn
         SKIP("ngspice not available on this system");
     }
     
-    PowerFactorCorrection pfc;
+    OpenMagnetics::PowerFactorCorrection pfc;
     
     DimensionWithTolerance inputVoltage;
     inputVoltage.set_nominal(230.0);
@@ -1647,7 +1954,7 @@ TEST_CASE("PowerFactorCorrection simulate and extract operating points", "[ngspi
         SKIP("ngspice not available on this system");
     }
     
-    PowerFactorCorrection pfc;
+    OpenMagnetics::PowerFactorCorrection pfc;
     
     DimensionWithTolerance inputVoltage;
     inputVoltage.set_nominal(230.0);
