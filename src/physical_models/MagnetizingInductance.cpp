@@ -142,7 +142,12 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
                     // If the converter model already computed the magnetizing current
                     // (e.g. DMC summing all winding currents), respect it — don't overwrite.
-                    if (excitation.get_magnetizing_current()) {
+                    // BUT: only honor a preset MC when there is no voltage. When voltage is
+                    // present, re-derive MC from voltage (V = L * dI/dt) using the runtime-
+                    // computed magnetizing inductance — otherwise stale preset MCs (e.g.
+                    // generated against a slightly different reluctance) cause B to drift
+                    // and downstream loss tests to fail.
+                    if (excitation.get_magnetizing_current() && !excitation.get_voltage()) {
                         // Already set — skip derivation. But upstream callers
                         // (MagneticField::get_magnetic_field_strength_gap and
                         // siblings) persist a *compressed* magnetizing_current
@@ -162,6 +167,16 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                                 }
                                 auto sampled = Inputs::calculate_sampled_waveform(presetWaveform, excitation.get_frequency());
                                 presetMc.set_waveform(sampled);
+                                presetMc.set_harmonics(Inputs::calculate_harmonics_data(sampled, excitation.get_frequency()));
+                                presetMc.set_processed(Inputs::calculate_processed_data(presetMc, sampled, false));
+                                excitation.set_magnetizing_current(presetMc);
+                                operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+                            }
+                            else if (!presetMc.get_harmonics()) {
+                                // Waveform is already power-of-2 but harmonics are missing (e.g. loaded from JSON
+                                // with harmonics:null). Compute them so downstream frequency-domain paths work.
+                                // Also recompute processed to avoid stale fields from the loaded JSON.
+                                auto sampled = Inputs::calculate_sampled_waveform(presetWaveform, excitation.get_frequency());
                                 presetMc.set_harmonics(Inputs::calculate_harmonics_data(sampled, excitation.get_frequency()));
                                 presetMc.set_processed(Inputs::calculate_processed_data(presetMc, sampled, false));
                                 excitation.set_magnetizing_current(presetMc);
@@ -233,6 +248,9 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     double switchingFrequency = Inputs::get_switching_frequency(operatingPoint->get_mutable_excitations_per_winding()[0]);
 
                     double hFieldDcBias = magneticFieldStrength.get_processed().value().get_offset();
+                    if (!magneticFieldStrength.get_harmonics()) {
+                        throw std::runtime_error("magneticFieldStrength has no harmonics — upstream magnetizing_current must provide a populated harmonics block (preset waveform missing harmonics?)");
+                    }
                     if (magneticFieldStrength.get_harmonics().value().get_frequencies()[1] < switchingFrequency) {
                         for (size_t i = 0; i < magneticFieldStrength.get_harmonics().value().get_frequencies().size() - 1; ++i) {
                             if (magneticFieldStrength.get_harmonics().value().get_frequencies()[i] >= switchingFrequency) {
@@ -367,7 +385,21 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
             //   H_offset = B_offset / (µ₀ * µᵢ)
             auto magnetizingCurrent = operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value();
             double currentOffset = 0.0;
-            if (magnetizingCurrent.get_processed()) {
+            // The DC bias of the magnetizing current is the mean (harmonic 0), NOT
+            // processed->get_offset(): the latter is the AC-only midpoint with DC
+            // removed (see Inputs::calculate_magnetizing_current, where the offset
+            // is stored as `waveformMidpoint - dcCurrent`). Using only the AC
+            // offset here under-counts the H bias and yields too few turns for
+            // strongly DC-biased designs (e.g. powder cores).
+            if (magnetizingCurrent.get_harmonics() &&
+                !magnetizingCurrent.get_harmonics()->get_amplitudes().empty()) {
+                currentOffset = magnetizingCurrent.get_harmonics()->get_amplitudes()[0];
+                if (magnetizingCurrent.get_processed()) {
+                    // Add the AC midpoint offset on top of the DC bias.
+                    currentOffset += magnetizingCurrent.get_processed()->get_offset();
+                }
+            }
+            else if (magnetizingCurrent.get_processed()) {
                 currentOffset = magnetizingCurrent.get_processed()->get_offset();
             }
             else {
