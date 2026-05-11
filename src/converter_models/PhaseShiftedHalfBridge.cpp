@@ -782,7 +782,7 @@ std::string Pshb::generate_ngspice_circuit(
     circuit << ".tran " << std::scientific << stepTime
             << " " << simTime << " " << startTime << "\n\n";
 
-    circuit << ".save v(vab) v(bridge_a) v(mid_cap) v(nH) v(nL) i(Vpri_sense) i(Vdc)";
+    circuit << ".save v(vin_dc) v(vab) v(bridge_a) v(mid_cap) v(nH) v(nL) i(Vpri_sense) i(Vdc)";
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
         circuit << " v(out_node_o" << si << ")"
@@ -966,15 +966,36 @@ std::vector<ConverterWaveforms> Pshb::simulate_and_extract_topology_waveforms(
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("vab"));
-            wf.set_input_current(getWaveform("vpri_sense#branch"));
+            // §5.1 converter-port stream — vin_dc / -i(Vdc) (DC source
+            // rail and bus current), NOT vab (bridge-midpoint AC node)
+            // / i(Vpri_sense) (primary winding current = bipolar AC).
+            // ngspice sign convention: i(Vdc) is positive when current
+            // flows into Vdc's + terminal, i.e. *back into* the source —
+            // so the converter's input draw is -i(Vdc).
+            wf.set_input_voltage(getWaveform("vin_dc"));
+            Waveform iInWf = getWaveform("vdc#branch");
+            auto& iInData = iInWf.get_mutable_data();
+            for (auto& v : iInData) v = -v;
+            wf.set_input_current(iInWf);
 
             size_t numOutputs = std::min(turnsRatios.size(), opPoint.get_output_voltages().size());
             if (numOutputs == 0) numOutputs = 1;
             for (size_t outIdx = 0; outIdx < numOutputs; ++outIdx) {
                 std::string si = std::to_string(outIdx + 1);
                 wf.get_mutable_output_voltages().push_back(getWaveform("out_node_o" + si));
-                wf.get_mutable_output_currents().push_back(getWaveform("vout_sense_o" + si + "#branch"));
+                // Reconstruct Iout(t) = Vout(t)/Rload (DC by design).
+                // Vout_sense in this netlist sits in the cap-return path
+                // so its branch current averages to zero in steady state.
+                // Mirrors Buck.cpp / IsolatedBuck.cpp / AHB / PSFB §5.1.
+                const double Vo_i = opPoint.get_output_voltages()[outIdx];
+                const double Io_i = (outIdx < opPoint.get_output_currents().size())
+                                    ? opPoint.get_output_currents()[outIdx]
+                                    : opPoint.get_output_currents()[0];
+                const double Rload_i = std::max(Vo_i / Io_i, 1e-3);
+                Waveform ioutWf = getWaveform("out_node_o" + si);
+                auto& ioutData = ioutWf.get_mutable_data();
+                for (auto& v : ioutData) v = v / Rload_i;
+                wf.get_mutable_output_currents().push_back(ioutWf);
             }
 
             results.push_back(wf);
