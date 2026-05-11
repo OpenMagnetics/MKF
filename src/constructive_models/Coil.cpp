@@ -6872,8 +6872,27 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Margin vector must have two elements");
     }
     auto sections = get_sections_description().value();
-    _marginsPerSection[convert_conduction_section_index_to_global(sectionIndex)] = margins;
-    sections[convert_conduction_section_index_to_global(sectionIndex)].set_margin(margins);
+    auto globalSectionIndex = convert_conduction_section_index_to_global(sectionIndex);
+    // _marginsPerSection is only sized through set_interleaving_level() / wind_by_sections().
+    // When a Coil is reconstructed from JSON (e.g. via the Coil(json, bool) constructor used by
+    // the PyMKF bindings and any caller that round-trips sectionsDescription through JSON),
+    // _marginsPerSection is empty even though sectionsDescription is populated, which made
+    // the indexed assignment below segfault. Grow the vector to match the existing sections
+    // and seed any uninitialized entries from the section's own margin, falling back to {0, 0}.
+    if (_marginsPerSection.size() < sections.size()) {
+        size_t previousSize = _marginsPerSection.size();
+        _marginsPerSection.resize(sections.size(), {0, 0});
+        for (size_t i = previousSize; i < sections.size(); ++i) {
+            auto existingMargin = sections[i].get_margin();
+            if (existingMargin) {
+                if (std::holds_alternative<std::vector<double>>(existingMargin.value())) {
+                    _marginsPerSection[i] = std::get<std::vector<double>>(existingMargin.value());
+                }
+            }
+        }
+    }
+    _marginsPerSection[globalSectionIndex] = margins;
+    sections[globalSectionIndex].set_margin(margins);
 
     set_sections_description(sections);
 

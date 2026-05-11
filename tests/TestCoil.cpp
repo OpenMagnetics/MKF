@@ -10588,4 +10588,51 @@ TEST_CASE("Test_Coil_Compacting_Tertiary_Winding", "[constructive-model][coil][b
 }
 
 
+TEST_CASE("Test_Add_Margin_From_Json_Reconstructed_Toroidal_Reproduces_Segfault", "[constructive-model][coil][margin][toroidal][regression]") {
+    // Reproducer for el-choker frontend crash: PyMKF.add_margin_to_section_by_index segfaults
+    // when called on a Coil reconstructed from JSON (e.g. the output of magnetic_autocomplete),
+    // because Coil(json, false) only deserializes MAS fields and never sizes
+    // _marginsPerSection. The function then indexes _marginsPerSection out of bounds.
+    settings.reset();
+    clear_databases();
+    settings.set_use_toroidal_cores(true);
+    settings.set_coil_wind_even_if_not_fit(true);
+
+    std::vector<int64_t> numberTurns = {60, 42};
+    std::vector<int64_t> numberParallels = {1, 1};
+    uint8_t interleavingLevel = 1;
+    WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+    WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+    CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+    CoilAlignment turnsAlignment = CoilAlignment::INNER_OR_TOP;
+
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels,
+                                                      "T 20/10/7", interleavingLevel,
+                                                      sectionOrientation, layersOrientation,
+                                                      turnsAlignment, sectionsAlignment);
+    REQUIRE(bool(coil.get_sections_description()));
+
+    // Round-trip through JSON, simulating what PyMKF bindings do
+    // (and what the el-choker bake script would do):
+    //   1. magnetic_autocomplete returns coil JSON
+    //   2. caller constructs Coil(coilJson, false) and calls add_margin_to_section_by_index
+    json coilJson;
+    to_json(coilJson, coil);
+    OpenMagnetics::Coil reconstructed(coilJson, false);
+    REQUIRE(bool(reconstructed.get_sections_description()));
+
+    // This must NOT segfault. Pre-fix it does (out-of-bounds index on _marginsPerSection).
+    double margin = 0.0002;
+    reconstructed.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+
+    REQUIRE(bool(reconstructed.get_sections_description()));
+    auto sections = reconstructed.get_sections_description().value();
+    auto setMargin = std::get<std::vector<double>>(sections[0].get_margin().value());
+    REQUIRE_THAT(setMargin[0], Catch::Matchers::WithinAbs(margin, 1e-9));
+    REQUIRE_THAT(setMargin[1], Catch::Matchers::WithinAbs(margin, 1e-9));
+
+    settings.reset();
+}
+
+
 }  // namespace
