@@ -30,6 +30,7 @@
 
 #include "converter_models/PowerFactorCorrection.h"
 #include "processors/NgspiceRunner.h"
+#include "ConverterPortChecks.h"
 
 using namespace OpenMagnetics;
 
@@ -226,6 +227,22 @@ void run_ptp_gates(const RefDesignSpec& s) {
     INFO("envelope NRMSE=" << 100.0*nrmse_env << " % (tol "
          << 100.0*s.tol_envelope << " %)");
     REQUIRE(nrmse_env < s.tol_envelope);
+
+    // ---- Gate 4: Phase-6 ConverterPortChecks switching-leg helper -------
+    // Re-run the simulation through the OperatingPoint API (cheap — netlist
+    // already cached in /tmp by ngspice) and apply the standard PFC port
+    // semantics (rectified-line input + DC-bus output) on the SPICE
+    // waveforms, mirroring the analytical check_pfc_ports gate.
+    auto op = pfc.simulate_with_ngspice_switching(s.L, s.cycles);
+    ConverterPortChecks::check_pfc_switching_ports(
+        op,
+        s.name,
+        s.vrms,
+        s.vbus,
+        s.pout,
+        /*vinTol*/      0.05,
+        /*voutMeanTol*/ s.tol_vbus_pct / 100.0,
+        /*iinMeanTol*/  s.tol_pin_pct  / 100.0);
 }
 
 } // namespace

@@ -1170,25 +1170,55 @@ namespace OpenMagnetics {
                 const auto& src = sim.waveforms[k];
                 auto srcT = src.get_time();
                 const auto& srcD = src.get_data();
+                // ngspice's NgspiceRunner only attaches a time vector to the
+                // dedicated `time` waveform — every other signal shares the
+                // same grid implicitly.  Broadcast `tFull` to every data
+                // signal so downstream consumers (Painter, ConverterPort
+                // Checks::check_pfc_switching_ports) can pull `.get_time()`
+                // off any waveform.
                 Waveform w;
-                if (srcT.has_value() && srcT->size() == srcD.size()
-                                     && srcD.size() >= iBeg) {
-                    std::vector<double> tNew(srcT->begin() + iBeg,
-                                             srcT->end());
-                    std::vector<double> dNew(srcD.begin()  + iBeg,
-                                             srcD.end());
+                if (srcT.has_value() && srcT->size() == srcD.size()) {
+                    std::vector<double> tNew(srcT->begin() + iBeg, srcT->end());
+                    std::vector<double> dNew(srcD.begin()  + iBeg, srcD.end());
+                    w.set_time(tNew);
+                    w.set_data(dNew);
+                } else if (srcD.size() == tFull.size()) {
+                    std::vector<double> tNew(tFull.begin() + iBeg, tFull.end());
+                    std::vector<double> dNew(srcD.begin()  + iBeg, srcD.end());
                     w.set_time(tNew);
                     w.set_data(dNew);
                 } else {
-                    // No time vector or mismatched length — keep as-is.
+                    // Truly mismatched — keep as-is rather than fabricating.
                     w = src;
                 }
                 trimmedWaveforms.push_back(std::move(w));
                 trimmedNames.push_back(sim.waveformNames[k]);
             }
         } else {
-            trimmedWaveforms = sim.waveforms;
-            trimmedNames     = sim.waveformNames;
+            // Untrimmed path: still need the per-signal time vector for
+            // downstream consumers — broadcast the time vector from any
+            // signal that carries one (typically the dedicated `time`
+            // waveform).
+            std::vector<double> tShared;
+            for (const auto& wf : sim.waveforms) {
+                auto t = wf.get_time();
+                if (t.has_value() && !t->empty()) {
+                    tShared = t.value();
+                    break;
+                }
+            }
+            trimmedWaveforms.reserve(sim.waveforms.size());
+            trimmedNames.reserve(sim.waveforms.size());
+            for (size_t k = 0; k < sim.waveforms.size(); ++k) {
+                Waveform w = sim.waveforms[k];
+                auto t = w.get_time();
+                if ((!t.has_value() || t->empty()) && !tShared.empty()
+                    && w.get_data().size() == tShared.size()) {
+                    w.set_time(tShared);
+                }
+                trimmedWaveforms.push_back(std::move(w));
+                trimmedNames.push_back(sim.waveformNames[k]);
+            }
         }
 
         // Re-resolve iL after trimming so the OperatingPoint and downstream
@@ -1201,19 +1231,24 @@ namespace OpenMagnetics {
             }
         }
 
-        // Wrap into an OperatingPoint with three diagnostic "windings" so
+        // Wrap into an OperatingPoint with four diagnostic "windings" so
         // that downstream consumers (e.g. Painter::paint_operating_point_
-        // waveforms) can render every loop signal in a single composite
-        // SVG.  ngspice's saved nodes are mapped onto the
-        // OperatingPointExcitation V/I pair as follows:
+        // waveforms, ConverterPortChecks::check_pfc_switching_ports) can
+        // render every loop signal in a single composite SVG and apply the
+        // standard converter-port DC-stream gates.  ngspice's saved nodes
+        // are mapped onto the OperatingPointExcitation V/I pair as follows:
         //
-        //   Winding 0  PowerStage      V = vbus       I = i(vl_sense)
-        //   Winding 1  VoltageLoop     V = vea        I = i_ref
-        //   Winding 2  CurrentLoop     V = vc_i       I = i_sense
+        //   Winding 0  InputPort       V = vin_rect   I = i(vl_sense)
+        //   Winding 1  PowerStage      V = vbus       I = i(vl_sense)
+        //   Winding 2  VoltageLoop     V = vea        I = i_ref
+        //   Winding 3  CurrentLoop     V = vc_i       I = i_sense
         //
-        // (The V/I labelling is purely diagrammatic — vea / vc_i are
-        // controller signals, not winding voltages — but it lets the
-        // existing OperatingPoint plumbing carry them through unchanged.)
+        // (The V/I labelling on the controller windings is diagrammatic —
+        // vea / vc_i are controller signals, not winding voltages — but it
+        // lets the existing OperatingPoint plumbing carry them through
+        // unchanged.)  The InputPort winding is what the PFC port-check
+        // helper consumes to validate the rectified-line input port (mean
+        // ≈ 0.9·Vrms, RMS ≈ Vrms).
         auto findByName = [&](const std::string& key) -> const Waveform* {
             std::string k = key;
             std::transform(k.begin(), k.end(), k.begin(),
@@ -1245,6 +1280,8 @@ namespace OpenMagnetics {
         };
 
         OperatingPoint op;
+        op.get_mutable_excitations_per_winding().push_back(
+            makeExc("InputPort",   findByName("vin_rect"), iLtrim));
         op.get_mutable_excitations_per_winding().push_back(
             makeExc("PowerStage",  findByName("vbus"), iLtrim));
         op.get_mutable_excitations_per_winding().push_back(
