@@ -420,11 +420,17 @@ namespace OpenMagnetics {
         circuit << "* Coupled Inductor (Primary = flyback-type primary winding)\n";
         circuit << "Lpri pri_in 0 " << std::scientific << magnetizingInductance << std::fixed << "\n";
         
-        // Secondary windings: dot at sec0_in side (opposite to primary dot at pri_in).
-        // This creates flyback polarity where secondary conducts when switch is OFF.
+        // Secondary windings: dot at gnd (0) side, OPPOSITE to primary dot at pri_in.
+        // SPICE coupled-inductor convention: the "dot" terminal is the FIRST node of
+        // each L<x> element. To get flyback polarity (secondary blocked during ON,
+        // conducting during OFF), we must list 0 as the first node of Lsec so the
+        // dot lands at the grounded end. Earlier wiring `Lsec<i> sec<i>_in 0` placed
+        // both dots on the same side (top), producing forward-converter behaviour and
+        // breaking the magnetizing-current probe used in the analytical-vs-SPICE
+        // PtP comparison (NRMSE ~0.9 — discontinuous Bimag at switch transitions).
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             double secondaryInductance = magnetizingInductance / (turnsRatios[secIdx] * turnsRatios[secIdx]);
-            circuit << "Lsec" << secIdx << " sec" << secIdx << "_in 0 " << std::scientific << secondaryInductance << std::fixed << "\n";
+            circuit << "Lsec" << secIdx << " 0 sec" << secIdx << "_in " << std::scientific << secondaryInductance << std::fixed << "\n";
         }
         
         // Couple primary to each secondary
@@ -560,14 +566,12 @@ namespace OpenMagnetics {
                 // Define waveform name mapping
                 NgspiceRunner::WaveformNameMapping waveformMapping;
 
-                // Primary winding
-                // Use magnetizing current probe: I(Lpri) + reflected secondary currents
+                // Primary winding: magnetizing current probe (Bimag = I(Lpri) + ΣI(Lsec_k)/n_k).
+                // This continuous triangular waveform matches the analytical TRIANGULAR
+                // model used in process_operating_points (primary winding current is
+                // modeled as the magnetizing current, not the switch / inductor current).
                 waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "vimag_sense#branch"}});
 
-                
-                // Primary winding - measure inductor current (Lpri#branch) not switch current
-                waveformMapping.push_back({{"voltage", "pri_in"}, {"current", "lpri#branch"}});
-                
                 // Secondary windings
                 for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
                     std::string voltageName = "sec" + std::to_string(secIdx) + "_in";
@@ -582,7 +586,11 @@ namespace OpenMagnetics {
                 }
                 
                 std::vector<bool> flipCurrentSign(1 + numSecondaries, false);
-                flipCurrentSign[0] = true;  // Flip primary current sign to match analytical model convention
+                // With the secondary dot now at gnd (see Lsec orientation comment
+                // above), the magnetizing-current probe matches the analytical sign
+                // convention without flipping. Secondaries do not need flipping either —
+                // the FLYBACK_PRIMARY analytical waveform sits on the same sign axis as
+                // i(Vsec_sense<k>) (current flowing from sec_rect into vout during OFF).
                 
                 OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
                     simResult,
