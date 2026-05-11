@@ -127,6 +127,50 @@ public:
         return v.value();
     }
 
+    // ------------------------------------------------------------------
+    // Topology-variant helpers (PfcTopologyVariants enum, MAS schema).
+    //
+    // Currently implemented variants:
+    //   - BOOST              (default if topologyVariant unset)
+    //   - TOTEM_POLE         bridgeless, sync-rectified low side; the boost
+    //                        inductor sees AC voltage and bipolar current
+    //                        (true sine, not |sin|). CCM totemPole requires
+    //                        wideBandgapSwitch=true (GaN/SiC) per
+    //                        Erickson §17 and ON Semi AND8016.
+    //   - INTERLEAVED_BOOST  N parallel boost cells phase-shifted; the spec
+    //                        models per-phase magnetics (one inductor at
+    //                        Pout/N), so process_design_requirements returns
+    //                        the per-phase inductance and the user replicates
+    //                        the resulting magnetic across N phases.
+    //
+    // All other PfcTopologyVariants values throw with a "not yet implemented"
+    // message at the first engineering-layer call (run_checks /
+    // calculate_inductance_*). VIENNA in particular is a 3-phase 3-level
+    // topology with its own dedicated VIENNA_PLAN.md; do NOT enable it as
+    // a PFC variant code branch.
+    // ------------------------------------------------------------------
+    PfcTopologyVariants get_topology_variant_or_default() const {
+        auto v = MAS::PowerFactorCorrection::get_topology_variant();
+        return v.has_value() ? v.value() : PfcTopologyVariants::BOOST;
+    }
+    int64_t get_number_of_phases_or_default() const {
+        auto v = MAS::PowerFactorCorrection::get_number_of_phases();
+        return v.has_value() ? v.value() : 1;
+    }
+    bool get_wide_bandgap_switch_or_default() const {
+        auto v = MAS::PowerFactorCorrection::get_wide_bandgap_switch();
+        return v.has_value() ? v.value() : false;
+    }
+    /**
+     * @brief Validate the configured topologyVariant + (numberOfPhases,
+     *        wideBandgapSwitch, mode) combination. Throws std::runtime_error
+     *        on any unsupported variant or missing companion field.
+     *        Idempotent and cheap; called from every public engineering
+     *        entry point (run_checks, calculate_inductance_*,
+     *        process_operating_points, generate_ngspice_circuit, …).
+     */
+    void validate_topology_variant() const;
+
     /**
      * @brief Mode as the legacy long string used by MKF logic and JSON I/O.
      */

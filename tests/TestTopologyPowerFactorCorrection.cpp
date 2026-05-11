@@ -23,6 +23,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <cmath>
 #include <vector>
 
@@ -172,6 +173,127 @@ TEST_CASE("Test_Pfc_ConverterPortWaveforms",
         CHECK(actualPk > 0.7 * expectedRipplePk);
         CHECK(actualPk < 1.3 * expectedRipplePk);
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Topology variant: TOTEM_POLE PFC (bridgeless, GaN/SiC).
+//
+// Magnetic-design difference from BOOST:
+//   - inductor sees AC bipolar voltage (not rectified |sin|), so the
+//     synthesized inductor-current waveform should swing positive and negative
+//     across a line cycle (true sine envelope).
+//   - duty-cycle calc uses Vd=0 (sync rectification, no boost diode), so the
+//     CCM inductance is slightly smaller than for an equivalent boost.
+// CCM totemPole REQUIRES wideBandgapSwitch=true; otherwise validate throws.
+// ─────────────────────────────────────────────────────────────────────────────
+TEST_CASE("Test_Pfc_TotemPole_RequiresWideBandgapInCcm",
+          "[converter-model][pfc-topology][totem-pole]") {
+    auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+    pfc.set_topology_variant(PfcTopologyVariants::TOTEM_POLE);
+    // Don't set wide_bandgap_switch — defaults to false (Si MOSFET).
+    REQUIRE_THROWS_WITH(pfc.calculate_inductance_ccm(),
+                        Catch::Matchers::ContainsSubstring("wideBandgapSwitch"));
+}
+
+TEST_CASE("Test_Pfc_TotemPole_BipolarInductorCurrent",
+          "[converter-model][pfc-topology][totem-pole]") {
+    auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+    pfc.set_topology_variant(PfcTopologyVariants::TOTEM_POLE);
+    pfc.set_wide_bandgap_switch(true);
+    pfc.set_num_periods_to_extract(1);
+
+    // CCM inductance should be slightly smaller than equivalent boost
+    // because totem-pole duty calc uses Vd=0 (sync rectification).
+    const double L_totem = pfc.calculate_inductance_ccm();
+    REQUIRE(L_totem > 0.0);
+
+    auto ops = pfc.process_operating_points({}, L_totem);
+    REQUIRE(!ops.empty());
+    auto iWf = ops[0].get_excitations_per_winding()[0]
+                     .get_current().value().get_waveform().value();
+    const auto& iData = iWf.get_data();
+    REQUIRE(!iData.empty());
+
+    // Bipolar swing: max>0 AND min<0 with comparable magnitudes (true sine
+    // envelope). For boost (rectified) min would be ≥ −ripple/2, ≪ |max|.
+    const double iMax = *std::max_element(iData.begin(), iData.end());
+    const double iMin = *std::min_element(iData.begin(), iData.end());
+    INFO("Totem-pole inductor current: min=" << iMin << " A, max=" << iMax << " A");
+    CHECK(iMax > 0.0);
+    CHECK(iMin < 0.0);
+    // Symmetry: |min| ≈ |max| (sine envelope, ripple is symmetric).
+    CHECK(std::abs(iMin + iMax) < 0.2 * std::abs(iMax));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Topology variant: INTERLEAVED_BOOST PFC (N parallel boost cells).
+//
+// Magnetic-design difference from BOOST:
+//   - per-phase inductor carries Pout/N → smaller per-phase Ipeak
+//   - per-phase ΔI = Ipeak_phase·ripple_ratio is also 1/N of single-phase
+//   - per-phase L = Vpk·D/(ΔI·fsw) is therefore N× LARGER than single-phase
+//     (total stored magnetic energy across N cores remains equal).
+// numberOfPhases < 2 throws; > 3 throws.
+// ─────────────────────────────────────────────────────────────────────────────
+TEST_CASE("Test_Pfc_InterleavedBoost_RequiresNumberOfPhases",
+          "[converter-model][pfc-topology][interleaved-boost]") {
+    auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+    pfc.set_topology_variant(PfcTopologyVariants::INTERLEAVED_BOOST);
+    // numberOfPhases unset → defaults to 1, which is invalid for interleaved.
+    REQUIRE_THROWS_WITH(pfc.calculate_inductance_ccm(),
+                        Catch::Matchers::ContainsSubstring("numberOfPhases"));
+    pfc.set_number_of_phases(4);
+    REQUIRE_THROWS_WITH(pfc.calculate_inductance_ccm(),
+                        Catch::Matchers::ContainsSubstring("must be 2 or 3"));
+}
+
+TEST_CASE("Test_Pfc_InterleavedBoost_PerPhaseInductanceScalesWithN",
+          "[converter-model][pfc-topology][interleaved-boost]") {
+    // Single-phase boost reference.
+    auto pfcBoost = make_default_pfc(/*sweepInputVoltage=*/false);
+    const double L_single = pfcBoost.calculate_inductance_ccm();
+    REQUIRE(L_single > 0.0);
+
+    // Interleaved boost N=2: per-phase L should be ~2× single-phase L.
+    auto pfcN2 = make_default_pfc(/*sweepInputVoltage=*/false);
+    pfcN2.set_topology_variant(PfcTopologyVariants::INTERLEAVED_BOOST);
+    pfcN2.set_number_of_phases(2);
+    const double L_n2 = pfcN2.calculate_inductance_ccm();
+    INFO("Single-phase boost L: " << L_single * 1e6 << " µH; N=2 per-phase L: "
+         << L_n2 * 1e6 << " µH (expected ~2×)");
+    CHECK(L_n2 > 1.8 * L_single);
+    CHECK(L_n2 < 2.2 * L_single);
+
+    // N=3.
+    auto pfcN3 = make_default_pfc(/*sweepInputVoltage=*/false);
+    pfcN3.set_topology_variant(PfcTopologyVariants::INTERLEAVED_BOOST);
+    pfcN3.set_number_of_phases(3);
+    const double L_n3 = pfcN3.calculate_inductance_ccm();
+    CHECK(L_n3 > 2.7 * L_single);
+    CHECK(L_n3 < 3.3 * L_single);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unsupported variants throw at every engineering entry point.
+// ─────────────────────────────────────────────────────────────────────────────
+TEST_CASE("Test_Pfc_UnsupportedVariants_Throw",
+          "[converter-model][pfc-topology][variants]") {
+    for (auto variant : {PfcTopologyVariants::BRIDGELESS,
+                         PfcTopologyVariants::SEMI_BRIDGELESS,
+                         PfcTopologyVariants::BUCK,
+                         PfcTopologyVariants::BUCK_BOOST,
+                         PfcTopologyVariants::SEPIC,
+                         PfcTopologyVariants::CUK}) {
+        auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+        pfc.set_topology_variant(variant);
+        REQUIRE_THROWS_WITH(pfc.calculate_inductance_ccm(),
+                            Catch::Matchers::ContainsSubstring("not yet implemented"));
+    }
+    // Vienna gets a dedicated error message redirecting to VIENNA_PLAN.md.
+    auto pfc = make_default_pfc(/*sweepInputVoltage=*/false);
+    pfc.set_topology_variant(PfcTopologyVariants::VIENNA);
+    REQUIRE_THROWS_WITH(pfc.calculate_inductance_ccm(),
+                        Catch::Matchers::ContainsSubstring("VIENNA_PLAN.md"));
 }
 
 } // namespace

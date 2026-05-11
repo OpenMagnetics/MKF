@@ -1226,31 +1226,38 @@ SLUA754; Infineon AN_201702_PL52_010; ON Semi AND8016 / AND8123).
 | **Boost PFC (CCM/DCM/CrCM/TCM)** | 1 | full-bridge rectifier + boost | Universal-input PSUs ≤ ~1.5 kW | ✅ |
 | **Bridgeless / Dual-Boost PFC** | 1 | no input bridge — two boost legs share inductor (one per half-cycle) | Mid-power, eliminates 2 conduction-loss diodes | ❌ |
 | **Semi-bridgeless PFC** | 1 | bridgeless with EMI-bridge clamp | Cost-optimised bridgeless | ❌ |
-| **Totem-Pole PFC (CCM, GaN/SiC)** | 1 | bridgeless, two switches in totem-pole config | State-of-the-art (~98 % η), 1 kW–10 kW server PSUs | ❌ |
-| **Totem-Pole PFC (CrCM)** | 1 | as above, low-power critical-mode | ~300 W LED, telecom | ❌ |
-| **Interleaved Boost PFC** | 2 or 3 | shared input bridge, N parallel boost cells phase-shifted | Ripple cancellation, 1–3 kW PSUs (e.g. server, EV) | ❌ |
+| **Totem-Pole PFC (CCM, GaN/SiC)** | 1 | bridgeless, two switches in totem-pole config | State-of-the-art (~98 % η), 1 kW–10 kW server PSUs | ✅ |
+| **Totem-Pole PFC (CrCM)** | 1 | as above, low-power critical-mode | ~300 W LED, telecom | ✅ |
+| **Interleaved Boost PFC** | 2 or 3 | shared input bridge, N parallel boost cells phase-shifted | Ripple cancellation, 1–3 kW PSUs (e.g. server, EV) | ✅ |
 | **Vienna Rectifier** | 3 | 3-phase, 3-level | Telecom rectifiers, EV chargers ≥ 5 kW | ❌ |
 | **Buck PFC** | 1 | input bridge + buck cell | Low-power LED drivers (Vbus < Vin_pk) | ❌ |
 | **Buck-Boost PFC / SEPIC PFC / Cuk PFC** | 1 | various | Very low-power universal-input LED, isolated step-down/up | ❌ |
 
-Currently `MAS::PowerFactorCorrection` exposes only the boost topology
-(no `topologyVariant` enum field, no `numberOfPhases` field, no
-`bridgeType` field). To add the variants above, the schema needs:
+Currently `MAS::PowerFactorCorrection` exposes `topologyVariant`,
+`numberOfPhases`, and `wideBandgapSwitch` (schema migration completed
+2026-05). Engineering-layer code branches in MKF (2026-05):
 
-- `topologyVariant` (enum: `boost`, `bridgeless`, `semiBridgeless`,
-  `totemPole`, `interleavedBoost`, `vienna`, `buck`, `buckBoost`,
-  `sepic`, `cuk`).
-- `numberOfPhases` (integer, default 1) for `interleavedBoost` (2–3) /
-  `vienna` (3).
-- Optionally a `wideBandgapSwitch` boolean for totem-pole CCM
-  (only feasible with GaN/SiC due to MOSFET body-diode reverse-recovery).
+- **Boost** (default if `topologyVariant` unset) — fully implemented.
+- **Totem-Pole** — fully implemented. Inductor sees AC bipolar voltage
+  (true sine envelope, not |sin|); duty-cycle calc uses `Vd=0` since
+  the boost diode is replaced by a synchronous switch. CCM
+  `totemPole` requires `wideBandgapSwitch=true` (validated; throws on
+  Si MOSFET CCM per Erickson §17 / ON Semi AND8016).
+- **Interleaved Boost** — fully implemented. Per-phase magnetics:
+  one inductor at `Pout/N`, sized by the same boost formulas with
+  per-phase power. `numberOfPhases ∈ {2, 3}` validated; the user
+  replicates the resulting magnetic across `N` phases.
+- All other variants (`bridgeless`, `semiBridgeless`, `buck`,
+  `buckBoost`, `sepic`, `cuk`, `vienna`) throw at every engineering
+  entry point with a "not yet implemented" message. `vienna` in
+  particular redirects to `VIENNA_PLAN.md` (it is a 3-phase 3-level
+  topology with its own dedicated model, not a PFC variant code
+  branch).
 
-This is a substantial extension. Until done, the existing
-`MAS::PowerFactorCorrection` schema implicitly means "boost PFC" and the
-MKF model only generates the boost variant. Per
-`CONVERTER_MODELS_GOLDEN_GUIDE.md` §16.2 ("schema first, regen
-MAS.hpp, then use the inherited accessor") this should be a separate
-schema-change PR before any code branches are added.
+Tests covering the variant branches live in
+`tests/TestTopologyPowerFactorCorrection.cpp` under tags
+`[pfc-topology][totem-pole]`, `[pfc-topology][interleaved-boost]`,
+and `[pfc-topology][variants]`.
 
 #### 3.D.2 §5.1 converter-port stream — DONE (2026-05)
 
