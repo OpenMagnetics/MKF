@@ -1315,4 +1315,75 @@ TEST_CASE("CalculateAdvisedCoil_ToroidCmcAngularFillMustNotExceed360",
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Regression: CMC wizard defaults must NOT pick an oversized toroid.
+//
+// Symptom (May 2026): with the WebFrontend CmcWizard's out-of-the-box
+// values (230 V / 5 A / 50 Hz, 2 windings, |Z| ≥ 1000 Ω at 150 kHz) the
+// MagneticAdviser returned a T 140-class toroid (~140 mm OD) wound with
+// only ~13 turns. A correct adviser pick for this spec is a small Mn-Zn
+// EMI toroid in the T 18 — T 30 range (≤ 35 mm OD).
+//
+// Root cause: MagneticFilterTurnCount scores raw Σ N_i. For a fixed
+// |Z| target Z = µ_complex · ω · N² · Aₑ / lₑ, the turn count scales as
+// N ∝ 1/√(µ·Aₑ/lₑ). Big toroids therefore minimise N — making the
+// "manufacturability" filter monotonically reward the largest core in
+// the catalogue, the exact opposite of its intent. The Dimensions
+// filter contributes only ~0.3 normalised against TurnCount's 1.0, so
+// it cannot pull the choice back to a sane size.
+//
+// Fix: TurnCount must include core size so a small core with N turns
+// scores BETTER than a large core with the same N (less wire used).
+//
+// This test is a guard: any future change that lets a > 50 mm wide
+// toroid win the wizard-default search will fail here.
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST_CASE("Test_Cmc_AdviserMustNotPickOversizedToroid_WizardDefaults",
+          "[converter-model][cmc-topology][adviser][regression]") {
+
+    SECTION("Wizard defaults (230V/5A/50Hz, 2W, 1kΩ@150kHz) → core OD ≤ 50 mm") {
+        // Exact CmcWizard.vue defaults (src/components/Wizards/CmcWizard.vue
+        // lines 47–58).
+        OpenMagnetics::CommonModeChoke cmc(makeCmcJson(230.0, 5.0, 50.0, 2,
+                                                       1000.0, 150e3));
+        auto inputs = cmc.process();
+
+        MagneticAdviser adviser;
+        auto results = adviser.get_advised_magnetic(inputs, 1);
+        REQUIRE(!results.empty());
+
+        auto mag = results[0].first.get_magnetic();
+        auto coreName = mag.get_mutable_core().get_name().value_or("(unnamed)");
+        auto coreShape = mag.get_mutable_core().get_shape_family();
+        double width = mag.get_mutable_core().get_width();   // OD for toroids
+        double height = mag.get_mutable_core().get_height();
+        double volume = mag.get_mutable_core().get_effective_volume();
+
+        int totalTurns = 0;
+        for (const auto& w : mag.get_coil().get_functional_description()) {
+            totalTurns += w.get_number_turns();
+        }
+
+        std::cout << "[CMC wizard-defaults] picked: " << coreName
+                  << "  shape=" << std::string(magic_enum::enum_name(coreShape))
+                  << "  OD=" << width * 1000.0 << " mm"
+                  << "  H="  << height * 1000.0 << " mm"
+                  << "  Ve=" << volume * 1e9 << " mm^3"
+                  << "  N="  << totalTurns << "\n";
+
+        // Must be toroidal (CMC-only constraint enforced upstream).
+        REQUIRE(coreShape == CoreShapeFamily::T);
+
+        // The actual regression check. A 1 kΩ @ 150 kHz / 5 A line CMC fits
+        // comfortably on a Mn-Zn toroid ≤ 35 mm OD; we leave 15 mm of
+        // headroom for catalogue gaps. T 140 (140 mm) is ~3× this and
+        // would fail. This is the assertion that protects the user from
+        // the "biggest toroid wins" regression.
+        INFO("Picked core OD = " << width * 1000.0
+             << " mm. A 1 kΩ@150 kHz CMC for 5 A should fit a ≤ 50 mm toroid.");
+        CHECK(width <= 0.050);
+    }
+}
+
 } // anonymous namespace

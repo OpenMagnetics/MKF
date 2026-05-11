@@ -143,25 +143,23 @@ class MagneticFilterDimensions : public MagneticFilter {
 
 /**
  * @class MagneticFilterTurnCount
- * @brief Manufacturability / copper-burden proxy: total turns across all windings.
+ * @brief Manufacturability / copper-burden proxy: turns × core size.
  *
- * Score = Σ N_i (sum of turns over all windings).
- * Lower is better when the score is inverted by the caller. This filter is a
- * cheap, generic way to penalise candidate cores that *technically* satisfy
- * an inductance / impedance requirement but only by demanding an absurd turn
- * count (low-µ powder cores attempting CMC duty, undersized ferrite, etc.).
+ * Score = (Σ N_i) × core_width   (lower is better, caller inverts).
  *
- * Why just N (not N×dim):
- * Using N×characteristic_dimension equalises when large-core ferrite (e.g.
- * T140, 13 turns, 0.14m) is compared to small powder (e.g. T27, 56 turns,
- * 0.027m) because 13×0.14 ≈ 56×0.027 ≈ 1.5. Raw turn count is the cleaner
- * discriminator: fewer turns always means less wire, lower I²R, and easier
- * winding, irrespective of core size.
+ * The core-size factor is mandatory. For a fixed |Z| target on a CMC,
+ * Z = µ_complex · ω · N² · Aₑ / lₑ, so N ∝ 1/√(µ·Aₑ/lₑ): bigger cores
+ * minimise N. Scoring N alone therefore monotonically rewards the
+ * largest core in the catalogue — which is the opposite of "manufacturable"
+ * (more wire per turn, more copper, more cost). Multiplying by
+ * core_width (OD for toroids, A-dim for two-piece sets) gives a simple
+ * 1-D wire-length proxy that lets a small T 25 with N=20 outrank a big
+ * T 140 with N=13. See TestTopologyCmc::Test_Cmc_AdviserMustNotPickOversizedToroid_WizardDefaults.
  *
  * Read-only: requires N to be already populated on the coil's
  * functional_description (e.g. via add_initial_turns_by_inductance /
- * filterMinimumImpedance). Returns valid=true with score=0 if no turns have
- * been assigned yet (caller-side gate ensures ordering).
+ * filterMinimumImpedance). Returns valid=true with score=0 if no turns
+ * have been assigned yet (caller-side gate ensures ordering).
  */
 class MagneticFilterTurnCount : public MagneticFilter {
     public:

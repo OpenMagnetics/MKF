@@ -1149,13 +1149,13 @@ namespace {
         // 25% soft-saturation margin for powder materials instead of a hard
         // binary cutoff at the nominal Bsat.
         json dmcParams = json::parse(R"({
-            "configuration": "SINGLE_PHASE_BALANCED",
+            "configuration": "singlePhaseBalanced",
             "inputVoltage": { "nominal": 230 },
             "operatingCurrent": 10,
             "lineFrequency": 50,
             "switchingFrequency": 100000,
             "ambientTemperature": 25,
-            "minimumImpedance": [{ "frequency": 150000, "impedance": 50 }]
+            "minimumImpedance": [{ "frequency": 150000, "impedance": { "magnitude": 50 } }]
         })");
 
         OpenMagnetics::DifferentialModeChoke dmc(dmcParams);

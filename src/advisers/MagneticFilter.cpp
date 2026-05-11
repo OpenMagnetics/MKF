@@ -1127,13 +1127,8 @@ std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Magnetic* ma
 std::pair<bool, double> MagneticFilterTurnCount::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto coil = magnetic->get_coil();
 
-    // Sum N across all windings. For a CMC the windings are equal so this is
-    // 2 × N; for a single inductor it's just N. Fewer total turns ⇒ less
-    // copper burden ⇒ more manufacturable. Using just N (not N×dim) is the
-    // most direct discriminator: a high-µ ferrite on a large core that needs
-    // 13 turns always wins over a low-µ powder core on a small core that
-    // needs 56+ turns, regardless of physical size. The N×dim product can
-    // equalise because the large-core's dimension compensates for fewer turns.
+    // Sum N across all windings. For a CMC the windings are equal so this
+    // is 2 × N; for a single inductor it's just N.
     double totalTurns = 0;
     for (const auto& winding : coil.get_functional_description()) {
         totalTurns += static_cast<double>(winding.get_number_turns());
@@ -1145,7 +1140,34 @@ std::pair<bool, double> MagneticFilterTurnCount::evaluate_magnetic(Magnetic* mag
         return {true, 0.0};
     }
 
-    return {true, totalTurns};
+    // Manufacturability proxy = wire length used ≈ N × (core size). We must
+    // multiply by a size proxy: scoring N alone is monotonically minimised
+    // by the largest core in the catalogue (because for a fixed |Z| target
+    // Z = µ_complex · ω · N² · Aₑ / lₑ, N ∝ 1/√(µ·Aₑ/lₑ), so bigger core
+    // → fewer turns). That made the CMC adviser pick T 140-class toroids
+    // for plain 230 V / 5 A / 1 kΩ@150 kHz wizard defaults — see
+    // TestTopologyCmc::Test_Cmc_AdviserMustNotPickOversizedToroid_WizardDefaults.
+    //
+    // get_width() returns the OD for toroids and the A-dimension for
+    // two-piece sets; both scale linearly with overall core size and are
+    // a reasonable stand-in for mean turn length without forcing the
+    // filter to instantiate a bobbin (which the cheap pre-filter pipeline
+    // explicitly avoids). Falls back to raw N if width is unavailable.
+    // Avoid get_width() here: it throws CoreNotProcessedException on
+    // unprocessed cores, and exception throwing in the hot pre-filter loop
+    // (thousands of cores × multiple passes) costs seconds. Read the
+    // processed description directly instead.
+    auto& core = magnetic->get_mutable_core();
+    auto processed = core.get_processed_description();
+    if (!processed) {
+        return {true, totalTurns};
+    }
+    double widthProxy = processed->get_width();
+    if (!std::isfinite(widthProxy) || widthProxy <= 0.0) {
+        return {true, totalTurns};
+    }
+
+    return {true, totalTurns * widthProxy};
 }
 
 std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
@@ -1262,32 +1284,67 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                 return {false, 0};
             }
             coil.get_mutable_functional_description()[0].set_number_turns(static_cast<double>(requiredN));
-            // Single validation pass at the analytical N to (a) confirm the
-            // jump met the requirement after second-order effects and (b)
-            // produce a real impedance score for ranking. Skips the iterative
-            // refinement (was up to 100 calls/core).
+            // Validation pass at the analytical N. The Z ∝ N² assumption used
+            // for the jump above breaks for materials with field-dependent
+            // permeability (powder cores: µ_r drops as H_dc = N·I_pk/lₑ
+            // grows with N), so the analytical N often under-shoots Z_target
+            // by 10–30 %. When that happens, do a Newton-style proportional
+            // re-bump — N_new = ceil(N · sqrt(Z_target / Z_measured)) — and
+            // re-validate, using the same _impedanceModel. Capped at a few
+            // iterations because each iteration tightens the gap by the
+            // d log Z / d log N slope (≈ 2 in the linear regime, ≈ 1 in deep
+            // saturation), so 3–5 attempts converge for any physical core.
+            constexpr int kMaxRebumpIterations = 5;
             double measuredExtra = 0;
-            bool meetsAll = true;
-            for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
-                auto frequency = impedanceAtFrequency.get_frequency();
-                auto required = impedanceAtFrequency.get_impedance().get_magnitude();
-                try {
-                    double impedance;
-                    if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
-                        double H_dc = static_cast<double>(requiredN) * magnetizingCurrentPeak / effectiveLength;
-                        impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency, H_dc, defaults.ambientTemperature));
-                    } else {
-                        impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency));
-                    }
-                    if (impedance < required) {
-                        meetsAll = false;
+            bool meetsAll = false;
+            for (int iter = 0; iter < kMaxRebumpIterations; ++iter) {
+                measuredExtra = 0;
+                meetsAll = true;
+                double worstShortfallRatio = 1.0;  // measured / required at the worst frequency
+                bool modelMissing = false;
+                for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
+                    auto frequency = impedanceAtFrequency.get_frequency();
+                    auto required = impedanceAtFrequency.get_impedance().get_magnitude();
+                    try {
+                        double impedance;
+                        if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
+                            double H_dc = static_cast<double>(requiredN) * magnetizingCurrentPeak / effectiveLength;
+                            impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency, H_dc, defaults.ambientTemperature));
+                        } else {
+                            impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency));
+                        }
+                        if (impedance < required) {
+                            meetsAll = false;
+                            double ratio = impedance / required;  // < 1 here
+                            if (ratio < worstShortfallRatio) worstShortfallRatio = ratio;
+                        } else {
+                            measuredExtra += (impedance - required);
+                        }
+                    } catch (const ModelNotAvailableException&) {
+                        modelMissing = true;
                         break;
                     }
-                    measuredExtra += (impedance - required);
-                } catch (const ModelNotAvailableException&) {
+                }
+                if (modelMissing) {
                     meetsAll = false;
                     break;
                 }
+                if (meetsAll) break;
+                // Proportional re-bump using the worst-frequency shortfall.
+                // Multiplying N by sqrt(1/ratio) restores Z ∝ N² scaling
+                // exactly when µ is constant; with field-dependent µ it
+                // converges geometrically at the local d log Z / d log N
+                // slope.
+                int64_t bumpedN = static_cast<int64_t>(std::ceil(static_cast<double>(requiredN) * std::sqrt(1.0 / worstShortfallRatio)));
+                if (bumpedN <= requiredN) bumpedN = requiredN + 1;  // ensure forward progress
+                requiredN = bumpedN;
+                // Re-check geometric feasibility before the next probe.
+                double conductorAreaTotalIter = static_cast<double>(requiredN) * std::numbers::pi * wireOuterRadius * wireOuterRadius;
+                if (conductorAreaTotalIter >= windingWindowArea) {
+                    meetsAll = false;
+                    break;
+                }
+                coil.get_mutable_functional_description()[0].set_number_turns(static_cast<double>(requiredN));
             }
             if (!meetsAll) {
                 magnetic->set_coil(std::move(coil));
