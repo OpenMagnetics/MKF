@@ -1280,6 +1280,116 @@ A real bulk-cap state-variable model (so output_voltage shows the
 twice-line-frequency ripple per `Cbus`) is a future enhancement, listed
 under §3.D Phase 4 SPICE polish.
 
+#### 3.D.3 Switching-PFC ngspice path + golden PtP gates — DONE (2026-05)
+
+Six-phase project to give §3.D Phase 6 PFC reference-design tests
+(NCP1654 100 W, UCC28180 360 W, L4981 1000 W) analytical-vs-SPICE
+point-to-point gates by driving a **switching** boost-PFC netlist
+through ngspice (not the averaged Basso switch model).  Shipped end-to-
+end in commits `5dc11ab2` → `5cad20e3`.
+
+**Reference designs**:
+
+| Design | Vrms | Vbus | Pout | Fsw | Cbus | L |
+|---|---|---|---|---|---|---|
+| **NCP1654-100W**  | 230 V | 400 V |  100 W | 100 kHz | 100 µF | 3.30 mH |
+| **UCC28180-360W** | 230 V | 390 V |  360 W |  65 kHz | 470 µF | 1.25 mH |
+| **L4981-1000W**   | 230 V | 400 V | 1000 W |  50 kHz | 1.5 mF | 659 µH |
+
+**Phase 0/1/2** (commits `5dc11ab2 / 7f110c88 / af4dae2e`) — design note,
+controller tuning (gv_kp, gv_ki, gi_kp, gi_ki per design), netlist
+generator (`generate_ngspice_switching_circuit`), and smoke tests.
+
+**Phase 4** (`01935bc8`) — convergence campaign, five fixes:
+
+1. **Series-RC switch snubber bug** — was `R 100 Ω || C 100 p` both
+   shunted to 0 V.  R passed DC `vpk/100Ω = 3.25 A` continuously when
+   D1 reverse-biased → `i_sense ≫ i_ref` → EA hard anti-windup → `vc_i`
+   locked at 0 V → gate dead-locked OFF.  Fixed to series RC (`sw →
+   snub_n` via R, `snub_n → 0` via C).  Single change moved Pin error
+   from +497 % to +1.5 %.
+2. `C_fb_zi` integrator pre-bias with `IC=-{ic_vc_i}` (real integrator
+   state, not opamp internal filt cap which washes out at 1.6 µs).
+3. `ic_vc_i = D_target` (not `D_avg`, which over-pumps to 630 V).
+4. `ic_vbus = vbus_nom` (not `vpk`; emulates the inrush bypass relay /
+   soft-start hardware sequence).
+5. Soft-start vref ramp `B_vref_v` from `vpk·k_div` → `vref` over
+   `t_ss_release = 30 ms`.
+
+**Phase 4-addendum** (`9c0cdf39`) — `simulate_with_ngspice_switching`
+gained a `trimToLastLineCycle` parameter (default `true`) returning only
+the final line period of every waveform; the function packs three
+diagnostic windings (`PowerStage`, `VoltageLoop`, `CurrentLoop`); a new
+`Painter::paint_operating_point_waveforms` forwarder writes a single
+stacked SVG per design under `output/pfc_phase4/<name>_waveforms.svg`.
+
+**Phase 5** (`e67e2cb2`) — three golden PtP regression tests
+`tests/TestPfcReferenceDesignsPtp.cpp` tagged
+`[converter-model][pfc-topology][refdesign][ptp][slow]` with per-design
+acceptance gates:
+
+| Design | Wall | Vbus err / tol | Pin err / tol | Env NRMSE / tol |
+|---|---|---|---|---|
+| NCP1654-100W  | 8 s | -5.2 % / ±6 % | +1.5 % / ±5 % |  7.5 % / 10 % |
+| UCC28180-360W | 6 s | -3.7 % / ±6 % | +1.9 % / ±5 % | 23.6 % / 30 % |
+| L4981-1000W   | 4 s | -1.5 % / ±6 % | +1.0 % / ±5 % | 54.5 % / 60 % |
+
+Per-design envelope tolerances reflect the well-known PFC zero-crossing
+tracking distortion: the controller cannot make duty negative, so iL
+saturates at zero before the line zero-crossing while iref still
+demands current; post-ZC the integrator is cold so iL overshoots iref
+for the first ~1 ms.  The mid/high-power designs amplify this because
+their inductors are 3-5× smaller relative to load (per-design D_ff
+gain-scheduling could tighten — see §3.D.4 below).
+
+**Phase 6** (`5cad20e3`) — extended `ConverterPortChecks` with a
+switching-leg analog of `check_pfc_ports`:
+
+- `simulate_with_ngspice_switching` now packs **four** diagnostic
+  windings (added `InputPort` carrying `vin_rect / iL`).
+- Both trim and no-trim paths broadcast the time vector to every
+  signal (NgspiceRunner attaches it to all but the trim copy could
+  drop it).
+- New helpers in `ConverterPortChecks`: `time_weighted_mean / _rms /
+  _mean_product` — required because ngspice's transient grid is highly
+  non-uniform (denser around switching events) and a uniform-grid
+  `sum/N` under-estimates by ~50× on power-stage signals.
+- New `check_pfc_switching_ports(op, ...)` mirrors `check_pfc_ports`'s
+  port semantics on the SPICE waveforms:
+    - `InputPort.voltage`: mean ≈ 0.9·Vrms, rms ≈ Vrms (`vinTol`)
+    - `PowerStage.voltage`: mean ≈ Vbus_nominal (`voutMeanTol`)
+    - power balance: `<vin·iL> ≈ Pout_nominal` (`pinTol`)
+- Power balance gates `<vin·iL>` rather than `<iL>` alone because PFC
+  zero-crossing distortion can skew `<iL>` a few percent above the
+  analytical `2·Iin_pk/π` value while still preserving real power
+  balance — `<vin·iL>` is the physically meaningful quantity.
+
+**Lifetime gotcha (documented inline in helper)**: `MAS::OperatingPoint
+Excitation::get_voltage()`, `SignalDescriptor::get_waveform()`, and
+`Waveform::get_time()` all return `std::optional<...>` **by value**.
+Chained `.get_xxx()->get_yyy()` calls produce a chain of dangling
+temporaries; the helper now copies each optional into a named local
+before reading the underlying data.  Apply this pattern wherever
+chained MAS getters appear.
+
+**Final regression**: 406/406 in
+`[pfc-controller],[pfc-topology],[spice-subcircuits]` (was 313 at the
+start of the project — +93 from the new tests and helper coverage).
+
+#### 3.D.4 PFC zero-crossing distortion — tighten envelope (open)
+
+The Phase-5 envelope tolerances (10 % / 30 % / 60 %) are honest about
+measured Phase-4 reality.  Per-design duty feed-forward
+`D_ff = 1 − vin / Vbus_nom` gated by `ss_gain` was attempted in the
+Phase-4 work and reverted: it improved UCC envelope (23 % → 18 %) but
+destabilised NCP1654 (10× higher `gi_kp` than L4981) — bus oscillates
+134 → 634 V, Pin error +1031 %.  A future pass should re-attempt with
+**per-design D_ff gain scheduling** (NCP needs lower `gi_kp` scaling
+than UCC/L4981) to bring all three below ~15 %.  Reference signals are
+in `/tmp/probe_l2.cir` (L4981 ZC-distortion `.meas` suite) and the
+inline comment in `PowerFactorCorrection.cpp` describing the failed
+unconditional D_ff attempt.
+
 ---
 
 ### 3.E Boost / Buck — Quality Baseline (parallel work)
