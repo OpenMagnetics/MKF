@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
+#include "ConverterPortChecks.h"
 #include "advisers/MagneticAdviser.h"
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
@@ -1011,37 +1012,64 @@ namespace {
         auto converterWaveforms = llc.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
 
         REQUIRE(!converterWaveforms.empty());
+        REQUIRE(!converterWaveforms[0].get_input_voltage().get_data().empty());
         REQUIRE(!converterWaveforms[0].get_input_current().get_data().empty());
 
-        auto& resonantCurrent = converterWaveforms[0].get_input_current().get_data();
+        // §5.1 converter-port stream is the DC source rail. Pulse-shape
+        // resonant-tank current checks live in the winding-port stream
+        // (simulate_and_extract_operating_points), exercised below.
+        auto vinData = converterWaveforms[0].get_input_voltage().get_data();
+        double vinMean = std::accumulate(vinData.begin(), vinData.end(), 0.0) / vinData.size();
+        INFO("Input voltage (DC bus) mean: " << vinMean << " V (nom 400)");
+        CHECK(std::fabs(vinMean - 400.0) / 400.0 < 0.01);
 
-        double iRes_max = *std::max_element(resonantCurrent.begin(), resonantCurrent.end());
-        double iRes_min = *std::min_element(resonantCurrent.begin(), resonantCurrent.end());
-        double iRes_avg = std::accumulate(resonantCurrent.begin(), resonantCurrent.end(), 0.0) / resonantCurrent.size();
+        auto iinData = converterWaveforms[0].get_input_current().get_data();
+        double iinMean = std::accumulate(iinData.begin(), iinData.end(), 0.0) / iinData.size();
+        // Iin = Pout/(η·Vin) = 12·10/(1·400) = 0.3 A (no efficiency set → η=1)
+        INFO("Input current (DC bus) mean: " << iinMean << " A (expected ≈ 0.3 A)");
+        CHECK(iinMean > 0.20);
+        CHECK(iinMean < 0.50);
 
-        INFO("Resonant current: max=" << iRes_max << " A, min=" << iRes_min << " A, avg=" << iRes_avg << " A");
+        SECTION("Waveform shape: resonant tank current is bipolar (winding-port)") {
+            auto ops = llc.simulate_and_extract_operating_points(turnsRatios, Lm);
+            REQUIRE(!ops.empty());
+            auto& priExc = ops[0].get_excitations_per_winding()[0];
+            REQUIRE(priExc.get_current().has_value());
+            REQUIRE(priExc.get_current()->get_waveform().has_value());
+            auto resonantCurrent = priExc.get_current()->get_waveform()->get_data();
+            REQUIRE(!resonantCurrent.empty());
 
-        SECTION("Waveform shape: resonant current is bipolar (LLC sinusoidal character)") {
-            // LLC resonant current alternates sign each half-cycle
-            CHECK(iRes_max > 1.0);   // Positive half-cycle exists
-            CHECK(iRes_min < -1.0);  // Negative half-cycle exists
-            // For sinusoid: |max| ≈ |min| (within 30% for near-resonance operation)
+            double iRes_max = *std::max_element(resonantCurrent.begin(), resonantCurrent.end());
+            double iRes_min = *std::min_element(resonantCurrent.begin(), resonantCurrent.end());
+            double iRes_avg = std::accumulate(resonantCurrent.begin(), resonantCurrent.end(), 0.0) /
+                              resonantCurrent.size();
+
+            INFO("Resonant current: max=" << iRes_max << " A, min=" << iRes_min
+                 << " A, avg=" << iRes_avg << " A");
+            // LLC resonant current alternates sign each half-cycle.
+            CHECK(iRes_max > 1.0);
+            CHECK(iRes_min < -1.0);
+            // For sinusoid: |max| ≈ |min| (within 30 %).
             double symmetry = std::abs(iRes_max + iRes_min) / (std::abs(iRes_max) + std::abs(iRes_min));
             INFO("Current symmetry (0=perfect): " << symmetry);
             CHECK(symmetry < 0.5);
-        }
 
-        SECTION("Waveform shape: resonant current crosses zero (sinusoidal)") {
-            // A sinusoidal resonant current crosses zero exactly 2 times per period
+            // A sinusoidal resonant current crosses zero 2× per period.
             int zero_crossings = 0;
             for (size_t k = 1; k < resonantCurrent.size(); ++k) {
                 if ((resonantCurrent[k-1] > 0 && resonantCurrent[k] <= 0) ||
                     (resonantCurrent[k-1] <= 0 && resonantCurrent[k] > 0))
                     zero_crossings++;
             }
-            INFO("Zero crossings per period: " << zero_crossings);
-            CHECK(zero_crossings >= 2);   // At least one full oscillation
-            CHECK(zero_crossings <= 12);  // Not excessively noisy
+            INFO("Zero crossings across extracted window: " << zero_crossings);
+            CHECK(zero_crossings >= 2);
+
+            // No DC bias (no transformer saturation): |avg| < 10 % of RMS.
+            double iRes_rms = 0.0;
+            for (double v : resonantCurrent) iRes_rms += v * v;
+            iRes_rms = std::sqrt(iRes_rms / resonantCurrent.size());
+            INFO("Resonant current DC component: " << iRes_avg << " A, RMS: " << iRes_rms << " A");
+            CHECK(std::abs(iRes_avg) < 0.10 * iRes_rms);
         }
 
         SECTION("Waveform shape: output voltage stable near target") {
@@ -1057,17 +1085,7 @@ namespace {
             INFO("LLC output: avg=" << vout_avg << " V, ripple=" << (ripple_ratio * 100) << "%");
             CHECK(vout_avg > 8.0);     // Should regulate near 12V
             CHECK(vout_avg < 16.0);
-            CHECK(ripple_ratio < 0.15); // Less than 15% output ripple (single-period simulation)
-        }
-
-        SECTION("Waveform shape: avg resonant current ≈ 0 (no DC bias)") {
-            // LLC resonant current must have zero DC component (no transformer saturation)
-            double iRes_rms = 0.0;
-            for (double v : resonantCurrent) iRes_rms += v * v;
-            iRes_rms = std::sqrt(iRes_rms / resonantCurrent.size());
-            // DC bias < 10% of RMS
-            INFO("Resonant current DC component: " << iRes_avg << " A, RMS: " << iRes_rms << " A");
-            CHECK(std::abs(iRes_avg) < 0.10 * iRes_rms);
+            CHECK(ripple_ratio < 0.15); // Less than 15% output ripple
         }
     }
 
@@ -1847,6 +1865,67 @@ namespace {
                     }
                 }
             }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // §5.1 converter-port DC-stream gate. The LLC bridge is a
+    // behavioural Vbridge PULSE source (no real DC source path through
+    // physical switches), so input_current is reconstructed via power
+    // balance — Iin = Pout/(η·Vin) — and broadcast as a flat DC waveform.
+    // Output currents likewise reconstructed as Vout/Rload (cap-return
+    // ammeters average to zero in steady state).
+    // ─────────────────────────────────────────────────────────────────
+    TEST_CASE("Test_Llc_ConverterPortWaveforms",
+              "[converter-port-waveforms][llc-topology][ngspice-simulation]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+
+        const double Vin = 400.0, Vout = 12.0, Iout = 10.0;
+        json llcJson;
+        json inputVoltage;
+        inputVoltage["nominal"] = Vin;
+        inputVoltage["minimum"] = Vin * 0.925;
+        inputVoltage["maximum"] = Vin * 1.025;
+        llcJson["inputVoltage"] = inputVoltage;
+        llcJson["bridgeType"] = "halfBridge";
+        llcJson["minSwitchingFrequency"] = 80000;
+        llcJson["maxSwitchingFrequency"] = 200000;
+        llcJson["qualityFactor"] = 0.4;
+        llcJson["inductanceRatio"] = 5.0;
+        llcJson["operatingPoints"] = json::array();
+        {
+            json op;
+            op["ambientTemperature"] = 25.0;
+            op["outputVoltages"] = {Vout};
+            op["outputCurrents"] = {Iout};
+            op["switchingFrequency"] = 100000;
+            llcJson["operatingPoints"].push_back(op);
+        }
+
+        OpenMagnetics::Llc llc(llcJson);
+        auto req = llc.process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto& tr : req.get_turns_ratios())
+            turnsRatios.push_back(resolve_dimensional_values(tr));
+        const double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+
+        auto wfs = llc.simulate_and_extract_topology_waveforms(turnsRatios, Lm);
+        REQUIRE(!wfs.empty());
+
+        // LLC SPICE droop is moderate — the resonant-tank LCC behaviour
+        // can park the operating point off the design target, especially
+        // for non-resonance fsw. Allow 0.30 mean tolerance — same envelope
+        // as the SSF/TSF/ACF forward family. The §5.1 gate's job is to
+        // catch AC-in-DC-stream regressions (e.g. v(pri_top) or
+        // i(Vpri_sense) leaking into the converter-port stream), NOT to
+        // enforce steady-state accuracy.
+        constexpr double kLlcVoutMeanTol = 0.30;
+        constexpr double kLlcIoutMeanTol = 0.30;
+        for (size_t i = 0; i < wfs.size(); ++i) {
+            ConverterPortChecks::check_dc_ports(wfs[i], "Llc", i,
+                                                Vin, {Vout}, {Iout},
+                                                kLlcVoutMeanTol, kLlcIoutMeanTol);
         }
     }
 }

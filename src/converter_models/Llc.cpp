@@ -1271,7 +1271,7 @@ std::string Llc::generate_ngspice_circuit(
     circuit << ".options METHOD=GEAR TRTOL=7\n\n";
     circuit << ".tran " << std::scientific << maxStep << " " << simTime
             << " " << startTime << " " << maxStep << " UIC\n\n";
-    circuit << ".save v(vdc_supply) v(pri_top) v(pri_bot) i(Vpri_sense)";
+    circuit << ".save v(vdc_supply) i(Vdc_supply) v(pri_top) v(pri_bot) i(Vpri_sense)";
     if (isFullBridge) circuit << " v(bridge_a) v(bridge_b)";
     else              circuit << " v(sw_node) v(mid_point)";
     for (size_t i = 0; i < numOutputs; ++i) {
@@ -1413,26 +1413,59 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
         wf.set_switching_frequency(switchingFrequency);
         wf.set_operating_point_name("LLC op. point " + std::to_string(opIdx));
 
-        // DC bus voltage: read from the dedicated Vdc_supply rail.
+        // §5.1 converter-port stream: input_voltage = v(vdc_supply) (the
+        // DC source rail, constant Vin in steady state).
         Waveform vdc = getWf("vdc_supply");
         if (!vdc.get_data().empty()) wf.set_input_voltage(vdc);
 
-        // Input current: resonant tank current (Vpri_sense) is the AC reflection of
-        // the input current; the rectified DC component flows in Rdc_supply_dummy
-        // which we deliberately don't sense (it would be ~0).
-        wf.set_input_current(getWf("vpri_sense#branch"));
+        // §5.1 input_current: power-balance reconstruction. The LLC
+        // netlist uses a behavioural Vbridge PULSE source (not driven
+        // from a real half-bridge with switches), so i(Vdc_supply) only
+        // sees the 1MEG dummy probe load (~tens of µA — not the actual
+        // converter draw). i(Vpri_sense) is the resonant-tank current
+        // (bipolar AC, mean ≈ 0 — a cap can't carry DC), so it is NOT
+        // the converter's input-port DC current either. The physical
+        // DC bus current is sum(Vo·Io)/(η·Vin); broadcast as a flat
+        // waveform to honour the §5.1 "DC stream" contract.
+        double Vin_local = 0.0;
+        if (!vdc.get_data().empty()) {
+            for (double v : vdc.get_data()) Vin_local += v;
+            Vin_local /= vdc.get_data().size();
+        } else if (get_input_voltage().get_nominal().has_value()) {
+            Vin_local = get_input_voltage().get_nominal().value();
+        }
+        double Pout_total = 0.0;
+        for (size_t i = 0; i < ops[opIdx].get_output_voltages().size(); ++i) {
+            Pout_total += ops[opIdx].get_output_voltages()[i] *
+                          ops[opIdx].get_output_currents()[i];
+        }
+        double effLlc = 1.0;
+        if (get_efficiency().has_value() && get_efficiency().value() > 0.0)
+            effLlc = get_efficiency().value();
+        const double Iin_dc = (Vin_local > 0.0) ? Pout_total / (effLlc * Vin_local) : 0.0;
+        Waveform iInWf = vdc;  // borrow the same time grid / length
+        auto& iInData = iInWf.get_mutable_data();
+        for (auto& v : iInData) v = Iin_dc;
+        wf.set_input_current(iInWf);
 
-        // Per-output rectified voltage and current.
+        // Per-output rectified voltage (cap node is the DC output rail)
+        // and current reconstructed as Vout(t)/Rload (matches Buck /
+        // IsolatedBuck / AHB §5.1 — ammeters in cap-return paths
+        // average to zero in steady state).
         size_t numOutputs = ops[opIdx].get_output_voltages().size();
         if (numOutputs == 0) numOutputs = 1;
         for (size_t i = 0; i < numOutputs; ++i) {
             std::string si = std::to_string(i + 1);
             auto vCap = getWf("vout_cap_o" + si);
-            if (!vCap.get_data().empty())
-                wf.get_mutable_output_voltages().push_back(vCap);
-            auto iCt = getWf("vsec_sense_o" + si + "#branch");
-            if (!iCt.get_data().empty())
-                wf.get_mutable_output_currents().push_back(iCt);
+            if (vCap.get_data().empty()) continue;
+            wf.get_mutable_output_voltages().push_back(vCap);
+            const double Vo_i = ops[opIdx].get_output_voltages()[i];
+            const double Io_i = ops[opIdx].get_output_currents()[i];
+            const double Rload_i = (Io_i > 0) ? (Vo_i / Io_i) : 100.0;
+            Waveform ioutWf = vCap;
+            auto& ioutData = ioutWf.get_mutable_data();
+            for (auto& v : ioutData) v = v / Rload_i;
+            wf.get_mutable_output_currents().push_back(ioutWf);
         }
         results.push_back(wf);
     }
