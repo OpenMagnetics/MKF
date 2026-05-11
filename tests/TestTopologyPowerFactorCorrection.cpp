@@ -296,4 +296,148 @@ TEST_CASE("Test_Pfc_UnsupportedVariants_Throw",
                         Catch::Matchers::ContainsSubstring("VIENNA_PLAN.md"));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// §3.D Phase 6 — industry reference-design Values trios.
+//
+// Three commercial PFC controller EVMs across the power range (BOOST CCM,
+// 230 Vrms / 50 Hz / single-phase):
+//
+//   1. NCP1654  100 W (low-power consumer / LED driver)
+//   2. UCC28180 360 W (mid-range adapter / appliance)
+//   3. L4981   1000 W (industrial / server PSU)
+//
+// Each spec is checked against the closed-form analytical model with
+// η = 1 and Vd = 0, so the implementation formulas in
+// PowerFactorCorrection.cpp reduce cleanly to:
+//
+//   D_atVpk   = 1 − Vin_pk / Vbus
+//   I_in_avg  = Pout / Vrms
+//   I_Lpeak_env = √2 · I_in_avg            (envelope peak, mid-cycle)
+//   ΔI        = ripple · I_Lpeak_env       (peak-to-peak switching ripple
+//                                            at envelope peak)
+//   L_CCM     = Vin_pk · D / (ΔI · Fsw)
+//   I_Lpeak   = I_Lpeak_env + ΔI / 2       (envelope + half ripple)
+//
+// We anchor calculate_inductance_ccm, calculate_duty_cycle,
+// calculate_peak_current, and determine_actual_mode to those numbers.
+//
+// ── Why no analytical-vs-ngspice PtP gate for PFC ─────────────────────────
+// The peers in §3.D Phase 6 (Buck / Boost / FlyBack / IsoBuck / IBB) pair an
+// "anchor on closed-form" Values test with a "compare analytical waveform to
+// switching-circuit ngspice output" PtP test. PFC is structurally different:
+//
+//   * Its `simulate_and_extract_*` family is purely analytical (rectified-
+//     sine envelope + triangular ripple synthesised in C++; no ngspice call).
+//   * Its `generate_ngspice_circuit` emits a behavioural-source netlist
+//     mathematically equivalent to that synthesis — running ngspice on it
+//     does not provide independent confirmation.
+//   * A real switching boost-PFC SPICE netlist would require a production-
+//     grade average-current-mode controller (multiplier + voltage PI loop +
+//     current PI loop, per TI SNVA408B, NXP AN5257, Plexim PFC tutorial).
+//     Open-loop feed-forward duty (D = 1 − Vin/Vbus) is unstable when Vbus
+//     is the live node, and feed-forward against Vbus_nom needs many line
+//     cycles for the bulk-cap dynamic to settle (Rload·Cbus ≫ Tline). A
+//     hysteretic peak-current scheme oscillates infinitely at line zero
+//     crossings. Building, validating, and converging such a controller is
+//     several days of SPICE engineering and is out of scope for a magnetic-
+//     component test harness.
+//
+// The PFC analytical model is exercised end-to-end by the §5.1 converter-port
+// gate (Test_Pfc_ConverterPortWaveforms above), which validates the synthesis
+// on three input-voltage operating points against the PFC port contract
+// (rectified-sine input mean/RMS, DC bus voltage mean, DC load current mean,
+// twice-line-frequency Cbus ripple amplitude). That, plus the closed-form
+// Values gates below, fully covers the magnetic-design surface of the PFC.
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct PfcRefDesignSpec {
+    const char* name;
+    double      vRms;       // line-cycle RMS input voltage
+    double      vBus;       // regulated DC bus voltage
+    double      pOut;       // output power
+    double      fSw;        // switching frequency
+    double      cBus;       // bulk-capacitance (per-design sizing, 1–2 µF/W)
+    double      ripple;     // peak-to-peak switching ripple ratio at envelope peak
+};
+
+constexpr PfcRefDesignSpec kPfcRefDesign1{
+    "NCP1654-100W",  230.0, 400.0,  100.0, 100e3,  100e-6, 0.3 };
+constexpr PfcRefDesignSpec kPfcRefDesign2{
+    "UCC28180-360W", 230.0, 390.0,  360.0,  65e3,  470e-6, 0.3 };
+constexpr PfcRefDesignSpec kPfcRefDesign3{
+    "L4981-1000W",   230.0, 400.0, 1000.0,  50e3, 1500e-6, 0.3 };
+
+OpenMagnetics::PowerFactorCorrection build_pfc_from_spec(const PfcRefDesignSpec& s) {
+    OpenMagnetics::PowerFactorCorrection pfc;
+    DimensionWithTolerance iv;
+    iv.set_nominal(s.vRms);
+    // Use min = nom so the worst-case CCM formula (which evaluates at
+    // Vrms_min) gives the same answer as the closed-form table at nominal.
+    iv.set_minimum(s.vRms);
+    iv.set_maximum(s.vRms);
+    pfc.set_input_voltage(iv);
+    pfc.set_output_voltage(s.vBus);
+    pfc.set_output_power(s.pOut);
+    pfc.set_switching_frequency(s.fSw);
+    pfc.set_line_frequency(50.0);
+    pfc.set_efficiency(1.0);              // ideal, so analytical formulas reduce
+    pfc.set_diode_voltage_drop(0.0);      // ideal boost diode
+    pfc.set_current_ripple_ratio(s.ripple);
+    pfc.set_bulk_capacitance(s.cBus);
+    pfc.set_mode(PfcModes::CONTINUOUS_CONDUCTION_MODE);
+    pfc.set_ambient_temperature(25.0);
+    return pfc;
+}
+
+void assert_pfc_refdesign_values(const PfcRefDesignSpec& s) {
+    auto pfc = build_pfc_from_spec(s);
+
+    const double vinPk        = s.vRms * std::sqrt(2.0);
+    const double dExpected    = 1.0 - vinPk / s.vBus;                  // η=1, Vd=0
+    const double iInAvg       = s.pOut / s.vRms;                       // η=1
+    const double iLpeakEnv    = std::sqrt(2.0) * iInAvg;               // envelope peak
+    const double deltaI       = s.ripple * iLpeakEnv;                  // p-p ripple
+    const double lCcmExpected = vinPk * dExpected / (deltaI * s.fSw);
+    const double iPkExpected  = iLpeakEnv + 0.5 * deltaI;              // envelope + ripple/2
+
+    INFO("Ref design: " << s.name);
+
+    // Inductance — closed-form match within 1 % (formulas algebraically equal).
+    const double lCcm = pfc.calculate_inductance_ccm();
+    INFO("L_CCM: actual=" << lCcm * 1e6 << " µH, expected=" << lCcmExpected * 1e6 << " µH");
+    CHECK_THAT(lCcm, Catch::Matchers::WithinRel(lCcmExpected, 0.01));
+
+    // Duty cycle at line peak — exact reduction with Vd=0.
+    const double D = pfc.calculate_duty_cycle(vinPk, s.vBus);
+    INFO("D@Vpk: actual=" << D << ", expected=" << dExpected);
+    CHECK_THAT(D, Catch::Matchers::WithinRel(dExpected, 0.01));
+
+    // Peak inductor current at sized inductance — should match
+    // I_Lpeak_env + ΔI/2 within 1 %.
+    const double iPk = pfc.calculate_peak_current(vinPk, lCcm);
+    INFO("I_Lpeak: actual=" << iPk << " A, expected=" << iPkExpected << " A");
+    CHECK_THAT(iPk, Catch::Matchers::WithinRel(iPkExpected, 0.01));
+
+    // Mode classification: with ripple=0.3, L_CCM = (2/ripple)·L_CrCM = 6.67·L_CrCM,
+    // safely above the 5 % tolerance band → must classify as CCM.
+    const std::string mode = pfc.determine_actual_mode(lCcm);
+    INFO("Mode: " << mode);
+    CHECK(mode == "Continuous Conduction Mode");
+}
+
+TEST_CASE("Test_Pfc_RefDesign_NCP1654_100W_Values",
+          "[converter-model][pfc-topology][refdesign][values]") {
+    assert_pfc_refdesign_values(kPfcRefDesign1);
+}
+
+TEST_CASE("Test_Pfc_RefDesign_UCC28180_360W_Values",
+          "[converter-model][pfc-topology][refdesign][values]") {
+    assert_pfc_refdesign_values(kPfcRefDesign2);
+}
+
+TEST_CASE("Test_Pfc_RefDesign_L4981_1000W_Values",
+          "[converter-model][pfc-topology][refdesign][values]") {
+    assert_pfc_refdesign_values(kPfcRefDesign3);
+}
+
 } // namespace
