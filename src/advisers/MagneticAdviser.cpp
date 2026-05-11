@@ -184,6 +184,20 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     // Store original toroid setting for potential retry
     bool toroidsOriginallyEnabled = settings.get_use_toroidal_cores();
 
+    // Snapshot all three core-filter settings so we can restore them on exit.
+    // Without this, INTERFERENCE_SUPPRESSION (CMC/DMC) calls leak their
+    // toroidal-only / concentric-disabled / cores-in-stock overrides into the
+    // process-wide `settings` singleton AND into the cached global
+    // `coreDatabase` (which is filtered at load time and only re-loaded when
+    // empty). A subsequent caller — e.g. a DAB or LLC adviser test — then
+    // sees an already-populated DB containing only toroids, prunes all
+    // ferrite shapes away, and returns zero magnetics. See test pollution
+    // bug: TestTopologyDabAdviser / TestTopologyLlc REQUIRE(results>=1) fails
+    // when run after TestTopologyCmc.
+    bool savedUseToroidalCores = settings.get_use_toroidal_cores();
+    bool savedUseConcentricCores = settings.get_use_concentric_cores();
+    bool savedUseOnlyCoresInStock = settings.get_use_only_cores_in_stock();
+
     // Check if high voltage requirements make toroids impractical
     // High voltage (>600V) with strict insulation requirements rarely works with toroids
     double maxVoltage = 0;
@@ -202,12 +216,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         logEntry("High voltage requirements (" + std::to_string(int(maxVoltage)) + "V) detected. Disabling toroidal cores for better results.", "MagneticAdviser", 0);
         settings.set_use_toroidal_cores(false);
         toroidsOriginallyEnabled = false; // Don't retry since we proactively disabled
+        clear_loaded_cores();
     }
 
     if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
         settings.set_use_toroidal_cores(true);
         settings.set_use_only_cores_in_stock(false);
         settings.set_use_concentric_cores(false);
+        // Force the global core DB to be rebuilt with the new filter settings
+        // (it's filtered at load time and otherwise only reloaded when empty).
+        clear_loaded_cores();
     }
 
     if (coreDatabase.empty()) {
@@ -343,6 +361,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     if (masMagneticsWithScoring.empty() && toroidsOriginallyEnabled) {
         logEntry("No magnetics found with toroids enabled. Retrying without toroids...", "MagneticAdviser", 0);
         settings.set_use_toroidal_cores(false);
+        clear_loaded_cores();
         // Reset evaluated cores to allow re-evaluation
         evaluatedCores.clear();
         coresWound = 0;
@@ -419,6 +438,23 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
 
     settings.set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
+
+    // Restore the three core-filter settings we may have mutated above so that
+    // subsequent callers (e.g. tests sharing the process-global `settings`
+    // singleton) see the same configuration they had before this call.
+    // Also drop the cached core DB if any of them actually changed, so the
+    // next consumer rebuilds it from the restored filter set.
+    bool coreFiltersChanged =
+        settings.get_use_toroidal_cores() != savedUseToroidalCores ||
+        settings.get_use_concentric_cores() != savedUseConcentricCores ||
+        settings.get_use_only_cores_in_stock() != savedUseOnlyCoresInStock;
+    settings.set_use_toroidal_cores(savedUseToroidalCores);
+    settings.set_use_concentric_cores(savedUseConcentricCores);
+    settings.set_use_only_cores_in_stock(savedUseOnlyCoresInStock);
+    if (coreFiltersChanged) {
+        clear_loaded_cores();
+    }
+
     return masMagneticsWithScoring;
 }
 
