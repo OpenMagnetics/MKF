@@ -757,9 +757,12 @@ namespace OpenMagnetics {
                     timeout += wiresWithScoring.size();
 
                     std::move(wiresWithScoring.begin(), wiresWithScoring.end(), std::back_inserter(wireCoilPerWinding.back()));
-                    if (wireCoilPerWinding.back().size() > maximumNumberResults * 4) {
-                        break;
-                    }
+                    // COA-FIX-INSULATION-MARGIN: Do NOT early-break here. Letting all
+                    // wireConfigurations run gives diversity in wire thickness — higher
+                    // current density / more parallels yield thinner wires which may
+                    // be the only ones that fit tight sections (e.g. with margin tape).
+                    // The wind() loop downstream is already bounded by
+                    // kMaxConsecutiveFailuresWithNoSuccess and the timeout counter.
                 }
             }
         }
@@ -785,7 +788,14 @@ namespace OpenMagnetics {
         // very unlikely to fit either (wires are roughly score-ordered).
         // Bail out to keep CoilAdviser bounded for tight cores instead of
         // burning the full timeout on hopeless candidates.
-        constexpr size_t kMaxConsecutiveFailuresWithNoSuccess = 25;
+        // COA-FIX-INSULATION-MARGIN: scale the bound with the candidate
+        // count. Since we now accumulate wires across all wireConfigurations
+        // (~100 per winding), the original fixed 25 was reached long before
+        // both windings advanced into their thinner-wire regions
+        // simultaneously. Allow more attempts when there are more candidates.
+        size_t totalCandidates = 0;
+        for (const auto& wpw : wireCoilPerWinding) totalCandidates += wpw.size();
+        const size_t kMaxConsecutiveFailuresWithNoSuccess = std::max<size_t>(25, totalCandidates);
         size_t consecutiveFailures = 0;
 
         while (true) {
@@ -845,7 +855,6 @@ namespace OpenMagnetics {
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
                 mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
-
                 // For toroids the angular fill is the binding constraint: all section
                 // angular extents (dimensions[1], in degrees) must sum to ≤ 360°.
                 if (core.get_functional_description().get_type() == CoreType::TOROIDAL) {
