@@ -553,4 +553,86 @@ namespace OpenMagnetics {
         return operatingPoints;
     }
 
+    std::vector<ConverterWaveforms>
+    PowerFactorCorrection::simulate_and_extract_topology_waveforms(double inductance,
+                                                                    size_t numberOfCycles) {
+        std::vector<ConverterWaveforms> results;
+
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+        collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+        if (inputVoltages.empty()) {
+            throw std::runtime_error(
+                "PowerFactorCorrection::simulate_and_extract_topology_waveforms: "
+                "no input voltage (nominal/min/max) populated");
+        }
+
+        const double switchingFrequency = get_switching_frequency();
+        const double lineFrequency      = get_line_frequency_or_default();
+        const double vout               = get_output_voltage();
+        const double pout               = get_output_power();
+        const double efficiency         = get_efficiency_or_default();
+
+        const double linePeriod      = 1.0 / lineFrequency;
+        const double switchingPeriod = 1.0 / switchingFrequency;
+        const int    actualCycles    = std::max<size_t>(numberOfCycles, 1);
+        const double simulationTime  = actualCycles * linePeriod;
+        const double timeStep        = switchingPeriod / 4.0;
+        const size_t numPoints       = static_cast<size_t>(simulationTime / timeStep) + 1;
+        const double omegaLine       = 2.0 * M_PI * lineFrequency;
+
+        for (size_t vinIdx = 0; vinIdx < inputVoltages.size(); ++vinIdx) {
+            const double vinRms  = inputVoltages[vinIdx];
+            const double vinPeak = vinRms * std::sqrt(2.0);
+            // Average input current (RMS, ideal PF=1): I_in_rms = P_in / V_in_rms,
+            // P_in = P_out / η. Peak of the |sin| envelope is √2·I_in_rms.
+            const double iLinePeak = std::sqrt(2.0) * (pout / efficiency) / vinRms;
+            // Load current (constant DC).
+            const double iLoad = pout / vout;
+
+            std::vector<double> time(numPoints);
+            std::vector<double> vinData(numPoints);
+            std::vector<double> iinData(numPoints);
+            std::vector<double> voutData(numPoints, vout);
+            std::vector<double> ioutData(numPoints, iLoad);
+
+            for (size_t i = 0; i < numPoints; ++i) {
+                const double t       = i * timeStep;
+                time[i]              = t;
+                const double absSin  = std::abs(std::sin(omegaLine * t));
+                const double vinInst = vinPeak * absSin;
+                vinData[i]           = vinInst;
+
+                // Triangular switching ripple superimposed on the rectified-sine envelope.
+                const double iEnv  = iLinePeak * absSin;
+                double duty = 1.0 - vinInst / vout;
+                if (duty < 0.0) duty = 0.0;
+                if (duty > 1.0) duty = 1.0;
+                const double rippleAmp = vinInst * duty / (2.0 * inductance * switchingFrequency);
+                const double phase     = std::fmod(t, switchingPeriod) / switchingPeriod;
+                const double tri       = (phase < 0.5) ? (-1.0 + 4.0 * phase)
+                                                       : ( 3.0 - 4.0 * phase);
+                iinData[i] = iEnv + rippleAmp * tri;
+            }
+
+            ConverterWaveforms wf;
+            wf.set_switching_frequency(switchingFrequency);
+            wf.set_operating_point_name(inputVoltagesNames[vinIdx] + " input (PFC)");
+
+            Waveform vinWf;  vinWf.set_data(vinData);   vinWf.set_time(time);
+            Waveform iinWf;  iinWf.set_data(iinData);   iinWf.set_time(time);
+            Waveform voutWf; voutWf.set_data(voutData); voutWf.set_time(time);
+            Waveform ioutWf; ioutWf.set_data(ioutData); ioutWf.set_time(time);
+
+            wf.set_input_voltage(vinWf);
+            wf.set_input_current(iinWf);
+            wf.get_mutable_output_voltages().push_back(voutWf);
+            wf.get_mutable_output_currents().push_back(ioutWf);
+
+            results.push_back(wf);
+        }
+
+        return results;
+    }
+
 } // namespace OpenMagnetics

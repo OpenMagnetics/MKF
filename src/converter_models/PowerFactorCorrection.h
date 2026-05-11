@@ -141,6 +141,34 @@ public:
     std::vector<OperatingPoint> simulate_and_extract_operating_points(double inductance,
                                                                        double dcResistance = 0.1);
 
+    /**
+     * @brief §5.1 converter-port stream — line-frequency view of the PFC's
+     *        external ports (NOT the magnetic-component winding port).
+     *
+     * Sweep of `collect_input_voltages(get_input_voltage(), ...)` × the analytical
+     * waveform synthesis already implemented by `simulate_and_extract_waveforms`.
+     * Returned per ConverterWaveforms:
+     *   - `input_voltage`  = rectified line voltage  Vpk·|sin(ω_line·t)|
+     *                        line-cycle MEAN  ≈ 2·√2·Vrms / π  ≈ 0.9·Vrms
+     *                        line-cycle RMS   ≈ Vrms
+     *   - `input_current`  = inductor / line current envelope (with switching ripple)
+     *                        line-cycle MEAN ≈ 2·√2·Iin_rms / π
+     *   - `output_voltages = [Vbus]`  flat DC bus  (we model the regulated bus
+     *                        as a constant — the PFC analytical model does not
+     *                        currently include the bulk-cap state variable, so
+     *                        2·f_line ripple on Vbus is NOT represented here).
+     *   - `output_currents = [Iload]`  flat DC load current = Pout / Vbus
+     *
+     * The PFC's "input" is fundamentally AC, so the §5.1 DC-stream gate
+     * (`ConverterPortChecks::check_dc_ports`) does NOT apply to the input port.
+     * Use `ConverterPortChecks::check_pfc_ports` instead, which validates
+     *   - input_voltage line-cycle MEAN ≈ 0.9·Vrms and RMS ≈ Vrms
+     *   - output_voltage / output_current MEAN against nameplate.
+     */
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
+        double inductance,
+        size_t numberOfCycles = 1);
+
 private:
     // MKF-only field — number of mains periods to synthesize per operating
     // point. Not part of the MAS schema (it's a simulation knob, not a

@@ -63,6 +63,13 @@ inline double ripple_over_mean(const std::vector<double>& v) {
     return (*mx - *mn) / std::fabs(m);
 }
 
+inline double rms(const std::vector<double>& v) {
+    if (v.empty()) return 0.0;
+    double s = 0.0;
+    for (double x : v) s += x * x;
+    return std::sqrt(s / static_cast<double>(v.size()));
+}
+
 inline void check_dc_ports(const OpenMagnetics::ConverterWaveforms& w,
                            const std::string&                        topoName,
                            size_t                                    opIdx,
@@ -106,6 +113,60 @@ inline void check_dc_ports(const OpenMagnetics::ConverterWaveforms& w,
              << " (nom " << ioutNom[i] << ")");
         CHECK(std::fabs(m - ioutNom[i]) / ioutNom[i] < ioutMeanTol);
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PFC-specific port-checks (line-frequency input → DC bus output).
+// The §5.1 DC-stream gate (`check_dc_ports`) does NOT apply to a PFC's input
+// port because that port is fundamentally AC (rectified line).
+//
+// Bounds:
+//   input_voltage   line-cycle MEAN ≈ 2·√2·Vrms / π ≈ 0.9·Vrms     (vinTol)
+//                   line-cycle RMS  ≈ Vrms                          (vinTol)
+//   output_voltage  MEAN            ≈ Vbus_nominal                  (voutMeanTol)
+//   output_current  MEAN            ≈ Iload_nominal                 (ioutMeanTol)
+//
+// (No bound on input_current here — PF/THD are validated separately by
+// PfcSimulationWaveforms.powerFactor / .currentThd in the smoke tests.)
+// ─────────────────────────────────────────────────────────────────────────────
+inline void check_pfc_ports(const OpenMagnetics::ConverterWaveforms& w,
+                            const std::string&                        topoName,
+                            size_t                                    opIdx,
+                            double                                    vinRms,
+                            double                                    voutNom,
+                            double                                    ioutNom,
+                            double                                    vinTol      = 0.05,
+                            double                                    voutMeanTol = kVoutMeanTol,
+                            double                                    ioutMeanTol = kIoutMeanTol) {
+    const auto& vinData = w.get_input_voltage().get_data();
+    REQUIRE(!vinData.empty());
+    const double vinMean   = mean(vinData);
+    const double vinRmsAct = rms(vinData);
+    const double expectedVinMean = 2.0 * std::sqrt(2.0) * vinRms / M_PI; // ≈ 0.9·Vrms
+    INFO(topoName << " OP " << opIdx
+         << " input_voltage (rectified): mean=" << vinMean
+         << " (expected " << expectedVinMean << "), rms=" << vinRmsAct
+         << " (expected " << vinRms << ")");
+    CHECK(std::fabs(vinMean   - expectedVinMean) / expectedVinMean < vinTol);
+    CHECK(std::fabs(vinRmsAct - vinRms)          / vinRms          < vinTol);
+
+    const auto& voutWfs = w.get_output_voltages();
+    REQUIRE(voutWfs.size() == 1);
+    const auto& voutData = voutWfs[0].get_data();
+    REQUIRE(!voutData.empty());
+    const double voutMean = mean(voutData);
+    INFO(topoName << " OP " << opIdx
+         << " output_voltage: mean=" << voutMean << " (nom " << voutNom << ")");
+    CHECK(std::fabs(voutMean - voutNom) / voutNom < voutMeanTol);
+
+    const auto& ioutWfs = w.get_output_currents();
+    REQUIRE(ioutWfs.size() == 1);
+    const auto& ioutData = ioutWfs[0].get_data();
+    REQUIRE(!ioutData.empty());
+    const double ioutMean = mean(ioutData);
+    INFO(topoName << " OP " << opIdx
+         << " output_current: mean=" << ioutMean << " (nom " << ioutNom << ")");
+    CHECK(std::fabs(ioutMean - ioutNom) / ioutNom < ioutMeanTol);
 }
 
 } // namespace ConverterPortChecks

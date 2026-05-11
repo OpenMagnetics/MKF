@@ -1213,6 +1213,66 @@ TEST_CASE("Test_Pfc_Output_Cap_Sizing") {
 - [ ] PF > 0.95 in reference design
 - [ ] PtP NRMSE ≤ 0.20
 
+#### 3.D.1 PFC topology variants — investigation (2026-05)
+
+User directive: "investigate online how to properly define [PFC] and if we
+are missing any variants". The following is the canonical PFC topology
+family per the standard references (Erickson & Maksimović, *Fundamentals
+of Power Electronics*, 3rd ed., Ch. 17–18; Texas Instruments app note
+SLUA754; Infineon AN_201702_PL52_010; ON Semi AND8016 / AND8123).
+
+| Variant | Phases | Bridge | Typical use | Implemented? |
+|---|---|---|---|---|
+| **Boost PFC (CCM/DCM/CrCM/TCM)** | 1 | full-bridge rectifier + boost | Universal-input PSUs ≤ ~1.5 kW | ✅ |
+| **Bridgeless / Dual-Boost PFC** | 1 | no input bridge — two boost legs share inductor (one per half-cycle) | Mid-power, eliminates 2 conduction-loss diodes | ❌ |
+| **Semi-bridgeless PFC** | 1 | bridgeless with EMI-bridge clamp | Cost-optimised bridgeless | ❌ |
+| **Totem-Pole PFC (CCM, GaN/SiC)** | 1 | bridgeless, two switches in totem-pole config | State-of-the-art (~98 % η), 1 kW–10 kW server PSUs | ❌ |
+| **Totem-Pole PFC (CrCM)** | 1 | as above, low-power critical-mode | ~300 W LED, telecom | ❌ |
+| **Interleaved Boost PFC** | 2 or 3 | shared input bridge, N parallel boost cells phase-shifted | Ripple cancellation, 1–3 kW PSUs (e.g. server, EV) | ❌ |
+| **Vienna Rectifier** | 3 | 3-phase, 3-level | Telecom rectifiers, EV chargers ≥ 5 kW | ❌ |
+| **Buck PFC** | 1 | input bridge + buck cell | Low-power LED drivers (Vbus < Vin_pk) | ❌ |
+| **Buck-Boost PFC / SEPIC PFC / Cuk PFC** | 1 | various | Very low-power universal-input LED, isolated step-down/up | ❌ |
+
+Currently `MAS::PowerFactorCorrection` exposes only the boost topology
+(no `topologyVariant` enum field, no `numberOfPhases` field, no
+`bridgeType` field). To add the variants above, the schema needs:
+
+- `topologyVariant` (enum: `boost`, `bridgeless`, `semiBridgeless`,
+  `totemPole`, `interleavedBoost`, `vienna`, `buck`, `buckBoost`,
+  `sepic`, `cuk`).
+- `numberOfPhases` (integer, default 1) for `interleavedBoost` (2–3) /
+  `vienna` (3).
+- Optionally a `wideBandgapSwitch` boolean for totem-pole CCM
+  (only feasible with GaN/SiC due to MOSFET body-diode reverse-recovery).
+
+This is a substantial extension. Until done, the existing
+`MAS::PowerFactorCorrection` schema implicitly means "boost PFC" and the
+MKF model only generates the boost variant. Per
+`CONVERTER_MODELS_GOLDEN_GUIDE.md` §16.2 ("schema first, regen
+MAS.hpp, then use the inherited accessor") this should be a separate
+schema-change PR before any code branches are added.
+
+#### 3.D.2 §5.1 converter-port stream — DONE (2026-05)
+
+PFC now exposes `simulate_and_extract_topology_waveforms(double L,
+size_t numberOfCycles=1)` returning a `ConverterWaveforms` per input-voltage
+sweep entry (nominal/min/max). Because the PFC input port is fundamentally
+AC (rectified line), the standard `ConverterPortChecks::check_dc_ports`
+helper does NOT apply — a sibling `check_pfc_ports` validates:
+
+- `input_voltage`  line-cycle MEAN ≈ 2·√2·Vrms / π (= 0.9·Vrms), RMS ≈ Vrms
+- `output_voltage` MEAN            ≈ Vbus_nominal (modeled flat — bulk-cap
+                                     state variable not represented yet)
+- `output_current` MEAN            ≈ Pout / Vbus
+
+Test: `tests/TestTopologyPowerFactorCorrection.cpp` →
+`Test_Pfc_ConverterPortWaveforms` tagged
+`[converter-port-waveforms][pfc-topology]` (16th entry in the §5.1 gate).
+
+A real bulk-cap state-variable model (so output_voltage shows the
+twice-line-frequency ripple per `Cbus`) is a future enhancement, listed
+under §3.D Phase 4 SPICE polish.
+
 ---
 
 ### 3.E Boost / Buck — Quality Baseline (parallel work)
