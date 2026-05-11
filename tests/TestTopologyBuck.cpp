@@ -340,23 +340,35 @@ namespace {
         INFO("Converter input current min: " << i_min << " A");
         INFO("Converter input current avg: " << i_avg << " A");
 
-        // §5.0: simulate_and_extract_topology_waveforms returns the
-        // converter-port stream — set_input_voltage is the DC source
-        // voltage (Vin), not the switch-node voltage. For Buck:
-        //   Vin (input)  = DC ≈ 24 V (with output cap and 1 V scale ripple)
-        //   Iin (input)  = inductor current = average ≈ Iout in CCM
+        // §5.0 + Vin_sense fix: simulate_and_extract_topology_waveforms
+        // returns the converter-port stream — set_input_voltage is the DC
+        // source voltage (Vin), not the switch-node voltage.  set_input_
+        // current is the *source-side* current drawn from Vin (NOT the
+        // inductor current — Buck's inductor is on the OUTPUT side).
+        // For Buck:
+        //   Vin (input)  = DC ≈ 24 V (small output-cap-network ripple)
+        //   Iin (input)  = pulsed: ≈ Iout (~2 A) during ON window,
+        //                  0 during OFF; cycle avg ≈ Iout·D/η
         // Inductor (winding) voltage is in excitations_per_winding and is
         // tested by Test_VoltSecondBalance_Buck and elsewhere.
         const double Vin_expected = 24.0;
         CHECK(v_max < Vin_expected * 1.1);   // ≤ 26.4 V — Vin DC
         CHECK(v_min > Vin_expected * 0.9);   // ≥ 21.6 V — DC, no bipolar swing
 
-        // Average inductor current should be close to output current
-        CHECK(i_avg > 1.5);  // Should be around 2A
-        CHECK(i_avg < 2.5);
+        // Source-side average input current.  Iout=2 A, D≈5/24=0.208,
+        // η=0.95 ⇒ Iin_avg ≈ 0.44 A.  ±0.25 A tolerance covers ripple
+        // and conduction-loss-induced D inflation.
+        const double D_nom = 5.0 / 24.0;
+        const double Iin_avg_expected = 2.0 * D_nom / 0.95;  // ≈ 0.44 A
+        CHECK(i_avg > Iin_avg_expected * 0.5);
+        CHECK(i_avg < Iin_avg_expected * 2.0);
 
-        // In CCM, inductor current should not go to zero
-        CHECK(i_min > 0.0);
+        // Pulsed waveform: peak ≈ inductor peak current (during ON),
+        // min ≈ snubber leakage Vin/Rsnub during OFF (NOT zero — the
+        // RC snubber across the switch carries ~Vin/Rsnub even when
+        // the switch is open).
+        CHECK(i_max > 1.5);    // peak current during ON window
+        CHECK(i_min < 0.5);    // snubber-leakage floor during OFF
 
         INFO("Buck ngspice simulation test passed");
 
@@ -370,39 +382,47 @@ namespace {
             CHECK(std::abs(v_in_avg - Vin_expected) < 0.1 * Vin_expected);
         }
 
-        SECTION("Waveform shape: triangular inductor current (single peak per period)") {
-            auto peak_it = std::max_element(currentData.begin(), currentData.end());
-            int peak_idx = (int)std::distance(currentData.begin(), peak_it);
-            int N = (int)currentData.size();
-
-            double rising_sum = 0.0;
-            for (int k = 1; k <= peak_idx; ++k)
-                rising_sum += currentData[k] - currentData[k-1];
-
-            double falling_sum = 0.0;
-            for (int k = peak_idx + 1; k < N; ++k)
-                falling_sum += currentData[k] - currentData[k-1];
-
-            INFO("Rising sum: " << rising_sum << " A, falling sum: " << falling_sum << " A");
-            CHECK(rising_sum > 0.0);
-            CHECK(falling_sum < 0.0);
+        SECTION("Waveform shape: pulsed source-side input current") {
+            // Source-side Buck input current is rectangular: high (≈ iL)
+            // during ON, ≈ snubber-leakage floor (Vin/Rsnub) during OFF.
+            // Verify pulse structure by checking that a meaningful
+            // fraction of samples sits in the OFF (low) band and another
+            // in the ON (high) band.
+            const double thresh_low  = i_min + 0.15 * (i_max - i_min);
+            const double thresh_high = i_min + 0.50 * (i_max - i_min);
+            int n_low = 0, n_high = 0;
+            for (double v : currentData) {
+                if (v < thresh_low)  ++n_low;
+                if (v > thresh_high) ++n_high;
+            }
+            const int N = (int)currentData.size();
+            INFO("samples in OFF band (<15% of swing): " << n_low << "/" << N);
+            INFO("samples in ON  band (>50% of swing): " << n_high << "/" << N);
+            // Both windows must be substantial (D≈0.21, so OFF≈0.79 of
+            // the period); allow wide margin for transitions / settling.
+            CHECK(n_low  > N / 5);   // OFF window present
+            CHECK(n_high > N / 20);  // ON  window present
         }
 
-        SECTION("Waveform shape: simulation RMS matches triangular-wave formula") {
-            // For triangular wave: RMS² = Iavg² + ΔI²/12
-            double Vin = 24.0, Vout = 5.0, fs = 100e3;
-            double D = Vout / Vin;  // ideal duty cycle
-            double delta_I = (Vin - Vout) * D / (fs * inductance);
-            double i_avg_sim = i_avg;
-            double analytical_rms = std::sqrt(i_avg_sim * i_avg_sim + delta_I * delta_I / 12.0);
+        SECTION("Waveform shape: source RMS matches pulsed-wave formula") {
+            // Pulsed input: ON window carries ~triangular i_L, OFF window
+            // carries 0.  RMS² ≈ D · (Iavg_on² + ΔI²/12), where Iavg_on
+            // ≈ Iout (the inductor average flowing during ON).
+            const double Vin = 24.0, Vout = 5.0, fs = 100e3;
+            const double D = Vout / Vin;
+            const double delta_I = (Vin - Vout) * D / (fs * inductance);
+            const double Iavg_on = 2.0;   // = Iout
+            const double analytical_rms = std::sqrt(D * (Iavg_on * Iavg_on + delta_I * delta_I / 12.0));
 
             double sim_rms = 0.0;
             for (double v : currentData) sim_rms += v * v;
             sim_rms = std::sqrt(sim_rms / currentData.size());
 
-            double rms_error = std::abs(sim_rms - analytical_rms) / analytical_rms;
-            INFO("Triangular RMS: " << analytical_rms << " A, sim RMS: " << sim_rms << " A, error: " << (rms_error * 100) << "%");
-            CHECK(rms_error < 0.15);
+            const double rms_error = std::abs(sim_rms - analytical_rms) / analytical_rms;
+            INFO("Pulsed RMS (analytical): " << analytical_rms
+                 << " A, sim RMS: " << sim_rms
+                 << " A, error: " << (rms_error * 100) << "%");
+            CHECK(rms_error < 0.20);
         }
     }
     TEST_CASE("Test_Buck_PtP_AnalyticalVsNgspice", "[converter-model][buck-topology][ngspice-simulation][ptpcomparison]") {

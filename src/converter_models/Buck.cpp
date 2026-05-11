@@ -306,9 +306,19 @@ namespace OpenMagnetics {
         circuit << "* Vin=" << inputVoltage << "V, Vout=" << outputVoltage << "V, f=" << (switchingFrequency/1e3) << "kHz, D=" << (dutyCycle*100) << " pct\n";
         circuit << "* L=" << (inductance*1e6) << "uH, Iout=" << outputCurrent << "A\n\n";
         
-        // DC Input
+        // DC Input.  The input source itself does NOT measure source-side
+        // current correctly via i(Vin) once we want it under our control,
+        // so we insert a 0V sense source between the source and the rest
+        // of the circuit.  i(Vin_sense) is positive when current flows
+        // from the source into the converter (load convention), which is
+        // exactly what `wf.set_input_current` expects below.
+        // Buck-specific: the inductor is on the OUTPUT side (after the
+        // switch), so the inductor sense (vl_sense#branch) measures the
+        // OUTPUT inductor current, NOT the source-side input current.
+        // Source-side current only flows during the switch ON window.
         circuit << "* DC Input\n";
-        circuit << "Vin vin_dc 0 " << inputVoltage << "\n\n";
+        circuit << "Vin vin_src 0 " << inputVoltage << "\n";
+        circuit << "Vin_sense vin_src vin_dc 0\n\n";
         
         // PWM High-side Switch (ideal). PULSE timing emitted in scientific
         // notation so sub-µs values aren't silently rounded by std::fixed
@@ -366,7 +376,7 @@ namespace OpenMagnetics {
         //   - Winding-port: v(vpri_diff) i(Vl_sense)
         //   - Converter-port: v(vin_dc) v(sw) v(vout) i(Vl_sense)
         circuit << "* Output signals\n";
-        circuit << ".save v(vpri_diff) v(vin_dc) v(sw) v(vout) i(Vl_sense)\n\n";
+        circuit << ".save v(vpri_diff) v(vin_dc) v(sw) v(vout) i(Vl_sense) i(Vin_sense)\n\n";
         
         // Solver options for convergence in switching circuits.
         // METHOD=GEAR + larger TRTOL handles the hard-switching event at
@@ -515,7 +525,7 @@ namespace OpenMagnetics {
             // input we report the average inductor current, which equals
             // Iout for an ideal Buck), Vout / Iout (DC by design).
             wf.set_input_voltage(getWaveform("vin_dc"));
-            wf.set_input_current(getWaveform("vl_sense#branch"));
+            wf.set_input_current(getWaveform("vin_sense#branch"));
 
             wf.get_mutable_output_voltages().push_back(getWaveform("vout"));
             // Reconstruct Iout(t) = Vout(t) / Rload (DC by design).

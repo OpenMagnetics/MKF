@@ -1155,10 +1155,13 @@ TEST_CASE("Buck converter simulation", "[ngspice-runner][buck-topology][smoke-te
     CHECK(v_min > 23.5);   // DC source: ripple-free, min ≈ max
     CHECK(v_min < 24.5);
 
-    // input_current is the inductor branch current. Average ≈ Iout = 2A;
-    // allow margin for startup transient inside the captured window.
-    CHECK(i_avg > 1.0);
-    CHECK(i_avg < 2.5);
+    // input_current is the *source-side* current drawn from Vin (post
+    // Buck.cpp Vin_sense fix).  Buck input current is a pulsed waveform:
+    // ≈ inductor current (~2 A) during ON window, 0 during OFF.  Cycle
+    // average ≈ Iout · D = 2 · (5/24) ≈ 0.42 A under η=0.95 / Vd=0.5
+    // (slightly higher because D pre-compensates for losses).
+    CHECK(i_avg > 0.20);
+    CHECK(i_avg < 0.80);
 
     INFO("Buck converter simulation passed");
 }
