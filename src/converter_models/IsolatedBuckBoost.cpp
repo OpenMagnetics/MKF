@@ -483,8 +483,8 @@ namespace OpenMagnetics {
 
         // Save signals
         circuit << "* Output signals\n";
-        circuit << ".save v(pri_in) i(Vpri_sense) i(Vimag_sense) v(vpri_out) i(Vpri_out_sense)";
-        circuit << ".save v(pri_in) i(Vpri_sense) i(Lpri) v(vpri_out) i(Vpri_out_sense)";
+        circuit << ".save v(vin_dc) i(Vin) v(pri_in) i(Vpri_sense) i(Vimag_sense) i(Lpri)"
+                << " v(vpri_out) i(Vpri_out_sense)";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << " v(sec" << secIdx << "_in) i(Vsec_sense" << secIdx << ") v(vout" << secIdx << ")";
         }
@@ -549,7 +549,7 @@ namespace OpenMagnetics {
                 config.frequency = switchingFrequency;
                 config.extractOnePeriod = true;
                 config.numberOfPeriods = get_num_periods_to_extract();
-                config.keepTempFiles = true;  // DEBUG: Keep temp files for analysis
+                config.keepTempFiles = false;
 
                 auto simResult = runner.run_simulation(netlist, config);
 
@@ -663,14 +663,45 @@ namespace OpenMagnetics {
             }
             wf.set_operating_point_name(name);
             
-            wf.set_input_voltage(getWaveform("pri_in"));
-            wf.set_input_current(getWaveform("vimag_sense#branch"));
-
-            wf.set_input_current(getWaveform("lpri#branch"));
+            // §5.1 converter-port stream — vin_dc / -i(Vin) (DC source
+            // rail and bus current). Earlier code reported v(pri_in)
+            // (post-switch node, pulses to 0 during OFF) and the
+            // magnetizing-current probe — those are winding-port
+            // quantities and belong to simulate_and_extract_operating_points.
+            // ngspice convention: i(Vin) is positive into Vin's + node,
+            // so converter draw is -i(Vin).
+            wf.set_input_voltage(getWaveform("vin_dc"));
+            Waveform iInWf = getWaveform("vin#branch");
+            auto& iInData = iInWf.get_mutable_data();
+            for (auto& v : iInData) v = -v;
+            wf.set_input_current(iInWf);
             
+            // Output port: index 0 = primary buck-boost output (vpri_out,
+            // ~Vin·D/(1-D)), indices 1..N = transformer secondaries
+            // (vout0..vout(N-1)). Currents reconstructed from Vout/Rload
+            // — the ammeters sit in the cap-return path so their branch
+            // current averages to zero in steady state. Mirrors §5.1
+            // template across all isolated topologies.
+            {
+                const double Vo_pri = opPoint.get_output_voltages()[0];
+                const double Io_pri = opPoint.get_output_currents()[0];
+                const double Rload_pri = std::max(Vo_pri / Io_pri, 1e-3);
+                wf.get_mutable_output_voltages().push_back(getWaveform("vpri_out"));
+                Waveform ioPriWf = getWaveform("vpri_out");
+                auto& ioPriData = ioPriWf.get_mutable_data();
+                for (auto& v : ioPriData) v = v / Rload_pri;
+                wf.get_mutable_output_currents().push_back(ioPriWf);
+            }
             for (size_t secIdx = 0; secIdx < turnsRatios.size(); ++secIdx) {
-                wf.get_mutable_output_voltages().push_back(getWaveform("vout" + std::to_string(secIdx)));
-                wf.get_mutable_output_currents().push_back(getWaveform("vsec_sense" + std::to_string(secIdx) + "#branch"));
+                const double Vo_sec = opPoint.get_output_voltages()[secIdx + 1];
+                const double Io_sec = opPoint.get_output_currents()[secIdx + 1];
+                const double Rload_sec = std::max(Vo_sec / Io_sec, 1e-3);
+                std::string si = std::to_string(secIdx);
+                wf.get_mutable_output_voltages().push_back(getWaveform("vout" + si));
+                Waveform ioSecWf = getWaveform("vout" + si);
+                auto& ioSecData = ioSecWf.get_mutable_data();
+                for (auto& v : ioSecData) v = v / Rload_sec;
+                wf.get_mutable_output_currents().push_back(ioSecWf);
             }
             
             results.push_back(wf);
