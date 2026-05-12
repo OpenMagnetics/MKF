@@ -149,7 +149,7 @@ TEST_CASE("LLC reference design PtP — Telecom 120 W server brick "
           "[converter-model][llc-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"Telecom-120W", 400.0, 370.0, 410.0, 12.0, 10.0,
                     100e3, 80e3, 200e3,
-                    30.0, 2.0, 0.30, 0.35};
+                    30.0, 2.0, 0.30, 0.30};
     run_ptp_gates(s);
 }
 
@@ -158,7 +158,7 @@ TEST_CASE("LLC reference design PtP — ATX 240 W AC-DC rail "
           "[converter-model][llc-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"ATX-240W", 400.0, 370.0, 410.0, 24.0, 10.0,
                     100e3, 80e3, 200e3,
-                    30.0, 2.0, 0.30, 0.35};
+                    30.0, 2.0, 0.30, 0.30};
     run_ptp_gates(s);
 }
 
@@ -167,6 +167,6 @@ TEST_CASE("LLC reference design PtP — EV onboard 1 kW charger "
           "[converter-model][llc-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"EV-1kW", 400.0, 370.0, 410.0, 48.0, 20.0,
                     100e3, 80e3, 200e3,
-                    30.0, 2.0, 0.30, 0.35};
+                    30.0, 2.0, 0.30, 0.30};
     run_ptp_gates(s);
 }

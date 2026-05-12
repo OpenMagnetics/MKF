@@ -201,7 +201,7 @@ TEST_CASE("Boost reference design PtP — TPS61089EVM-742 (18 W)",
         /*tol_walltime*/ 30.0,
         /*tol_rload_pct*/ 5.0,
         /*tol_loss_max*/ 0.50,
-        /*tol_nrmse*/    0.15
+        /*tol_nrmse*/    0.06
     };
     run_ptp_gates(s);
 }
@@ -218,7 +218,7 @@ TEST_CASE("Boost reference design PtP — TPS61178EVM-792 (32 W)",
         /*tol_walltime*/ 30.0,
         /*tol_rload_pct*/ 5.0,
         /*tol_loss_max*/ 0.50,
-        /*tol_nrmse*/    0.15
+        /*tol_nrmse*/    0.06
     };
     run_ptp_gates(s);
 }
@@ -235,7 +235,7 @@ TEST_CASE("Boost reference design PtP — LM5122EVM-1PH (108 W)",
         /*tol_walltime*/ 30.0,
         /*tol_rload_pct*/ 5.0,
         /*tol_loss_max*/ 0.50,
-        /*tol_nrmse*/    0.15
+        /*tol_nrmse*/    0.06
     };
     run_ptp_gates(s);
 }

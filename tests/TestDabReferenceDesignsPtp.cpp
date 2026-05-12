@@ -167,7 +167,7 @@ TEST_CASE("DAB reference design PtP — TI UCC21750-class 10 kW EV charger "
           "[converter-model][dab-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"TI-10kW", 800.0, 500.0, 20.0, 100e3,
                     23.0,
-                    30.0, 2.0, 0.20, 0.60, 0.25};
+                    30.0, 2.0, 0.20, 0.60, 0.12};
     run_ptp_gates(s);
 }
 
@@ -176,7 +176,7 @@ TEST_CASE("DAB reference design PtP — ABB-class 5 kW battery interface "
           "[converter-model][dab-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"ABB-5kW", 800.0, 400.0, 12.5, 100e3,
                     30.0,
-                    30.0, 2.0, 0.20, 0.60, 0.25};
+                    30.0, 2.0, 0.20, 0.60, 0.12};
     run_ptp_gates(s);
 }
 
@@ -185,6 +185,6 @@ TEST_CASE("DAB reference design PtP — EV auxiliary 2 kW DC-DC "
           "[converter-model][dab-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"EV-Aux-2kW", 400.0, 48.0, 40.0, 80e3,
                     30.0,
-                    30.0, 2.0, 0.20, 0.60, 0.25};
+                    30.0, 2.0, 0.20, 0.60, 0.12};
     run_ptp_gates(s);
 }

@@ -184,7 +184,7 @@ TEST_CASE("AHB reference design PtP — TI SLUP223-class 100 W telecom "
           "(100V→5V/20A 200 kHz)",
           "[converter-model][ahb-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"SLUP223-100W", 100.0, 5.0, 20.0, 200e3, 0.45,
-                    30.0, 2.0, 0.05, 0.60, 1.50};
+                    30.0, 2.0, 0.05, 0.60, 0.75};
     run_ptp_gates(s);
 }
 
@@ -192,7 +192,7 @@ TEST_CASE("AHB reference design PtP — ON Semi AN-4153-class 200 W brick "
           "(100V→12V/16A 100 kHz)",
           "[converter-model][ahb-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"AN4153-200W", 100.0, 12.0, 16.0, 100e3, 0.45,
-                    30.0, 2.0, 0.05, 0.60, 1.50};
+                    30.0, 2.0, 0.05, 0.60, 0.75};
     run_ptp_gates(s);
 }
 
@@ -200,6 +200,6 @@ TEST_CASE("AHB reference design PtP — ST AN2852-class 90 W AC-DC "
           "(90V→19V/4.7A 100 kHz)",
           "[converter-model][ahb-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"AN2852-90W", 90.0, 19.0, 4.7, 100e3, 0.45,
-                    30.0, 2.0, 0.05, 0.60, 1.50};
+                    30.0, 2.0, 0.05, 0.60, 0.75};
     run_ptp_gates(s);
 }

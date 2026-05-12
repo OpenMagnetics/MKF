@@ -227,7 +227,7 @@ TEST_CASE("Buck reference design PtP — TPS54202EVM-716 (10 W)",
         /*tol_walltime*/ 30.0,
         /*tol_rload_pct*/ 5.0,
         /*tol_loss_max*/ 0.50,
-        /*tol_nrmse*/    0.15
+        /*tol_nrmse*/    0.06
     };
     run_ptp_gates(s);
 }
@@ -244,7 +244,7 @@ TEST_CASE("Buck reference design PtP — LMR33630ADDAEVM (15 W)",
         /*tol_walltime*/ 30.0,
         /*tol_rload_pct*/ 5.0,
         /*tol_loss_max*/ 0.50,
-        /*tol_nrmse*/    0.15
+        /*tol_nrmse*/    0.06
     };
     run_ptp_gates(s);
 }
@@ -261,7 +261,7 @@ TEST_CASE("Buck reference design PtP — LM5146-Q1-EVM12V (96 W)",
         /*tol_walltime*/ 30.0,
         /*tol_rload_pct*/ 5.0,
         /*tol_loss_max*/ 0.50,
-        /*tol_nrmse*/    0.15
+        /*tol_nrmse*/    0.06
     };
     run_ptp_gates(s);
 }

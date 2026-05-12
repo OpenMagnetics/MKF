@@ -162,7 +162,7 @@ TEST_CASE("CLLC reference design PtP — Telecom 500 W brick at fr "
           "[converter-model][cllc-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"Telecom-500W", 400.0, 360.0, 420.0, 48.0, 10.0,
                     200e3, 100e3, 400e3,
-                    60.0, 2.0, 0.20, 0.60, 0.99};
+                    60.0, 2.0, 0.20, 0.60, 0.25};
     run_ptp_gates(s);
 }
 
@@ -171,7 +171,7 @@ TEST_CASE("CLLC reference design PtP — Telecom 250 W brick above fr "
           "[converter-model][cllc-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"Telecom-250W", 400.0, 360.0, 420.0, 24.0, 10.4,
                     250e3, 100e3, 400e3,
-                    60.0, 2.0, 0.20, 0.60, 0.99};
+                    60.0, 2.0, 0.20, 0.60, 0.25};
     run_ptp_gates(s);
 }
 
@@ -180,6 +180,6 @@ TEST_CASE("CLLC reference design PtP — Infineon AN-2024-06 EV charger "
           "[converter-model][cllc-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"Infineon-11kW", 750.0, 700.0, 800.0, 600.0, 18.33,
                     73e3, 40e3, 250e3,
-                    60.0, 2.0, 0.20, 0.60, 0.99};
+                    60.0, 2.0, 0.20, 0.60, 0.25};
     run_ptp_gates(s);
 }
