@@ -193,8 +193,10 @@ void run_ptp_gates(const RefDesignSpec& s) {
 //   #1 Erickson-Maksimović 3rd ed. §2.4 (worked example)
 //   #2 Simon Bramble LT3757-based 5 W 300 kHz Cuk
 //   #3 Mid-Fs 200 kHz step-up synthetic (12 V → 24 V, 1 A)
-// (LM2611 1.4 MHz fixture deferred — needs tighter SPICE step-time tuning,
-//  per CUK_PLAN.md §6.2.)
+//   #4 TI LM2611 1.4 MHz inverting Cuk (SNOS965F datasheet, Vin 2.4-12 V,
+//      Vo = -5 V, Iout up to 250 mA). The high switching frequency stresses
+//      the SPICE step-time selection (samplesPerPeriod is bumped to 500
+//      automatically when fsw ≥ 1 MHz, per generate_ngspice_circuit).
 // ─────────────────────────────────────────────────────────────────────────
 
 TEST_CASE("Cuk reference design PtP — Erickson §2.4 (25 W, 100 kHz)",
@@ -244,6 +246,33 @@ TEST_CASE("Cuk reference design PtP — Synthetic step-up (24 W, 200 kHz)",
         /*tol_rload_pct*/ 0.01,
         /*tol_loss_max*/  0.62,
         /*tol_nrmse*/     0.05
+    };
+    run_ptp_gates(s);
+}
+
+TEST_CASE("Cuk reference design PtP — TI LM2611 (1.25 W, 1.4 MHz, SNOS965F)",
+          "[converter-model][cuk-topology][refdesign][ptp][slow]") {
+    // TI LM2611 reference design (datasheet SNOS965F, Fig. 1):
+    //   Vin = 2.4-12 V, Vo = -5 V, Iout up to 250 mA, fsw ≈ 1.4 MHz
+    //   Datasheet typical inductor: 10 µH (chosen here as L1)
+    // We pick the Vin = 5 V midpoint and Iout = 250 mA (1.25 W).
+    //
+    // The 1.4 MHz fsw triggers the high-frequency step-time path in
+    // generate_ngspice_circuit (samplesPerPeriod = 500 instead of cfg
+    // default), so wall-time and NRMSE gates are looser than the lower-Fs
+    // designs. The diode-loss share is also larger relative to Pout because
+    // the diode turns on/off 14× more often per second.
+    RefDesignSpec s{
+        /*name*/          "TI LM2611 (1.4 MHz)",
+        /*Vin*/           5.0,
+        /*Vout_mag*/      5.0,
+        /*Iout*/          0.25,
+        /*Fs*/            1.4e6,
+        /*L1*/            10e-6,
+        /*tol_walltime*/  10.0,   // 1.4 MHz × 55 periods × 500 samples → larger sim
+        /*tol_rload_pct*/ 0.01,
+        /*tol_loss_max*/  0.75,   // higher Vd·fsw losses at MHz switching
+        /*tol_nrmse*/     0.10    // stiffer LC tank at 1.4 MHz, allow looser fit
     };
     run_ptp_gates(s);
 }
