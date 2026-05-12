@@ -162,6 +162,13 @@ namespace OpenMagnetics {
         lastSizedL2 = inductanceL2;
         lastSizedC1 = couplingCap;
 
+        // Output cap Co sized from ΔIL2 / (8·fsw·ΔVo) (LC filter rule).
+        double deltaVo_target = std::max(coRipplePct * outputVoltageMag, 1e-3);
+        double outputCapacitance = deltaIL2 / (8.0 * switchingFrequency * deltaVo_target);
+        outputCapacitance = std::max(outputCapacitance, 1e-6);
+        lastSizedCo = outputCapacitance;
+        double deltaVo_actual = deltaIL2 / (8.0 * switchingFrequency * outputCapacitance);
+
         // Primary winding excitation (L1)
         {
             Waveform currentWaveform = Inputs::create_waveform(
@@ -173,6 +180,49 @@ namespace OpenMagnetics {
 
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+        }
+
+        // ---- Stash extra-component waveforms for get_extra_components_inputs ----
+        // L2 voltage: ON value = -VC1+|Vo| (negative), OFF value = +|Vo|.
+        // create_waveform(RECTANGULAR, pp, f, dc, off) emits a waveform that
+        // is "high" during dc·T and "low" during (1-dc)·T; in Cuk L2 is high
+        // (positive) during the OFF sub-interval, so pass dutyCycle=(1-D).
+        // peakToPeak = max-min = |Vo| - (-VC1+|Vo|) = VC1.  Mean = 0 by V·s
+        // balance, so offset=0.
+        {
+            Waveform vL2 = Inputs::create_waveform(
+                WaveformLabel::RECTANGULAR, VC1, switchingFrequency, 1.0 - dutyCycle, 0.0, 0);
+            Waveform iL2 = Inputs::create_waveform(
+                WaveformLabel::TRIANGULAR, deltaIL2, switchingFrequency, 1.0 - dutyCycle, IL2avg, 0);
+            extraL2VoltageWaveforms.push_back(vL2);
+            extraL2CurrentWaveforms.push_back(iL2);
+        }
+
+        // C1 voltage: triangular around VC1 with peak-to-peak ΔVC1.
+        // C1 current: rectangular between -IL2avg (during ON, D·T) and
+        // +IL1avg (during OFF, (1-D)·T).  pp = IL1avg + IL2avg = Iout/(1-D).
+        {
+            double deltaVC1_actual = (couplingCap > 0)
+                ? (outputCurrent * dutyCycle) / (couplingCap * switchingFrequency)
+                : 0.0;
+            Waveform vC1 = Inputs::create_waveform(
+                WaveformLabel::TRIANGULAR, deltaVC1_actual, switchingFrequency, dutyCycle, VC1, 0);
+            double iC1pp = IL1avg + IL2avg;
+            Waveform iC1 = Inputs::create_waveform(
+                WaveformLabel::RECTANGULAR, iC1pp, switchingFrequency, 1.0 - dutyCycle, 0.0, 0);
+            extraC1VoltageWaveforms.push_back(vC1);
+            extraC1CurrentWaveforms.push_back(iC1);
+        }
+
+        // Co voltage: tiny triangular ripple ΔVo around the signed mean -|Vo|.
+        // Co current: AC component of iL2 (its triangular ripple) around 0 mean.
+        {
+            Waveform vCo = Inputs::create_waveform(
+                WaveformLabel::TRIANGULAR, deltaVo_actual, switchingFrequency, 1.0 - dutyCycle, -outputVoltageMag, 0);
+            Waveform iCo = Inputs::create_waveform(
+                WaveformLabel::TRIANGULAR, deltaIL2, switchingFrequency, 1.0 - dutyCycle, 0.0, 0);
+            extraCoVoltageWaveforms.push_back(vCo);
+            extraCoCurrentWaveforms.push_back(iCo);
         }
 
         OperatingConditions conditions;
@@ -261,6 +311,15 @@ namespace OpenMagnetics {
 
     std::vector<OperatingPoint> Cuk::process_operating_points(const std::vector<double>& turnsRatios, double magnetizingInductance) {
         (void) turnsRatios;  // Cuk V1 has no transformer; turns ratios are unused.
+
+        // Reset extra-component waveform stash so a re-run does not accumulate.
+        extraL2VoltageWaveforms.clear();
+        extraL2CurrentWaveforms.clear();
+        extraC1VoltageWaveforms.clear();
+        extraC1CurrentWaveforms.clear();
+        extraCoVoltageWaveforms.clear();
+        extraCoCurrentWaveforms.clear();
+
         std::vector<OperatingPoint> operatingPoints;
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
@@ -299,6 +358,14 @@ namespace OpenMagnetics {
 
     Inputs AdvancedCuk::process() {
         Cuk::run_checks(_assertErrors);
+
+        // Reset extra-component waveform stash so a re-run does not accumulate.
+        extraL2VoltageWaveforms.clear();
+        extraL2CurrentWaveforms.clear();
+        extraC1VoltageWaveforms.clear();
+        extraC1CurrentWaveforms.clear();
+        extraCoVoltageWaveforms.clear();
+        extraCoCurrentWaveforms.clear();
 
         Inputs inputs;
         double maximumNeededInductance = get_desired_inductance();
@@ -653,6 +720,186 @@ namespace OpenMagnetics {
 
         set_num_periods_to_extract(originalNumPeriodsToExtract);
         return results;
+    }
+
+    // ============================================================
+    //   get_extra_components_inputs (CUK_PLAN.md §9 / §13)
+    // ============================================================
+    //
+    // V1 ancillaries: L2 inductor, C1 coupling cap, Co output cap.
+    //
+    // Mirrors PhaseShiftedHalfBridge / Llc patterns:
+    //   * Inductor → MAS::Inputs (DesignRequirements.magnetizing_inductance
+    //     + per-OP per-winding excitation built from the stashed waveforms).
+    //   * Capacitor → CAS::Inputs (DesignRequirements.capacitance,
+    //     rated_voltage, role; one TwoTerminalOperatingPoint per stored
+    //     waveform pair).
+    //
+    // Both modes (IDEAL and REAL) currently emit the same nominal sizing —
+    // V1 does not absorb leakage / ESR into the main magnetic, so REAL is
+    // identical to IDEAL.  When V2 (coupled-inductor) lands, REAL will
+    // adjust the ancillary L2 down by the leakage already provided by the
+    // primary 2-winding magnetic.
+    std::vector<std::variant<Inputs, CAS::Inputs>> Cuk::get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic)
+    {
+        if (mode == ExtraComponentsMode::REAL && !magnetic.has_value()) {
+            throw std::invalid_argument("Cuk::get_extra_components_inputs: mode REAL requires a designed magnetic");
+        }
+        if (lastSizedL2 <= 0.0 || lastSizedC1 <= 0.0 || lastSizedCo <= 0.0
+            || extraL2VoltageWaveforms.empty()
+            || extraC1VoltageWaveforms.empty()
+            || extraCoVoltageWaveforms.empty())
+        {
+            throw std::runtime_error("Cuk::get_extra_components_inputs: call process_operating_points() first");
+        }
+
+        const size_t nOps = extraL2VoltageWaveforms.size();
+        if (extraL2CurrentWaveforms.size() != nOps
+            || extraC1VoltageWaveforms.size() != nOps
+            || extraC1CurrentWaveforms.size() != nOps
+            || extraCoVoltageWaveforms.size() != nOps
+            || extraCoCurrentWaveforms.size() != nOps)
+        {
+            throw std::runtime_error("Cuk::get_extra_components_inputs: extra-waveform vectors are out of sync");
+        }
+
+        // Use the first OP's switching frequency as the representative
+        // frequency for ancillary characterisation (same convention as
+        // PhaseShiftedHalfBridge::get_extra_components_inputs).
+        const double fsw = get_operating_points()[0].get_switching_frequency();
+
+        std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+        // ----------------------------- L2 inductor (Inputs) ---------------
+        {
+            Inputs masInputs;
+            DesignRequirements dr;
+
+            DimensionWithTolerance l2Inductance;
+            l2Inductance.set_nominal(lastSizedL2);
+            dr.set_magnetizing_inductance(l2Inductance);
+            dr.set_name("outputInductor");
+            dr.set_topology(Topologies::CUK_CONVERTER);
+            dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+            dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+            masInputs.set_design_requirements(dr);
+
+            std::vector<OperatingPoint> masOps;
+            for (size_t i = 0; i < nOps; ++i) {
+                OperatingPoint op;
+                auto excitation = complete_excitation(
+                    extraL2CurrentWaveforms[i], extraL2VoltageWaveforms[i], fsw, "Primary");
+                op.get_mutable_excitations_per_winding().push_back(excitation);
+                masOps.push_back(op);
+            }
+            masInputs.set_operating_points(masOps);
+            result.emplace_back(std::move(masInputs));
+        }
+
+        // ----------------------------- C1 coupling cap (CAS::Inputs) -----
+        {
+            CAS::Inputs casInputs;
+            CAS::DesignRequirements dr;
+
+            CAS::DimensionWithTolerance capacitance;
+            capacitance.set_nominal(lastSizedC1);
+            dr.set_capacitance(capacitance);
+
+            // Peak voltage across C1 across all OPs (with 20 % derating margin).
+            double peakVc1 = 0.0;
+            for (const auto& wfm : extraC1VoltageWaveforms) {
+                for (double v : wfm.get_data()) peakVc1 = std::max(peakVc1, std::abs(v));
+            }
+            dr.set_rated_voltage(peakVc1 * 1.2);
+
+            // Cuk C1 is the coupling / energy-transfer cap — closest CAS
+            // application is DC_LINK.  Document in name to disambiguate.
+            dr.set_role(CAS::Application::DC_LINK);
+            dr.set_name("couplingCapacitor");
+
+            casInputs.set_design_requirements(dr);
+
+            std::vector<CAS::TwoTerminalOperatingPoint> casOps;
+            for (size_t i = 0; i < nOps; ++i) {
+                CAS::TwoTerminalOperatingPoint op;
+                CAS::OperatingPointExcitation excitation;
+                excitation.set_frequency(fsw);
+
+                CAS::SignalDescriptor vSig;
+                CAS::Waveform vWfm;
+                vWfm.set_data(extraC1VoltageWaveforms[i].get_data());
+                if (extraC1VoltageWaveforms[i].get_time())
+                    vWfm.set_time(extraC1VoltageWaveforms[i].get_time().value());
+                vSig.set_waveform(vWfm);
+                excitation.set_voltage(vSig);
+
+                CAS::SignalDescriptor iSig;
+                CAS::Waveform iWfm;
+                iWfm.set_data(extraC1CurrentWaveforms[i].get_data());
+                if (extraC1CurrentWaveforms[i].get_time())
+                    iWfm.set_time(extraC1CurrentWaveforms[i].get_time().value());
+                iSig.set_waveform(iWfm);
+                excitation.set_current(iSig);
+
+                op.set_excitation(excitation);
+                casOps.push_back(op);
+            }
+            casInputs.set_operating_points(casOps);
+            result.emplace_back(std::move(casInputs));
+        }
+
+        // ----------------------------- Co output cap (CAS::Inputs) -------
+        {
+            CAS::Inputs casInputs;
+            CAS::DesignRequirements dr;
+
+            CAS::DimensionWithTolerance capacitance;
+            capacitance.set_nominal(lastSizedCo);
+            dr.set_capacitance(capacitance);
+
+            double peakVco = 0.0;
+            for (const auto& wfm : extraCoVoltageWaveforms) {
+                for (double v : wfm.get_data()) peakVco = std::max(peakVco, std::abs(v));
+            }
+            dr.set_rated_voltage(peakVco * 1.2);
+
+            dr.set_role(CAS::Application::OUTPUT_FILTER);
+            dr.set_name("outputCapacitor");
+
+            casInputs.set_design_requirements(dr);
+
+            std::vector<CAS::TwoTerminalOperatingPoint> casOps;
+            for (size_t i = 0; i < nOps; ++i) {
+                CAS::TwoTerminalOperatingPoint op;
+                CAS::OperatingPointExcitation excitation;
+                excitation.set_frequency(fsw);
+
+                CAS::SignalDescriptor vSig;
+                CAS::Waveform vWfm;
+                vWfm.set_data(extraCoVoltageWaveforms[i].get_data());
+                if (extraCoVoltageWaveforms[i].get_time())
+                    vWfm.set_time(extraCoVoltageWaveforms[i].get_time().value());
+                vSig.set_waveform(vWfm);
+                excitation.set_voltage(vSig);
+
+                CAS::SignalDescriptor iSig;
+                CAS::Waveform iWfm;
+                iWfm.set_data(extraCoCurrentWaveforms[i].get_data());
+                if (extraCoCurrentWaveforms[i].get_time())
+                    iWfm.set_time(extraCoCurrentWaveforms[i].get_time().value());
+                iSig.set_waveform(iWfm);
+                excitation.set_current(iSig);
+
+                op.set_excitation(excitation);
+                casOps.push_back(op);
+            }
+            casInputs.set_operating_points(casOps);
+            result.emplace_back(std::move(casInputs));
+        }
+
+        return result;
     }
 
 } // namespace OpenMagnetics

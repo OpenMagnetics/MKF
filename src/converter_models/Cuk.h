@@ -110,6 +110,7 @@ private:
     double c1RipplePct = 0.05;        // ΔVC1 / VC1     target
     double coRipplePct = 0.01;        // ΔVo  / |Vo|    target
 
+protected:
     // ---- Per-OP analytical diagnostics ----
     mutable double lastDutyCycle = 0.0;
     mutable double lastConversionRatio = 0.0;          // M(D) signed (negative)
@@ -130,6 +131,17 @@ private:
     mutable bool   lastIsCcm = true;                   // K > Kcrit
     mutable double lastSizedL2 = 0.0;                  // internally-sized L2
     mutable double lastSizedC1 = 0.0;                  // internally-sized C1
+    mutable double lastSizedCo = 0.0;                  // internally-sized Co
+
+    // ---- Extra-component waveforms (filled in process_operating_point_for_input_voltage,
+    //      consumed by get_extra_components_inputs).  Cleared at the start of
+    //      process_operating_points so a re-run does not accumulate. ----
+    mutable std::vector<Waveform> extraL2VoltageWaveforms;
+    mutable std::vector<Waveform> extraL2CurrentWaveforms;
+    mutable std::vector<Waveform> extraC1VoltageWaveforms;
+    mutable std::vector<Waveform> extraC1CurrentWaveforms;
+    mutable std::vector<Waveform> extraCoVoltageWaveforms;
+    mutable std::vector<Waveform> extraCoCurrentWaveforms;
 
 public:
     bool _assertErrors = false;
@@ -165,6 +177,7 @@ public:
     bool   get_last_is_ccm()                      const { return lastIsCcm; }
     double get_last_sized_l2()                    const { return lastSizedL2; }
     double get_last_sized_c1()                    const { return lastSizedC1; }
+    double get_last_sized_co()                    const { return lastSizedCo; }
 
     bool run_checks(bool assert = false) override;
 
@@ -173,6 +186,20 @@ public:
 
     OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductanceL1);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
+
+    /**
+     * @brief Emit ancillary components (L2 inductor, C1 coupling cap, Co
+     *        output cap) as MAS::Inputs / CAS::Inputs entries, populated
+     *        from the analytical waveforms stashed during
+     *        process_operating_points_for_input_voltage.
+     *
+     * For Cuk V1, three ancillaries are returned in order: L2 (Inputs),
+     * C1 (CAS::Inputs, role=DC_LINK as the closest semantic match for
+     * an energy-transfer coupling cap), Co (CAS::Inputs, role=OUTPUT_FILTER).
+     */
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode = ExtraComponentsMode::IDEAL,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 
     // ---- Static analytical helpers (CUK_PLAN.md §2.13) ----
     static double calculate_duty_cycle(double inputVoltage, double outputVoltageMagnitude, double diodeVoltageDrop, double efficiency);
