@@ -22,13 +22,19 @@ public:
         return _cache.size();
     }
 
-    std::map<std::string, T> get(){
+    // Returns a const reference to the underlying map. Previously this
+    // returned the map by value, which copied every cached element on
+    // every call — `magneticsCache.get()` is invoked in the catalog
+    // adviser hot path with hundreds of fully-expanded Magnetics. Callers
+    // that need a mutable copy can do `auto m = cache.get();` explicitly.
+    const std::map<std::string, T>& get() const {
         return _cache;
     }
 
     std::vector<std::string> references() {
         std::vector<std::string> filteredReferences;
-        for (auto [reference, value] : _cache) {
+        filteredReferences.reserve(_cache.size());
+        for (const auto& [reference, value] : _cache) {
             filteredReferences.push_back(reference);
         }
 
@@ -37,7 +43,8 @@ public:
 
     std::vector<T> read() {
         std::vector<T> filteredValues;
-        for (auto [reference, value] : _cache) {
+        filteredValues.reserve(_cache.size());
+        for (const auto& [reference, value] : _cache) {
             filteredValues.push_back(value);
         }
         return filteredValues;
@@ -53,6 +60,7 @@ public:
 
     std::vector<T> read(std::vector<std::string> references) {
         std::vector<T> filteredValues;
+        filteredValues.reserve(references.size());
         for (auto reference : references) {
             if (_cache.contains(reference)) {
                 filteredValues.push_back(_cache[reference]);
@@ -61,8 +69,11 @@ public:
         return filteredValues;
     }
 
+    // Move both the key and the value into the map. Previously this took
+    // `T value` by value and then assigned by copy, costing two whole
+    // Magnetic copies per insert.
     void load(std::string reference, T value) {
-        _cache[reference] = value;
+        _cache[std::move(reference)] = std::move(value);
     }
 
     std::vector<T> evict(std::vector<std::string> references) {

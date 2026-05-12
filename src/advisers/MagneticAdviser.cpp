@@ -477,10 +477,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     return get_advised_magnetic(catalogueMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
 }
 
-std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<std::string, Magnetic> catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, const std::map<std::string, Magnetic>& catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
     std::vector<Mas> catalogueMagneticsWithInputs;
-    for (auto [reference, magnetic] : catalogueMagnetics) {
-        if (inputs.get_operating_points().size() > 0 && magnetic.get_mutable_coil().get_functional_description().size() != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
+    catalogueMagneticsWithInputs.reserve(catalogueMagnetics.size());
+    for (const auto& [reference, magnetic] : catalogueMagnetics) {
+        if (inputs.get_operating_points().size() > 0 && magnetic.get_coil().get_functional_description().size() != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
             continue;
         }
         Mas mas;

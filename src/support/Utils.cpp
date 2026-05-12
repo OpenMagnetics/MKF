@@ -64,29 +64,35 @@ static inline void normalize_micro_sign(std::string& s) {
     s = std::move(result);
 }
 
-// Helper function to iterate over NDJSON (newline-delimited JSON) data and call a callback for each parsed JSON object
-// This reduces code duplication across load_* functions
+// Helper to iterate over NDJSON (newline-delimited JSON) data and call a
+// callback for each parsed JSON object. Replaces an earlier O(n²) loop
+// that did `database.erase(0, pos + 1)` per line — for a multi-MB file
+// that meant O(N²) memmove cost dominating actual parsing.
+//
+// We now scan the buffer once with a sliding `start` index and parse each
+// line directly from a `string_view` into the original buffer. The buffer
+// is kept by const reference so callers don't pay an extra copy either.
 template<typename Callback>
-static void parse_ndjson(std::string database, Callback&& callback) {
-    std::string delimiter = "\n";
-    size_t pos = 0;
-    std::string token;
-    if (!database.empty() && database.back() != delimiter.back()) {
-        database += delimiter;
-    }
-    while ((pos = database.find(delimiter)) != std::string::npos) {
-        token = database.substr(0, pos);
+static void parse_ndjson(const std::string& database, Callback&& callback) {
+    const size_t n = database.size();
+    size_t start = 0;
+    while (start < n) {
+        size_t pos = database.find('\n', start);
+        size_t end = (pos == std::string::npos) ? n : pos;
+        size_t lineEnd = end;
 #ifdef _WIN32
-        strip_cr(token);
-#endif
-        if (token.empty()) {
-            database.erase(0, pos + delimiter.length());
-            continue;
+        if (lineEnd > start && database[lineEnd - 1] == '\r') {
+            --lineEnd;
         }
-        json jf = json::parse(token);
-        OpenMagnetics::compat::migrate_pre_1_0(jf);
-        callback(jf);
-        database.erase(0, pos + delimiter.length());
+#endif
+        if (lineEnd > start) {
+            // nlohmann::json::parse accepts iterator pairs without copying.
+            json jf = json::parse(database.begin() + start, database.begin() + lineEnd);
+            OpenMagnetics::compat::migrate_pre_1_0(jf);
+            callback(jf);
+        }
+        if (pos == std::string::npos) break;
+        start = pos + 1;
     }
 }
 
@@ -144,79 +150,28 @@ void load_cores(std::optional<std::string> fileToLoad) {
     bool useOnlyCoresInStock = settings.get_use_only_cores_in_stock();
 
     auto fs = cmrc::data::get_filesystem();
-    if (useOnlyCoresInStock && fs.exists("MAS/data/cores_stock.ndjson")) {
-        std::string database;
-        if (fileToLoad) {
-            database = fileToLoad.value();
-        }
-        else {
-            auto data = fs.open("MAS/data/cores_stock.ndjson");
-            database = std::string(data.begin(), data.end());
-        }
-        std::string delimiter = "\n";
-        size_t pos = 0;
-        std::string token;
-        if (database.back() != delimiter.back()) {
-            database += delimiter;
-        }
-        while ((pos = database.find(delimiter)) != std::string::npos) {
-            token = database.substr(0, pos);
-#ifdef _WIN32
-            strip_cr(token);
-#endif
-            if (token.empty()) {
-                database.erase(0, pos + delimiter.length());
-                continue;
-            }
-            json jf = json::parse(token);
-            OpenMagnetics::compat::migrate_pre_1_0(jf);
-            CoreType type;
-            from_json(jf["functionalDescription"]["type"], type);
-            if ((includeToroidalCores && type == CoreType::TOROIDAL) || (includeConcentricCores && type != CoreType::TOROIDAL)) {
-                Core core(jf, false, true, false);
-                coreDatabase.push_back(core);
-            }
-            database.erase(0, pos + delimiter.length());
-        }
-    }
-    else {
-        std::string database;
-        if (fileToLoad) {
-            database = fileToLoad.value();
-        }
-        else {
-            auto data = fs.open("MAS/data/cores.ndjson");
-            database = std::string(data.begin(), data.end());
-        }
-        std::string delimiter = "\n";
+    const bool stockPath = (useOnlyCoresInStock && fs.exists("MAS/data/cores_stock.ndjson"));
+    const std::string resourcePath = stockPath ? "MAS/data/cores_stock.ndjson"
+                                               : "MAS/data/cores.ndjson";
 
-        if (database.back() == delimiter.back()) {
-            database.pop_back();
+    // Both branches now use the same NDJSON streaming loader and filter on
+    // parse, instead of the previous code that std::regex_replace'd the
+    // whole file into a single JSON array, parsed it, then walked it twice.
+    // Constructor flags are kept identical to the pre-refactor behaviour
+    // (stock path skipped geometricalDescription; main path used defaults).
+    std::string database = load_ndjson_data(resourcePath, fileToLoad);
+    parse_ndjson(database, [includeToroidalCores, includeConcentricCores, stockPath](const json& jf) {
+        CoreType type;
+        from_json(jf["functionalDescription"]["type"], type);
+        const bool keep = (includeToroidalCores  && type == CoreType::TOROIDAL)
+                       || (includeConcentricCores && type != CoreType::TOROIDAL);
+        if (!keep) return;
+        if (stockPath) {
+            coreDatabase.emplace_back(jf, false, true, false);
+        } else {
+            coreDatabase.emplace_back(jf);  // defaults: include geometricalDescription
         }
-        database = std::regex_replace(database, std::regex("\n"), ", ");
-        database = "[" + database + "]";
-        json arr = json::parse(database);
-        OpenMagnetics::compat::migrate_pre_1_0(arr);
-        std::vector<Core> tempCoreDatabase;
-
-        for (auto elem : arr) {
-
-            if ((includeToroidalCores && elem["functionalDescription"]["type"] == "toroidal") || (includeConcentricCores && elem["functionalDescription"]["type"] != "toroidal")) {
-                tempCoreDatabase.push_back(Core(elem));
-            }
-        }
-
-        if (includeToroidalCores && includeConcentricCores) {
-            coreDatabase = tempCoreDatabase;
-        }
-        else {
-            for (auto core : tempCoreDatabase) {
-                if ((includeToroidalCores && core.get_type() == CoreType::TOROIDAL) || (includeConcentricCores && core.get_type() != CoreType::TOROIDAL)) {
-                    coreDatabase.push_back(core);
-                }
-            }
-        }
-    }
+    });
 }
 
 void clear_loaded_cores() {
@@ -247,36 +202,38 @@ void load_core_materials(std::optional<std::string> fileToLoad) {
 
 void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManufacturer) {
     parse_ndjson(fileToLoad, [onlyDataFromManufacturer](const json& jf) {
-        if (coreMaterialDatabase.count(jf["name"])) {
-            auto material = coreMaterialDatabase[jf["name"]];
-            if (jf.contains("bhCycle")) {
-                std::vector<BhCycleElement> bhCycle;
-                from_json(jf["bhCycle"], bhCycle);
-                material.set_bh_cycle(bhCycle);
-            }
-            if (jf.contains("volumetricLosses")) {
-                std::vector<VolumetricLossesPoint> volumetricLosses;
-                from_json(jf["volumetricLosses"]["default"][0], volumetricLosses);
-                if (onlyDataFromManufacturer) {
-                    std::vector<VolumetricLossesPoint> onlyManufacturerVolumetricLosses;
-                    for (auto datum : volumetricLosses) {
-                        if (datum.get_origin() == "manufacturer") {
-                            onlyManufacturerVolumetricLosses.push_back(datum);
-                        }
+        auto it = coreMaterialDatabase.find(jf["name"]);
+        if (it == coreMaterialDatabase.end()) return;
+        // Mutate in place — previously this code copied the material out,
+        // mutated the copy, and assigned it back, costing two whole-object
+        // copies per advanced-material record.
+        auto& material = it->second;
+        if (jf.contains("bhCycle")) {
+            std::vector<BhCycleElement> bhCycle;
+            from_json(jf["bhCycle"], bhCycle);
+            material.set_bh_cycle(bhCycle);
+        }
+        if (jf.contains("volumetricLosses")) {
+            std::vector<VolumetricLossesPoint> volumetricLosses;
+            from_json(jf["volumetricLosses"]["default"][0], volumetricLosses);
+            if (onlyDataFromManufacturer) {
+                std::vector<VolumetricLossesPoint> onlyManufacturerVolumetricLosses;
+                for (auto datum : volumetricLosses) {
+                    if (datum.get_origin() == "manufacturer") {
+                        onlyManufacturerVolumetricLosses.push_back(datum);
                     }
-                    material.get_mutable_volumetric_losses()["default"].push_back(onlyManufacturerVolumetricLosses);
                 }
-                else {
-                    material.get_mutable_volumetric_losses()["default"].push_back(volumetricLosses);
-                }
+                material.get_mutable_volumetric_losses()["default"].push_back(onlyManufacturerVolumetricLosses);
             }
-            if (jf.contains("permeability")) {
-                if (jf["permeability"].contains("amplitude")) {
-                    Permeability amplitudePermeability(jf["permeability"]["amplitude"]);
-                    material.get_mutable_permeability().set_amplitude(amplitudePermeability);
-                }
+            else {
+                material.get_mutable_volumetric_losses()["default"].push_back(volumetricLosses);
             }
-            coreMaterialDatabase[jf["name"]] = material;
+        }
+        if (jf.contains("permeability")) {
+            if (jf["permeability"].contains("amplitude")) {
+                Permeability amplitudePermeability(jf["permeability"]["amplitude"]);
+                material.get_mutable_permeability().set_amplitude(amplitudePermeability);
+            }
         }
     });
 }
