@@ -145,6 +145,28 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::PUSH_PULL_CONVERTER] = pushPull;
             }
 
+            // Cuk (V1 non-isolated, CCM) — fourth-order LC tank with hard
+            // switching makes ngspice convergence stricter than Boost/Buck.
+            // CUK_PLAN.md §6.2 mandates METHOD=GEAR + IC pre-charge for all
+            // four reactive elements (L1, L2, C1, Co); the snubber τ is
+            // sized for the 100 kHz–1.4 MHz fixture range (Erickson 100 kHz,
+            // Bramble 300 kHz, LM2611 1.4 MHz). Snubber 100 Ω/100 pF
+            // (τ = 10 ns) matches Boost; output cap is sized internally
+            // per OP from coRipplePct so the registry default here is
+            // unused (Cuk::generate_ngspice_circuit overrides it).
+            {
+                SpiceSimulationConfig cuk;
+                cuk.swModelVT = 2.5;       cuk.swModelVH = 0.5;
+                cuk.snubR = 100.0;         cuk.snubC = 100e-12;
+                cuk.diodeIS = 1e-12;       cuk.diodeRS = 0.05;
+                cuk.outputCapacitance = 10e-6;  // unused; Cuk overrides per-OP
+                cuk.relTol = 0.01;         cuk.absTol = 1e-7;
+                cuk.vnTol = 1e-4;
+                cuk.itl1 = 500;            cuk.itl4 = 500;
+                cuk.method = "GEAR";       cuk.trTol = 7.0;
+                m[MAS::Topologies::CUK_CONVERTER] = cuk;
+            }
+
             return m;
         }();
         return defaults;

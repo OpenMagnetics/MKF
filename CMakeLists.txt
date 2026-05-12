@@ -409,6 +409,7 @@ add_custom_command(
     -S ${MAS_DIR}/schemas/inputs/topologies/phaseShiftedFullBridge.json
     -S ${MAS_DIR}/schemas/inputs/topologies/phaseShiftedHalfBridge.json
     -S ${MAS_DIR}/schemas/inputs/topologies/asymmetricHalfBridge.json
+    -S ${MAS_DIR}/schemas/inputs/topologies/cuk.json
     -o ${MAS_DIRECTORY}/MAS.hpp --namespace MAS --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
   USES_TERMINAL)
 
