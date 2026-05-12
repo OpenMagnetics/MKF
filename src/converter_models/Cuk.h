@@ -11,15 +11,29 @@ namespace OpenMagnetics {
 using namespace MAS;
 
 /**
- * @brief Cuk (inverting, fourth-order) DC-DC Converter — non-isolated V1.
+ * @brief Cuk (inverting, fourth-order) DC-DC Converter.
  *
  * Inherits converter-level parameters from MAS::Cuk and the Topology
- * interface. This class implements the non-isolated, asynchronous-diode
- * (or synchronous), CCM Cuk topology. Coupled-inductor (V2) and isolated
- * (V3) variants are deferred per CUK_PLAN.md §11.
+ * interface. This class implements all five Cuk topology variants from
+ * CUK_PLAN.md:
+ *
+ *   * V1 — non-isolated, asynchronous (D1) freewheel, CCM (default)
+ *   * V2 — coupled-inductor zero-ripple (Erickson §6); enable via
+ *          schema flag `coupledInductor` + optional `couplingCoefficient`
+ *   * V3 — isolated (Erickson §6, Cuk's 1977 patent); enable via
+ *          schema flags `isolated`, `turnsRatio`, optional
+ *          `couplingCapacitanceSecondary`
+ *   * V4 — synchronous rectifier (S2 replaces D1, complementary PWM,
+ *          no dead-time); enable via schema flag `synchronous`
+ *   * V5 — bidirectional (S2 + S1 both 4-quadrant); implies V4
+ *          synchronous regardless; enable via schema flag `bidirectional`
+ *
+ * V2 and V3 are mutually exclusive (V2 puts both windings on one core,
+ * V3 separates them with galvanic isolation). All other combinations are
+ * supported (V3+V4, V3+V5, V2+V4, V2+V5, V1 default).
  *
  * =====================================================================
- * TOPOLOGY OVERVIEW (non-isolated Cuk, V1)
+ * TOPOLOGY OVERVIEW (V1 non-isolated, single-cap coupling)
  * =====================================================================
  *
  *           L1               C1                 L2
@@ -34,33 +48,47 @@ using namespace MAS;
  * Switch S ON  : VL1 = +Vin,           VL2 = -VC1 + Vo (negative slope)
  * Switch S OFF : VL1 = +Vin - VC1,     VL2 = +Vo      (negative slope)
  *
- * Output Vo is *negative* (M(D) = -D/(1-D)). Iout reported as a positive
- * scalar flowing OUT of the negative terminal toward GND (passive sign
- * convention for the load).
+ * Output Vo is *negative* (M(D) = -D/(1-D) for V1/V2; -D/((1-D)·n) for V3).
+ * Iout reported as a positive scalar flowing OUT of the negative terminal
+ * toward GND (passive sign convention for the load).
  *
- * The "primary" magnetic returned by process_design_requirements is
- * the input inductor L1 (single winding, one isolation side). The
- * output inductor L2 and coupling cap C1 are sized internally from
- * rules-of-thumb (ΔIL2_pct = 0.30, ΔVC1_pct = 0.05) and instantiated
- * inside the SPICE netlist; they are NOT exposed as DesignRequirements
- * in this initial revision.
+ * V3 isolated extends the middle section to:
+ *
+ *   ... node_A ──┤Ca├── tx_pri_pos ─┤Lp ⟂ Ls├─ tx_sec_pos ──┤Cb├── node_B ...
+ *
+ * with K=0.999 mutual coupling between Lp and Ls (Lp = Lm, Ls = Lm/n²).
+ *
+ * The "primary" magnetic returned by process_design_requirements is:
+ *   * V1/V2: input inductor L1 (single winding for V1, 2-winding 1:1 for V2)
+ *   * V3:    isolation transformer Lp:Ls (turns_ratios={n}, sides={PRI,SEC})
+ *
+ * For V1/V2 the output inductor L2, coupling cap C1 and output cap Co
+ * are sized internally and emitted via get_extra_components_inputs.
+ * For V3 the input choke L1, output inductor L2, primary/secondary
+ * coupling caps Ca/Cb and output cap Co are emitted as 5 ancillary
+ * entries.
  *
  * =====================================================================
- * KEY EQUATIONS (CCM, ideal — Erickson-Maksimović 3rd ed. §2.4)
+ * KEY EQUATIONS (CCM, ideal — Erickson-Maksimović 3rd ed. §2.4 / §6)
  * =====================================================================
  *
- *   M(D)        = -D / (1 - D)                                 [E1]
- *   VC1         = Vin / (1 - D) = Vin + |Vo|                   [E2]
- *   VS,peak     = VD,peak = Vin + |Vo|                         [E3,E4]
- *   IL1,avg     = D · Iout / (1 - D)            (= Iin)        [E5a]
- *   IL2,avg     = Iout                                          [E5b]
- *   IC1,rms     ≈ √(D·(1-D)) · (Iin + Iout)                    [E10]
+ *   M(D)        = -D / (1 - D)              (V1/V2)
+ *   M(D,n)      = -D / ((1 - D) · n)        (V3, n = Np/Ns)
+ *   VC1 / VCa   = Vin / (1 - D)
+ *   VCb         = |Vo| / D                  (V3 only)
+ *   VS,peak     = VCa
+ *   VD,peak     = VCb (V3) | VCa (V1/V2)
+ *   IL1,avg     = |Vo|·Iout/(Vin·η)         (= Iout·D/(1-D)/n in lossless)
+ *   IL2,avg     = Iout
+ *   IC1,rms     ≈ √(D·(1-D)) · (Iin + Iout)
  *   ΔIL1       = Vin · D / (L1 · fsw)
  *   ΔIL2       = |Vo| · (1-D) / (L2 · fsw)
  *
  *   K(D)        = 2 · Le · fsw / R,    Le = L1·L2/(L1+L2)
  *   Kcrit(D)    = (1 - D)²
  *   CCM if K > Kcrit, else DCM
+ *   |M(D,K)|    = D / √K            (DCM gain magnitude)
+ *   D2          = √K                 (second sub-interval, DCM)
  *
  *   ωRHP        ≈ R · (1 - D)² / (D · L2)  (dominant, Erickson §8)
  *   fc,max      ≤ ωRHP / (2π · 5)
@@ -71,10 +99,11 @@ using namespace MAS;
  *
  * [1] Slobodan Cuk, "A New Optimum Topology Switching DC-to-DC
  *     Converter", IEEE PESC 1977.
- * [2] Erickson & Maksimović, "Fundamentals of Power Electronics"
- *     3rd ed. (2020), §2.4, §5, §8, §11.
- * [3] TI LM2611 datasheet (SNOS965F).
- * [4] Simon Bramble, "Inverting DC-DC Converter Design",
+ * [2] Cuk patents US4,257,087 and US4,355,352 (isolated variant).
+ * [3] Erickson & Maksimović, "Fundamentals of Power Electronics"
+ *     3rd ed. (2020), §2.4, §5, §6, §8, §11.
+ * [4] TI LM2611 datasheet (SNOS965F).
+ * [5] Simon Bramble, "Inverting DC-DC Converter Design",
  *     http://www.simonbramble.co.uk/
  *
  * =====================================================================
@@ -85,17 +114,19 @@ using namespace MAS;
  * recovery, gate-driver propagation delay, and core-loss resistance.
  * Predicted η is an upper bound; expect 2-5 % loss vs. measured at
  * full load. DCM operation is detected and flagged via lastIsCcm=false
- * but DCM-specific waveform construction is not yet implemented; the
- * CCM expressions are emitted regardless and the user is warned.
+ * and the |M(D,K)|=D/√K diagnostic; full DCM-specific *waveform*
+ * synthesis (piecewise-linear three-sub-interval iL1/iL2 reconstruction)
+ * remains a known follow-up — the analytical waveforms emitted in DCM
+ * are CCM-shape approximations.
  *
  * =====================================================================
  * POLARITY CONVENTION
  * =====================================================================
  *
- * Vo < 0 in V1 (non-isolated). The user-facing operatingPoints input
- * passes |Vo| as a positive scalar (matching every other MKF
- * non-isolated converter); the internal calculate_duty_cycle and SPICE
- * netlist treat |Vo| as the magnitude. The emitted ConverterWaveforms
+ * Vo < 0 in all variants. The user-facing operatingPoints input passes
+ * |Vo| as a positive scalar (matching every other MKF non-isolated
+ * converter); the internal calculate_duty_cycle and SPICE netlist
+ * treat |Vo| as the magnitude. The emitted ConverterWaveforms
  * output_voltage is signed (negative).
  */
 class Cuk : public MAS::Cuk, public Topology {
@@ -129,6 +160,8 @@ protected:
     mutable double lastDcmK = 0.0;                     // K(D)
     mutable double lastDcmKcrit = 0.0;                 // (1-D)²
     mutable bool   lastIsCcm = true;                   // K > Kcrit
+    mutable double lastDcmD2 = 0.0;                    // = √K (DCM only, 0 in CCM)
+    mutable double lastDcmConversionRatio = 0.0;       // |M| = D/√K (DCM only, 0 in CCM)
     mutable double lastSizedL2 = 0.0;                  // internally-sized L2
     mutable double lastSizedC1 = 0.0;                  // internally-sized C1
     mutable double lastSizedCo = 0.0;                  // internally-sized Co
@@ -186,6 +219,8 @@ public:
     double get_last_dcm_k()                       const { return lastDcmK; }
     double get_last_dcm_kcrit()                   const { return lastDcmKcrit; }
     bool   get_last_is_ccm()                      const { return lastIsCcm; }
+    double get_last_dcm_d2()                      const { return lastDcmD2; }
+    double get_last_dcm_conversion_ratio()        const { return lastDcmConversionRatio; }
     double get_last_sized_l2()                    const { return lastSizedL2; }
     double get_last_sized_c1()                    const { return lastSizedC1; }
     double get_last_sized_co()                    const { return lastSizedCo; }
