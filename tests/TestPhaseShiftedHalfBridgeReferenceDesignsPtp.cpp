@@ -35,6 +35,7 @@
 #include "processors/NgspiceRunner.h"
 #include "ConverterPortChecks.h"
 #include "Definitions.h"
+#include "PtpHelpers.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -69,62 +70,7 @@ nlohmann::json build_fixture(const RefDesignSpec& s) {
     };
 }
 
-// Local PtP helper functions (self-contained file, no header)
-std::vector<double> ptp_interp(const std::vector<double>& t,
-                                const std::vector<double>& d, int N) {
-    std::vector<double> out(N);
-    double T = t.back();
-    for (int i = 0; i < N; ++i) {
-        double ti = T * i / (N - 1);
-        int lo = 0;
-        for (int k = 0; k + 1 < (int)t.size(); ++k) if (t[k] <= ti) lo = k;
-        int hi = std::min(lo + 1, (int)t.size() - 1);
-        double dt = t[hi] - t[lo];
-        out[i] = (dt < 1e-20) ? d[hi]
-                              : d[lo] + (ti - t[lo]) / dt * (d[hi] - d[lo]);
-    }
-    return out;
-}
-double ptp_nrmse(const std::vector<double>& ref, const std::vector<double>& sim) {
-    int N = (int)ref.size();
-    double rm = 0, sm = 0;
-    for (int i = 0; i < N; ++i) { rm += ref[i]; sm += sim[i]; }
-    rm /= N; sm /= N;
-    std::vector<double> r(N), s(N);
-    double rA = 0, sA = 0;
-    for (int i = 0; i < N; ++i) {
-        r[i] = ref[i] - rm; s[i] = sim[i] - sm;
-        rA += r[i]*r[i]; sA += s[i]*s[i];
-    }
-    rA = std::sqrt(rA/N); sA = std::sqrt(sA/N);
-    if (rA < 1e-10 || sA < 1e-10) return 1.0;
-    for (int i = 0; i < N; ++i) { r[i] /= rA; s[i] /= sA; }
-    int ns = std::min(N, 64);
-    double best = std::numeric_limits<double>::max();
-    for (int ss = 0; ss < ns; ++ss) {
-        int sh = ss * N / ns;
-        double ssd = 0;
-        for (int k = 0; k < N; ++k) {
-            double e = r[k] - s[(k + sh) % N];
-            ssd += e * e;
-        }
-        if (ssd < best) best = ssd;
-    }
-    return std::sqrt(best/N);
-}
-std::vector<double> ptp_current(const OperatingPoint& op, size_t wi = 0) {
-    if (wi >= op.get_excitations_per_winding().size()) return {};
-    auto& e = op.get_excitations_per_winding()[wi];
-    if (!e.get_current() || !e.get_current()->get_waveform()) return {};
-    return e.get_current()->get_waveform()->get_data();
-}
-std::vector<double> ptp_current_time(const OperatingPoint& op, size_t wi = 0) {
-    if (wi >= op.get_excitations_per_winding().size()) return {};
-    auto& e = op.get_excitations_per_winding()[wi];
-    if (!e.get_current() || !e.get_current()->get_waveform()) return {};
-    auto tv = e.get_current()->get_waveform()->get_time();
-    return tv ? tv.value() : std::vector<double>{};
-}
+using namespace OpenMagnetics::Testing;
 
 void run_ptp_gates(const RefDesignSpec& s) {
     std::cout << "\n========== PSHB PtP — " << s.name << " ==========\n";

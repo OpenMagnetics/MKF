@@ -55,6 +55,7 @@
 #include "converter_models/ActiveClampForward.h"
 #include "processors/NgspiceRunner.h"
 #include "ConverterPortChecks.h"
+#include "PtpHelpers.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -100,69 +101,7 @@ OpenMagnetics::ActiveClampForward build(const RefDesignSpec& s) {
     return fwd;
 }
 
-// ── Local copies of the ptp_* helpers ─────────────────────────────────
-// Same semantics as TestBuckReferenceDesignsPtp / TestTopologyForward —
-// duplicated so this file is self-contained.
-std::vector<double> ptp_interp(const std::vector<double>& t,
-                                const std::vector<double>& d,
-                                int N) {
-    std::vector<double> out(N);
-    double T = t.back();
-    for (int i = 0; i < N; ++i) {
-        double ti = T * i / (N - 1);
-        int lo = 0;
-        for (int k = 0; k + 1 < (int)t.size(); ++k) if (t[k] <= ti) lo = k;
-        int hi = std::min(lo + 1, (int)t.size() - 1);
-        double dt = t[hi] - t[lo];
-        out[i] = (dt < 1e-20) ? d[hi]
-                              : d[lo] + (ti - t[lo]) / dt * (d[hi] - d[lo]);
-    }
-    return out;
-}
-
-double ptp_nrmse(const std::vector<double>& ref,
-                 const std::vector<double>& sim) {
-    int N = (int)ref.size();
-    double ref_mean = 0.0, sim_mean = 0.0;
-    for (int i = 0; i < N; ++i) { ref_mean += ref[i]; sim_mean += sim[i]; }
-    ref_mean /= N; sim_mean /= N;
-    std::vector<double> r(N), s(N);
-    double rAC = 0.0, sAC = 0.0;
-    for (int i = 0; i < N; ++i) {
-        r[i] = ref[i] - ref_mean; s[i] = sim[i] - sim_mean;
-        rAC += r[i] * r[i]; sAC += s[i] * s[i];
-    }
-    rAC = std::sqrt(rAC / N); sAC = std::sqrt(sAC / N);
-    if (rAC < 1e-10 || sAC < 1e-10) return 1.0;
-    for (int i = 0; i < N; ++i) { r[i] /= rAC; s[i] /= sAC; }
-    int ns = std::min(N, 64);
-    double best = std::numeric_limits<double>::max();
-    for (int ss = 0; ss < ns; ++ss) {
-        int sh = ss * N / ns;
-        double ssd = 0.0;
-        for (int k = 0; k < N; ++k) {
-            double e = r[k] - s[(k + sh) % N];
-            ssd += e * e;
-        }
-        if (ssd < best) best = ssd;
-    }
-    return std::sqrt(best / N);
-}
-
-std::vector<double> ptp_current(const OperatingPoint& op, size_t wi = 0) {
-    if (wi >= op.get_excitations_per_winding().size()) return {};
-    auto& e = op.get_excitations_per_winding()[wi];
-    if (!e.get_current() || !e.get_current()->get_waveform()) return {};
-    return e.get_current()->get_waveform()->get_data();
-}
-
-std::vector<double> ptp_current_time(const OperatingPoint& op, size_t wi = 0) {
-    if (wi >= op.get_excitations_per_winding().size()) return {};
-    auto& e = op.get_excitations_per_winding()[wi];
-    if (!e.get_current() || !e.get_current()->get_waveform()) return {};
-    auto tv = e.get_current()->get_waveform()->get_time();
-    return tv ? tv.value() : std::vector<double>{};
-}
+using namespace OpenMagnetics::Testing;
 
 // ── PtP harness ────────────────────────────────────────────────────────
 void run_ptp_gates(const RefDesignSpec& s) {
