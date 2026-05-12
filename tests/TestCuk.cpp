@@ -457,3 +457,71 @@ TEST_CASE("Test_Cuk_CCM_DCM_Boundary_Flips_With_Load",
     // At least one of the two regimes must be DCM and the other CCM.
     REQUIRE(isCcmHeavy != isCcmLight);
 }
+
+// =====================================================================
+//   V4 synchronous Cuk: netlist contract
+// =====================================================================
+
+TEST_CASE("Test_Cuk_V4_Synchronous_Netlist_Replaces_Diode",
+          "[converter-model][cuk-topology][v4-synchronous][unit]") {
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    j["synchronous"] = true;
+    OpenMagnetics::Cuk cuk(j);
+    cuk.process_operating_points(std::vector<double>{}, /*L1*/ 100e-6);
+
+    std::string netlist = cuk.generate_ngspice_circuit(/*L1*/ 100e-6);
+
+    // V4 specifics:
+    //   * No D1 diode model line and no D1 element.
+    //   * SW2 model + S2 element present.
+    //   * Complementary PWM source Vpwm_inv routed to S2.
+    REQUIRE(netlist.find("D1 node_B d_cath DIDEAL") == std::string::npos);
+    REQUIRE(netlist.find(".model DIDEAL") == std::string::npos);
+    REQUIRE(netlist.find(".model SW2") != std::string::npos);
+    REQUIRE(netlist.find("S2 node_B d_cath pwm_ctrl_inv 0 SW2") != std::string::npos);
+    REQUIRE(netlist.find("Vpwm_inv pwm_ctrl_inv") != std::string::npos);
+    REQUIRE(netlist.find("V4 synchronous") != std::string::npos);
+
+    // Shared infrastructure (Vd_sense, snubbers) must remain so post-sim
+    // probes continue to find the rectifier current.
+    REQUIRE(netlist.find("Vd_sense d_cath 0 0") != std::string::npos);
+    REQUIRE(netlist.find("Rsnub_d1") != std::string::npos);
+    REQUIRE(netlist.find("Csnub_d1") != std::string::npos);
+
+    // S1 high-side PWM unchanged.
+    REQUIRE(netlist.find("S1 node_A_int 0 pwm_ctrl 0 SW1") != std::string::npos);
+}
+
+TEST_CASE("Test_Cuk_V5_Bidirectional_Implies_Synchronous",
+          "[converter-model][cuk-topology][v5-bidirectional][unit]") {
+    // Per CUK_PLAN.md: bidirectional=true implies synchronous=true even
+    // when the user has not explicitly set synchronous.
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    j["bidirectional"] = true;
+    // synchronous deliberately omitted.
+    OpenMagnetics::Cuk cuk(j);
+    cuk.process_operating_points(std::vector<double>{}, /*L1*/ 100e-6);
+
+    std::string netlist = cuk.generate_ngspice_circuit(/*L1*/ 100e-6);
+
+    REQUIRE(netlist.find(".model SW2") != std::string::npos);
+    REQUIRE(netlist.find("S2 node_B d_cath pwm_ctrl_inv 0 SW2") != std::string::npos);
+    REQUIRE(netlist.find("D1 node_B d_cath DIDEAL") == std::string::npos);
+    REQUIRE(netlist.find("V5 bidirectional") != std::string::npos);
+}
+
+TEST_CASE("Test_Cuk_V1_Default_Still_Uses_Diode",
+          "[converter-model][cuk-topology][v1-default][unit]") {
+    // Regression guard: with neither synchronous nor bidirectional set, the
+    // V1 diode wiring must be preserved.
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    OpenMagnetics::Cuk cuk(j);
+    cuk.process_operating_points(std::vector<double>{}, /*L1*/ 100e-6);
+
+    std::string netlist = cuk.generate_ngspice_circuit(/*L1*/ 100e-6);
+
+    REQUIRE(netlist.find(".model DIDEAL") != std::string::npos);
+    REQUIRE(netlist.find("D1 node_B d_cath DIDEAL") != std::string::npos);
+    REQUIRE(netlist.find(".model SW2") == std::string::npos);
+    REQUIRE(netlist.find("S2 node_B") == std::string::npos);
+}
