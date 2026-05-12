@@ -183,6 +183,23 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::SEPIC_CONVERTER] = sepic;
             }
 
+            // Zeta: same hard-switched 4th-order shape as SEPIC/Cuk but with a
+            // high-side switch (modelled as an ideal SW between Vin and Vsw).
+            // Co sized per OP from coRipplePct so the outputCapacitance default
+            // is unused (Zeta::generate_ngspice_circuit overrides it).
+            {
+                SpiceSimulationConfig zeta;
+                zeta.swModelVT = 2.5;        zeta.swModelVH = 0.5;
+                zeta.snubR = 100.0;          zeta.snubC = 100e-12;
+                zeta.diodeIS = 1e-12;        zeta.diodeRS = 0.05;
+                zeta.outputCapacitance = 10e-6;
+                zeta.relTol = 0.01;          zeta.absTol = 1e-7;
+                zeta.vnTol = 1e-4;
+                zeta.itl1 = 500;             zeta.itl4 = 500;
+                zeta.method = "GEAR";        zeta.trTol = 7.0;
+                m[MAS::Topologies::ZETA_CONVERTER] = zeta;
+            }
+
             return m;
         }();
         return defaults;
