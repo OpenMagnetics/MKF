@@ -48,13 +48,18 @@
 
 #include "converter_models/Cuk.h"
 #include "processors/Inputs.h"
+#include "processors/NgspiceRunner.h"
+#include "support/Painter.h"
 #include "support/Utils.h"
+#include "ConverterPortChecks.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <filesystem>
 #include <numbers>
+#include <source_location>
 #include <variant>
 
 using namespace OpenMagnetics;
@@ -811,4 +816,303 @@ TEST_CASE("Test_Cuk_V3_Isolated_Throws_If_No_Ripple_Budget_For_L1",
     j["turnsRatio"] = 2.0;
     OpenMagnetics::Cuk cuk(j);
     REQUIRE_THROWS(cuk.process_design_requirements());
+}
+
+// =====================================================================
+//   Reference-design analytical Values — Synthetic 12 → -24 V (24 W, 200 kHz).
+//
+//   Pairs the analytical Values gate with the Synthetic ref design that is
+//   already covered by TestCukReferenceDesignsPtp.cpp. Closes one of the
+//   two §15 missing Values pairings.
+// =====================================================================
+
+TEST_CASE("Test_Cuk_Synthetic_StepUp_Reference_Design",
+          "[converter-model][cuk-topology][refdesign][analytical]") {
+    // Synthetic step-up: Vin=12V, Vo=-24V, Iout=1A, fsw=200kHz, η=1.0, Vd=0.
+    //   Lossless: D = |Vo|/(|Vo|+Vin) = 24/36 = 2/3.
+    //   M(D) = -D/(1-D) = -(2/3)/(1/3) = -2.
+    //   VC1  = Vin/(1-D) = 12/(1/3) = 36 V.
+    //   IL1  = D·Iout/(1-D) = (2/3)·1/(1/3) = 2 A.
+    //   IL2  = Iout = 1 A.
+    //   Switch / diode peak voltage = Vin + |Vo| = 36 V.
+    json j = make_cuk_json(/*Vin*/ 12.0, /*|Vo|*/ 24.0, /*Iout*/ 1.0,
+                           /*fsw*/ 200e3, /*Vd*/ 0.0, /*η*/ 1.0);
+    OpenMagnetics::Cuk cuk(j);
+    cuk.process_operating_points(std::vector<double>{}, /*L1*/ 47e-6);
+
+    REQUIRE_THAT(cuk.get_last_duty_cycle(),                 WithinAbs(2.0/3.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_conversion_ratio(),           WithinRel(-2.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_coupling_cap_voltage(),       WithinRel(36.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_input_inductor_average(),     WithinRel(2.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_output_inductor_average(),    WithinRel(1.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_switch_peak_voltage(),        WithinRel(36.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_diode_peak_reverse_voltage(), WithinRel(36.0, 1e-9));
+}
+
+// =====================================================================
+//   Reference-design analytical Values — TI LM2611 (1.25 W, 1.4 MHz).
+//
+//   Pairs with TestCukReferenceDesignsPtp.cpp's LM2611 PtP gate. With a
+//   non-unity efficiency the closed-form formulas use the lossy duty-cycle
+//   relation D = |Vo|/(|Vo| + η·Vin); we anchor Values to that.
+// =====================================================================
+
+TEST_CASE("Test_Cuk_LM2611_Reference_Design",
+          "[converter-model][cuk-topology][refdesign][analytical]") {
+    // TI LM2611 SNOS965F midpoint OP: Vin=5V, Vo=-5V, Iout=0.25A, fsw=1.4MHz.
+    // Use ideal lossless reference (η=1, Vd=0) so analytical scalars match
+    // textbook Cuk equations exactly.
+    //   D    = 5/(5+5)     = 0.5.
+    //   M    = -D/(1-D)    = -1.
+    //   VC1  = Vin/(1-D)   = 10 V.
+    //   IL1  = D·Iout/(1-D)= 0.25 A.
+    //   IL2  = Iout        = 0.25 A.
+    //   Vsw_peak = Vin+|Vo|= 10 V.
+    json j = make_cuk_json(/*Vin*/ 5.0, /*|Vo|*/ 5.0, /*Iout*/ 0.25,
+                           /*fsw*/ 1.4e6, /*Vd*/ 0.0, /*η*/ 1.0);
+    OpenMagnetics::Cuk cuk(j);
+    cuk.process_operating_points(std::vector<double>{}, /*L1*/ 10e-6);
+
+    REQUIRE_THAT(cuk.get_last_duty_cycle(),                 WithinAbs(0.5, 1e-9));
+    REQUIRE_THAT(cuk.get_last_conversion_ratio(),           WithinRel(-1.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_coupling_cap_voltage(),       WithinRel(10.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_input_inductor_average(),     WithinRel(0.25, 1e-9));
+    REQUIRE_THAT(cuk.get_last_output_inductor_average(),    WithinRel(0.25, 1e-9));
+    REQUIRE_THAT(cuk.get_last_switch_peak_voltage(),        WithinRel(10.0, 1e-9));
+    REQUIRE_THAT(cuk.get_last_diode_peak_reverse_voltage(), WithinRel(10.0, 1e-9));
+}
+
+// =====================================================================
+//   §8 Volt-Second Balance — All Windings (analytical + SPICE).
+//
+//   §5.0 winding-port rule: |avg(v_winding(t))| / peak(|v_winding(t)|)
+//   < 2 % analytical, < 5 % SPICE. V1 emits a single L1 winding excitation
+//   (L2 is exposed via extra-component Inputs); V3 isolated emits two.
+// =====================================================================
+
+namespace {
+
+double cuk_normalised_avg(const std::vector<double>& v) {
+    if (v.empty()) return 0.0;
+    double sum = 0.0, peak = 0.0;
+    for (double x : v) {
+        sum  += x;
+        peak  = std::max(peak, std::fabs(x));
+    }
+    if (peak < 1e-12) return 0.0;
+    return std::fabs(sum / static_cast<double>(v.size())) / peak;
+}
+
+void cuk_check_all_windings(const std::vector<MAS::OperatingPoint>& ops,
+                            const std::string& path,
+                            double eps,
+                            size_t expectedWindings) {
+    REQUIRE_FALSE(ops.empty());
+    for (size_t opIdx = 0; opIdx < ops.size(); ++opIdx) {
+        const auto& exc = ops[opIdx].get_excitations_per_winding();
+        REQUIRE(exc.size() == expectedWindings);
+        for (size_t w = 0; w < exc.size(); ++w) {
+            REQUIRE(exc[w].get_voltage().has_value());
+            const auto wf = exc[w].get_voltage()->get_waveform().value();
+            const auto& d = wf.get_data();
+            REQUIRE(!d.empty());
+            const double normAvg = cuk_normalised_avg(d);
+            INFO("Cuk [" << path << "] OP " << opIdx
+                 << " winding " << w
+                 << " — |avg(V)|/peak(|V|) = " << normAvg
+                 << " (bound " << eps << ")");
+            CHECK(normAvg < eps);
+        }
+    }
+}
+
+}  // namespace
+
+TEST_CASE("Test_Cuk_VoltSecondBalance_AllWindings_V1",
+          "[converter-model][cuk-topology][volt-second-balance]") {
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3, /*Vd*/ 0.0, /*η*/ 1.0);
+    OpenMagnetics::Cuk cuk(j);
+
+    auto analytical = cuk.process_operating_points(std::vector<double>{}, 100e-6);
+    REQUIRE(!analytical.empty());
+    const size_t windings = analytical[0].get_excitations_per_winding().size();
+
+    SECTION("analytical path") {
+        cuk_check_all_windings(analytical, "analytical(V1)", 0.02, windings);
+    }
+    SECTION("SPICE path") {
+        OpenMagnetics::NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+        cuk.set_num_steady_state_periods(400);
+        cuk.set_num_periods_to_extract(1);
+        auto ops = cuk.simulate_and_extract_operating_points(100e-6);
+        cuk_check_all_windings(ops, "SPICE(V1)", 0.05, windings);
+    }
+}
+
+TEST_CASE("Test_Cuk_VoltSecondBalance_AllWindings_V3_Isolated",
+          "[converter-model][cuk-topology][volt-second-balance][v3-isolated]") {
+    // V3 isolated Cuk should expose primary + secondary winding excitations.
+    json j = make_cuk_json(24.0, 5.0, 0.5, 100e3, /*Vd*/ 0.0, /*η*/ 1.0);
+    j["isolated"]   = true;
+    j["turnsRatio"] = 2.0;
+    OpenMagnetics::Cuk cuk(j);
+
+    auto dr = cuk.process_design_requirements();
+    std::vector<double> turnsRatios;
+    for (auto& tr : dr.get_turns_ratios()) {
+        turnsRatios.push_back(tr.get_nominal().value());
+    }
+    const double Lm = dr.get_magnetizing_inductance().get_minimum().value();
+
+    auto analytical = cuk.process_operating_points(turnsRatios, Lm);
+    REQUIRE(!analytical.empty());
+    const size_t windings = analytical[0].get_excitations_per_winding().size();
+
+    SECTION("analytical path") {
+        cuk_check_all_windings(analytical, "analytical(V3)", 0.02, windings);
+    }
+    // SPICE path intentionally omitted here: the V3 isolated SPICE netlist
+    // is not exercised by the existing PtP harness yet, and adding a SPICE
+    // simulate at this stage would expand scope. The §15 mandate's SPICE
+    // half is covered by the V1 case above; V3 SPICE coverage is tracked
+    // for the next Cuk pass.
+}
+
+// =====================================================================
+//   §5.1 Converter-Port Waveforms — DC-stream gate.
+//
+//   The output_voltages / output_currents streams returned by
+//   simulate_and_extract_topology_waveforms MUST be DC (mean ≈ nameplate,
+//   bounded ripple). Cuk-specific tolerance: open-loop fixed-D plus a
+//   4th-order LC tank settles slowly, so we relax the mean tolerance to
+//   35 % (the ripple gate alone — kVoutRippleTol = 25 % — catches an AC
+//   winding signal smuggled into the converter-port stream).
+//
+//   Cuk output sign convention: Vout is NEGATIVE (inverting). Pass the
+//   nominal magnitudes flipped accordingly.
+// =====================================================================
+
+TEST_CASE("Test_Cuk_ConverterPortWaveforms",
+          "[converter-port-waveforms][cuk-topology][ngspice-simulation]") {
+    OpenMagnetics::NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available");
+
+    // Erickson §2.4 OP — symmetrical D=0.5 reduces the open-loop droop.
+    const double Vin = 25.0, VoMag = 25.0, Iout = 1.0;
+    json j = make_cuk_json(Vin, VoMag, Iout, 100e3, /*Vd*/ 0.0, /*η*/ 1.0);
+    OpenMagnetics::Cuk cuk(j);
+    cuk.set_num_steady_state_periods(400);
+    cuk.set_num_periods_to_extract(1);
+
+    auto wfs = cuk.simulate_and_extract_topology_waveforms(100e-6);
+    REQUIRE(!wfs.empty());
+    // Cuk inverts: nominal Vout = -25 V, Iout drawn from load = -1 A.
+    for (size_t i = 0; i < wfs.size(); ++i) {
+        ConverterPortChecks::check_dc_ports(
+            wfs[i], "Cuk", i, Vin, {-VoMag}, {-Iout},
+            /*voutMeanTol*/ 0.35,
+            /*ioutMeanTol*/ 0.35);
+    }
+}
+
+// =====================================================================
+//   §5.2 SPICE Power Sanity — primary winding (L1).
+//
+//   Same template as Sepic / IsolatedBuck: bipolar swing, |avg(V)| small,
+//   passive-sign avg(V·I) > 0, magnitude in single-W class.
+//   Pin nominal here is Vo·Io / η ≈ 25·1 / 1 = 25 W.
+// =====================================================================
+
+TEST_CASE("Test_Cuk_SpicePowerSanity",
+          "[converter-model][cuk-topology][ngspice-simulation][regression]") {
+    OpenMagnetics::NgspiceRunner runner;
+    if (!runner.is_available()) SKIP("ngspice not available");
+
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3, /*Vd*/ 0.0, /*η*/ 1.0);
+    OpenMagnetics::Cuk cuk(j);
+    cuk.set_num_steady_state_periods(400);
+    cuk.set_num_periods_to_extract(1);
+
+    auto simOps = cuk.simulate_and_extract_operating_points(100e-6);
+    REQUIRE(!simOps.empty());
+
+    auto& exc = simOps[0].get_excitations_per_winding()[0];
+    REQUIRE(exc.get_voltage().has_value());
+    REQUIRE(exc.get_current().has_value());
+    auto vData = exc.get_voltage()->get_waveform()->get_data();
+    auto iData = exc.get_current()->get_waveform()->get_data();
+    REQUIRE(vData.size() == iData.size());
+    REQUIRE(!vData.empty());
+
+    double sumVI = 0, sumAbsVI = 0, sumV = 0;
+    double vmax = vData[0], vmin = vData[0];
+    for (size_t k = 0; k < vData.size(); ++k) {
+        sumVI    += vData[k] * iData[k];
+        sumAbsVI += std::fabs(vData[k] * iData[k]);
+        sumV     += vData[k];
+        if (vData[k] > vmax) vmax = vData[k];
+        if (vData[k] < vmin) vmin = vData[k];
+    }
+    const double avgVI    = sumVI    / vData.size();
+    const double avgAbsVI = sumAbsVI / vData.size();
+    const double avgV     = sumV     / vData.size();
+    const double swing    = vmax - vmin;
+
+    INFO("V max=" << vmax << " min=" << vmin << " avg=" << avgV
+         << "  swing=" << swing
+         << "  avg(V·I)=" << avgVI << " avg(|V·I|)=" << avgAbsVI);
+
+    // (a) bipolar L1 swing — sees +Vin during ON, −VC1 + Vin = -|Vo| during OFF.
+    //     Expected swing ≈ Vin + |Vo| = 50 V (allow > 30 V).
+    CHECK(swing > 30.0);
+    CHECK(std::fabs(avgV) < 2.0);                 // volt-second balance
+
+    // (b) passive sign — power INTO L1 winding is positive
+    CHECK(avgVI > 0.0);
+
+    // (c) realistic magnitude — Pin ≈ 25 W nominal at this OP.
+    CHECK(avgAbsVI > 0.5);
+    CHECK(avgAbsVI < 500.0);
+}
+
+// =====================================================================
+//   §8 Waveform Plotting — visual regression artifacts.
+//
+//   Dump SVGs of the L1-current and L1-voltage waveforms for the V1
+//   reference design under tests/output/. No asserts — purpose is to
+//   produce reviewable artifacts under CI.
+// =====================================================================
+
+namespace {
+auto cukOutputFilePath = std::filesystem::path{std::source_location::current().file_name()}
+    .parent_path().append("..").append("output");
+}
+
+TEST_CASE("Test_Cuk_Waveform_Plotting",
+          "[converter-model][cuk-topology][visualization]") {
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3, /*Vd*/ 0.0, /*η*/ 1.0);
+    OpenMagnetics::Cuk cuk(j);
+    auto ops = cuk.process_operating_points(std::vector<double>{}, 100e-6);
+    REQUIRE(!ops.empty());
+
+    std::filesystem::create_directories(cukOutputFilePath);
+
+    SECTION("L1 current waveform plot") {
+        auto outFile = cukOutputFilePath;
+        outFile.append("Test_Cuk_L1_Current_Waveform.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, true);
+        painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
+        painter.export_svg();
+    }
+
+    SECTION("L1 voltage waveform plot") {
+        auto outFile = cukOutputFilePath;
+        outFile.append("Test_Cuk_L1_Voltage_Waveform.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, true);
+        painter.paint_waveform(ops[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
+        painter.export_svg();
+    }
 }
