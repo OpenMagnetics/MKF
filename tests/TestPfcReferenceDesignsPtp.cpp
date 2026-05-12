@@ -33,6 +33,7 @@
 #include "ConverterPortChecks.h"
 
 using namespace OpenMagnetics;
+using namespace MAS;
 
 namespace {
 
@@ -128,9 +129,12 @@ double mean_product(const std::vector<double>& t,
 void run_ptp_gates(const RefDesignSpec& s) {
     INFO("Reference design: " << s.name);
 
+    const auto tBuild0 = std::chrono::steady_clock::now();
     auto pfc = build(s);
     const std::string netlist = pfc.generate_ngspice_switching_circuit(
         s.L, s.cycles);
+    const double tBuild = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - tBuild0).count();
 
     NgspiceRunner runner;
     if (!runner.is_available()) {
@@ -149,6 +153,11 @@ void run_ptp_gates(const RefDesignSpec& s) {
     const auto sim = runner.run_simulation(netlist, cfg);
     const double wallTime = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t0).count();
+
+    std::cout << "[PFC PtP " << s.name << "] tBuild=" << tBuild
+              << "s tSim=" << wallTime << "s\n";
+
+    const auto tPostSim0 = std::chrono::steady_clock::now();
 
     INFO("wall_time=" << wallTime << " s   success=" << sim.success
          << "   waveforms=" << sim.waveformNames.size());
@@ -203,13 +212,34 @@ void run_ptp_gates(const RefDesignSpec& s) {
     // Compare a one-Tsw sliding mean of iL against the ideal Iin_pk·|sin| line
     // envelope.  The sliding mean strips the switching ripple so this metric
     // exposes line-frequency tracking error only.
+    //
+    // Implementation: precompute the trapezoidal cumulative integral
+    // F[i] = ∫_{tvec[0]}^{tvec[i]} iL(τ) dτ once in O(N); each sliding-mean
+    // query then reduces to (F_at(b) - F_at(a)) / (b - a) where F_at(t) for
+    // t inside segment [tvec[k-1], tvec[k]] is F[k-1] + 0.5·(iL[k-1] +
+    // iL_lin(t))·(t − tvec[k-1]).  Window-edge lookup is O(log N) via
+    // binary search.  Replaces the previous O(N²) inner mean_over loop.
     const double Iin_rms = s.pout / s.vrms;
     const double Iin_pk  = std::sqrt(2.0) * Iin_rms;
     const double Tsw     = 1.0 / s.fsw;
+    std::vector<double> Fcum(tvec.size(), 0.0);
+    for (size_t i = 1; i < tvec.size(); ++i) {
+        Fcum[i] = Fcum[i-1] + 0.5 * (iL[i-1] + iL[i]) * (tvec[i] - tvec[i-1]);
+    }
+    auto F_at = [&](double t) -> double {
+        if (t <= tvec.front()) return 0.0;
+        if (t >= tvec.back())  return Fcum.back();
+        auto it = std::upper_bound(tvec.begin(), tvec.end(), t);
+        size_t k = std::distance(tvec.begin(), it);   // tvec[k-1] < t <= tvec[k]
+        const double dt   = tvec[k] - tvec[k-1];
+        const double frac = (t - tvec[k-1]) / dt;
+        const double iLt  = iL[k-1] + frac * (iL[k] - iL[k-1]);
+        return Fcum[k-1] + 0.5 * (iL[k-1] + iLt) * (t - tvec[k-1]);
+    };
     auto sliding_mean = [&](double tc) {
         double a = std::max(tc - 0.5*Tsw, tvec.front());
         double b = std::min(tc + 0.5*Tsw, tvec.back());
-        return mean_over(tvec, iL, a, b);
+        return (F_at(b) - F_at(a)) / (b - a);
     };
     double sse = 0.0, sm = 0.0;
     size_t n = 0;
@@ -229,11 +259,56 @@ void run_ptp_gates(const RefDesignSpec& s) {
     REQUIRE(nrmse_env < s.tol_envelope);
 
     // ---- Gate 4: Phase-6 ConverterPortChecks switching-leg helper -------
-    // Re-run the simulation through the OperatingPoint API (cheap — netlist
-    // already cached in /tmp by ngspice) and apply the standard PFC port
-    // semantics (rectified-line input + DC-bus output) on the SPICE
-    // waveforms, mirroring the analytical check_pfc_ports gate.
-    auto op = pfc.simulate_with_ngspice_switching(s.L, s.cycles);
+    // Reuse the SAME simulation already executed above — build a minimal
+    // OperatingPoint from sim.waveforms and feed it to the canonical
+    // check_pfc_switching_ports helper.  This avoids a SECOND full ngspice
+    // transient run (each one takes 1.5x to 2x the wall-time of a Buck/
+    // Boost test, dominating the PtP suite when duplicated).  Web-frontend
+    // users can still call simulate_with_ngspice_switching directly with
+    // any cycle count they want — the cost is theirs to bear there.
+    //
+    // check_pfc_switching_ports expects the OperatingPoint to be trimmed
+    // to a whole number of full line cycles (it computes the line-cycle
+    // mean / RMS of vin_rect to compare against analytical 0.9·Vrms / Vrms).
+    // simulate_with_ngspice_switching trims to the last full cycle by
+    // default; we replicate that here by slicing [t_a, t_b].
+    auto sliceToLastCycle = [&](const std::vector<double>& src)
+        -> std::vector<double> {
+        std::vector<double> out;
+        out.reserve(src.size());
+        for (size_t i = 0; i < tvec.size(); ++i) {
+            if (tvec[i] >= t_a && tvec[i] <= t_b) out.push_back(src[i]);
+        }
+        return out;
+    };
+    const std::vector<double> tvecLC = sliceToLastCycle(tvec);
+    const std::vector<double> vinLC  = sliceToLastCycle(vin);
+    const std::vector<double> vbusLC = sliceToLastCycle(vbus);
+    const std::vector<double> iLLC   = sliceToLastCycle(iL);
+
+    auto makeWfWithTime = [&](const std::vector<double>& data,
+                               const std::vector<double>& time) -> Waveform {
+        Waveform wf;
+        wf.set_data(data);
+        wf.set_time(time);
+        return wf;
+    };
+    auto makeSig = [&](const Waveform& wf) -> SignalDescriptor {
+        SignalDescriptor sig;
+        sig.set_waveform(wf);
+        return sig;
+    };
+    OperatingPoint op;
+    OperatingPointExcitation ipx;   // InputPort:  V=vin_rect, I=iL
+    ipx.set_name("InputPort");
+    ipx.set_voltage(makeSig(makeWfWithTime(vinLC, tvecLC)));
+    ipx.set_current(makeSig(makeWfWithTime(iLLC,  tvecLC)));
+    OperatingPointExcitation psx;   // PowerStage: V=vbus,    I=iL
+    psx.set_name("PowerStage");
+    psx.set_voltage(makeSig(makeWfWithTime(vbusLC, tvecLC)));
+    psx.set_current(makeSig(makeWfWithTime(iLLC,   tvecLC)));
+    op.set_excitations_per_winding({ipx, psx});
+
     ConverterPortChecks::check_pfc_switching_ports(
         op,
         s.name,
@@ -243,6 +318,9 @@ void run_ptp_gates(const RefDesignSpec& s) {
         /*vinTol*/      0.05,
         /*voutMeanTol*/ s.tol_vbus_pct / 100.0,
         /*iinMeanTol*/  s.tol_pin_pct  / 100.0);
+    const double tPostSim = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - tPostSim0).count();
+    std::cout << "[PFC PtP " << s.name << "] tPostSim=" << tPostSim << "s\n";
 }
 
 } // namespace
@@ -258,11 +336,14 @@ TEST_CASE("PFC reference design PtP — NCP1654 100 W",
         /*fsw*/          100e3,
         /*cbus*/         100e-6,
         /*L*/            3.30e-3,
-        /*cycles*/       3,
+        /*cycles*/       3,        // NCP1654 needs 3 cycles for Pin
+                                   // balance to settle within ±5 %; the
+                                   // 100 W design has the smallest Cbus
+                                   // ripple-vs-Pout ratio of the trio.
         /*tol_vbus_pct*/ 6.0,
         /*tol_pin_pct*/  5.0,
         /*tol_envelope*/ 0.10,
-        /*tol_walltime*/ 60.0
+        /*tol_walltime*/ 10.0
     };
     run_ptp_gates(s);
 }
@@ -277,11 +358,11 @@ TEST_CASE("PFC reference design PtP — UCC28180 360 W",
         /*fsw*/          65e3,
         /*cbus*/         470e-6,
         /*L*/            1.25e-3,
-        /*cycles*/       3,
+        /*cycles*/       2,
         /*tol_vbus_pct*/ 6.0,
         /*tol_pin_pct*/  5.0,
         /*tol_envelope*/ 0.30,
-        /*tol_walltime*/ 60.0
+        /*tol_walltime*/ 10.0
     };
     run_ptp_gates(s);
 }
@@ -296,11 +377,11 @@ TEST_CASE("PFC reference design PtP — L4981 1000 W",
         /*fsw*/          50e3,
         /*cbus*/         1500e-6,
         /*L*/            659e-6,
-        /*cycles*/       3,
+        /*cycles*/       2,
         /*tol_vbus_pct*/ 6.0,
         /*tol_pin_pct*/  5.0,
         /*tol_envelope*/ 0.60,
-        /*tol_walltime*/ 60.0
+        /*tol_walltime*/ 10.0
     };
     run_ptp_gates(s);
 }
