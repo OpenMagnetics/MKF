@@ -525,3 +525,92 @@ TEST_CASE("Test_Cuk_V1_Default_Still_Uses_Diode",
     REQUIRE(netlist.find(".model SW2") == std::string::npos);
     REQUIRE(netlist.find("S2 node_B") == std::string::npos);
 }
+
+// =====================================================================
+//   V2 coupled-inductor: design requirements + netlist contract
+// =====================================================================
+
+TEST_CASE("Test_Cuk_V2_CoupledInductor_DR_Has_Two_Windings",
+          "[converter-model][cuk-topology][v2-coupled][unit]") {
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    j["coupledInductor"] = true;
+    OpenMagnetics::Cuk cuk(j);
+
+    auto dr = cuk.process_design_requirements();
+    REQUIRE(dr.get_topology() == Topologies::CUK_CONVERTER);
+    REQUIRE(dr.get_isolation_sides().has_value());
+    // Two windings on the same (non-isolated) core.
+    REQUIRE(dr.get_isolation_sides().value().size() == 2);
+    // 1:1 turns ratio for the canonical zero-ripple sizing.
+    REQUIRE(dr.get_turns_ratios().size() == 1);
+    auto Nratio = dr.get_turns_ratios()[0].get_nominal();
+    REQUIRE(Nratio.has_value());
+    REQUIRE_THAT(Nratio.value(), WithinRel(1.0, 1e-12));
+}
+
+TEST_CASE("Test_Cuk_V2_CoupledInductor_Netlist_Has_K1",
+          "[converter-model][cuk-topology][v2-coupled][unit]") {
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    j["coupledInductor"]     = true;
+    j["couplingCoefficient"] = 0.98;
+    OpenMagnetics::Cuk cuk(j);
+    cuk.process_operating_points(std::vector<double>{}, /*L1*/ 100e-6);
+
+    std::string netlist = cuk.generate_ngspice_circuit(/*L1*/ 100e-6);
+
+    // Mutual-inductance line must reference both L1 and L2 with the user k.
+    REQUIRE(netlist.find("K1 L1 L2") != std::string::npos);
+    REQUIRE(netlist.find("0.98") != std::string::npos);
+    REQUIRE(netlist.find("V2 coupled-inductor") != std::string::npos);
+
+    // The L1 + L2 elements themselves still appear (we couple, not replace).
+    REQUIRE(netlist.find("L1 l1_in l1_dcr_mid") != std::string::npos);
+    REQUIRE(netlist.find("L2 node_B l2_dcr_mid") != std::string::npos);
+}
+
+TEST_CASE("Test_Cuk_V2_CoupledInductor_Default_K_Is_Tight",
+          "[converter-model][cuk-topology][v2-coupled][unit]") {
+    // Without an explicit couplingCoefficient the netlist defaults to a tight
+    // k = 0.999 (near zero-ripple ideal). Regression guard.
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    j["coupledInductor"] = true;
+    OpenMagnetics::Cuk cuk(j);
+    cuk.process_operating_points(std::vector<double>{}, /*L1*/ 100e-6);
+
+    std::string netlist = cuk.generate_ngspice_circuit(/*L1*/ 100e-6);
+    REQUIRE(netlist.find("K1 L1 L2 0.999") != std::string::npos);
+}
+
+TEST_CASE("Test_Cuk_V2_CoupledInductor_Throws_On_Bad_K",
+          "[converter-model][cuk-topology][v2-coupled][unit]") {
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    j["coupledInductor"]     = true;
+    j["couplingCoefficient"] = 1.5;   // out of range
+    OpenMagnetics::Cuk cuk(j);
+    cuk.process_operating_points(std::vector<double>{}, /*L1*/ 100e-6);
+    REQUIRE_THROWS(cuk.generate_ngspice_circuit(/*L1*/ 100e-6));
+}
+
+TEST_CASE("Test_Cuk_CoupledInductor_And_Isolated_Are_Mutually_Exclusive",
+          "[converter-model][cuk-topology][v2-coupled][v3-isolated][unit]") {
+    // V2 (coupled inductor on one core) and V3 (isolation transformer) cannot
+    // both be requested at once - DR construction must throw.
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    j["coupledInductor"] = true;
+    j["isolated"]        = true;
+    OpenMagnetics::Cuk cuk(j);
+    REQUIRE_THROWS(cuk.process_design_requirements());
+}
+
+TEST_CASE("Test_Cuk_V1_Default_DR_Has_Single_Winding",
+          "[converter-model][cuk-topology][v1-default][unit]") {
+    // Regression guard for the V1 / V4 / V5 single-winding DR shape: a one-
+    // entry isolation_sides vector and an empty turnsRatios array.
+    json j = make_cuk_json(25.0, 25.0, 1.0, 100e3);
+    OpenMagnetics::Cuk cuk(j);
+
+    auto dr = cuk.process_design_requirements();
+    REQUIRE(dr.get_isolation_sides().has_value());
+    REQUIRE(dr.get_isolation_sides().value().size() == 1);
+    REQUIRE(dr.get_turns_ratios().empty());
+}
