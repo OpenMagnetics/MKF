@@ -132,14 +132,25 @@ protected:
     mutable double lastSizedL2 = 0.0;                  // internally-sized L2
     mutable double lastSizedC1 = 0.0;                  // internally-sized C1
     mutable double lastSizedCo = 0.0;                  // internally-sized Co
+    // V3 isolated diagnostics. Populated only when isolated=true.
+    mutable double lastSizedCa = 0.0;                  // primary-side coupling cap
+    mutable double lastSizedCb = 0.0;                  // secondary-side coupling cap
+    mutable double lastSizedLm = 0.0;                  // transformer magnetizing inductance
+    mutable double lastTurnsRatio = 1.0;               // Np/Ns (1.0 in V1/V2)
 
     // ---- Extra-component waveforms (filled in process_operating_point_for_input_voltage,
     //      consumed by get_extra_components_inputs).  Cleared at the start of
     //      process_operating_points so a re-run does not accumulate. ----
+    mutable std::vector<Waveform> extraL1VoltageWaveforms;   // V3 only (V1 reuses primary excitation)
+    mutable std::vector<Waveform> extraL1CurrentWaveforms;
     mutable std::vector<Waveform> extraL2VoltageWaveforms;
     mutable std::vector<Waveform> extraL2CurrentWaveforms;
-    mutable std::vector<Waveform> extraC1VoltageWaveforms;
+    mutable std::vector<Waveform> extraC1VoltageWaveforms;   // V1/V2: single C1; V3: unused
     mutable std::vector<Waveform> extraC1CurrentWaveforms;
+    mutable std::vector<Waveform> extraCaVoltageWaveforms;   // V3 only: primary-side coupling cap
+    mutable std::vector<Waveform> extraCaCurrentWaveforms;
+    mutable std::vector<Waveform> extraCbVoltageWaveforms;   // V3 only: secondary-side coupling cap
+    mutable std::vector<Waveform> extraCbCurrentWaveforms;
     mutable std::vector<Waveform> extraCoVoltageWaveforms;
     mutable std::vector<Waveform> extraCoCurrentWaveforms;
 
@@ -178,6 +189,10 @@ public:
     double get_last_sized_l2()                    const { return lastSizedL2; }
     double get_last_sized_c1()                    const { return lastSizedC1; }
     double get_last_sized_co()                    const { return lastSizedCo; }
+    double get_last_sized_ca()                    const { return lastSizedCa; }
+    double get_last_sized_cb()                    const { return lastSizedCb; }
+    double get_last_sized_lm()                    const { return lastSizedLm; }
+    double get_last_turns_ratio()                 const { return lastTurnsRatio; }
 
     bool run_checks(bool assert = false) override;
 
@@ -202,7 +217,10 @@ public:
         std::optional<Magnetic> magnetic = std::nullopt) override;
 
     // ---- Static analytical helpers (CUK_PLAN.md §2.13) ----
-    static double calculate_duty_cycle(double inputVoltage, double outputVoltageMagnitude, double diodeVoltageDrop, double efficiency);
+    //
+    // For V3 isolated, turnsRatio = Np/Ns (Flyback convention). Conversion gain
+    // becomes |Vo|/Vin = D / ((1-D) · turnsRatio); reduces to V1 when turnsRatio=1.
+    static double calculate_duty_cycle(double inputVoltage, double outputVoltageMagnitude, double diodeVoltageDrop, double efficiency, double turnsRatio = 1.0);
     static double calculate_conversion_ratio(double dutyCycle);                 // -D/(1-D)
     static double calculate_coupling_cap_voltage(double inputVoltage, double dutyCycle);
     static double calculate_l1_min(double inputVoltage, double dutyCycle, double deltaIL1, double switchingFrequency);
@@ -210,6 +228,18 @@ public:
     static double calculate_c1_min(double outputCurrent, double dutyCycle, double deltaVC1, double switchingFrequency);
     static double calculate_dcm_K(double L1, double L2, double switchingFrequency, double loadResistance);
     static double calculate_rhp_zero_frequency(double loadResistance, double dutyCycle, double L2);
+
+    /**
+     * @brief Compute the input-choke inductance L1 for an isolated (V3) Cuk.
+     *
+     * In V1/V2 the magnetizing-inductance design requirement IS L1; in V3 the
+     * design requirement is the transformer Lm and L1 is ancillary, sized
+     * internally from the same ripple-ratio / max-switch-current rule used by
+     * process_design_requirements for V1.  Throws if neither current_ripple_ratio
+     * nor maximum_switch_current is provided (no silent fallbacks per
+     * CLAUDE.md).
+     */
+    double compute_l1_for_isolated() const;
 
     /**
      * @brief Generate an ngspice circuit for this Cuk converter (V1).

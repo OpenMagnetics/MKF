@@ -16,24 +16,27 @@ namespace OpenMagnetics {
     //   Static analytical helpers (CUK_PLAN.md §2.13, §4.1–§4.4)
     // ============================================================
 
-    double Cuk::calculate_duty_cycle(double inputVoltage, double outputVoltageMagnitude, double diodeVoltageDrop, double efficiency) {
-        // Cuk CCM, ideal:                M(D)  = -D/(1-D)
-        // With diode drop and efficiency: |Vo| = (Vin·η - Vd·(1-D))·D/(1-D)
-        // Ignoring the small Vd term (it's a 2nd-order correction in the
-        // already-approximated η model), solve |Vo| = Vin·η·D/(1-D) for D:
-        //                                  D = |Vo| / (|Vo| + Vin·η)
-        // Then add a small Vd-driven correction: D += Vd / (Vin·η + Vd) · (1-D)
-        // For the test fixtures (Vd ≤ 0.6 V, Vin ≥ 3 V) the correction is
-        // < 5 %; ignore for analytical anchor and let SPICE see the real
-        // diode drop.
+    double Cuk::calculate_duty_cycle(double inputVoltage, double outputVoltageMagnitude, double diodeVoltageDrop, double efficiency, double turnsRatio) {
+        // Cuk CCM, ideal:
+        //   V1/V2 (n=1):     M(D) = -D/(1-D)
+        //   V3 isolated:     M(D) = -D / ((1-D) · n),  n = Np/Ns (Flyback convention)
+        //
+        // Solving |Vo| · (1-D) · n = (Vin·η - Vd·(1-D)) · D for D and treating
+        // the small Vd · (1-D) term as a forward-drop correction:
+        //   D = (|Vo|+Vd) · n / (Vin·η + (|Vo|+Vd) · n)
+        // For n=1 reduces to V1's expression (verified algebraically).
         if (inputVoltage <= 0) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Cuk::calculate_duty_cycle: input voltage must be > 0");
         }
         if (outputVoltageMagnitude <= 0) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Cuk::calculate_duty_cycle: |Vo| must be > 0");
         }
+        if (turnsRatio <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Cuk::calculate_duty_cycle: turnsRatio must be > 0");
+        }
         double effVin = inputVoltage * efficiency;
-        double dutyCycle = (outputVoltageMagnitude + diodeVoltageDrop) / (outputVoltageMagnitude + diodeVoltageDrop + effVin);
+        double reflectedVo = (outputVoltageMagnitude + diodeVoltageDrop) * turnsRatio;
+        double dutyCycle = reflectedVo / (reflectedVo + effVin);
         if (dutyCycle >= 0.95) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "Cuk::calculate_duty_cycle: duty cycle " + std::to_string(dutyCycle) +
@@ -88,6 +91,63 @@ namespace OpenMagnetics {
         return omegaRhp / (2.0 * std::numbers::pi);
     }
 
+    double Cuk::compute_l1_for_isolated() const {
+        // Mirrors the L1 sizing logic in process_design_requirements (V1 path):
+        // worst-case L1 across all OPs at maximum Vin.  We require an explicit
+        // ripple budget — no silent default — because V3 isolated Cuk has no
+        // primary-magnetic L1 design requirement to fall back on.
+        if (!get_current_ripple_ratio() && !get_maximum_switch_current()) {
+            throw std::invalid_argument(
+                "Cuk::compute_l1_for_isolated: V3 isolated requires either "
+                "currentRippleRatio or maximumSwitchCurrent to size the input "
+                "choke L1 (no fallback per CLAUDE.md)");
+        }
+        double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
+        double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
+        double efficiency = 1.0;
+        if (get_efficiency()) efficiency = get_efficiency().value();
+        double turnsRatio = get_turns_ratio().value_or(1.0);
+
+        double maximumDeltaIL1 = 0.0;
+        if (get_current_ripple_ratio()) {
+            double rippleRatio = get_current_ripple_ratio().value();
+            for (const auto& op : get_operating_points()) {
+                double Iout = op.get_output_currents()[0];
+                double Vo   = std::abs(op.get_output_voltages()[0]);
+                double D    = calculate_duty_cycle(maximumInputVoltage, Vo, get_diode_voltage_drop(), efficiency, turnsRatio);
+                double IL1avg = Iout * D / ((1.0 - D) * turnsRatio * efficiency);
+                maximumDeltaIL1 = std::max(maximumDeltaIL1, rippleRatio * IL1avg);
+            }
+        }
+        if (get_maximum_switch_current()) {
+            double IsMax = get_maximum_switch_current().value();
+            for (const auto& op : get_operating_points()) {
+                double Iout = op.get_output_currents()[0];
+                double Vo   = std::abs(op.get_output_voltages()[0]);
+                double D    = calculate_duty_cycle(minimumInputVoltage, Vo, get_diode_voltage_drop(), efficiency, turnsRatio);
+                double IL1avg = Iout * D / ((1.0 - D) * turnsRatio * efficiency);
+                double IL2avg = Iout;
+                // Switch-current peak: IS_pk = IL1avg + IL2avg/n + ripples/2.
+                double residual = IsMax - (IL1avg + IL2avg / turnsRatio) - 0.5 * 0.30 * IL2avg / turnsRatio;
+                double deltaIL1 = std::max(2.0 * residual, 0.0);
+                maximumDeltaIL1 = std::max(maximumDeltaIL1, deltaIL1);
+            }
+        }
+        if (maximumDeltaIL1 <= 0) {
+            throw std::invalid_argument(
+                "Cuk::compute_l1_for_isolated: derived ΔIL1 budget is non-positive");
+        }
+        double maximumNeededInductance = 0.0;
+        for (const auto& op : get_operating_points()) {
+            double switchingFrequency = op.get_switching_frequency();
+            double Vo = std::abs(op.get_output_voltages()[0]);
+            double D  = calculate_duty_cycle(maximumInputVoltage, Vo, get_diode_voltage_drop(), efficiency, turnsRatio);
+            double L1 = calculate_l1_min(maximumInputVoltage, D, maximumDeltaIL1, switchingFrequency);
+            maximumNeededInductance = std::max(maximumNeededInductance, L1);
+        }
+        return maximumNeededInductance;
+    }
+
     // ============================================================
     //   Constructors
     // ============================================================
@@ -117,18 +177,188 @@ namespace OpenMagnetics {
         double efficiency = 1.0;
         if (get_efficiency()) efficiency = get_efficiency().value();
 
-        double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltageMag, diodeVoltageDrop, efficiency);
+        const bool isIsolated = get_isolated().value_or(false);
+        const double turnsRatio = isIsolated ? get_turns_ratio().value_or(1.0) : 1.0;
+        if (isIsolated && turnsRatio <= 0) {
+            throw std::invalid_argument(
+                "Cuk::process_operating_points_for_input_voltage: turnsRatio must "
+                "be > 0 for isolated Cuk; received " + std::to_string(turnsRatio));
+        }
+        lastTurnsRatio = turnsRatio;
 
-        // Internally-sized L2, C1 (V1 only — see CUK_PLAN.md §13).
+        double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltageMag, diodeVoltageDrop, efficiency, turnsRatio);
+
+        // Common derived quantities (V1/V2/V3).
+        // Power balance: Vin·η·IL1avg = |Vo|·Iout  ⇒  IL1avg = |Vo|·Iout/(Vin·η).
+        // For V1 (n=1, η=1) this simplifies to Iout·D/(1-D); the V3 form uses
+        // |Vo|/Vin = D/((1-D)·n) so IL1avg = Iout·D/((1-D)·n·η).
         double IL2avg     = outputCurrent;
-        double IL1avg     = outputCurrent * dutyCycle / (1.0 - dutyCycle);
-        double deltaIL1   = inductanceL1 > 0 ? (inputVoltage * dutyCycle) / (inductanceL1 * switchingFrequency)
-                                             : 0.0;
+        double IL1avg     = outputCurrent * dutyCycle / ((1.0 - dutyCycle) * turnsRatio * efficiency);
+        double VCa        = inputVoltage / (1.0 - dutyCycle);            // primary-side coupling-cap DC (V3) / VC1 (V1)
+        double VCb        = isIsolated ? outputVoltageMag / dutyCycle    // secondary-side coupling-cap DC (V3 only)
+                                       : 0.0;
+        // For V3 the inductanceL1 argument is repurposed as Lm (transformer
+        // magnetizing inductance) — process_design_requirements set it that
+        // way. The actual input-choke L1 is sized separately.
+        double L1Choke    = isIsolated ? compute_l1_for_isolated() : inductanceL1;
+        double deltaIL1   = L1Choke > 0 ? (inputVoltage * dutyCycle) / (L1Choke * switchingFrequency)
+                                        : 0.0;
         double deltaIL2_target = std::max(l2RipplePct * IL2avg, 1e-6);
         double inductanceL2    = calculate_l2_min(outputVoltageMag, dutyCycle, deltaIL2_target, switchingFrequency);
         double deltaIL2        = (outputVoltageMag * (1.0 - dutyCycle)) / (inductanceL2 * switchingFrequency);
 
-        double VC1            = calculate_coupling_cap_voltage(inputVoltage, dutyCycle);
+        // ---- Common diagnostics ----
+        lastDutyCycle = dutyCycle;
+        lastConversionRatio = -dutyCycle / ((1.0 - dutyCycle) * turnsRatio);
+        lastInputInductorAverage = IL1avg;
+        lastOutputInductorAverage = IL2avg;
+        lastInputInductorRipple = deltaIL1;
+        lastOutputInductorRipple = deltaIL2;
+        // Switch (S1) blocks VCa during OFF (Cuk classical result; isolation does
+        // not change switch stress on primary). Diode peak reverse:
+        //   V1/V2: VS,peak = VD,peak = Vin + |Vo| = VCa.
+        //   V3:    VS,peak = VCa = Vin/(1-D); VD,peak = VCb = |Vo|/D.
+        lastSwitchPeakVoltage = isIsolated ? VCa : (inputVoltage + outputVoltageMag);
+        lastDiodePeakReverseVoltage = isIsolated ? VCb : lastSwitchPeakVoltage;
+        double IS_peak = IL1avg + IL2avg / std::max(turnsRatio, 1e-12) + (deltaIL1 + deltaIL2 / std::max(turnsRatio, 1e-12)) / 2.0;
+        lastSwitchPeakCurrent = IS_peak;
+        lastDiodePeakCurrent  = IL2avg + deltaIL2 / 2.0;
+        double loadResistance = (outputCurrent > 0) ? outputVoltageMag / outputCurrent : 0.0;
+        lastDcmK = calculate_dcm_K(L1Choke, inductanceL2, switchingFrequency, loadResistance);
+        lastDcmKcrit = std::pow(1.0 - dutyCycle, 2);
+        lastIsCcm = (lastDcmK > lastDcmKcrit);
+        lastRhpZeroFrequency = calculate_rhp_zero_frequency(loadResistance, dutyCycle, inductanceL2);
+        lastRecommendedLoopBandwidth = lastRhpZeroFrequency / 5.0;
+        lastSizedL2 = inductanceL2;
+
+        // Output cap Co sized from ΔIL2 / (8·fsw·ΔVo) (LC filter rule).
+        double deltaVo_target = std::max(coRipplePct * outputVoltageMag, 1e-3);
+        double outputCapacitance = deltaIL2 / (8.0 * switchingFrequency * deltaVo_target);
+        outputCapacitance = std::max(outputCapacitance, 1e-6);
+        lastSizedCo = outputCapacitance;
+        double deltaVo_actual = deltaIL2 / (8.0 * switchingFrequency * outputCapacitance);
+
+        if (isIsolated) {
+            // ============================================================
+            //   V3 isolated: primary excitation = transformer Lp winding
+            // ============================================================
+            //
+            // Lm (= inductanceL1 argument repurposed in V3) is the magnetizing
+            // inductance returned by process_design_requirements above for the
+            // isolated path. Magnetizing current ripple (Erickson §6):
+            //     ΔIm = VCa · D · T / Lm   with Im,avg = 0 (symmetric).
+            // V·s balance on Lp: VLp_ON · D + VLp_OFF · (1-D) = 0
+            //                  ⇒ VLp_OFF = -VCa · D/(1-D).
+            // Peak-to-peak winding voltage = VCa - VLp_OFF = VCa / (1-D)
+            //                              = Vin / (1-D)².
+            const double Lm = inductanceL1;   // sized by process_design_requirements
+            const double VCa_DC = VCa;
+            double deltaIm = (Lm > 0) ? (VCa_DC * dutyCycle) / (Lm * switchingFrequency) : 0.0;
+            double primaryVppLp = VCa_DC / (1.0 - dutyCycle);
+
+            lastSizedLm   = Lm;
+            lastCouplingCapVoltage = VCa_DC;     // VCa, primary side
+            // For RMS estimate use the same √(D(1-D))(IL1avg+IL2avg/n) form,
+            // valid for the primary-side coupling cap which carries the same AC.
+            lastCouplingCapRmsCurrent = std::sqrt(dutyCycle * (1.0 - dutyCycle)) *
+                                        (IL1avg + IL2avg / turnsRatio);
+
+            // Size Ca and Cb so their ripple stays within c1RipplePct of the DC level.
+            double deltaVCa_target = std::max(c1RipplePct * VCa_DC, 1e-3);
+            double couplingCa = (IL2avg / turnsRatio) * (1.0 - dutyCycle) / (deltaVCa_target * switchingFrequency);
+            double deltaVCb_target = std::max(c1RipplePct * VCb, 1e-3);
+            double couplingCb = IL2avg * dutyCycle / (deltaVCb_target * switchingFrequency);
+            lastSizedCa = couplingCa;
+            lastSizedCb = couplingCb;
+            // V1-shape diagnostics that have no V3 counterpart are zeroed for clarity.
+            lastSizedC1 = 0.0;
+
+            // ---- Primary excitation = Lp (magnetizing) ----
+            {
+                Waveform vLp = Inputs::create_waveform(
+                    WaveformLabel::RECTANGULAR, primaryVppLp, switchingFrequency, dutyCycle, 0.0, 0);
+                Waveform iLp = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, deltaIm, switchingFrequency, dutyCycle, 0.0, 0);
+                auto excitation = complete_excitation(iLp, vLp, switchingFrequency, "Primary");
+                operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            }
+            // ---- Secondary excitation = Ls (turns_ratio scaled) ----
+            {
+                double primaryVppLs = primaryVppLp / turnsRatio;
+                double deltaIs      = deltaIm * turnsRatio;       // ampere-turn balance
+                Waveform vLs = Inputs::create_waveform(
+                    WaveformLabel::RECTANGULAR, primaryVppLs, switchingFrequency, dutyCycle, 0.0, 0);
+                Waveform iLs = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, deltaIs, switchingFrequency, dutyCycle, 0.0, 0);
+                auto excitation = complete_excitation(iLs, vLs, switchingFrequency, "Secondary");
+                operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            }
+
+            // ---- Stash extras: L1 (input choke), L2, Ca, Cb, Co ----
+            {
+                // L1 voltage: +Vin during ON, Vin-VCa during OFF (= V1's L1).
+                Waveform vL1 = Inputs::create_waveform(
+                    WaveformLabel::RECTANGULAR, VCa_DC, switchingFrequency, dutyCycle, 0.0, 0);
+                Waveform iL1 = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, deltaIL1, switchingFrequency, dutyCycle, IL1avg, 0);
+                extraL1VoltageWaveforms.push_back(vL1);
+                extraL1CurrentWaveforms.push_back(iL1);
+            }
+            {
+                Waveform vL2 = Inputs::create_waveform(
+                    WaveformLabel::RECTANGULAR, VCb, switchingFrequency, 1.0 - dutyCycle, 0.0, 0);
+                Waveform iL2 = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, deltaIL2, switchingFrequency, 1.0 - dutyCycle, IL2avg, 0);
+                extraL2VoltageWaveforms.push_back(vL2);
+                extraL2CurrentWaveforms.push_back(iL2);
+            }
+            {
+                double deltaVCa_actual = (couplingCa > 0)
+                    ? (IL2avg / turnsRatio) * (1.0 - dutyCycle) / (couplingCa * switchingFrequency)
+                    : 0.0;
+                Waveform vCa = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, deltaVCa_actual, switchingFrequency, dutyCycle, VCa_DC, 0);
+                // Ca AC current = transformer primary AC current on the Ca side
+                // (rectangular ±IL1avg over ON / -(IL2avg/n) over OFF). Use the
+                // same pp shape as V1's C1, scaled appropriately.
+                double iCapp = IL1avg + IL2avg / turnsRatio;
+                Waveform iCa = Inputs::create_waveform(
+                    WaveformLabel::RECTANGULAR, iCapp, switchingFrequency, 1.0 - dutyCycle, 0.0, 0);
+                extraCaVoltageWaveforms.push_back(vCa);
+                extraCaCurrentWaveforms.push_back(iCa);
+            }
+            {
+                double deltaVCb_actual = (couplingCb > 0)
+                    ? IL2avg * dutyCycle / (couplingCb * switchingFrequency)
+                    : 0.0;
+                Waveform vCb = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, deltaVCb_actual, switchingFrequency, dutyCycle, VCb, 0);
+                double iCbpp = IL1avg * turnsRatio + IL2avg;     // reflected to secondary
+                Waveform iCb = Inputs::create_waveform(
+                    WaveformLabel::RECTANGULAR, iCbpp, switchingFrequency, 1.0 - dutyCycle, 0.0, 0);
+                extraCbVoltageWaveforms.push_back(vCb);
+                extraCbCurrentWaveforms.push_back(iCb);
+            }
+            {
+                Waveform vCo = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, deltaVo_actual, switchingFrequency, 1.0 - dutyCycle, -outputVoltageMag, 0);
+                Waveform iCo = Inputs::create_waveform(
+                    WaveformLabel::TRIANGULAR, deltaIL2, switchingFrequency, 1.0 - dutyCycle, 0.0, 0);
+                extraCoVoltageWaveforms.push_back(vCo);
+                extraCoCurrentWaveforms.push_back(iCo);
+            }
+
+            OperatingConditions conditions;
+            conditions.set_ambient_temperature(outputOperatingPoint.get_ambient_temperature());
+            conditions.set_cooling(std::nullopt);
+            operatingPoint.set_conditions(conditions);
+            return operatingPoint;
+        }
+
+        // ============================================================
+        //   V1 / V2 (non-isolated) path — preserved verbatim
+        // ============================================================
+        const double VC1 = VCa;   // alias: in V1/V2 the single coupling cap is C1 = Ca
         double deltaVC1_target = std::max(c1RipplePct * VC1, 1e-3);
         double couplingCap    = calculate_c1_min(outputCurrent, dutyCycle, deltaVC1_target, switchingFrequency);
 
@@ -139,35 +369,9 @@ namespace OpenMagnetics {
         double primaryVoltagePeakToPeak = primaryVoltageMaximum - primaryVoltageMinimum;  // = VC1
         double primaryCurrentMinimum = IL1avg - deltaIL1 / 2.0;
 
-        // ---- Diagnostics ----
-        lastDutyCycle = dutyCycle;
-        lastConversionRatio = calculate_conversion_ratio(dutyCycle);
         lastCouplingCapVoltage = VC1;
-        lastInputInductorAverage = IL1avg;
-        lastOutputInductorAverage = IL2avg;
-        lastInputInductorRipple = deltaIL1;
-        lastOutputInductorRipple = deltaIL2;
-        lastSwitchPeakVoltage = inputVoltage + outputVoltageMag;
-        lastDiodePeakReverseVoltage = lastSwitchPeakVoltage;
-        double IS_peak = IL1avg + IL2avg + (deltaIL1 + deltaIL2) / 2.0;
-        lastSwitchPeakCurrent = IS_peak;
-        lastDiodePeakCurrent = IS_peak;
         lastCouplingCapRmsCurrent = std::sqrt(dutyCycle * (1.0 - dutyCycle)) * (IL1avg + IL2avg);
-        double loadResistance = (outputCurrent > 0) ? outputVoltageMag / outputCurrent : 0.0;
-        lastDcmK = calculate_dcm_K(inductanceL1, inductanceL2, switchingFrequency, loadResistance);
-        lastDcmKcrit = std::pow(1.0 - dutyCycle, 2);
-        lastIsCcm = (lastDcmK > lastDcmKcrit);
-        lastRhpZeroFrequency = calculate_rhp_zero_frequency(loadResistance, dutyCycle, inductanceL2);
-        lastRecommendedLoopBandwidth = lastRhpZeroFrequency / 5.0;
-        lastSizedL2 = inductanceL2;
         lastSizedC1 = couplingCap;
-
-        // Output cap Co sized from ΔIL2 / (8·fsw·ΔVo) (LC filter rule).
-        double deltaVo_target = std::max(coRipplePct * outputVoltageMag, 1e-3);
-        double outputCapacitance = deltaIL2 / (8.0 * switchingFrequency * deltaVo_target);
-        outputCapacitance = std::max(outputCapacitance, 1e-6);
-        lastSizedCo = outputCapacitance;
-        double deltaVo_actual = deltaIL2 / (8.0 * switchingFrequency * outputCapacitance);
 
         // Primary winding excitation (L1)
         {
@@ -313,7 +517,47 @@ namespace OpenMagnetics {
         }
 
         std::vector<IsolationSide> isolationSides;
-        if (isCoupled) {
+        if (isIsolated) {
+            // V3 isolated: the "primary" magnetic returned here is the
+            // 2-winding isolation transformer (Lp:Ls). The DC-blocking input
+            // inductor L1 and output inductor L2 are still present but are
+            // emitted as ancillaries via get_extra_components_inputs.
+            //
+            // The magnetizing inductance Lm referenced from process_design_requirements
+            // is sized so that the magnetizing-current ripple ΔIm ≤ 0.20·IL1avg
+            // across all OPs at minimum Vin (worst case for ΔIm/IL1avg ratio).
+            // ΔIm = VCa · D · T / Lm, with VCa = Vin / (1-D).
+            const double turnsRatio = get_turns_ratio().value_or(1.0);
+            if (turnsRatio <= 0) {
+                throw std::invalid_argument(
+                    "Cuk::process_design_requirements: turnsRatio must be > 0 "
+                    "for isolated Cuk; received " + std::to_string(turnsRatio));
+            }
+            double maximumLm = 0.0;
+            for (const auto& op : get_operating_points()) {
+                double switchingFrequency = op.get_switching_frequency();
+                double Vo   = std::abs(op.get_output_voltages()[0]);
+                double Iout = op.get_output_currents()[0];
+                double D    = calculate_duty_cycle(minimumInputVoltage, Vo, get_diode_voltage_drop(), efficiency, turnsRatio);
+                double IL1avg = Iout * D / ((1.0 - D) * turnsRatio * efficiency);
+                double VCa    = minimumInputVoltage / (1.0 - D);
+                double deltaIm_target = std::max(0.20 * IL1avg, 1e-6);
+                double Lm     = VCa * D / (deltaIm_target * switchingFrequency);
+                maximumLm = std::max(maximumLm, Lm);
+            }
+            // Override the L1-based magnetizing-inductance requirement: in V3
+            // the "primary magnetic" is the transformer, sized by Lm.
+            DimensionWithTolerance lmWithTolerance;
+            lmWithTolerance.set_minimum(roundFloat(maximumLm, 10));
+            designRequirements.set_magnetizing_inductance(lmWithTolerance);
+
+            // 2-winding transformer: turns_ratios = {Np/Ns}, isolation_sides = {PRIMARY, SECONDARY}.
+            DimensionWithTolerance turnsRatioWithTolerance;
+            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 4));
+            designRequirements.set_turns_ratios(std::vector<DimensionWithTolerance>{turnsRatioWithTolerance});
+            isolationSides.push_back(get_isolation_side_from_index(0));
+            isolationSides.push_back(get_isolation_side_from_index(1));
+        } else if (isCoupled) {
             // V2 coupled-inductor: two windings on the same core, no galvanic
             // isolation. Erickson zero-ripple condition: k * sqrt(L2/L1) = 1.
             // We size both windings identically (N1:N2 = 1:1, L1 = L2) so the
@@ -336,10 +580,16 @@ namespace OpenMagnetics {
         (void) turnsRatios;  // Cuk V1 has no transformer; turns ratios are unused.
 
         // Reset extra-component waveform stash so a re-run does not accumulate.
+        extraL1VoltageWaveforms.clear();
+        extraL1CurrentWaveforms.clear();
         extraL2VoltageWaveforms.clear();
         extraL2CurrentWaveforms.clear();
         extraC1VoltageWaveforms.clear();
         extraC1CurrentWaveforms.clear();
+        extraCaVoltageWaveforms.clear();
+        extraCaCurrentWaveforms.clear();
+        extraCbVoltageWaveforms.clear();
+        extraCbCurrentWaveforms.clear();
         extraCoVoltageWaveforms.clear();
         extraCoCurrentWaveforms.clear();
 
@@ -383,10 +633,16 @@ namespace OpenMagnetics {
         Cuk::run_checks(_assertErrors);
 
         // Reset extra-component waveform stash so a re-run does not accumulate.
+        extraL1VoltageWaveforms.clear();
+        extraL1CurrentWaveforms.clear();
         extraL2VoltageWaveforms.clear();
         extraL2CurrentWaveforms.clear();
         extraC1VoltageWaveforms.clear();
         extraC1CurrentWaveforms.clear();
+        extraCaVoltageWaveforms.clear();
+        extraCaCurrentWaveforms.clear();
+        extraCbVoltageWaveforms.clear();
+        extraCbCurrentWaveforms.clear();
         extraCoVoltageWaveforms.clear();
         extraCoCurrentWaveforms.clear();
 
@@ -495,6 +751,35 @@ namespace OpenMagnetics {
         const bool isBidirectional = get_bidirectional().value_or(false);
         const bool isSynchronous   = isBidirectional || get_synchronous().value_or(false);
         const bool isCoupled       = get_coupled_inductor().value_or(false);
+        const bool isIsolated      = get_isolated().value_or(false);
+        if (isCoupled && isIsolated) {
+            throw std::invalid_argument(
+                "Cuk::generate_ngspice_circuit: coupledInductor and isolated "
+                "are mutually exclusive (V2 vs V3)");
+        }
+        const double turnsRatio    = isIsolated ? get_turns_ratio().value_or(1.0) : 1.0;
+        if (isIsolated && turnsRatio <= 0) {
+            throw std::invalid_argument(
+                "Cuk::generate_ngspice_circuit: turnsRatio must be > 0 for "
+                "isolated Cuk; received " + std::to_string(turnsRatio));
+        }
+        // For V3 the inductanceL1 argument is the transformer Lm; the input
+        // choke L1 is sized internally.  For V1/V2 inductanceL1 is L1 directly.
+        const double L1Choke   = isIsolated ? compute_l1_for_isolated() : inductanceL1;
+        const double Lm        = isIsolated ? inductanceL1 : 0.0;
+        // V3 secondary-side cap DC voltage and per-cap sizing (mirror analytical).
+        const double VCb_DC    = isIsolated ? outputVoltageMag / dutyCycle : 0.0;
+        const double IL1avgV3  = isIsolated
+            ? outputCurrent * dutyCycle / ((1.0 - dutyCycle) * turnsRatio * efficiency)
+            : IL1avg;
+        const double couplingCa = isIsolated
+            ? (outputCurrent / turnsRatio) * (1.0 - dutyCycle) /
+              (std::max(c1RipplePct * VC1, 1e-3) * switchingFrequency)
+            : 0.0;
+        const double couplingCb = isIsolated
+            ? outputCurrent * dutyCycle /
+              (std::max(c1RipplePct * VCb_DC, 1e-3) * switchingFrequency)
+            : 0.0;
 
         std::ostringstream circuit;
         double period = 1.0 / switchingFrequency;
@@ -529,14 +814,26 @@ namespace OpenMagnetics {
         //               flowing OUT of vout_load_node into the load
         //               (into 0). i(Vout_sense) reports this current.
 
-        circuit << "* Cuk Converter (non-isolated, V1" << (isSynchronous ? "/V4 synchronous" : "")
+        circuit << "* Cuk Converter ("
+                << (isIsolated ? "isolated V3" : "non-isolated V1")
+                << (isSynchronous ? "/V4 synchronous" : "")
                 << (isBidirectional ? "/V5 bidirectional" : "")
                 << (isCoupled ? "/V2 coupled-inductor" : "")
                 << ") - Generated by OpenMagnetics\n";
         circuit << "* Vin=" << inputVoltage << "V, |Vo|=" << outputVoltageMag << "V (sign: negative), "
-                << "f=" << (switchingFrequency / 1e3) << "kHz, D=" << (dutyCycle * 100) << " pct\n";
-        circuit << "* L1=" << (inductanceL1 * 1e6) << "uH, L2=" << (inductanceL2 * 1e6) << "uH, "
-                << "C1=" << (couplingCap * 1e6) << "uF, Co=" << (outputCapacitance * 1e6) << "uF, "
+                << "f=" << (switchingFrequency / 1e3) << "kHz, D=" << (dutyCycle * 100) << " pct";
+        if (isIsolated) {
+            circuit << ", n=Np/Ns=" << turnsRatio;
+        }
+        circuit << "\n";
+        circuit << "* L1=" << (L1Choke * 1e6) << "uH, L2=" << (inductanceL2 * 1e6) << "uH, ";
+        if (isIsolated) {
+            circuit << "Lm=" << (Lm * 1e6) << "uH, Ca=" << (couplingCa * 1e6)
+                    << "uF, Cb=" << (couplingCb * 1e6) << "uF, ";
+        } else {
+            circuit << "C1=" << (couplingCap * 1e6) << "uF, ";
+        }
+        circuit << "Co=" << (outputCapacitance * 1e6) << "uF, "
                 << "Iout=" << outputCurrent << "A\n\n";
 
         // DC Input + sense
@@ -546,8 +843,8 @@ namespace OpenMagnetics {
 
         // L1 with DCR (split as L + R for bake-in; use named series RDCR_l1)
         circuit << "* L1 input inductor (with DCR)\n";
-        circuit << "L1 l1_in l1_dcr_mid " << std::scientific << inductanceL1 << std::fixed
-                << " ic=" << IL1avg << "\n";
+        circuit << "L1 l1_in l1_dcr_mid " << std::scientific << L1Choke << std::fixed
+                << " ic=" << IL1avgV3 << "\n";
         circuit << "Rdcr_l1 l1_dcr_mid node_A " << dcrL1 << "\n";
         circuit << "Vl1_sense node_A node_A_int 0\n\n";
 
@@ -562,13 +859,38 @@ namespace OpenMagnetics {
                 << "Csnub_s1 node_A_int snub_s1_int " << std::scientific << cfg.snubC << std::fixed << "\n"
                 << "Rsnub_s1b snub_s1_int 0 0.001\n\n";
 
-        // C1 coupling cap (from node_A_int through ESR to node_B). In the
-        // ON sub-interval VC1 polarity is +(node_A) - (node_B) ≈ Vin/(1-D).
-        circuit << "* C1 coupling cap (with ESR)\n";
-        circuit << "Vc1_sense node_A_int node_C 0\n";
-        circuit << "C1 node_C node_C_esr " << std::scientific << couplingCap << std::fixed
-                << " ic=" << VC1 << "\n";
-        circuit << "Rc1_esr node_C_esr node_B " << esrC1 << "\n\n";
+        // Coupling section. V1/V2: single C1 between node_A_int and node_B.
+        // V3 isolated: split into Ca → Lp ⟂ Ls → Cb with the transformer
+        // providing galvanic isolation. The dot orientation on Lp is on the
+        // tx_pri_pos side (so positive winding voltage corresponds to current
+        // flowing into tx_pri_pos); on Ls the dot is on tx_sec_pos. With this
+        // convention Vsec = -n·Vpri / 1 (negative for our sign convention with
+        // n=Np/Ns, since the secondary is wound oppositely on the same core
+        // and we want |Vo| < 0 on the load).
+        if (isIsolated) {
+            circuit << "* V3 isolated: Ca + transformer (Lp/Ls, K=0.999) + Cb\n";
+            circuit << "Vc1_sense node_A_int node_C 0\n";
+            circuit << "Ca node_C node_C_esr " << std::scientific << couplingCa << std::fixed
+                    << " ic=" << VC1 << "\n";
+            circuit << "Rca_esr node_C_esr tx_pri_pos " << esrC1 << "\n";
+            // Transformer windings. Both reference 0; coupling K1 between Lp and Ls.
+            // Lp inductance = Lm; Ls inductance = Lm / n² (turns-square scaling).
+            const double Ls = Lm / (turnsRatio * turnsRatio);
+            circuit << "Lp tx_pri_pos 0 " << std::scientific << Lm << std::fixed << " ic=0\n";
+            circuit << "Ls 0 tx_sec_pos " << std::scientific << Ls << std::fixed << " ic=0\n";
+            circuit << "K1 Lp Ls 0.999\n";
+            circuit << "Cb tx_sec_pos cb_esr " << std::scientific << couplingCb << std::fixed
+                    << " ic=" << VCb_DC << "\n";
+            circuit << "Rcb_esr cb_esr node_B " << esrC1 << "\n\n";
+        } else {
+            // C1 coupling cap (from node_A_int through ESR to node_B). In the
+            // ON sub-interval VC1 polarity is +(node_A) - (node_B) ≈ Vin/(1-D).
+            circuit << "* C1 coupling cap (with ESR)\n";
+            circuit << "Vc1_sense node_A_int node_C 0\n";
+            circuit << "C1 node_C node_C_esr " << std::scientific << couplingCap << std::fixed
+                    << " ic=" << VC1 << "\n";
+            circuit << "Rc1_esr node_C_esr node_B " << esrC1 << "\n\n";
+        }
 
         // D1 freewheel diode (V1/V2/V3 default) or S2 synchronous switch (V4/V5).
         // Conduction direction is identical: from node_B (positive during S1 OFF
@@ -817,22 +1139,50 @@ namespace OpenMagnetics {
         if (mode == ExtraComponentsMode::REAL && !magnetic.has_value()) {
             throw std::invalid_argument("Cuk::get_extra_components_inputs: mode REAL requires a designed magnetic");
         }
-        if (lastSizedL2 <= 0.0 || lastSizedC1 <= 0.0 || lastSizedCo <= 0.0
+        const bool isIsolated = get_isolated().value_or(false);
+
+        // V1/V2 ancillaries: L2, C1, Co  (3 entries).
+        // V3 ancillaries: L1, L2, Ca, Cb, Co  (5 entries).
+        if (lastSizedL2 <= 0.0 || lastSizedCo <= 0.0
             || extraL2VoltageWaveforms.empty()
-            || extraC1VoltageWaveforms.empty()
             || extraCoVoltageWaveforms.empty())
         {
             throw std::runtime_error("Cuk::get_extra_components_inputs: call process_operating_points() first");
         }
+        if (isIsolated) {
+            if (lastSizedCa <= 0.0 || lastSizedCb <= 0.0
+                || extraL1VoltageWaveforms.empty()
+                || extraCaVoltageWaveforms.empty()
+                || extraCbVoltageWaveforms.empty())
+            {
+                throw std::runtime_error("Cuk::get_extra_components_inputs: V3 stash incomplete; "
+                                         "call process_operating_points() first");
+            }
+        } else if (lastSizedC1 <= 0.0 || extraC1VoltageWaveforms.empty()) {
+            throw std::runtime_error("Cuk::get_extra_components_inputs: V1 stash incomplete; "
+                                     "call process_operating_points() first");
+        }
 
         const size_t nOps = extraL2VoltageWaveforms.size();
-        if (extraL2CurrentWaveforms.size() != nOps
-            || extraC1VoltageWaveforms.size() != nOps
-            || extraC1CurrentWaveforms.size() != nOps
-            || extraCoVoltageWaveforms.size() != nOps
-            || extraCoCurrentWaveforms.size() != nOps)
-        {
-            throw std::runtime_error("Cuk::get_extra_components_inputs: extra-waveform vectors are out of sync");
+        auto checkSync = [nOps](const std::vector<Waveform>& wfms, const char* label) {
+            if (wfms.size() != nOps) {
+                throw std::runtime_error(std::string("Cuk::get_extra_components_inputs: ") +
+                    label + " waveform count out of sync");
+            }
+        };
+        checkSync(extraL2CurrentWaveforms, "L2 current");
+        checkSync(extraCoVoltageWaveforms, "Co voltage");
+        checkSync(extraCoCurrentWaveforms, "Co current");
+        if (isIsolated) {
+            checkSync(extraL1VoltageWaveforms, "L1 voltage");
+            checkSync(extraL1CurrentWaveforms, "L1 current");
+            checkSync(extraCaVoltageWaveforms, "Ca voltage");
+            checkSync(extraCaCurrentWaveforms, "Ca current");
+            checkSync(extraCbVoltageWaveforms, "Cb voltage");
+            checkSync(extraCbCurrentWaveforms, "Cb current");
+        } else {
+            checkSync(extraC1VoltageWaveforms, "C1 voltage");
+            checkSync(extraC1CurrentWaveforms, "C1 current");
         }
 
         // Use the first OP's switching frequency as the representative
@@ -842,74 +1192,70 @@ namespace OpenMagnetics {
 
         std::vector<std::variant<Inputs, CAS::Inputs>> result;
 
-        // ----------------------------- L2 inductor (Inputs) ---------------
+        // ---- Inductor builder ------------------------------------
+        auto buildInductor = [&](const std::string& name, double sizedL,
+                                 const std::vector<Waveform>& vWfms,
+                                 const std::vector<Waveform>& iWfms)
         {
             Inputs masInputs;
             DesignRequirements dr;
-
-            DimensionWithTolerance l2Inductance;
-            l2Inductance.set_nominal(lastSizedL2);
-            dr.set_magnetizing_inductance(l2Inductance);
-            dr.set_name("outputInductor");
+            DimensionWithTolerance L;
+            L.set_nominal(sizedL);
+            dr.set_magnetizing_inductance(L);
+            dr.set_name(name);
             dr.set_topology(Topologies::CUK_CONVERTER);
             dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
             dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
             masInputs.set_design_requirements(dr);
 
             std::vector<OperatingPoint> masOps;
-            for (size_t i = 0; i < nOps; ++i) {
+            for (size_t i = 0; i < vWfms.size(); ++i) {
                 OperatingPoint op;
-                auto excitation = complete_excitation(
-                    extraL2CurrentWaveforms[i], extraL2VoltageWaveforms[i], fsw, "Primary");
+                auto excitation = complete_excitation(iWfms[i], vWfms[i], fsw, "Primary");
                 op.get_mutable_excitations_per_winding().push_back(excitation);
                 masOps.push_back(op);
             }
             masInputs.set_operating_points(masOps);
             result.emplace_back(std::move(masInputs));
-        }
+        };
 
-        // ----------------------------- C1 coupling cap (CAS::Inputs) -----
+        // ---- Capacitor builder ------------------------------------
+        auto buildCapacitor = [&](const std::string& name, double sizedC,
+                                  const std::vector<Waveform>& vWfms,
+                                  const std::vector<Waveform>& iWfms,
+                                  CAS::Application role)
         {
             CAS::Inputs casInputs;
             CAS::DesignRequirements dr;
-
             CAS::DimensionWithTolerance capacitance;
-            capacitance.set_nominal(lastSizedC1);
+            capacitance.set_nominal(sizedC);
             dr.set_capacitance(capacitance);
-
-            // Peak voltage across C1 across all OPs (with 20 % derating margin).
-            double peakVc1 = 0.0;
-            for (const auto& wfm : extraC1VoltageWaveforms) {
-                for (double v : wfm.get_data()) peakVc1 = std::max(peakVc1, std::abs(v));
+            double peakV = 0.0;
+            for (const auto& wfm : vWfms) {
+                for (double v : wfm.get_data()) peakV = std::max(peakV, std::abs(v));
             }
-            dr.set_rated_voltage(peakVc1 * 1.2);
-
-            // Cuk C1 is the coupling / energy-transfer cap — closest CAS
-            // application is DC_LINK.  Document in name to disambiguate.
-            dr.set_role(CAS::Application::DC_LINK);
-            dr.set_name("couplingCapacitor");
-
+            dr.set_rated_voltage(peakV * 1.2);  // 20 % derating margin
+            dr.set_role(role);
+            dr.set_name(name);
             casInputs.set_design_requirements(dr);
 
             std::vector<CAS::TwoTerminalOperatingPoint> casOps;
-            for (size_t i = 0; i < nOps; ++i) {
+            for (size_t i = 0; i < vWfms.size(); ++i) {
                 CAS::TwoTerminalOperatingPoint op;
                 CAS::OperatingPointExcitation excitation;
                 excitation.set_frequency(fsw);
 
                 CAS::SignalDescriptor vSig;
                 CAS::Waveform vWfm;
-                vWfm.set_data(extraC1VoltageWaveforms[i].get_data());
-                if (extraC1VoltageWaveforms[i].get_time())
-                    vWfm.set_time(extraC1VoltageWaveforms[i].get_time().value());
+                vWfm.set_data(vWfms[i].get_data());
+                if (vWfms[i].get_time()) vWfm.set_time(vWfms[i].get_time().value());
                 vSig.set_waveform(vWfm);
                 excitation.set_voltage(vSig);
 
                 CAS::SignalDescriptor iSig;
                 CAS::Waveform iWfm;
-                iWfm.set_data(extraC1CurrentWaveforms[i].get_data());
-                if (extraC1CurrentWaveforms[i].get_time())
-                    iWfm.set_time(extraC1CurrentWaveforms[i].get_time().value());
+                iWfm.set_data(iWfms[i].get_data());
+                if (iWfms[i].get_time()) iWfm.set_time(iWfms[i].get_time().value());
                 iSig.set_waveform(iWfm);
                 excitation.set_current(iSig);
 
@@ -918,55 +1264,27 @@ namespace OpenMagnetics {
             }
             casInputs.set_operating_points(casOps);
             result.emplace_back(std::move(casInputs));
-        }
+        };
 
-        // ----------------------------- Co output cap (CAS::Inputs) -------
-        {
-            CAS::Inputs casInputs;
-            CAS::DesignRequirements dr;
-
-            CAS::DimensionWithTolerance capacitance;
-            capacitance.set_nominal(lastSizedCo);
-            dr.set_capacitance(capacitance);
-
-            double peakVco = 0.0;
-            for (const auto& wfm : extraCoVoltageWaveforms) {
-                for (double v : wfm.get_data()) peakVco = std::max(peakVco, std::abs(v));
-            }
-            dr.set_rated_voltage(peakVco * 1.2);
-
-            dr.set_role(CAS::Application::OUTPUT_FILTER);
-            dr.set_name("outputCapacitor");
-
-            casInputs.set_design_requirements(dr);
-
-            std::vector<CAS::TwoTerminalOperatingPoint> casOps;
-            for (size_t i = 0; i < nOps; ++i) {
-                CAS::TwoTerminalOperatingPoint op;
-                CAS::OperatingPointExcitation excitation;
-                excitation.set_frequency(fsw);
-
-                CAS::SignalDescriptor vSig;
-                CAS::Waveform vWfm;
-                vWfm.set_data(extraCoVoltageWaveforms[i].get_data());
-                if (extraCoVoltageWaveforms[i].get_time())
-                    vWfm.set_time(extraCoVoltageWaveforms[i].get_time().value());
-                vSig.set_waveform(vWfm);
-                excitation.set_voltage(vSig);
-
-                CAS::SignalDescriptor iSig;
-                CAS::Waveform iWfm;
-                iWfm.set_data(extraCoCurrentWaveforms[i].get_data());
-                if (extraCoCurrentWaveforms[i].get_time())
-                    iWfm.set_time(extraCoCurrentWaveforms[i].get_time().value());
-                iSig.set_waveform(iWfm);
-                excitation.set_current(iSig);
-
-                op.set_excitation(excitation);
-                casOps.push_back(op);
-            }
-            casInputs.set_operating_points(casOps);
-            result.emplace_back(std::move(casInputs));
+        if (isIsolated) {
+            // V3: L1 (input choke), L2, Ca, Cb, Co — transformer is the "primary"
+            // magnetic returned via process_design_requirements, not an extra.
+            const double L1Choke = compute_l1_for_isolated();
+            buildInductor("inputInductor",  L1Choke,    extraL1VoltageWaveforms, extraL1CurrentWaveforms);
+            buildInductor("outputInductor", lastSizedL2, extraL2VoltageWaveforms, extraL2CurrentWaveforms);
+            buildCapacitor("primaryCouplingCapacitor",   lastSizedCa,
+                           extraCaVoltageWaveforms, extraCaCurrentWaveforms, CAS::Application::DC_LINK);
+            buildCapacitor("secondaryCouplingCapacitor", lastSizedCb,
+                           extraCbVoltageWaveforms, extraCbCurrentWaveforms, CAS::Application::DC_LINK);
+            buildCapacitor("outputCapacitor",            lastSizedCo,
+                           extraCoVoltageWaveforms, extraCoCurrentWaveforms, CAS::Application::OUTPUT_FILTER);
+        } else {
+            // V1/V2: L2, C1, Co — L1 IS the primary magnetic (DR.magnetizingInductance).
+            buildInductor("outputInductor", lastSizedL2, extraL2VoltageWaveforms, extraL2CurrentWaveforms);
+            buildCapacitor("couplingCapacitor", lastSizedC1,
+                           extraC1VoltageWaveforms, extraC1CurrentWaveforms, CAS::Application::DC_LINK);
+            buildCapacitor("outputCapacitor",   lastSizedCo,
+                           extraCoVoltageWaveforms, extraCoCurrentWaveforms, CAS::Application::OUTPUT_FILTER);
         }
 
         return result;

@@ -614,3 +614,201 @@ TEST_CASE("Test_Cuk_V1_Default_DR_Has_Single_Winding",
     REQUIRE(dr.get_isolation_sides().value().size() == 1);
     REQUIRE(dr.get_turns_ratios().empty());
 }
+
+// ===================================================================
+//   V3 isolated Cuk - Erickson §6 / Cuk patent (1977 isolated variant)
+// ===================================================================
+//
+// V3 introduces a 2-winding isolation transformer in series with the
+// coupling capacitor, splitting it into Ca (primary side) and Cb
+// (secondary side). The conversion gain becomes
+//     |Vo|/Vin = D / ((1-D) · n)         where n = Np/Ns,
+// reducing to V1 when n=1. The DesignRequirements primary magnetic is
+// the transformer (turns_ratios={n}, isolation_sides={PRIMARY,SECONDARY});
+// the input choke L1 and output choke L2 are emitted as ancillaries.
+
+TEST_CASE("Test_Cuk_V3_Isolated_DutyCycle_Reduces_To_V1_When_n_Equals_1",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    // With turnsRatio=1 the isolated duty-cycle expression must collapse
+    // exactly onto the V1 form (algebraic identity).
+    const double Vin = 25.0, Vo = 25.0, Vd = 0.7, eta = 0.85;
+    double dV1 = OpenMagnetics::Cuk::calculate_duty_cycle(Vin, Vo, Vd, eta);
+    double dV3 = OpenMagnetics::Cuk::calculate_duty_cycle(Vin, Vo, Vd, eta, /*n=*/1.0);
+    REQUIRE_THAT(dV3, WithinAbs(dV1, 1e-12));
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_DutyCycle_Step_Down_Transformer",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    // Step-down transformer (n=Np/Ns=2) on a 24V→-5V buck-style isolated Cuk:
+    //     D = (|Vo|+Vd)·n / (Vin·η + (|Vo|+Vd)·n)
+    //       = (5+0.7)·2 / (24·0.9 + (5+0.7)·2)
+    //       = 11.4 / (21.6 + 11.4) = 11.4 / 33.0 = 0.3454...
+    const double Vin = 24.0, Vo = 5.0, Vd = 0.7, eta = 0.9, n = 2.0;
+    double D = OpenMagnetics::Cuk::calculate_duty_cycle(Vin, Vo, Vd, eta, n);
+    double expected = (Vo + Vd) * n / (Vin * eta + (Vo + Vd) * n);
+    REQUIRE_THAT(D, WithinRel(expected, 1e-12));
+    REQUIRE(D > 0.0);
+    REQUIRE(D < 0.95);
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_DutyCycle_Throws_On_Bad_TurnsRatio",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    REQUIRE_THROWS(OpenMagnetics::Cuk::calculate_duty_cycle(24.0, 5.0, 0.7, 0.9, /*n=*/0.0));
+    REQUIRE_THROWS(OpenMagnetics::Cuk::calculate_duty_cycle(24.0, 5.0, 0.7, 0.9, /*n=*/-1.5));
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_DR_Has_Two_Windings",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    // V3 must emit a 2-winding transformer DR (turns_ratios={n},
+    // isolation_sides={PRIMARY, SECONDARY}). The magnetizing_inductance
+    // returned is Lm (transformer), not L1 (input choke).
+    json j = make_cuk_json(24.0, 5.0, 0.5, 100e3);
+    j["isolated"]    = true;
+    j["turnsRatio"]  = 2.0;
+    OpenMagnetics::Cuk cuk(j);
+    auto dr = cuk.process_design_requirements();
+
+    REQUIRE(dr.get_isolation_sides().has_value());
+    REQUIRE(dr.get_isolation_sides().value().size() == 2);
+    REQUIRE(dr.get_isolation_sides().value()[0] == MAS::IsolationSide::PRIMARY);
+    REQUIRE(dr.get_isolation_sides().value()[1] == MAS::IsolationSide::SECONDARY);
+    REQUIRE(dr.get_turns_ratios().size() == 1);
+    REQUIRE_THAT(dr.get_turns_ratios()[0].get_nominal().value(), WithinAbs(2.0, 1e-9));
+
+    // Lm should be > 0 (sized from ΔIm budget).
+    REQUIRE(dr.get_magnetizing_inductance().get_minimum().value() > 0.0);
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_Throws_On_Bad_TurnsRatio_DR",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    json j = make_cuk_json(24.0, 5.0, 0.5, 100e3);
+    j["isolated"]   = true;
+    j["turnsRatio"] = 0.0;   // invalid
+    OpenMagnetics::Cuk cuk(j);
+    REQUIRE_THROWS(cuk.process_design_requirements());
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_Netlist_Contract",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    json j = make_cuk_json(24.0, 5.0, 0.5, 100e3);
+    j["isolated"]   = true;
+    j["turnsRatio"] = 2.0;
+    OpenMagnetics::Cuk cuk(j);
+
+    // Run the analytical worker first to populate diagnostics.
+    auto dr = cuk.process_design_requirements();
+    double Lm = dr.get_magnetizing_inductance().get_minimum().value();
+    cuk.process_operating_points(std::vector<double>{2.0}, /*Lm*/ Lm);
+
+    std::string netlist = cuk.generate_ngspice_circuit(/*Lm*/ Lm);
+    // V3 banner
+    REQUIRE(netlist.find("isolated V3") != std::string::npos);
+    // Two-cap split + transformer with K1 on Lp/Ls (NOT on L1/L2)
+    REQUIRE(netlist.find("Ca node_C") != std::string::npos);
+    REQUIRE(netlist.find("Lp tx_pri_pos") != std::string::npos);
+    REQUIRE(netlist.find("Ls 0 tx_sec_pos") != std::string::npos);
+    REQUIRE(netlist.find("K1 Lp Ls 0.999") != std::string::npos);
+    REQUIRE(netlist.find("Cb tx_sec_pos") != std::string::npos);
+    // Single-cap C1 from V1/V2 must NOT appear
+    REQUIRE(netlist.find("C1 node_C") == std::string::npos);
+    // Common scaffolding still present
+    REQUIRE(netlist.find("L1 l1_in") != std::string::npos);
+    REQUIRE(netlist.find("L2 node_B") != std::string::npos);
+    REQUIRE(netlist.find("Vd_sense d_cath") != std::string::npos);
+    REQUIRE(netlist.find("METHOD=GEAR") != std::string::npos);
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_Diagnostics_Populated",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    json j = make_cuk_json(24.0, 5.0, 0.5, 100e3, 0.7, 0.9);
+    j["isolated"]   = true;
+    j["turnsRatio"] = 2.0;
+    OpenMagnetics::Cuk cuk(j);
+
+    auto dr = cuk.process_design_requirements();
+    double Lm = dr.get_magnetizing_inductance().get_minimum().value();
+    cuk.process_operating_points(std::vector<double>{2.0}, Lm);
+
+    // V3-specific diagnostics that V1 leaves at zero.
+    REQUIRE(cuk.get_last_sized_ca() > 0.0);
+    REQUIRE(cuk.get_last_sized_cb() > 0.0);
+    REQUIRE(cuk.get_last_sized_lm() > 0.0);
+    REQUIRE_THAT(cuk.get_last_turns_ratio(), WithinAbs(2.0, 1e-9));
+    // Conversion ratio: -D/((1-D)·n)
+    double D = cuk.get_last_duty_cycle();
+    double expectedM = -D / ((1.0 - D) * 2.0);
+    REQUIRE_THAT(cuk.get_last_conversion_ratio(), WithinRel(expectedM, 1e-9));
+    // V1 single-cap diagnostic should be zero in V3
+    REQUIRE_THAT(cuk.get_last_sized_c1(), WithinAbs(0.0, 1e-12));
+    // Switch peak is VCa = Vin/(1-D); diode peak is VCb = |Vo|/D (≠ Vin+|Vo|)
+    REQUIRE_THAT(cuk.get_last_switch_peak_voltage(),
+                 WithinRel(24.0 / (1.0 - D), 1e-6));
+    REQUIRE_THAT(cuk.get_last_diode_peak_reverse_voltage(),
+                 WithinRel(5.0 / D, 1e-6));
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_Extra_Components_5_Entries",
+          "[converter-model][cuk-topology][v3-isolated][p7][unit]") {
+    json j = make_cuk_json(24.0, 5.0, 0.5, 100e3, 0.7, 0.9);
+    j["isolated"]   = true;
+    j["turnsRatio"] = 2.0;
+    OpenMagnetics::Cuk cuk(j);
+
+    auto dr = cuk.process_design_requirements();
+    double Lm = dr.get_magnetizing_inductance().get_minimum().value();
+    cuk.process_operating_points(std::vector<double>{2.0}, Lm);
+
+    auto extras = cuk.get_extra_components_inputs();
+    // V3: L1 + L2 + Ca + Cb + Co
+    REQUIRE(extras.size() == 5);
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[0]));   // L1
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[1]));   // L2
+    REQUIRE(std::holds_alternative<CAS::Inputs>(extras[2]));   // Ca
+    REQUIRE(std::holds_alternative<CAS::Inputs>(extras[3]));   // Cb
+    REQUIRE(std::holds_alternative<CAS::Inputs>(extras[4]));   // Co
+
+    // Names + roles
+    auto& l1Inputs = std::get<OpenMagnetics::Inputs>(extras[0]);
+    REQUIRE(l1Inputs.get_design_requirements().get_name().value() == "inputInductor");
+    auto& l2Inputs = std::get<OpenMagnetics::Inputs>(extras[1]);
+    REQUIRE(l2Inputs.get_design_requirements().get_name().value() == "outputInductor");
+
+    auto& caInputs = std::get<CAS::Inputs>(extras[2]);
+    REQUIRE(caInputs.get_design_requirements().get_name().value() == "primaryCouplingCapacitor");
+    REQUIRE(caInputs.get_design_requirements().get_role() == CAS::Application::DC_LINK);
+    auto& cbInputs = std::get<CAS::Inputs>(extras[3]);
+    REQUIRE(cbInputs.get_design_requirements().get_name().value() == "secondaryCouplingCapacitor");
+    REQUIRE(cbInputs.get_design_requirements().get_role() == CAS::Application::DC_LINK);
+    auto& coInputs = std::get<CAS::Inputs>(extras[4]);
+    REQUIRE(coInputs.get_design_requirements().get_name().value() == "outputCapacitor");
+    REQUIRE(coInputs.get_design_requirements().get_role() == CAS::Application::OUTPUT_FILTER);
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_Two_Windings_In_Excitation",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    // V3's process_operating_points emits TWO winding excitations (Lp + Ls)
+    // since the primary magnetic is a 2-winding transformer.
+    json j = make_cuk_json(24.0, 5.0, 0.5, 100e3, 0.7, 0.9);
+    j["isolated"]   = true;
+    j["turnsRatio"] = 2.0;
+    OpenMagnetics::Cuk cuk(j);
+    auto dr = cuk.process_design_requirements();
+    double Lm = dr.get_magnetizing_inductance().get_minimum().value();
+    auto ops = cuk.process_operating_points(std::vector<double>{2.0}, Lm);
+    REQUIRE(ops.size() >= 1);
+    REQUIRE(ops[0].get_excitations_per_winding().size() == 2);
+}
+
+TEST_CASE("Test_Cuk_V3_Isolated_Throws_If_No_Ripple_Budget_For_L1",
+          "[converter-model][cuk-topology][v3-isolated][unit]") {
+    // V3 needs an explicit ripple-ratio or maxSwitchCurrent to size L1; no
+    // silent fallbacks per CLAUDE.md. (process_design_requirements already
+    // enforces this for V1; the V3 path inherits the same gate.)
+    json j = make_cuk_json(24.0, 5.0, 0.5, 100e3);
+    j.erase("currentRippleRatio");
+    j.erase("maximumSwitchCurrent");
+    j["isolated"]   = true;
+    j["turnsRatio"] = 2.0;
+    OpenMagnetics::Cuk cuk(j);
+    REQUIRE_THROWS(cuk.process_design_requirements());
+}
