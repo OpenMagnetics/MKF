@@ -167,6 +167,22 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::CUK_CONVERTER] = cuk;
             }
 
+            // SEPIC: same hard-switched, low-side-MOSFET shape as Cuk; Co
+            // sized per OP from coRipplePct so the outputCapacitance default
+            // is unused (Sepic::generate_ngspice_circuit overrides it).
+            {
+                SpiceSimulationConfig sepic;
+                sepic.swModelVT = 2.5;       sepic.swModelVH = 0.5;
+                sepic.snubR = 100.0;         sepic.snubC = 100e-12;
+                sepic.diodeIS = 1e-12;       sepic.diodeRS = 0.05;
+                sepic.outputCapacitance = 10e-6;
+                sepic.relTol = 0.01;         sepic.absTol = 1e-7;
+                sepic.vnTol = 1e-4;
+                sepic.itl1 = 500;            sepic.itl4 = 500;
+                sepic.method = "GEAR";       sepic.trTol = 7.0;
+                m[MAS::Topologies::SEPIC_CONVERTER] = sepic;
+            }
+
             return m;
         }();
         return defaults;

@@ -77,6 +77,7 @@ const std::unordered_map<std::string, std::string>& mapping() {
         {"Boost Converter", "boostConverter"},
         {"Inverting Buck-Boost Converter", "invertingBuckBoostConverter"},
         {"Cuk Converter", "cukConverter"},
+        {"SEPIC Converter", "sepicConverter"},
         {"Zeta Converter", "zetaConverter"},
         {"Flyback Converter", "flybackConverter"},
         {"Active Clamp Forward Converter", "activeClampForwardConverter"},
