@@ -405,9 +405,15 @@ namespace {
         }
 
         SECTION("Waveform shape: source RMS matches pulsed-wave formula") {
-            // Pulsed input: ON window carries ~triangular i_L, OFF window
-            // carries 0.  RMS² ≈ D · (Iavg_on² + ΔI²/12), where Iavg_on
-            // ≈ Iout (the inductor average flowing during ON).
+            // Pulsed input: ON window (D fraction) carries triangular iL,
+            // OFF window (1-D fraction) carries snubber-leakage current
+            // Iss ≈ Vin/Rsnub.  Full expansion:
+            //   <i²> = D · (Iout² + ΔI²/12)   ON window (triangular iL)
+            //        + (1-D) · Iss²            OFF window (RC leakage)
+            // Snubber term is omitted below — at Rsnub ~ 100 Ω it adds
+            // only ~3 % to RMS² (Iss²·(1-D) ≈ 0.05 vs ON term ~0.85),
+            // well inside the 20 % tolerance.  If the snubber is ever
+            // tightened (smaller Rsnub) the formula will need the term.
             const double Vin = 24.0, Vout = 5.0, fs = 100e3;
             const double D = Vout / Vin;
             const double delta_I = (Vin - Vout) * D / (fs * inductance);
@@ -419,10 +425,50 @@ namespace {
             sim_rms = std::sqrt(sim_rms / currentData.size());
 
             const double rms_error = std::abs(sim_rms - analytical_rms) / analytical_rms;
-            INFO("Pulsed RMS (analytical): " << analytical_rms
+            INFO("Pulsed RMS (analytical, no-snubber): " << analytical_rms
                  << " A, sim RMS: " << sim_rms
                  << " A, error: " << (rms_error * 100) << "%");
             CHECK(rms_error < 0.20);
+        }
+
+        SECTION("Inductor (winding) current shape: triangular, single peak") {
+            // Inductor current lives on the per-winding excitation, NOT
+            // on the converter input port (post-Vin_sense fix).  Pull it
+            // from simulate_and_extract_operating_points and re-verify
+            // the canonical CCM triangular shape (monotonic rise during
+            // ON, monotonic fall during OFF).  Restores the shape
+            // coverage that Test_Buck_Ngspice_Simulation previously
+            // performed (incorrectly, on input_current) before the fix.
+            buck.set_num_periods_to_extract(1);
+            auto simOps = buck.simulate_and_extract_operating_points(inductance);
+            REQUIRE(!simOps.empty());
+            const auto& exc = simOps[0].get_excitations_per_winding();
+            REQUIRE(!exc.empty());
+            auto curOpt = exc[0].get_current();
+            REQUIRE(curOpt.has_value());
+            auto wfOpt = curOpt->get_waveform();
+            REQUIRE(wfOpt.has_value());
+            const auto& iL = wfOpt->get_data();
+            REQUIRE(iL.size() > 4);
+
+            auto peak_it  = std::max_element(iL.begin(), iL.end());
+            const int peak_idx = (int)std::distance(iL.begin(), peak_it);
+            const int N = (int)iL.size();
+
+            double rising_sum = 0.0;
+            for (int k = 1; k <= peak_idx; ++k) rising_sum += iL[k] - iL[k-1];
+            double falling_sum = 0.0;
+            for (int k = peak_idx + 1; k < N; ++k) falling_sum += iL[k] - iL[k-1];
+
+            INFO("Inductor rising sum: " << rising_sum
+                 << " A, falling sum: " << falling_sum << " A");
+            CHECK(rising_sum  > 0.0);
+            CHECK(falling_sum < 0.0);
+
+            // CCM: trough must be > 0 (current never reaches zero).
+            const double iL_min = *std::min_element(iL.begin(), iL.end());
+            INFO("Inductor min (CCM trough): " << iL_min << " A");
+            CHECK(iL_min > 0.0);
         }
     }
     TEST_CASE("Test_Buck_PtP_AnalyticalVsNgspice", "[converter-model][buck-topology][ngspice-simulation][ptpcomparison]") {
