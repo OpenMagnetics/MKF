@@ -71,7 +71,7 @@ OpenMagnetics::Cuk build(const RefDesignSpec& s) {
     c.set_diode_voltage_drop(0.0);   // ideal-diode analytical reference
     c.set_efficiency(1.0);            // lossless
     c.set_current_ripple_ratio(0.4);
-    BaseOperatingPoint op;
+    MAS::CukOperatingPoint op;
     op.set_output_voltages({s.Vout_mag});  // magnitude — Cuk treats it as |Vo|
     op.set_output_currents({s.Iout});
     op.set_switching_frequency(s.Fs);

@@ -108,7 +108,7 @@ namespace OpenMagnetics {
     //   Per-operating-point analytical worker
     // ============================================================
 
-    OperatingPoint Cuk::process_operating_points_for_input_voltage(double inputVoltage, const BaseOperatingPoint& outputOperatingPoint, double inductanceL1) {
+    OperatingPoint Cuk::process_operating_points_for_input_voltage(double inputVoltage, const CukOperatingPoint& outputOperatingPoint, double inductanceL1) {
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
         double outputVoltageMag   = std::abs(outputOperatingPoint.get_output_voltages()[0]);
