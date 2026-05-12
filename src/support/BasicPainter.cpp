@@ -463,14 +463,20 @@ void BasicPainter::paint_toroidal_coil_sections(Magnetic magnetic) {
             // rectangle. Common case: full-window insulation spacers in contiguous
             // toroidal layouts. Render as a polygon — same geometry as the
             // drawSpacer path of paint_toroidal_margin.
+            //
+            // For INSULATION-type sections in this configuration the wedge is a
+            // visualization artifact (the inter-winding gap), not a physical part
+            // the user added. Skip it; the spacer rectangle in
+            // paint_toroidal_margin still draws when margin > 0.
             if (strokeWidth >= circleDiameter - 1e-12) {
+                if (sections[i].get_type() != ElectricalType::CONDUCTION) {
+                    continue;
+                }
                 double centerAngleDeg = sections[i].get_coordinates()[1];
                 double angularWidthDeg = sections[i].get_dimensions()[1];
                 double rectangleWidth = (initialRadius / 2.0) * angularWidthDeg * std::numbers::pi / 180.0;
                 std::string cssClassName = generate_random_string();
-                const std::string color = (sections[i].get_type() == ElectricalType::CONDUCTION)
-                    ? std::regex_replace(std::string(settings.get_painter_color_copper()),     std::regex("0x"), "#")
-                    : std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#");
+                const std::string color = std::regex_replace(std::string(settings.get_painter_color_copper()),     std::regex("0x"), "#");
                 _root.style("." + cssClassName).set_attr("fill", color);
                 paint_rectangle(0, initialRadius / 2.0, rectangleWidth, initialRadius,
                                 cssClassName, nullptr, -90.0 + centerAngleDeg, {0, 0});
@@ -552,14 +558,17 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
 
             // Same wedge-at-origin collapse as in paint_toroidal_coil_sections:
             // full-winding-window spacers must be drawn as radial rectangles.
+            // INSULATION-type layers are visualization artifacts here; skip them
+            // (the user-defined margin rectangle, if any, is drawn separately).
             if (strokeWidth >= circleDiameter - 1e-12) {
+                if (layers[i].get_type() != ElectricalType::CONDUCTION) {
+                    continue;
+                }
                 double centerAngleDeg = layers[i].get_coordinates()[1];
                 double angularWidthDeg = layers[i].get_dimensions()[1];
                 double rectangleWidth = (initialRadius / 2.0) * angularWidthDeg * std::numbers::pi / 180.0;
                 std::string cssClassName = generate_random_string();
-                const std::string color = (layers[i].get_type() == ElectricalType::CONDUCTION)
-                    ? std::regex_replace(std::string(settings.get_painter_color_copper()),     std::regex("0x"), "#")
-                    : std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#");
+                const std::string color = std::regex_replace(std::string(settings.get_painter_color_copper()),     std::regex("0x"), "#");
                 _root.style("." + cssClassName).set_attr("fill", color);
                 paint_rectangle(0, initialRadius / 2.0, rectangleWidth, initialRadius,
                                 cssClassName, nullptr, -90.0 + centerAngleDeg, {0, 0});
