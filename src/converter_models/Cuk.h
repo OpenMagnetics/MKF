@@ -160,8 +160,6 @@ protected:
     mutable double lastDcmK = 0.0;                     // K(D)
     mutable double lastDcmKcrit = 0.0;                 // (1-D)²
     mutable bool   lastIsCcm = true;                   // K > Kcrit
-    mutable double lastDcmD2 = 0.0;                    // = √K (DCM only, 0 in CCM)
-    mutable double lastDcmConversionRatio = 0.0;       // |M| = D/√K (DCM only, 0 in CCM)
     mutable double lastSizedL2 = 0.0;                  // internally-sized L2
     mutable double lastSizedC1 = 0.0;                  // internally-sized C1
     mutable double lastSizedCo = 0.0;                  // internally-sized Co
@@ -219,8 +217,6 @@ public:
     double get_last_dcm_k()                       const { return lastDcmK; }
     double get_last_dcm_kcrit()                   const { return lastDcmKcrit; }
     bool   get_last_is_ccm()                      const { return lastIsCcm; }
-    double get_last_dcm_d2()                      const { return lastDcmD2; }
-    double get_last_dcm_conversion_ratio()        const { return lastDcmConversionRatio; }
     double get_last_sized_l2()                    const { return lastSizedL2; }
     double get_last_sized_c1()                    const { return lastSizedC1; }
     double get_last_sized_co()                    const { return lastSizedCo; }

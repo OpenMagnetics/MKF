@@ -227,16 +227,6 @@ namespace OpenMagnetics {
         lastDcmK = calculate_dcm_K(L1Choke, inductanceL2, switchingFrequency, loadResistance);
         lastDcmKcrit = std::pow(1.0 - dutyCycle, 2);
         lastIsCcm = (lastDcmK > lastDcmKcrit);
-        // DCM diagnostics: in DCM the second sub-interval is D2 = √K and
-        // the magnitude of the conversion ratio degenerates to |M| = D/√K
-        // (Erickson §5.3). Reported only when DCM detected; 0 in CCM.
-        if (!lastIsCcm && lastDcmK > 0.0) {
-            lastDcmD2 = std::sqrt(lastDcmK);
-            lastDcmConversionRatio = (lastDcmD2 > 0.0) ? dutyCycle / lastDcmD2 : 0.0;
-        } else {
-            lastDcmD2 = 0.0;
-            lastDcmConversionRatio = 0.0;
-        }
         lastRhpZeroFrequency = calculate_rhp_zero_frequency(loadResistance, dutyCycle, inductanceL2);
         lastRecommendedLoopBandwidth = lastRhpZeroFrequency / 5.0;
         lastSizedL2 = inductanceL2;
