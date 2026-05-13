@@ -57,6 +57,15 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 50;  // Number of periods to extract from simulation
 
+    // Maximum allowed operating duty cycle. The buck-family CCM duty is
+    // D = (Vout + Vd) / ((Vin + Vd) · η); for low-line corners with
+    // Vin_min close to Vout this approaches 1. We enforce an explicit
+    // upper bound and throw when the required D exceeds it (rather than
+    // silently clamping, which would make Vout collapse). Mirrors the
+    // pattern in Flyback (see Flyback.h::maximumDutyCycle, commit
+    // 04272d7b) and the forward family (commit 683e731c).
+    std::optional<double> maximumDutyCycle = 0.95;
+
     // ---- Per-OP analytical diagnostics ----
     // Populated by process_operating_points_for_input_voltage() for the
     // most recent call. Used by golden-quality tests to assert CCM/DCM
@@ -83,6 +92,9 @@ public:
     
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
+
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
 
     // ---- Per-OP diagnostic accessors ----
     double get_last_duty_cycle() const { return lastDutyCycle; }
