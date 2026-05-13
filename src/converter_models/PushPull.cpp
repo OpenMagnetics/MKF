@@ -1180,9 +1180,34 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
-        DesignRequirements designRequirements;
-
         auto convertedTurnsRatios = convert_turns_ratios(turnsRatios);
+        inputs.set_design_requirements(process_design_requirements());
+
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            auto inputVoltage = inputVoltages[inputVoltageIndex];
+            for (size_t pushPullOperatingPointIndex = 0; pushPullOperatingPointIndex < get_operating_points().size(); ++pushPullOperatingPointIndex) {
+                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[pushPullOperatingPointIndex], convertedTurnsRatios, minimumNeededInductance, minimumOutputInductance);
+
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
+                if (get_operating_points().size() > 1) {
+                    name += " with op. point " + std::to_string(pushPullOperatingPointIndex);
+                }
+                operatingPoint.set_name(name);
+                inputs.get_mutable_operating_points().push_back(operatingPoint);
+            }
+        }
+
+        return inputs;
+    }
+
+    DesignRequirements AdvancedPushPull::process_design_requirements() {
+        // Issue M1: build DR directly from desired* fields. Do NOT chain to
+        // PushPull::process_design_requirements() — the parent auto-sizes
+        // turns ratios and inductance, defeating the "Advanced" override.
+        std::vector<double> turnsRatios = get_desired_turns_ratios();
+        double minimumNeededInductance = get_desired_inductance();
+
+        DesignRequirements designRequirements;
         designRequirements.get_mutable_turns_ratios().clear();
         for (auto turnsRatio : turnsRatios) {
             DimensionWithTolerance turnsRatioWithTolerance;
@@ -1203,24 +1228,7 @@ namespace OpenMagnetics {
         }
         designRequirements.set_isolation_sides(isolationSides);
         designRequirements.set_topology(Topologies::PUSH_PULL_CONVERTER);
-
-        inputs.set_design_requirements(designRequirements);
-
-        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
-            auto inputVoltage = inputVoltages[inputVoltageIndex];
-            for (size_t pushPullOperatingPointIndex = 0; pushPullOperatingPointIndex < get_operating_points().size(); ++pushPullOperatingPointIndex) {
-                auto operatingPoint = process_operating_points_for_input_voltage(inputVoltage, get_operating_points()[pushPullOperatingPointIndex], convertedTurnsRatios, minimumNeededInductance, minimumOutputInductance);
-
-                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
-                if (get_operating_points().size() > 1) {
-                    name += " with op. point " + std::to_string(pushPullOperatingPointIndex);
-                }
-                operatingPoint.set_name(name);
-                inputs.get_mutable_operating_points().push_back(operatingPoint);
-            }
-        }
-
-        return inputs;
+        return designRequirements;
     }
 
     std::string PushPull::generate_ngspice_circuit(
