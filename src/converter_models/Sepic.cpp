@@ -16,7 +16,7 @@ namespace OpenMagnetics {
     //   Static analytical helpers
     // ============================================================
 
-    double Sepic::calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency) {
+    double Sepic::calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency, double maximumDutyCycle) {
         // SEPIC CCM, ideal:    M(D) = +D / (1 - D)
         // With η and Vd:       D = (Vo + Vd) / (Vin·η + Vo + Vd)        [TI SNVA168E]
         if (inputVoltage <= 0) {
@@ -27,10 +27,14 @@ namespace OpenMagnetics {
         }
         double effVin = inputVoltage * efficiency;
         double dutyCycle = (outputVoltage + diodeVoltageDrop) / (effVin + outputVoltage + diodeVoltageDrop);
-        if (dutyCycle >= 0.95) {
+        // Explicit configurable maxD gate (no silent clamp). 1 % tolerance
+        // for design-requirements rounding.
+        constexpr double dutyTolerance = 0.01;
+        if (dutyCycle > maximumDutyCycle * (1.0 + dutyTolerance)) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "Sepic::calculate_duty_cycle: duty cycle " + std::to_string(dutyCycle) +
-                " >= 0.95 — converter would lose regulation; reduce Vo or raise Vin");
+                " exceeds maximumDutyCycle " + std::to_string(maximumDutyCycle) +
+                " — converter would lose regulation; reduce Vo, raise Vin, or relax maximumDutyCycle.");
         }
         return dutyCycle;
     }
@@ -99,7 +103,7 @@ namespace OpenMagnetics {
         double efficiency = 1.0;
         if (get_efficiency()) efficiency = get_efficiency().value();
 
-        double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, diodeVoltageDrop, efficiency);
+        double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
 
         // Common derived quantities (V1 / V2). Power balance:
         //   Vin·η·IL1avg = Vo·Iout    ⇒   IL1avg = Vo·Iout / (Vin·η).
@@ -240,7 +244,7 @@ namespace OpenMagnetics {
             for (const auto& op : get_operating_points()) {
                 double Iout = op.get_output_currents()[0];
                 double Vo   = op.get_output_voltages()[0];
-                double D    = calculate_duty_cycle(maximumInputVoltage, Vo, get_diode_voltage_drop(), efficiency);
+                double D    = calculate_duty_cycle(maximumInputVoltage, Vo, get_diode_voltage_drop(), efficiency, maximumDutyCycle.value_or(0.95));
                 double IL1avg = Iout * D / (1.0 - D);
                 maximumDeltaIL1 = std::max(maximumDeltaIL1, rippleRatio * IL1avg);
             }
@@ -250,7 +254,7 @@ namespace OpenMagnetics {
             for (const auto& op : get_operating_points()) {
                 double Iout = op.get_output_currents()[0];
                 double Vo   = op.get_output_voltages()[0];
-                double D    = calculate_duty_cycle(minimumInputVoltage, Vo, get_diode_voltage_drop(), efficiency);
+                double D    = calculate_duty_cycle(minimumInputVoltage, Vo, get_diode_voltage_drop(), efficiency, maximumDutyCycle.value_or(0.95));
                 double IL1avg = Iout * D / (1.0 - D);
                 double IL2avg = Iout;
                 // IS_peak ≈ IL1+IL2 + (ΔIL1+ΔIL2)/2; treat ΔIL2 as ~30 % of IL2avg
@@ -268,7 +272,7 @@ namespace OpenMagnetics {
         for (const auto& op : get_operating_points()) {
             double switchingFrequency = op.get_switching_frequency();
             double Vo = op.get_output_voltages()[0];
-            double D  = calculate_duty_cycle(maximumInputVoltage, Vo, get_diode_voltage_drop(), efficiency);
+            double D  = calculate_duty_cycle(maximumInputVoltage, Vo, get_diode_voltage_drop(), efficiency, maximumDutyCycle.value_or(0.95));
             double L1 = calculate_l1_min(maximumInputVoltage, D, maximumDeltaIL1, switchingFrequency);
             maximumNeededInductance = std::max(maximumNeededInductance, L1);
         }
@@ -426,7 +430,7 @@ namespace OpenMagnetics {
         double efficiency = 1.0;
         if (get_efficiency()) efficiency = get_efficiency().value();
 
-        double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, diodeVoltageDrop, efficiency);
+        double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
 
         double IL1avg = outputCurrent * dutyCycle / (1.0 - dutyCycle);
         double IL2avg = outputCurrent;
