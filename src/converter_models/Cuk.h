@@ -134,6 +134,19 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 50;
 
+    // Maximum operating duty cycle. Cuk CCM duty is
+    // D = (|Vo|+Vd)*n / (Vin*eta + (|Vo|+Vd)*n); for low Vin or high
+    // step-down/up ratio this approaches 1, where the conversion ratio
+    // M = -D/(1-D) blows up and regulation collapses. Cuk previously
+    // hard-coded a 0.95 ceiling in calculate_duty_cycle(); this field
+    // makes it configurable so callers with stricter controller
+    // constraints (e.g. maxD = 0.7) get a loud throw rather than
+    // running well past their controller's range. Mirrors Flyback
+    // (04272d7b), forward family (683e731c), Buck (2c9300c2), Boost
+    // (96fdb52a), IsolatedBuck (703bc80e), IsolatedBuckBoost
+    // (a158d548).
+    std::optional<double> maximumDutyCycle = 0.95;
+
     // Internal sizing rules-of-thumb for L2 / C1 / Co (V1 only).
     // These are fixed defaults; future revisions will expose them via
     // schema fields and/or DesignRequirements (see CUK_PLAN.md §13).
@@ -199,6 +212,9 @@ public:
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
+
     // ---- Per-OP diagnostic accessors ----
     double get_last_duty_cycle()                  const { return lastDutyCycle; }
     double get_last_conversion_ratio()            const { return lastConversionRatio; }
@@ -251,7 +267,7 @@ public:
     //
     // For V3 isolated, turnsRatio = Np/Ns (Flyback convention). Conversion gain
     // becomes |Vo|/Vin = D / ((1-D) · turnsRatio); reduces to V1 when turnsRatio=1.
-    static double calculate_duty_cycle(double inputVoltage, double outputVoltageMagnitude, double diodeVoltageDrop, double efficiency, double turnsRatio = 1.0);
+    static double calculate_duty_cycle(double inputVoltage, double outputVoltageMagnitude, double diodeVoltageDrop, double efficiency, double turnsRatio = 1.0, double maximumDutyCycle = 0.95);
     static double calculate_conversion_ratio(double dutyCycle);                 // -D/(1-D)
     static double calculate_coupling_cap_voltage(double inputVoltage, double dutyCycle);
     static double calculate_l1_min(double inputVoltage, double dutyCycle, double deltaIL1, double switchingFrequency);
