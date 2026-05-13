@@ -460,23 +460,7 @@ namespace OpenMagnetics {
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
-        DesignRequirements designRequirements;
-
-        designRequirements.get_mutable_turns_ratios().clear();
-        for (auto turnsRatio : turnsRatios) {
-            DimensionWithTolerance turnsRatioWithTolerance;
-            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
-            designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
-        }
-
-        DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_nominal(roundFloat(minimumNeededInductance, 10));
-        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        designRequirements.set_isolation_sides(
-            Topology::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), false));
-        designRequirements.set_topology(Topologies::TWO_SWITCH_FORWARD_CONVERTER);
-
-        inputs.set_design_requirements(designRequirements);
+        inputs.set_design_requirements(process_design_requirements());
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
@@ -493,6 +477,35 @@ namespace OpenMagnetics {
         }
 
         return inputs;
+    }
+
+    DesignRequirements AdvancedTwoSwitchForward::process_design_requirements() {
+        // Issue M1: build DR directly from desired* fields. Do NOT chain to
+        // TwoSwitchForward::process_design_requirements() — the parent
+        // auto-sizes turns ratios and inductance, defeating the "Advanced"
+        // override semantics.
+        std::vector<double> turnsRatios = get_desired_turns_ratios();
+        double minimumNeededInductance = get_desired_inductance();
+
+        if (turnsRatios.size() != get_operating_points()[0].get_output_currents().size()) {
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Turns ratios must have same positions as outputs");
+        }
+
+        DesignRequirements designRequirements;
+        designRequirements.get_mutable_turns_ratios().clear();
+        for (auto turnsRatio : turnsRatios) {
+            DimensionWithTolerance turnsRatioWithTolerance;
+            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
+            designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
+        }
+
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_nominal(roundFloat(minimumNeededInductance, 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        designRequirements.set_isolation_sides(
+            Topology::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), false));
+        designRequirements.set_topology(Topologies::TWO_SWITCH_FORWARD_CONVERTER);
+        return designRequirements;
     }
     
     std::string TwoSwitchForward::generate_ngspice_circuit(

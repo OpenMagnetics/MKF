@@ -93,6 +93,10 @@ public:
 
     Inputs process();
 
+    // Issue M1: build DesignRequirements directly from desired* fields,
+    // bypassing the parent's PDR which auto-sizes turns ratios/inductance.
+    DesignRequirements process_design_requirements() override;
+
     const double & get_desired_inductance() const { return desiredInductance; }
     double & get_mutable_desired_inductance() { return desiredInductance; }
     void set_desired_inductance(const double & value) { this->desiredInductance = value; }

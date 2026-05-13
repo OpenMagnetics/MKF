@@ -417,23 +417,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
-        DesignRequirements designRequirements;
-
-        designRequirements.get_mutable_turns_ratios().clear();
-        for (auto turnsRatio : turnsRatios) {
-            DimensionWithTolerance turnsRatioWithTolerance;
-            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
-            designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
-        }
-
-        DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_nominal(roundFloat(minimumNeededInductance, 10));
-        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        designRequirements.set_isolation_sides(
-            Topology::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), true));
-        designRequirements.set_topology(Topologies::SINGLE_SWITCH_FORWARD_CONVERTER);
-
-        inputs.set_design_requirements(designRequirements);
+        inputs.set_design_requirements(process_design_requirements());
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
@@ -450,6 +434,35 @@ namespace OpenMagnetics {
         }
 
         return inputs;
+    }
+
+    DesignRequirements AdvancedSingleSwitchForward::process_design_requirements() {
+        // Issue M1: build DR directly from desired* fields. Do NOT chain to
+        // SingleSwitchForward::process_design_requirements() — the parent
+        // sizes turns ratios from voltages and inductance from current
+        // ripple, which would override the user-provided desired* values.
+        std::vector<double> turnsRatios = get_desired_turns_ratios();
+        double minimumNeededInductance = get_desired_inductance();
+
+        if (turnsRatios.size() != get_operating_points()[0].get_output_currents().size() + 1) {
+            throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "Turns ratios must have one more position than outputs for the demagnetization winding");
+        }
+
+        DesignRequirements designRequirements;
+        designRequirements.get_mutable_turns_ratios().clear();
+        for (auto turnsRatio : turnsRatios) {
+            DimensionWithTolerance turnsRatioWithTolerance;
+            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
+            designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
+        }
+
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_nominal(roundFloat(minimumNeededInductance, 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        designRequirements.set_isolation_sides(
+            Topology::create_isolation_sides(get_operating_points()[0].get_output_currents().size(), true));
+        designRequirements.set_topology(Topologies::SINGLE_SWITCH_FORWARD_CONVERTER);
+        return designRequirements;
     }
 
     std::string SingleSwitchForward::generate_ngspice_circuit(
