@@ -53,7 +53,7 @@ namespace OpenMagnetics {
         return Region::BUCK_BOOST;
     }
 
-    double FourSwitchBuckBoost::compute_buck_duty(double Vin, double Vo, double efficiency) {
+    double FourSwitchBuckBoost::compute_buck_duty(double Vin, double Vo, double efficiency, double maximumDutyCycle) {
         if (Vin <= 0.0 || efficiency <= 0.0) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "FourSwitchBuckBoost::compute_buck_duty: Vin and efficiency must be > 0");
@@ -63,10 +63,17 @@ namespace OpenMagnetics {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "FourSwitchBuckBoost::compute_buck_duty: D >= 1 — converter cannot regulate (Vo too high for buck)");
         }
+        const double dutyTolerance = 0.01;
+        if (D >= maximumDutyCycle - dutyTolerance) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "FourSwitchBuckBoost::compute_buck_duty: D=" + std::to_string(D) +
+                " exceeds maximumDutyCycle " + std::to_string(maximumDutyCycle) +
+                " — reduce Vo, raise Vin, or raise maximumDutyCycle");
+        }
         return D;
     }
 
-    double FourSwitchBuckBoost::compute_boost_duty(double Vin, double Vo, double efficiency) {
+    double FourSwitchBuckBoost::compute_boost_duty(double Vin, double Vo, double efficiency, double maximumDutyCycle) {
         if (Vo <= 0.0 || efficiency <= 0.0) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "FourSwitchBuckBoost::compute_boost_duty: Vo and efficiency must be > 0");
@@ -76,12 +83,20 @@ namespace OpenMagnetics {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "FourSwitchBuckBoost::compute_boost_duty: D out of range — converter cannot regulate (Vin too high for boost)");
         }
+        const double dutyTolerance = 0.01;
+        if (D >= maximumDutyCycle - dutyTolerance) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "FourSwitchBuckBoost::compute_boost_duty: D=" + std::to_string(D) +
+                " exceeds maximumDutyCycle " + std::to_string(maximumDutyCycle) +
+                " — reduce Vo, raise Vin, or raise maximumDutyCycle");
+        }
         return D;
     }
 
     void FourSwitchBuckBoost::compute_buck_boost_duties(
         double Vin, double Vo, double efficiency, MAS::TransitionMode mode,
-        double& D_buck_out, double& D_boost_out)
+        double& D_buck_out, double& D_boost_out,
+        double maximumDutyCycle)
     {
         if (Vin <= 0.0 || Vo <= 0.0 || efficiency <= 0.0) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
@@ -111,9 +126,35 @@ namespace OpenMagnetics {
                 D_boost_out = (1.0 + delta) / 2.0;
             } else {
                 D_boost_out = (1.0 + delta - M) / (1.0 - M);
-                D_boost_out = std::clamp(D_boost_out, 0.05, 0.95);
                 D_buck_out  = M * (1.0 - D_boost_out);
-                D_buck_out  = std::clamp(D_buck_out,  0.05, 0.95);
+                // Throw on out-of-range duties (no silent clamp — would
+                // hide a real sizing failure where Vin/Vo demand an
+                // unrealisable duty pair). Boost branch is the one that
+                // approaches 1; buck branch is bounded above by
+                // (1+delta)/2 ≈ 0.525 in normal SPLIT_PWM operation.
+                const double dutyTolerance = 0.01;
+                if (D_boost_out >= maximumDutyCycle - dutyTolerance) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "FourSwitchBuckBoost::compute_buck_boost_duties: D_boost=" +
+                        std::to_string(D_boost_out) +
+                        " exceeds maximumDutyCycle " + std::to_string(maximumDutyCycle) +
+                        " (SPLIT_PWM, M=" + std::to_string(M) +
+                        ") — reduce Vo, raise Vin, or raise maximumDutyCycle");
+                }
+                if (D_boost_out <= 0.05) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "FourSwitchBuckBoost::compute_buck_boost_duties: D_boost=" +
+                        std::to_string(D_boost_out) +
+                        " <= 0.05 (SPLIT_PWM, M=" + std::to_string(M) +
+                        ") — converter is in pure buck region, classify_region should not have selected BUCK_BOOST");
+                }
+                if (D_buck_out <= 0.05 || D_buck_out >= maximumDutyCycle - dutyTolerance) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "FourSwitchBuckBoost::compute_buck_boost_duties: D_buck=" +
+                        std::to_string(D_buck_out) +
+                        " out of [0.05, " + std::to_string(maximumDutyCycle - dutyTolerance) +
+                        "] (SPLIT_PWM, M=" + std::to_string(M) + ")");
+                }
             }
         }
     }
@@ -243,7 +284,7 @@ namespace OpenMagnetics {
         double dutyForWaveform = 0.5;
 
         if (region == Region::BUCK) {
-            D_buck = compute_buck_duty(inputVoltage, outputVoltage, efficiency);
+            D_buck = compute_buck_duty(inputVoltage, outputVoltage, efficiency, maximumDutyCycle.value_or(0.95));
             D_boost = 0.0;
             tOn = D_buck * period;
             M = D_buck;
@@ -264,7 +305,7 @@ namespace OpenMagnetics {
             voltageLabel = WaveformLabel::RECTANGULAR;
         }
         else if (region == Region::BOOST) {
-            D_boost = compute_boost_duty(inputVoltage, outputVoltage, efficiency);
+            D_boost = compute_boost_duty(inputVoltage, outputVoltage, efficiency, maximumDutyCycle.value_or(0.95));
             D_buck = 1.0;
             tOn = D_boost * period;
             M = 1.0 / (1.0 - D_boost);
@@ -286,7 +327,7 @@ namespace OpenMagnetics {
         }
         else { // BUCK_BOOST
             compute_buck_boost_duties(inputVoltage, outputVoltage, efficiency, tmode,
-                                      D_buck, D_boost);
+                                      D_buck, D_boost, maximumDutyCycle.value_or(0.95));
             if (tmode == MAS::TransitionMode::SIMULTANEOUS) {
                 // Mode 1: D = Vo/(Vin+Vo); on-time both legs ON.
                 const double D = D_buck;
@@ -736,11 +777,11 @@ namespace OpenMagnetics {
                                               minOnTime, minOffTime, switchingFrequency);
         double D_buck = 0.0, D_boost = 0.0;
         if (region == Region::BUCK) {
-            D_buck = compute_buck_duty(inputVoltage, outputVoltage, efficiency);
+            D_buck = compute_buck_duty(inputVoltage, outputVoltage, efficiency, maximumDutyCycle.value_or(0.95));
         } else if (region == Region::BOOST) {
-            D_boost = compute_boost_duty(inputVoltage, outputVoltage, efficiency);
+            D_boost = compute_boost_duty(inputVoltage, outputVoltage, efficiency, maximumDutyCycle.value_or(0.95));
         } else {
-            compute_buck_boost_duties(inputVoltage, outputVoltage, efficiency, tmode, D_buck, D_boost);
+            compute_buck_boost_duties(inputVoltage, outputVoltage, efficiency, tmode, D_buck, D_boost, maximumDutyCycle.value_or(0.95));
         }
 
         const SpiceSimulationConfig cfg = spice_config();

@@ -157,6 +157,14 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 30;
 
+    // Maximum operating duty cycle. In all three regions (buck-only,
+    // boost-only, buck-boost) the static duty fns previously had no
+    // configurable ceiling and the SPLIT_PWM buck-boost path silently
+    // clamped to [0.05, 0.95]. Now configurable; clamps are replaced
+    // with throws. Mirrors Cuk (757d50cb), Sepic (9725ba41),
+    // Zeta (31fa57c7), Weinberg (a61872f8).
+    std::optional<double> maximumDutyCycle = 0.95;
+
     // Internal sizing knobs.
     double inductorRippleRatioDefault = 0.4;
     double outputRippleRatioDefault   = 0.01;
@@ -213,6 +221,9 @@ public:
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int v) { numSteadyStatePeriods = v; }
 
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
+
     // Diagnostic accessors.
     Region get_last_region()                   const { return lastRegion; }
     double get_last_duty_cycle_buck()          const { return lastDutyCycleBuck; }
@@ -253,11 +264,12 @@ public:
     // Static analytical helpers.
     static Region classify_region(double Vin, double Vo, double hysteresisRatio,
                                   double minOnTime, double minOffTime, double Fs);
-    static double compute_buck_duty(double Vin, double Vo, double efficiency);
-    static double compute_boost_duty(double Vin, double Vo, double efficiency);
+    static double compute_buck_duty(double Vin, double Vo, double efficiency, double maximumDutyCycle = 0.95);
+    static double compute_boost_duty(double Vin, double Vo, double efficiency, double maximumDutyCycle = 0.95);
     static void   compute_buck_boost_duties(double Vin, double Vo, double efficiency,
                                             TransitionMode mode,
-                                            double& D_buck_out, double& D_boost_out);
+                                            double& D_buck_out, double& D_boost_out,
+                                            double maximumDutyCycle = 0.95);
     static double compute_inductor_buck_region(double Vin, double Vo, double Iout,
                                                double Fs, double rippleRatio);
     static double compute_inductor_boost_region(double Vin, double Vo, double Iout,
