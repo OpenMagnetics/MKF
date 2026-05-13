@@ -166,7 +166,14 @@ namespace OpenMagnetics {
 
         for (auto forwardOperatingPoint : get_operating_points()) {
             for (size_t secondaryIndex = 0; secondaryIndex < forwardOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
-                double turnsRatio = maximumInputVoltage * dutyCycle / (forwardOperatingPoint.get_output_voltages()[secondaryIndex] + diodeVoltageDrop);
+                // Size turns ratio at Vin_MIN: D is highest at the low-line
+                // corner. n = D_max * Vin_min / (Vout + Vd) so D(Vin_min) = D_max
+                // and D(Vin > Vin_min) < D_max. The previous formula sized at
+                // Vin_max, which understated n and produced infeasible designs
+                // that violated maximumDutyCycle at low Vin (silently masked
+                // by a downstream std::min clamp until that clamp was replaced
+                // with a throw).
+                double turnsRatio = minimumInputVoltage * dutyCycle / (forwardOperatingPoint.get_output_voltages()[secondaryIndex] + diodeVoltageDrop);
                 turnsRatios[secondaryIndex + 1] = std::max(turnsRatios[secondaryIndex + 1], turnsRatio);
             }
         }
@@ -261,7 +268,21 @@ namespace OpenMagnetics {
                 double mainSecondaryTurnsRatio = turnsRatios[1];
                 double mainOutputVoltage = fop.get_output_voltages()[0];
                 double actualDutyCycle = (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
-                actualDutyCycle = std::min(actualDutyCycle, get_maximum_duty_cycle());
+                // No silent clamp: violating maximumDutyCycle means the design
+                // cannot deliver Vout at this Vin. Throw with actionable info.
+                // Tolerance allows for rounding in design_requirements (turns
+                // ratio is rounded to 2 decimals) without firing on noise.
+                {
+                    const double dMax = get_maximum_duty_cycle();
+                    constexpr double dutyTolerance = 0.01;  // 1 % over maxD
+                    if (actualDutyCycle > dMax * (1.0 + dutyTolerance)) {
+                        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                            "SingleSwitchForward: required dutyCycle " + std::to_string(actualDutyCycle) +
+                            " exceeds maximumDutyCycle " + std::to_string(dMax) +
+                            " at Vin=" + std::to_string(inputVoltage) +
+                            ". Increase turns ratio (lower mainSecondaryTurnsRatio), raise Vin_min, or relax maximumDutyCycle.");
+                    }
+                }
                 double tOn = actualDutyCycle * period;
                 double tOff = period - tOn;
 
@@ -467,8 +488,21 @@ namespace OpenMagnetics {
         // turnsRatios[0] is demagnetization winding, turnsRatios[1] is first secondary
         double mainOutputVoltage = opPoint.get_output_voltages()[0];
         double mainSecondaryTurnsRatio = (numSecondaries > 0) ? turnsRatios[1] : 1.0;
-        double dutyCycle = std::min(get_maximum_duty_cycle(),
-            (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio));
+        double dutyCycle = (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
+        // No silent clamp: throw if the operating-point duty exceeds maxD,
+        // with a 1 % tolerance for design-requirements rounding (n is
+        // rounded to 2 decimals).
+        {
+            const double dMax = get_maximum_duty_cycle();
+            constexpr double dutyTolerance = 0.01;
+            if (dutyCycle > dMax * (1.0 + dutyTolerance)) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "SingleSwitchForward::generate_ngspice_circuit: required dutyCycle " +
+                    std::to_string(dutyCycle) + " exceeds maximumDutyCycle " + std::to_string(dMax) +
+                    " at Vin=" + std::to_string(inputVoltage) +
+                    ". Increase turns ratio, raise Vin_min, or relax maximumDutyCycle.");
+            }
+        }
         double tOn = period * dutyCycle;
         
         // Simulation: run steady-state periods for settling, then extract the last N periods

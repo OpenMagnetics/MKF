@@ -221,7 +221,9 @@ namespace OpenMagnetics {
 
         for (auto forwardOperatingPoint : get_operating_points()) {
             for (size_t secondaryIndex = 0; secondaryIndex < forwardOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
-                double turnsRatio = maximumInputVoltage * dutyCycle / (forwardOperatingPoint.get_output_voltages()[secondaryIndex] + diodeVoltageDrop);
+                // Size turns ratio at Vin_MIN (worst case for required D).
+                // See SingleSwitchForward.cpp for full rationale.
+                double turnsRatio = minimumInputVoltage * dutyCycle / (forwardOperatingPoint.get_output_voltages()[secondaryIndex] + diodeVoltageDrop);
                 turnsRatios[secondaryIndex] = std::max(turnsRatios[secondaryIndex], turnsRatio);
             }
         }
@@ -312,7 +314,20 @@ namespace OpenMagnetics {
                 double mainSecondaryTurnsRatio = turnsRatios[0];
                 double mainOutputVoltage = fop.get_output_voltages()[0];
                 double actualDutyCycle = (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
-                actualDutyCycle = std::min(actualDutyCycle, get_maximum_duty_cycle());
+                // No silent clamp: violating maximumDutyCycle means the design
+                // cannot deliver Vout at this Vin. 1 % tolerance for the
+                // design-requirements rounding-to-2-decimals.
+                {
+                    const double dMax = get_maximum_duty_cycle();
+                    constexpr double dutyTolerance = 0.01;
+                    if (actualDutyCycle > dMax * (1.0 + dutyTolerance)) {
+                        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                            "TwoSwitchForward: required dutyCycle " + std::to_string(actualDutyCycle) +
+                            " exceeds maximumDutyCycle " + std::to_string(dMax) +
+                            " at Vin=" + std::to_string(inputVoltage) +
+                            ". Increase turns ratio, raise Vin_min, or relax maximumDutyCycle.");
+                    }
+                }
                 double tOn = actualDutyCycle * period;
 
                 for (size_t s = 0; s < numSecondaries; ++s) {
@@ -512,8 +527,20 @@ namespace OpenMagnetics {
         // Compute actual duty cycle from voltage balance: D = (Vout + Vd) / (Vin / n)
         double mainOutputVoltage = opPoint.get_output_voltages()[0];
         double mainSecondaryTurnsRatio = turnsRatios[0];
-        double dutyCycle = std::min(get_maximum_duty_cycle(),
-            (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio));
+        double dutyCycle = (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
+        // No silent clamp: throw if the operating-point duty exceeds maxD,
+        // with 1 % tolerance for design-requirements rounding.
+        {
+            const double dMax = get_maximum_duty_cycle();
+            constexpr double dutyTolerance = 0.01;
+            if (dutyCycle > dMax * (1.0 + dutyTolerance)) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "TwoSwitchForward::generate_ngspice_circuit: required dutyCycle " +
+                    std::to_string(dutyCycle) + " exceeds maximumDutyCycle " + std::to_string(dMax) +
+                    " at Vin=" + std::to_string(inputVoltage) +
+                    ". Increase turns ratio, raise Vin_min, or relax maximumDutyCycle.");
+            }
+        }
         double tOn = period * dutyCycle;
         
         // Simulation timing

@@ -162,7 +162,7 @@ TEST_CASE("SSF reference design PtP — UC3845-class 50 W telecom POL "
           "(48V→5V/10A 200 kHz)",
           "[converter-model][single-switch-forward-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"UC3845-50W", 48.0, 36.0, 72.0, 5.0, 10.0, 200e3, 0.40,
-                    30.0, 2.0, 0.05, 0.60, 0.70};
+                    30.0, 2.0, 0.05, 0.60, 0.85};
     run_ptp_gates(s);
 }
 
@@ -170,7 +170,7 @@ TEST_CASE("SSF reference design PtP — NCP1252-class 100 W brick "
           "(48V→12V/8A 250 kHz)",
           "[converter-model][single-switch-forward-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"NCP1252-100W", 48.0, 36.0, 72.0, 12.0, 8.0, 250e3, 0.40,
-                    30.0, 2.0, 0.05, 0.60, 0.70};
+                    30.0, 2.0, 0.05, 0.60, 0.85};
     run_ptp_gates(s);
 }
 
@@ -178,6 +178,6 @@ TEST_CASE("SSF reference design PtP — Erickson §6.3-class 25 W "
           "(24V→5V/5A 150 kHz)",
           "[converter-model][single-switch-forward-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"Erickson-25W", 24.0, 20.0, 30.0, 5.0, 5.0, 150e3, 0.40,
-                    30.0, 2.0, 0.05, 0.60, 0.70};
+                    30.0, 2.0, 0.05, 0.60, 0.85};
     run_ptp_gates(s);
 }
