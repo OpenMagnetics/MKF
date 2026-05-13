@@ -149,6 +149,13 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 50;     // Weinberg is slow to settle (large L1)
 
+    // Maximum operating duty cycle in the boost regime. Weinberg's
+    // boost branch M = 1 / (2·n·(1−D)) blows up as D→1; the static
+    // calculate_duty_cycle previously hard-coded a 0.95 ceiling.
+    // Now configurable via this field. Mirrors Cuk (757d50cb),
+    // Sepic (9725ba41), Zeta (31fa57c7).
+    std::optional<double> maximumDutyCycle = 0.95;
+
     // Internal sizing rules-of-thumb for L1 / Co.
     double l1RipplePct = 0.20;          // ΔIL1 / IL1_per_winding,avg target
     double coRipplePct = 0.01;          // ΔVo  / Vo                    target
@@ -197,6 +204,9 @@ public:
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
+
     // ---- Per-OP diagnostic accessors ----
     double get_last_duty_cycle()                   const { return lastDutyCycle; }
     double get_last_conversion_ratio()             const { return lastConversionRatio; }
@@ -243,7 +253,7 @@ public:
     // ---- Static analytical helpers ----
     static double calculate_duty_cycle(double inputVoltage, double outputVoltage,
                                        double turnsRatio, double diodeVoltageDrop,
-                                       double efficiency);
+                                       double efficiency, double maximumDutyCycle = 0.95);
     static double calculate_conversion_ratio_boost(double dutyCycle, double turnsRatio);  // 1/(2n(1-D))
     static double calculate_conversion_ratio_buck(double dutyCycle, double turnsRatio);   // D/n
     static double calculate_overlap_fraction(double dutyCycle);                            // max(0, 2D-1)

@@ -65,7 +65,7 @@ namespace OpenMagnetics {
 
     double Weinberg::calculate_duty_cycle(double inputVoltage, double outputVoltage,
                                           double turnsRatio, double diodeVoltageDrop,
-                                          double efficiency) {
+                                          double efficiency, double maximumDutyCycle) {
         // Solve M(D) = (Vout + Vd) / (Vin · η) for D.
         // Try the boost regime first (Weinberg's canonical operating regime,
         // D > 0.5):  M_boost = 1 / (2·n·(1−D))
@@ -89,10 +89,12 @@ namespace OpenMagnetics {
         double M = (outputVoltage + diodeVoltageDrop) / vinEff;
         double dBoost = 1.0 - 1.0 / (2.0 * turnsRatio * M);
         if (dBoost > 0.5) {
-            if (dBoost >= 0.95) {
+            const double dutyTolerance = 0.01;
+            if (dBoost >= maximumDutyCycle - dutyTolerance) {
                 throw InvalidInputException(ErrorCode::INVALID_INPUT,
                     "Weinberg::calculate_duty_cycle: D=" + std::to_string(dBoost) +
-                    " >= 0.95 — converter would lose regulation; reduce Vo or raise Vin");
+                    " exceeds maximumDutyCycle " + std::to_string(maximumDutyCycle) +
+                    " — reduce Vo, raise Vin, or raise maximumDutyCycle");
             }
             return dBoost;
         }
@@ -178,7 +180,7 @@ namespace OpenMagnetics {
         if (get_efficiency()) efficiency = get_efficiency().value();
 
         double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, turnsRatio,
-                                                diodeVoltageDrop, efficiency);
+                                                diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
         int regime = detect_operating_regime(dutyCycle);
         double overlap = calculate_overlap_fraction(dutyCycle);
 
@@ -392,7 +394,7 @@ namespace OpenMagnetics {
                 double Iout = op.get_output_currents()[0];
                 double Vo   = op.get_output_voltages()[0];
                 double D    = calculate_duty_cycle(minimumInputVoltage, Vo, maximumTurnsRatio,
-                                                   diodeVoltageDrop, efficiency);
+                                                   diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
                 double M    = calculate_conversion_ratio_boost(D, maximumTurnsRatio);
                 double Iin  = Iout / (efficiency * M);
                 double IL1perWinding = Iin / 2.0;
@@ -405,7 +407,7 @@ namespace OpenMagnetics {
                 double Iout = op.get_output_currents()[0];
                 double Vo   = op.get_output_voltages()[0];
                 double D    = calculate_duty_cycle(minimumInputVoltage, Vo, maximumTurnsRatio,
-                                                   diodeVoltageDrop, efficiency);
+                                                   diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
                 double M    = calculate_conversion_ratio_boost(D, maximumTurnsRatio);
                 double Iin  = Iout / (efficiency * M);
                 double residual = IsMax - Iin;
@@ -423,7 +425,7 @@ namespace OpenMagnetics {
             double switchingFrequency = op.get_switching_frequency();
             double Vo = op.get_output_voltages()[0];
             double D  = calculate_duty_cycle(minimumInputVoltage, Vo, maximumTurnsRatio,
-                                             diodeVoltageDrop, efficiency);
+                                             diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
             double L1 = calculate_l1_min(minimumInputVoltage, D, maximumDeltaIL1, switchingFrequency);
             maximumNeededInductance = std::max(maximumNeededInductance, L1);
         }
@@ -604,7 +606,7 @@ namespace OpenMagnetics {
         if (get_efficiency()) efficiency = get_efficiency().value();
 
         double dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, turnsRatio,
-                                                diodeVoltageDrop, efficiency);
+                                                diodeVoltageDrop, efficiency, maximumDutyCycle.value_or(0.95));
         int regime = detect_operating_regime(dutyCycle);
         double M = (regime == 2) ? calculate_conversion_ratio_boost(dutyCycle, turnsRatio)
                                  : calculate_conversion_ratio_buck(dutyCycle, turnsRatio);
