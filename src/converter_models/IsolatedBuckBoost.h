@@ -16,6 +16,15 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 20;  // Increased from 5 to ensure steady state
 
+    // Maximum operating duty cycle. Isolated buck-boost (flyback-style)
+    // CCM duty is D = Vout/(Vin+Vout); at low Vin this approaches 1.
+    // Real controllers cap D well below 1 (typ. 0.5-0.85) so the
+    // secondary-rectifier conduction interval (1-D) stays long enough
+    // for energy transfer. Throw on violation (no silent clamp).
+    // Mirrors Flyback (04272d7b), forward family (683e731c), Buck
+    // (2c9300c2), Boost (96fdb52a), IsolatedBuck (703bc80e).
+    std::optional<double> maximumDutyCycle = 0.85;
+
     // Per-OP diagnostic outputs (mutable — populated by
     // processOperatingPointsForInputVoltage()). Same pattern as
     // IsolatedBuck — exposes the analytical model's intermediate
@@ -53,6 +62,9 @@ public:
     
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
+
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
 
     // Per-OP analytical diagnostics (read-only; populated by
     // processOperatingPointsForInputVoltage()).
