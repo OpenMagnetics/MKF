@@ -362,6 +362,13 @@ public:
 
     Inputs process();
 
+    // Issue M1: override DR construction so the AdvancedDab desired*
+    // turns ratios / magnetizing inductance are applied even when callers
+    // build DR through process_design_requirements() directly (e.g.
+    // MagneticAdviser flows). Chains to Dab::process_design_requirements()
+    // and then overrides the derived fields.
+    DesignRequirements process_design_requirements() override;
+
     const double& get_desired_magnetizing_inductance() const { return desiredMagnetizingInductance; }
     void set_desired_magnetizing_inductance(const double& value) { desiredMagnetizingInductance = value; }
 

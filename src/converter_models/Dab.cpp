@@ -1437,20 +1437,8 @@ std::vector<ConverterWaveforms> Dab::simulate_and_extract_topology_waveforms(
 Inputs AdvancedDab::process() {
     auto designRequirements = process_design_requirements();
 
-    // Override turns ratios
-    designRequirements.get_mutable_turns_ratios().clear();
-    for (auto n : desiredTurnsRatios) {
-        DimensionWithTolerance nTol;
-        nTol.set_nominal(n);
-        designRequirements.get_mutable_turns_ratios().push_back(nTol);
-    }
-
-    // Override magnetizing inductance
-    DimensionWithTolerance LmTol;
-    LmTol.set_minimum(desiredMagnetizingInductance);
-    designRequirements.set_magnetizing_inductance(LmTol);
-
-    // Override series inductance if specified
+    // Override series inductance if specified (side-effect on parent state,
+    // not a DR concern, so it stays here in process()).
     if (desiredSeriesInductance.has_value()) {
         set_computed_series_inductance(desiredSeriesInductance.value());
     }
@@ -1462,6 +1450,26 @@ Inputs AdvancedDab::process() {
     inputs.set_operating_points(ops);
 
     return inputs;
+}
+
+DesignRequirements AdvancedDab::process_design_requirements() {
+    // Issue M1: chain to parent PDR for topology/isolation defaults, then
+    // override turns ratios and magnetizing inductance with the user-
+    // provided desired* values.
+    auto designRequirements = Dab::process_design_requirements();
+
+    designRequirements.get_mutable_turns_ratios().clear();
+    for (auto n : desiredTurnsRatios) {
+        DimensionWithTolerance nTol;
+        nTol.set_nominal(n);
+        designRequirements.get_mutable_turns_ratios().push_back(nTol);
+    }
+
+    DimensionWithTolerance LmTol;
+    LmTol.set_minimum(desiredMagnetizingInductance);
+    designRequirements.set_magnetizing_inductance(LmTol);
+
+    return designRequirements;
 }
 
 // =========================================================================
