@@ -222,6 +222,26 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::WEINBERG_CONVERTER] = weinberg;
             }
 
+            // 4-Switch Buck-Boost (FSBB): non-inverting H-bridge buck-boost with
+            // single inductor and three operating regions (BUCK / BOOST /
+            // BUCK_BOOST). Four MOSFETs (Q1/Q2 buck leg, Q3/Q4 boost leg) +
+            // bootstrap drivers on the high sides + RC snubbers on both SW
+            // nodes. The SPICE harness emits region-aware gate drives so the
+            // netlist topology mirrors the analytical solver's region choice
+            // (FOUR_SWITCH_BUCK_BOOST_PLAN.md §A.6).
+            {
+                SpiceSimulationConfig fsbb;
+                fsbb.swModelVT = 2.5;            fsbb.swModelVH = 0.5;
+                fsbb.snubR = 1000.0;             fsbb.snubC = 1e-9;
+                fsbb.diodeIS = 1e-12;            fsbb.diodeRS = 0.05;
+                fsbb.outputCapacitance = 47e-6;
+                fsbb.relTol = 0.01;              fsbb.absTol = 1e-7;
+                fsbb.vnTol = 1e-4;
+                fsbb.itl1 = 500;                 fsbb.itl4 = 500;
+                fsbb.method = "GEAR";            fsbb.trTol = 7.0;
+                m[MAS::Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER] = fsbb;
+            }
+
             return m;
         }();
         return defaults;

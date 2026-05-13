@@ -86,6 +86,7 @@ const std::unordered_map<std::string, std::string>& mapping() {
         {"Two Switch Forward Converter", "twoSwitchForwardConverter"},
         {"Push-Pull Converter", "pushPullConverter"},
         {"Weinberg Converter", "weinbergConverter"},
+        {"4-Switch Buck-Boost Converter", "fourSwitchBuckBoostConverter"},
         {"Half-Bridge Converter", "halfBridgeConverter"},
         {"Full-Bridge Converter", "fullBridgeConverter"},
         {"Phase-Shifted Full-Bridge Converter", "phaseShiftedFullBridgeConverter"},
