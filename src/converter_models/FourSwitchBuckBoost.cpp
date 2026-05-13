@@ -558,25 +558,12 @@ namespace OpenMagnetics {
         FourSwitchBuckBoost::run_checks(_assertErrors);
         Inputs inputs;
         const double L = get_desired_inductance();
-        if (L <= 0.0) {
-            throw std::invalid_argument(
-                "AdvancedFourSwitchBuckBoost::process: desiredInductance must be > 0");
-        }
 
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
         Topology::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
-        DesignRequirements dr;
-        dr.get_mutable_turns_ratios().clear();
-        DimensionWithTolerance Lwt;
-        Lwt.set_nominal(roundFloat(L, 10));
-        dr.set_magnetizing_inductance(Lwt);
-        std::vector<IsolationSide> isolationSides;
-        isolationSides.push_back(get_isolation_side_from_index(0));
-        dr.set_isolation_sides(isolationSides);
-        dr.set_topology(Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
-        inputs.set_design_requirements(dr);
+        inputs.set_design_requirements(process_design_requirements());
 
         for (size_t i = 0; i < inputVoltages.size(); ++i) {
             for (size_t opIdx = 0; opIdx < get_operating_points().size(); ++opIdx) {
@@ -591,6 +578,29 @@ namespace OpenMagnetics {
             }
         }
         return inputs;
+    }
+
+    DesignRequirements AdvancedFourSwitchBuckBoost::process_design_requirements() {
+        // Issue M1: build DR directly from desiredInductance. Do NOT chain
+        // to FourSwitchBuckBoost::process_design_requirements() — the parent
+        // sizes inductance from current ripple, defeating the "Advanced"
+        // override semantics.
+        const double L = get_desired_inductance();
+        if (L <= 0.0) {
+            throw std::invalid_argument(
+                "AdvancedFourSwitchBuckBoost::process_design_requirements: desiredInductance must be > 0");
+        }
+
+        DesignRequirements dr;
+        dr.get_mutable_turns_ratios().clear();
+        DimensionWithTolerance Lwt;
+        Lwt.set_nominal(roundFloat(L, 10));
+        dr.set_magnetizing_inductance(Lwt);
+        std::vector<IsolationSide> isolationSides;
+        isolationSides.push_back(get_isolation_side_from_index(0));
+        dr.set_isolation_sides(isolationSides);
+        dr.set_topology(Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER);
+        return dr;
     }
 
     // ============================================================
