@@ -344,6 +344,21 @@ namespace OpenMagnetics {
         return process_operating_points(turnsRatios, magnetizingInductance);
     }
 
+    DesignRequirements AdvancedZeta::process_design_requirements() {
+        // Override Zeta::process_design_requirements() — Advanced
+        // workflow already pins L via desiredInductance; we build DR
+        // from that field directly. Issue M1.
+        DesignRequirements designRequirements;
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_nominal(roundFloat(get_desired_inductance(), 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        std::vector<IsolationSide> isolationSides;
+        isolationSides.push_back(get_isolation_side_from_index(0));
+        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_topology(Topologies::ZETA_CONVERTER);
+        return designRequirements;
+    }
+
     Inputs AdvancedZeta::process() {
         Zeta::run_checks(_assertErrors);
 
@@ -362,15 +377,7 @@ namespace OpenMagnetics {
         std::vector<std::string> inputVoltagesNames;
         Topology::collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
 
-        DesignRequirements designRequirements;
-        DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_nominal(roundFloat(maximumNeededInductance, 10));
-        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        std::vector<IsolationSide> isolationSides;
-        isolationSides.push_back(get_isolation_side_from_index(0));
-        designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::ZETA_CONVERTER);
-        inputs.set_design_requirements(designRequirements);
+        inputs.set_design_requirements(process_design_requirements());
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];

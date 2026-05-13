@@ -1,0 +1,410 @@
+- generic [ref=e1]:
+  - link [ref=e2] [cursor=pointer]: Passer directement au contenu principal
+  - link [ref=e3] [cursor=pointer]:
+    - /url: https://support.google.com/websearch/answer/181196?hl=fr
+    - text: Aide sur l'accessibilité
+  - link [ref=e4] [cursor=pointer]: Commentaires sur l'accessibilité
+  - dialog "Avant d'accéder à la recherche Google" [active]:
+    - generic [ref=e11]:
+      - generic [ref=e13]:
+        - img "Google" [ref=e14]
+        - generic [ref=e15]:
+          - 'button "Langue : ‪Français (France)‬" [ref=e17] [cursor=pointer]':
+            - generic [ref=e18]:
+              - img
+              - generic [ref=e19]: fr
+          - link "Se connecter" [ref=e20] [cursor=pointer]
+      - generic [ref=e21]:
+        - heading "Avant d'accéder à Google" [level=1] [ref=e22]
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - text: Nous utilisons des
+            - link "cookies" [ref=e25] [cursor=pointer]:
+              - /url: https://policies.google.com/technologies/cookies?utm_source=ucbs&hl=fr
+            - text: "et d'autres données pour :"
+            - list [ref=e26]:
+              - listitem [ref=e27]: Proposer les services Google et s'assurer qu'ils fonctionnent correctement
+              - listitem [ref=e28]: Suivre les interruptions de service et protéger contre le spam, les fraudes et les abus
+              - listitem [ref=e29]: Mesurer l'engagement de l'audience et les statistiques des sites pour comprendre la façon dont nos services sont utilisés et pour améliorer leur qualité
+          - generic [ref=e30]:
+            - text: "Si vous cliquez sur \"Tout accepter\", nous utiliserons également des cookies et d'autres données pour :"
+            - list [ref=e31]:
+              - listitem [ref=e32]: Développer de nouveaux services et les améliorer
+              - listitem [ref=e33]: Diffuser des annonces et évaluer leur efficacité
+              - listitem [ref=e34]: Proposer des contenus personnalisés en fonction de vos paramètres
+              - listitem [ref=e35]: Afficher des annonces personnalisées en fonction de vos paramètres
+            - generic [ref=e36]: Si vous cliquez sur "Tout refuser", nous n'utiliserons pas de cookies pour ces fins supplémentaires.
+          - generic [ref=e37]: Les contenus non personnalisés dépendent, par exemple, du contenu du site que vous consultez, de l'activité de votre session de recherche en cours et de votre position. Les annonces non personnalisées dépendent du contenu du site que vous consultez et de votre position approximative. Les annonces et les contenus personnalisés peuvent aussi inclure des résultats plus pertinents, des recommandations et des annonces adaptées en fonction de votre activité passée sur ce navigateur, comme vos précédentes recherches sur Google. Le cas échéant, nous adaptons également l’expérience en fonction de l’âge de l’utilisateur à l'aide de cookies et de données.
+          - generic [ref=e38]: Cliquez sur "Plus d'options" pour afficher plus d'informations, y compris sur la manière de gérer vos paramètres de confidentialité. Vous pouvez aussi consulter la page g.co/privacytools à tout moment.
+      - generic [ref=e39]:
+        - generic [ref=e40]:
+          - button "Tout refuser" [ref=e41] [cursor=pointer]
+          - button "Tout accepter" [ref=e42] [cursor=pointer]
+        - link "Plus d'options pour les paramètres de personnalisation et les cookies" [ref=e44] [cursor=pointer]:
+          - generic "Plus d'options pour les paramètres de personnalisation et les cookies" [ref=e45]: Plus d'options
+      - generic [ref=e46]:
+        - link "Confidentialité" [ref=e47] [cursor=pointer]:
+          - /url: https://policies.google.com/privacy?hl=fr&fg=1&utm_source=ucbs
+        - generic [ref=e48]: ·
+        - link "Conditions d'utilisation" [ref=e49] [cursor=pointer]:
+          - /url: https://policies.google.com/terms?hl=fr&fg=1&utm_source=ucbs
+  - generic [ref=e54]:
+    - search [ref=e55]:
+      - generic [ref=e57]:
+        - link [ref=e59] [cursor=pointer]:
+          - /url: https://www.google.com/webhp?hl=fr&sa=X&ved=0ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQPAhp
+          - img [ref=e60]
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - combobox [ref=e71]: for 4, http://localhost:5173 for 4, http://localhost:5173
+            - generic [ref=e72]:
+              - button [ref=e74] [cursor=pointer]:
+                - img [ref=e76]
+              - generic [ref=e79]:
+                - button [ref=e80] [cursor=pointer]:
+                  - img [ref=e81]
+                - button [ref=e83] [cursor=pointer]:
+                  - img [ref=e84]
+          - button [ref=e86] [cursor=pointer]:
+            - img [ref=e89]
+    - generic [ref=e91]:
+      - button [ref=e93] [cursor=pointer]
+      - generic [ref=e94]:
+        - button [ref=e96] [cursor=pointer]:
+          - img [ref=e97]
+        - link [ref=e101] [cursor=pointer]:
+          - /url: https://accounts.google.com/ServiceLogin?hl=fr&passive=true&continue=https://www.google.com/search%3Fclient%3Dfirefox-b-d%26q%3Dfor%2B4%252C%2Bhttp%253A%252F%252Flocalhost%253A5173%26sei%3DbwDgaYPGGpWakdUP45jh0A8&ec=futura_srp_og_si_72236_p
+          - text: Connexion
+  - generic [ref=e103]:
+    - navigation [ref=e109]:
+      - list [ref=e112]:
+        - listitem [ref=e113]:
+          - link [disabled] [ref=e114]:
+            - generic [ref=e116]: Tous
+        - listitem [ref=e117]:
+          - link [ref=e118] [cursor=pointer]:
+            - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&udm=7&fbs=ADc_l-bpk8W4E-qsVlOvbGJcDwpnAZSMear974weD6LplNmZUQrg3XAE60bXmmaETk4AJ0XNFq6Y7KpNvlcFI583nNW7MBW1vTgkJLhsPGstWilsPgz7I_zDemQe1LhSymfDDqxxRcfkg3Xyy5PgAjvuK8LQ9xuIAuIREhliHucDN8RWMSkx4Yo42RXf3ZSZU7PoV_Hms9ZG&q=for+4,+http://localhost:5173&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQtKgLegQIDxAB
+            - generic [ref=e120]: Vidéos
+        - listitem [ref=e121]:
+          - link [ref=e122] [cursor=pointer]:
+            - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&udm=2&fbs=ADc_l-bpk8W4E-qsVlOvbGJcDwpnAZSMear974weD6LplNmZUQrg3XAE60bXmmaETk4AJ0XNFq6Y7KpNvlcFI583nNW7MBW1vTgkJLhsPGstWilsPgz7I_zDemQe1LhSymfDDqxxRcfkg3Xyy5PgAjvuK8LQ9xuIAuIREhliHucDN8RWMSkx4Yo42RXf3ZSZU7PoV_Hms9ZG&q=for+4,+http://localhost:5173&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQtKgLegQIFBAB
+            - generic [ref=e124]: Images
+        - listitem [ref=e125]:
+          - link [ref=e126] [cursor=pointer]:
+            - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&udm=39&fbs=ADc_l-bpk8W4E-qsVlOvbGJcDwpnAZSMear974weD6LplNmZUQrg3XAE60bXmmaETk4AJ0XNFq6Y7KpNvlcFI583nNW7MBW1vTgkJLhsPGstWilsPgz7I_zDemQe1LhSymfDDqxxRcfkg3Xyy5PgAjvuK8LQ9xuIAuIREhliHucDN8RWMSkx4Yo42RXf3ZSZU7PoV_Hms9ZG&q=for+4,+http://localhost:5173&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQs6gLegQIEhAB
+            - generic [ref=e128]: Vidéos courtes
+        - listitem [ref=e129]:
+          - link [ref=e130] [cursor=pointer]:
+            - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&q=for+4,+http://localhost:5173&tbm=nws&source=lnms&fbs=ADc_l-bpk8W4E-qsVlOvbGJcDwpnAZSMear974weD6LplNmZUQrg3XAE60bXmmaETk4AJ0XNFq6Y7KpNvlcFI583nNW7MBW1vTgkJLhsPGstWilsPgz7I_zDemQe1LhSymfDDqxxRcfkg3Xyy5PgAjvuK8LQ9xuIAuIREhliHucDN8RWMSkx4Yo42RXf3ZSZU7PoV_Hms9ZG&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ0pQJegQIEBAB
+            - generic [ref=e132]: Actualités
+        - listitem [ref=e133]:
+          - link [ref=e134] [cursor=pointer]:
+            - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&udm=web&fbs=ADc_l-bpk8W4E-qsVlOvbGJcDwpnAZSMear974weD6LplNmZUQrg3XAE60bXmmaETk4AJ0XNFq6Y7KpNvlcFI583nNW7MBW1vTgkJLhsPGstWilsPgz7I_zDemQe1LhSymfDDqxxRcfkg3Xyy5PgAjvuK8LQ9xuIAuIREhliHucDN8RWMSkx4Yo42RXf3ZSZU7PoV_Hms9ZG&q=for+4,+http://localhost:5173&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQs6gLegQIERAB
+            - generic [ref=e136]: Web
+        - listitem [ref=e137]:
+          - link [ref=e138] [cursor=pointer]:
+            - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&q=for+4,+http://localhost:5173&udm=36&source=lnms&fbs=ADc_l-bpk8W4E-qsVlOvbGJcDwpnAZSMear974weD6LplNmZUQrg3XAE60bXmmaETk4AJ0XNFq6Y7KpNvlcFI583nNW7MBW1vTgkJLhsPGstWilsPgz7I_zDemQe1LhSymfDDqxxRcfkg3Xyy5PgAjvuK8LQ9xuIAuIREhliHucDN8RWMSkx4Yo42RXf3ZSZU7PoV_Hms9ZG&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ0pQJegQIExAB
+            - generic [ref=e140]: Livres
+        - listitem [ref=e141]:
+          - button [ref=e142] [cursor=pointer]:
+            - generic [ref=e144]:
+              - generic [ref=e145]: Plus
+              - img [ref=e147]
+    - heading [level=1] [ref=e149]: Résultats de recherche
+    - main [ref=e155]:
+      - generic [ref=e159]:
+        - generic [ref=e162]:
+          - heading [level=2] [ref=e163]: Web results
+          - generic [ref=e164]:
+            - generic [ref=e167]:
+              - link [ref=e169] [cursor=pointer]:
+                - /url: https://stackoverflow.com/questions/75500284/vite-application-works-on-localhost5173-but-not-on-127-0-0-15173
+                - heading [level=3] [ref=e170]: "Vite : Application works on localhost:5173 but not on 127.0. ..."
+                - generic [ref=e175]:
+                  - generic [ref=e177]: Stack Overflow
+                  - generic [ref=e179]: 2 réponses · il y a 3 ans
+              - button [ref=e180] [cursor=pointer]:
+                - img [ref=e183]
+            - generic [ref=e187]:
+              - emphasis [ref=e188]: My Vite.js application works normally on http://localhost:5173
+              - text: / but when I am using http://127.0.0.1:5173/ the app does not work.
+            - generic [ref=e193]:
+              - link [ref=e194] [cursor=pointer]:
+                - /url: https://stackoverflow.com/a/75629582
+                - text: 2 réponses
+              - generic [ref=e195]: ·
+              - generic [ref=e196]: "Meilleure réponse:"
+              - generic [ref=e197]: I was trying to reach my app from a different PC on the same local network. As far as I ...
+            - generic [ref=e200]:
+              - generic [ref=e201]:
+                - link [ref=e204] [cursor=pointer]:
+                  - /url: https://stackoverflow.com/questions/78687818/instead-of-lh3000-im-getting-local-http-localhost5173-i-cant-open-my-page
+                  - generic [ref=e205]:
+                    - text: "instead of lh3000 i'm getting Local:"
+                    - emphasis [ref=e206]: http
+                    - text: ://
+                    - emphasis [ref=e207]: localhost
+                    - text: ...
+                - generic [ref=e209]: 1 réponse
+                - generic [ref=e211]: 30 juin 2024
+              - generic [ref=e212]:
+                - link [ref=e215] [cursor=pointer]:
+                  - /url: https://stackoverflow.com/questions/76269046/this-localhost5173-page-can-t-be-found
+                  - generic [ref=e216]:
+                    - text: This
+                    - emphasis [ref=e217]: localhost
+                    - text: ":"
+                    - emphasis [ref=e218]: "5173"
+                    - text: page can't be found - Stack Overflow
+                - generic [ref=e220]: 2 réponses
+                - generic [ref=e222]: 17 mai 2023
+              - link [ref=e226] [cursor=pointer]:
+                - /url: /search?q=for+4,+http://localhost:5173+site:stackoverflow.com&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQrQIoAnoECCUQAw
+                - text: Autres résultats sur stackoverflow.com
+        - generic [ref=e231]:
+          - heading [level=2] [ref=e233]: Autres questions
+          - generic [ref=e234]:
+            - button [ref=e240] [cursor=pointer]:
+              - generic [ref=e242]: What is localhost 5173 used for?
+              - img [ref=e245]
+            - button [ref=e254] [cursor=pointer]:
+              - generic [ref=e256]: What is the port 5173 used for?
+              - img [ref=e259]
+            - button [ref=e268] [cursor=pointer]:
+              - generic [ref=e270]: How do I open 127.0. 0.1 on localhost?
+              - img [ref=e273]
+            - button [ref=e282] [cursor=pointer]:
+              - generic [ref=e284]: Why is 127.0. 0.1 localhost?
+              - img [ref=e287]
+        - generic [ref=e292]:
+          - heading [level=2] [ref=e293]: Web results
+          - generic [ref=e294]:
+            - generic [ref=e297]:
+              - link [ref=e299] [cursor=pointer]:
+                - /url: https://github.com/vitejs/vite/discussions/16342
+                - heading [level=3] [ref=e300]: Loading module from “http://localhost:5173/main.js” was ...
+                - generic [ref=e305]:
+                  - generic [ref=e307]: GitHub
+                  - generic [ref=e309]: https://github.com › discussions
+              - generic [ref=e310]:
+                - generic [ref=e311]: ·
+                - link [ref=e312] [cursor=pointer]:
+                  - /url: https://translate.google.com/translate?u=https://github.com/vitejs/vite/discussions/16342&hl=fr&sl=en&tl=fr&client=search
+                  - text: Traduire cette page
+              - button [ref=e313] [cursor=pointer]:
+                - img [ref=e316]
+            - generic [ref=e320]:
+              - text: Loading module from “http://
+              - emphasis [ref=e321]: localhost
+              - text: ":"
+              - emphasis [ref=e322]: "5173"
+              - text: /main.js” was blocked because of a disallowed MIME type (“”). error in browser and script not working.
+        - generic [ref=e326]:
+          - generic [ref=e329]:
+            - link [ref=e331] [cursor=pointer]:
+              - /url: https://pinggy.io/know_your_port/localhost_5173/
+              - heading [level=3] [ref=e332]: localhost:5173 - Vite Development Server Port Guide
+              - generic [ref=e337]:
+                - generic [ref=e339]: Pinggy
+                - generic [ref=e341]: https://pinggy.io › know_your_port
+            - generic [ref=e342]:
+              - generic [ref=e343]: ·
+              - link [ref=e344] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://pinggy.io/know_your_port/localhost_5173/&hl=fr&sl=en&tl=fr&client=search
+                - text: Traduire cette page
+            - button [ref=e345] [cursor=pointer]:
+              - img [ref=e348]
+          - generic [ref=e352]:
+            - text: Complete guide to
+            - emphasis [ref=e353]: localhost:5173
+            - text: "- the default port for Vite development server used by Vue.js, React, and modern frontend frameworks."
+        - generic [ref=e357]:
+          - generic [ref=e360]:
+            - link [ref=e362] [cursor=pointer]:
+              - /url: https://dev.to/lightningdev123/localhost5173-the-quiet-hero-behind-vites-blazing-dev-experience-484g
+              - heading [level=3] [ref=e363]: localhost:5173 -The Quiet Hero Behind Vite's Blazing ...
+              - generic [ref=e368]:
+                - generic [ref=e370]: DEV Community
+                - generic [ref=e372]: https://dev.to › lightningdev123
+            - generic [ref=e373]:
+              - generic [ref=e374]: ·
+              - link [ref=e375] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://dev.to/lightningdev123/localhost5173-the-quiet-hero-behind-vites-blazing-dev-experience-484g&hl=fr&sl=en&tl=fr&client=search
+                - text: Traduire cette page
+            - button [ref=e376] [cursor=pointer]:
+              - img [ref=e379]
+          - generic [ref=e382]:
+            - generic [ref=e383]: 7 août 2025 —
+            - generic [ref=e384]:
+              - emphasis [ref=e385]: Use curl http://localhost:5173 to test in the terminal
+              - text: ". For access from other devices: npm run dev -- --host. How to Share localhost:5173 Beyond ..."
+        - generic [ref=e389]:
+          - generic [ref=e392]:
+            - link [ref=e394] [cursor=pointer]:
+              - /url: https://www.reddit.com/r/sveltejs/comments/17piqxv/help_get_httplocalhost5173plan_500_internal/
+              - heading [level=3] [ref=e395]: Help "GET http://localhost:5173/plan 500 (Internal Server ...
+              - generic [ref=e400]:
+                - generic [ref=e402]: Reddit · r/sveltejs
+                - generic [ref=e404]: 8 commentaires · il y a 2 ans
+            - button [ref=e405] [cursor=pointer]:
+              - img [ref=e408]
+          - generic [ref=e412]:
+            - text: "Why, in the following code that is a +page.js file, does my website return a: \"GET"
+            - emphasis [ref=e413]: http
+            - text: ://
+            - emphasis [ref=e414]: localhost
+            - text: ":"
+            - emphasis [ref=e415]: "5173"
+            - text: /plan 500 (Internal Server Error)".
+        - generic [ref=e419]:
+          - generic [ref=e422]:
+            - link [ref=e424] [cursor=pointer]:
+              - /url: https://medium.com/@bishakhghosh0/why-localhost-5173-is-every-frontend-developers-best-friend-b3bb5b6fb1db
+              - heading [level=3] [ref=e425]: Why localhost:5173 is Every Frontend Developer's Best ...
+              - generic [ref=e430]:
+                - generic [ref=e432]: Medium · Lightning Developer
+                - generic [ref=e434]: il y a 8 mois
+            - button [ref=e435] [cursor=pointer]:
+              - img [ref=e438]
+          - generic [ref=e442]:
+            - text: If you've worked with modern JavaScript frameworks like Vue, React, or Svelte, chances are you've encountered
+            - emphasis [ref=e443]: localhost:5173
+            - text: the default ...
+        - generic [ref=e447]:
+          - generic [ref=e450]:
+            - link [ref=e452] [cursor=pointer]:
+              - /url: https://laracasts.com/discuss/channels/vite/unable-to-connect-to-vite-server
+              - heading [level=3] [ref=e453]: Unable to connect to Vite server
+              - generic [ref=e458]:
+                - generic [ref=e460]: Laracasts
+                - generic [ref=e462]: https://laracasts.com › channels
+            - generic [ref=e463]:
+              - generic [ref=e464]: ·
+              - link [ref=e465] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://laracasts.com/discuss/channels/vite/unable-to-connect-to-vite-server&hl=fr&sl=en&tl=fr&client=search
+                - text: Traduire cette page
+            - button [ref=e466] [cursor=pointer]:
+              - img [ref=e469]
+          - generic [ref=e472]:
+            - generic [ref=e473]: 8 juil. 2023 —
+            - generic [ref=e474]:
+              - text: Project based issue? · Check if the port specified in the Vite server configuration (in this case, port
+              - emphasis [ref=e475]: "5173"
+              - text: ) is not being used by any other ...
+        - generic [ref=e479]:
+          - generic [ref=e482]:
+            - link [ref=e484] [cursor=pointer]:
+              - /url: https://narrat.discourse.group/t/http-localhost-5173-doesnt-open-i-cannot-run-the-game/138
+              - heading [level=3] [ref=e485]: Http://localhost:5173 doesn't open / I cannot run the game - Help
+              - generic [ref=e490]:
+                - generic [ref=e492]: Discourse
+                - generic [ref=e494]: https://narrat.discourse.group › ht...
+            - generic [ref=e495]:
+              - generic [ref=e496]: ·
+              - link [ref=e497] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://narrat.discourse.group/t/http-localhost-5173-doesnt-open-i-cannot-run-the-game/138&hl=fr&sl=en&tl=fr&client=search
+                - text: Traduire cette page
+            - button [ref=e498] [cursor=pointer]:
+              - img [ref=e501]
+          - generic [ref=e504]:
+            - generic [ref=e505]: 11 oct. 2023 —
+            - generic [ref=e506]:
+              - text: After 'npm install' I write 'npm start', but the browser doesn't open. Even copying the
+              - emphasis [ref=e507]: localhost
+              - text: number, there is no answer.
+        - generic [ref=e511]:
+          - generic [ref=e514]:
+            - link [ref=e516] [cursor=pointer]:
+              - /url: https://forum.freecodecamp.org/t/post-http-localhost-5173-register-404-not-found-axios-error/594737
+              - heading [level=3] [ref=e517]: POST http://localhost:5173/register 404 (Not Found) & ...
+              - generic [ref=e522]:
+                - generic [ref=e524]: The freeCodeCamp Forum
+                - generic [ref=e526]: https://forum.freecodecamp.org › ...
+            - generic [ref=e527]:
+              - generic [ref=e528]: ·
+              - link [ref=e529] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://forum.freecodecamp.org/t/post-http-localhost-5173-register-404-not-found-axios-error/594737&hl=fr&sl=en&tl=fr&client=search
+                - text: Traduire cette page
+            - button [ref=e530] [cursor=pointer]:
+              - img [ref=e533]
+          - generic [ref=e536]:
+            - generic [ref=e537]: 26 févr. 2023 —
+            - text: Your error message appears to have nothing to do with your database. It's complaining about a route. Take a look at how you're setting up your express routes.
+        - generic [ref=e541]:
+          - generic [ref=e544]:
+            - link [ref=e546] [cursor=pointer]:
+              - /url: https://vite.dev/config/server-options
+              - heading [level=3] [ref=e547]: Server Options
+              - generic [ref=e552]:
+                - generic [ref=e554]: Vite
+                - generic [ref=e556]: https://vite.dev › config › server-o...
+            - generic [ref=e557]:
+              - generic [ref=e558]: ·
+              - link [ref=e559] [cursor=pointer]:
+                - /url: https://translate.google.com/translate?u=https://vite.dev/config/server-options&hl=fr&sl=en&tl=fr&client=search
+                - text: Traduire cette page
+            - button [ref=e560] [cursor=pointer]:
+              - img [ref=e563]
+          - generic [ref=e566]: Specify which IP addresses the server should listen on. Set this to 0.0.0.0 or true to listen on all addresses, including LAN and public addresses.
+      - generic [ref=e568]:
+        - generic [ref=e573]:
+          - heading [level=2] [ref=e575]: Recherches associées
+          - generic [ref=e577]:
+            - generic [ref=e578]:
+              - link [ref=e582] [cursor=pointer]:
+                - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&q=Http+127.0+0.1+3000&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ1QJ6BAhAEAE
+                - generic [ref=e583]:
+                  - generic [ref=e588]: Http 127.0 0.1 3000
+                  - img [ref=e592]
+              - link [ref=e597] [cursor=pointer]:
+                - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&q=Port+5173&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ1QJ6BAhDEAE
+                - generic [ref=e598]:
+                  - generic [ref=e603]: Port 5173
+                  - img [ref=e607]
+            - generic [ref=e609]:
+              - link [ref=e613] [cursor=pointer]:
+                - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&q=Vite+host&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ1QJ6BAhCEAE
+                - generic [ref=e614]:
+                  - generic [ref=e619]: Vite host
+                  - img [ref=e623]
+              - link [ref=e628] [cursor=pointer]:
+                - /url: /search?client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&q=Vite+CORS&sa=X&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ1QJ6BAhBEAE
+                - generic [ref=e629]:
+                  - generic [ref=e634]: Vite CORS
+                  - img [ref=e638]
+        - navigation [ref=e640]:
+          - heading [level=1] [ref=e641]: Navigation par pages
+          - text: "1"
+          - link [ref=e644] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=10&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAE
+            - text: "2"
+          - link [ref=e646] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=20&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAG
+            - text: "3"
+          - link [ref=e648] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=30&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAI
+            - text: "4"
+          - link [ref=e650] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=40&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAK
+            - text: "5"
+          - link [ref=e652] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=50&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAM
+            - text: "6"
+          - link [ref=e654] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=60&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAO
+            - text: "7"
+          - link [ref=e656] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=70&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAQ
+            - text: "8"
+          - link [ref=e658] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=80&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAS
+            - text: "9"
+          - link [ref=e660] [cursor=pointer]:
+            - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=90&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8tMDegQIOBAU
+            - text: "10"
+          - heading [level=2] [ref=e662]:
+            - link [ref=e663] [cursor=pointer]:
+              - /url: /search?q=for+4,+http://localhost:5173&client=firefox-b-d&hs=8iN&sca_esv=09e795cc6b8f4569&ei=bwDgaZTxJuqLkdUP_ZWjEQ&start=10&sa=N&sstk=Af77f_cPxXdiu1oIxEP79vlYVIQNItKhOiw7ljwz11yLSQtTylMoRmafIOtMJl8nCIbGFxSMZ7LDKuCmv0WOMxjKI_IwVQUepijOSQ&ved=2ahUKEwjU5J314_CTAxXqRaQEHf3KKAIQ8NMDegQIOBAW
+              - generic [ref=e665]: Suivant
+    - contentinfo [ref=e666]:
+      - heading [level=1] [ref=e667]: Liens de pied de page

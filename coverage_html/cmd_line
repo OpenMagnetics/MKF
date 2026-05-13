@@ -1,0 +1,1 @@
+genhtml coverage_filtered.info --output-directory coverage_html --branch-coverage --ignore-errors source --synthesize-missing

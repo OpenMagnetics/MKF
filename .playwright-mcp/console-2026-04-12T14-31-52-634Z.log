@@ -1,0 +1,58 @@
+[     107ms] [LOG] localhost @ http://localhost:5173/:10
+[     108ms] [LOG] localhost @ http://localhost:5173/:25
+[     347ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     347ms] [LOG] [StoreVersioning] Stored version date: not set @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     347ms] [LOG] [StoreVersioning] No version date found, clearing stores for safety... @ http://localhost:5173/src/stores/storeVersioning.js:72
+[     347ms] [LOG] [StoreVersioning] Clearing all persistent stores due to version update... @ http://localhost:5173/src/stores/storeVersioning.js:35
+[     347ms] [LOG] [StoreVersioning] All persistent stores cleared. @ http://localhost:5173/src/stores/storeVersioning.js:44
+[     347ms] [LOG] [StoreVersioning] Updated store version date to: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:52
+[     353ms] [WARNING] Preloading MKF from home page... @ http://localhost:5173/src/main.js?t=1775948165851:60
+[     485ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[    1228ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[    1243ms] [WARNING] [MAIN] Preload: Loading core materials, shapes and wires... @ http://localhost:5173/src/main.js?t=1775948165851:71
+[    7272ms] [LOG] Preload: Core materials loaded @ http://localhost:5173/src/main.js?t=1775948165851:73
+[    7723ms] [LOG] Preload: Core shapes loaded @ http://localhost:5173/src/main.js?t=1775948165851:74
+[   18222ms] [LOG] Preload: Wires loaded @ http://localhost:5173/src/main.js?t=1775948165851:75
+[   18223ms] [WARNING] Preload: Initializing model settings... @ http://localhost:5173/src/main.js?t=1775948165851:79
+[   18228ms] [WARNING] Preload: Model settings initialized @ http://localhost:5173/src/main.js?t=1775948165851:82
+[   18228ms] [WARNING] MKF preload complete - All data ready @ http://localhost:5173/src/main.js?t=1775948165851:84
+[   18330ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js?t=1775947585724:393
+[   18331ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js?t=1775947585724:396
+[   21481ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1775948165851:164
+[   21482ms] [WARNING] Preload already loaded base data, skipping... @ http://localhost:5173/src/main.js?t=1775948165851:206
+[   21484ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1775948165851:213
+[   21484ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1775948165851:216
+[   21486ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1775948165851:219
+[   22586ms] [WARNING] [JavaScript Warning: "unreachable code after return statement" {file: "http://localhost:5173/src/components/Wizards/PsfbWizard.vue" line: 79}] @ http://localhost:5173/src/components/Wizards/PsfbWizard.vue:79
+[   44918ms] [ERROR] DEBUG calculate_llc_inputs: 1 operating points @ blob:http://localhost:5173/3577fbc9-1971-42a4-aa12-29c5057c91e1:7
+[   44918ms] [ERROR]   OP 0: 3 excitations @ blob:http://localhost:5173/3577fbc9-1971-42a4-aa12-29c5057c91e1:7
+[   44918ms] [ERROR]     Excitation 0: name='Primary' @ blob:http://localhost:5173/3577fbc9-1971-42a4-aa12-29c5057c91e1:7
+[   44918ms] [ERROR]     Excitation 1: name='Secondary 0 Half 1' @ blob:http://localhost:5173/3577fbc9-1971-42a4-aa12-29c5057c91e1:7
+[   44919ms] [ERROR]     Excitation 2: name='Secondary 0 Half 2' @ blob:http://localhost:5173/3577fbc9-1971-42a4-aa12-29c5057c91e1:7
+[   44933ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[   44933ms] [LOG] 🔍 [executeWaveformAction] Analytical result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:217
+[   44934ms] [LOG] 🔍 [processAnalyticalWaveforms] Raw WASM data: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:407
+[   44934ms] [LOG] 🔍 [processAnalyticalWaveforms] Built waveforms: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:419
+[   45156ms] [WARNING] [ECharts] Instance ec_1776004335344 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   45156ms] [WARNING] [ECharts] Instance ec_1776004335345 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   45156ms] [WARNING] [ECharts] Instance ec_1776004335346 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   84622ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[   84623ms] [LOG] 🔍 [executeWaveformAction] Simulation result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:228
+[   84623ms] [ERROR] Error in simulation waveform action: Error @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:254
+[  165719ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[  165720ms] [LOG] 🔍 [executeWaveformAction] Simulation result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:228
+[  165720ms] [ERROR] Error in simulation waveform action: Error @ debugger eval code line 302 > eval:5
+[ 1185538ms] [LOG] localhost @ http://localhost:5173/wizards:10
+[ 1185538ms] [LOG] localhost @ http://localhost:5173/wizards:25
+[ 1185928ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[ 1185928ms] [LOG] [StoreVersioning] Stored version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[ 1185928ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[ 1185938ms] [WARNING] Initializing MKF in Web Worker (fresh)... @ http://localhost:5173/src/main.js?t=1775948165851:156
+[ 1185939ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1775948165851:164
+[ 1186030ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[ 1186540ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[ 1186555ms] [WARNING] Loading core materials in simulator @ http://localhost:5173/src/main.js?t=1775948165851:197
+[ 1186556ms] [WARNING] Loading core shapes in simulator @ http://localhost:5173/src/main.js?t=1775948165851:200
+[ 1186556ms] [WARNING] Loading wires in simulator @ http://localhost:5173/src/main.js?t=1775948165851:203
+[ 1193013ms] [LOG] Core materials loaded @ http://localhost:5173/src/main.js?t=1775948165851:198
+[ 1193454ms] [LOG] Core shapes loaded @ http://localhost:5173/src/main.js?t=1775948165851:201

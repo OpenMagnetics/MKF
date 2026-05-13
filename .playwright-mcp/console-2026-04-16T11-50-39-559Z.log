@@ -1,0 +1,72 @@
+[      30ms] [LOG] localhost @ http://localhost:5173/?nocache=4:10
+[      31ms] [LOG] localhost @ http://localhost:5173/?nocache=4:25
+[     315ms] [LOG] [StoreVersioning] Current version date: 2026-04-15 @ http://localhost:5173/src/stores/storeVersioning.js?t=1776208382740:66
+[     315ms] [LOG] [StoreVersioning] Stored version date: 2026-04-15 @ http://localhost:5173/src/stores/storeVersioning.js?t=1776208382740:67
+[     315ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js?t=1776208382740:89
+[     334ms] [WARNING] Preloading MKF from home page... @ http://localhost:5173/src/main.js?t=1776338108091:60
+[     527ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-04-15 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[    1236ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[    1249ms] [WARNING] [MAIN] Preload: Loading core materials, shapes and wires... @ http://localhost:5173/src/main.js?t=1776338108091:71
+[    4450ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1776338108091:164
+[    7635ms] [LOG] Preload: Core materials loaded @ http://localhost:5173/src/main.js?t=1776338108091:73
+[    7957ms] [LOG] Preload: Core shapes loaded @ http://localhost:5173/src/main.js?t=1776338108091:74
+[   19109ms] [LOG] Preload: Wires loaded @ http://localhost:5173/src/main.js?t=1776338108091:75
+[   19110ms] [WARNING] Preload: Initializing model settings... @ http://localhost:5173/src/main.js?t=1776338108091:79
+[   19119ms] [WARNING] Preload: Model settings initialized @ http://localhost:5173/src/main.js?t=1776338108091:82
+[   19119ms] [WARNING] MKF preload complete - All data ready @ http://localhost:5173/src/main.js?t=1776338108091:84
+[   19119ms] [WARNING] Preload already loaded base data, skipping... @ http://localhost:5173/src/main.js?t=1776338108091:206
+[   19120ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1776338108091:213
+[   19120ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1776338108091:216
+[   19123ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1776338108091:219
+[   19249ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js:393
+[   19249ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js:396
+[   19847ms] [LOG] Resetting MAS @ http://localhost:5173/MagneticBuilder/src/stores/mas.js:43
+[   19904ms] [ERROR] Error @ http://localhost:5173/src/components/Toolbox/ControlPanel.vue:101
+[   19913ms] [ERROR] [JavaScript Error: "Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at http://localhost:8000/is_high_performance_backend_available. (Reason: CORS request did not succeed). Status code: (null)."] @ :0
+[   19913ms] [ERROR] [JavaScript Error: "Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at http://localhost:8000/is_high_performance_backend_available. (Reason: CORS request did not succeed). Status code: (null)."] @ :0
+[   20021ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[   29965ms] [ERROR] [MKF Worker] Error calling calculate_instantaneous_power: Error calling calculate_instantaneous_power @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:187
+[   29968ms] [ERROR] [MKF Worker] Error calling calculate_instantaneous_power: Error calling calculate_instantaneous_power @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:187
+[   29970ms] [ERROR] [MKF Worker] Error calling calculate_instantaneous_power: Error calling calculate_instantaneous_power @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:187
+[   29984ms] [ERROR] [MKF Worker] Error calling calculate_instantaneous_power: Error calling calculate_instantaneous_power @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:187
+[   29987ms] [ERROR] [MKF Worker] Error calling calculate_instantaneous_power: Error calling calculate_instantaneous_power @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:187
+[   29989ms] [ERROR] [MKF Worker] Error calling calculate_instantaneous_power: Error calling calculate_instantaneous_power @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:187
+[   31597ms] [LOG] [DEBUG adviseCore] Starting... @ http://localhost:5173/MagneticBuilder/src/stores/taskQueue.js?t=1776287501965:563
+[   31598ms] [LOG] [DEBUG adviseCore] MKF ready @ http://localhost:5173/MagneticBuilder/src/stores/taskQueue.js?t=1776287501965:566
+[   31598ms] [LOG] [DEBUG adviseCore] Calling calculate_advised_cores... @ http://localhost:5173/MagneticBuilder/src/stores/taskQueue.js?t=1776287501965:594
+[   31599ms] [LOG] [DEBUG adviseCore] Inputs: {"designRequirements":{"magnetizingInductance":{"nominal":0.0001},"name":"My Design Requirements","turnsRatios":[],"wiringTechnology":"Wound"},"operatingPoints":[{"name":"Op. Point No. 1","conditions" @ http://localhost:5173/MagneticBuilder/src/stores/taskQueue.js?t=1776287501965:595
+[   31599ms] [LOG] [DEBUG adviseCore] Weights: {"Efficiency":40,"Dimensions":30,"Cost":30} @ http://localhost:5173/MagneticBuilder/src/stores/taskQueue.js?t=1776287501965:596
+[   31599ms] [LOG] [DEBUG adviseCore] Mode: standard cores @ http://localhost:5173/MagneticBuilder/src/stores/taskQueue.js?t=1776287501965:597
+[   31600ms] [LOG] === DEBUG calculate_advised_cores === @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31601ms] [LOG] inputsString: {"designRequirements":{"magnetizingInductance":{"nominal":0.0001},"name":"My Design Requirements","turnsRatios":[],"wiringTechnology":"Wound"},"operatingPoints":[{"name":"Op. Point No. 1","conditions":{"ambientTemperature":25},"excitationsPerWinding":[{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"Triangular","acEffectiveFrequency":110746.40291779551,"effectiveFrequency":110746.40291779551,"peak":5,"rms":2.8874560332150576,"thd":0.12151487440704967},"harmonics":{"amplitudes":[1.1608769501236793e-14,4.05366124583194,1.787369544444173e-15,0.4511310569983995,9.749053004706756e-16,0.16293015292554872,4.036157626725542e-16,0.08352979924600704,3.4998295008010614e-16,0.0508569581336163,3.1489164048780735e-16,0.034320410449418075,3.142469873118059e-16,0.024811988673843106,2.3653352035940994e-16,0.018849001010678823,2.9306524147249266e-16,0.014866633059596499,1.796485796132569e-16,0.012077180559557785,1.6247782523152451e-16,0.010049063750920609,1.5324769149805092e-16,0.008529750975091871,1.0558579733068502e-16,0.007363501410705499,7.513269775674661e-17,0.006450045785294609,5.871414177162291e-17,0.005722473794997712,9.294731722001391e-17,0.005134763398167541,1.194820309200107e-16,0.004654430423785411,8.2422739080512e-17,0.004258029771397032,9.5067306351894e-17,0.0039283108282380024,1.7540347128474968e-16,0.0036523670873925395,9.623794010508822e-17,0.0034204021424253787,1.4083470894369491e-16,0.0032248884817922927,1.4749333016985644e-16,0.0030599828465501895,1.0448590642474364e-16,0.002921112944200383,7.575487373767413e-18,0.002804680975178716,7.419510610361002e-17,0.0027078483284668376,3.924741709073613e-17,0.0026283777262804953,2.2684279102637236e-17,0.0025645167846443107,8.997077625295079e-17,0.0025149120164513483,7.131074184849219e-17,0.0024785457043284276,9.354417496250849e-17,0.0024546904085875065,1.2488589642405877e-16,0.0024428775264784264],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}},"voltage":{"waveform":{"data":[-20.5,70.5,70.5,-20.5,-20.5],"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"Rectangular","acEffectiveFrequency":591485.5360118389,"effectiveFrequency":553357.3374711702,"peak":70.5,"rms":51.572309672924284,"thd":0.4833151484524849},"harmonics":{"amplitudes":[24.2890625,57.92076613061847,1.421875,19.27588907896988,1.421875,11.528257939603122,1.421875,8.194467538528329,1.421875,6.331896912839248,1.421875,5.137996046859012,1.421875,4.304077056139349,1.421875,3.6860723299088454,1.421875,3.207698601961777,1.421875,2.8247804703632298,1.421875,2.509960393415185,1.421875,2.2453859950684323,1.421875,2.01890737840567,1.421875,1.8219644341144872,1.421875,1.6483482744897402,1.421875,1.4934420157473332,1.421875,1.3537375367153817,1.421875,1.2265178099275544,1.421875,1.1096421410704556,1.421875,1.0013973584174929,1.421875,0.9003924136274832,1.421875,0.8054822382572133,1.421875,0.7157117294021269,1.421875,0.6302738400635857,1.421875,0.5484777114167545,1.421875,0.46972405216147894,1.421875,0.3934858059809043,1.421875,0.31929270856030145,1.421875,0.24671871675852053,1.421875,0.17537155450693565,1.421875,0.10488380107099537,1.421875,0.034905072061178544],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}}}]}]} @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31601ms] [LOG] weightsString: {"Efficiency":40,"Dimensions":30,"Cost":30} @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31601ms] [LOG] coreModeString: standard cores @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31603ms] [LOG] [DEBUG] About to parse coreModeString: 'standard cores' @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31604ms] [LOG] [DEBUG] After from_json, coreMode = 1 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31604ms] [LOG] Parsed weights: @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31604ms] [LOG]   Cost -> 0.3 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31604ms] [LOG]   Dimensions -> 0.3 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31605ms] [LOG]   Efficiency -> 0.4 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31605ms] [LOG] [DEBUG] CoreAdviser mode set to: 1 (0=AVAILABLE, 1=STANDARD, 2=CUSTOM) @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31605ms] [LOG] [DEBUG] Requesting 1 results @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31606ms] [LOG] [DEBUG] coreShapeDatabase.size() = 1331 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31606ms] [LOG] [DEBUG] coreMaterialDatabase.size() = 409 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31606ms] [LOG] [DEBUG] useToroidalCores = 1 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   31606ms] [LOG] [DEBUG] useConcentricCores = 1 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   32172ms] [LOG] [CoreAdviser] Starting with 3618 magnetics @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   33647ms] [LOG] [CoreAdviser] After AreaProduct: 2769 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   33691ms] [LOG] [CoreAdviser] Ferrite cores after pruning: 400 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   35882ms] [LOG] [CoreAdviser] After gapping: 400 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   36251ms] [LOG] [CoreAdviser] After FringingFactor: 190 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   36265ms] [LOG] [CoreAdviser] After Dimensions: 145 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   36305ms] [LOG] [CoreAdviser] After materials: 290 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   36889ms] [LOG] [CoreAdviser] After Inductance: 290 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   37192ms] [LOG] [CoreAdviser] After Saturation: 52 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   37461ms] [LOG] [CoreAdviser] After Losses: 7 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   45027ms] [LOG] [DEBUG] MKF Log: @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   45028ms] [LOG]  @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   45028ms] [LOG] [DEBUG] Results count: 1 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[   45028ms] [LOG] [DEBUG] Result 0: 95 PQ 32/12 gapped 0.47 mm - Score: 3.05591 @ blob:http://localhost:5173/e2e322ba-e151-4e79-b602-57620f21072c:7
+[ 3407086ms] [WARNING] [JavaScript Warning: "WebGL warning: <Present>: Swap chain surface creation failed."] @ :0
+[ 3407097ms] [WARNING] [JavaScript Warning: "WebGL context was lost."] @ :0
+[ 3407098ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://localhost:5173/node_modules/.vite/deps/chunk-6CLCZQOC.js?v=6f50ee9c:256

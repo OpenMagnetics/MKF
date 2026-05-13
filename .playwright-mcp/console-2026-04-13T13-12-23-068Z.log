@@ -1,0 +1,22 @@
+[      66ms] [LOG] localhost @ http://localhost:5173/wizards:10
+[      67ms] [LOG] localhost @ http://localhost:5173/wizards:25
+[     180ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     180ms] [LOG] [StoreVersioning] Stored version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     181ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[     187ms] [WARNING] Initializing MKF in Web Worker (fresh)... @ http://localhost:5173/src/main.js?t=1776085866973:156
+[     189ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1776085866973:164
+[     237ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[     704ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[     716ms] [WARNING] Loading core materials in simulator @ http://localhost:5173/src/main.js?t=1776085866973:197
+[     716ms] [WARNING] Loading core shapes in simulator @ http://localhost:5173/src/main.js?t=1776085866973:200
+[     716ms] [WARNING] Loading wires in simulator @ http://localhost:5173/src/main.js?t=1776085866973:203
+[    6768ms] [LOG] Core materials loaded @ http://localhost:5173/src/main.js?t=1776085866973:198
+[    7190ms] [LOG] Core shapes loaded @ http://localhost:5173/src/main.js?t=1776085866973:201
+[   17764ms] [LOG] Wires loaded @ http://localhost:5173/src/main.js?t=1776085866973:204
+[   17765ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1776085866973:213
+[   17765ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1776085866973:216
+[   17770ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1776085866973:219
+[   17838ms] [WARNING] [JavaScript Warning: "unreachable code after return statement" {file: "http://localhost:5173/src/components/Wizards/PsfbWizard.vue?t=1776085799009" line: 79}] @ http://localhost:5173/src/components/Wizards/PsfbWizard.vue?t=1776085799009:79
+[   17872ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js:393
+[   17873ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js:396
+[  217443ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:864

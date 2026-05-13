@@ -1,0 +1,144 @@
+- generic [ref=e336]:
+  - navigation [ref=e337]:
+    - generic [ref=e338]:
+      - button "Visit OpenMagnetics and Tear Down the Paywalls!" [ref=e339] [cursor=pointer]:
+        - img "OpenMagnetics Logo" [ref=e340]
+      - button "OpenMagnetics" [ref=e341] [cursor=pointer]
+      - generic [ref=e342]:
+        - list [ref=e343]:
+          - listitem [ref=e344]:
+            - link "Alf's Musings" [ref=e345] [cursor=pointer]:
+              - /url: https://www.linkedin.com/newsletters/7026708624966135808/
+          - listitem [ref=e346]:
+            - button "New Magnetic" [ref=e347] [cursor=pointer]:
+              - generic [ref=e348]: 
+              - text: New Magnetic
+          - listitem [ref=e349]:
+            - button "Tools" [ref=e350] [cursor=pointer]:
+              - generic [ref=e351]: 
+              - text: Tools
+            - text: 
+          - listitem [ref=e352]:
+            - button "Wizards" [ref=e353] [cursor=pointer]:
+              - generic [ref=e354]: 
+              - text: Wizards
+            - text:                
+          - listitem [ref=e355]:
+            - button "Load MAS" [ref=e357] [cursor=pointer]
+        - list [ref=e358]:
+          - listitem [ref=e359]:
+            - link "Donate" [ref=e361] [cursor=pointer]:
+              - /url: https://en.liberapay.com/OpenMagnetics/
+              - text: Donate
+              - generic [ref=e362]: 
+          - listitem [ref=e363]:
+            - button "Bug?" [ref=e365] [cursor=pointer]:
+              - text: Bug?
+              - generic [ref=e366]: 
+          - listitem [ref=e367]:
+            - link [ref=e369] [cursor=pointer]:
+              - /url: https://github.com/OpenMagnetics/
+              - generic [ref=e370]: 
+  - text:  
+  - main [ref=e371]:
+    - generic [ref=e374]:
+      - generic [ref=e375]:
+        - generic [ref=e376]:
+          - generic [ref=e378]:
+            - generic [ref=e379]: 
+            - generic [ref=e380]: Steps
+          - generic [ref=e381]:
+            - generic [ref=e382]:
+              - button "Design Req." [ref=e383] [cursor=pointer]
+              - generic [ref=e385]: 
+              - button "Op. Points" [ref=e386] [cursor=pointer]
+              - generic [ref=e388]: 
+              - button "Magnetic. Builder" [ref=e389] [cursor=pointer]
+              - generic [ref=e391]: 
+              - button "Summary" [disabled] [ref=e392]
+            - button "Fix Errors" [disabled] [ref=e821] [cursor=pointer]
+        - generic [ref=e543]:
+          - generic [ref=e545]:
+            - generic [ref=e546]: 
+            - generic [ref=e547]: Tool menu
+          - generic [ref=e548]:
+            - text: 
+            - generic [ref=e549]:
+              - button "Settings" [ref=e550] [cursor=pointer]:
+                - generic [ref=e551]: 
+                - generic [ref=e552]: Settings
+              - button "Magnetic Adviser" [ref=e822] [cursor=pointer]:
+                - generic [ref=e823]: 
+                - generic [ref=e824]: Magnetic Adviser
+      - generic [ref=e394]:
+        - generic [ref=e395]:
+          - heading "Magnetic Builder" [level=2] [ref=e825]
+          - generic [ref=e400]:
+            - generic [ref=e401]:
+              - generic [ref=e402]:
+                - button "Undo" [disabled] [ref=e403]:
+                  - generic [ref=e404]: 
+                - button "Redo" [disabled] [ref=e405]:
+                  - generic [ref=e406]: 
+              - generic [ref=e827]:
+                - button "Reset" [ref=e828] [cursor=pointer]:
+                  - generic [ref=e829]: 
+                - text:  
+            - generic [ref=e832]:
+              - generic [ref=e833]: 
+              - text: Complete design to enable exports
+        - generic [ref=e835]:
+          - generic [ref=e840]:
+            - generic [ref=e841]:
+              - generic [ref=e842]:
+                - generic [ref=e843]: 
+                - generic [ref=e844]: Core Configuration
+              - button "Advise" [disabled] [ref=e846]:
+                - generic [ref=e847]: 
+                - generic [ref=e848]: Advise
+            - generic [ref=e849]:
+              - img "loading" [ref=e875]
+              - generic [ref=e854]:
+                - text:           
+                - generic [ref=e857]:
+                  - generic [ref=e858]: Shape Family
+                  - combobox [ref=e859]:
+                    - option "C"
+                    - option "E"
+                    - option "EC"
+                    - option "EFD"
+                    - option "EP"
+                    - option "EPX"
+                    - option "EQ"
+                    - option "ER"
+                    - option "ETD"
+                    - option "LP"
+                    - option "P"
+                    - option "PLANAR E"
+                    - option "PLANAR EL"
+                    - option "PLANAR ER"
+                    - option "PM"
+                    - option "PQ"
+                    - option "RM"
+                    - option "T"
+                    - option "U"
+                    - option "UR"
+              - button "Customize" [disabled] [ref=e867]:
+                - generic [ref=e868]: 
+                - text: Customize
+          - heading "Select a core first" [level=5] [ref=e871]
+          - generic [ref=e872]:
+            - heading "Select a core first" [level=5] [ref=e873]
+            - heading "Select wires" [level=5] [ref=e874]
+  - contentinfo [ref=e533]:
+    - list [ref=e534]:
+      - listitem [ref=e535]:
+        - link "Home" [ref=e536] [cursor=pointer]:
+          - /url: /
+      - listitem [ref=e537]:
+        - link "Cookie Policy" [ref=e538] [cursor=pointer]:
+          - /url: /cookie_policy
+      - listitem [ref=e539]:
+        - link "Legal" [ref=e540] [cursor=pointer]:
+          - /url: /legal_notice
+    - paragraph [ref=e541]: © 2022-2026 OpenMagnetics

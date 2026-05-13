@@ -1,0 +1,35 @@
+[      60ms] [LOG] localhost @ http://localhost:5173/wizards:10
+[      60ms] [LOG] localhost @ http://localhost:5173/wizards:25
+[     241ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     242ms] [LOG] [StoreVersioning] Stored version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     242ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[     251ms] [WARNING] Initializing MKF in Web Worker (fresh)... @ http://localhost:5173/src/main.js?t=1776018310281:156
+[     252ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1776018310281:164
+[     314ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[     911ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[     926ms] [WARNING] Loading core materials in simulator @ http://localhost:5173/src/main.js?t=1776018310281:197
+[     926ms] [WARNING] Loading core shapes in simulator @ http://localhost:5173/src/main.js?t=1776018310281:200
+[     926ms] [WARNING] Loading wires in simulator @ http://localhost:5173/src/main.js?t=1776018310281:203
+[    7559ms] [LOG] Core materials loaded @ http://localhost:5173/src/main.js?t=1776018310281:198
+[    8006ms] [LOG] Core shapes loaded @ http://localhost:5173/src/main.js?t=1776018310281:201
+[   19050ms] [LOG] Wires loaded @ http://localhost:5173/src/main.js?t=1776018310281:204
+[   19051ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1776018310281:213
+[   19051ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1776018310281:216
+[   19060ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1776018310281:219
+[   19104ms] [WARNING] [JavaScript Warning: "unreachable code after return statement" {file: "http://localhost:5173/src/components/Wizards/PsfbWizard.vue?t=1776018171279" line: 79}] @ http://localhost:5173/src/components/Wizards/PsfbWizard.vue?t=1776018171279:79
+[   19170ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js?t=1775947585724:393
+[   19171ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js?t=1775947585724:396
+[  339266ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[  362289ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[  418741ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[  418742ms] [LOG] 🔍 [executeWaveformAction] Analytical result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue?t=1776018171279:217
+[  418742ms] [LOG] 🔍 [processAnalyticalWaveforms] Raw WASM data: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue?t=1776018171279:407
+[  418742ms] [LOG] 🔍 [processAnalyticalWaveforms] Built waveforms: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue?t=1776018171279:419
+[  419190ms] [WARNING] [ECharts] Instance ec_1776018899127 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[  419190ms] [WARNING] [ECharts] Instance ec_1776018899128 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[  419190ms] [WARNING] [ECharts] Instance ec_1776018899129 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[  419190ms] [WARNING] [ECharts] Instance ec_1776018899130 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[  419190ms] [WARNING] [ECharts] Instance ec_1776018899131 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[  443382ms] [LOG] Resetting MAS @ http://localhost:5173/MagneticBuilder/src/stores/mas.js?t=1775947585724:43
+[  445458ms] [ERROR] Error @ http://localhost:5173/src/components/Toolbox/ControlPanel.vue?t=1775947585724:101
+[  445665ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0

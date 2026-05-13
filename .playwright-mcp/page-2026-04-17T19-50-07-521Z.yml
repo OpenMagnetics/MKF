@@ -1,0 +1,223 @@
+- generic [ref=e61]:
+  - navigation [ref=e62]:
+    - generic [ref=e63]:
+      - button "Visit OpenMagnetics and Tear Down the Paywalls!" [ref=e64] [cursor=pointer]:
+        - img "OpenMagnetics Logo" [ref=e65]
+      - button "OpenMagnetics" [ref=e66] [cursor=pointer]
+      - generic [ref=e67]:
+        - list [ref=e68]:
+          - listitem [ref=e69]:
+            - link "Alf's Musings" [ref=e70] [cursor=pointer]:
+              - /url: https://www.linkedin.com/newsletters/7026708624966135808/
+          - listitem [ref=e71]:
+            - button "New Magnetic" [ref=e72] [cursor=pointer]:
+              - generic [ref=e73]: 
+              - text: New Magnetic
+          - listitem [ref=e74]:
+            - button "Tools" [ref=e75] [cursor=pointer]:
+              - generic [ref=e76]: 
+              - text: Tools
+            - text: 
+          - listitem [ref=e77]:
+            - button "Wizards" [ref=e78] [cursor=pointer]:
+              - generic [ref=e79]: 
+              - text: Wizards
+            - text:                
+          - listitem [ref=e80]:
+            - button "Load MAS" [ref=e82] [cursor=pointer]:
+              - generic [ref=e83]: 
+              - text: Load MAS
+        - list [ref=e84]:
+          - listitem [ref=e85]:
+            - link "Donate" [ref=e87] [cursor=pointer]:
+              - /url: https://en.liberapay.com/OpenMagnetics/
+              - text: Donate
+              - generic [ref=e88]: 
+          - listitem [ref=e89]:
+            - button "Bug?" [ref=e91] [cursor=pointer]:
+              - text: Bug?
+              - generic [ref=e92]: 
+          - listitem [ref=e93]:
+            - link [ref=e95] [cursor=pointer]:
+              - /url: https://github.com/OpenMagnetics/
+              - generic [ref=e96]: 
+  - text:  
+  - main [ref=e97]:
+    - generic [ref=e100]:
+      - generic [ref=e102]:
+        - generic [ref=e104]:
+          - generic [ref=e105]: 
+          - generic [ref=e106]: Steps
+        - generic [ref=e107]:
+          - generic [ref=e108]:
+            - button "Design Req." [ref=e109] [cursor=pointer]
+            - generic [ref=e111]: 
+            - button "Op. Points" [ref=e112] [cursor=pointer]
+            - generic [ref=e114]: 
+            - button "Magnetic. Builder" [disabled] [ref=e115]
+            - generic [ref=e117]: 
+            - button "Summary" [disabled] [ref=e118]
+          - button "Continue" [ref=e119] [cursor=pointer]
+      - generic [ref=e120]:
+        - generic [ref=e121]:
+          - heading "Design Requirements" [level=2] [ref=e123]
+          - generic [ref=e128]:
+            - button "Undo" [disabled] [ref=e129]:
+              - generic [ref=e130]: 
+            - button "Redo" [disabled] [ref=e131]:
+              - generic [ref=e132]: 
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - generic [ref=e138]:
+              - generic [ref=e139]: 
+              - generic [ref=e140]: Requirements
+            - generic [ref=e141]:
+              - generic [ref=e142]:
+                - generic [ref=e143]: Number Windings
+                - button "Required" [disabled] [ref=e144]:
+                  - generic [ref=e145]: 
+                  - generic [ref=e146]: Required
+              - generic [ref=e147]:
+                - generic [ref=e148]: Magnetizing Inductance
+                - button "Required" [disabled] [ref=e149]:
+                  - generic [ref=e150]: 
+                  - generic [ref=e151]: Required
+              - generic [ref=e152]:
+                - generic [ref=e153]: Minimum Impedance
+                - button "Add" [ref=e154] [cursor=pointer]:
+                  - generic [ref=e155]: +
+                  - generic [ref=e156]: Add
+              - generic [ref=e157]:
+                - generic [ref=e158]: Turns Ratios
+                - button "Not Req." [disabled] [ref=e159]:
+                  - generic [ref=e160]: 
+                  - generic [ref=e161]: Not Req.
+              - generic [ref=e162]:
+                - generic [ref=e163]: Wiring Technology
+                - button "Remove" [ref=e164] [cursor=pointer]:
+                  - generic [ref=e165]: 
+                  - generic [ref=e166]: Remove
+              - generic [ref=e167]:
+                - generic [ref=e168]: Insulation
+                - button "Add" [ref=e169] [cursor=pointer]:
+                  - generic [ref=e170]: +
+                  - generic [ref=e171]: Add
+              - generic [ref=e172]:
+                - generic [ref=e173]: Leakage Inductance
+                - button "Add" [ref=e174] [cursor=pointer]:
+                  - generic [ref=e175]: +
+                  - generic [ref=e176]: Add
+              - generic [ref=e177]:
+                - generic [ref=e178]: Stray Capacitance
+                - button "Add" [ref=e179] [cursor=pointer]:
+                  - generic [ref=e180]: +
+                  - generic [ref=e181]: Add
+              - generic [ref=e182]:
+                - generic [ref=e183]: Isolation Sides
+                - button "Add" [ref=e184] [cursor=pointer]:
+                  - generic [ref=e185]: +
+                  - generic [ref=e186]: Add
+              - generic [ref=e187]:
+                - generic [ref=e188]: Operating Temperature
+                - button "Add" [ref=e189] [cursor=pointer]:
+                  - generic [ref=e190]: +
+                  - generic [ref=e191]: Add
+              - generic [ref=e192]:
+                - generic [ref=e193]: Maximum Weight
+                - button "Add" [ref=e194] [cursor=pointer]:
+                  - generic [ref=e195]: +
+                  - generic [ref=e196]: Add
+              - generic [ref=e197]:
+                - generic [ref=e198]: Maximum Dimensions
+                - button "Add" [ref=e199] [cursor=pointer]:
+                  - generic [ref=e200]: +
+                  - generic [ref=e201]: Add
+              - generic [ref=e202]:
+                - generic [ref=e203]: Terminal Type
+                - button "Add" [ref=e204] [cursor=pointer]:
+                  - generic [ref=e205]: +
+                  - generic [ref=e206]: Add
+              - generic [ref=e207]:
+                - generic [ref=e208]: Topology
+                - button "Add" [ref=e209] [cursor=pointer]:
+                  - generic [ref=e210]: +
+                  - generic [ref=e211]: Add
+              - generic [ref=e212]:
+                - generic [ref=e213]: Market
+                - button "Add" [ref=e214] [cursor=pointer]:
+                  - generic [ref=e215]: +
+                  - generic [ref=e216]: Add
+          - generic [ref=e217]:
+            - generic [ref=e218]:
+              - generic [ref=e219]: 
+              - generic [ref=e220]: Configuration
+            - generic [ref=e221]:
+              - generic [ref=e223]:
+                - generic [ref=e224]: Number Windings
+                - combobox [ref=e225]:
+                  - option "1" [selected]
+                  - option "2"
+                  - option "3"
+                  - option "4"
+                  - option "5"
+                  - option "6"
+                  - option "7"
+                  - option "8"
+                  - option "9"
+                  - option "10"
+                  - option "11"
+                  - option "12"
+              - generic [ref=e226]:
+                - generic [ref=e228]: Magnetizing Inductance
+                - generic [ref=e229]:
+                  - button "Add minimum" [ref=e232] [cursor=pointer]:
+                    - generic [ref=e233]: +
+                    - generic [ref=e234]: Add minimum
+                  - generic [ref=e235]:
+                    - button "Nom." [ref=e236] [cursor=pointer]:
+                      - generic [ref=e237]: Nom.
+                      - generic [ref=e238]: 
+                    - spinbutton [ref=e239]: "100"
+                    - combobox [ref=e240]:
+                      - option "nH"
+                      - option "uH" [selected]
+                      - option "mH"
+                      - option "H"
+                  - button "Add maximum" [ref=e242] [cursor=pointer]:
+                    - generic [ref=e243]: +
+                    - generic [ref=e244]: Add maximum
+              - generic [ref=e248]:
+                - generic [ref=e249]: Wiring Technology
+                - generic [ref=e250]:
+                  - radio "Planar" [ref=e251]
+                  - generic [ref=e252]: 🔥
+                  - generic [ref=e253]: Planar
+                  - generic [ref=e254]: 🔥
+                - generic [ref=e255]:
+                  - radio "Wound" [checked] [ref=e256]
+                  - generic [ref=e257]: Wound
+  - contentinfo [ref=e258]:
+    - generic [ref=e259]:
+      - generic [ref=e260]:
+        - img "OpenMagnetics Logo" [ref=e261]
+        - generic [ref=e262]: OpenMagnetics
+        - generic [ref=e263]: ·
+        - generic [ref=e264]: © 2022–2026
+      - generic [ref=e265]:
+        - link "Cookie Policy" [ref=e266] [cursor=pointer]:
+          - /url: /cookie_policy
+        - link "Privacy Policy" [ref=e267] [cursor=pointer]:
+          - /url: /legal_notice
+        - link "Terms" [ref=e268] [cursor=pointer]:
+          - /url: /terms
+        - link "GitHub" [ref=e269] [cursor=pointer]:
+          - /url: https://github.com/OpenMagnetics/
+          - generic [ref=e270]: 
+          - text: GitHub
+        - link "Donate" [ref=e271] [cursor=pointer]:
+          - /url: https://en.liberapay.com/OpenMagnetics/
+          - generic [ref=e272]: 
+          - text: Donate
+        - button "Cookies" [ref=e273] [cursor=pointer]:
+          - generic [ref=e274]: 
+          - text: Cookies

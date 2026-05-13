@@ -1,0 +1,43 @@
+[      45ms] [LOG] localhost @ http://localhost:5173/wizards:10
+[      50ms] [LOG] localhost @ http://localhost:5173/wizards:25
+[     203ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     203ms] [LOG] [StoreVersioning] Stored version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     203ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[     212ms] [WARNING] Initializing MKF in Web Worker (fresh)... @ http://localhost:5173/src/main.js?t=1776018310281:156
+[     213ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1776018310281:164
+[     263ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[     825ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[     840ms] [WARNING] Loading core materials in simulator @ http://localhost:5173/src/main.js?t=1776018310281:197
+[     840ms] [WARNING] Loading core shapes in simulator @ http://localhost:5173/src/main.js?t=1776018310281:200
+[     841ms] [WARNING] Loading wires in simulator @ http://localhost:5173/src/main.js?t=1776018310281:203
+[    7280ms] [LOG] Core materials loaded @ http://localhost:5173/src/main.js?t=1776018310281:198
+[    7718ms] [LOG] Core shapes loaded @ http://localhost:5173/src/main.js?t=1776018310281:201
+[   18947ms] [LOG] Wires loaded @ http://localhost:5173/src/main.js?t=1776018310281:204
+[   18947ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1776018310281:213
+[   18947ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1776018310281:216
+[   18956ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1776018310281:219
+[   19001ms] [WARNING] [JavaScript Warning: "unreachable code after return statement" {file: "http://localhost:5173/src/components/Wizards/PsfbWizard.vue?t=1776018171279" line: 79}] @ http://localhost:5173/src/components/Wizards/PsfbWizard.vue?t=1776018171279:79
+[   19073ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js?t=1775947585724:393
+[   19074ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js?t=1775947585724:396
+[   32260ms] TypeError: can't access property "click", wizBtn is undefined
+    at _promiseAwareJsonValueNoThrow/< (debugger eval code:328:30)
+    at async*_promiseAwareJsonValueNoThrow (debugger eval code:330:9)
+    at evaluate (debugger eval code:311:33)
+    at  (debugger eval code:1:44)
+    at evaluateFunction (chrome://juggler/content/content/Runtime.js:404:60)
+    at callFunction (chrome://juggler/content/content/Runtime.js:103:41)
+    at _onMessageInternal (chrome://juggler/content/SimpleChannel.js:237:37)
+    at _onMessage (chrome://juggler/content/SimpleChannel.js:194:12)
+    at bindToActor/actor.receiveMessage (chrome://juggler/content/SimpleChannel.js:39:44)
+[  317414ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[  317616ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[  631645ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[  931690ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[  931774ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[  932622ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[ 1216129ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[ 1216167ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[ 1216209ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[ 1216247ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[ 1216285ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[ 1216322ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311

@@ -1,0 +1,193 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - coverage_filtered.info - src/physical_models/CoreTemperature.h</title>
+  <link rel="stylesheet" type="text/css" href="../../gcov.css">
+</head>
+
+<body>
+
+          <table width="100%" border=0 cellspacing=0 cellpadding=0>
+            <tr><td class="title">LCOV - code coverage report</td></tr>
+            <tr><td class="ruler"><img src="../../glass.png" width=3 height=3 alt=""></td></tr>
+
+            <tr>
+              <td width="100%">
+                <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="10%" class="headerValue"><a href="../../index.html">top level</a> - <a href="index.html">src/physical_models</a> - CoreTemperature.h<span style="font-size: 80%;"> (source / <a href="CoreTemperature.h.func-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="5%"></td>
+            <td width="5%" class="headerCovTableHead">Coverage</td>
+            <td width="5%" class="headerCovTableHead" title="Covered + Uncovered code">Total</td>
+            <td width="5%" class="headerCovTableHead" title="Exercised code only">Hit</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">coverage_filtered.info</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntryLo">0.0&nbsp;%</td>
+            <td class="headerCovTableEntry">1</td>
+            <td class="headerCovTableEntry">0</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test Date:</td>
+            <td class="headerValue">2026-04-22 14:58:54</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntryLo">0.0&nbsp;%</td>
+            <td class="headerCovTableEntry">2</td>
+            <td class="headerCovTableEntry">0</td>
+          </tr>
+          <tr>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td class="headerItem">Branches:</td>
+            <td class="headerCovTableEntryHi">-</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">0</td>
+          </tr>
+                  <tr><td><img src="../../glass.png" width=3 height=3 alt=""></td></tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr><td class="ruler"><img src="../../glass.png" width=3 height=3 alt=""></td></tr>
+          </table>
+
+          <table cellpadding=0 cellspacing=0 border=0>
+            <tr>
+              <td><br></td>
+            </tr>
+            <tr>
+              <td>
+<pre class="sourceHeading">             Branch data     Line data    Source code</pre>
+<pre class="source">
+<span id="L1"><span class="lineNum">       1</span>                 :             : #pragma once</span>
+<span id="L2"><span class="lineNum">       2</span>                 :             : #include &quot;Constants.h&quot;</span>
+<span id="L3"><span class="lineNum">       3</span>                 :             : #include &quot;Models.h&quot;</span>
+<span id="L4"><span class="lineNum">       4</span>                 :             : </span>
+<span id="L5"><span class="lineNum">       5</span>                 :             : #include &quot;constructive_models/Core.h&quot;</span>
+<span id="L6"><span class="lineNum">       6</span>                 :             : #include &lt;MAS.hpp&gt;</span>
+<span id="L7"><span class="lineNum">       7</span>                 :             : #include &lt;cmath&gt;</span>
+<span id="L8"><span class="lineNum">       8</span>                 :             : #include &lt;filesystem&gt;</span>
+<span id="L9"><span class="lineNum">       9</span>                 :             : #include &lt;fstream&gt;</span>
+<span id="L10"><span class="lineNum">      10</span>                 :             : #include &lt;iostream&gt;</span>
+<span id="L11"><span class="lineNum">      11</span>                 :             : #include &lt;map&gt;</span>
+<span id="L12"><span class="lineNum">      12</span>                 :             : #include &lt;numbers&gt;</span>
+<span id="L13"><span class="lineNum">      13</span>                 :             : #include &lt;streambuf&gt;</span>
+<span id="L14"><span class="lineNum">      14</span>                 :             : #include &lt;vector&gt;</span>
+<span id="L15"><span class="lineNum">      15</span>                 :             : </span>
+<span id="L16"><span class="lineNum">      16</span>                 :             : using namespace MAS;</span>
+<span id="L17"><span class="lineNum">      17</span>                 :             : </span>
+<span id="L18"><span class="lineNum">      18</span>                 :             : namespace OpenMagnetics {</span>
+<span id="L19"><span class="lineNum">      19</span>                 :             : </span>
+<span id="L20"><span class="lineNum">      20</span>                 :             : </span>
+<span id="L21"><span class="lineNum">      21</span>                 :             : class CoreTemperatureModel {</span>
+<span id="L22"><span class="lineNum">      22</span>                 :             :   private:</span>
+<span id="L23"><span class="lineNum">      23</span>                 :             :   protected:</span>
+<span id="L24"><span class="lineNum">      24</span>                 :             :   public:</span>
+<span id="L25"><span class="lineNum">      25</span>                 :<span class="tlaUNC tlaBgUNC">           0 :     virtual ~CoreTemperatureModel() = default;</span></span>
+<span id="L26"><span class="lineNum">      26</span>                 :             :     </span>
+<span id="L27"><span class="lineNum">      27</span>                 :             :     static std::shared_ptr&lt;CoreTemperatureModel&gt; factory(CoreTemperatureModels modelName);</span>
+<span id="L28"><span class="lineNum">      28</span>                 :             :     virtual TemperatureOutput get_core_temperature(Core core,</span>
+<span id="L29"><span class="lineNum">      29</span>                 :             :                                                    double coreLosses,</span>
+<span id="L30"><span class="lineNum">      30</span>                 :             :                                                    double ambientTemperature) = 0;</span>
+<span id="L31"><span class="lineNum">      31</span>                 :             : </span>
+<span id="L32"><span class="lineNum">      32</span>                 :             :     static std::map&lt;std::string, std::string&gt; get_models_information() {</span>
+<span id="L33"><span class="lineNum">      33</span>                 :             :         std::map&lt;std::string, std::string&gt; information;</span>
+<span id="L34"><span class="lineNum">      34</span>                 :             :         information[&quot;Maniktala&quot;] = R&quot;(Based on &quot;witching Power Supplies A - Z, 2nd edition&quot; by Sanjaya Maniktala)&quot;;</span>
+<span id="L35"><span class="lineNum">      35</span>                 :             :         information[&quot;Kazimierczuk&quot;] =</span>
+<span id="L36"><span class="lineNum">      36</span>                 :             :             R&quot;(Based on &quot;High-Frequency Magnetic Components 2nd Edition&quot; by Marian Kazimierczuk)&quot;;</span>
+<span id="L37"><span class="lineNum">      37</span>                 :             :         information[&quot;TDK&quot;] = R&quot;(Based on &quot;Ferrites and Accessories&quot; by TDK)&quot;;</span>
+<span id="L38"><span class="lineNum">      38</span>                 :             :         information[&quot;Dixon&quot;] = R&quot;(Based on &quot;Design of Flyback Transformers and Filter Inductors&quot; by Lloyd H. Dixon)&quot;;</span>
+<span id="L39"><span class="lineNum">      39</span>                 :             :         information[&quot;Amidon&quot;] = R&quot;(Based on &quot;Iron Powder Core Loss Characteristics&quot; by Amidon)&quot;;</span>
+<span id="L40"><span class="lineNum">      40</span>                 :             :         return information;</span>
+<span id="L41"><span class="lineNum">      41</span>                 :             :     }</span>
+<span id="L42"><span class="lineNum">      42</span>                 :             :     static std::map&lt;std::string, double&gt; get_models_errors() {</span>
+<span id="L43"><span class="lineNum">      43</span>                 :             :         // This are taken manually from running the tests. Yes, a pain in the ass</span>
+<span id="L44"><span class="lineNum">      44</span>                 :             :         // TODO: Automate it somehow</span>
+<span id="L45"><span class="lineNum">      45</span>                 :             :         std::map&lt;std::string, double&gt; errors;</span>
+<span id="L46"><span class="lineNum">      46</span>                 :             :         errors[&quot;Kazimierczuk&quot;] = 0.2577;</span>
+<span id="L47"><span class="lineNum">      47</span>                 :             :         errors[&quot;Maniktala&quot;] = 0.2476;</span>
+<span id="L48"><span class="lineNum">      48</span>                 :             :         errors[&quot;TDK&quot;] = 0.5148;</span>
+<span id="L49"><span class="lineNum">      49</span>                 :             :         errors[&quot;Dixon&quot;] = 0.2464;</span>
+<span id="L50"><span class="lineNum">      50</span>                 :             :         errors[&quot;Amidon&quot;] = 0.2537;</span>
+<span id="L51"><span class="lineNum">      51</span>                 :             :         return errors;</span>
+<span id="L52"><span class="lineNum">      52</span>                 :             :     }</span>
+<span id="L53"><span class="lineNum">      53</span>                 :             :     static std::map&lt;std::string, std::string&gt; get_models_external_links() {</span>
+<span id="L54"><span class="lineNum">      54</span>                 :             :         std::map&lt;std::string, std::string&gt; external_links;</span>
+<span id="L55"><span class="lineNum">      55</span>                 :             :         external_links[&quot;Kazimierczuk&quot;] =</span>
+<span id="L56"><span class="lineNum">      56</span>                 :             :             &quot;https://www.goodreads.com/book/show/18861402-high-frequency-magnetic-components&quot;;</span>
+<span id="L57"><span class="lineNum">      57</span>                 :             :         external_links[&quot;Maniktala&quot;] = &quot;https://www.goodreads.com/book/show/12042906-switching-power-supplies-a-z&quot;;</span>
+<span id="L58"><span class="lineNum">      58</span>                 :             :         external_links[&quot;TDK&quot;] = &quot;https://www.tdk-electronics.tdk.com/download/531536/badc7640e8213233c951b4540e3745e2/&quot;</span>
+<span id="L59"><span class="lineNum">      59</span>                 :             :                                 &quot;pdf-applicationnotes.pdf&quot;;</span>
+<span id="L60"><span class="lineNum">      60</span>                 :             :         external_links[&quot;Dixon&quot;] = &quot;https://www.ti.com/lit/ml/slup076/slup076.pdf?ts=1679429443086&quot;;</span>
+<span id="L61"><span class="lineNum">      61</span>                 :             :         external_links[&quot;Amidon&quot;] = &quot;https://www.amidoncorp.com/product_images/specifications/1-38.pdf&quot;;</span>
+<span id="L62"><span class="lineNum">      62</span>                 :             :         return external_links;</span>
+<span id="L63"><span class="lineNum">      63</span>                 :             :     }</span>
+<span id="L64"><span class="lineNum">      64</span>                 :             :     static std::map&lt;std::string, std::string&gt; get_models_internal_links() {</span>
+<span id="L65"><span class="lineNum">      65</span>                 :             :         std::map&lt;std::string, std::string&gt; internal_links;</span>
+<span id="L66"><span class="lineNum">      66</span>                 :             :         internal_links[&quot;Kazimierczuk&quot;] = &quot;&quot;;</span>
+<span id="L67"><span class="lineNum">      67</span>                 :             :         internal_links[&quot;Maniktala&quot;] = &quot;&quot;;</span>
+<span id="L68"><span class="lineNum">      68</span>                 :             :         internal_links[&quot;TDK&quot;] = &quot;&quot;;</span>
+<span id="L69"><span class="lineNum">      69</span>                 :             :         internal_links[&quot;Dixon&quot;] = &quot;&quot;;</span>
+<span id="L70"><span class="lineNum">      70</span>                 :             :         internal_links[&quot;Amidon&quot;] = &quot;&quot;;</span>
+<span id="L71"><span class="lineNum">      71</span>                 :             :         return internal_links;</span>
+<span id="L72"><span class="lineNum">      72</span>                 :             :     }</span>
+<span id="L73"><span class="lineNum">      73</span>                 :             : };</span>
+<span id="L74"><span class="lineNum">      74</span>                 :             : </span>
+<span id="L75"><span class="lineNum">      75</span>                 :             : // Based on Switching Power Supplies A - Z, 2nd edition by Sanjaya Maniktala, page 154</span>
+<span id="L76"><span class="lineNum">      76</span>                 :             : class CoreTemperatureManiktalaModel : public CoreTemperatureModel {</span>
+<span id="L77"><span class="lineNum">      77</span>                 :             :   public:</span>
+<span id="L78"><span class="lineNum">      78</span>                 :             :     TemperatureOutput get_core_temperature(Core core, double coreLosses, double ambientTemperature);</span>
+<span id="L79"><span class="lineNum">      79</span>                 :             : };</span>
+<span id="L80"><span class="lineNum">      80</span>                 :             : </span>
+<span id="L81"><span class="lineNum">      81</span>                 :             : // Based on High-Frequency Magnetic Components 2nd Edition by Marian Kazimierczuk, page 151</span>
+<span id="L82"><span class="lineNum">      82</span>                 :             : class CoreTemperatureKazimierczukModel : public CoreTemperatureModel {</span>
+<span id="L83"><span class="lineNum">      83</span>                 :             :   public:</span>
+<span id="L84"><span class="lineNum">      84</span>                 :             :     TemperatureOutput get_core_temperature(Core core, double coreLosses, double ambientTemperature);</span>
+<span id="L85"><span class="lineNum">      85</span>                 :             : };</span>
+<span id="L86"><span class="lineNum">      86</span>                 :             : </span>
+<span id="L87"><span class="lineNum">      87</span>                 :             : // Based on Ferrites and Accessories by TDK, page 23</span>
+<span id="L88"><span class="lineNum">      88</span>                 :             : // https://www.tdk-electronics.tdk.com/download/531536/badc7640e8213233c951b4540e3745e2/pdf-applicationnotes.pdf</span>
+<span id="L89"><span class="lineNum">      89</span>                 :             : class CoreTemperatureTdkModel : public CoreTemperatureModel {</span>
+<span id="L90"><span class="lineNum">      90</span>                 :             :   public:</span>
+<span id="L91"><span class="lineNum">      91</span>                 :             :     TemperatureOutput get_core_temperature(Core core, double coreLosses, double ambientTemperature);</span>
+<span id="L92"><span class="lineNum">      92</span>                 :             : };</span>
+<span id="L93"><span class="lineNum">      93</span>                 :             : </span>
+<span id="L94"><span class="lineNum">      94</span>                 :             : // Based on Design of Flyback Transformers and Filter Inductors by Lloyd H. Dixon, page 2-4</span>
+<span id="L95"><span class="lineNum">      95</span>                 :             : // https://www.ti.com/lit/ml/slup076/slup076.pdf?ts=1679429443086</span>
+<span id="L96"><span class="lineNum">      96</span>                 :             : class CoreTemperatureDixonModel : public CoreTemperatureModel {</span>
+<span id="L97"><span class="lineNum">      97</span>                 :             :   public:</span>
+<span id="L98"><span class="lineNum">      98</span>                 :             :     TemperatureOutput get_core_temperature(Core core, double coreLosses, double ambientTemperature);</span>
+<span id="L99"><span class="lineNum">      99</span>                 :             : };</span>
+<span id="L100"><span class="lineNum">     100</span>                 :             : </span>
+<span id="L101"><span class="lineNum">     101</span>                 :             : // Based on Iron Powder Core Loss Characteristics by Amidon</span>
+<span id="L102"><span class="lineNum">     102</span>                 :             : // https://www.amidoncorp.com/product_images/specifications/1-38.pdf</span>
+<span id="L103"><span class="lineNum">     103</span>                 :             : class CoreTemperatureAmidonModel : public CoreTemperatureModel {</span>
+<span id="L104"><span class="lineNum">     104</span>                 :             :   public:</span>
+<span id="L105"><span class="lineNum">     105</span>                 :             :     TemperatureOutput get_core_temperature(Core core, double coreLosses, double ambientTemperature);</span>
+<span id="L106"><span class="lineNum">     106</span>                 :             : };</span>
+<span id="L107"><span class="lineNum">     107</span>                 :             : </span>
+<span id="L108"><span class="lineNum">     108</span>                 :             : } // namespace OpenMagnetics</span>
+        </pre>
+              </td>
+            </tr>
+          </table>
+          <br>
+
+          <table width="100%" border=0 cellspacing=0 cellpadding=0>
+            <tr><td class="ruler"><img src="../../glass.png" width=3 height=3 alt=""></td></tr>
+            <tr><td class="versionInfo">Generated by: <a href="https://github.com//linux-test-project/lcov" target="_parent">LCOV version 2.0-1</a></td></tr>
+          </table>
+          <br>
+
+</body>
+</html>

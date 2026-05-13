@@ -1,0 +1,577 @@
+- generic [ref=e336]:
+  - navigation [ref=e337]:
+    - generic [ref=e338]:
+      - button "Visit OpenMagnetics and Tear Down the Paywalls!" [ref=e339] [cursor=pointer]:
+        - img "OpenMagnetics Logo" [ref=e340]
+      - button "OpenMagnetics" [ref=e341] [cursor=pointer]
+      - generic [ref=e342]:
+        - list [ref=e343]:
+          - listitem [ref=e344]:
+            - link "Alf's Musings" [ref=e345] [cursor=pointer]:
+              - /url: https://www.linkedin.com/newsletters/7026708624966135808/
+          - listitem [ref=e346]:
+            - button "New Magnetic" [ref=e347] [cursor=pointer]:
+              - generic [ref=e348]: 
+              - text: New Magnetic
+          - listitem [ref=e349]:
+            - button "Tools" [ref=e350] [cursor=pointer]:
+              - generic [ref=e351]: 
+              - text: Tools
+            - text: 
+          - listitem [ref=e352]:
+            - button "Wizards" [ref=e353] [cursor=pointer]:
+              - generic [ref=e354]: 
+              - text: Wizards
+            - text:                
+          - listitem [ref=e355]:
+            - button "Load MAS" [ref=e357] [cursor=pointer]
+        - list [ref=e358]:
+          - listitem [ref=e359]:
+            - link "Donate" [ref=e361] [cursor=pointer]:
+              - /url: https://en.liberapay.com/OpenMagnetics/
+              - text: Donate
+              - generic [ref=e362]: 
+          - listitem [ref=e363]:
+            - button "Bug?" [ref=e365] [cursor=pointer]:
+              - text: Bug?
+              - generic [ref=e366]: 
+          - listitem [ref=e367]:
+            - link [ref=e369] [cursor=pointer]:
+              - /url: https://github.com/OpenMagnetics/
+              - generic [ref=e370]: 
+  - text:  
+  - main [ref=e371]:
+    - generic [ref=e374]:
+      - generic [ref=e375]:
+        - generic [ref=e376]:
+          - generic [ref=e378]:
+            - generic [ref=e379]: 
+            - generic [ref=e380]: Steps
+          - generic [ref=e381]:
+            - generic [ref=e382]:
+              - button "Design Req." [ref=e383] [cursor=pointer]
+              - generic [ref=e385]: 
+              - button "Op. Points" [ref=e386] [cursor=pointer]
+              - generic [ref=e388]: 
+              - button "Magnetic. Builder" [ref=e389] [cursor=pointer]
+              - generic [ref=e391]: 
+              - button "Summary" [disabled] [ref=e392]
+            - button "Fix Errors" [disabled] [ref=e821] [cursor=pointer]
+        - generic [ref=e543]:
+          - generic [ref=e545]:
+            - generic [ref=e546]: 
+            - generic [ref=e547]: Tool menu
+          - generic [ref=e548]:
+            - text: 
+            - generic [ref=e549]:
+              - button "Settings" [ref=e550] [cursor=pointer]:
+                - generic [ref=e551]: 
+                - generic [ref=e552]: Settings
+              - button "Magnetic Adviser" [ref=e822] [cursor=pointer]:
+                - generic [ref=e823]: 
+                - generic [ref=e824]: Magnetic Adviser
+      - generic [ref=e394]:
+        - generic [ref=e395]:
+          - heading "Magnetic Builder" [level=2] [ref=e825]
+          - generic [ref=e400]:
+            - generic [ref=e401]:
+              - generic [ref=e402]:
+                - button "Undo" [disabled] [ref=e403]:
+                  - generic [ref=e404]: 
+                - button "Redo" [disabled] [ref=e405]:
+                  - generic [ref=e406]: 
+              - generic [ref=e827]:
+                - button "Reset" [ref=e828] [cursor=pointer]:
+                  - generic [ref=e829]: 
+                - text:  
+            - generic [ref=e832]:
+              - generic [ref=e833]: 
+              - text: Complete design to enable exports
+        - generic [ref=e835]:
+          - generic [ref=e840]:
+            - generic [ref=e841]:
+              - generic [ref=e842]:
+                - generic [ref=e843]: 
+                - generic [ref=e844]: Core Configuration
+              - button "Advise" [ref=e846] [cursor=pointer]:
+                - generic [ref=e847]: 
+                - generic [ref=e848]: Advise
+            - generic [ref=e849]:
+              - generic [ref=e876]:
+                - button "Core" [ref=e877] [cursor=pointer]: Core
+                - button "Bobbin" [ref=e878] [cursor=pointer]: Bobbin
+                - button "Turns" [ref=e879] [cursor=pointer]: Turns
+              - generic [ref=e853]:
+                - generic [ref=e854]:
+                  - text:           
+                  - generic [ref=e855]:
+                    - generic [ref=e857]:
+                      - generic [ref=e858]: Shape Family
+                      - combobox [ref=e859]:
+                        - option "C"
+                        - option "E"
+                        - option "EC"
+                        - option "EFD"
+                        - option "EP"
+                        - option "EPX"
+                        - option "EQ"
+                        - option "ER"
+                        - option "ETD"
+                        - option "LP"
+                        - option "P"
+                        - option "PLANAR E"
+                        - option "PLANAR EL"
+                        - option "PLANAR ER"
+                        - option "PM"
+                        - option "PQ" [selected]
+                        - option "RM"
+                        - option "T"
+                        - option "U"
+                        - option "UR"
+                    - generic [ref=e881]:
+                      - generic [ref=e882]: Shape
+                      - combobox [ref=e883]:
+                        - option "PQ 107/87"
+                        - option "PQ 16/11"
+                        - option "PQ 16/11.5"
+                        - option "PQ 16/11.6"
+                        - option "PQ 20/13"
+                        - option "PQ 20/16"
+                        - option "PQ 20/20"
+                        - option "PQ 26/20"
+                        - option "PQ 26/25"
+                        - option "PQ 27.3/14.5A"
+                        - option "PQ 27.3/15A"
+                        - option "PQ 27/15"
+                        - option "PQ 27/17"
+                        - option "PQ 28/20"
+                        - option "PQ 32/12"
+                        - option "PQ 32/15" [selected]
+                        - option "PQ 32/20"
+                        - option "PQ 32/25"
+                        - option "PQ 32/30"
+                        - option "PQ 32/35"
+                        - option "PQ 33/21"
+                        - option "PQ 35/20"
+                        - option "PQ 35/30"
+                        - option "PQ 35/35"
+                        - option "PQ 35/40"
+                        - option "PQ 35/41"
+                        - option "PQ 40/30"
+                        - option "PQ 40/40"
+                        - option "PQ 50/30"
+                        - option "PQ 50/35"
+                        - option "PQ 50/40"
+                        - option "PQ 50/50"
+                        - option "PQ 60/42"
+                        - option "PQ 60/52"
+                        - option "PQ 65/44"
+                        - option "PQ 65/54"
+                        - option "PQ 65/60"
+                        - option "PQ 78/39"
+                        - option "PQ27.3/18"
+                        - option "PQ27A/17.4"
+                        - option "PQ27B/17.4"
+                        - option "PQ35B/41"
+                    - button [ref=e885] [cursor=pointer]:
+                      - generic [ref=e886]: 
+                - generic [ref=e889]:
+                  - generic [ref=e890]: Manufacturer
+                  - combobox [ref=e891]:
+                    - option "ACME"
+                    - option "DMEGC"
+                    - option "Fair-Rite" [selected]
+                    - option "Ferroxcube"
+                    - option "Gaotune"
+                    - option "Höganäs"
+                    - option "Magnetec"
+                    - option "Magnetics"
+                    - option "Micrometals"
+                    - option "Poco"
+                    - option "Proterial"
+                    - option "Shandong Jianuo"
+                    - option "Sinomag"
+                    - option "TDG"
+                    - option "TDK"
+                - generic [ref=e894]:
+                  - generic [ref=e895]: Material
+                  - combobox [ref=e896]:
+                    - option "15"
+                    - option "20"
+                    - option "31"
+                    - option "43"
+                    - option "44"
+                    - option "46"
+                    - option "51"
+                    - option "52"
+                    - option "61"
+                    - option "67"
+                    - option "68"
+                    - option "73"
+                    - option "75"
+                    - option "76"
+                    - option "77"
+                    - option "78"
+                    - option "79"
+                    - option "80"
+                    - option "95" [selected]
+                    - option "96"
+                    - option "97"
+                    - option "98"
+                - generic [ref=e899]:
+                  - generic [ref=e900]: "Gap Info:"
+                  - generic [ref=e901]:
+                    - generic [ref=e903]:
+                      - generic [ref=e904]: Type
+                      - combobox [ref=e905]:
+                        - option "Ungapped"
+                        - option "Ground" [selected]
+                        - option "Spacer"
+                        - option "Distributed"
+                        - option "Custom" [disabled]
+                    - generic [ref=e907]:
+                      - generic [ref=e908]: Length
+                      - generic [ref=e909]:
+                        - spinbutton [ref=e910]: "392.868"
+                        - combobox [ref=e911]:
+                          - option "um" [selected]
+                          - option "mm"
+              - generic [ref=e914]:
+                - generic [ref=e916]:
+                  - generic [ref=e917]: 
+                  - generic [ref=e918]: Core Info
+                - generic [ref=e920]:
+                  - generic [ref=e923]:
+                    - generic [ref=e924]:
+                      - text: L
+                      - subscript [ref=e925]: eff
+                    - generic [ref=e927]:
+                      - spinbutton [disabled] [ref=e928]: "38.01"
+                      - combobox [disabled] [ref=e929]:
+                        - option "pm"
+                        - option "nm"
+                        - option "um"
+                        - option "mm" [selected]
+                        - option "m"
+                        - option "km"
+                        - option "Mm"
+                        - option "Gm"
+                  - generic [ref=e932]:
+                    - generic [ref=e933]:
+                      - text: A
+                      - subscript [ref=e934]: eff
+                    - generic [ref=e936]:
+                      - spinbutton [disabled] [ref=e937]: "130.6"
+                      - combobox [disabled] [ref=e938]:
+                        - option "pm²"
+                        - option "nm²"
+                        - option "um²"
+                        - option "mm²" [selected]
+                        - option "m²"
+                        - option "km²"
+                        - option "Mm²"
+                        - option "Gm²"
+                  - generic [ref=e941]:
+                    - generic [ref=e942]:
+                      - text: V
+                      - subscript [ref=e943]: eff
+                    - generic [ref=e945]:
+                      - spinbutton [disabled] [ref=e946]: "4962.9"
+                      - combobox [disabled] [ref=e947]:
+                        - option "pm³"
+                        - option "nm³"
+                        - option "um³"
+                        - option "mm³" [selected]
+                        - option "m³"
+                        - option "km³"
+                        - option "Mm³"
+                        - option "Gm³"
+                  - generic [ref=e950]:
+                    - generic [ref=e951]:
+                      - text: A
+                      - subscript [ref=e952]: min
+                    - generic [ref=e954]:
+                      - spinbutton [disabled] [ref=e955]: "114.5"
+                      - combobox [disabled] [ref=e956]:
+                        - option "pm²"
+                        - option "nm²"
+                        - option "um²"
+                        - option "mm²" [selected]
+                        - option "m²"
+                        - option "km²"
+                        - option "Mm²"
+                        - option "Gm²"
+                  - generic [ref=e959]:
+                    - generic [ref=e960]:
+                      - text: μ
+                      - subscript [ref=e961]: ini
+                    - spinbutton [disabled] [ref=e964]: "2980"
+                  - generic [ref=e968]:
+                    - generic [ref=e969]:
+                      - text: μ
+                      - subscript [ref=e970]: eff
+                    - spinbutton [disabled] [ref=e973]: "117"
+                  - generic [ref=e977]:
+                    - generic [ref=e978]:
+                      - text: A
+                      - subscript [ref=e979]: L
+                    - generic [ref=e981]:
+                      - spinbutton [disabled] [ref=e982]: "13"
+                      - combobox [disabled] [ref=e983]:
+                        - option "pH/tu²"
+                        - option "nH/tu²"
+                        - option "uH/tu²" [selected]
+                        - option "mH/tu²"
+                        - option "H/tu²"
+                        - option "kH/tu²"
+                        - option "MH/tu²"
+                        - option "GH/tu²"
+                  - generic [ref=e986]:
+                    - generic [ref=e987]:
+                      - text: B
+                      - subscript [ref=e988]: sat
+                    - generic [ref=e990]:
+                      - spinbutton [disabled] [ref=e991]: "0.5"
+                      - combobox [disabled] [ref=e992]:
+                        - option "pT"
+                        - option "nT"
+                        - option "uT"
+                        - option "mT"
+                        - option "T" [selected]
+                        - option "kT"
+                        - option "MT"
+                        - option "GT"
+                  - generic [ref=e995]:
+                    - generic [ref=e996]:
+                      - text: B
+                      - subscript [ref=e997]: peak
+                    - generic [ref=e999]:
+                      - spinbutton [disabled] [ref=e1000]: "0.27"
+                      - combobox [disabled] [ref=e1001]:
+                        - option "pT"
+                        - option "nT"
+                        - option "uT"
+                        - option "mT"
+                        - option "T" [selected]
+                        - option "kT"
+                        - option "MT"
+                        - option "GT"
+                  - generic [ref=e1004]:
+                    - generic [ref=e1005]:
+                      - text: B
+                      - subscript [ref=e1006]: ACpeak
+                    - generic [ref=e1008]:
+                      - spinbutton [disabled] [ref=e1009]: "0.27"
+                      - combobox [disabled] [ref=e1010]:
+                        - option "pT"
+                        - option "nT"
+                        - option "uT"
+                        - option "mT"
+                        - option "T" [selected]
+                        - option "kT"
+                        - option "MT"
+                        - option "GT"
+                  - generic [ref=e1013]:
+                    - generic [ref=e1014]:
+                      - text: L
+                      - subscript
+                    - generic [ref=e1016]:
+                      - spinbutton [disabled] [ref=e1017]: "98.7"
+                      - combobox [disabled] [ref=e1018]:
+                        - option "pH"
+                        - option "nH"
+                        - option "uH" [selected]
+                        - option "mH"
+                        - option "H"
+                        - option "kH"
+                        - option "MH"
+                        - option "GH"
+                  - generic [ref=e1021]:
+                    - generic [ref=e1022]:
+                      - text: P
+                      - subscript [ref=e1023]: core
+                    - generic [ref=e1025]:
+                      - spinbutton [disabled] [ref=e1026]: "3.71"
+                      - combobox [disabled] [ref=e1027]:
+                        - option "pW"
+                        - option "nW"
+                        - option "uW"
+                        - option "mW"
+                        - option "W" [selected]
+                        - option "kW"
+                        - option "MW"
+                        - option "GW"
+              - button "Customize" [ref=e867] [cursor=pointer]:
+                - generic [ref=e868]: 
+                - text: Customize
+          - generic [ref=e1032]:
+            - generic [ref=e1033]:
+              - generic [ref=e1034]:
+                - generic [ref=e1035]: 
+                - generic [ref=e1036]: Wire Configuration
+              - button "Advise" [ref=e1038] [cursor=pointer]:
+                - generic [ref=e1039]: 
+                - generic [ref=e1040]: Advise
+            - generic [ref=e1041]:
+              - generic [ref=e1042]:
+                - generic [ref=e1044]:
+                  - generic [ref=e1046]:
+                    - generic [ref=e1047]: No. Turns
+                    - spinbutton [ref=e1049]: "14"
+                  - generic [ref=e1054]:
+                    - generic [ref=e1055]: No. Parallels
+                    - spinbutton [ref=e1057]: "1"
+                - generic [ref=e1063]:
+                  - generic [ref=e1064]: Type
+                  - combobox [ref=e1065]:
+                    - option "Foil"
+                    - option "Litz"
+                    - option "Rectangular"
+                    - option "Round"
+                - heading "Select a type for the wire" [level=5] [ref=e1066]
+              - generic [ref=e1067]:
+                - generic [ref=e1069]:
+                  - generic [ref=e1070]: 
+                  - generic [ref=e1071]: Wire Info
+                - generic [ref=e1073]:
+                  - generic [ref=e1076]:
+                    - generic [ref=e1077]:
+                      - text: R
+                      - subscript [ref=e1078]: DC
+                    - generic [ref=e1080]:
+                      - spinbutton [disabled] [ref=e1081]: "0"
+                      - combobox [disabled] [ref=e1082]:
+                        - option "pΩ/m"
+                        - option "nΩ/m"
+                        - option "uΩ/m"
+                        - option "mΩ/m"
+                        - option "Ω/m" [selected]
+                        - option "kΩ/m"
+                        - option "MΩ/m"
+                        - option "GΩ/m"
+                  - generic [ref=e1085]:
+                    - generic [ref=e1086]:
+                      - text: R
+                      - subscript [ref=e1087]: sk.AC
+                    - generic [ref=e1089]:
+                      - spinbutton [disabled] [ref=e1090]: "0"
+                      - combobox [disabled] [ref=e1091]:
+                        - option "pΩ/m"
+                        - option "nΩ/m"
+                        - option "uΩ/m"
+                        - option "mΩ/m"
+                        - option "Ω/m" [selected]
+                        - option "kΩ/m"
+                        - option "MΩ/m"
+                        - option "GΩ/m"
+                  - generic [ref=e1094]:
+                    - generic [ref=e1095]:
+                      - text: P
+                      - subscript [ref=e1096]: DC
+                    - generic [ref=e1098]:
+                      - spinbutton [disabled] [ref=e1099]: "0"
+                      - combobox [disabled] [ref=e1100]:
+                        - option "pW/m"
+                        - option "nW/m"
+                        - option "uW/m"
+                        - option "mW/m"
+                        - option "W/m" [selected]
+                        - option "kW/m"
+                        - option "MW/m"
+                        - option "GW/m"
+                  - generic [ref=e1103]:
+                    - generic [ref=e1104]:
+                      - text: P
+                      - subscript [ref=e1105]: sk.AC
+                    - generic [ref=e1107]:
+                      - spinbutton [disabled] [ref=e1108]: "0"
+                      - combobox [disabled] [ref=e1109]:
+                        - option "pW/m"
+                        - option "nW/m"
+                        - option "uW/m"
+                        - option "mW/m"
+                        - option "W/m" [selected]
+                        - option "kW/m"
+                        - option "MW/m"
+                        - option "GW/m"
+                  - generic [ref=e1112]:
+                    - generic [ref=e1113]:
+                      - text: J
+                      - subscript [ref=e1114]: eff
+                    - generic [ref=e1116]:
+                      - spinbutton [disabled] [ref=e1117]: "0"
+                      - combobox [disabled] [ref=e1118]:
+                        - option "pA/mm²"
+                        - option "nA/mm²"
+                        - option "uA/mm²"
+                        - option "mA/mm²"
+                        - option "A/mm²" [selected]
+                        - option "kA/mm²"
+                        - option "MA/mm²"
+                        - option "GA/mm²"
+                  - generic [ref=e1121]:
+                    - generic [ref=e1122]:
+                      - text: δ
+                      - subscript [ref=e1123]: eff
+                    - generic [ref=e1125]:
+                      - spinbutton [disabled] [ref=e1126]: "0"
+                      - combobox [disabled] [ref=e1127]:
+                        - option "pm"
+                        - option "nm"
+                        - option "um"
+                        - option "mm"
+                        - option "m" [selected]
+                        - option "km"
+                        - option "Mm"
+                        - option "Gm"
+                  - generic [ref=e1130]:
+                    - generic [ref=e1131]:
+                      - text: Width
+                      - subscript
+                    - generic [ref=e1133]:
+                      - spinbutton [disabled] [ref=e1134]: "0"
+                      - combobox [disabled] [ref=e1135]:
+                        - option "pm"
+                        - option "nm"
+                        - option "um"
+                        - option "mm"
+                        - option "m" [selected]
+                        - option "km"
+                        - option "Mm"
+                        - option "Gm"
+                  - generic [ref=e1138]:
+                    - generic [ref=e1139]:
+                      - text: F
+                      - subscript [ref=e1140]: skin
+                    - spinbutton [disabled] [ref=e1143]: "0"
+                  - generic [ref=e1147]:
+                    - generic [ref=e1148]:
+                      - text: Height
+                      - subscript
+                    - generic [ref=e1150]:
+                      - spinbutton [disabled] [ref=e1151]: "0"
+                      - combobox [disabled] [ref=e1152]:
+                        - option "pm"
+                        - option "nm"
+                        - option "um"
+                        - option "mm"
+                        - option "m" [selected]
+                        - option "km"
+                        - option "Mm"
+                        - option "Gm"
+              - button "Customize" [disabled] [ref=e1154]:
+                - generic [ref=e1155]: 
+                - text: Customize
+          - heading "Select wires" [level=5] [ref=e874]
+  - contentinfo [ref=e533]:
+    - list [ref=e534]:
+      - listitem [ref=e535]:
+        - link "Home" [ref=e536] [cursor=pointer]:
+          - /url: /
+      - listitem [ref=e537]:
+        - link "Cookie Policy" [ref=e538] [cursor=pointer]:
+          - /url: /cookie_policy
+      - listitem [ref=e539]:
+        - link "Legal" [ref=e540] [cursor=pointer]:
+          - /url: /legal_notice
+    - paragraph [ref=e541]: © 2022-2026 OpenMagnetics

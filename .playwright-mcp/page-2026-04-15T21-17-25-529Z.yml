@@ -1,0 +1,320 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - button "Visit OpenMagnetics and Tear Down the Paywalls!" [ref=e6] [cursor=pointer]:
+        - img "OpenMagnetics Logo" [ref=e7]
+      - button "OpenMagnetics" [ref=e8] [cursor=pointer]
+      - generic [ref=e9]:
+        - list [ref=e10]:
+          - listitem [ref=e11]:
+            - link "Alf's Musings" [ref=e12] [cursor=pointer]:
+              - /url: https://www.linkedin.com/newsletters/7026708624966135808/
+          - listitem [ref=e13]:
+            - button "New Magnetic" [ref=e14] [cursor=pointer]:
+              - generic [ref=e15]: 
+              - text: New Magnetic
+          - listitem [ref=e16]:
+            - button "Tools" [ref=e17] [cursor=pointer]:
+              - generic [ref=e18]: 
+              - text: Tools
+            - text: 
+          - listitem [ref=e19]:
+            - button "Wizards" [ref=e20] [cursor=pointer]:
+              - generic [ref=e21]: 
+              - text: Wizards
+            - text:                
+          - listitem [ref=e22]:
+            - button "Load MAS" [ref=e24] [cursor=pointer]
+        - list [ref=e25]:
+          - listitem [ref=e26]:
+            - link "Donate" [ref=e28] [cursor=pointer]:
+              - /url: https://en.liberapay.com/OpenMagnetics/
+              - text: Donate
+              - generic [ref=e29]: 
+          - listitem [ref=e30]:
+            - button "Bug?" [ref=e32] [cursor=pointer]:
+              - text: Bug?
+              - generic [ref=e33]: 
+          - listitem [ref=e34]:
+            - link [ref=e36] [cursor=pointer]:
+              - /url: https://github.com/OpenMagnetics/
+              - generic [ref=e37]: 
+  - text:  
+  - main [ref=e38]:
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - heading "OpenMagnetics" [level=1] [ref=e43]
+          - heading "The Free Open-Source Platform for Magnetics Design & Simulation" [level=2] [ref=e44]
+        - paragraph [ref=e46]: We believe access to knowledge and tools is a right, not a privilege. That's why we offer the most advanced magnetics design tools for free.
+      - generic [ref=e48]:
+        - link "Star on GitHub" [ref=e49] [cursor=pointer]:
+          - /url: https://github.com/OpenMagnetics/
+          - generic [ref=e50]: 
+          - text: Star on GitHub
+        - link "Join Discord" [ref=e51] [cursor=pointer]:
+          - /url: https://discord.gg/PFpMjYNb5c
+          - generic [ref=e52]: 
+          - text: Join Discord
+        - link "Follow on LinkedIn" [ref=e53] [cursor=pointer]:
+          - /url: https://www.linkedin.com/company/openmagnetics
+          - generic [ref=e54]: 
+          - text: Follow on LinkedIn
+    - generic [ref=e55]:
+      - generic [ref=e57]:
+        - heading "Magnetics Design Tools" [level=2] [ref=e58]:
+          - generic [ref=e59]: 
+          - generic [ref=e60]: 
+          - text: Magnetics Design Tools
+        - paragraph [ref=e61]: Everything you need to design, simulate, and optimize magnetic components
+      - generic [ref=e62]:
+        - generic [ref=e66]:
+          - generic [ref=e67]:
+            - generic [ref=e68]:
+              - generic [ref=e69]: 
+              - generic [ref=e70]: Featured
+            - heading "Magnetic Builder" [level=3] [ref=e71]
+            - paragraph [ref=e72]: "Build any magnetic component from scratch! Choose your core, wires, and winding configuration. Get instant simulation results including:"
+            - generic [ref=e73]:
+              - generic [ref=e74]:
+                - generic [ref=e75]: 
+                - text: Core & winding losses
+              - generic [ref=e76]:
+                - generic [ref=e77]: 
+                - text: Temperature simulation & thermal analysis
+              - generic [ref=e78]:
+                - generic [ref=e79]: 
+                - text: Leakage inductance (Llk) matrix
+              - generic [ref=e80]:
+                - generic [ref=e81]: 
+                - text: Stray capacitance & parasitic analysis
+              - generic [ref=e82]: Equivalent circuit export (SPICE)
+            - button "Start Building" [ref=e83] [cursor=pointer]:
+              - generic [ref=e84]: 
+              - text: Start Building
+          - button "Magnetic Builder Preview" [ref=e86] [cursor=pointer]:
+            - img "Magnetic Builder Preview" [ref=e87]
+        - generic [ref=e90]:
+          - generic [ref=e91]: 
+          - heading "Design Wizards" [level=4] [ref=e92]
+          - paragraph [ref=e93]: "Guided design flows for power converter magnetics:"
+          - generic [ref=e94]:
+            - generic [ref=e95]:
+              - generic [ref=e96]: 
+              - text: Flyback, Buck, Boost converters
+            - generic [ref=e97]:
+              - generic [ref=e98]: 
+              - text: Forward converter (Single/Two-switch/Active clamp)
+            - generic [ref=e99]:
+              - generic [ref=e100]: 
+              - text: Push-Pull, Isolated Buck/Boost
+            - generic [ref=e101]:
+              - generic [ref=e102]: 
+              - text: LLC & CLLC resonant converters
+            - generic [ref=e103]:
+              - generic [ref=e104]: 
+              - text: DAB, PFC, Phase-Shift Full Bridge
+            - generic [ref=e105]:
+              - generic [ref=e106]: 
+              - text: Common & Differential Mode Chokes
+          - button "Launch Wizards" [ref=e107] [cursor=pointer]:
+            - generic [ref=e108]: 
+            - text: Launch Wizards
+        - generic [ref=e111]:
+          - generic [ref=e112]: 
+          - heading "Insulation Coordinator" [level=4] [ref=e113]
+          - paragraph [ref=e114]: "Calculate insulation requirements for safety compliance:"
+          - generic [ref=e115]:
+            - generic [ref=e116]:
+              - generic [ref=e117]: 
+              - text: IEC 60664
+            - generic [ref=e118]:
+              - generic [ref=e119]: 
+              - text: IEC 62368
+            - generic [ref=e120]:
+              - generic [ref=e121]: 
+              - text: IEC 61558
+            - generic [ref=e122]:
+              - generic [ref=e123]: 
+              - text: IEC 60335
+          - button "Calculate Insulation" [ref=e124] [cursor=pointer]:
+            - generic [ref=e125]: 
+            - text: Calculate Insulation
+        - generic [ref=e128]:
+          - generic [ref=e129]: 
+          - heading "NGSpice Simulation" [level=4] [ref=e130]
+          - paragraph [ref=e131]: "Full circuit simulation with NGSpice:"
+          - generic [ref=e132]:
+            - generic [ref=e133]:
+              - generic [ref=e134]: 
+              - text: Automated circuit netlist generation
+            - generic [ref=e135]:
+              - generic [ref=e136]: 
+              - text: Simulate converter topologies
+            - generic [ref=e137]:
+              - generic [ref=e138]: 
+              - text: Export magnetic subcircuits
+            - generic [ref=e139]:
+              - generic [ref=e140]: 
+              - text: Waveform visualization
+          - button "Run Simulation" [ref=e141] [cursor=pointer]:
+            - generic [ref=e142]: 
+            - text: Run Simulation
+        - generic [ref=e145]:
+          - generic [ref=e146]: 
+          - heading "Equivalent Circuit" [level=4] [ref=e147]
+          - paragraph [ref=e148]: "Export accurate SPICE models:"
+          - generic [ref=e149]:
+            - generic [ref=e150]:
+              - generic [ref=e151]: 
+              - text: SIMBA format
+            - generic [ref=e152]:
+              - generic [ref=e153]: 
+              - text: LtSpice format
+            - generic [ref=e154]:
+              - generic [ref=e155]: 
+              - text: NgSpice format
+            - generic [ref=e156]:
+              - generic [ref=e157]: 
+              - text: Temperature-dependent parameters
+          - button "Export Subcircuit" [ref=e158] [cursor=pointer]:
+            - generic [ref=e159]: 
+            - text: Export Subcircuit
+        - generic [ref=e162]:
+          - generic [ref=e163]: 
+          - heading "Temperature Simulation" [level=4] [ref=e164]
+          - paragraph [ref=e165]: "Thermal analysis for reliable designs:"
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - generic [ref=e168]: 
+              - text: Core loss vs temperature
+            - generic [ref=e169]:
+              - generic [ref=e170]: 
+              - text: Winding resistance vs temperature
+            - generic [ref=e171]:
+              - generic [ref=e172]: 
+              - text: Magnetizing inductance vs temperature
+            - generic [ref=e173]:
+              - generic [ref=e174]: 
+              - text: Thermal resistance modeling
+          - button "Analyze Thermal" [ref=e175] [cursor=pointer]:
+            - generic [ref=e176]: 
+            - text: Analyze Thermal
+        - generic [ref=e179]:
+          - generic [ref=e180]: 
+          - heading "100% Open Source" [level=4] [ref=e181]
+          - paragraph [ref=e182]: "All our code is MIT licensed. You can:"
+          - generic [ref=e183]:
+            - generic [ref=e184]:
+              - generic [ref=e185]: 
+              - text: See exactly how every calculation works
+            - generic [ref=e186]:
+              - generic [ref=e187]: 
+              - text: Run it locally on your own machine
+            - generic [ref=e188]:
+              - generic [ref=e189]: 
+              - text: Contribute improvements and new features
+            - generic [ref=e190]:
+              - generic [ref=e191]: 
+              - text: Use it in your own projects
+          - link "View on GitHub" [ref=e192] [cursor=pointer]:
+            - /url: https://github.com/OpenMagnetics/
+            - generic [ref=e193]: 
+            - text: View on GitHub
+      - generic [ref=e194]:
+        - heading "Built For Power Electronics Engineers" [level=2] [ref=e196]:
+          - generic [ref=e197]: 
+          - text: Built For Power Electronics Engineers
+        - generic [ref=e199]:
+          - heading "Researchers" [level=3] [ref=e201]:
+            - generic [ref=e202]: 
+            - text: Researchers
+          - generic [ref=e204]:
+            - generic [ref=e205]:
+              - generic [ref=e206]: 
+              - text: Compare your models against state of the art
+            - generic [ref=e207]:
+              - generic [ref=e208]: 
+              - text: Access curated datasets for model development
+            - generic [ref=e209]:
+              - generic [ref=e210]: 
+              - text: Contribute to a living, used platform
+            - generic [ref=e211]:
+              - generic [ref=e212]: 
+              - text: Validation-based community, not marketing
+        - generic [ref=e214]:
+          - heading "Design Engineers" [level=3] [ref=e216]:
+            - generic [ref=e217]: 
+            - text: Design Engineers
+          - generic [ref=e219]:
+            - generic [ref=e220]:
+              - generic [ref=e221]: 
+              - text: Latest and most accurate loss models
+            - generic [ref=e222]:
+              - generic [ref=e223]: 
+              - text: No black boxes - see the implementation
+            - generic [ref=e224]:
+              - generic [ref=e225]: 
+              - text: Export designs without registration
+            - generic [ref=e226]:
+              - generic [ref=e227]: 
+              - text: All commercial parts from major vendors
+        - generic [ref=e229]:
+          - heading "Manufacturers" [level=3] [ref=e231]:
+            - generic [ref=e232]: 
+            - text: Manufacturers
+          - generic [ref=e234]:
+            - generic [ref=e235]:
+              - generic [ref=e236]: 
+              - text: Reduce prototyping iterations
+            - generic [ref=e237]:
+              - generic [ref=e238]: 
+              - text: Use your own stock in designs
+            - generic [ref=e239]:
+              - generic [ref=e240]: 
+              - text: Integrate your products in our database
+            - generic [ref=e241]:
+              - generic [ref=e242]: 
+              - text: Access data from all distributors
+      - generic [ref=e243]:
+        - generic [ref=e244]:
+          - heading "Supported Manufacturers" [level=2] [ref=e245]:
+            - generic [ref=e246]: 
+            - text: Supported Manufacturers
+          - paragraph [ref=e247]: We support parts from all major magnetic component manufacturers
+        - generic [ref=e249]:
+          - generic [ref=e250]: Ferroxcube
+          - generic [ref=e251]: TDK
+          - generic [ref=e252]: Magnetics Inc.
+          - generic [ref=e253]: Fair-Rite
+          - generic [ref=e254]: Micrometals
+          - generic [ref=e255]: DMEGC
+          - generic [ref=e256]: Cosmo Ferrites
+          - generic [ref=e257]: MWS Wire
+          - generic [ref=e258]: Elektrisola
+          - generic [ref=e259]: Rubadue
+          - generic [ref=e260]: New England Wire
+          - generic [ref=e261]: And each day more...
+      - generic [ref=e264]:
+        - heading "Ready to Design?" [level=2] [ref=e265]
+        - paragraph [ref=e266]: Start building your magnetic component right now. No registration required.
+        - generic [ref=e267]:
+          - button "Launch Magnetic Builder" [ref=e268] [cursor=pointer]:
+            - generic [ref=e269]: 
+            - text: Launch Magnetic Builder
+          - link "View Source Code" [ref=e270] [cursor=pointer]:
+            - /url: https://github.com/OpenMagnetics/
+            - generic [ref=e271]: 
+            - text: View Source Code
+  - contentinfo [ref=e273]:
+    - list [ref=e274]:
+      - listitem [ref=e275]:
+        - link "Home" [ref=e276] [cursor=pointer]:
+          - /url: /
+      - listitem [ref=e277]:
+        - link "Cookie Policy" [ref=e278] [cursor=pointer]:
+          - /url: /cookie_policy
+      - listitem [ref=e279]:
+        - link "Legal" [ref=e280] [cursor=pointer]:
+          - /url: /legal_notice
+    - paragraph [ref=e281]: © 2022-2026 OpenMagnetics

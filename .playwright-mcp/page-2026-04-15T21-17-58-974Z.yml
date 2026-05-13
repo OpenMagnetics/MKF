@@ -1,0 +1,114 @@
+- generic [ref=e332]:
+  - navigation [ref=e333]:
+    - generic [ref=e334]:
+      - button "Visit OpenMagnetics and Tear Down the Paywalls!" [ref=e335] [cursor=pointer]:
+        - img "OpenMagnetics Logo" [ref=e336]
+      - button "OpenMagnetics" [ref=e337] [cursor=pointer]
+      - generic [ref=e338]:
+        - list [ref=e339]:
+          - listitem [ref=e340]:
+            - link "Alf's Musings" [ref=e341] [cursor=pointer]:
+              - /url: https://www.linkedin.com/newsletters/7026708624966135808/
+          - listitem [ref=e342]:
+            - button "New Magnetic" [ref=e343] [cursor=pointer]:
+              - generic [ref=e344]: 
+              - text: New Magnetic
+          - listitem [ref=e345]:
+            - button "Tools" [ref=e346] [cursor=pointer]:
+              - generic [ref=e347]: 
+              - text: Tools
+            - text: 
+          - listitem [ref=e348]:
+            - button "Wizards" [ref=e349] [cursor=pointer]:
+              - generic [ref=e350]: 
+              - text: Wizards
+            - text:                
+          - listitem [ref=e351]:
+            - button "Load MAS" [ref=e353] [cursor=pointer]
+        - list [ref=e354]:
+          - listitem [ref=e355]:
+            - link "Donate" [ref=e357] [cursor=pointer]:
+              - /url: https://en.liberapay.com/OpenMagnetics/
+              - text: Donate
+              - generic [ref=e358]: 
+          - listitem [ref=e359]:
+            - button "Bug?" [ref=e361] [cursor=pointer]:
+              - text: Bug?
+              - generic [ref=e362]: 
+          - listitem [ref=e363]:
+            - link [ref=e365] [cursor=pointer]:
+              - /url: https://github.com/OpenMagnetics/
+              - generic [ref=e366]: 
+  - text:  
+  - main [ref=e367]:
+    - generic [ref=e368]:
+      - generic [ref=e370]:
+        - heading "Design Wizards" [level=1] [ref=e371]
+        - paragraph [ref=e372]: Guided design flows for power converter magnetics
+      - generic [ref=e373]:
+        - generic [ref=e376]:
+          - heading "Common Mode Choke" [level=4] [ref=e377]
+          - paragraph [ref=e378]: Design CMCs for EMI filtering with impedance vs frequency targeting.
+          - button "Start Wizard" [ref=e379] [cursor=pointer]
+        - generic [ref=e382]:
+          - heading "Differential Mode Choke" [level=4] [ref=e383]
+          - paragraph [ref=e384]: Design DMCs for LC filters with attenuation verification via ngspice.
+          - button "Start Wizard" [ref=e385] [cursor=pointer]
+        - generic [ref=e388]:
+          - heading "Flyback Converter" [level=4] [ref=e389]
+          - paragraph [ref=e390]: Design coupled inductors for flyback converters with CCM/DCM/BCM support.
+          - button "Start Wizard" [ref=e391] [cursor=pointer]
+        - generic [ref=e394]:
+          - heading "Buck Converter" [level=4] [ref=e395]
+          - paragraph [ref=e396]: Design inductors for step-down DC-DC converters.
+          - button "Start Wizard" [ref=e397] [cursor=pointer]
+        - generic [ref=e400]:
+          - heading "Boost Converter" [level=4] [ref=e401]
+          - paragraph [ref=e402]: Design inductors for step-up DC-DC converters.
+          - button "Start Wizard" [ref=e403] [cursor=pointer]
+        - generic [ref=e406]:
+          - heading "Push-Pull Converter" [level=4] [ref=e407]
+          - paragraph [ref=e408]: Design transformers for push-pull topology with center-tapped primary.
+          - button "Start Wizard" [ref=e409] [cursor=pointer]
+        - generic [ref=e412]:
+          - heading "PFC (Power Factor Correction)" [level=4] [ref=e413]
+          - paragraph [ref=e414]: Design boost inductors for AC-DC power factor correction stages.
+          - button "Start Wizard" [ref=e415] [cursor=pointer]
+        - generic [ref=e418]:
+          - heading "Isolated Buck Converter" [level=4] [ref=e419]
+          - paragraph [ref=e420]: Design transformers for isolated step-down converters.
+          - button "Start Wizard" [ref=e421] [cursor=pointer]
+        - generic [ref=e424]:
+          - heading "Single-Switch Forward Converter" [level=4] [ref=e425]
+          - paragraph [ref=e426]: Design transformers for single-switch forward converters with reset winding.
+          - button "Start Wizard" [ref=e427] [cursor=pointer]
+        - generic [ref=e430]:
+          - heading "Two-Switch Forward Converter" [level=4] [ref=e431]
+          - paragraph [ref=e432]: Design transformers for two-switch forward converters with clamping diodes.
+          - button "Start Wizard" [ref=e433] [cursor=pointer]
+        - generic [ref=e436]:
+          - heading "Active Clamp Forward Converter" [level=4] [ref=e437]
+          - paragraph [ref=e438]: Design transformers for active clamp forward converters with ZVS.
+          - button "Start Wizard" [ref=e439] [cursor=pointer]
+      - generic [ref=e440]:
+        - heading "Coming Soon" [level=3] [ref=e442]
+        - generic [ref=e444]:
+          - generic [ref=e445]: LLC Converter
+          - generic [ref=e446]: Phase-Shifted Full Bridge
+          - generic [ref=e447]: Dual Active Bridge
+      - generic [ref=e449]:
+        - heading "Need More Control?" [level=4] [ref=e450]
+        - paragraph [ref=e451]: Use the Magnetic Builder to manually configure every aspect of your design.
+        - button "Open Magnetic Builder" [ref=e452] [cursor=pointer]
+  - contentinfo [ref=e454]:
+    - list [ref=e455]:
+      - listitem [ref=e456]:
+        - link "Home" [ref=e457] [cursor=pointer]:
+          - /url: /
+      - listitem [ref=e458]:
+        - link "Cookie Policy" [ref=e459] [cursor=pointer]:
+          - /url: /cookie_policy
+      - listitem [ref=e460]:
+        - link "Legal" [ref=e461] [cursor=pointer]:
+          - /url: /legal_notice
+    - paragraph [ref=e462]: © 2022-2026 OpenMagnetics

@@ -1,0 +1,40 @@
+[     236ms] [LOG] [StoreVersioning] Current version date: 2026-04-17-dab-d3 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     237ms] [LOG] [StoreVersioning] Stored version date: 2026-04-17-dab-d3 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     237ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[     245ms] [WARNING] Preloading MKF from home page... @ http://localhost:5173/src/main.js?t=1776469763913:60
+[     365ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-04-17-dab-d3 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[     791ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[     805ms] [WARNING] [MAIN] Preload: Loading core materials, shapes and wires... @ http://localhost:5173/src/main.js?t=1776469763913:71
+[    7136ms] [LOG] Preload: Core materials loaded @ http://localhost:5173/src/main.js?t=1776469763913:73
+[    7453ms] [LOG] Preload: Core shapes loaded @ http://localhost:5173/src/main.js?t=1776469763913:74
+[   18719ms] [LOG] Preload: Wires loaded @ http://localhost:5173/src/main.js?t=1776469763913:75
+[   18720ms] [WARNING] Preload: Initializing model settings... @ http://localhost:5173/src/main.js?t=1776469763913:79
+[   18728ms] [WARNING] Preload: Model settings initialized @ http://localhost:5173/src/main.js?t=1776469763913:82
+[   18728ms] [WARNING] MKF preload complete - All data ready @ http://localhost:5173/src/main.js?t=1776469763913:84
+[   18829ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js:393
+[   18829ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js:396
+[   19379ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1776469763913:164
+[   19380ms] [WARNING] Preload already loaded base data, skipping... @ http://localhost:5173/src/main.js?t=1776469763913:206
+[   19381ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1776469763913:213
+[   19381ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1776469763913:216
+[   19386ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1776469763913:219
+[   20649ms] [ERROR] Error @ http://localhost:5173/src/components/Toolbox/ControlPanel.vue:101
+[   20649ms] [ERROR] [JavaScript Error: "Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at http://localhost:8000/is_high_performance_backend_available. (Reason: CORS request did not succeed). Status code: (null)."] @ :0
+[   20649ms] [ERROR] [JavaScript Error: "Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at http://localhost:8000/is_high_performance_backend_available. (Reason: CORS request did not succeed). Status code: (null)."] @ :0
+[   20742ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[   48748ms] [LOG] Resetting MAS @ http://localhost:5173/MagneticBuilder/src/stores/mas.js:43
+[   49382ms] [LOG] [processSvgResult] Original dimensions: 1727.2 x 1727.2 @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:274
+[   49382ms] [LOG] [processSvgResult] Client dimensions: 355 x 476 @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:275
+[   49382ms] [LOG] [processSvgResult] Calculated width: 100% @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:279
+[   54552ms] [LOG] [processSvgResult] Original dimensions: 1727.2 x 1727.2 @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:274
+[   54552ms] [LOG] [processSvgResult] Client dimensions: 355 x 476 @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:275
+[   54552ms] [LOG] [processSvgResult] Calculated width: 100% @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:279
+[   57020ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js:393
+[   57020ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js:396
+[   57245ms] [ERROR] [JavaScript Error: "Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at http://localhost:8000/insert_intermediate_mas. (Reason: CORS request did not succeed). Status code: (null)."] @ :0
+[   57246ms] [ERROR] Error inserting @ http://localhost:5173/MagneticBuilder/src/components/MagneticBuilder.vue?t=1776465348752:167
+[   57246ms] [ERROR] Error @ http://localhost:5173/MagneticBuilder/src/components/MagneticBuilder.vue?t=1776465348752:168
+[   57246ms] [ERROR] [JavaScript Error: "Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at http://localhost:8000/insert_intermediate_mas. (Reason: CORS request did not succeed). Status code: (null)."] @ :0
+[   63518ms] [LOG] [processSvgResult] Original dimensions: 1727.2 x 1727.2 @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:274
+[   63519ms] [LOG] [processSvgResult] Client dimensions: 355 x 476 @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:275
+[   63519ms] [LOG] [processSvgResult] Calculated width: 100% @ http://localhost:5173/WebSharedComponents/Common/Magnetic2DVisualizer.vue:279

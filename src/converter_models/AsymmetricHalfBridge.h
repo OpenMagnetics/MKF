@@ -395,6 +395,11 @@ public:
     ~AdvancedAsymmetricHalfBridge() = default;
     AdvancedAsymmetricHalfBridge(const json& j);
 
+    // Override parent's process_design_requirements() so the generic
+    // construct → PDR flow returns DR populated from desired* fields
+    // (where supplied) rather than only auto-sized values. Issue M1.
+    DesignRequirements process_design_requirements() override;
+
     Inputs process();
 
     const std::vector<double>& get_desired_turns_ratios() const { return desiredTurnsRatios; }

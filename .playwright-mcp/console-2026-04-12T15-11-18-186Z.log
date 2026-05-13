@@ -1,0 +1,58 @@
+[      30ms] [LOG] localhost @ http://localhost:5173/wizards:10
+[      30ms] [LOG] localhost @ http://localhost:5173/wizards:25
+[     137ms] [LOG] [StoreVersioning] Current version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:66
+[     137ms] [LOG] [StoreVersioning] Stored version date: 2026-03-07 @ http://localhost:5173/src/stores/storeVersioning.js:67
+[     137ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
+[     144ms] [WARNING] Initializing MKF in Web Worker (fresh)... @ http://localhost:5173/src/main.js?t=1776006323673:156
+[     144ms] [WARNING] Loading core materials in backend @ http://localhost:5173/src/main.js?t=1776006323673:164
+[     186ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-03-07 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
+[     625ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
+[     637ms] [WARNING] Loading core materials in simulator @ http://localhost:5173/src/main.js?t=1776006323673:197
+[     637ms] [WARNING] Loading core shapes in simulator @ http://localhost:5173/src/main.js?t=1776006323673:200
+[     637ms] [WARNING] Loading wires in simulator @ http://localhost:5173/src/main.js?t=1776006323673:203
+[    6706ms] [LOG] Core materials loaded @ http://localhost:5173/src/main.js?t=1776006323673:198
+[    7141ms] [LOG] Core shapes loaded @ http://localhost:5173/src/main.js?t=1776006323673:201
+[   17616ms] [LOG] Wires loaded @ http://localhost:5173/src/main.js?t=1776006323673:204
+[   17617ms] [WARNING] All data loaded @ http://localhost:5173/src/main.js?t=1776006323673:213
+[   17617ms] [WARNING] Initializing model settings... @ http://localhost:5173/src/main.js?t=1776006323673:216
+[   17624ms] [WARNING] Model settings initialized @ http://localhost:5173/src/main.js?t=1776006323673:219
+[   17662ms] [WARNING] [JavaScript Warning: "unreachable code after return statement" {file: "http://localhost:5173/src/components/Wizards/PsfbWizard.vue" line: 79}] @ http://localhost:5173/src/components/Wizards/PsfbWizard.vue:79
+[   17728ms] [LOG] [StateStore] resimulate() called - triggering action subscribers @ http://localhost:5173/src/stores/state.js?t=1775947585724:393
+[   17728ms] [LOG] [StateStore] Stored pending simulation models: JSHandle@object @ http://localhost:5173/src/stores/state.js?t=1775947585724:396
+[   38118ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[   38158ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[   51342ms] [ERROR] [LLC] Nielsen TDA solver did not fully converge: residual=1.33964 A (Vi=400V, Vo=399.84V, fsw=100000Hz) — analytical waveform may be inaccurate for this op. point @ blob:http://localhost:5173/53996131-91e4-4cb8-81eb-64ed2665e95c:7
+[   51383ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[   51383ms] [LOG] 🔍 [executeWaveformAction] Analytical result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:217
+[   51383ms] [LOG] 🔍 [processAnalyticalWaveforms] Raw WASM data: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:407
+[   51383ms] [LOG] 🔍 [processAnalyticalWaveforms] Built waveforms: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:419
+[   51620ms] [WARNING] [ECharts] Instance ec_1776006695929 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   51620ms] [WARNING] [ECharts] Instance ec_1776006695930 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   51620ms] [WARNING] [ECharts] Instance ec_1776006695931 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   74160ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[   74160ms] [LOG] 🔍 [executeWaveformAction] Simulation result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:228
+[   74333ms] [WARNING] [ECharts] Instance ec_1776006695935 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   74334ms] [WARNING] [ECharts] Instance ec_1776006695936 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[   74334ms] [WARNING] [ECharts] Instance ec_1776006695937 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[  111095ms] [LOG] 🔍 [calculateLlcInputs] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1311
+[  111096ms] [LOG] 🔍 [executeWaveformAction] Analytical result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:217
+[  111096ms] [LOG] 🔍 [processAnalyticalWaveforms] Raw WASM data: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:407
+[  111096ms] [LOG] 🔍 [processAnalyticalWaveforms] Built waveforms: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:419
+[  111281ms] [WARNING] [ECharts] Instance ec_1776006695941 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[  111281ms] [WARNING] [ECharts] Instance ec_1776006695942 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[  111281ms] [WARNING] [ECharts] Instance ec_1776006695943 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10365922ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[10365942ms] [LOG] 🔍 [executeWaveformAction] Simulation result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:228
+[10366095ms] [WARNING] [ECharts] Instance ec_1776006695947 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10366096ms] [WARNING] [ECharts] Instance ec_1776006695948 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10366097ms] [WARNING] [ECharts] Instance ec_1776006695949 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10379433ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[10379433ms] [LOG] 🔍 [executeWaveformAction] Simulation result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:228
+[10379562ms] [WARNING] [ECharts] Instance ec_1776006695953 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10379563ms] [WARNING] [ECharts] Instance ec_1776006695954 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10379563ms] [WARNING] [ECharts] Instance ec_1776006695955 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10454721ms] [LOG] 🔍 [simulateLlcIdealWaveforms] WASM returns: JSHandle@object @ http://localhost:5173/src/stores/taskQueue.js?t=1775943862989:1334
+[10454722ms] [LOG] 🔍 [executeWaveformAction] Simulation result from WASM: JSHandle@object @ http://localhost:5173/src/components/Wizards/ConverterWizardBase.vue:228
+[10454886ms] [WARNING] [ECharts] Instance ec_1776006695959 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10454886ms] [WARNING] [ECharts] Instance ec_1776006695960 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
+[10454886ms] [WARNING] [ECharts] Instance ec_1776006695961 has been disposed @ http://localhost:5173/node_modules/.vite/deps/chunk-ZX4CHBCZ.js?v=c88a114d:615
