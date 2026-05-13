@@ -136,6 +136,13 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 50;
 
+    // Maximum operating duty cycle. Zeta CCM duty is identical to
+    // SEPIC: D = (Vo+Vd)/(Vin*eta + Vo+Vd); for low Vin or high Vo
+    // this approaches 1 and M = D/(1-D) blows up. Previously hard-coded
+    // to 0.95 in calculate_duty_cycle; now configurable. Mirrors
+    // Cuk (757d50cb), Sepic (9725ba41).
+    std::optional<double> maximumDutyCycle = 0.95;
+
     // Internal sizing rules-of-thumb for L2 / Cc / Co (V1 only).
     double l2RipplePct = 0.30;        // ΔIL2 / IL2,avg target
     double ccRipplePct = 0.05;        // ΔVCc / VCc     target
@@ -186,6 +193,9 @@ public:
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
 
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
+
     // ---- Per-OP diagnostic accessors ----
     double get_last_duty_cycle()                  const { return lastDutyCycle; }
     double get_last_conversion_ratio()            const { return lastConversionRatio; }
@@ -225,7 +235,7 @@ public:
         std::optional<Magnetic> magnetic = std::nullopt) override;
 
     // ---- Static analytical helpers ----
-    static double calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency);
+    static double calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency, double maximumDutyCycle = 0.95);
     static double calculate_conversion_ratio(double dutyCycle);                 // +D/(1-D)
     static double calculate_l1_min(double inputVoltage, double dutyCycle, double deltaIL1, double switchingFrequency);
     static double calculate_l2_min(double inputVoltage, double dutyCycle, double deltaIL2, double switchingFrequency);
