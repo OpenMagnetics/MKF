@@ -200,6 +200,28 @@ namespace OpenMagnetics {
                 m[MAS::Topologies::ZETA_CONVERTER] = zeta;
             }
 
+            // Weinberg: isolated boost-derived topology with push-pull (V1) or
+            // H-bridge (V2) primary, center-tapped forward rectifier on the
+            // secondary, and (V1 only) D3a/D3b energy-recovery diodes from each
+            // switch drain back to Vin to clamp leakage. SPICE convergence is
+            // sensitive to the overlap (D > 0.5) interval where both primary
+            // switches conduct simultaneously through the input inductor; GEAR
+            // + ITL1=500 + UIC + IC pre-charge for L1a/L1b/Co are mandatory per
+            // WEINBERG_PLAN.md §6.2. Co sized per OP from coRipplePct so the
+            // outputCapacitance default here is unused (Weinberg overrides it).
+            {
+                SpiceSimulationConfig weinberg;
+                weinberg.swModelVT = 2.5;       weinberg.swModelVH = 0.5;
+                weinberg.snubR = 100.0;         weinberg.snubC = 100e-12;
+                weinberg.diodeIS = 1e-12;       weinberg.diodeRS = 0.05;
+                weinberg.outputCapacitance = 10e-6;
+                weinberg.relTol = 0.01;         weinberg.absTol = 1e-7;
+                weinberg.vnTol = 1e-4;
+                weinberg.itl1 = 500;            weinberg.itl4 = 500;
+                weinberg.method = "GEAR";       weinberg.trTol = 7.0;
+                m[MAS::Topologies::WEINBERG_CONVERTER] = weinberg;
+            }
+
             return m;
         }();
         return defaults;
