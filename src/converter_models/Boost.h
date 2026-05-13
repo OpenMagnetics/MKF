@@ -127,6 +127,14 @@ private:
     int numPeriodsToExtract = 5;  // Number of periods to extract from simulation
     int numSteadyStatePeriods = 50;
 
+    // Maximum allowed operating duty cycle. The boost CCM duty
+    // D = 1 - Vin*eta/(Vout + Vd) approaches 1 as Vin / Vout shrinks;
+    // real controllers cap D well below 1 (typ. 0.85-0.95) to keep the
+    // freewheel interval long enough for energy transfer to Cout. We
+    // throw rather than silently clamp. Mirrors Flyback (04272d7b),
+    // forward family (683e731c), Buck (2c9300c2).
+    std::optional<double> maximumDutyCycle = 0.95;
+
     // ---- Per-OP analytical diagnostics ----
     // Populated by process_operating_points_for_input_voltage() for the
     // most recent call. Mirrors the Dab.cpp `lastXxx` pattern. Used by
@@ -153,6 +161,9 @@ public:
     
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
+
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
 
     // ---- Per-OP diagnostic accessors ----
     // Populated by process_operating_points_for_input_voltage().
