@@ -602,6 +602,49 @@ namespace {
         REQUIRE(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
+    // Regression test for Issue M1 (MKF_ISSUES.md): building an
+    // AdvancedFlyback from JSON that omits maximumDutyCycle and
+    // maximumDrainSourceVoltage and then calling the generic
+    // process_design_requirements() previously threw
+    // "Missing both maximum duty cycle and maximum drain source
+    // voltage" because the call chained to the parent Flyback's
+    // implementation. AdvancedFlyback now overrides the method and
+    // builds DR from desiredInductance / desiredTurnsRatios directly.
+    TEST_CASE("Test_Advanced_Flyback_process_design_requirements_no_parent_fields", "[converter-model][flyback-topology][smoke-test]") {
+        json flybackInputsJson;
+        json inputVoltage;
+        inputVoltage["minimum"] = 110;
+        inputVoltage["maximum"] = 140;
+        flybackInputsJson["inputVoltage"] = inputVoltage;
+        flybackInputsJson["diodeVoltageDrop"] = 0.7;
+        flybackInputsJson["desiredInductance"] = 950e-6;
+        flybackInputsJson["desiredTurnsRatios"] = {10, 20};
+        flybackInputsJson["desiredDutyCycle"] = {{0.6, 0.5}};
+        flybackInputsJson["efficiency"] = 1;
+        flybackInputsJson["operatingPoints"] = json::array();
+        {
+            json flybackOperatingPointJson;
+            flybackOperatingPointJson["outputVoltages"] = {12, 6};
+            flybackOperatingPointJson["outputCurrents"] = {3, 5};
+            flybackOperatingPointJson["switchingFrequency"] = 100000;
+            flybackOperatingPointJson["ambientTemperature"] = 42;
+            flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
+        }
+        // Note: NO maximumDutyCycle, NO maximumDrainSourceVoltage in JSON.
+        OpenMagnetics::AdvancedFlyback flybackInputs(flybackInputsJson);
+
+        // Pre-fix this would throw. Post-fix it must return a DR with
+        // the desired inductance and the right number of turns ratios.
+        OpenMagnetics::DesignRequirements dr = flybackInputs.process_design_requirements();
+
+        REQUIRE(dr.get_turns_ratios().size() == 2);
+        REQUIRE_THAT(dr.get_turns_ratios()[0].get_nominal().value(), Catch::Matchers::WithinAbs(10.0, 1e-9));
+        REQUIRE_THAT(dr.get_turns_ratios()[1].get_nominal().value(), Catch::Matchers::WithinAbs(20.0, 1e-9));
+        REQUIRE_THAT(dr.get_magnetizing_inductance().get_nominal().value(), Catch::Matchers::WithinAbs(950e-6, 1e-12));
+        REQUIRE(dr.get_topology().value() == OpenMagnetics::Topologies::FLYBACK_CONVERTER);
+        REQUIRE(dr.get_isolation_sides().value().size() == 3);
+    }
+
     TEST_CASE("Test_Advanced_Flyback_DCM", "[converter-model][flyback-topology][smoke-test]") {
         json flybackInputsJson;
         json inputVoltage;

@@ -1227,6 +1227,33 @@ namespace OpenMagnetics {
         return process_operating_points(turnsRatios, magnetizingInductance);
     }
 
+    DesignRequirements AdvancedFlyback::process_design_requirements() {
+        // Override the parent Flyback::process_design_requirements()
+        // (which requires maximumDutyCycle or maximumDrainSourceVoltage
+        // to be set — see Issue M1). The Advanced workflow already
+        // pins L and n via desiredInductance / desiredTurnsRatios, so
+        // we build the DR directly from those fields. This is the
+        // same DR that AdvancedFlyback::process() constructs internally.
+        std::vector<double> turnsRatios = get_desired_turns_ratios();
+        DesignRequirements designRequirements;
+        designRequirements.get_mutable_turns_ratios().clear();
+        for (auto turnsRatio : turnsRatios) {
+            DimensionWithTolerance turnsRatioWithTolerance;
+            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
+            designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
+        }
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_nominal(roundFloat(get_desired_inductance(), 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        std::vector<IsolationSide> isolationSides;
+        for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
+            isolationSides.push_back(get_isolation_side_from_index(windingIndex));
+        }
+        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_topology(Topologies::FLYBACK_CONVERTER);
+        return designRequirements;
+    }
+
     Inputs AdvancedFlyback::process() {
         Flyback::run_checks(_assertErrors);
 

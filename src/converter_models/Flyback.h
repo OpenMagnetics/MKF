@@ -247,6 +247,24 @@ public:
 
     AdvancedFlyback(const json& j);
 
+    /**
+     * @brief Override the parent Flyback's process_design_requirements()
+     *        so that callers using the generic
+     *        construct-from-json → process_design_requirements → ...
+     *        flow succeed even when neither maximumDutyCycle nor
+     *        maximumDrainSourceVoltage is supplied.
+     *
+     * In the Advanced workflow the design has already been picked by
+     * the user — desiredInductance and desiredTurnsRatios fix L and n
+     * directly, so the parent's iterative search over
+     * (maximumDutyCycle, maximumDrainSourceVoltage) is moot.
+     *
+     * Mirrors the DesignRequirements-building portion of
+     * AdvancedFlyback::process(); see Flyback.cpp for the override.
+     * Resolves Issue M1 (Advanced* API contract) for AdvancedFlyback.
+     */
+    DesignRequirements process_design_requirements() override;
+
     Inputs process();
 
     const double & get_desired_inductance() const { return desiredInductance; }
