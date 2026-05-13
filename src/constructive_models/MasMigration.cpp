@@ -97,7 +97,6 @@ const std::unordered_map<std::string, std::string>& mapping() {
         {"Dual Active Bridge Converter", "dualActiveBridgeConverter"},
         {"LLC Resonant Converter", "llcResonantConverter"},
         {"CLLC Resonant Converter", "cllcResonantConverter"},
-        {"CLLLC Resonant Converter", "cllllcResonantConverter"},
         {"Common Mode Choke", "commonModeChoke"},
         {"Differential Mode Choke", "differentialModeChoke"},
         {"Power Factor Correction", "powerFactorCorrection"},

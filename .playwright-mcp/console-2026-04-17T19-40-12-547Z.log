@@ -1,7 +1,0 @@
-[     331ms] [LOG] [StoreVersioning] Current version date: 2026-04-17-dab-d3 @ http://localhost:5173/src/stores/storeVersioning.js:66
-[     332ms] [LOG] [StoreVersioning] Stored version date: 2026-04-17-dab-d3 @ http://localhost:5173/src/stores/storeVersioning.js:67
-[     332ms] [LOG] [StoreVersioning] Stores are up to date, no clearing needed. @ http://localhost:5173/src/stores/storeVersioning.js:89
-[     342ms] [WARNING] Preloading MKF from home page... @ http://localhost:5173/src/main.js?t=1776454797487:60
-[     506ms] [LOG] [MKF Worker] Loading WASM from: /wasm/libMKF.wasm.js?v=2026-04-17-dab-d3 @ http://localhost:5173/WebSharedComponents/assets/js/mkfWorker.js?worker_file&type=module:113
-[     990ms] [WARNING] [JavaScript Warning: "The WebAssembly exception handling 'try' instruction is deprecated and should no longer be used. Please recompile to use the 'try_table' instruction instead."] @ :0
-[    1008ms] [WARNING] [MAIN] Preload: Loading core materials, shapes and wires... @ http://localhost:5173/src/main.js?t=1776454797487:71

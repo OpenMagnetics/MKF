@@ -2353,13 +2353,8 @@ AsymmetricHalfBridge::simulate_and_extract_topology_waveforms(
 // (separate "designed only" mode, output-cap sizing override) wait for
 // P12 per ASYMMETRIC_HALF_BRIDGE_PLAN.md §11.
 // =========================================================================
-DesignRequirements AdvancedAsymmetricHalfBridge::process_design_requirements() {
-    // Issue M1 override: take the parent's auto-sized DR as a base
-    // (the parent's PDR doesn't require any Advanced-only fields, so
-    // the call is safe) then apply desired* overrides where the
-    // wizard pinned them. Mirrors the override block previously
-    // inlined in process().
-    auto designRequirements = AsymmetricHalfBridge::process_design_requirements();
+Inputs AdvancedAsymmetricHalfBridge::process() {
+    auto designRequirements = process_design_requirements();
 
     if (!desiredTurnsRatios.empty()) {
         designRequirements.get_mutable_turns_ratios().clear();
@@ -2368,6 +2363,11 @@ DesignRequirements AdvancedAsymmetricHalfBridge::process_design_requirements() {
             nTol.set_nominal(n);
             designRequirements.get_mutable_turns_ratios().push_back(nTol);
         }
+        // CT carries TWO physical secondary windings. If the wizard only
+        // pinned one ratio (the typical case — the wizard only exposes a
+        // single "turnsRatio" field), duplicate it so turns_ratios.size()
+        // matches the secondary-winding count expected by the coil
+        // pipeline (see process_design_requirements rationale).
         AhbRectifierType rectAdv = get_rectifier_type().value_or(
             AhbRectifierType::CENTER_TAPPED);
         if (rectAdv == AhbRectifierType::CENTER_TAPPED &&
@@ -2377,11 +2377,15 @@ DesignRequirements AdvancedAsymmetricHalfBridge::process_design_requirements() {
         }
     }
 
-    if (desiredMagnetizingInductance > 0) {
+    double Lm = desiredMagnetizingInductance;
+    if (Lm > 0) {
         DimensionWithTolerance LmTol;
-        LmTol.set_minimum(desiredMagnetizingInductance);
+        LmTol.set_minimum(Lm);
         designRequirements.set_magnetizing_inductance(LmTol);
-        set_computed_magnetizing_inductance(desiredMagnetizingInductance);
+        set_computed_magnetizing_inductance(Lm);
+    } else {
+        // Fall back to the auto-sized value the base class already picked.
+        Lm = get_computed_magnetizing_inductance();
     }
 
     if (desiredLeakageInductance.has_value())
@@ -2392,15 +2396,6 @@ DesignRequirements AdvancedAsymmetricHalfBridge::process_design_requirements() {
         set_computed_dc_blocking_capacitance(desiredDcBlockingCapacitance.value());
     if (desiredOutputCapacitance.has_value())
         set_computed_output_capacitance(desiredOutputCapacitance.value());
-
-    return designRequirements;
-}
-
-Inputs AdvancedAsymmetricHalfBridge::process() {
-    auto designRequirements = process_design_requirements();
-
-    double Lm = (desiredMagnetizingInductance > 0) ?
-        desiredMagnetizingInductance : get_computed_magnetizing_inductance();
 
     std::vector<double> turnsRatios;
     if (!desiredTurnsRatios.empty()) {

@@ -272,12 +272,6 @@ public:
 
     AdvancedZeta(const json& j);
 
-    // Override the parent Zeta::process_design_requirements() so the
-    // generic construct-from-json → process_design_requirements flow
-    // succeeds without needing the parent's design-search inputs.
-    // Issue M1 / MagneticAdviser/wasm/MKF_ISSUES.md.
-    DesignRequirements process_design_requirements() override;
-
     Inputs process();
 
     const double & get_desired_inductance() const { return desiredInductance; }

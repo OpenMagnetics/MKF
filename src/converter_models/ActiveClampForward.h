@@ -94,9 +94,6 @@ public:
 
     AdvancedActiveClampForward(const json& j);
 
-    // Override parent's process_design_requirements() — Issue M1.
-    DesignRequirements process_design_requirements() override;
-
     Inputs process();
 
     const double & get_desired_inductance() const { return desiredInductance; }
