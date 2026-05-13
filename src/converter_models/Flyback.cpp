@@ -144,12 +144,60 @@ namespace OpenMagnetics {
         double totalInputPower = get_total_input_power(outputOperatingPoint.get_output_currents(), outputOperatingPoint.get_output_voltages(), get_efficiency(), 0);
         double averageInputCurrent = totalInputPower / inputVoltage;
 
+        // Steady-state CCM duty (existing formula).
+        double dCcm = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+
+        // CCM/DCM boundary: critical primary inductance (Basso, "Switch-Mode Power Supplies",
+        // 2nd ed., p. 747 — same expression already used in process_design_requirements below).
+        // Below L_crit the converter is in DCM and the CCM duty formula is physically wrong.
+        double mainOutputVoltageWithDiode = outputOperatingPoint.get_output_voltages()[0] + get_diode_voltage_drop();
+        double aux = mainOutputVoltageWithDiode * turnsRatios[0];
+        double criticalInductance = (totalOutputPower > 0)
+            ? get_efficiency() * inputVoltage * inputVoltage * aux * aux
+                / (2.0 * totalOutputPower * switchingFrequency
+                   * (inputVoltage + aux) * (aux + get_efficiency() * inputVoltage))
+            : 0.0;
+        bool isDcm = inductance < criticalInductance;
+
         double dutyCycle;
         if (customDutyCycle) {
             dutyCycle = customDutyCycle.value();
         }
+        else if (isDcm) {
+            // DCM energy balance: Pout = ½·Lp·I_pk²·fsw with I_pk = Vin·D·T/Lp
+            //   ⇒ D = sqrt(2 · Pin · Lp · fsw) / Vin    (Pin = Pout / efficiency)
+            dutyCycle = std::sqrt(2.0 * totalInputPower * inductance * switchingFrequency) / inputVoltage;
+        }
         else {
-            dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+            dutyCycle = dCcm;
+        }
+
+        // Honour user-supplied maximumDutyCycle. Per project policy: throw, do not clamp.
+        if (auto dMax = get_maximum_duty_cycle(); dMax && dutyCycle > dMax.value()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Required dutyCycle " + std::to_string(dutyCycle) +
+                " exceeds maximumDutyCycle " + std::to_string(dMax.value()) +
+                " at Vin=" + std::to_string(inputVoltage) + "V (mode=" +
+                (isDcm ? "DCM" : "CCM") +
+                "). Increase magnetizingInductance, lower switchingFrequency, or relax maximumDutyCycle.");
+        }
+
+        // If the caller forced a mode that disagrees with the physics, refuse — no silent fallback.
+        // Only check user-explicit modes (set on the FlybackOperatingPoint), not ripple-heuristic
+        // modes that the analytical pipeline derives and threads through customMode purely to pick
+        // waveform labels.
+        if (outputOperatingPoint.get_mode() && !customDutyCycle) {
+            auto userMode = outputOperatingPoint.get_mode().value();
+            bool forcedCcm = (userMode == FlybackModes::CONTINUOUS_CONDUCTION_MODE);
+            bool forcedDcm = (userMode == FlybackModes::DISCONTINUOUS_CONDUCTION_MODE);
+            if ((forcedCcm && isDcm) || (forcedDcm && !isDcm)) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    std::string("Forced FlybackMode does not match the physics at Vin=") +
+                    std::to_string(inputVoltage) + "V: requested " +
+                    (forcedCcm ? "CCM" : "DCM") + " but Lp=" + std::to_string(inductance) +
+                    " vs critical Lp=" + std::to_string(criticalInductance) + " puts it in " +
+                    (isDcm ? "DCM" : "CCM") + ".");
+            }
         }
 
         double centerSecondaryCurrentRampLumped = maximumEffectiveLoadCurrent / (1 - dutyCycle);
@@ -240,16 +288,38 @@ namespace OpenMagnetics {
             double secondaryCurrentPeaktoPeak = secondaryCurrentAverage * currentRippleRatio * 2;
             double secondaryCurrentOffset = std::max(0.0, secondaryCurrentAverage - secondaryCurrentPeaktoPeak / 2);
 
+            // The SECONDARY_RECTANGULAR[_WITH_DEADTIME] *voltage* waveform builder ties
+            // on/off amplitudes to the duty-cycle parameter (max = -peakToPeak·(1-D),
+            // min = +peakToPeak·D). For the positive level to come out to (Vout+Vd) the
+            // duty must be the volt-second-balance value D_sec = aux/(Vin+aux),
+            // with aux = (Vout+Vd)·N_sec. In CCM the primary D already satisfies this
+            // (modulo small η/Vd offsets the existing pipeline expects), so we keep
+            // primary D for CCM to preserve historical behaviour. In DCM the primary D
+            // is smaller than the volt-second value, which would shrink the secondary
+            // rectangular's positive level below Vout+Vd; use D_sec for the secondary
+            // *voltage* in that case so the reported peak is physically right.
+            //
+            // The FLYBACK_SECONDARY[_WITH_DEADTIME] *current* waveform parameter
+            // `dutyCycle` has different semantics — it controls the ramp on/off split
+            // such that the period-integrated average matches the requested load
+            // current. Forcing D_sec there breaks I_avg = I_load. Always pass the
+            // primary `dutyCycle` to the current waveforms.
+            double secondaryVoltageDuty = dutyCycle;
+            if (isDcm) {
+                double secondaryAux = maximumSecondaryVoltage * turnsRatios[secondaryIndex];
+                secondaryVoltageDuty = secondaryAux / (inputVoltage + secondaryAux);
+            }
+
             switch (mode) {
                 case FlybackModes::CONTINUOUS_CONDUCTION_MODE: {
-                    voltageWaveform = Inputs::create_waveform(WaveformLabel::SECONDARY_RECTANGULAR, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                    voltageWaveform = Inputs::create_waveform(WaveformLabel::SECONDARY_RECTANGULAR, secondaryVoltagePeaktoPeak, switchingFrequency, secondaryVoltageDuty, 0, deadTime);
                     currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
                     break;
                 }
                 case FlybackModes::QUASI_RESONANT_MODE:
                 case FlybackModes::BOUNDARY_MODE_OPERATION:
                 case FlybackModes::DISCONTINUOUS_CONDUCTION_MODE: {
-                    voltageWaveform = Inputs::create_waveform(WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                    voltageWaveform = Inputs::create_waveform(WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeaktoPeak, switchingFrequency, secondaryVoltageDuty, 0, deadTime);
                     currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
                     break;
                 }
@@ -291,13 +361,32 @@ namespace OpenMagnetics {
         // Calculate switching frequency and duty cycle
         double switchingFrequency = opPoint.resolve_switching_frequency(inputVoltage, get_diode_voltage_drop(), magnetizingInductance, turnsRatios, get_efficiency());
         
-        // Calculate duty cycle
+        // Calculate duty cycle (mirrors process_operating_points_for_input_voltage):
+        // CCM-then-DCM physics + maxD enforcement. See that routine for derivation.
         double totalOutputPower = get_total_input_power(opPoint.get_output_currents(), opPoint.get_output_voltages(), 1, 0);
         double maximumEffectiveLoadCurrent = totalOutputPower / opPoint.get_output_voltages()[0];
         double maximumEffectiveLoadCurrentReflected = maximumEffectiveLoadCurrent / turnsRatios[0];
         double totalInputPower = get_total_input_power(opPoint.get_output_currents(), opPoint.get_output_voltages(), get_efficiency(), 0);
         double averageInputCurrent = totalInputPower / inputVoltage;
-        double dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+        double dCcm = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+        double mainOutputVoltageWithDiode = opPoint.get_output_voltages()[0] + get_diode_voltage_drop();
+        double aux = mainOutputVoltageWithDiode * turnsRatios[0];
+        double criticalInductance = (totalOutputPower > 0)
+            ? get_efficiency() * inputVoltage * inputVoltage * aux * aux
+                / (2.0 * totalOutputPower * switchingFrequency
+                   * (inputVoltage + aux) * (aux + get_efficiency() * inputVoltage))
+            : 0.0;
+        bool isDcm = magnetizingInductance < criticalInductance;
+        double dutyCycle = isDcm
+            ? std::sqrt(2.0 * totalInputPower * magnetizingInductance * switchingFrequency) / inputVoltage
+            : dCcm;
+        if (auto dMax = get_maximum_duty_cycle(); dMax && dutyCycle > dMax.value()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Required dutyCycle " + std::to_string(dutyCycle) +
+                " exceeds maximumDutyCycle " + std::to_string(dMax.value()) +
+                " at Vin=" + std::to_string(inputVoltage) + "V (mode=" +
+                (isDcm ? "DCM" : "CCM") + ") in generate_ngspice_circuit.");
+        }
         
         // Number of secondaries
         size_t numSecondaries = turnsRatios.size();
@@ -574,7 +663,26 @@ namespace OpenMagnetics {
         double maximumEffectiveLoadCurrentReflected = maximumEffectiveLoadCurrent / turnsRatios[0];
         double totalInputPower = get_total_input_power(opPoint.get_output_currents(), opPoint.get_output_voltages(), get_efficiency(), 0);
         double averageInputCurrent = totalInputPower / inputVoltage;
-        double dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+        // CCM-then-DCM physics + maxD enforcement (mirrors process_operating_points_for_input_voltage).
+        double dCcm = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+        double mainOutputVoltageWithDiode = opPoint.get_output_voltages()[0] + get_diode_voltage_drop();
+        double aux = mainOutputVoltageWithDiode * turnsRatios[0];
+        double criticalInductance = (totalOutputPower > 0)
+            ? get_efficiency() * inputVoltage * inputVoltage * aux * aux
+                / (2.0 * totalOutputPower * switchingFrequency
+                   * (inputVoltage + aux) * (aux + get_efficiency() * inputVoltage))
+            : 0.0;
+        bool isDcm = magnetizingInductance < criticalInductance;
+        double dutyCycle = isDcm
+            ? std::sqrt(2.0 * totalInputPower * magnetizingInductance * switchingFrequency) / inputVoltage
+            : dCcm;
+        if (auto dMax = get_maximum_duty_cycle(); dMax && dutyCycle > dMax.value()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Required dutyCycle " + std::to_string(dutyCycle) +
+                " exceeds maximumDutyCycle " + std::to_string(dMax.value()) +
+                " at Vin=" + std::to_string(inputVoltage) + "V (mode=" +
+                (isDcm ? "DCM" : "CCM") + ") in generate_ngspice_circuit_with_magnetic.");
+        }
         
         // Generate the magnetic subcircuit using CircuitSimulatorExporter
         CircuitSimulatorExporterNgspiceModel ngspiceExporter;
@@ -1046,22 +1154,31 @@ namespace OpenMagnetics {
             designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
         }
         DimensionWithTolerance inductanceWithTolerance;
+        // If any operating point forces DCM/QRM/BMO and the Basso critical inductance
+        // is below the ripple-sized "needed" inductance, the latter is a CCM-regime
+        // value that contradicts the forced mode. Snap nominal to Lp_crit so the
+        // design is self-consistent (otherwise the operating-point pipeline would
+        // throw "Forced FlybackMode does not match the physics").
+        double targetInductance = globalNeededInductance;
+        if (maximumInductance > 0 && maximumInductance < globalNeededInductance) {
+            targetInductance = maximumInductance;
+        }
         // Set nominal to the calculated inductance - this is the target value
-        inductanceWithTolerance.set_nominal(roundFloat(globalNeededInductance, 10));
+        inductanceWithTolerance.set_nominal(roundFloat(targetInductance, 10));
         // Set minimum slightly below nominal (allow 10% tolerance)
-        inductanceWithTolerance.set_minimum(roundFloat(globalNeededInductance * 0.9, 10));
+        inductanceWithTolerance.set_minimum(roundFloat(targetInductance * 0.9, 10));
 
         if (maximumInductance > 0) {
             // Ensure maximum is not smaller than nominal (can happen in edge cases)
-            if (maximumInductance >= globalNeededInductance) {
+            if (maximumInductance >= targetInductance) {
                 inductanceWithTolerance.set_maximum(roundFloat(maximumInductance, 10));
             } else {
                 // If max < nominal, use nominal + 20% as max
-                inductanceWithTolerance.set_maximum(roundFloat(globalNeededInductance * 1.2, 10));
+                inductanceWithTolerance.set_maximum(roundFloat(targetInductance * 1.2, 10));
             }
         } else {
             // No DCM constraint, allow 20% above nominal
-            inductanceWithTolerance.set_maximum(roundFloat(globalNeededInductance * 1.2, 10));
+            inductanceWithTolerance.set_maximum(roundFloat(targetInductance * 1.2, 10));
         }
 
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);

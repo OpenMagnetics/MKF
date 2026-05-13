@@ -441,7 +441,12 @@ namespace {
         inputVoltage["maximum"] = 57;
         flybackInputsJson["inputVoltage"] = inputVoltage;
         flybackInputsJson["diodeVoltageDrop"] = 0.7;
-        flybackInputsJson["maximumDutyCycle"] = 0.44;
+        // Raised from 0.44 to 0.70: with ripple=1 and Vin_min=36V, process_design_requirements sizes
+        // Lp at the BCM edge for D_ccm=maxD, but the physically-correct DCM duty at that operating
+        // point is ~0.622. The previous CCM-only duty formula in Flyback.cpp masked this; once DCM
+        // is detected and Vout-from-DCM duty is used, maxD must accommodate it (or the design must
+        // be re-sized). 0.70 keeps the maxD bound meaningful without making the design infeasible.
+        flybackInputsJson["maximumDutyCycle"] = 0.70;
         flybackInputsJson["currentRippleRatio"] = 1;
         flybackInputsJson["efficiency"] = 1;
         flybackInputsJson["operatingPoints"] = json::array();
@@ -1216,7 +1221,11 @@ namespace {
         flyback.set_current_ripple_ratio(1.0);
         
         // Maximum duty cycle
-        flyback.set_maximum_duty_cycle(0.45);
+        // Note: at Vin_min=42V the CCM duty needed for these parameters is 0.4503,
+        // so 0.45 was a hair too tight (the pre-fix code silently ignored the limit).
+        // 0.50 keeps the spirit of the test (light-load, DCM-leaning design) while
+        // honouring physics.
+        flyback.set_maximum_duty_cycle(0.50);
         
         // Operating point: 12V @ 0.5A output (light load), 100kHz
         OpenMagnetics::FlybackOperatingPoint opPoint;
@@ -1504,7 +1513,7 @@ namespace {
         flyback.set_diode_voltage_drop(0.5);
         flyback.set_efficiency(0.9);
         flyback.set_current_ripple_ratio(1.0);  // =1 is DCM boundary (< 1 is CCM)
-        flyback.set_maximum_duty_cycle(0.45);
+        flyback.set_maximum_duty_cycle(0.50);  // see Test_Flyback_Ngspice_Simulation_DCM
 
         OpenMagnetics::FlybackOperatingPoint flybackOp;
         flybackOp.set_output_voltages({12.0}); flybackOp.set_output_currents({0.5});
