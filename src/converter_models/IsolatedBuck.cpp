@@ -12,6 +12,21 @@ namespace OpenMagnetics {
         if (dutyCycle >= 1) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Duty cycle must be smaller than 1");
         }
+        // Explicit maxD gate (no silent clamp). 1 % tolerance absorbs
+        // design-requirements rounding. Same pattern as Flyback, forward
+        // family, Buck, Boost.
+        if (maximumDutyCycle.has_value()) {
+            const double dMax = maximumDutyCycle.value();
+            constexpr double dutyTolerance = 0.01;
+            if (dutyCycle > dMax * (1.0 + dutyTolerance)) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "IsolatedBuck: required dutyCycle " + std::to_string(dutyCycle) +
+                    " exceeds maximumDutyCycle " + std::to_string(dMax) +
+                    " at Vin=" + std::to_string(inputVoltage) +
+                    ", V_pri=" + std::to_string(outputVoltage) +
+                    ". Raise Vin_min, lower V_pri, or relax maximumDutyCycle.");
+            }
+        }
         return dutyCycle;
     }
 

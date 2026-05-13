@@ -75,6 +75,15 @@ private:
     int numPeriodsToExtract = 5;
     int numSteadyStatePeriods = 5;
 
+    // Maximum operating duty cycle. Isolated-buck (Flybuck) primary is
+    // a regulated synchronous buck whose CCM duty is
+    // D = V_pri/(V_in*eta); at low Vin this approaches 1. Real
+    // controllers cap D well below 1 to keep the secondary-rectifier
+    // OFF interval long enough for energy transfer. Throw on violation
+    // (no silent clamp). Mirrors Flyback (04272d7b), forward family
+    // (683e731c), Buck (2c9300c2), Boost (96fdb52a).
+    std::optional<double> maximumDutyCycle = 0.95;
+
     // Per-OP diagnostic outputs (mutable — populated by
     // process_operating_point_for_input_voltage()). Allow tests and
     // the Web frontend to inspect what the analytical model decided
@@ -102,6 +111,9 @@ public:
     
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }
     void set_num_steady_state_periods(int value) { this->numSteadyStatePeriods = value; }
+
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
 
     // Per-OP analytical diagnostics (read-only; populated by
     // process_operating_point_for_input_voltage()).
