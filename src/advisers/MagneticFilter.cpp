@@ -1827,7 +1827,16 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
         }
 
-        scoring += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
+        // Saturation scoring: dimensionless ratio of operating peak flux density to
+        // material saturation. Smaller is better (more headroom). The previous
+        // implementation used fabs(Bsat - Bpeak), which under min-max+invert
+        // *rewards* candidates that operate close to saturation - the opposite of
+        // engineering intent. Ratio Bpeak/Bsat preserves the "more headroom = higher
+        // normalized score" semantics correctly.
+        double bRatio = (magneticFluxDensitySaturation > 0)
+            ? (magneticFluxDensityPeak / magneticFluxDensitySaturation)
+            : 1.0;
+        scoring += bRatio;
 
         bool isSaturated = magneticFluxDensityPeak > magneticFluxDensitySaturation;
 
@@ -1859,7 +1868,10 @@ std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnet
             auto wire = magnetic->get_mutable_coil().resolve_wire(windingIndex);
             auto dcCurrentDensity = wire.calculate_dc_current_density(current) / magnetic->get_mutable_coil().get_functional_description()[windingIndex].get_number_parallels();
 
-            scoring += fabs(defaults.maximumCurrentDensity - dcCurrentDensity);
+            // DC current density scoring: ratio of actual to maximum allowed.
+            // Smaller is better (more headroom against thermal limit). See note on
+            // MagneticFilterSaturation for why fabs(max - actual) was wrong.
+            scoring += dcCurrentDensity / defaults.maximumCurrentDensity;
             if (dcCurrentDensity > defaults.maximumCurrentDensity) {
                 return {false, 0.0};
             }
@@ -1889,7 +1901,10 @@ std::pair<bool, double> MagneticFilterEffectiveCurrentDensity::evaluate_magnetic
             auto wire = magnetic->get_mutable_coil().resolve_wire(windingIndex);
             auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature()) / magnetic->get_mutable_coil().get_functional_description()[windingIndex].get_number_parallels();
 
-            scoring += fabs(defaults.maximumEffectiveCurrentDensity - effectiveCurrentDensity);
+            // Effective (AC+DC, temperature-corrected) current density scoring:
+            // ratio of actual to maximum allowed. Smaller is better. See note on
+            // MagneticFilterSaturation for the rationale.
+            scoring += effectiveCurrentDensity / defaults.maximumEffectiveCurrentDensity;
             if (effectiveCurrentDensity > defaults.maximumEffectiveCurrentDensity) {
                 return {false, 0.0};
             }
@@ -1905,44 +1920,71 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
     bool valid = true;
     double scoring = 0;
 
+    // Impedance scoring: dimensionless log-ratio with industry-standard dead band.
+    //
+    // For a "minimum impedance" requirement the part is invalid if Zact < Zreq at any
+    // frequency. Among valid parts we want to:
+    //   - reward parts that comfortably meet the requirement,
+    //   - not over-reward parts that grossly over-dimension (cost / size penalty),
+    //   - leave a tolerance band that absorbs typical CMC manufacturing tolerance
+    //     (~30%) plus a small design margin, so a "well-sized" part is not penalized.
+    //
+    // Per-frequency penalty:
+    //     dev_i = log10(max(Zact_i / Zreq_i, 1))   // 0 when under-spec (caught by validity)
+    //     pen_i = max(0, dev_i - log10(1 + DEAD_BAND))
+    // Filter score = mean over frequency points (then min-max normalized + inverted
+    // by normalize_scoring downstream).
+    //
+    // Dead band: 50% (factor 1.5) - covers typical ±25..30% impedance tolerance of
+    // common-mode chokes (Würth WE-CMB, TDK ACT, Murata DLW, EPCOS B82xxx) plus
+    // ~20% engineering headroom for temperature drift / aging. Tunable below.
+    constexpr double IMPEDANCE_DEAD_BAND = 0.50;
+    const double deadBandLog = std::log10(1.0 + IMPEDANCE_DEAD_BAND);
+
     if (inputs->get_design_requirements().get_minimum_impedance()) {
         auto impedanceRequirement = inputs->get_design_requirements().get_minimum_impedance().value();
         for (auto impedanceAtFrequency : impedanceRequirement) {
             auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, impedanceAtFrequency.get_frequency());
-            scoring += fabs(impedanceAtFrequency.get_impedance().get_magnitude() - abs(impedance));
+            double zReq = impedanceAtFrequency.get_impedance().get_magnitude();
+            double zAct = abs(impedance);
 
-            if (impedanceAtFrequency.get_impedance().get_magnitude() > abs(impedance)) {
+            if (zReq > zAct) {
                 valid = false;
             }
+
+            // Ratio is clamped to >= 1: under-spec parts are already invalidated above,
+            // so we only score over-dimensioning above the dead band.
+            double ratio = (zReq > 0) ? std::max(zAct / zReq, 1.0) : 1.0;
+            double dev = std::log10(ratio);
+            double penalty = std::max(0.0, dev - deadBandLog);
+            scoring += penalty;
         }
         scoring /= impedanceRequirement.size();
     }
-    if (inputs->get_operating_points().size() > 0) {
+
+    // Always emit the impedance output for any operating points so downstream UI
+    // has the simulated |Z|. We deliberately do NOT add this into `scoring`: there
+    // is no requirement here, and mixing 1/|Z| in arbitrary units corrupts the
+    // min-max normalization (kills monotonicity and frequency-fairness).
+    if (inputs->get_operating_points().size() > 0 && outputs != nullptr) {
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
             auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
             auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, operatingPoint.get_excitations_per_winding()[0].get_frequency());
-            scoring += 1.0 / abs(impedance);
             std::string name = magnetic->get_coil().get_functional_description()[0].get_name();
-                
-            if (outputs != nullptr) {
-                while (outputs->size() < operatingPointIndex + 1) {
-                    outputs->push_back(Outputs());
-                }
-                ImpedanceOutput impedanceOutput;
-                ComplexMatrixAtFrequency complexMatrixAtFrequency;
-                complexMatrixAtFrequency.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_frequency());
-                complexMatrixAtFrequency.get_mutable_magnitude()[name][name].set_nominal(abs(impedance));
-                std::vector<ComplexMatrixAtFrequency> impedanceMatrixPerFrequency;
-                impedanceMatrixPerFrequency.push_back(complexMatrixAtFrequency);
-                impedanceOutput.set_impedance_matrix(impedanceMatrixPerFrequency);
-                impedanceOutput.set_origin(ResultOrigin::SIMULATION);
-                (*outputs)[operatingPointIndex].set_impedance(impedanceOutput);
+
+            while (outputs->size() < operatingPointIndex + 1) {
+                outputs->push_back(Outputs());
             }
+            ImpedanceOutput impedanceOutput;
+            ComplexMatrixAtFrequency complexMatrixAtFrequency;
+            complexMatrixAtFrequency.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_frequency());
+            complexMatrixAtFrequency.get_mutable_magnitude()[name][name].set_nominal(abs(impedance));
+            std::vector<ComplexMatrixAtFrequency> impedanceMatrixPerFrequency;
+            impedanceMatrixPerFrequency.push_back(complexMatrixAtFrequency);
+            impedanceOutput.set_impedance_matrix(impedanceMatrixPerFrequency);
+            impedanceOutput.set_origin(ResultOrigin::SIMULATION);
+            (*outputs)[operatingPointIndex].set_impedance(impedanceOutput);
         }
-    }
-    else {
-        auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, defaults.measurementFrequency);
-        scoring += 1.0 / abs(impedance);
     }
 
     return {valid, scoring};
