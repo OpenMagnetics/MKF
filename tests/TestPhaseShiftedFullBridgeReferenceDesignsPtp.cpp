@@ -78,6 +78,11 @@ void run_ptp_gates(const RefDesignSpec& s) {
     if (!runner.is_available()) { WARN("ngspice not available"); return; }
 
     OpenMagnetics::Psfb psfb(build_fixture(s));
+    // PtP gates were tuned against the SW1 voltage-controlled-switch bridge
+    // (with snubbers and ZVS slew). Pin SW1 explicitly; otherwise the
+    // BEHAVIORAL_PULSE default would silently shift the iPri NRMSE and
+    // change wall_time gates.
+    psfb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH);
     auto req = psfb.process_design_requirements();
     std::vector<double> turnsRatios;
     for (auto& tr : req.get_turns_ratios())

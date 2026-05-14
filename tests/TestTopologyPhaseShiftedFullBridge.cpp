@@ -313,6 +313,11 @@ TEST_CASE("Test_Psfb_Waveform_Plotting", "[converter-model][psfb-topology][visua
 TEST_CASE("Test_Psfb_Spice_Netlist", "[converter-model][psfb-topology][spice]") {
     auto psfbJson = make_psfb_json();
     OpenMagnetics::Psfb psfb(psfbJson);
+    // Netlist string assertions in this test target the SW1 bridge form
+    // (SA/SB/SC/SD voltage-controlled switches). Pin the high-fidelity
+    // bridge model so the test isn't sensitive to the BEHAVIORAL_PULSE
+    // default introduced for ngspice WASM perf.
+    psfb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH);
     auto req = psfb.process_design_requirements();
 
     std::vector<double> turnsRatios;
@@ -637,6 +642,10 @@ TEST_CASE("Test_Psfb_PtP_AnalyticalVsNgspice", "[converter-model][psfb-topology]
 
     OpenMagnetics::Psfb psfb(j);
     psfb.set_num_periods_to_extract(1);
+    // Analytical model is calibrated against the SW1 voltage-controlled-switch
+    // bridge; pin SW1 mode so the 18 % NRMSE gate stays meaningful regardless
+    // of the BEHAVIORAL_PULSE default introduced for ngspice-WASM perf.
+    psfb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH);
 
     auto req = psfb.process_design_requirements();
     std::vector<double> tr;
@@ -728,6 +737,7 @@ TEST_CASE("Test_Psfb_Multiple_Outputs_PtP_Uniform",
 
     OpenMagnetics::Psfb psfb(j);
     psfb.set_num_periods_to_extract(1);
+    psfb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH);
     auto req = psfb.process_design_requirements();
     std::vector<double> tr;
     for (auto& t : req.get_turns_ratios()) tr.push_back(resolve_dimensional_values(t));
@@ -783,6 +793,7 @@ TEST_CASE("Test_Psfb_Multiple_Outputs_PtP_ModerateSpread",
 
     OpenMagnetics::Psfb psfb(j);
     psfb.set_num_periods_to_extract(1);
+    psfb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH);
     auto req = psfb.process_design_requirements();
     std::vector<double> tr;
     for (auto& t : req.get_turns_ratios()) tr.push_back(resolve_dimensional_values(t));

@@ -103,6 +103,7 @@ public:
     bool   get_last_is_ccm() const { return lastIsCcm; }
 
     MAS::Topologies topology_kind() const override { return MAS::Topologies::PUSH_PULL_CONVERTER; }
+    bool is_bridge_topology() const override { return true; }
 
     bool _assertErrors = false;
 

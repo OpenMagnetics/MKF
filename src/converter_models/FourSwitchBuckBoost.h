@@ -215,6 +215,7 @@ public:
     MAS::Topologies topology_kind() const override {
         return MAS::Topologies::FOUR_SWITCH_BUCK_BOOST_CONVERTER;
     }
+    bool is_bridge_topology() const override { return true; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int v) { numPeriodsToExtract = v; }

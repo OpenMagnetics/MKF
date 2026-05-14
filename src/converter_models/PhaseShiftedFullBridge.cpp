@@ -699,40 +699,96 @@ std::string Psfb::generate_ngspice_circuit(
     circuit << "* n=" << n << ", Lr=" << (Lr*1e6) << "uH, Lm=" << (Lm*1e6)
             << "uH, Lo=" << (Lo*1e6) << "uH, rect=" << static_cast<int>(rectType) << "\n\n";
 
-    circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    circuit << ".model DIDEAL D(IS=1e-12 RS=0.05)\n\n";
+    const auto bridgeMode = spice_config().bridgeSimulationMode;
+
+    circuit << ".model DIDEAL D(IS=1e-12 RS=0.05)\n";
+    if (bridgeMode == BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH) {
+        circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
+    }
+    circuit << "\n";
 
     circuit << "Vdc vin_dc 0 " << Vin << "\n\n";
 
-    // Leading leg (QA-QB): 50% duty at Fs.
-    circuit << "Vpwm_A pwm_A 0 PULSE(0 5 0 10n 10n "
-            << std::scientific << tOn << " " << period << std::fixed << ")\n";
-    circuit << "Vpwm_B pwm_B 0 PULSE(0 5 "
-            << std::scientific << halfPeriod << std::fixed
-            << " 10n 10n "
-            << std::scientific << tOn << " " << period << std::fixed << ")\n";
-    circuit << "SA vin_dc mid_A pwm_A 0 SW1\n";
-    circuit << "DA 0 mid_A DIDEAL\n";
-    circuit << "SB mid_A 0 pwm_B 0 SW1\n";
-    circuit << "DB mid_A vin_dc DIDEAL\n";
-    circuit << "Rsnub_QA vin_dc mid_A 1k\nCsnub_QA vin_dc mid_A 1n\n";
-    circuit << "Rsnub_QB mid_A 0 1k\nCsnub_QB mid_A 0 1n\n\n";
+    if (bridgeMode == BridgeSimulationMode::BEHAVIORAL_PULSE) {
+        // -----------------------------------------------------------------
+        // Behavioral PULSE bridge — fast path (MagneticAdviser default).
+        // Each leg midpoint is driven directly by an independent voltage
+        // source PULSE(0 → Vin → 0). Transition edges of length deadTime
+        // approximate the ZVS resonant slew that SW1 mode would resolve at
+        // sub-step granularity. No SW1 / body diodes / snubbers — saves
+        // ~10× ngspice runtime in WASM (root cause of MKF M2).
+        //
+        // Pattern (same for both legs, lagging leg shifted by phaseDelay):
+        //   [0, deadTime]              : 0 → Vin ramp (centered slew)
+        //   [deadTime, halfPeriod-deadTime]: Vin
+        //   [halfPeriod-deadTime, halfPeriod]: Vin → 0 ramp
+        //   [halfPeriod, period]       : 0
+        // The plateau width = halfPeriod - 2*deadTime ≈ tOn - deadTime
+        // (slightly narrower than the SW1 conduction interval, but the
+        // primary current waveform is dominated by Vab = leg_a - leg_c
+        // which has the same fundamental as SW1 mode for power transfer).
+        const double slew = deadTime;
+        if (slew <= 0.0) {
+            throw std::runtime_error(
+                "Psfb BEHAVIORAL_PULSE bridge: computedDeadTime must be > 0 "
+                "to define the leg-voltage slew interval. Got "
+                + std::to_string(slew));
+        }
+        const double pulseWidth = halfPeriod - 2.0 * slew;
+        if (pulseWidth <= 0.0) {
+            throw std::runtime_error(
+                "Psfb BEHAVIORAL_PULSE bridge: deadTime ("
+                + std::to_string(slew) + " s) is too large for halfPeriod ("
+                + std::to_string(halfPeriod) + " s) — pulseWidth would be "
+                + std::to_string(pulseWidth) + " s. "
+                "Reduce dead time or increase switching period.");
+        }
+        circuit << "Vleg_A mid_A 0 PULSE(0 " << Vin << " 0 "
+                << std::scientific << slew << " " << slew
+                << " " << pulseWidth << " " << period << std::fixed << ")\n";
+        circuit << "Vleg_C mid_C 0 PULSE(0 " << Vin << " "
+                << std::scientific << phaseDelay << " " << slew << " " << slew
+                << " " << pulseWidth << " " << period << std::fixed << ")\n\n";
+    }
+    else {
+        // -----------------------------------------------------------------
+        // Voltage-controlled-switch bridge — high-fidelity path.
+        // Models the four MOSFETs as SW1 elements with antiparallel body
+        // diodes and RC snubbers. Captures hard-switching and ZVS detail
+        // but ngspice forces fine sub-step refinement around every
+        // threshold crossing → ~10× slower in WASM. Use for PtP reference
+        // designs and switching-loss validation.
+        // -----------------------------------------------------------------
+        // Leading leg (QA-QB): 50% duty at Fs.
+        circuit << "Vpwm_A pwm_A 0 PULSE(0 5 0 10n 10n "
+                << std::scientific << tOn << " " << period << std::fixed << ")\n";
+        circuit << "Vpwm_B pwm_B 0 PULSE(0 5 "
+                << std::scientific << halfPeriod << std::fixed
+                << " 10n 10n "
+                << std::scientific << tOn << " " << period << std::fixed << ")\n";
+        circuit << "SA vin_dc mid_A pwm_A 0 SW1\n";
+        circuit << "DA 0 mid_A DIDEAL\n";
+        circuit << "SB mid_A 0 pwm_B 0 SW1\n";
+        circuit << "DB mid_A vin_dc DIDEAL\n";
+        circuit << "Rsnub_QA vin_dc mid_A 1k\nCsnub_QA vin_dc mid_A 1n\n";
+        circuit << "Rsnub_QB mid_A 0 1k\nCsnub_QB mid_A 0 1n\n\n";
 
-    // Lagging leg (QC-QD): phase-shifted by phaseDelay.
-    circuit << "Vpwm_C pwm_C 0 PULSE(0 5 "
-            << std::scientific << phaseDelay << std::fixed
-            << " 10n 10n "
-            << std::scientific << tOn << " " << period << std::fixed << ")\n";
-    circuit << "Vpwm_D pwm_D 0 PULSE(0 5 "
-            << std::scientific << (halfPeriod + phaseDelay) << std::fixed
-            << " 10n 10n "
-            << std::scientific << tOn << " " << period << std::fixed << ")\n";
-    circuit << "SC vin_dc mid_C pwm_C 0 SW1\n";
-    circuit << "DC 0 mid_C DIDEAL\n";
-    circuit << "SD mid_C 0 pwm_D 0 SW1\n";
-    circuit << "DD mid_C vin_dc DIDEAL\n";
-    circuit << "Rsnub_QC vin_dc mid_C 1k\nCsnub_QC vin_dc mid_C 1n\n";
-    circuit << "Rsnub_QD mid_C 0 1k\nCsnub_QD mid_C 0 1n\n\n";
+        // Lagging leg (QC-QD): phase-shifted by phaseDelay.
+        circuit << "Vpwm_C pwm_C 0 PULSE(0 5 "
+                << std::scientific << phaseDelay << std::fixed
+                << " 10n 10n "
+                << std::scientific << tOn << " " << period << std::fixed << ")\n";
+        circuit << "Vpwm_D pwm_D 0 PULSE(0 5 "
+                << std::scientific << (halfPeriod + phaseDelay) << std::fixed
+                << " 10n 10n "
+                << std::scientific << tOn << " " << period << std::fixed << ")\n";
+        circuit << "SC vin_dc mid_C pwm_C 0 SW1\n";
+        circuit << "DC 0 mid_C DIDEAL\n";
+        circuit << "SD mid_C 0 pwm_D 0 SW1\n";
+        circuit << "DD mid_C vin_dc DIDEAL\n";
+        circuit << "Rsnub_QC vin_dc mid_C 1k\nCsnub_QC vin_dc mid_C 1n\n";
+        circuit << "Rsnub_QD mid_C 0 1k\nCsnub_QD mid_C 0 1n\n\n";
+    }
 
     // Primary current sense + differential bridge output (Vab = mid_A - mid_C).
     circuit << "Vpri_sense mid_A pri_lr 0\n";

@@ -228,6 +228,8 @@ public:
     AsymmetricHalfBridge(const json& j);
     AsymmetricHalfBridge() = default;
 
+    bool is_bridge_topology() const override { return true; }
+
     // ---- Boilerplate accessors (Guide §2) ----
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { numPeriodsToExtract = value; }

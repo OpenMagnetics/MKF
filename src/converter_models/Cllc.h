@@ -67,6 +67,8 @@ public:
     CllcConverter(const json& j);
     CllcConverter() {};
 
+    bool is_bridge_topology() const override { return true; }
+
     // --- Accessors for simulation parameters ---
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }

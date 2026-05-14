@@ -203,6 +203,8 @@ public:
     Pshb(const json& j);
     Pshb() {};
 
+    bool is_bridge_topology() const override { return true; }
+
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { numPeriodsToExtract = value; }
     int get_num_steady_state_periods() const { return numSteadyStatePeriods; }

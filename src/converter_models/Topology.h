@@ -99,6 +99,38 @@ enum class ExtraComponentsMode {
 };
 
 /**
+ * @brief How a topology models its switching elements in ngspice.
+ *
+ * BEHAVIORAL_PULSE — the bridge midpoint(s) are driven by `Vsource ... PULSE(...)`
+ *   independent voltage sources. The solver doesn't have to refine timesteps
+ *   around switching events because the transition times are explicitly given
+ *   by `tr`/`tf`. Cheap, fast, but loses MOSFET-level fidelity (no Coss/ZVS,
+ *   no body-diode conduction during dead time, no hard-switching loss). This
+ *   is correct for *bridge* topologies (where the switches set node voltages
+ *   that the load follows) but invalid for non-bridge topologies (Buck, Boost,
+ *   Flyback, etc.) whose switches *route* inductor current — replacing them
+ *   with a forced voltage source would short the freewheel diode.
+ *
+ * VOLTAGE_CONTROLLED_SWITCH — emits real `SW1 SW VT=... VH=... RON=... ROFF=...`
+ *   voltage-controlled switch elements with antiparallel body diodes and RC
+ *   snubbers. ngspice forces fine sub-step refinement around each switching
+ *   transition to track threshold + hysteresis, capturing realistic switching
+ *   loss, ZVS resonant transitions, and body-diode conduction. Required for
+ *   non-bridge topologies; selectable for bridge topologies when device-level
+ *   fidelity matters (PtP reference designs, switching-loss validation).
+ *
+ * Topologies expose this via `Topology::set_bridge_simulation_mode()`. The
+ * default for bridge topologies is BEHAVIORAL_PULSE (fast); non-bridge
+ * topologies always use VOLTAGE_CONTROLLED_SWITCH and throw if PULSE is set
+ * on them — there is no physically-valid PULSE replacement for a series
+ * switch routing inductor current.
+ */
+enum class BridgeSimulationMode {
+    BEHAVIORAL_PULSE,
+    VOLTAGE_CONTROLLED_SWITCH
+};
+
+/**
  * @brief Configuration knobs for ngspice circuit generation.
  *
  * Centralizes every value that previously lived as a magic number inside
@@ -121,6 +153,17 @@ enum class ExtraComponentsMode {
  *   circuit << ".model SW1 SW VT=" << cfg.swModelVT << ...;
  */
 struct SpiceSimulationConfig {
+    // ---- Bridge / switching-element model ----
+    // For bridge topologies (LLC, DAB, AHB, PushPull, PSFB, PSHB, ACF, Cllc,
+    // Cllllc, FSBB, Weinberg) this selects between the fast PULSE-source
+    // bridge and the high-fidelity SW1 voltage-controlled-switch bridge.
+    // Default is BEHAVIORAL_PULSE (the fast path that the MagneticAdviser
+    // wants). Non-bridge topologies ignore this field; calling
+    // `set_bridge_simulation_mode(BEHAVIORAL_PULSE)` on a non-bridge will
+    // throw, because there is no physically-valid PULSE replacement for a
+    // series switch that routes inductor current.
+    BridgeSimulationMode bridgeSimulationMode = BridgeSimulationMode::BEHAVIORAL_PULSE;
+
     // ---- Drive / switch ----
     double pwmHigh   = 5.0;       // PULSE high-level [V]
     double pwmRise   = 10e-9;     // PULSE rise time [s]
@@ -205,6 +248,46 @@ public:
     void set_spice_config(SpiceSimulationConfig cfg) { _spiceOverride = std::move(cfg); }
     void clear_spice_config() { _spiceOverride.reset(); }
     bool has_spice_config_override() const { return _spiceOverride.has_value(); }
+
+    /**
+     * @brief True for converters whose switches *set node voltages* (the
+     *        load current is determined elsewhere — typically by a
+     *        transformer + downstream rectifier). Bridge topologies
+     *        support both BEHAVIORAL_PULSE and VOLTAGE_CONTROLLED_SWITCH
+     *        bridge models.
+     *
+     *        False (default) for converters whose switches *route*
+     *        inductor current (Buck, Boost, Flyback, Cuk, Sepic, Zeta,
+     *        IsolatedBuck/BB, SSF, TSF, FSBB-as-buck-boost). These can
+     *        only use VOLTAGE_CONTROLLED_SWITCH; a forced PULSE source
+     *        would short the freewheel diode and produce wrong current
+     *        waveforms.
+     */
+    virtual bool is_bridge_topology() const { return false; }
+
+    /**
+     * @brief Set the bridge model (PULSE vs SW1) on this topology.
+     *        Convenience wrapper that mutates only the
+     *        `bridgeSimulationMode` field of the active spice config,
+     *        leaving every other knob at its registered default. Throws
+     *        if BEHAVIORAL_PULSE is requested on a non-bridge topology.
+     */
+    void set_bridge_simulation_mode(BridgeSimulationMode mode) {
+        if (!is_bridge_topology() && mode == BridgeSimulationMode::BEHAVIORAL_PULSE) {
+            throw std::runtime_error(
+                "BehavioralPulse bridge model is not valid for this "
+                "non-bridge topology — its switch routes inductor current "
+                "and cannot be replaced by a forced voltage source. Use "
+                "VOLTAGE_CONTROLLED_SWITCH instead.");
+        }
+        SpiceSimulationConfig cfg = spice_config();
+        cfg.bridgeSimulationMode = mode;
+        _spiceOverride = std::move(cfg);
+    }
+
+    BridgeSimulationMode get_bridge_simulation_mode() const {
+        return spice_config().bridgeSimulationMode;
+    }
 
 
     /**

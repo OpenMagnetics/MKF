@@ -77,6 +77,8 @@ public:
     Llc(const json& j);
     Llc() {};
 
+    bool is_bridge_topology() const override { return true; }
+
     // Simulation tuning ──────────────────────────────────────
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }

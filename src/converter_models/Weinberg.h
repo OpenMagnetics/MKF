@@ -197,6 +197,7 @@ public:
     Weinberg() {};
 
     MAS::Topologies topology_kind() const override { return MAS::Topologies::WEINBERG_CONVERTER; }
+    bool is_bridge_topology() const override { return true; }
 
     int get_num_periods_to_extract() const { return numPeriodsToExtract; }
     void set_num_periods_to_extract(int value) { this->numPeriodsToExtract = value; }
