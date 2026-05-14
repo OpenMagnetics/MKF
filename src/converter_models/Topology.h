@@ -153,17 +153,6 @@ enum class BridgeSimulationMode {
  *   circuit << ".model SW1 SW VT=" << cfg.swModelVT << ...;
  */
 struct SpiceSimulationConfig {
-    // ---- Bridge / switching-element model ----
-    // For bridge topologies (LLC, DAB, AHB, PushPull, PSFB, PSHB, ACF, Cllc,
-    // Cllllc, FSBB, Weinberg) this selects between the fast PULSE-source
-    // bridge and the high-fidelity SW1 voltage-controlled-switch bridge.
-    // Default is BEHAVIORAL_PULSE (the fast path that the MagneticAdviser
-    // wants). Non-bridge topologies ignore this field; calling
-    // `set_bridge_simulation_mode(BEHAVIORAL_PULSE)` on a non-bridge will
-    // throw, because there is no physically-valid PULSE replacement for a
-    // series switch that routes inductor current.
-    BridgeSimulationMode bridgeSimulationMode = BridgeSimulationMode::BEHAVIORAL_PULSE;
-
     // ---- Drive / switch ----
     double pwmHigh   = 5.0;       // PULSE high-level [V]
     double pwmRise   = 10e-9;     // PULSE rise time [s]
@@ -221,6 +210,13 @@ public:
 
 private:
     std::optional<SpiceSimulationConfig> _spiceOverride;
+    // Bridge model is intentionally an independent member rather than a
+    // field of SpiceSimulationConfig: the bridge-mode selector applies to
+    // any bridge topology even when no per-topology spice-config default
+    // is registered (LLC, PSFB, PSHB, ACF, AHB, CLLC, CLLLLC currently
+    // have no entry in spice_simulation_defaults() and would throw if we
+    // had to round-trip through spice_config()).
+    BridgeSimulationMode _bridgeMode = BridgeSimulationMode::BEHAVIORAL_PULSE;
 
 public:
     /**
@@ -266,11 +262,10 @@ public:
     virtual bool is_bridge_topology() const { return false; }
 
     /**
-     * @brief Set the bridge model (PULSE vs SW1) on this topology.
-     *        Convenience wrapper that mutates only the
-     *        `bridgeSimulationMode` field of the active spice config,
-     *        leaving every other knob at its registered default. Throws
+     * @brief Set the bridge model (PULSE vs SW1) on this topology. Throws
      *        if BEHAVIORAL_PULSE is requested on a non-bridge topology.
+     *        The selector is stored in a dedicated member, not in
+     *        SpiceSimulationConfig — see `_bridgeMode` above for why.
      */
     void set_bridge_simulation_mode(BridgeSimulationMode mode) {
         if (!is_bridge_topology() && mode == BridgeSimulationMode::BEHAVIORAL_PULSE) {
@@ -280,13 +275,11 @@ public:
                 "and cannot be replaced by a forced voltage source. Use "
                 "VOLTAGE_CONTROLLED_SWITCH instead.");
         }
-        SpiceSimulationConfig cfg = spice_config();
-        cfg.bridgeSimulationMode = mode;
-        _spiceOverride = std::move(cfg);
+        _bridgeMode = mode;
     }
 
     BridgeSimulationMode get_bridge_simulation_mode() const {
-        return spice_config().bridgeSimulationMode;
+        return _bridgeMode;
     }
 
 

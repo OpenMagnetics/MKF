@@ -624,19 +624,9 @@ std::string Pshb::generate_ngspice_circuit(
     circuit << "* and 'b' (split-cap midpoint), so vab swings +Vin/2 / 0 / -Vin/2 / 0.\n";
     circuit << "* Reference: Pinheiro & Barbi, IEEE TPE 8(4) 1993; Barbi & Pottker, Springer 2018.\n\n";
 
-    circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
-    circuit << ".model DIDEAL D(IS=1e-12 RS=0.05 BV=1000 IBV=1e-12)\n\n";
+    const auto bridgeMode = get_bridge_simulation_mode();
 
-    circuit << "Vdc vin_dc 0 " << Vin << "\n\n";
-
-    // Split-capacitor midpoint — provides Vin/2 reference for the NPC clamp diodes
-    // and the second terminal of the transformer primary AC interface (point 'b').
-    circuit << "C_split_hi vin_dc mid_cap 470u ic=" << (Vin/2.0) << "\n";
-    circuit << "C_split_lo mid_cap 0 470u ic=" << (Vin/2.0) << "\n\n";
-
-    // ============================================================
-    // PWM SCHEME — Pinheiro-Barbi 1993 / Barbi & Pottker 2018, ch. 9
-    // ============================================================
+    // PWM SCHEME — Pinheiro-Barbi 1993 / Barbi & Pottker 2018, ch. 9.
     // Single 3-level NPC leg between vin_dc and 0:
     //
     //   vin_dc --[S1]-- nH --[S2]-- a --[S3]-- nL --[S4]-- 0
@@ -658,47 +648,115 @@ std::string Pshb::generate_ngspice_circuit(
     //   [Thalf,     Thalf+t_act]        : S3+S4 on  → a = 0          (active −)
     //   [Thalf+t_act, Ts]               : only S3 on → a = Vin/2     (clamp via DC1)
     //
-    // Therefore vab = a − mid_cap = +Vin/2, 0, −Vin/2, 0 — matches the
-    // analytical model (Vhb = Vin/2, Deff active fraction per half-cycle).
-    // The "phase-shift" name is historical (PSFB-derived); modulation is
-    // controlled directly by Deff (no leg-to-leg phase delay).
-    // ============================================================
-    double t_act = Deff * halfPeriod;
+    // vab = a − mid_cap = +Vin/2, 0, −Vin/2, 0 — matches the analytical
+    // model (Vhb = Vin/2, Deff active fraction per half-cycle).
+    const double t_act = Deff * halfPeriod;
 
-    auto pulse = [&](const std::string& name, double delay, double width) {
-        circuit << "V" << name << " " << name << " 0 PULSE(0 5 "
-                << std::scientific << delay << " 10n 10n "
-                << width << " " << period << std::fixed << ")\n";
-    };
-
-    pulse("pwm_S1", 0.0,        t_act);          // outer top (S1)
-    pulse("pwm_S2", 0.0,        halfPeriod);     // inner top (S2): first half
-    pulse("pwm_S3", halfPeriod, halfPeriod);     // inner bot (S3): second half
-    pulse("pwm_S4", halfPeriod, t_act);          // outer bot (S4)
+    circuit << ".model DIDEAL D(IS=1e-12 RS=0.05 BV=1000 IBV=1e-12)\n";
+    if (bridgeMode == BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH) {
+        circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
+    }
     circuit << "\n";
 
-    // ============================================================
-    // PRIMARY BRIDGE — single 3-level NPC leg
-    // 4 S-switches with antiparallel DIDEAL body diodes, 2 NPC clamp
-    // diodes (DC1, DC2), and per-switch 1k/1n RC snubbers (same recipe
-    // as DAB/PSFB for ngspice convergence).
-    // ============================================================
-    circuit << "S1 vin_dc nH pwm_S1 0 SW1\n";
-    circuit << "D1 nH vin_dc DIDEAL\n";
-    circuit << "S2 nH bridge_a pwm_S2 0 SW1\n";
-    circuit << "D2 bridge_a nH DIDEAL\n";
-    circuit << "S3 bridge_a nL pwm_S3 0 SW1\n";
-    circuit << "D3 nL bridge_a DIDEAL\n";
-    circuit << "S4 nL 0 pwm_S4 0 SW1\n";
-    circuit << "D4 0 nL DIDEAL\n";
-    // NPC clamp diodes
-    circuit << "DC1 mid_cap nH DIDEAL\n";
-    circuit << "DC2 nL mid_cap DIDEAL\n";
-    // RC snubbers across each switch
-    circuit << "Rsnub_S1 vin_dc nH 1k\nCsnub_S1 vin_dc nH 1n\n";
-    circuit << "Rsnub_S2 nH bridge_a 1k\nCsnub_S2 nH bridge_a 1n\n";
-    circuit << "Rsnub_S3 bridge_a nL 1k\nCsnub_S3 bridge_a nL 1n\n";
-    circuit << "Rsnub_S4 nL 0 1k\nCsnub_S4 nL 0 1n\n\n";
+    circuit << "Vdc vin_dc 0 " << Vin << "\n\n";
+
+    if (bridgeMode == BridgeSimulationMode::BEHAVIORAL_PULSE) {
+        // -----------------------------------------------------------------
+        // Behavioral PWL bridge — fast path (MagneticAdviser default).
+        //
+        // The 3-level NPC waveform at point 'a' is:
+        //   [0,             t_act]              : Vin       (S1+S2 active +)
+        //   [t_act,         halfPeriod]         : Vin/2     (clamp via DC2)
+        //   [halfPeriod,    halfPeriod+t_act]   : 0         (S3+S4 active −)
+        //   [halfPeriod+t_act, period]          : Vin/2     (clamp via DC1)
+        // We emit this as a piecewise-linear independent V-source on
+        // bridge_a with deadTime-length slew between levels (approximating
+        // the ZVS resonant transitions that SW1 mode would resolve at
+        // sub-step granularity), and we hard-pin mid_cap to Vin/2 (the
+        // analytical model already treats the split-cap midpoint as a
+        // stiff reference, so no information is lost). No SW1 / NPC
+        // diodes / snubbers / split-cap dynamics — saves ~10× ngspice
+        // runtime in WASM (root cause of MKF M2).
+        const double slew = computedDeadTime;
+        if (slew <= 0.0) {
+            throw std::runtime_error(
+                "Pshb BEHAVIORAL_PULSE bridge: computedDeadTime must be > 0 "
+                "to define the leg-voltage slew interval. Got "
+                + std::to_string(slew));
+        }
+        if (2.0 * slew >= t_act) {
+            throw std::runtime_error(
+                "Pshb BEHAVIORAL_PULSE bridge: 2*deadTime ("
+                + std::to_string(2.0 * slew)
+                + " s) must be < t_act ("
+                + std::to_string(t_act)
+                + " s). Reduce dead time or increase Deff.");
+        }
+        if (2.0 * slew >= (halfPeriod - t_act)) {
+            throw std::runtime_error(
+                "Pshb BEHAVIORAL_PULSE bridge: 2*deadTime ("
+                + std::to_string(2.0 * slew)
+                + " s) must be < (halfPeriod - t_act) ("
+                + std::to_string(halfPeriod - t_act)
+                + " s). Reduce dead time or decrease Deff.");
+        }
+
+        const double halfVin = 0.5 * Vin;
+        circuit << "Vmid_cap mid_cap 0 " << halfVin << "\n";
+
+        // Bridge_a PWL pattern (one full period). Levels: V_high=Vin,
+        // V_clamp=Vin/2, V_low=0. Transitions of width = slew bracket
+        // each level change, centered on the conduction-state change.
+        circuit << "Vbridge_a bridge_a 0 PWL("
+                << std::scientific
+                << 0.0                       << " " << halfVin << " "
+                << slew                      << " " << Vin     << " "
+                << t_act                     << " " << Vin     << " "
+                << (t_act + slew)            << " " << halfVin << " "
+                << halfPeriod                << " " << halfVin << " "
+                << (halfPeriod + slew)       << " " << 0.0     << " "
+                << (halfPeriod + t_act)      << " " << 0.0     << " "
+                << (halfPeriod + t_act + slew) << " " << halfVin << " "
+                << period                    << " " << halfVin
+                << ") R=0" << std::fixed << "\n\n";
+    }
+    else {
+        // -----------------------------------------------------------------
+        // Voltage-controlled-switch bridge — high-fidelity path.
+        // -----------------------------------------------------------------
+        // Split-capacitor midpoint — provides Vin/2 reference for the NPC
+        // clamp diodes and the second terminal of the transformer primary
+        // AC interface (point 'b').
+        circuit << "C_split_hi vin_dc mid_cap 470u ic=" << (Vin/2.0) << "\n";
+        circuit << "C_split_lo mid_cap 0 470u ic=" << (Vin/2.0) << "\n\n";
+
+        auto pulse = [&](const std::string& name, double delay, double width) {
+            circuit << "V" << name << " " << name << " 0 PULSE(0 5 "
+                    << std::scientific << delay << " 10n 10n "
+                    << width << " " << period << std::fixed << ")\n";
+        };
+
+        pulse("pwm_S1", 0.0,        t_act);          // outer top (S1)
+        pulse("pwm_S2", 0.0,        halfPeriod);     // inner top (S2): first half
+        pulse("pwm_S3", halfPeriod, halfPeriod);     // inner bot (S3): second half
+        pulse("pwm_S4", halfPeriod, t_act);          // outer bot (S4)
+        circuit << "\n";
+
+        circuit << "S1 vin_dc nH pwm_S1 0 SW1\n";
+        circuit << "D1 nH vin_dc DIDEAL\n";
+        circuit << "S2 nH bridge_a pwm_S2 0 SW1\n";
+        circuit << "D2 bridge_a nH DIDEAL\n";
+        circuit << "S3 bridge_a nL pwm_S3 0 SW1\n";
+        circuit << "D3 nL bridge_a DIDEAL\n";
+        circuit << "S4 nL 0 pwm_S4 0 SW1\n";
+        circuit << "D4 0 nL DIDEAL\n";
+        circuit << "DC1 mid_cap nH DIDEAL\n";
+        circuit << "DC2 nL mid_cap DIDEAL\n";
+        circuit << "Rsnub_S1 vin_dc nH 1k\nCsnub_S1 vin_dc nH 1n\n";
+        circuit << "Rsnub_S2 nH bridge_a 1k\nCsnub_S2 nH bridge_a 1n\n";
+        circuit << "Rsnub_S3 bridge_a nL 1k\nCsnub_S3 bridge_a nL 1n\n";
+        circuit << "Rsnub_S4 nL 0 1k\nCsnub_S4 nL 0 1n\n\n";
+    }
 
     // Primary current sense (in series with the transformer leg) and
     // differential bridge-output probe vab = v(bridge_a) − v(mid_cap).

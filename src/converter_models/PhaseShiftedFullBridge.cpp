@@ -699,7 +699,7 @@ std::string Psfb::generate_ngspice_circuit(
     circuit << "* n=" << n << ", Lr=" << (Lr*1e6) << "uH, Lm=" << (Lm*1e6)
             << "uH, Lo=" << (Lo*1e6) << "uH, rect=" << static_cast<int>(rectType) << "\n\n";
 
-    const auto bridgeMode = spice_config().bridgeSimulationMode;
+    const auto bridgeMode = get_bridge_simulation_mode();
 
     circuit << ".model DIDEAL D(IS=1e-12 RS=0.05)\n";
     if (bridgeMode == BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH) {

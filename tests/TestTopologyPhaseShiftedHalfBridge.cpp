@@ -331,6 +331,10 @@ TEST_CASE("Test_Pshb_Waveform_Plotting", "[converter-model][pshb-topology][visua
 TEST_CASE("Test_Pshb_Spice_Netlist", "[converter-model][pshb-topology][spice]") {
     auto pshbJson = make_pshb_json();
     OpenMagnetics::Pshb pshb(pshbJson);
+    // Netlist string assertions in this test target the SW1 + NPC clamp
+    // form (S1..S4, DC1, DC2). Pin SW1 mode so the test isn't sensitive
+    // to the BEHAVIORAL_PULSE default introduced for ngspice WASM perf.
+    pshb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH);
     auto req = pshb.process_design_requirements();
 
     std::vector<double> turnsRatios;
@@ -662,6 +666,10 @@ TEST_CASE("Test_Pshb_PtP_AnalyticalVsNgspice",
     j["seriesInductance"] = 5e-6;
     OpenMagnetics::Pshb pshb(j);
     pshb.set_num_periods_to_extract(1);
+    // Analytical model is calibrated against the SW1 + NPC clamp bridge.
+    // Pin SW1 mode so the PtP NRMSE gate stays meaningful regardless of
+    // the BEHAVIORAL_PULSE default.
+    pshb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH);
 
     auto req = pshb.process_design_requirements();
     std::vector<double> tr;

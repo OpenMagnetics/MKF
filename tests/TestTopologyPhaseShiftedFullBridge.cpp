@@ -683,6 +683,10 @@ TEST_CASE("Test_Psfb_PtP_AnalyticalVsNgspice", "[converter-model][psfb-topology]
 TEST_CASE("Test_Psfb_SpiceNetlistRobustness", "[converter-model][psfb-topology][spice]") {
     auto j = make_psfb_json();
     OpenMagnetics::Psfb psfb(j);
+    // Test asserts SW1-mode artifacts (snubbers); pin the high-fidelity
+    // bridge so the assertions stay valid under the BEHAVIORAL_PULSE
+    // default.
+    psfb.set_bridge_simulation_mode(OpenMagnetics::BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH);
     auto req = psfb.process_design_requirements();
     std::vector<double> tr;
     for (auto& t : req.get_turns_ratios()) tr.push_back(resolve_dimensional_values(t));
