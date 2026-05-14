@@ -526,6 +526,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogueMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
 
+    // Clear the process-global _scorings map so stale entries from previous adviser
+    // calls (same process, same catalog) do not pollute this run's min/max
+    // normalization. Without this, top scores never reach 1.0 and identical inputs
+    // can produce different rankings between runs.
+    clear_scoring();
+
     load_filter_flow(filterFlow, catalogueMagneticsWithInputs[0].get_inputs());
     std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;
     std::vector<MagneticFilterOperation> nonStrictlyRequiredFilterFlow;
@@ -583,11 +589,24 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
         bool valid = true;
-        for (auto filterConfiguration : filterFlow) {
+        // Iterate only the non-strict filters here. The strict ones were already
+        // evaluated and scored in the previous loop; re-running them is wasted work
+        // (and ~2x slowdown for filter flows dominated by strict filters such as CMC).
+        // Re-running is otherwise harmless because add_scoring overwrites by key.
+        for (auto filterConfiguration : nonStrictlyRequiredFilterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
-        
+
             try {
-                auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
+                // Loop B is intentionally score-only: the per-filter `valid` flag is
+                // discarded for non-strict filters. We rely on the outer `valid`
+                // staying true so this magnetic survives into `validMas`.
+                //
+                // Do NOT change this to `valid &= filterValid` without also handling
+                // the case where every part is rejected: the empty-validMas branch
+                // below recurses with `strict=false`, and a non-strict filter that
+                // still rejects everything would recurse forever and stack-overflow.
+                auto [filterValid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
+                (void)filterValid;
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
             }
             catch (...) {
