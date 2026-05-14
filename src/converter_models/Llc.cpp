@@ -1480,24 +1480,43 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
 Inputs AdvancedLlc::process() {
     auto designRequirements = process_design_requirements();
 
-    // Use desiredTurnsRatios if provided, otherwise fall back to computed values
+    // Reuse the merged DR's turns ratios and magnetizing inductance for
+    // operating-point calculation (process_design_requirements() has
+    // already applied the desired* overrides).
+    std::vector<double> turnsRatios;
+    for (const auto& tr : designRequirements.get_turns_ratios()) {
+        turnsRatios.push_back(resolve_dimensional_values(tr));
+    }
+    if (turnsRatios.empty()) {
+        throw std::runtime_error("LLC: no turns ratios available (neither desired nor computed)");
+    }
+    double Lm = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
+
+    auto ops = process_operating_points(turnsRatios, Lm);
+    Inputs inputs;
+    inputs.set_design_requirements(designRequirements);
+    inputs.set_operating_points(ops);
+    return inputs;
+}
+
+DesignRequirements AdvancedLlc::process_design_requirements() {
+    // Issue M1: chain to parent PDR for resonant-tank derivation and
+    // topology defaults, then override turns ratios and magnetizing
+    // inductance with desired* values when provided.
+    auto designRequirements = Llc::process_design_requirements();
+
     std::vector<double> turnsRatios = desiredTurnsRatios;
     if (turnsRatios.empty()) {
         for (const auto& tr : designRequirements.get_turns_ratios()) {
             turnsRatios.push_back(resolve_dimensional_values(tr));
         }
     }
-    if (turnsRatios.empty()) {
-        throw std::runtime_error("LLC: no turns ratios available (neither desired nor computed)");
-    }
-
     designRequirements.get_mutable_turns_ratios().clear();
     for (auto n : turnsRatios) {
         DimensionWithTolerance nTol; nTol.set_nominal(n);
         designRequirements.get_mutable_turns_ratios().push_back(nTol);
     }
 
-    // Use desiredMagnetizingInductance if set (> 0), otherwise fall back to computed value
     double Lm = desiredMagnetizingInductance;
     if (Lm <= 0) {
         Lm = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
@@ -1505,11 +1524,7 @@ Inputs AdvancedLlc::process() {
     DimensionWithTolerance LmTol; LmTol.set_nominal(Lm);
     designRequirements.set_magnetizing_inductance(LmTol);
 
-    auto ops = process_operating_points(turnsRatios, Lm);
-    Inputs inputs;
-    inputs.set_design_requirements(designRequirements);
-    inputs.set_operating_points(ops);
-    return inputs;
+    return designRequirements;
 }
 
 std::vector<std::variant<Inputs, CAS::Inputs>> Llc::get_extra_components_inputs(

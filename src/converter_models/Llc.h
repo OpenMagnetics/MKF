@@ -183,6 +183,12 @@ public:
 
     Inputs process();
 
+    // Issue M1: chain to Llc::process_design_requirements() then override
+    // turns ratios and magnetizing inductance with desired* values when
+    // provided. Without this override, callers that build DR through
+    // process_design_requirements() see the parent's auto-sized values.
+    DesignRequirements process_design_requirements() override;
+
     const double& get_desired_magnetizing_inductance() const { return desiredMagnetizingInductance; }
     void set_desired_magnetizing_inductance(const double& value) { this->desiredMagnetizingInductance = value; }
 
