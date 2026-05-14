@@ -269,7 +269,21 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     size_t whileIteration = 0;
     const size_t maxWhileIterations = 2;  // Limit exponential growth
     const size_t maxEvaluatedCores = 40;  // OPTIMIZATION: Balanced - 40 cores to capture variety including medium-sized
-    while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores) {
+    // Memory bounds for the candidate pool. Each Mas in `masData` carries a
+    // full ngspice-simulated operating point (per-turn time-series waveforms),
+    // which can run to MBs per candidate. Without these caps, with
+    // maximumNumberResults=100 we used to retain up to 40 cores * 50 coils
+    // per core = 2000 fully-simulated mas, exhausting the WASM heap
+    // (std::bad_alloc). See MKF_ISSUES.md M3.
+    //   - Per-core cap: at most 5 coils per core, while still respecting very
+    //     small request sizes (min with the original 0.5*N expression).
+    //   - Global cap: never grow the pool past maximumNumberResults*4 — final
+    //     scoring only keeps the top maximumNumberResults anyway, so 4x gives
+    //     ample variety for the scoring/sort step without unbounded growth.
+    const size_t perCoreCoilCap = std::min(size_t(5), size_t(ceil(maximumNumberResults * 0.5)));
+    const size_t globalCandidateCap = std::max(size_t(1), maximumNumberResults) * 4;
+    bool globalCapReached = false;
+    while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores && !globalCapReached) {
         whileIteration++;
         requestedCores += 20;  // Linear growth instead of exponential
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores);
@@ -335,10 +349,18 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 processedCoils++;
 
                 masData.push_back(mas);
-                if (processedCoils >= size_t(ceil(maximumNumberResults * 0.5))) {
+                if (masData.size() >= globalCandidateCap) {
+                    logEntry("Reached globalCandidateCap (" + std::to_string(globalCandidateCap) + ")", "MagneticAdviser", 2);
+                    globalCapReached = true;
+                    break;
+                }
+                if (processedCoils >= perCoreCoilCap) {
                     usedNumberSectionsAndMargin.push_back(numberSectionsAndMarginCombination);
                     break;
                 }
+            }
+            if (globalCapReached) {
+                break;
             }
             if (coresWound >= expectedWoundCores) {
                 break;
@@ -371,7 +393,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         whileIteration = 0;
         requestedCores = expectedWoundCores;
         previouslyObtainedCores = SIZE_MAX;
-        while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores) {
+        globalCapReached = false;
+        while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores && !globalCapReached) {
             whileIteration++;
             requestedCores += 20;
             auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores);
@@ -414,11 +437,19 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                     if (masWithCoil.get_magnetic().get_coil().get_turns_description()) {
                         masData.push_back(masWithCoil);
                         processedCoils++;
-                        if (processedCoils >= size_t(ceil(maximumNumberResults * 0.5))) {
+                        if (masData.size() >= globalCandidateCap) {
+                            logEntry("Reached globalCandidateCap (" + std::to_string(globalCandidateCap) + ") in retry", "MagneticAdviser", 2);
+                            globalCapReached = true;
+                            break;
+                        }
+                        if (processedCoils >= perCoreCoilCap) {
                             break;
                         }
                     }
                 }
+            }
+            if (globalCapReached) {
+                break;
             }
             if (coresWound >= expectedWoundCores) {
                 break;
