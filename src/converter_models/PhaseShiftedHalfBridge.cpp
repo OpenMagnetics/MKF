@@ -1015,17 +1015,6 @@ std::vector<ConverterWaveforms> Pshb::simulate_and_extract_topology_waveforms(
 Inputs AdvancedPshb::process() {
     auto designRequirements = process_design_requirements();
 
-    designRequirements.get_mutable_turns_ratios().clear();
-    for (auto n : desiredTurnsRatios) {
-        DimensionWithTolerance nTol;
-        nTol.set_nominal(n);
-        designRequirements.get_mutable_turns_ratios().push_back(nTol);
-    }
-
-    DimensionWithTolerance LmTol;
-    LmTol.set_minimum(desiredMagnetizingInductance);
-    designRequirements.set_magnetizing_inductance(LmTol);
-
     if (desiredSeriesInductance.has_value())
         set_computed_series_inductance(desiredSeriesInductance.value());
     if (desiredOutputInductance.has_value())
@@ -1037,6 +1026,25 @@ Inputs AdvancedPshb::process() {
     inputs.set_design_requirements(designRequirements);
     inputs.set_operating_points(ops);
     return inputs;
+}
+
+DesignRequirements AdvancedPshb::process_design_requirements() {
+    // Issue M1: chain to parent PDR then override turns ratios and
+    // magnetizing inductance with user-provided desired* values.
+    auto designRequirements = Pshb::process_design_requirements();
+
+    designRequirements.get_mutable_turns_ratios().clear();
+    for (auto n : desiredTurnsRatios) {
+        DimensionWithTolerance nTol;
+        nTol.set_nominal(n);
+        designRequirements.get_mutable_turns_ratios().push_back(nTol);
+    }
+
+    DimensionWithTolerance LmTol;
+    LmTol.set_minimum(desiredMagnetizingInductance);
+    designRequirements.set_magnetizing_inductance(LmTol);
+
+    return designRequirements;
 }
 
 

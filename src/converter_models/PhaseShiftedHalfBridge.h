@@ -306,6 +306,11 @@ public:
 
     Inputs process();
 
+    // Issue M1: chain to Pshb::process_design_requirements() then override
+    // turns ratios and magnetizing inductance with desired* values, so
+    // callers building DR directly see the user-provided values.
+    DesignRequirements process_design_requirements() override;
+
     const double& get_desired_magnetizing_inductance() const { return desiredMagnetizingInductance; }
     void set_desired_magnetizing_inductance(const double& value) { desiredMagnetizingInductance = value; }
     const std::vector<double>& get_desired_turns_ratios() const { return desiredTurnsRatios; }
