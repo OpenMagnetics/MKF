@@ -705,4 +705,34 @@ namespace {
             ConverterPortChecks::check_dc_ports(wfs[i], "Buck", i, Vin, {Vout}, {Iout});
     }
 
+    // Issue M4 regression: AdvancedBuck was not exercised by any test.
+    TEST_CASE("Test_AdvancedBuck_Construction_And_DR", "[converter-model][buck-topology][smoke-test]") {
+        json j;
+        json inputVoltage;
+        inputVoltage["minimum"] = 24;
+        inputVoltage["maximum"] = 48;
+        j["inputVoltage"] = inputVoltage;
+        j["diodeVoltageDrop"] = 0.7;
+        j["efficiency"] = 1;
+        j["maximumSwitchCurrent"] = 10;
+        j["desiredInductance"] = 100e-6;
+        j["operatingPoints"] = json::array();
+        {
+            json op;
+            op["outputVoltages"] = {12.0};
+            op["outputCurrents"] = {2.0};
+            op["switchingFrequency"] = 200000;
+            op["ambientTemperature"] = 25;
+            j["operatingPoints"].push_back(op);
+        }
+        OpenMagnetics::AdvancedBuck adv(j);
+
+        auto inputs = adv.process();
+        REQUIRE(!inputs.get_operating_points().empty());
+
+        auto dr = adv.process_design_requirements();
+        REQUIRE(dr.get_magnetizing_inductance().get_minimum().has_value());
+        REQUIRE(dr.get_magnetizing_inductance().get_minimum().value() > 0);
+    }
+
 }  // namespace

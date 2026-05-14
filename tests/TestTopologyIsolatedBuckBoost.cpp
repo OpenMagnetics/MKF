@@ -584,4 +584,36 @@ namespace {
         assert_ibb_refdesign_ptp(kIBBRefDesign3);
     }
 
+    // Issue M4 regression: AdvancedIsolatedBuckBoost was not exercised by any test.
+    TEST_CASE("Test_AdvancedIsolatedBuckBoost_Construction_And_DR", "[converter-model][isolated-buck-boost-topology][smoke-test]") {
+        json j;
+        json inputVoltage;
+        inputVoltage["minimum"] = 12;
+        inputVoltage["maximum"] = 24;
+        j["inputVoltage"] = inputVoltage;
+        j["diodeVoltageDrop"] = 0.7;
+        j["efficiency"] = 1;
+        j["maximumSwitchCurrent"] = 5;
+        j["desiredInductance"] = 220e-6;
+        j["desiredTurnsRatios"] = {1.5};
+        j["operatingPoints"] = json::array();
+        {
+            json op;
+            op["outputVoltages"] = {5.0, 5.0};
+            op["outputCurrents"] = {1.0, 0.5};
+            op["switchingFrequency"] = 200000;
+            op["ambientTemperature"] = 25;
+            j["operatingPoints"].push_back(op);
+        }
+        OpenMagnetics::AdvancedIsolatedBuckBoost adv(j);
+
+        auto inputs = adv.process();
+        REQUIRE(!inputs.get_operating_points().empty());
+
+        auto dr = adv.process_design_requirements();
+        REQUIRE(dr.get_magnetizing_inductance().get_minimum().has_value());
+        REQUIRE(dr.get_magnetizing_inductance().get_minimum().value() > 0);
+        REQUIRE(!dr.get_turns_ratios().empty());
+    }
+
 }  // namespace
