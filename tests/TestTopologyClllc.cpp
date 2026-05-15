@@ -316,16 +316,190 @@ TEST_CASE("CLLLC: process_design_requirements rejects empty OP list",
 
 
 // ─────────────────────────────────────────────────────────────────────────
-// Stubbed v2 surface throws with the documented "not yet implemented" tag
-// (per OpenMagnetics' "no fallbacks, throw" rule). When the v2 solver
-// lands these CHECK_THROWS will need to be replaced by real assertions.
+// Phase A solver — process_operating_points works for forward + reverse
+// (4-state linear-ODE one-shot affine-propagator solver, see Clllc.cpp
+// section "4-state linear-ODE solver — Phase A core" for theory).
 // ─────────────────────────────────────────────────────────────────────────
 
-TEST_CASE("CLLLC: v2 stubs throw std::logic_error",
+TEST_CASE("CLLLC Phase A: process_operating_points returns one OP per HV input voltage",
+          "[clllc-topology][phase-a]") {
+    CLLLC c(minimal_valid_clllc());
+    auto req = c.process_design_requirements();
+    auto ops = c.process_operating_points(
+        {c.get_computed_turns_ratio()}, c.get_computed_magnetizing_inductance());
+    REQUIRE(ops.size() >= 1);
+    CHECK(ops[0].get_excitations_per_winding().size() == 2);  // primary + secondary
+}
+
+TEST_CASE("CLLLC Phase A: half-wave antisymmetry residual is essentially zero",
+          "[clllc-topology][phase-a][solver]") {
+    CLLLC c(minimal_valid_clllc());
+    c.process_design_requirements();
+    c.process_operating_points({c.get_computed_turns_ratio()},
+                                c.get_computed_magnetizing_inductance());
+    // The one-shot affine-propagator solver enforces antisymmetry by
+    // construction (modulo RK4 truncation). Residual should be << peak.
+    double residual = c.get_last_steady_state_residual();
+    double iPk      = c.get_last_primary_peak_current();
+    REQUIRE(iPk > 0);
+    CHECK(residual < 1e-3 * iPk);  // residual is a 4-state norm, peak is scalar
+}
+
+TEST_CASE("CLLLC Phase A: peak / RMS currents and Cr peak voltages are sane",
+          "[clllc-topology][phase-a][diagnostics]") {
+    CLLLC c(minimal_valid_clllc());
+    c.process_design_requirements();
+    c.process_operating_points({c.get_computed_turns_ratio()},
+                                c.get_computed_magnetizing_inductance());
+
+    double iPriPk  = c.get_last_primary_peak_current();
+    double iSecPk  = c.get_last_secondary_peak_current();
+    double iLmPk   = c.get_last_magnetizing_peak_current();
+    double iPriRms = c.get_last_primary_rms_current();
+    double iSecRms = c.get_last_secondary_rms_current();
+    double vCr1Pk  = c.get_last_cr1_peak_voltage();
+    double vCr2Pk  = c.get_last_cr2_peak_voltage();
+
+    CHECK(iPriPk > 0);
+    CHECK(iSecPk > 0);
+    CHECK(iLmPk  > 0);
+    CHECK(iPriRms > 0);
+    CHECK(iSecRms > 0);
+    CHECK(iPriRms <= iPriPk);   // RMS ≤ peak by definition
+    CHECK(iSecRms <= iSecPk);
+    CHECK(vCr1Pk > 0);
+    CHECK(vCr2Pk > 0);
+
+    // Magnetizing-current peak: physically reasonable bound is roughly
+    //   I_Lm_pk ≈ V_pri · T/2 / (4·Lm)  (triangular ramp clamped to ±V_pri)
+    // For 400 V / 350 kHz / Lm = K·Lr1 = 6 · Lr1, this should be < primary
+    // peak (i.e. magnetizing is a smaller fraction of total tank current).
+    CHECK(iLmPk < iPriPk * 2.0);  // generous bound; tighter gates are gated
+                                   // behind reference-design tests in next phase.
+}
+
+TEST_CASE("CLLLC Phase A: symmetric tank → current-sharing ratio close to 1",
+          "[clllc-topology][phase-a][symmetry]") {
+    CLLLC c(minimal_valid_clllc());
+    c.process_design_requirements();
+    c.process_operating_points({c.get_computed_turns_ratio()},
+                                c.get_computed_magnetizing_inductance());
+    double ratio = c.get_last_current_sharing_ratio();
+    // 1.0 ± 25 % — the headline diagnostic that justifies a separate model
+    // from LLC. Tight ±5 % gate gated behind a reference-design test.
+    CHECK_THAT(ratio, WithinAbs(1.0, 0.25));
+}
+
+TEST_CASE("CLLLC Phase A: ZVS-margin diagnostics are populated for BOTH bridges",
+          "[clllc-topology][phase-a][zvs]") {
+    CLLLC c(minimal_valid_clllc());
+    c.process_design_requirements();
+    c.process_operating_points({c.get_computed_turns_ratio()},
+                                c.get_computed_magnetizing_inductance());
+    // Both populated (any finite value, including negative which means
+    // "ZVS lost" — that's a valid diagnostic).
+    double zPri = c.get_last_zvs_margin_primary_lagging();
+    double zSec = c.get_last_zvs_margin_secondary_lagging();
+    CHECK(std::isfinite(zPri));
+    CHECK(std::isfinite(zSec));
+    CHECK(c.get_last_resonant_transition_time() > 0);
+    // For 1:1 turns ratio at fsw = fr, the ZVS margins should both be
+    // close to the magnetizing peak current minus the load contribution.
+    CHECK(std::abs(zPri) < c.get_last_primary_peak_current() * 2);
+    CHECK(std::abs(zSec) < c.get_last_secondary_peak_current() * 2);
+}
+
+TEST_CASE("CLLLC Phase A: operating region classified by fsw / fr",
+          "[clllc-topology][phase-a][region]") {
+    using Region = CLLLC::OperatingRegion;
+    auto run_at = [](double fsw_test) {
+        json j = minimal_valid_clllc();
+        j["operatingPoints"][0]["switchingFrequency"] = fsw_test;
+        // Make sure fsw is inside [min, max]
+        j["minSwitchingFrequency"] = std::min(fsw_test, 100e3);
+        j["maxSwitchingFrequency"] = std::max(fsw_test, 1e6);
+        CLLLC c(j);
+        c.process_design_requirements();
+        c.process_operating_points({c.get_computed_turns_ratio()},
+                                    c.get_computed_magnetizing_inductance());
+        return std::pair<Region, double>{c.get_last_operating_region(),
+                                          c.get_computed_primary_resonant_frequency()};
+    };
+
+    auto [r_at, fr1]   = run_at(350e3);          // at fr (design)
+    auto [r_above, _2] = run_at(550e3);          // above fr
+    auto [r_below, _3] = run_at(150e3);          // below fr (Lm dominates)
+    (void)_2; (void)_3;
+
+    CHECK(r_at    == Region::AT_RESONANCE);
+    CHECK(r_above == Region::ABOVE_RESONANCE);
+    CHECK(r_below == Region::BELOW_RESONANCE);
+    CHECK(fr1 > 0);
+}
+
+TEST_CASE("CLLLC Phase A: forward direction is reported correctly",
+          "[clllc-topology][phase-a][direction]") {
+    CLLLC c(minimal_valid_clllc());
+    c.process_design_requirements();
+    c.process_operating_points({c.get_computed_turns_ratio()},
+                                c.get_computed_magnetizing_inductance());
+    CHECK(c.get_last_power_flow_direction() == CLLLC::PowerFlowDirection::FORWARD);
+    CHECK(c.get_last_mode_forward() == 1);
+    CHECK(c.get_last_mode_reverse() == 0);
+}
+
+TEST_CASE("CLLLC Phase A: reverse direction reuses solver via symmetric reflection",
+          "[clllc-topology][phase-a][direction][reverse]") {
+    json j = minimal_valid_clllc();
+    j["operatingPoints"][0]["powerFlowDirection"] = "reverse";
+    CLLLC c(j);
+    c.process_design_requirements();
+    c.process_operating_points({c.get_computed_turns_ratio()},
+                                c.get_computed_magnetizing_inductance());
+    CHECK(c.get_last_power_flow_direction() == CLLLC::PowerFlowDirection::REVERSE);
+    CHECK(c.get_last_mode_forward() == 0);
+    CHECK(c.get_last_mode_reverse() == 1);
+    CHECK(c.get_last_primary_peak_current() > 0);  // physically meaningful
+}
+
+TEST_CASE("CLLLC Phase A: forward/reverse symmetry — peak currents within 5 % at 1:1",
+          "[clllc-topology][phase-a][symmetry][headline]") {
+    // Headline test: at a 1:1 turns ratio with a symmetric tank, the same
+    // operating point run forward and reverse must produce essentially the
+    // same peak primary tank current (i_Lr1 fwd ≡ i_Lr2_reflected rev). This
+    // is the property that justifies CLLLC as a separate model from CLLC.
+    json jf = minimal_valid_clllc();
+    json jr = minimal_valid_clllc();
+    jr["operatingPoints"][0]["powerFlowDirection"] = "reverse";
+
+    CLLLC cf(jf);
+    cf.process_design_requirements();
+    cf.process_operating_points({cf.get_computed_turns_ratio()},
+                                 cf.get_computed_magnetizing_inductance());
+    double fwdPri = cf.get_last_primary_peak_current();
+    double fwdSec = cf.get_last_secondary_peak_current();
+
+    CLLLC cr(jr);
+    cr.process_design_requirements();
+    cr.process_operating_points({cr.get_computed_turns_ratio()},
+                                 cr.get_computed_magnetizing_inductance());
+    double revPri = cr.get_last_primary_peak_current();   // reverse-active side
+    double revSec = cr.get_last_secondary_peak_current(); // reverse-passive side
+
+    // At 1:1 the symmetric tank means swapping direction is a relabel: the
+    // active-side peak in reverse mirrors the active-side peak in forward.
+    CHECK_THAT(revPri, WithinRel(fwdSec, 0.05));   // Lr2 reverse ↔ Lr2 forward
+    CHECK_THAT(revSec, WithinRel(fwdPri, 0.05));   // Lr1 reverse ↔ Lr1 forward
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// Stubbed v2 surface still throws (Phase B+ work)
+// ─────────────────────────────────────────────────────────────────────────
+
+TEST_CASE("CLLLC: Phase B stubs (SPICE + extras) still throw std::logic_error",
           "[clllc-topology][v2-pending]") {
     CLLLC c(minimal_valid_clllc());
-    CHECK_THROWS_AS(c.process_operating_points({1.0}, 120e-6),
-                    std::logic_error);
     CHECK_THROWS_AS(c.generate_ngspice_circuit({1.0}, 120e-6),
                     std::logic_error);
     CHECK_THROWS_AS(c.simulate_and_extract_operating_points({1.0}, 120e-6),
