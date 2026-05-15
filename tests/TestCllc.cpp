@@ -35,6 +35,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
+#include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
 #include <vector>
@@ -906,10 +907,11 @@ namespace {
         CHECK(netlist.find("Lsec") != std::string::npos);
         CHECK(netlist.find("L_res2") != std::string::npos);
         CHECK(netlist.find("C_res2") != std::string::npos);
-        CHECK(netlist.find("Ds1") != std::string::npos);
-        CHECK(netlist.find("Ds2") != std::string::npos);
-        CHECK(netlist.find("Ds3") != std::string::npos);
-        CHECK(netlist.find("Ds4") != std::string::npos);
+        // Active SR switches replaced the Ds* diodes (CLLC_REWRITE_PLAN §6.2 / P4)
+        CHECK(netlist.find("Sa ") != std::string::npos);
+        CHECK(netlist.find("Sb ") != std::string::npos);
+        CHECK(netlist.find("Sc ") != std::string::npos);
+        CHECK(netlist.find("Sd ") != std::string::npos);
         CHECK(netlist.find("Kpri_sec") != std::string::npos);
         CHECK(netlist.find("Rload") != std::string::npos);
         CHECK(netlist.find("Cout") != std::string::npos);
@@ -1175,6 +1177,95 @@ namespace {
         double m_high = sweep(4.0  * Lm_eq28);
         INFO("Reverse ZVS margins (A): low=" << m_low << "  high=" << m_high);
         CHECK(m_low > m_high);
+    }
+
+    // ====================================================================
+    // P4 — SPICE netlist content checks (per CLLC_REWRITE_PLAN §6.2).
+    // The new netlist must contain:
+    //   • 8 active switches: S1..S4 (primary) + Sa..Sd (secondary SR),
+    //     no Ds* diodes
+    //   • per-switch snubbers (Rsn_*, Csn_*) — 8 of each
+    //   • B-source ideal-diode emulators (B_Sa_g..B_Sd_g) gating the SR
+    //   • Evab probe at the bridge midpoint
+    //   • METHOD=GEAR
+    //   • IC pre-charge for vout_p, pri_l1_in (Cr1), sec_c2_in (Cr2)
+    //   • Vout_sense zero-volt source
+    // ====================================================================
+    TEST_CASE("Test_Cllc_SPICE_Netlist",
+              "[converter-model][cllc-topology][netlist][p4][smoke-test]") {
+        json cllcJson = create_small_power_cllc_json();
+        OpenMagnetics::CllcConverter cllc(cllcJson);
+        auto params = cllc.calculate_resonant_parameters();
+        std::string netlist = cllc.generate_ngspice_circuit(params.turnsRatio, params);
+        // Dump for manual inspection (small_power fixture).
+        { std::ofstream f("/tmp/cllc_p4_dump.cir"); f << netlist; }
+        INFO("Netlist:\n" << netlist);
+
+        // 4 primary + 4 SR active switches, no diodes.
+        CHECK(netlist.find("S1 vin_p") != std::string::npos);
+        CHECK(netlist.find("S2 node_a") != std::string::npos);
+        CHECK(netlist.find("S3 vin_p") != std::string::npos);
+        CHECK(netlist.find("S4 node_b") != std::string::npos);
+        CHECK(netlist.find("Sa node_c") != std::string::npos);
+        CHECK(netlist.find("Sb vout_n") != std::string::npos);
+        CHECK(netlist.find("Sc node_d") != std::string::npos);
+        CHECK(netlist.find("Sd vout_n") != std::string::npos);
+        CHECK(netlist.find("Ds1") == std::string::npos);
+        CHECK(netlist.find("DIDEAL") == std::string::npos);
+
+        // SR is synchronously gated by primary PWM (forward mode).
+        CHECK(netlist.find("Sa node_c vout_p pwm1") != std::string::npos);
+        CHECK(netlist.find("Sd vout_n node_d pwm1") != std::string::npos);
+        CHECK(netlist.find("Sb vout_n node_c pwm2") != std::string::npos);
+        CHECK(netlist.find("Sc node_d vout_p pwm2") != std::string::npos);
+
+        // Per-switch snubbers — count Rsn_ occurrences (must be ≥ 8).
+        size_t snubberCount = 0;
+        size_t pos = 0;
+        while ((pos = netlist.find("Rsn_", pos)) != std::string::npos) {
+            ++snubberCount;
+            pos += 4;
+        }
+        CHECK(snubberCount >= 8);
+
+        // Bridge differential probe
+        CHECK(netlist.find("Evab vab 0 VALUE={V(node_a) - V(node_b)}")
+              != std::string::npos);
+
+        // GEAR solver method
+        CHECK(netlist.find("METHOD=GEAR") != std::string::npos);
+
+        // IC pre-charge: output cap to Vo, both resonant caps to 0.
+        CHECK(netlist.find(".ic v(vout_p)=") != std::string::npos);
+        CHECK(netlist.find("v(pri_l1_in)=0") != std::string::npos);
+        CHECK(netlist.find("v(sec_c2_in)=0") != std::string::npos);
+
+        // Output current sense source
+        CHECK(netlist.find("Vout_sense vout_p vout_load 0")
+              != std::string::npos);
+    }
+
+    // ====================================================================
+    // P4 — Divide-by-zero guard. Iout → 0 must NOT crash netlist
+    // generation. Per plan §6.2 the load resistance is floored at 1 mΩ via
+    // R_load = max(Vo/Io, 1e-3). We construct a valid converter (Iout > 0)
+    // then mutate the operating point to Iout = 0 just before netlist
+    // generation, since the constructor itself rejects zero-power designs.
+    // ====================================================================
+    TEST_CASE("Test_Cllc_DivideByZero_Guard",
+              "[converter-model][cllc-topology][netlist][p4][smoke-test]") {
+        json cllcJson = create_small_power_cllc_json();
+        OpenMagnetics::CllcConverter cllc(cllcJson);
+        auto params = cllc.calculate_resonant_parameters();
+        auto ops = cllc.get_operating_points();
+        ops[0].set_output_currents({0.0});
+        cllc.set_operating_points(ops);
+        std::string netlist;
+        REQUIRE_NOTHROW(netlist = cllc.generate_ngspice_circuit(
+                            params.turnsRatio, params));
+        // Netlist must still be syntactically complete.
+        CHECK(netlist.find(".end") != std::string::npos);
+        CHECK(netlist.find("Rload") != std::string::npos);
     }
 
 } // anonymous namespace
