@@ -758,8 +758,27 @@ double get_value_or(T&& val, double default_val) {
         double Cr_eq  = (Cr1 * Cr2_pri) / (Cr1 + Cr2_pri);
 
         double k_bridge = get_bridge_voltage_factor();
-        double Vi = k_bridge * inputVoltage;
-        double Vo = n * outputVoltage;            // reflected output voltage (primary side)
+
+        // P8b — REVERSE mode: per plan §5.5, the same TDA propagator runs
+        // with Vi ↔ n·Vout swapped. The active inverter is now on the
+        // secondary; reflected to primary terms its drive is k_bridge·n·Vout
+        // (a transformer step-up of the secondary EMF). The rectifier is on
+        // the primary; its load voltage IS the primary rail (Vin), already
+        // in primary-referred units (no n multiplication). Tank state-space
+        // matrices (Lr_eq, Cr_eq, Lm) stay primary-referred; the solver
+        // returns iLs as the physical primary winding tank current — same
+        // signal SPICE measures via Vpri_sense — so reverse PtP NRMSE
+        // compares apples to apples without further conversion.
+        bool isReverse = (cllcOpPoint.get_power_flow() == CllcPowerFlow::REVERSE);
+        double Vi, Vo;
+        if (isReverse) {
+            Vi = k_bridge * n * outputVoltage;   // sec inverter, pri-referred
+            Vo = inputVoltage;                    // pri rectifier load
+        }
+        else {
+            Vi = k_bridge * inputVoltage;
+            Vo = n * outputVoltage;               // reflected output (pri-referred)
+        }
 
         double period = 1.0 / switchingFrequency;
         double Thalf  = period / 2.0;
@@ -768,10 +787,21 @@ double get_value_or(T&& val, double default_val) {
         double Thalf_eff = Thalf;
 
         // -------------------------------------------------------------------
-        // Seed the Newton solver with FHA-style estimates.
+        // Seed the Newton solver with FHA-style estimates. The DC load
+        // current referred to the primary tank differs by direction:
+        //   FORWARD: load on secondary, I_load_pri = outputCurrent / n
+        //   REVERSE: load on primary  , I_load_pri = (Vo·Io)/Vin
+        //                              ≈ outputCurrent·outputVoltage/inputVoltage
         // -------------------------------------------------------------------
         double Im_pk_est = Vo * Thalf_eff / (2.0 * Lm);
-        double Iload_reflected = outputCurrent / n;
+        double Iload_reflected;
+        if (isReverse) {
+            double powerThru = outputVoltage * outputCurrent;
+            Iload_reflected = powerThru / std::max(std::abs(inputVoltage), 1e-9);
+        }
+        else {
+            Iload_reflected = outputCurrent / n;
+        }
         double Ires_est = std::max(std::abs(Im_pk_est) + std::abs(Iload_reflected),
                                    std::abs(Iload_reflected) * 1.5);
         CllcStateVector x0_seed{ -Ires_est, -Im_pk_est, 0.0 };
@@ -904,14 +934,14 @@ double get_value_or(T&& val, double default_val) {
                     ? (2.0 * Coss * Vi_for_zvs / iLm_at_switch)
                     : std::numeric_limits<double>::infinity();
 
-                bool isReverse = (cllcOpPoint.get_power_flow() ==
-                                  CllcPowerFlow::REVERSE);
                 if (isReverse) {
                     // Active bridge in reverse mode is on the secondary side.
                     // Secondary-referred magnetizing current is iLm/n; the
-                    // secondary bridge sees ±n·Vo (≈ ±Vi at LIP).
+                    // secondary bridge sees ±k_bridge·outputVoltage. After
+                    // the P8b Vi/Vo swap, Vi is already k_bridge·n·Vout in
+                    // primary terms, so Vsec_actual = |Vi|/n.
                     double iLm_sec = iLm_at_switch / n;
-                    double Vsec    = std::abs(Vo) / n; // n·Vo back to sec terms
+                    double Vsec    = std::abs(Vi) / n;
                     double iLm_thr_sec = (Vsec > 0)
                         ? (2.0 * Coss * Vsec / td) : 0.0;
                     lastZvsMarginSecondary = iLm_sec - iLm_thr_sec;
@@ -1605,23 +1635,43 @@ double get_value_or(T&& val, double default_val) {
                 }
                 wf.set_operating_point_name(name);
 
-                // §5.1 converter-port stream — vin_p / -i(Vin) (DC source
-                // rail and bus current), NOT pri_trafo_in (resonant tank
-                // node, bipolar AC) / i(Vpri_sense) (bipolar primary tank
-                // current). ngspice convention: i(Vin) is positive into
-                // Vin's + terminal, so converter draw is -i(Vin).
+                // §5.1 converter-port stream. The "input" port is the
+                // primary rail (vin_p) regardless of direction:
+                //   FORWARD: vin_p is held by Vin source. i(Vin) flows
+                //     OUT of source's + terminal → into the converter.
+                //     Convention: converter draw = -i(Vin).
+                //   REVERSE (P8b): vin_p is held by Cin_pri+Rload_pri.
+                //     i(Vin_sense) flows from vin_p → vin_load (positive
+                //     when load absorbs, i.e., reverse power flow). To
+                //     keep the SAME sign convention "input current =
+                //     current flowing INTO the converter from the input
+                //     port", reverse mode emits -i(Vin_sense). The mean
+                //     becomes negative, signalling power LEAVING the
+                //     primary side — which is what reverse means.
+                bool isReverse = (opPoint.get_power_flow() == CllcPowerFlow::REVERSE);
                 wf.set_input_voltage(getWaveform("vin_p"));
-                Waveform iInWf = getWaveform("vin#branch");
+                Waveform iInWf = isReverse
+                    ? getWaveform("vin_sense#branch")
+                    : getWaveform("vin#branch");
                 auto& iInData = iInWf.get_mutable_data();
                 for (auto& v : iInData) v = -v;
                 wf.set_input_current(iInWf);
 
                 wf.get_mutable_output_voltages().push_back(getWaveform("vout_p"));
-                // Reconstruct Iout(t) = Vout(t)/Rload (DC by design).
-                // i(Vsec_sense) is the bipolar secondary tank current
-                // (averages to zero in steady state — full-bridge
-                // rectified). Mirrors Buck/AHB/PSFB §5.1.
-                {
+                // Reconstruct Iout(t).
+                //   FORWARD: Iout = Vout/Rload (DC by design, Cout filtered).
+                //   REVERSE: secondary side hosts the EMF source Vsec_src;
+                //     "output current" reflects current SOURCED by it,
+                //     i.e., flowing OUT of Vsec_src + terminal. ngspice
+                //     i(Vsec_src) is positive INTO + terminal, so source
+                //     current = -i(Vsec_src).
+                if (isReverse) {
+                    Waveform ioutWf = getWaveform("vsec_src#branch");
+                    auto& ioutData = ioutWf.get_mutable_data();
+                    for (auto& v : ioutData) v = -v;
+                    wf.get_mutable_output_currents().push_back(ioutWf);
+                }
+                else {
                     const double Vo = opPoint.get_output_voltages()[0];
                     const double Io = opPoint.get_output_currents()[0];
                     const double Rload = std::max(Vo / Io, 1e-3);
