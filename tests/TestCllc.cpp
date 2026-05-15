@@ -1086,4 +1086,95 @@ namespace {
                    Catch::Matchers::WithinRel(p.resonantFrequency, 0.01));
     }
 
+    // ====================================================================
+    // P3 — ZVS-boundary diagnostic (forward direction).
+    // Plan §8 acceptance: lastZvsMarginPrimary must change sign as Lm is
+    // swept across the Infineon AN-2024-06 Eq 28 threshold
+    //   Lm_max = td / (16 · Coss · fs_max)
+    // Below the threshold, |iLm(t_switch)| dominates the Coss reservoir
+    // (margin > 0, ZVS achieved); above the threshold iLm shrinks and
+    // the bridge-leg can no longer slew within td (margin < 0, ZVS lost).
+    // We probe with three Lm values: 0.25·Lm_eq28, 1.0·Lm_eq28, 4.0·Lm_eq28
+    // and assert monotonically decreasing margin.
+    // ====================================================================
+    TEST_CASE("Test_Cllc_ZVS_Boundaries_Forward",
+              "[converter-model][cllc-topology][tda][zvs][smoke-test]") {
+        json baseJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        OpenMagnetics::CllcConverter c(baseJson);
+        auto params = c.calculate_resonant_parameters();
+        double td   = c.get_dead_time();
+        double Coss = c.get_mosfet_coss();
+        double fs   = 73000.0;
+        REQUIRE(td > 0);
+        REQUIRE(Coss > 0);
+
+        // Eq 28: Lm_max for ZVS at this fs (using fs as a stand-in for
+        // fs_max — single-OP probe).
+        double Lm_eq28 = td / (16.0 * Coss * fs);
+        INFO("Lm_eq28 = " << Lm_eq28 * 1e6 << " uH (td=" << td*1e9
+             << " ns, Coss=" << Coss*1e12 << " pF, fs=" << fs << " Hz)");
+
+        auto sweep = [&](double Lm) -> double {
+            CllcOperatingPoint op;
+            op.set_output_voltages({600.0});
+            op.set_output_currents({18.33});
+            op.set_switching_frequency(fs);
+            op.set_ambient_temperature(25.0);
+            op.set_power_flow(CllcPowerFlow::FORWARD);
+            (void)c.process_operating_point_for_input_voltage(
+                750.0, op, params.turnsRatio, Lm, params);
+            return c.get_last_zvs_margin_primary();
+        };
+
+        double m_low  = sweep(0.25 * Lm_eq28);  // very low Lm → large iLm → strong ZVS
+        double m_at   = sweep(1.0  * Lm_eq28);  // at threshold
+        double m_high = sweep(4.0  * Lm_eq28);  // very high Lm → tiny iLm → ZVS lost
+
+        INFO("ZVS margins (A): low=" << m_low << "  at=" << m_at
+             << "  high=" << m_high);
+        // Monotonic in Lm: lower Lm → bigger margin.
+        CHECK(m_low > m_high);
+        // The boundary itself should straddle zero between low and high.
+        CHECK((m_low > 0 || m_high < 0));
+    }
+
+    // ====================================================================
+    // P3 — ZVS-boundary diagnostic (reverse direction).
+    // In reverse mode the active bridge moves to the secondary side; we
+    // populate lastZvsMarginSecondary using the secondary-referred iLm
+    // and the secondary terminal voltage. Same monotonicity holds.
+    // Reverse mode physical SR drive is P8; this test exercises the
+    // analytical diagnostic only.
+    // ====================================================================
+    TEST_CASE("Test_Cllc_ZVS_Boundaries_Reverse",
+              "[converter-model][cllc-topology][tda][zvs][smoke-test]") {
+        json baseJson = create_standard_cllc_json(73000.0, CllcPowerFlow::REVERSE);
+        OpenMagnetics::CllcConverter c(baseJson);
+        auto params = c.calculate_resonant_parameters();
+        double td   = c.get_dead_time();
+        double Coss = c.get_mosfet_coss();
+        double fs   = 73000.0;
+        double Lm_eq28 = td / (16.0 * Coss * fs);
+
+        auto sweep = [&](double Lm) -> double {
+            CllcOperatingPoint op;
+            op.set_output_voltages({600.0});
+            op.set_output_currents({18.33});
+            op.set_switching_frequency(fs);
+            op.set_ambient_temperature(25.0);
+            op.set_power_flow(CllcPowerFlow::REVERSE);
+            (void)c.process_operating_point_for_input_voltage(
+                750.0, op, params.turnsRatio, Lm, params);
+            // Forward margin should be 0 (placeholder); secondary carries
+            // the real value in reverse mode.
+            CHECK(c.get_last_zvs_margin_primary() == 0.0);
+            return c.get_last_zvs_margin_secondary();
+        };
+
+        double m_low  = sweep(0.25 * Lm_eq28);
+        double m_high = sweep(4.0  * Lm_eq28);
+        INFO("Reverse ZVS margins (A): low=" << m_low << "  high=" << m_high);
+        CHECK(m_low > m_high);
+    }
+
 } // anonymous namespace

@@ -5,6 +5,7 @@
 #include <cfloat>
 #include <cmath>
 #include <complex>
+#include <limits>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
@@ -844,6 +845,77 @@ double get_value_or(T&& val, double default_val) {
         // V_Cr1 = vC · Cr2_pri/(Cr1 + Cr2_pri)
         double V_Cr1_peak = Vc_peak * Cr2_pri / (Cr1 + Cr2_pri);
         lastResonantCapPeakVoltage = V_Cr1_peak;
+
+        // -------------------------------------------------------------------
+        // ZVS diagnostics (Infineon AN-2024-06 Eq 28; CLLC_REWRITE_PLAN §5.4).
+        //
+        // At the bridge edge (t = Thalf_eff) the magnetizing current iLm must
+        // be large enough to discharge the bridge-leg output capacitance
+        // Coss_eq within the dead time td. The ZVS charge-balance criterion
+        // for a full-bridge primary leg (two FETs share the swing through Vi
+        // and the leg-pair reservoir is 2·Coss) is
+        //
+        //     |iLm(t_switch)| · td  ≥  2·Coss·Vi
+        //   ⇒ iLm_threshold       =  2·Coss·Vi / td
+        //   ⇒ ZVS margin          =  |iLm(t_switch)| − iLm_threshold
+        //
+        // For half-bridge the swing only crosses one Coss but uses the same
+        // reservoir-charge formula scaled by k_bridge (= 0.5 HB / 1.0 FB).
+        // The resonant transition time (slew of the bridge midpoint) is
+        //
+        //     t_resonant = 2·Coss·Vi / |iLm(t_switch)|
+        //
+        // and must satisfy t_resonant ≤ td for ZVS.
+        //
+        // Forward direction populates lastZvsMarginPrimary; reverse direction
+        // populates lastZvsMarginSecondary using the secondary-referred
+        // current iLs/n at the switch edge and the input voltage as seen
+        // from the secondary winding (n·Vo for reverse). Reverse-mode
+        // physical SR drive is P8; here we record the analytical figure
+        // either way for the active side.
+        // -------------------------------------------------------------------
+        {
+            double Coss = mosfetCoss;
+            double td   = deadTime;
+            // The plan's CllcConverter::process_operating_point_for_input_voltage
+            // throws if td ≤ 0 in the SPICE path; here we guard the divisor
+            // explicitly so a missing dead-time still yields an honest "no
+            // ZVS data" reading rather than NaN/Inf in the diagnostic.
+            if (td <= 0 || Coss <= 0) {
+                lastZvsMarginPrimary = std::numeric_limits<double>::quiet_NaN();
+                lastZvsMarginSecondary = std::numeric_limits<double>::quiet_NaN();
+                lastResonantTransitionTime = std::numeric_limits<double>::quiet_NaN();
+            }
+            else {
+                double iLm_at_switch = std::abs(IL_pos[N]);
+                double Vi_for_zvs = std::abs(Vi);  // Vi already includes k_bridge
+                double iLm_threshold = (Vi_for_zvs > 0)
+                    ? (2.0 * Coss * Vi_for_zvs / td) : 0.0;
+                double zvs_margin = iLm_at_switch - iLm_threshold;
+                double t_resonant = (iLm_at_switch > 0)
+                    ? (2.0 * Coss * Vi_for_zvs / iLm_at_switch)
+                    : std::numeric_limits<double>::infinity();
+
+                bool isReverse = (cllcOpPoint.get_power_flow() ==
+                                  CllcPowerFlow::REVERSE);
+                if (isReverse) {
+                    // Active bridge in reverse mode is on the secondary side.
+                    // Secondary-referred magnetizing current is iLm/n; the
+                    // secondary bridge sees ±n·Vo (≈ ±Vi at LIP).
+                    double iLm_sec = iLm_at_switch / n;
+                    double Vsec    = std::abs(Vo) / n; // n·Vo back to sec terms
+                    double iLm_thr_sec = (Vsec > 0)
+                        ? (2.0 * Coss * Vsec / td) : 0.0;
+                    lastZvsMarginSecondary = iLm_sec - iLm_thr_sec;
+                    lastZvsMarginPrimary   = 0.0;
+                }
+                else {
+                    lastZvsMarginPrimary   = zvs_margin;
+                    lastZvsMarginSecondary = 0.0;
+                }
+                lastResonantTransitionTime = t_resonant;
+            }
+        }
 
         // -------------------------------------------------------------------
         // Build full-period waveforms by half-wave antisymmetry.
