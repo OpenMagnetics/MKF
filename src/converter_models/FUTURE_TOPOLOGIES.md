@@ -42,9 +42,9 @@ real production volume scores higher than a topology that's just
 | `Llc.cpp` / `Cllc.cpp` | resonant; rework / rewrite plans exist |
 | `Sepic.cpp` / `Zeta.cpp` / `Cuk.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
 | `Weinberg.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
-| `FourSwitchBuckBoost.cpp` | near-DAB (SPICE, NRMSE, VoltSec, ConvPort) — missing 3 published ref designs |
-| `AsymmetricHalfBridge.cpp` | near-DAB (3 ref designs, ZVS test) — missing VoltSecondBalance test |
-| `Clllc.cpp` | scaffold-only — has `process_op_for_Vin` but no test file; needs DAB-quality treatment |
+| `FourSwitchBuckBoost.cpp` | DAB-quality (3 ref designs spanning BUCK/BOOST/BUCK_BOOST regions, NRMSE, VoltSec, ConvPort) |
+| `AsymmetricHalfBridge.cpp` | DAB-quality (3 ref designs, ZVS test, VoltSec_AllWindings for CT/FB/CD) |
+| `Clllc.cpp` | v1 skeleton — static helpers + run_checks + process_design_requirements work and are regression-tested (`TestTopologyClllc.cpp`); v2 simulate stubs throw `std::logic_error` per `CLLLC_PLAN.md` |
 | `Vienna.cpp` | pragmatic Phase 1+2 (peak-of-line analytical) — no SPICE, no DAB-quality tests |
 | `Src.cpp` | pragmatic Phase 1+2 (FHA solver) — no SPICE, no DAB-quality tests |
 | `PowerFactorCorrection.cpp` | basic PFC (verify totem-pole coverage) |
