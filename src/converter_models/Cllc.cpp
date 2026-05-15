@@ -330,6 +330,380 @@ double get_value_or(T&& val, double default_val) {
      *   - Secondary current completes exactly one half-sine per half period
      *   - Peak current: Ip_peak ≈ Pout/(Vin·η) · π/2 (fundamental approximation)
      */
+    // =========================================================================
+    // P2 — Time-Domain Analysis (TDA) solver
+    //
+    // For the symmetric tank (a = b = 1) the CLLC 5-element resonant network
+    //   Cr1 — Lr1 — Lm — Lr2 — Cr2
+    // collapses (per CLLC_REWRITE_PLAN.md §5.1) to an LLC-equivalent with
+    //   Lr_eq = Lr1 + Lr2/n²              = 2·Lr1     (sym)
+    //   Cr_eq = Cr1·(n²·Cr2)/(Cr1+n²·Cr2) = Cr1/2     (sym)
+    //   Lm    unchanged
+    // and ω_P = 1/√(Lr_eq·Cr_eq) = 1/√(Lr1·Cr1) ≡ ω_r exactly. This means
+    // the symmetric CLLC and the equivalent LLC produce identical state
+    // trajectories on the (i_Lr_eq, i_Lm, v_Cr_eq) phase space; the
+    // physical primary current is i_Lr_eq, and the primary cap voltage is
+    // v_Cr_eq · (Cr1+n²·Cr2)/(n²·Cr2) = 2·v_Cr_eq for symmetric.
+    //
+    // For asymmetric tanks (a≠1 or b≠1, plan §7) the collapsed form is no
+    // longer exact. The asymmetric 5-state TDA is deferred to P7.
+    //
+    // The solver mirrors the LLC TDA in Llc.cpp (same author, same shapes):
+    //   3-state vector  x = (i_Lr_eq, i_Lm, v_Cr_eq)   [ "iLs ", "iL", "vC" ]
+    //   4 sub-states    P_POS, P_NEG  (power delivery, ±n·Vout clamp)
+    //                   F             (freewheel, Lm in series; sign-symm.)
+    //   2D Newton on    F(x0) = x(Ts/2) + x(0)        (half-wave antisym)
+    //   Closed-form propagator per sub-state — never Euler.
+    // =========================================================================
+
+    namespace {  // file-static TDA solver internals
+
+    // Sub-states observed during ONE positive half cycle of the primary
+    // bridge (V_bridge = +Vi for the entire half). For the next half cycle
+    // we exploit half-wave antisymmetry. Mirrors LLC convention precisely
+    // (single freewheel sub-state F; P_POS / P_NEG distinguish the
+    // direction of the secondary-rectifier conduction).
+    enum class CllcSubState { P_POS, P_NEG, F };
+
+    struct CllcStateVector {
+        double iLs;   ///< collapsed series-inductor current (= primary i_Lr1 at sym)
+        double iL;    ///< magnetizing current i_Lm
+        double vC;    ///< collapsed series-cap voltage
+    };
+
+    struct CllcSubStateSegment {
+        CllcSubState state;
+        double t_start;
+        double t_end;
+        CllcStateVector x_start;
+        CllcStateVector x_end;
+    };
+
+    /// Sub-state-specific natural frequency ω and characteristic Z =√(L/C).
+    void cllc_substate_freq(CllcSubState s, double Lr_eq, double Lm, double Cr_eq,
+                             double& w, double& Z) {
+        if (s == CllcSubState::F) {
+            // Freewheel: Lm in series with Lr_eq, secondary off.
+            double L_eff = Lr_eq + Lm;
+            w = 1.0 / std::sqrt(L_eff * Cr_eq);
+            Z = std::sqrt(L_eff / Cr_eq);
+        } else {
+            // Power delivery: Lm clamped to ±Vo, only Lr_eq+Cr_eq oscillate.
+            w = 1.0 / std::sqrt(Lr_eq * Cr_eq);
+            Z = std::sqrt(Lr_eq / Cr_eq);
+        }
+    }
+
+    /// Closed-form propagator for one sub-state. Computes x(t_start+dt)
+    /// EXACTLY given x(t_start) — never numerical integration.
+    /// Bridge voltage during this half cycle is +Vi (positive half).
+    CllcStateVector cllc_propagate_substate(CllcSubState s, CllcStateVector x_in,
+                                             double dt, double Vi, double Vo,
+                                             double Lr_eq, double Lm, double Cr_eq) {
+        CllcStateVector out{};
+        if (dt <= 0) return x_in;
+        double w, Z;
+        cllc_substate_freq(s, Lr_eq, Lm, Cr_eq, w, Z);
+        double cs = std::cos(w * dt);
+        double sn = std::sin(w * dt);
+
+        if (s == CllcSubState::F) {
+            // Freewheel: i_Lr ≡ i_Lm. Drive is the bridge voltage +Vi.
+            double V_eq = Vi;
+            double dV = x_in.vC - V_eq;
+            double iLs_new = x_in.iLs * cs - (dV / Z) * sn;
+            double vC_new  = V_eq + dV * cs + x_in.iLs * Z * sn;
+            out.iLs = iLs_new;
+            out.iL  = iLs_new;
+            out.vC  = vC_new;
+            return out;
+        }
+
+        // Power-delivery sub-states (bridge = +Vi throughout):
+        //   P_POS (Id = iLs - iL > 0): V_drive = Vi - Vo, dIL/dt = +Vo/Lm
+        //   P_NEG (Id < 0):            V_drive = Vi + Vo, dIL/dt = -Vo/Lm
+        double V_drive = (s == CllcSubState::P_POS) ? (Vi - Vo) : (Vi + Vo);
+        double dIL_dt  = (s == CllcSubState::P_POS) ? (+Vo / Lm) : (-Vo / Lm);
+
+        double dV = x_in.vC - V_drive;
+        out.iLs = x_in.iLs * cs - (dV / Z) * sn;
+        out.vC  = V_drive + dV * cs + x_in.iLs * Z * sn;
+        out.iL  = x_in.iL + dIL_dt * dt;
+        return out;
+    }
+
+    /// Trigger value at the END of a propagation step.
+    ///   P_POS → F : g = iL - iLs (rises to 0 as Id = iLs - iL falls to 0)
+    ///   P_NEG → F : g = iLs - iL (rises to 0 as Id rises to 0)
+    ///   F → P    : VLm exits the ±Vo clamp window
+    double cllc_trigger_value(CllcSubState s, CllcStateVector x_in, double dt,
+                               double Vi, double Vo, double Lr_eq, double Lm, double Cr_eq) {
+        CllcStateVector x = cllc_propagate_substate(s, x_in, dt, Vi, Vo, Lr_eq, Lm, Cr_eq);
+        if (s == CllcSubState::P_POS) return x.iL  - x.iLs;
+        if (s == CllcSubState::P_NEG) return x.iLs - x.iL;
+        // F: VLm exits ±Vo window.  VLm = (Lm/(Lr_eq+Lm))·(Vi - vC)
+        double VLm = (Lm / (Lr_eq + Lm)) * (Vi - x.vC);
+        double pos_violation =  VLm - Vo;
+        double neg_violation = -VLm - Vo;
+        return std::max(pos_violation, neg_violation);
+    }
+
+    /// Coarse-grid bisection event finder (mirrors LLC pattern).
+    double cllc_find_next_event(CllcSubState s, CllcStateVector x_in, double t_max,
+                                 double Vi, double Vo, double Lr_eq, double Lm, double Cr_eq) {
+        constexpr int COARSE_STEPS = 64;
+        double dt_coarse = t_max / COARSE_STEPS;
+        double prev_g = cllc_trigger_value(s, x_in, 1e-12, Vi, Vo, Lr_eq, Lm, Cr_eq);
+        if (prev_g >= 0) return 0.0;
+        for (int k = 1; k <= COARSE_STEPS; ++k) {
+            double t = k * dt_coarse;
+            double g = cllc_trigger_value(s, x_in, t, Vi, Vo, Lr_eq, Lm, Cr_eq);
+            if (g >= 0 && std::isfinite(g)) {
+                double lo = t - dt_coarse, hi = t, g_lo = prev_g;
+                for (int it = 0; it < 50; ++it) {
+                    double mid = 0.5 * (lo + hi);
+                    double g_mid = cllc_trigger_value(s, x_in, mid, Vi, Vo, Lr_eq, Lm, Cr_eq);
+                    if (g_mid * g_lo < 0) { hi = mid; }
+                    else { lo = mid; g_lo = g_mid; }
+                    if ((hi - lo) < 1e-12) break;
+                }
+                return 0.5 * (lo + hi);
+            }
+            prev_g = g;
+        }
+        return t_max;
+    }
+
+    /// Determine the next P sub-state after a freewheel ends (sign of VLm).
+    CllcSubState cllc_next_state_after_F(CllcStateVector x_at_event,
+                                          double Vi, double Lr_eq, double Lm) {
+        double VLm = (Lm / (Lr_eq + Lm)) * (Vi - x_at_event.vC);
+        return (VLm > 0) ? CllcSubState::P_POS : CllcSubState::P_NEG;
+    }
+
+    /// Initial sub-state at t=0+ of the half cycle (bridge just switched to +Vi).
+    CllcSubState cllc_initial_substate(CllcStateVector x0, double Vi, double Vo,
+                                        double Lr_eq, double Lm) {
+        double Id = x0.iLs - x0.iL;
+        if (std::abs(Id) > 1e-9) {
+            return (Id > 0) ? CllcSubState::P_POS : CllcSubState::P_NEG;
+        }
+        double VLm = (Lm / (Lr_eq + Lm)) * (Vi - x0.vC);
+        if (VLm >  Vo) return CllcSubState::P_POS;
+        if (VLm < -Vo) return CllcSubState::P_NEG;
+        return CllcSubState::F;
+    }
+
+    /// Drive the event loop over [0, Thalf] for one half cycle.
+    std::vector<CllcSubStateSegment> cllc_propagate_half_cycle(
+        CllcStateVector x0, double Thalf,
+        double Vi, double Vo, double Lr_eq, double Lm, double Cr_eq)
+    {
+        std::vector<CllcSubStateSegment> segments;
+        segments.reserve(8);
+        CllcSubState current = cllc_initial_substate(x0, Vi, Vo, Lr_eq, Lm);
+        CllcStateVector x = x0;
+        double t = 0.0;
+        constexpr int MAX_SEGMENTS = 16;
+        for (int k = 0; k < MAX_SEGMENTS; ++k) {
+            double remaining = Thalf - t;
+            if (remaining <= 1e-15) break;
+            double t_event = cllc_find_next_event(current, x, remaining,
+                                                   Vi, Vo, Lr_eq, Lm, Cr_eq);
+            double dt = std::min(t_event, remaining);
+            if (dt < 1e-15 && k > 0) {
+                CllcSubState next = (current == CllcSubState::F)
+                    ? cllc_next_state_after_F(x, Vi, Lr_eq, Lm)
+                    : CllcSubState::F;
+                current = next;
+                continue;
+            }
+            CllcStateVector x_end = cllc_propagate_substate(current, x, dt,
+                                                              Vi, Vo, Lr_eq, Lm, Cr_eq);
+            segments.push_back({current, t, t + dt, x, x_end});
+            t += dt; x = x_end;
+            if (t >= Thalf - 1e-15) break;
+            if (current == CllcSubState::F) {
+                current = cllc_next_state_after_F(x, Vi, Lr_eq, Lm);
+            } else {
+                current = CllcSubState::F;
+            }
+        }
+        return segments;
+    }
+
+    /// 2D damped-Newton on F(x0) = propagate_half(x0).end + x0  (antisymmetry).
+    /// Falls back to a Picard step on stagnation.
+    CllcStateVector cllc_solve_steady_state(
+        CllcStateVector x0_seed, double Thalf,
+        double Vi, double Vo, double Lr_eq, double Lm, double Cr_eq,
+        std::vector<CllcSubStateSegment>& outSegments,
+        double& outResidual)
+    {
+        auto eval_F = [&](CllcStateVector x0) -> std::array<double, 3> {
+            auto segs = cllc_propagate_half_cycle(x0, Thalf, Vi, Vo, Lr_eq, Lm, Cr_eq);
+            CllcStateVector xe = segs.empty() ? x0 : segs.back().x_end;
+            return {xe.iLs + x0.iLs, xe.iL + x0.iL, xe.vC + x0.vC};
+        };
+        auto norm = [](const std::array<double, 3>& f) {
+            return std::sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+        };
+
+        CllcStateVector x0 = x0_seed;
+        auto F = eval_F(x0);
+        double r = norm(F);
+        constexpr int MAX_ITERS = 25;
+        constexpr double TOL = 1e-7;
+        double scale_i = std::max(1e-3, 0.01 * std::abs(x0.iLs) + 1e-3);
+        double scale_v = std::max(1e-2, 0.01 * std::abs(x0.vC)  + 1e-2);
+        double damping = 1.0;
+        double prev_r = r;
+        int stagnant = 0;
+
+        for (int iter = 0; iter < MAX_ITERS && r > TOL; ++iter) {
+            double J[3][3];
+            CllcStateVector xp, xm;
+            std::array<double, 3> Fp, Fm;
+            xp = x0; xp.iLs += scale_i; xm = x0; xm.iLs -= scale_i;
+            Fp = eval_F(xp); Fm = eval_F(xm);
+            for (int i = 0; i < 3; ++i) J[i][0] = (Fp[i] - Fm[i]) / (2 * scale_i);
+            xp = x0; xp.iL  += scale_i; xm = x0; xm.iL  -= scale_i;
+            Fp = eval_F(xp); Fm = eval_F(xm);
+            for (int i = 0; i < 3; ++i) J[i][1] = (Fp[i] - Fm[i]) / (2 * scale_i);
+            xp = x0; xp.vC  += scale_v; xm = x0; xm.vC  -= scale_v;
+            Fp = eval_F(xp); Fm = eval_F(xm);
+            for (int i = 0; i < 3; ++i) J[i][2] = (Fp[i] - Fm[i]) / (2 * scale_v);
+
+            double A[3][4];
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 3; ++j) A[i][j] = J[i][j];
+                A[i][3] = -F[i];
+            }
+            bool singular = false;
+            for (int col = 0; col < 3; ++col) {
+                int piv = col; double maxv = std::abs(A[col][col]);
+                for (int row = col + 1; row < 3; ++row) {
+                    if (std::abs(A[row][col]) > maxv) { maxv = std::abs(A[row][col]); piv = row; }
+                }
+                if (maxv < 1e-14) { singular = true; break; }
+                if (piv != col) std::swap(A[col], A[piv]);
+                for (int row = col + 1; row < 3; ++row) {
+                    double f = A[row][col] / A[col][col];
+                    for (int k = col; k < 4; ++k) A[row][k] -= f * A[col][k];
+                }
+            }
+            if (singular) break;
+            double dx[3];
+            for (int i = 2; i >= 0; --i) {
+                double sum = A[i][3];
+                for (int j = i + 1; j < 3; ++j) sum -= A[i][j] * dx[j];
+                dx[i] = sum / A[i][i];
+            }
+
+            double try_d = damping;
+            CllcStateVector x_new{}; std::array<double, 3> F_new{};
+            double r_new = r; bool accepted = false;
+            for (int ls = 0; ls < 6; ++ls) {
+                x_new.iLs = x0.iLs + try_d * dx[0];
+                x_new.iL  = x0.iL  + try_d * dx[1];
+                x_new.vC  = x0.vC  + try_d * dx[2];
+                F_new = eval_F(x_new);
+                r_new = norm(F_new);
+                if (std::isfinite(r_new) && r_new < r) { accepted = true; break; }
+                try_d *= 0.5;
+            }
+            if (!accepted) {
+                auto segs = cllc_propagate_half_cycle(x0, Thalf, Vi, Vo, Lr_eq, Lm, Cr_eq);
+                if (!segs.empty()) {
+                    CllcStateVector xe = segs.back().x_end;
+                    x_new.iLs = -xe.iLs; x_new.iL = -xe.iL; x_new.vC = -xe.vC;
+                    F_new = eval_F(x_new);
+                    r_new = norm(F_new);
+                }
+            }
+            x0 = x_new; F = F_new;
+            if (r_new >= prev_r * 0.999) { stagnant++; damping *= 0.7; }
+            else { stagnant = 0; damping = std::min(1.0, damping * 1.2); }
+            prev_r = r_new; r = r_new;
+            if (stagnant >= 4) break;
+        }
+        outSegments = cllc_propagate_half_cycle(x0, Thalf, Vi, Vo, Lr_eq, Lm, Cr_eq);
+        outResidual = r;
+        return x0;
+    }
+
+    /// Classify the segment chain into one of the three CLLC modes:
+    ///   1 = sub-resonant boost  (chain CONTAINS a freewheel segment F:
+    ///                            resonant half-sine completed before the
+    ///                            bridge edge, leaving a freewheel tail)
+    ///   2 = at resonance        (chain is all-P; Thalf ≈ natural P-state
+    ///                            half-period π·√(Lr_eq·Cr_eq); P-segment
+    ///                            naturally completes at the bridge edge)
+    ///   3 = super-resonant buck (chain is all-P; Thalf < natural P-state
+    ///                            half-period; bridge edge clips P-segment
+    ///                            before its natural zero-crossing)
+    /// The duration-vs-natural-half-period criterion is robust at high
+    /// gain demand where the current amplitude shrinks (which would make
+    /// the |Id_end|/|iL_start| ratio test misleading).
+    /// Returns 0 if unrecognised.
+    int cllc_classify_mode(const std::vector<CllcSubStateSegment>& segs,
+                           double Thalf, double Lr_eq, double Cr_eq) {
+        if (segs.empty()) return 0;
+        // Any freewheel segment in the chain indicates that the rectifier
+        // current naturally returned to zero before the next bridge edge —
+        // characteristic of sub-resonant boost operation (mode 1).
+        for (const auto& s : segs) {
+            if (s.state == CllcSubState::F) return 1;
+        }
+        // Chain is all P-segments. Compare Thalf to the natural P-state
+        // half-period Tp_half = π·√(Lr_eq·Cr_eq). At fsw = fr_eq this ratio
+        // is exactly 1.0 (mode 2). At fsw > fr_eq (super-resonant buck) the
+        // bridge clips the half-sine and the ratio drops below 1.
+        double Tp_half = M_PI * std::sqrt(Lr_eq * Cr_eq);
+        if (Tp_half <= 0) return 0;
+        double ratio = Thalf / Tp_half;
+        if (ratio < 0.9) return 3;   // bridge clipped → super-resonant
+        return 2;                    // at resonance (or very close to it)
+    }
+
+    /// Convert a segment chain into uniformly-sampled (i_Lr, i_Lm, v_Cr)
+    /// vectors of length N+1 over [0, Thalf].
+    void cllc_sample_segments(const std::vector<CllcSubStateSegment>& segs,
+                               double Thalf, int N,
+                               double Vi, double Vo,
+                               double Lr_eq, double Lm, double Cr_eq,
+                               std::vector<double>& iLs_out,
+                               std::vector<double>& iL_out,
+                               std::vector<double>& vC_out)
+    {
+        double dt = Thalf / N;
+        size_t segIdx = 0;
+        for (int k = 0; k <= N; ++k) {
+            double t = k * dt;
+            if (t > Thalf) t = Thalf;
+            while (segIdx + 1 < segs.size() && t > segs[segIdx].t_end + 1e-15) ++segIdx;
+            if (segs.empty()) {
+                iLs_out[k] = iL_out[k] = vC_out[k] = 0.0;
+                continue;
+            }
+            const auto& seg = segs[segIdx];
+            double t_local = t - seg.t_start;
+            if (t_local < 0) t_local = 0;
+            double seg_dt = seg.t_end - seg.t_start;
+            if (t_local > seg_dt) t_local = seg_dt;
+            CllcStateVector x = cllc_propagate_substate(seg.state, seg.x_start,
+                                                          t_local, Vi, Vo,
+                                                          Lr_eq, Lm, Cr_eq);
+            iLs_out[k] = x.iLs;
+            iL_out[k]  = x.iL;
+            vC_out[k]  = x.vC;
+        }
+    }
+
+    } // anonymous namespace
+
+    // -------------------------------------------------------------------------
+
     OperatingPoint CllcConverter::process_operating_point_for_input_voltage(
         double inputVoltage,
         const CllcOperatingPoint& cllcOpPoint,
@@ -338,159 +712,265 @@ double get_value_or(T&& val, double default_val) {
         const CllcResonantParameters& params) {
 
         OperatingPoint operatingPoint;
+
+        if (cllcOpPoint.get_output_voltages().empty() || cllcOpPoint.get_output_currents().empty())
+            throw std::runtime_error("CLLC: operating point missing output voltages/currents");
+
         double switchingFrequency = get_value_or(cllcOpPoint.get_switching_frequency(), 0.0);
+        if (switchingFrequency <= 0)
+            throw std::runtime_error("CLLC: operating point has invalid switching frequency");
+
         double outputVoltage = cllcOpPoint.get_output_voltages()[0];
         double outputCurrent = cllcOpPoint.get_output_currents()[0];
-        double outputPower = outputVoltage * outputCurrent;
-        double n = turnsRatio;
+        double n  = turnsRatio;
         double Lm = magnetizingInductance;
+        if (n <= 0 || Lm <= 0)
+            throw std::runtime_error("CLLC: invalid turns ratio or magnetizing inductance");
+
+        // -------------------------------------------------------------------
+        // Collapse 5-element CLLC tank to 3-state LLC-equivalent (Lr_eq, Cr_eq, Lm)
+        // referred to the primary. Lr2 is stored on the secondary side; refer
+        // to primary by ×n². Cr2 is stored on the secondary side; refer to
+        // primary by ÷n². Series combinations:
+        //   Lr_eq = Lr1 + n²·Lr2_sec
+        //   Cr_eq = (Cr1 · Cr2_pri) / (Cr1 + Cr2_pri)   with Cr2_pri = Cr2_sec/n²
+        // For symmetric (a=b=1):  Lr_eq = 2·Lr1,  Cr_eq = Cr1/2.
+        // -------------------------------------------------------------------
+        double Lr1 = params.primaryResonantInductance;
+        double Cr1 = params.primaryResonantCapacitance;
+        double Lr2_sec = params.secondaryResonantInductance;
+        double Cr2_sec = params.secondaryResonantCapacitance;
+        if (Lr1 <= 0 || Cr1 <= 0 || Lr2_sec <= 0 || Cr2_sec <= 0)
+            throw std::runtime_error("CLLC: resonant tank values invalid (Lr1/Cr1/Lr2/Cr2 must be > 0)");
+
+        double Lr2_pri = Lr2_sec * n * n;
+        double Cr2_pri = Cr2_sec / (n * n);
+        double Lr_eq  = Lr1 + Lr2_pri;
+        double Cr_eq  = (Cr1 * Cr2_pri) / (Cr1 + Cr2_pri);
+
+        double k_bridge = get_bridge_voltage_factor();
+        double Vi = k_bridge * inputVoltage;
+        double Vo = n * outputVoltage;            // reflected output voltage (primary side)
 
         double period = 1.0 / switchingFrequency;
-        double halfPeriod = period / 2.0;
-        double td = deadTime;
+        double Thalf  = period / 2.0;
+        // Dead time is not represented by the TDA model (would require a 5th
+        // sub-state with both bridge legs floating). Mirrors LLC convention.
+        double Thalf_eff = Thalf;
 
-        // Clamp dead time to a reasonable fraction of the half period
-        if (td > halfPeriod * 0.1) {
-            td = halfPeriod * 0.1;
+        // -------------------------------------------------------------------
+        // Seed the Newton solver with FHA-style estimates.
+        // -------------------------------------------------------------------
+        double Im_pk_est = Vo * Thalf_eff / (2.0 * Lm);
+        double Iload_reflected = outputCurrent / n;
+        double Ires_est = std::max(std::abs(Im_pk_est) + std::abs(Iload_reflected),
+                                   std::abs(Iload_reflected) * 1.5);
+        CllcStateVector x0_seed{ -Ires_est, -Im_pk_est, 0.0 };
+
+        // LIP perturbation (mirrors LLC) to avoid the singular-Jacobian ridge
+        // when Vi ≈ Vo and fsw ≈ fr.
+        double Vi_solver = Vi;
+        double denom_vo = std::max(std::abs(Vi), std::abs(Vo));
+        if (denom_vo > 0 && std::abs(Vi - Vo) / denom_vo < 0.005) {
+            Vi_solver = Vi * 1.005;
         }
 
-        double efficiency = get_efficiency().value_or(0.95);
+        std::vector<CllcSubStateSegment> segments;
+        double residual = 0.0;
+        CllcStateVector x0 = cllc_solve_steady_state(x0_seed, Thalf_eff,
+                                                       Vi_solver, Vo, Lr_eq, Lm, Cr_eq,
+                                                       segments, residual);
 
-        // Peak magnetizing current (triangular, linear ramp over half period minus dead time)
-        // Im ramps from -Im_peak to +Im_peak over (T/2 - td), with Vin across Lm
-        // Vin = Lm · dI/dt → Im_peak = Vin · (T/2 - td) / (2·Lm)
-        double Im_peak = inputVoltage * (halfPeriod - td) / (2.0 * Lm);
+        // Sanity-check against null-space blow-up; fall back to seed if violated.
+        double sanity_iLs = std::max(10.0 * Ires_est, 20.0);
+        double sanity_vC  = std::max(10.0 * std::abs(Vi), 10.0 * std::abs(Vo));
+        if (sanity_vC < 200.0) sanity_vC = 200.0;
+        if (!std::isfinite(x0.iLs) || !std::isfinite(x0.iL) || !std::isfinite(x0.vC) ||
+            std::abs(x0.iLs) > sanity_iLs ||
+            std::abs(x0.vC)  > sanity_vC) {
+            x0 = x0_seed;
+            residual = -1.0;
+        }
+        // Re-propagate with the authoritative Vi for waveform emission.
+        segments = cllc_propagate_half_cycle(x0, Thalf_eff, Vi, Vo, Lr_eq, Lm, Cr_eq);
 
-        // RMS input current from power balance: Pin = Pout/η
-        // For sinusoidal current: Irms = Ip_peak / √2
-        // Pin = Vin · Irms · (2√2/π)  [for fundamental of square wave voltage]
-        // So Ip_peak ≈ (π/2) · Pout / (Vin · η)  [approximate for FHA]
-        double inputPower = outputPower / efficiency;
-        double Ip_rms = inputPower / inputVoltage;  // approximate DC equivalent
-        double Ip_resonant_peak = Ip_rms * M_PI / 2.0;  // FHA fundamental peak
+        // -------------------------------------------------------------------
+        // Sample the segment chain across the positive half cycle.
+        // -------------------------------------------------------------------
+        const int N = 200;
+        double dt = Thalf_eff / N;
+        std::vector<double> ILs_pos(N + 1, 0.0), IL_pos(N + 1, 0.0), Vc_pos(N + 1, 0.0);
+        cllc_sample_segments(segments, Thalf_eff, N,
+                              Vi, Vo, Lr_eq, Lm, Cr_eq,
+                              ILs_pos, IL_pos, Vc_pos);
 
-        // Ensure resonant peak is larger than magnetizing peak (power transfer happens)
-        if (Ip_resonant_peak < Im_peak * 1.2) {
-            Ip_resonant_peak = Im_peak * 1.2;
+        // VLm at each sample (closed-form per sub-state).
+        std::vector<double> VLm_pos(N + 1, 0.0);
+        size_t segIdx = 0;
+        for (int k = 0; k <= N; ++k) {
+            double t = std::min<double>(k * dt, Thalf_eff);
+            while (segIdx + 1 < segments.size() && t > segments[segIdx].t_end + 1e-15) ++segIdx;
+            if (segments.empty()) { VLm_pos[k] = 0.0; continue; }
+            const auto& seg = segments[segIdx];
+            switch (seg.state) {
+                case CllcSubState::P_POS: VLm_pos[k] = +Vo; break;
+                case CllcSubState::P_NEG: VLm_pos[k] = -Vo; break;
+                case CllcSubState::F: VLm_pos[k] = (Lm/(Lr_eq+Lm)) * (Vi - Vc_pos[k]); break;
+            }
         }
 
-        // Secondary resonant current peak (referred to secondary side)
-        // Isec = n · (Ip - Im), so secondary peak ≈ n · (Ip_res_peak - Im_peak)
-        // But at the moment of peak resonant current, Im ≈ 0 (at midpoint)
-        // So secondary peak ≈ n · Ip_resonant_peak (approximately)
-        // More precisely, Isec_peak = n · Ip_resonant_peak when Im is small
+        // -------------------------------------------------------------------
+        // Diagnostics (per CLLC_REWRITE_PLAN §5.4)
+        // -------------------------------------------------------------------
+        lastMode = cllc_classify_mode(segments, Thalf_eff, Lr_eq, Cr_eq);
+        lastSubStateSequence.clear();
+        for (const auto& seg : segments)
+            lastSubStateSequence.push_back(static_cast<int>(seg.state));
+        lastSteadyStateResidual = residual;
+        // LIP frequency: 1/(2π·√(Lr_eq·Cr_eq)). Match Llc convention.
+        computedLipFrequency = 1.0 / (2.0 * M_PI * std::sqrt(Lr_eq * Cr_eq));
 
-        // Number of sample points for waveform construction
-        const int numPoints = 200;
-        double dt = period / numPoints;
+        // Peak primary current and peak resonant-cap voltage (across both Cr1
+        // and Cr2). Cr1 sees a fraction Cr2_pri/(Cr1+Cr2_pri) of the collapsed
+        // vC; Cr2_pri sees Cr1/(Cr1+Cr2_pri). Voltage divider — capacitor-cap
+        // voltage divider for series caps: V_each = vC_total · C_other/(C1+C2).
+        double Ip_peak = 0.0, Vc_peak = 0.0;
+        for (int k = 0; k <= N; ++k) {
+            Ip_peak = std::max(Ip_peak, std::abs(ILs_pos[k]));
+            Vc_peak = std::max(Vc_peak, std::abs(Vc_pos[k]));
+        }
+        lastPrimaryPeakCurrent = Ip_peak;
+        // Cr1 peak voltage (referred to primary, since Cr1 is on primary):
+        // V_Cr1 = vC · Cr2_pri/(Cr1 + Cr2_pri)
+        double V_Cr1_peak = Vc_peak * Cr2_pri / (Cr1 + Cr2_pri);
+        lastResonantCapPeakVoltage = V_Cr1_peak;
 
-        // =====================================================================
-        // PRIMARY WINDING
-        // =====================================================================
+        // -------------------------------------------------------------------
+        // Build full-period waveforms by half-wave antisymmetry.
+        // -------------------------------------------------------------------
+        int totalSamples = 2 * N + 1;
+        std::vector<double> time_full(totalSamples);
+        std::vector<double> ILs_full(totalSamples);
+        std::vector<double> IL_full(totalSamples);
+        std::vector<double> VLm_full(totalSamples);
+        std::vector<double> Vc_full(totalSamples);
+
+        for (int k = 0; k <= N; ++k) {
+            time_full[k] = k * dt;
+            ILs_full[k] = std::isfinite(ILs_pos[k]) ? ILs_pos[k] : 0.0;
+            IL_full[k]  = std::isfinite(IL_pos[k])  ? IL_pos[k]  : 0.0;
+            VLm_full[k] = std::isfinite(VLm_pos[k]) ? VLm_pos[k] : 0.0;
+            Vc_full[k]  = std::isfinite(Vc_pos[k])  ? Vc_pos[k]  : 0.0;
+        }
+        for (int k = 1; k <= N; ++k) {
+            time_full[N + k] = Thalf_eff + k * dt;
+            ILs_full[N + k] = -ILs_full[k];
+            IL_full[N + k]  = -IL_full[k];
+            VLm_full[N + k] = -VLm_full[k];
+            Vc_full[N + k]  = -Vc_full[k];
+        }
+
+        // -------------------------------------------------------------------
+        // Extra-component waveforms (Cr1, Cr2, Lr1, Lr2) for round-trip via
+        // get_extra_components_inputs in P5. Voltages split via series cap
+        // divider; currents are the same series tank current ILs.
+        // -------------------------------------------------------------------
         {
-            Waveform currentWaveform;
-            Waveform voltageWaveform;
-
-            std::vector<double> currentData(numPoints + 1);
-            std::vector<double> voltageData(numPoints + 1);
-            std::vector<double> timeData(numPoints + 1);
-
-            for (int i = 0; i <= numPoints; ++i) {
-                double t = i * dt;
-                timeData[i] = t;
-
-                // --- Primary voltage: bipolar rectangular with dead time ---
-                // [0, T/2-td]: +Vin
-                // [T/2-td, T/2]: 0 (dead time)
-                // [T/2, T-td]: -Vin
-                // [T-td, T]: 0 (dead time)
-                double tMod = fmod(t, period);
-                if (tMod < halfPeriod - td) {
-                    voltageData[i] = inputVoltage;
-                } else if (tMod < halfPeriod) {
-                    voltageData[i] = 0.0;
-                } else if (tMod < period - td) {
-                    voltageData[i] = -inputVoltage;
-                } else {
-                    voltageData[i] = 0.0;
-                }
-
-                // --- Primary current: sinusoidal resonant + triangular magnetizing ---
-                // Resonant component (approximately sinusoidal at switching frequency)
-                double I_resonant = Ip_resonant_peak * sin(2.0 * M_PI * switchingFrequency * t);
-
-                // Magnetizing component (triangular)
-                // Ramps linearly from -Im_peak to +Im_peak over first half period,
-                // then from +Im_peak to -Im_peak over second half period
-                double I_mag;
-                if (tMod < halfPeriod) {
-                    I_mag = -Im_peak + 2.0 * Im_peak * tMod / halfPeriod;
-                } else {
-                    I_mag = Im_peak - 2.0 * Im_peak * (tMod - halfPeriod) / halfPeriod;
-                }
-
-                currentData[i] = I_resonant + I_mag;
+            std::vector<double> Vcr1_full(totalSamples), Vcr2_full(totalSamples);
+            // Capacitor voltage divider: vC_total = V_Cr1 + V_Cr2_pri
+            //   V_Cr1   = vC * Cr2_pri/(Cr1 + Cr2_pri)
+            //   V_Cr2_pri = vC * Cr1/(Cr1 + Cr2_pri)
+            // V_Cr2 (secondary side) = V_Cr2_pri * n
+            double k1 = Cr2_pri / (Cr1 + Cr2_pri);
+            double k2 = Cr1     / (Cr1 + Cr2_pri);
+            for (int k = 0; k < totalSamples; ++k) {
+                Vcr1_full[k] = Vc_full[k] * k1;
+                Vcr2_full[k] = Vc_full[k] * k2 * n;   // referred back to secondary
             }
 
-            currentWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
-            currentWaveform.set_data(currentData);
-            currentWaveform.set_time(timeData);
+            Waveform t_wf, vCr1_wf, vCr2_wf, iCr_wf;
+            iCr_wf.set_data(ILs_full); iCr_wf.set_time(time_full);
+            iCr_wf.set_ancillary_label(WaveformLabel::CUSTOM);
+            vCr1_wf.set_data(Vcr1_full); vCr1_wf.set_time(time_full);
+            vCr1_wf.set_ancillary_label(WaveformLabel::CUSTOM);
+            vCr2_wf.set_data(Vcr2_full); vCr2_wf.set_time(time_full);
+            vCr2_wf.set_ancillary_label(WaveformLabel::CUSTOM);
 
+            extraCr1VoltageWaveforms.push_back(vCr1_wf);
+            extraCr1CurrentWaveforms.push_back(iCr_wf);
+            extraCr2VoltageWaveforms.push_back(vCr2_wf);
+            // Cr2 on secondary side carries n×ILs (ampere-turn balance).
+            std::vector<double> ICr2_sec(totalSamples);
+            for (int k = 0; k < totalSamples; ++k) ICr2_sec[k] = n * (ILs_full[k] - IL_full[k]);
+            Waveform iCr2_wf;
+            iCr2_wf.set_data(ICr2_sec); iCr2_wf.set_time(time_full);
+            iCr2_wf.set_ancillary_label(WaveformLabel::CUSTOM);
+            extraCr2CurrentWaveforms.push_back(iCr2_wf);
+
+            // Lr1 voltage = Vi_sq − V_Cr1 − VLm  (KVL on primary loop in P-mode)
+            // Lr2 voltage (secondary side) = (Vi_sq − VLm)·... actually for full
+            // generality V_Lr1 = (Lr1/Lr_eq)·(Vi_sq − vC − VLm). Likewise for Lr2.
+            std::vector<double> VLr1_full(totalSamples), VLr2_full(totalSamples);
+            for (int k = 0; k < totalSamples; ++k) {
+                double Vi_sq = (k * dt < Thalf_eff) ? Vi : -Vi;  // bipolar bridge
+                if (k > N) Vi_sq = -Vi;
+                double V_loop = Vi_sq - Vc_full[k] - VLm_full[k];
+                VLr1_full[k] = (Lr1     / Lr_eq) * V_loop;
+                VLr2_full[k] = (Lr2_pri / Lr_eq) * V_loop / n;   // back to secondary side
+            }
+            Waveform vLr1_wf, vLr2_wf;
+            vLr1_wf.set_data(VLr1_full); vLr1_wf.set_time(time_full);
+            vLr1_wf.set_ancillary_label(WaveformLabel::CUSTOM);
+            vLr2_wf.set_data(VLr2_full); vLr2_wf.set_time(time_full);
+            vLr2_wf.set_ancillary_label(WaveformLabel::CUSTOM);
+            extraLr1VoltageWaveforms.push_back(vLr1_wf);
+            extraLr1CurrentWaveforms.push_back(iCr_wf);   // same as ILs
+            extraLr2VoltageWaveforms.push_back(vLr2_wf);
+            extraLr2CurrentWaveforms.push_back(iCr2_wf);  // same as ICr2_sec
+
+            extraTimeVectors.push_back(time_full);
+        }
+
+        // -------------------------------------------------------------------
+        // PRIMARY WINDING excitation: current = ILs (series tank current),
+        // voltage = VLm (primary magnetizing voltage; this is what the core
+        // sees, *not* the bridge voltage).
+        // -------------------------------------------------------------------
+        {
+            Waveform currentWaveform;
+            currentWaveform.set_data(ILs_full);
+            currentWaveform.set_time(time_full);
+            currentWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
+
+            Waveform voltageWaveform;
+            voltageWaveform.set_data(VLm_full);
+            voltageWaveform.set_time(time_full);
             voltageWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
-            voltageWaveform.set_data(voltageData);
-            voltageWaveform.set_time(timeData);
 
             auto excitation = complete_excitation(currentWaveform, voltageWaveform,
                                                    switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
 
-        // =====================================================================
-        // SECONDARY WINDING
-        // =====================================================================
+        // -------------------------------------------------------------------
+        // SECONDARY WINDING excitation (single full-wave secondary, not
+        // center-tapped). I_sec = n·(ILs − IL), V_sec = VLm/n.
+        // -------------------------------------------------------------------
         {
-            Waveform currentWaveform;
-            Waveform voltageWaveform;
-
-            std::vector<double> currentData(numPoints + 1);
-            std::vector<double> voltageData(numPoints + 1);
-            std::vector<double> timeData(numPoints + 1);
-
-            // Secondary voltage referred to secondary side: ±Vout (output voltage)
-            // which is ±Vin/n from the primary perspective
-            double secVoltage = outputVoltage;
-
-            for (int i = 0; i <= numPoints; ++i) {
-                double t = i * dt;
-                timeData[i] = t;
-
-                // --- Secondary voltage: bipolar rectangular ±Vout with dead time ---
-                double tMod = fmod(t, period);
-                if (tMod < halfPeriod - td) {
-                    voltageData[i] = secVoltage;
-                } else if (tMod < halfPeriod) {
-                    voltageData[i] = 0.0;
-                } else if (tMod < period - td) {
-                    voltageData[i] = -secVoltage;
-                } else {
-                    voltageData[i] = 0.0;
-                }
-
-                // --- Secondary current ---
-                // Isec(t) = n · (Ip(t) - Im(t)) = n · Iresonant(t)
-                // The resonant current on the secondary is the resonant component only
-                // (magnetizing current stays in the primary, doesn't transfer)
-                double I_resonant = Ip_resonant_peak * sin(2.0 * M_PI * switchingFrequency * t);
-                currentData[i] = n * I_resonant;
+            std::vector<double> iSec(totalSamples), vSec(totalSamples);
+            for (int k = 0; k < totalSamples; ++k) {
+                iSec[k] = n * (ILs_full[k] - IL_full[k]);
+                vSec[k] = VLm_full[k] / n;
             }
-
+            Waveform currentWaveform;
+            currentWaveform.set_data(iSec);
+            currentWaveform.set_time(time_full);
             currentWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
-            currentWaveform.set_data(currentData);
-            currentWaveform.set_time(timeData);
 
+            Waveform voltageWaveform;
+            voltageWaveform.set_data(vSec);
+            voltageWaveform.set_time(time_full);
             voltageWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
-            voltageWaveform.set_data(voltageData);
-            voltageWaveform.set_time(timeData);
 
             auto excitation = complete_excitation(currentWaveform, voltageWaveform,
                                                    switchingFrequency, "Secondary 0");
@@ -518,6 +998,17 @@ double get_value_or(T&& val, double default_val) {
         std::vector<std::string> inputVoltagesNames;
 
         collect_input_voltages(get_input_voltage(), inputVoltages, inputVoltagesNames);
+
+        // Clear extra-component waveform buffers; they accumulate per OP.
+        extraCr1VoltageWaveforms.clear();
+        extraCr1CurrentWaveforms.clear();
+        extraCr2VoltageWaveforms.clear();
+        extraCr2CurrentWaveforms.clear();
+        extraLr1VoltageWaveforms.clear();
+        extraLr1CurrentWaveforms.clear();
+        extraLr2VoltageWaveforms.clear();
+        extraLr2CurrentWaveforms.clear();
+        extraTimeVectors.clear();
 
         double n = turnsRatios[0];
 
