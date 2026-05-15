@@ -322,6 +322,15 @@ public:
     /** Returns 1.0 for full-bridge, 0.5 for half-bridge. */
     double get_bridge_voltage_factor() const;
 
+    /**
+     * Resolve asymmetric tank ratios a = n²·L2/L1 and b = C2/(n²·C1)
+     * from the v2 schema fields. Falls back to the v1 symmetricDesign
+     * alias when neither ratio is explicit. Centralized so the gain
+     * function, TDA solver, AdvancedCllc and get_extra_components_inputs
+     * stay consistent.
+     */
+    void resolve_resonant_ratios(double& a, double& b) const;
+
     // --- Core design methods --------------------------------------------
 
     /** Validate converter configuration. */

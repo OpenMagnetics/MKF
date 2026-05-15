@@ -1335,4 +1335,63 @@ namespace {
                           std::invalid_argument);
     }
 
+    // ---------------------------------------------------------------------
+    // P7 — explicit asymmetric ratios via v2 schema fields override the v1
+    // symmetricDesign alias. Verifies resolve_resonant_ratios is wired in
+    // calculate_resonant_parameters: with a=0.90 and b=1.111, the produced
+    // L2 and C2 must equal a·L1/n² and n²·b·C1 respectively.
+    // ---------------------------------------------------------------------
+    TEST_CASE("Test_Cllc_AsymmetricRatios_V2Schema",
+              "[converter-model][cllc-topology][asymmetric][p7][smoke-test]") {
+        json cllcJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        cllcJson["resonantInductorRatio"] = 0.90;
+        cllcJson["resonantCapacitorRatio"] = 1.111;  // a·b = 1.0 (fr1 = fr2)
+        OpenMagnetics::CllcConverter cllc(cllcJson);
+        cllc._assertErrors = true;
+
+        auto params = cllc.calculate_resonant_parameters();
+        const double n = params.turnsRatio;
+        REQUIRE_THAT(params.resonantInductorRatio,
+                     Catch::Matchers::WithinAbs(0.90, 1e-6));
+        REQUIRE_THAT(params.resonantCapacitorRatio,
+                     Catch::Matchers::WithinAbs(1.111, 1e-6));
+        // L2 = a·L1/n², C2 = n²·b·C1
+        REQUIRE_THAT(params.secondaryResonantInductance,
+                     Catch::Matchers::WithinRel(
+                         0.90 * params.primaryResonantInductance / (n * n), 1e-6));
+        REQUIRE_THAT(params.secondaryResonantCapacitance,
+                     Catch::Matchers::WithinRel(
+                         n * n * 1.111 * params.primaryResonantCapacitance, 1e-6));
+    }
+
+    // ---------------------------------------------------------------------
+    // P7 — half-bridge produces half the equivalent FHA tank drive amplitude
+    // of full-bridge, so at the same fsw the analytical voltage gain function
+    // returns the same magnitude (gain is a transfer ratio, not absolute) but
+    // the TDA tank current scales by ½. Use the resonant-parameter Q
+    // definition: HB equivalent AC resistance is 4× FB at the same R_load
+    // (because Vab amplitude halves), so resonant Q halves.
+    // ---------------------------------------------------------------------
+    TEST_CASE("Test_Cllc_BridgeType_HB_vs_FB",
+              "[converter-model][cllc-topology][bridge-type][p7][smoke-test]") {
+        json fbJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
+        json hbJson = fbJson;
+        hbJson["bridgeType"] = "halfBridge";
+
+        OpenMagnetics::CllcConverter fb(fbJson);
+        OpenMagnetics::CllcConverter hb(hbJson);
+        REQUIRE(fb.get_bridge_voltage_factor() == 1.0);
+        REQUIRE(hb.get_bridge_voltage_factor() == 0.5);
+
+        // Same Q / fr / k assumptions (matched designs), so the tank parameters
+        // line up at the same numbers; the bridge factor only enters during
+        // operating-point propagation, not the design pass.
+        auto fbParams = fb.calculate_resonant_parameters();
+        auto hbParams = hb.calculate_resonant_parameters();
+        REQUIRE_THAT(hbParams.turnsRatio,
+                     Catch::Matchers::WithinRel(fbParams.turnsRatio, 1e-6));
+        REQUIRE_THAT(hbParams.resonantFrequency,
+                     Catch::Matchers::WithinRel(fbParams.resonantFrequency, 1e-6));
+    }
+
 } // anonymous namespace

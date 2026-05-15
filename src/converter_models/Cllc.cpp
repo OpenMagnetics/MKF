@@ -104,6 +104,19 @@ double get_value_or(T&& val, double default_val) {
         return 1.0; // FULL_BRIDGE (default)
     }
 
+    void CllcConverter::resolve_resonant_ratios(double& a, double& b) const {
+        auto aOpt = get_resonant_inductor_ratio();
+        auto bOpt = get_resonant_capacitor_ratio();
+
+        // v1 fallback when neither v2 ratio is set: symmetricDesign drives
+        // the (a, b) pair. symmetricDesign==true (default) → (1, 1).
+        // symmetricDesign==false → Infineon AN-2024-06 §2.3 typical
+        // asymmetric values (0.95, 1.052).
+        bool symmetric = get_symmetric_design().value_or(true);
+        a = aOpt.has_value() ? *aOpt : (symmetric ? 1.0 : 0.95);
+        b = bOpt.has_value() ? *bOpt : (symmetric ? 1.0 : 1.052);
+    }
+
     // =========================================================================
     // Resonant Tank Parameter Calculation
     // =========================================================================
@@ -200,18 +213,11 @@ double get_value_or(T&& val, double default_val) {
         params.magnetizingInductance = Lm;
         params.inductanceRatio = k;
 
-        // Steps 8-9: Secondary resonant components
-        bool symmetric = get_symmetric_design().value_or(true);
+        // Steps 8-9: Secondary resonant components — v2 schema ratios
+        // (resonantInductorRatio, resonantCapacitorRatio) override the
+        // v1 symmetricDesign alias. See resolve_resonant_ratios.
         double a, b;
-        if (symmetric) {
-            // Symmetric design: a = 1, b = 1
-            a = 1.0;
-            b = 1.0;
-        } else {
-            // Asymmetric design: typical values from Infineon AN Step 8
-            a = 0.95;
-            b = 1.052;
-        }
+        resolve_resonant_ratios(a, b);
         params.resonantInductorRatio = a;
         params.resonantCapacitorRatio = b;
 
@@ -1096,9 +1102,8 @@ double get_value_or(T&& val, double default_val) {
         double L1 = params.primaryResonantInductance;
         double omega_r = 2.0 * M_PI * params.resonantFrequency;
         params.primaryResonantCapacitance = 1.0 / (omega_r * omega_r * L1);
-        bool symmetric = get_symmetric_design().value_or(true);
-        double a = symmetric ? 1.0 : 0.95;
-        double b = symmetric ? 1.0 : 1.052;
+        double a, b;
+        resolve_resonant_ratios(a, b);
         params.secondaryResonantInductance = a * L1 / (n * n);
         params.secondaryResonantCapacitance = n * n * b * params.primaryResonantCapacitance;
 
@@ -1397,9 +1402,8 @@ double get_value_or(T&& val, double default_val) {
         double L1 = params.primaryResonantInductance;
         double omega_r = 2.0 * M_PI * params.resonantFrequency;
         params.primaryResonantCapacitance = 1.0 / (omega_r * omega_r * L1);
-        bool symmetric = get_symmetric_design().value_or(true);
-        double a = symmetric ? 1.0 : 0.95;
-        double b = symmetric ? 1.0 : 1.052;
+        double a, b;
+        resolve_resonant_ratios(a, b);
         params.secondaryResonantInductance = a * L1 / (n * n);
         params.secondaryResonantCapacitance = n * n * b * params.primaryResonantCapacitance;
 
@@ -1503,9 +1507,8 @@ double get_value_or(T&& val, double default_val) {
         double L1 = params.primaryResonantInductance;
         double omega_r = 2.0 * M_PI * params.resonantFrequency;
         params.primaryResonantCapacitance = 1.0 / (omega_r * omega_r * L1);
-        bool symmetric = get_symmetric_design().value_or(true);
-        double a = symmetric ? 1.0 : 0.95;
-        double b = symmetric ? 1.0 : 1.052;
+        double a, b;
+        resolve_resonant_ratios(a, b);
         params.secondaryResonantInductance = a * L1 / (n * n);
         params.secondaryResonantCapacitance = n * n * b * params.primaryResonantCapacitance;
 
@@ -1637,8 +1640,9 @@ double get_value_or(T&& val, double default_val) {
             double Lr1_eff = (Llk_pri >= Lr1) ? Llk_pri : Lr1;
             Cr1 = 1.0 / (4.0 * M_PI * M_PI * fr * fr * Lr1_eff);
             // Maintain the symmetric / asymmetric ratio b = Cr2 / (n²·Cr1).
-            bool symmetric = get_symmetric_design().value_or(true);
-            double b = symmetric ? 1.0 : 1.052;
+            double a_unused, b;
+            resolve_resonant_ratios(a_unused, b);
+            (void)a_unused;
             Cr2 = n * n * b * Cr1;
         }
 
@@ -1842,9 +1846,8 @@ double get_value_or(T&& val, double default_val) {
         }
 
         double n = turnsRatios[0];
-        bool symmetric = get_symmetric_design().value_or(true);
-        double a = symmetric ? 1.0 : 0.95;
-        double b = symmetric ? 1.0 : 1.052;
+        double a, b;
+        resolve_resonant_ratios(a, b);
 
         if (get_desired_resonant_inductance_secondary()) {
             params.secondaryResonantInductance = get_desired_resonant_inductance_secondary().value();

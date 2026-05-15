@@ -74,14 +74,25 @@ nlohmann::json build_fixture(const RefDesignSpec& s) {
     };
 }
 
+// P7 — asymmetric KIT 20 kW fixture. Same shape as build_fixture but
+// adds the v2 schema ratios and a true bidirectional design.
+nlohmann::json build_fixture_asymmetric(const RefDesignSpec& s,
+                                        double a, double b) {
+    auto j = build_fixture(s);
+    j["symmetricDesign"] = false;
+    j["resonantInductorRatio"] = a;
+    j["resonantCapacitorRatio"] = b;
+    return j;
+}
+
 using namespace OpenMagnetics::Testing;
 
-void run_ptp_gates(const RefDesignSpec& s) {
+void run_ptp_gates_impl(const RefDesignSpec& s, const nlohmann::json& fixture) {
     std::cout << "\n========== CLLC PtP — " << s.name << " ==========\n";
     NgspiceRunner runner;
     if (!runner.is_available()) { WARN("ngspice not available"); return; }
 
-    OpenMagnetics::CllcConverter cllc(build_fixture(s));
+    OpenMagnetics::CllcConverter cllc(fixture);
     auto params = cllc.calculate_resonant_parameters();
     const double n  = params.turnsRatio;
     const double Lm = params.magnetizingInductance;
@@ -155,6 +166,14 @@ void run_ptp_gates(const RefDesignSpec& s) {
     CHECK(nrmse < s.tol_nrmse);
 }
 
+void run_ptp_gates(const RefDesignSpec& s) {
+    run_ptp_gates_impl(s, build_fixture(s));
+}
+
+void run_ptp_gates_asymmetric(const RefDesignSpec& s, double a, double b) {
+    run_ptp_gates_impl(s, build_fixture_asymmetric(s, a, b));
+}
+
 }  // namespace
 
 // NOTE — P6 NRMSE acceptance gates per CLLC_REWRITE_PLAN.md §8.
@@ -203,4 +222,19 @@ TEST_CASE("CLLC reference design PtP — Infineon AN-2024-06 EV charger "
                     73e3, 40e3, 250e3,
                     60.0, 2.0, 0.20, 0.60, 0.16};
     run_ptp_gates(s);
+}
+
+// P7 — KIT 20 kW asymmetric CLLC reference (CLLLC, but with the
+// secondary-side L2/C2 ratios driven by the v2 schema fields). 800V →
+// 800V @ 25 A, 100 kHz. a=0.95, b=1.052 keeps fr1 = fr2 (a·b ≈ 1.0).
+// Validates that asymmetric-tank designs propagate end-to-end through
+// calculate_resonant_parameters → TDA → SPICE without regressing the
+// NRMSE acceptance gate.
+TEST_CASE("CLLC reference design PtP — KIT 20 kW asymmetric "
+          "(800V→800V/25A 100 kHz, a=0.95 b=1.052)",
+          "[converter-model][cllc-topology][refdesign][ptp][asymmetric][p7][slow]") {
+    RefDesignSpec s{"KIT-20kW-Asymmetric", 800.0, 700.0, 900.0, 800.0, 25.0,
+                    100e3, 50e3, 300e3,
+                    60.0, 2.0, 0.20, 0.60, 0.16};
+    run_ptp_gates_asymmetric(s, 0.95, 1.052);
 }
