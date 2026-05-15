@@ -24,7 +24,7 @@ double get_value_or(T&& val, double default_val) {
     // =========================================================================
 
     CllcConverter::CllcConverter(const json& j) {
-        // Parse base CllcResonant fields
+        // Parse base CllcResonant fields (v1)
         set_bidirectional(get_stack_optional<bool>(j, "bidirectional"));
         set_efficiency(get_stack_optional<double>(j, "efficiency"));
         set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
@@ -33,6 +33,20 @@ double get_value_or(T&& val, double default_val) {
         set_operating_points(j.at("operatingPoints").get<std::vector<CllcOperatingPoint>>());
         set_quality_factor(get_stack_optional<double>(j, "qualityFactor"));
         set_symmetric_design(get_stack_optional<bool>(j, "symmetricDesign"));
+
+        // v2 schema additions (all optional; absence preserves defaults).
+        // bridgeType: shares LlcBridgeType (deduplicated by quicktype since
+        // the JSON enum values fullBridge/halfBridge are identical).
+        set_bridge_type(get_stack_optional<LlcBridgeType>(j, "bridgeType"));
+        set_integrated_resonant_inductor1(get_stack_optional<bool>(j, "integratedResonantInductor1"));
+        set_integrated_resonant_inductor2(get_stack_optional<bool>(j, "integratedResonantInductor2"));
+        set_resonant_inductor_ratio(get_stack_optional<double>(j, "resonantInductorRatio"));
+        set_resonant_capacitor_ratio(get_stack_optional<double>(j, "resonantCapacitorRatio"));
+
+        // v1 → v2 derived alias: when symmetricDesign was set explicitly to
+        // false in v1 input but neither ratio is supplied, leave both at
+        // their schema defaults (1.0). New code should set the ratios
+        // directly. (No-op block; documented for grep.)
     }
 
     AdvancedCllcConverter::AdvancedCllcConverter(const json& j) {
@@ -40,7 +54,51 @@ double get_value_or(T&& val, double default_val) {
     }
 
     bool CllcConverter::run_checks(bool assert) {
-        return Topology::run_checks_common(this, assert);
+        // Schema-level checks first (frequency window, OP non-empty, etc.).
+        bool ok = Topology::run_checks_common(this, assert);
+
+        // v2 field validation
+        auto a = get_resonant_inductor_ratio();
+        if (a.has_value() && (*a <= 0.0 || *a > 10.0)) {
+            ok = false;
+            if (assert) {
+                throw std::invalid_argument(
+                    "CLLC resonantInductorRatio (a) out of range (0, 10]: "
+                    + std::to_string(*a));
+            }
+        }
+        auto b = get_resonant_capacitor_ratio();
+        if (b.has_value() && (*b <= 0.0 || *b > 10.0)) {
+            ok = false;
+            if (assert) {
+                throw std::invalid_argument(
+                    "CLLC resonantCapacitorRatio (b) out of range (0, 10]: "
+                    + std::to_string(*b));
+            }
+        }
+        // a·b ≈ 1 keeps fr1 = fr2 (Min IEEE TPE 2021). Warn if far off, but
+        // don't fail — some unusual designs intentionally split the
+        // resonant frequencies.
+        if (a.has_value() && b.has_value()) {
+            double product = (*a) * (*b);
+            if (product < 0.5 || product > 2.0) {
+                if (assert) {
+                    throw std::invalid_argument(
+                        "CLLC asymmetric ratios a*b should be ~1 (got "
+                        + std::to_string(product)
+                        + "); fr1 ≠ fr2 will result.");
+                }
+            }
+        }
+        return ok;
+    }
+
+    double CllcConverter::get_bridge_voltage_factor() const {
+        auto bt = get_bridge_type();
+        if (bt.has_value() && *bt == LlcBridgeType::HALF_BRIDGE) {
+            return 0.5;
+        }
+        return 1.0; // FULL_BRIDGE (default)
     }
 
     // =========================================================================
@@ -272,7 +330,7 @@ double get_value_or(T&& val, double default_val) {
      *   - Secondary current completes exactly one half-sine per half period
      *   - Peak current: Ip_peak ≈ Pout/(Vin·η) · π/2 (fundamental approximation)
      */
-    OperatingPoint CllcConverter::process_operating_points_for_input_voltage(
+    OperatingPoint CllcConverter::process_operating_point_for_input_voltage(
         double inputVoltage,
         const CllcOperatingPoint& cllcOpPoint,
         double turnsRatio,
@@ -484,14 +542,14 @@ double get_value_or(T&& val, double default_val) {
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
                 auto cllcOpPoint = get_operating_points()[opIndex];
 
-                auto operatingPoint = process_operating_points_for_input_voltage(
+                auto operatingPoint = process_operating_point_for_input_voltage(
                     inputVoltage, cllcOpPoint, n, magnetizingInductance, params);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
                     name += " with op. point " + std::to_string(opIndex);
                 }
-                std::string flowStr = (cllcOpPoint.get_power_flow() == PowerFlow::FORWARD) ?
+                std::string flowStr = (cllcOpPoint.get_power_flow() == CllcPowerFlow::FORWARD) ?
                     " (forward)" : " (reverse)";
                 name += flowStr;
                 operatingPoint.set_name(name);
@@ -987,7 +1045,7 @@ double get_value_or(T&& val, double default_val) {
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
                 auto cllcOpPoint = get_operating_points()[opIndex];
 
-                auto operatingPoint = process_operating_points_for_input_voltage(
+                auto operatingPoint = process_operating_point_for_input_voltage(
                     inputVoltage, cllcOpPoint, n, magnetizingInductance, params);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";

@@ -59,7 +59,7 @@ namespace {
      *   fr = 73 kHz, Pout = 11 kW, forward mode
      */
     json create_standard_cllc_json(double fsw = 73000.0,
-                                    PowerFlow powerFlow = PowerFlow::FORWARD) {
+                                    CllcPowerFlow powerFlow = CllcPowerFlow::FORWARD) {
         json cllcJson;
         json inputVoltage;
         inputVoltage["minimum"] = 700;
@@ -81,7 +81,7 @@ namespace {
             opJson["outputCurrents"] = {18.33};  // ~11 kW at 600V
             opJson["switchingFrequency"] = fsw;
             opJson["ambientTemperature"] = 25.0;
-            opJson["powerFlow"] = (powerFlow == PowerFlow::FORWARD) ? "forward" : "reverse";
+            opJson["powerFlow"] = (powerFlow == CllcPowerFlow::FORWARD) ? "forward" : "reverse";
             cllcJson["operatingPoints"].push_back(opJson);
         }
         return cllcJson;
@@ -92,7 +92,7 @@ namespace {
      *   Vin = 400V, Vout = 48V, ~500W, 200 kHz
      */
     json create_small_power_cllc_json(double fsw = 200000.0,
-                                       PowerFlow powerFlow = PowerFlow::FORWARD) {
+                                       CllcPowerFlow powerFlow = CllcPowerFlow::FORWARD) {
         json cllcJson;
         json inputVoltage;
         inputVoltage["minimum"] = 360;
@@ -114,7 +114,7 @@ namespace {
             opJson["outputCurrents"] = {10.0};  // ~480W
             opJson["switchingFrequency"] = fsw;
             opJson["ambientTemperature"] = 25.0;
-            opJson["powerFlow"] = (powerFlow == PowerFlow::FORWARD) ? "forward" : "reverse";
+            opJson["powerFlow"] = (powerFlow == CllcPowerFlow::FORWARD) ? "forward" : "reverse";
             cllcJson["operatingPoints"].push_back(opJson);
         }
         return cllcJson;
@@ -133,7 +133,7 @@ namespace {
          *
          * Reference: Infineon AN Section 2.1, Table 1 (fs = fr → Resonant mode)
          */
-        json cllcJson = create_standard_cllc_json(73000.0, PowerFlow::FORWARD);
+        json cllcJson = create_standard_cllc_json(73000.0, CllcPowerFlow::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
         cllc._assertErrors = true;
 
@@ -254,7 +254,7 @@ namespace {
          * Reference: Infineon AN Table 1, fs < fr → Boost mode
          */
         // Use a switching frequency well below the natural resonant frequency
-        json cllcJson = create_standard_cllc_json(50000.0, PowerFlow::FORWARD);
+        json cllcJson = create_standard_cllc_json(50000.0, CllcPowerFlow::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
 
         auto params = cllc.calculate_resonant_parameters();
@@ -290,7 +290,7 @@ namespace {
          *
          * Reference: Infineon AN Table 1, fs > fr → Buck mode
          */
-        json cllcJson = create_standard_cllc_json(150000.0, PowerFlow::FORWARD);
+        json cllcJson = create_standard_cllc_json(150000.0, CllcPowerFlow::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
 
         auto params = cllc.calculate_resonant_parameters();
@@ -319,7 +319,7 @@ namespace {
          *
          * Reference: Infineon AN Section 2.2.2 (discharging mode)
          */
-        json cllcJson = create_standard_cllc_json(73000.0, PowerFlow::REVERSE);
+        json cllcJson = create_standard_cllc_json(73000.0, CllcPowerFlow::REVERSE);
 
         // For reverse mode, swap the voltage/current references
         cllcJson["operatingPoints"][0]["powerFlow"] = "reverse";
@@ -629,7 +629,7 @@ namespace {
             SKIP("ngspice not available on this system");
         }
 
-        json cllcJson = create_small_power_cllc_json(200000.0, PowerFlow::FORWARD);
+        json cllcJson = create_small_power_cllc_json(200000.0, CllcPowerFlow::FORWARD);
         OpenMagnetics::CllcConverter cllc(cllcJson);
 
         auto params = cllc.calculate_resonant_parameters();
