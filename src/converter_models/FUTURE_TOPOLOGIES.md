@@ -44,7 +44,7 @@ real production volume scores higher than a topology that's just
 | `Weinberg.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
 | `FourSwitchBuckBoost.cpp` | DAB-quality (3 ref designs spanning BUCK/BOOST/BUCK_BOOST regions, NRMSE, VoltSec, ConvPort) |
 | `AsymmetricHalfBridge.cpp` | DAB-quality (3 ref designs, ZVS test, VoltSec_AllWindings for CT/FB/CD) |
-| `Clllc.cpp` | Phase A — analytical 4-state ODE solver with one-shot affine-propagator steady-state, forward + reverse direction (above-resonance only); `process_operating_points` populates full diagnostics (peak/RMS, ZVS margins both bridges, current-sharing, operating region). SPICE netlist + `get_extra_components_inputs` + `AdvancedClllc::process` + reference designs still pending (Phase B+, see `CLLLC_PLAN.md`) |
+| `Clllc.cpp` | Phase A (analytical 4-state ODE solver, fwd + rev, above-resonance) **plus Phase B-1** (8-MOSFET SPICE netlist with 3 K-couplings, GEAR/ITL=500/500, direction-aware bridges; `simulate_and_extract_*` DAB-pattern wrappers with analytical fallback; NRMSE-vs-analytical PtP gates fwd + rev). `get_extra_components_inputs` + `AdvancedClllc::process` + reference designs still pending (see `CLLLC_PLAN.md`) |
 | `Vienna.cpp` | pragmatic Phase 1+2 (peak-of-line analytical) — no SPICE, no DAB-quality tests |
 | `Src.cpp` | pragmatic Phase 1+2 (FHA solver) — no SPICE, no DAB-quality tests |
 | `PowerFactorCorrection.cpp` | basic PFC (verify totem-pole coverage) |
