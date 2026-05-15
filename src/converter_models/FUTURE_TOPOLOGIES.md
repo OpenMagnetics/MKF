@@ -32,7 +32,7 @@ real production volume scores higher than a topology that's just
 
 | Class | Notes |
 |---|---|
-| `Boost.cpp` / `Buck.cpp` | partial-quality (no header, no snubber, no R_load guard) |
+| `Boost.cpp` / `Buck.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, R_load guard, GEAR) |
 | `IsolatedBuck.cpp` / `IsolatedBuckBoost.cpp` | |
 | `Flyback.cpp` | |
 | `SingleSwitchForward.cpp` / `TwoSwitchForward.cpp` / `ActiveClampForward.cpp` | |
@@ -40,6 +40,13 @@ real production volume scores higher than a topology that's just
 | `PhaseShiftedFullBridge.cpp` / `PhaseShiftedHalfBridge.cpp` | rectifier-type-aware (CT/CD/FB) |
 | `Dab.cpp` | gold reference, all four DAB modulations |
 | `Llc.cpp` / `Cllc.cpp` | resonant; rework / rewrite plans exist |
+| `Sepic.cpp` / `Zeta.cpp` / `Cuk.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
+| `Weinberg.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
+| `FourSwitchBuckBoost.cpp` | near-DAB (SPICE, NRMSE, VoltSec, ConvPort) — missing 3 published ref designs |
+| `AsymmetricHalfBridge.cpp` | near-DAB (3 ref designs, ZVS test) — missing VoltSecondBalance test |
+| `Clllc.cpp` | scaffold-only — has `process_op_for_Vin` but no test file; needs DAB-quality treatment |
+| `Vienna.cpp` | pragmatic Phase 1+2 (peak-of-line analytical) — no SPICE, no DAB-quality tests |
+| `Src.cpp` | pragmatic Phase 1+2 (FHA solver) — no SPICE, no DAB-quality tests |
 | `PowerFactorCorrection.cpp` | basic PFC (verify totem-pole coverage) |
 | `CommonModeChoke.cpp` / `DifferentialModeChoke.cpp` / `CurrentTransformer.cpp` | passive magnetic components |
 

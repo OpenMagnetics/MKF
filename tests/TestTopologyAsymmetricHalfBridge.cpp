@@ -2179,3 +2179,133 @@ TEST_CASE("Test_AsymmetricHalfBridge_ConverterPortWaveforms",
                                             kAhbVoutMeanTol, kAhbIoutMeanTol);
     }
 }
+
+
+// =============================================================================
+//   Volt-Second Balance — All Windings
+//
+//   Golden Guide §8 + §5.0 winding-port rule. For EVERY winding (primary +
+//   every secondary present in excitations_per_winding), the normalised
+//   average must satisfy
+//       |avg(v_winding(t))| / peak(|v_winding(t)|) < eps
+//   in both the analytical and SPICE paths. Catches any probe that
+//   accidentally references a converter-port node (rectified output, DC
+//   bus) instead of the winding terminals.
+//
+//   AHB has three rectifier topologies that all need this gate:
+//     - centerTapped : 3 windings (pri + sec_a + sec_b)
+//     - fullBridge   : 2 windings (pri + sec)
+//     - currentDoubler: 2 windings (pri + sec)
+//   AHB_FLYBACK is a different storage topology, covered separately in P10.
+// =============================================================================
+
+namespace {
+
+double ahb_normalised_avg(const std::vector<double>& v) {
+    if (v.empty()) return 0.0;
+    double sum = 0.0, peak = 0.0;
+    for (double x : v) {
+        sum += x;
+        peak = std::max(peak, std::fabs(x));
+    }
+    if (peak < 1e-12) return 0.0;
+    return std::fabs(sum / static_cast<double>(v.size())) / peak;
+}
+
+void ahb_check_all_windings(const std::vector<MAS::OperatingPoint>& ops,
+                            const std::string& path,
+                            const std::string& rectName,
+                            double eps,
+                            size_t expectedWindings) {
+    REQUIRE_FALSE(ops.empty());
+    for (size_t opIdx = 0; opIdx < ops.size(); ++opIdx) {
+        const auto& exc = ops[opIdx].get_excitations_per_winding();
+        REQUIRE(exc.size() == expectedWindings);
+        for (size_t w = 0; w < exc.size(); ++w) {
+            REQUIRE(exc[w].get_voltage().has_value());
+            const auto wf = exc[w].get_voltage()->get_waveform().value();
+            const auto& d = wf.get_data();
+            REQUIRE(!d.empty());
+            const double normAvg = ahb_normalised_avg(d);
+            INFO("AHB [" << rectName << "/" << path << "] OP " << opIdx
+                 << " winding " << w
+                 << " — |avg(V)|/peak(|V|) = " << normAvg
+                 << " (bound " << eps << ")");
+            CHECK(normAvg < eps);
+        }
+    }
+}
+
+}  // namespace
+
+
+TEST_CASE("Test_AHB_VoltSecondBalance_AllWindings_CenterTapped",
+          "[converter-model][ahb-topology][volt-second-balance]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty_rect(Vin, Vo, 20.0, D, n, "centerTapped"));
+
+    SECTION("analytical path") {
+        auto ops = ahb.process_operating_points({n}, 50e-6);
+        // CT mode emits primary + sec_a + sec_b = 3 windings.
+        ahb_check_all_windings(ops, "analytical", "centerTapped",
+                               0.02, /*windings*/ 3);
+    }
+    SECTION("SPICE path") {
+        OpenMagnetics::NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+        ahb.set_num_steady_state_periods(50);
+        ahb.set_num_periods_to_extract(1);
+        auto ops = ahb.simulate_and_extract_operating_points({n}, 50e-6);
+        ahb_check_all_windings(ops, "SPICE", "centerTapped",
+                               0.05, /*windings*/ 3);
+    }
+}
+
+
+TEST_CASE("Test_AHB_VoltSecondBalance_AllWindings_FullBridge",
+          "[converter-model][ahb-topology][volt-second-balance]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty_rect(Vin, Vo, 20.0, D, n, "fullBridge"));
+
+    SECTION("analytical path") {
+        auto ops = ahb.process_operating_points({n}, 50e-6);
+        // FB mode emits primary + 1 secondary = 2 windings.
+        ahb_check_all_windings(ops, "analytical", "fullBridge",
+                               0.02, /*windings*/ 2);
+    }
+    SECTION("SPICE path") {
+        OpenMagnetics::NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+        ahb.set_num_steady_state_periods(50);
+        ahb.set_num_periods_to_extract(1);
+        auto ops = ahb.simulate_and_extract_operating_points({n}, 50e-6);
+        ahb_check_all_windings(ops, "SPICE", "fullBridge",
+                               0.05, /*windings*/ 2);
+    }
+}
+
+
+TEST_CASE("Test_AHB_VoltSecondBalance_AllWindings_CurrentDoubler",
+          "[converter-model][ahb-topology][volt-second-balance]") {
+    const double Vin = 100.0, n = 10.0, D = 0.45;
+    const double Vo  = 2.0 * D * (1.0 - D) * Vin / n;
+    AHB ahb(ahb_with_duty_rect(Vin, Vo, 20.0, D, n, "currentDoubler"));
+
+    SECTION("analytical path") {
+        auto ops = ahb.process_operating_points({n}, 50e-6);
+        // CD mode emits primary + 1 secondary = 2 windings.
+        ahb_check_all_windings(ops, "analytical", "currentDoubler",
+                               0.02, /*windings*/ 2);
+    }
+    SECTION("SPICE path") {
+        OpenMagnetics::NgspiceRunner runner;
+        if (!runner.is_available()) SKIP("ngspice not available");
+        ahb.set_num_steady_state_periods(50);
+        ahb.set_num_periods_to_extract(1);
+        auto ops = ahb.simulate_and_extract_operating_points({n}, 50e-6);
+        ahb_check_all_windings(ops, "SPICE", "currentDoubler",
+                               0.05, /*windings*/ 2);
+    }
+}
