@@ -1394,4 +1394,144 @@ namespace {
                      Catch::Matchers::WithinRel(fbParams.resonantFrequency, 1e-6));
     }
 
+    // ---------------------------------------------------------------------
+    // P8 — REVERSE-mode SPICE physical sanity check.
+    //
+    // The forward netlist sources Vin on the primary and dissipates on the
+    // secondary. In REVERSE the netlist swaps these roles: secondary is a
+    // hard EMF source (Vsec_src), primary is a holding cap + load resistor
+    // sized for the design throughput. With the bridges synchronously gated
+    // (forward-mode pattern, intentional — see plan §6.1), the converter
+    // pumps net power from the secondary EMF into the primary load.
+    //
+    // Power-balance assertion (loose — minimum-scope P8 per user choice):
+    //   - mean V(vin_p) > 0  (primary rail held above ground)
+    //   - mean i(Vin_sense) > 0  (positive current INTO primary load)
+    //   ⇒ mean P_pri_load = mean(V·I) > 0  (load absorbs)
+    //   - mean i(Vsec_src) < 0  (current flows OUT of Vsec_src + terminal,
+    //     i.e., the secondary battery is delivering energy)
+    //
+    // FIXME-P8b: The TDA propagator and analytical waveforms are still
+    // forward-only — only ZVS diagnostics flip for REVERSE. A full reverse
+    // analytical model + reverse PtP NRMSE fixture is deferred.
+    // ---------------------------------------------------------------------
+    TEST_CASE("Test_Cllc_Reverse_Mode_Power_Balance",
+              "[converter-model][cllc-topology][reverse-mode][p8][smoke-test]") {
+        NgspiceRunner runner;
+        if (!runner.is_available()) {
+            SKIP("ngspice not available on this system");
+        }
+
+        // Use the small-power fixture in REVERSE — fast (200 kHz) and the
+        // forward variant is already known to converge (Test 11/12).
+        json cllcJson = create_small_power_cllc_json(200000.0,
+                                                     CllcPowerFlow::REVERSE);
+        OpenMagnetics::CllcConverter cllc(cllcJson);
+        auto params = cllc.calculate_resonant_parameters();
+
+        // Generate netlist for the nominal input voltage / first OP.
+        std::string netlist = cllc.generate_ngspice_circuit(
+            params.turnsRatio, params, /*inputVoltageIndex=*/0,
+            /*operatingPointIndex=*/0);
+
+        { std::ofstream f("/tmp/cllc_p8_reverse_dump.cir"); f << netlist; }
+        INFO("Reverse netlist:\n" << netlist);
+
+        // Structural checks — REVERSE branch must be active.
+        REQUIRE(netlist.find("Vsec_src vout_p vout_n") != std::string::npos);
+        REQUIRE(netlist.find("Cin_pri vin_p 0 100u IC=") != std::string::npos);
+        REQUIRE(netlist.find("Vin_sense vin_p vin_load 0") != std::string::npos);
+        REQUIRE(netlist.find("Rload_pri vin_load 0") != std::string::npos);
+        // Forward-only nodes must NOT appear.
+        REQUIRE(netlist.find("Vin vin_p 0") == std::string::npos);
+        REQUIRE(netlist.find("Vout_sense") == std::string::npos);
+        REQUIRE(netlist.find("Cout vout_p") == std::string::npos);
+        REQUIRE(netlist.find(".ic v(vin_p)=") != std::string::npos);
+
+        // Run the simulation.
+        SimulationConfig config;
+        config.frequency = 200000.0;
+        config.extractOnePeriod = false;
+        config.numberOfPeriods = 4;
+        auto result = runner.run_simulation(netlist, config);
+
+        if (!result.success) {
+            INFO("ngspice failure: " << result.errorMessage);
+        }
+        REQUIRE(result.success);
+        REQUIRE(!result.waveforms.empty());
+
+        // Locate signals by name. ngspice's raw vector naming convention:
+        // node voltages are bare ("vin_p"), source branch currents are
+        // "<source_name_lower>#branch".
+        auto find_wave = [&](const std::string& wanted) -> const Waveform* {
+            std::string w = wanted;
+            std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+            for (size_t i = 0; i < result.waveformNames.size(); ++i) {
+                std::string nm = result.waveformNames[i];
+                std::transform(nm.begin(), nm.end(), nm.begin(), ::tolower);
+                if (nm == w) return &result.waveforms[i];
+            }
+            return nullptr;
+        };
+
+        const Waveform* wVinP    = find_wave("vin_p");
+        const Waveform* wIinSns  = find_wave("vin_sense#branch");
+        const Waveform* wIsecSrc = find_wave("vsec_src#branch");
+
+        // Diagnostic dump — only shows on failure via Catch2 INFO.
+        std::ostringstream wavesDump;
+        wavesDump << "Available waveforms (" << result.waveformNames.size() << "):";
+        for (auto& n : result.waveformNames) wavesDump << "\n  " << n;
+        INFO(wavesDump.str());
+        REQUIRE(wVinP != nullptr);
+        REQUIRE(wIinSns != nullptr);
+        REQUIRE(wIsecSrc != nullptr);
+
+        auto mean = [](const std::vector<double>& v) {
+            if (v.empty()) return 0.0;
+            double s = 0;
+            for (double x : v) s += x;
+            return s / v.size();
+        };
+
+        // Use the second half of the recorded data as a coarse "steady-state"
+        // window — the netlist already skips the first steady-state periods
+        // via `.tran ... startTime`, so what we have here is post-transient.
+        auto tail_mean = [&](const std::vector<double>& d) {
+            if (d.size() < 4) return mean(d);
+            std::vector<double> half(d.begin() + d.size() / 2, d.end());
+            return mean(half);
+        };
+
+        const auto& vinP_data    = wVinP->get_data();
+        const auto& iInSns_data  = wIinSns->get_data();
+        const auto& iSecSrc_data = wIsecSrc->get_data();
+
+        REQUIRE(vinP_data.size() == iInSns_data.size());
+        REQUIRE(vinP_data.size() == iSecSrc_data.size());
+
+        double vinP_mean    = tail_mean(vinP_data);
+        double iInSns_mean  = tail_mean(iInSns_data);
+        double iSecSrc_mean = tail_mean(iSecSrc_data);
+
+        // Instantaneous-product mean for the primary load power.
+        std::vector<double> p_pri(vinP_data.size());
+        for (size_t k = 0; k < vinP_data.size(); ++k) {
+            p_pri[k] = vinP_data[k] * iInSns_data[k];
+        }
+        double pPriLoad_mean = tail_mean(p_pri);
+
+        INFO("REVERSE: <V(vin_p)>="    << vinP_mean    << " V");
+        INFO("REVERSE: <i(Vin_sense)>="  << iInSns_mean  << " A");
+        INFO("REVERSE: <i(Vsec_src)>="   << iSecSrc_mean << " A");
+        INFO("REVERSE: <P_pri_load>="    << pPriLoad_mean << " W");
+
+        // Power-balance gates (loose — P8 minimum sanity).
+        CHECK(vinP_mean > 0.0);             // primary rail held positive
+        CHECK(iInSns_mean > 0.0);           // current INTO primary load
+        CHECK(pPriLoad_mean > 0.0);         // primary load absorbs power
+        CHECK(iSecSrc_mean < 0.0);          // secondary battery delivers
+    }
+
 } // anonymous namespace

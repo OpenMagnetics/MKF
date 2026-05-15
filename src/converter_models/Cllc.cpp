@@ -1197,6 +1197,16 @@ double get_value_or(T&& val, double default_val) {
         double outputCurrent = opPoint.get_output_currents()[0];
         double n = turnsRatio;
 
+        // P8 — bidirectional SPICE: in REVERSE the secondary side hosts the
+        // EMF source and the primary side hosts the resistive load. Both
+        // bridges are gated symmetrically off pwm1/pwm2 (same as forward); the
+        // direction of net energy transfer flips because the source/load roles
+        // swap. The TDA propagator and analytical waveforms remain forward-only
+        // (FIXME-P8b: implement physically reverse propagator + reverse PtP
+        // NRMSE fixture). This branch only re-physics the SPICE netlist so a
+        // power-balance sanity test can confirm energy actually flows back.
+        bool isReverse = (opPoint.get_power_flow() == CllcPowerFlow::REVERSE);
+
         double L1 = params.primaryResonantInductance;
         double C1 = params.primaryResonantCapacitance;
         double L2 = params.secondaryResonantInductance;
@@ -1230,6 +1240,12 @@ double get_value_or(T&& val, double default_val) {
         // Load resistance — divide-by-zero guard per plan §6.2 (R_load floor).
         double Rload = std::max(outputVoltage / std::max(outputCurrent, 1e-9), 1e-3);
 
+        // P8 — primary-side load resistance for REVERSE mode. Sized so that
+        // (Vin)^2 / R_pri matches the design-point throughput Vo·Io. Same
+        // 1 mΩ floor as the secondary load.
+        double powerTransferred = std::max(outputVoltage * outputCurrent, 1e-9);
+        double Rload_pri = std::max(inputVoltage * inputVoltage / powerTransferred, 1e-3);
+
         // Secondary inductance for coupled inductor model
         double Lsec = Lm / (n * n);  // Lm referred to secondary for coupling
 
@@ -1243,9 +1259,21 @@ double get_value_or(T&& val, double default_val) {
         circuit << "* n=" << n << ", L1=" << (L1*1e6) << "uH, C1=" << (C1*1e9) << "nF\n";
         circuit << "* Lm=" << (Lm*1e6) << "uH, L2=" << (L2*1e6) << "uH, C2=" << (C2*1e9) << "nF\n\n";
 
-        // DC Input
-        circuit << "* DC Input\n";
-        circuit << "Vin vin_p 0 " << inputVoltage << "\n\n";
+        // DC Input — FORWARD: hard DC source on the primary rail. REVERSE:
+        // primary rail is now a load; hold it with a bulk cap (UIC pre-charged
+        // to inputVoltage) and dissipate returned power through Rload_pri,
+        // sensed via a 0 V source so we can probe i(Vin_sense).
+        if (isReverse) {
+            circuit << "* DC Input (REVERSE — primary is load)\n";
+            circuit << "Cin_pri vin_p 0 100u IC=" << inputVoltage << "\n";
+            circuit << "Vin_sense vin_p vin_load 0\n";
+            circuit << "Rload_pri vin_load 0 " << std::fixed << Rload_pri
+                    << std::scientific << "\n\n";
+        }
+        else {
+            circuit << "* DC Input\n";
+            circuit << "Vin vin_p 0 " << inputVoltage << "\n\n";
+        }
 
         // Switch model: VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg per plan §6.2
         circuit << "* Switch model (CLLC_REWRITE_PLAN §6.2)\n";
@@ -1335,12 +1363,21 @@ double get_value_or(T&& val, double default_val) {
         circuit << "* Secondary ground reference\n";
         circuit << "Vgnd_sec vout_n 0 0\n\n";
 
-        // Output filter, sense source, and load
-        circuit << "* Output filter, current sense, and load\n";
-        circuit << "Cout vout_p vout_n 100u IC=" << outputVoltage << "\n";
-        circuit << "Vout_sense vout_p vout_load 0\n";
-        circuit << "Rload vout_load vout_n " << std::fixed << Rload
-                << std::scientific << "\n\n";
+        // Output filter, sense source, and load — FORWARD path. In REVERSE
+        // the secondary terminals host the EMF source instead (no Cout, no
+        // Rload here). i(Vsec_src) is the current the secondary battery is
+        // delivering into the converter.
+        if (isReverse) {
+            circuit << "* Secondary EMF (REVERSE — secondary is source)\n";
+            circuit << "Vsec_src vout_p vout_n " << outputVoltage << "\n\n";
+        }
+        else {
+            circuit << "* Output filter, current sense, and load\n";
+            circuit << "Cout vout_p vout_n 100u IC=" << outputVoltage << "\n";
+            circuit << "Vout_sense vout_p vout_load 0\n";
+            circuit << "Rload vout_load vout_n " << std::fixed << Rload
+                    << std::scientific << "\n\n";
+        }
 
         // Transient analysis with UIC honoring the .ic statements below.
         circuit << "* Transient Analysis (UIC honors .ic pre-charge)\n";
@@ -1348,12 +1385,20 @@ double get_value_or(T&& val, double default_val) {
                 << " " << startTime << " UIC\n\n";
 
         // Save signals — node-level and current branches that the
-        // extractor maps into Primary/Secondary windings and ports.
+        // extractor maps into Primary/Secondary windings and ports. In
+        // REVERSE the input/output current senses swap names: i(Vin_sense)
+        // becomes the primary load current, i(Vsec_src) becomes the secondary
+        // source current. Vin / Vout_sense don't exist in that branch.
         circuit << "* Save signals\n";
         circuit << ".save v(vab) v(vin_p) v(pri_trafo_in) v(node_a) v(node_b)\n";
         circuit << "+ v(node_c) v(node_d) v(sec_trafo_p) v(sec_trafo_n)\n";
         circuit << "+ v(vout_p) v(vout_n) v(pri_c1_in) v(sec_c2_in)\n";
-        circuit << "+ i(Vin) i(Vpri_sense) i(Vsec_sense) i(Vout_sense)\n\n";
+        if (isReverse) {
+            circuit << "+ i(Vin_sense) i(Vpri_sense) i(Vsec_sense) i(Vsec_src)\n\n";
+        }
+        else {
+            circuit << "+ i(Vin) i(Vpri_sense) i(Vsec_sense) i(Vout_sense)\n\n";
+        }
 
         // Solver options — verbatim from plan §6.2
         circuit << "* Solver options (CLLC_REWRITE_PLAN §6.2)\n";
@@ -1363,9 +1408,17 @@ double get_value_or(T&& val, double default_val) {
         // Initial conditions: pre-charge output cap to Vo, leave resonant
         // caps at zero. SPICE node names for cap voltages: the node BETWEEN
         // C1 (pri_c1_in -- pri_l1_in) and BETWEEN C2 (sec_c2_in -- node_c).
+        // In REVERSE there's no Cout (vout_p is held by Vsec_src), so pre-
+        // charge the primary bulk cap to inputVoltage instead.
         circuit << "* Initial conditions (UIC pre-charge)\n";
-        circuit << ".ic v(vout_p)=" << std::fixed << outputVoltage
-                << std::scientific << "\n";
+        if (isReverse) {
+            circuit << ".ic v(vin_p)=" << std::fixed << inputVoltage
+                    << std::scientific << "\n";
+        }
+        else {
+            circuit << ".ic v(vout_p)=" << std::fixed << outputVoltage
+                    << std::scientific << "\n";
+        }
         circuit << ".ic v(pri_l1_in)=0 v(sec_c2_in)=0\n\n";
 
         circuit << ".end\n";
