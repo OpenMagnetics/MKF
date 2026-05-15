@@ -213,7 +213,7 @@ private:
     // Bridge model is intentionally an independent member rather than a
     // field of SpiceSimulationConfig: the bridge-mode selector applies to
     // any bridge topology even when no per-topology spice-config default
-    // is registered (LLC, PSFB, PSHB, ACF, AHB, CLLC, CLLLLC currently
+    // is registered (LLC, PSFB, PSHB, ACF, AHB, CLLC, CLLLC currently
     // have no entry in spice_simulation_defaults() and would throw if we
     // had to round-trip through spice_config()).
     BridgeSimulationMode _bridgeMode = BridgeSimulationMode::BEHAVIORAL_PULSE;

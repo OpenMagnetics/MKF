@@ -28,8 +28,8 @@ touched by this plan.
 
 | Aspect | Today | After this plan |
 |---|---|---|
-| `Cllllc.cpp` / `.h` | does not exist | new files, DAB-quality from start |
-| Schema | nothing | full `cllllcResonant.json` with `bridgeType`, `powerFlowDirection`, `controlStrategy`, `tankSymmetryRatio` |
+| `Clllc.cpp` / `.h` | does not exist | new files, DAB-quality from start |
+| Schema | nothing | full `clllcResonant.json` with `bridgeType`, `powerFlowDirection`, `controlStrategy`, `tankSymmetryRatio` |
 | Magnetic-adviser path | no CLLLC support | sizes the planar transformer with **two** controlled leakages (Lr1 + Lr2) plus Lm |
 | State variables in solver | 3 (LLC) | 5 (i_Lr1, v_Cr1, i_Lr2, v_Cr2, i_Lm) |
 | Operating modes | n/a | LLC's Nielsen 6 modes **mirrored** for bidirectional → effectively 12 modes |
@@ -71,7 +71,7 @@ touched by this plan.
    the dominant topology in this range; LLC and CLLC cover only a
    subset.
 4. **`LLC_REWORK_PLAN.md` § 7 already flagged CLLLC as deferred future
-   work** for `Cllllc.cpp`, distinct from the existing `Cllc.cpp`. This
+   work** for `Clllc.cpp`, distinct from the existing `Cllc.cpp`. This
    plan is the execution of that flag.
 
 ---
@@ -144,7 +144,7 @@ bidirectional.
 
 **Recommended approach**: do NOT inherit from `Cllc` (it's mid-rework
 per `CLLC_REWRITE_PLAN.md` and the inheritance would couple the two
-plans). Instead, implement `Cllllc` as a sibling class at the same
+plans). Instead, implement `Clllc` as a sibling class at the same
 level — copy and adapt the Nielsen solver from `Llc.cpp` (which is
 the gold standard among MKF resonant models), extend the state vector
 from 3 to 5, and apply the symmetric-tank invariants explicitly.
@@ -173,7 +173,7 @@ is identical.
 
 ### Schema convention (camelCase)
 
-The new file is `MAS/schemas/inputs/topologies/cllllcResonant.json`,
+The new file is `MAS/schemas/inputs/topologies/clllcResonant.json`,
 sibling to `llcResonant.json` and `cllcResonant.json`.
 
 ---
@@ -183,23 +183,23 @@ sibling to `llcResonant.json` and `cllcResonant.json`.
 ### A.1 Files to create
 
 ```
-src/converter_models/Cllllc.h
-src/converter_models/Cllllc.cpp
-tests/TestTopologyCllllc.cpp
-MAS/schemas/inputs/topologies/cllllcResonant.json
+src/converter_models/Clllc.h
+src/converter_models/Clllc.cpp
+tests/TestTopologyClllc.cpp
+MAS/schemas/inputs/topologies/clllcResonant.json
 ```
 
-Plus add `cllllcResonant` to the topology enum in
+Plus add `clllcResonant` to the topology enum in
 `MAS/schemas/inputs/designRequirements.json` (verify camelCase matches
 the existing `llcResonant` and `cllcResonant`).
 
-### A.2 Schema (`cllllcResonant.json`)
+### A.2 Schema (`clllcResonant.json`)
 
 ```jsonc
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://psma.com/mas/inputs/topologies/cllllcResonant.json",
-  "title": "cllllcResonant",
+  "$id": "https://psma.com/mas/inputs/topologies/clllcResonant.json",
+  "title": "clllcResonant",
   "description": "The description of a CLLLC bidirectional resonant converter excitation",
   "type": "object",
   "properties": {
@@ -229,17 +229,17 @@ the existing `llcResonant` and `cllcResonant`).
     "efficiency": { "type": "number", "default": 0.97 },
     "bridgeTypePrimary": {
       "description": "HV-side bridge",
-      "$ref": "#/$defs/cllllcBridgeType",
+      "$ref": "#/$defs/clllcBridgeType",
       "default": "fullBridge"
     },
     "bridgeTypeSecondary": {
       "description": "LV-side bridge",
-      "$ref": "#/$defs/cllllcBridgeType",
+      "$ref": "#/$defs/clllcBridgeType",
       "default": "fullBridge"
     },
     "controlStrategy": {
       "description": "How the controller modulates frequency vs phase-shift",
-      "$ref": "#/$defs/cllllcControlStrategy",
+      "$ref": "#/$defs/clllcControlStrategy",
       "default": "hybridPfmPsm"
     },
     "integratedResonantInductors": {
@@ -248,7 +248,7 @@ the existing `llcResonant` and `cllcResonant`).
     },
     "operatingPoints": {
       "type": "array",
-      "items": { "$ref": "#/$defs/cllllcOperatingPoint" },
+      "items": { "$ref": "#/$defs/clllcOperatingPoint" },
       "minItems": 1
     }
   },
@@ -257,29 +257,29 @@ the existing `llcResonant` and `cllcResonant`).
     "minSwitchingFrequency", "maxSwitchingFrequency", "operatingPoints"
   ],
   "$defs": {
-    "cllllcBridgeType": {
-      "title": "cllllcBridgeType",
+    "clllcBridgeType": {
+      "title": "clllcBridgeType",
       "type": "string",
       "enum": ["halfBridge", "fullBridge"]
     },
-    "cllllcControlStrategy": {
-      "title": "cllllcControlStrategy",
+    "clllcControlStrategy": {
+      "title": "clllcControlStrategy",
       "type": "string",
       "enum": ["pfm", "psm", "hybridPfmPsm", "fixedFrequencyPhaseShift"]
     },
-    "cllllcPowerFlowDirection": {
-      "title": "cllllcPowerFlowDirection",
+    "clllcPowerFlowDirection": {
+      "title": "clllcPowerFlowDirection",
       "type": "string",
       "enum": ["forward", "reverse"]
     },
-    "cllllcOperatingPoint": {
-      "title": "cllllcOperatingPoint",
+    "clllcOperatingPoint": {
+      "title": "clllcOperatingPoint",
       "allOf": [
         { "$ref": "../../utils.json#/$defs/baseOperatingPoint" },
         {
           "properties": {
             "powerFlowDirection": {
-              "$ref": "#/$defs/cllllcPowerFlowDirection",
+              "$ref": "#/$defs/clllcPowerFlowDirection",
               "default": "forward"
             },
             "phaseShiftDegrees": {
@@ -294,15 +294,15 @@ the existing `llcResonant` and `cllcResonant`).
 }
 ```
 
-After the schema edit, regenerate MAS so `MAS::CllllcResonant` becomes
+After the schema edit, regenerate MAS so `MAS::ClllcResonant` becomes
 a generated C++ class. Per `project_mas_hpp_staging.md`, copy the
 freshly built `MAS.hpp` into `build/MAS/MAS.hpp` if the build
 complains.
 
-### A.3 Class structure (`Cllllc.h`)
+### A.3 Class structure (`Clllc.h`)
 
 ```cpp
-class Cllllc : public MAS::CllllcResonant, public Topology {
+class Clllc : public MAS::ClllcResonant, public Topology {
 public:
     enum class PowerFlowDirection { FORWARD, REVERSE };
     enum class OperatingRegion { ABOVE_RESONANCE, AT_RESONANCE, BELOW_RESONANCE };
@@ -368,8 +368,8 @@ private:
 public:
     bool _assertErrors = false;
 
-    Cllllc(const json& j);
-    Cllllc() {}
+    Clllc(const json& j);
+    Clllc() {}
 
     // Tuning, computed, last_*, mosfet_coss accessors per Golden
     // Guide § 2.7–2.10.
@@ -386,7 +386,7 @@ public:
 
     OperatingPoint process_operating_point_for_input_voltage(
         double inputVoltage,
-        const CllllcResonantOperatingPoint& op,
+        const ClllcResonantOperatingPoint& op,
         const std::vector<double>& turnsRatios,
         double magnetizingInductance);
 
@@ -422,7 +422,7 @@ public:
         size_t numberOfPeriods = 2);
 };
 
-class AdvancedCllllc : public Cllllc {
+class AdvancedClllc : public Clllc {
     // bypasses process_design_requirements; user provides Lr1, Lr2, Cr1, Cr2, Lm directly
 };
 ```
@@ -653,72 +653,72 @@ Returns a richer set than LLC (which has Lr + Cr only):
 - `CAS::Inputs` for the **HV bus cap** when `mode = REAL`.
 - `CAS::Inputs` for the **LV bus cap** when `mode = REAL`.
 
-### A.10 Tests (`TestTopologyCllllc.cpp`)
+### A.10 Tests (`TestTopologyClllc.cpp`)
 
 Mandatory cases per Golden Guide § 8 + CLLLC-specific tests:
 
-1. **`Test_Cllllc_TIDM02002_Reference_Design`** — TI 6.6 kW reference
+1. **`Test_Clllc_TIDM02002_Reference_Design`** — TI 6.6 kW reference
    (380–600 V ↔ 280–450 V, 300–700 kHz). Reproduce within 5 %.
-2. **`Test_Cllllc_TIDM02013_Reference_Design`** — TI 7.4 kW OBC.
-3. **`Test_Cllllc_KIT_20kW_Reference_Design`** — KIT 20 kW academic
+2. **`Test_Clllc_TIDM02013_Reference_Design`** — TI 7.4 kW OBC.
+3. **`Test_Clllc_KIT_20kW_Reference_Design`** — KIT 20 kW academic
    reference (400–800 V ↔ 200–500 V, 100–300 kHz).
-4. **`Test_Cllllc_Forward_Reverse_Symmetry`** — same OP run with
+4. **`Test_Clllc_Forward_Reverse_Symmetry`** — same OP run with
    `powerFlowDirection=forward` and `=reverse`; verify forward
    inductor-current waveform mirrors reverse (within 1 %) when
    `tankSymmetryRatio = 1.0`. **THIS IS THE HEADLINE TEST.**
-5. **`Test_Cllllc_Asymmetric_Tank`** — set `tankSymmetryRatio = 0.8`
+5. **`Test_Clllc_Asymmetric_Tank`** — set `tankSymmetryRatio = 0.8`
    and verify forward/reverse gain differs by the predicted FHA
    amount (per IEEE 10362332). Verifies the symmetric assumption is
    not silently baked into the solver.
-6. **`Test_Cllllc_Design_Requirements`** — turns ratio, Lr1, Lr2,
+6. **`Test_Clllc_Design_Requirements`** — turns ratio, Lr1, Lr2,
    Cr1, Cr2, Lm all positive; symmetric design returns
    Lr2 ≈ Lr1/n², Cr2 ≈ Cr1·n². Round-trip a power target.
-7. **`Test_Cllllc_OperatingPoints_Generation`** — multiple Fs values
+7. **`Test_Clllc_OperatingPoints_Generation`** — multiple Fs values
    spanning above/at/below resonance; antisymmetry holds; current is
    piecewise sinusoidal (5-state Nielsen modes).
-8. **`Test_Cllllc_Operating_Modes_Forward`** — Nielsen 6 modes in
+8. **`Test_Clllc_Operating_Modes_Forward`** — Nielsen 6 modes in
    forward direction.
-9. **`Test_Cllllc_Operating_Modes_Reverse`** — same 6 modes mirrored
+9. **`Test_Clllc_Operating_Modes_Reverse`** — same 6 modes mirrored
    in reverse direction.
-10. **`Test_Cllllc_ZVS_Boundaries_Both_Bridges`** — sweep load and
+10. **`Test_Clllc_ZVS_Boundaries_Both_Bridges`** — sweep load and
     verify BOTH `lastZvsMarginPrimaryLagging` and
     `lastZvsMarginSecondaryLagging` cross zero at the predicted
     threshold. **This is the bidirectional ZVS check that LLC and
     CLLC don't have.**
-11. **`Test_Cllllc_Lm_ZVS_Sizing`** — verify that the design solver
+11. **`Test_Clllc_Lm_ZVS_Sizing`** — verify that the design solver
     picks Lm satisfying `Lm ≤ T_dead / (16·C_oss·f_s)` per Huang
     SLUP263 + Infineon AN-2024-06.
-12. **`Test_Cllllc_ControlStrategy_Variants`** — same OP run with
+12. **`Test_Clllc_ControlStrategy_Variants`** — same OP run with
     `pfm`, `psm`, `hybridPfmPsm`, `fixedFrequencyPhaseShift` and
     verify the corresponding switch waveforms (only Fs varies in PFM,
     only φ varies in PSM, both vary in hybrid, only φ in FF-PS).
-13. **`Test_Cllllc_BridgeType_Variants`** — full-bridge × full-bridge
+13. **`Test_Clllc_BridgeType_Variants`** — full-bridge × full-bridge
     (default), half-bridge primary × full-bridge secondary, etc.
     Verify gain factor = 0.5 for each half-bridge side.
-14. **`Test_Cllllc_LIP_Diagnostic`** — load-independent point
+14. **`Test_Clllc_LIP_Diagnostic`** — load-independent point
     detection (mirrors LLC's LIP test). For symmetric CLLLC, the LIP
     is at `f_s = f_r1` exactly.
-15. **`Test_Cllllc_CurrentSharing_Symmetric`** — verify
+15. **`Test_Clllc_CurrentSharing_Symmetric`** — verify
     `lastCurrentSharingRatio` ∈ [0.95, 1.05] when `tankSymmetryRatio
     = 1.0`. Verify it deviates predictably when ratio ≠ 1.0.
-16. **`Test_Cllllc_SPICE_Netlist`** — netlist parses, contains 8
+16. **`Test_Clllc_SPICE_Netlist`** — netlist parses, contains 8
     snubbers, three K-coupling statements, `.options METHOD=GEAR`,
     ITL=500/500, `.ic` on Cr1 + Cr2 + bus caps,
     `R_load = max(V/I, 1e-3)`.
-17. **`Test_Cllllc_SPICE_Netlist_Forward_Reverse`** — generate netlist
+17. **`Test_Clllc_SPICE_Netlist_Forward_Reverse`** — generate netlist
     for forward and reverse OPs; assert the gate-drive PULSE
     statements differ correctly (HV bridge active in forward, LV
     bridge active in reverse).
-18. **`Test_Cllllc_PtP_AnalyticalVsNgspice_Forward`** — primary-current
+18. **`Test_Clllc_PtP_AnalyticalVsNgspice_Forward`** — primary-current
     NRMSE ≤ 0.20 (relaxed from LLC's 0.15 per the disclaimer about
     FHA accuracy), period-averaged V_LV within 5 %.
-19. **`Test_Cllllc_PtP_AnalyticalVsNgspice_Reverse`** — same targets
+19. **`Test_Clllc_PtP_AnalyticalVsNgspice_Reverse`** — same targets
     in reverse.
-20. **`Test_Cllllc_Waveform_Plotting`** — CSV dump under
-    `tests/output/cllllc/<direction>/` per direction.
-21. **`Test_AdvancedCllllc_Process`** — round-trip
-    `AdvancedCllllc::process()` returns sane Inputs.
-22. **`Test_Cllllc_IntegratedLeakage_vs_Discrete`** — compare
+20. **`Test_Clllc_Waveform_Plotting`** — CSV dump under
+    `tests/output/clllc/<direction>/` per direction.
+21. **`Test_AdvancedClllc_Process`** — round-trip
+    `AdvancedClllc::process()` returns sane Inputs.
+22. **`Test_Clllc_IntegratedLeakage_vs_Discrete`** — compare
     `integratedResonantInductors=true` (single transformer with two
     leakage winding inputs) vs `=false` (two discrete inductors); both
     produce equivalent steady-state operating points.
@@ -737,15 +737,15 @@ symmetric-tank bidirectional solver works correctly.
 ## 5. Class checklist (Golden-Guide § 14 acceptance)
 
 - [ ] Builds clean (`ninja -j2 MKF_tests` returns 0)
-- [ ] All `TestTopologyCllllc` cases pass (≥ 22 cases per § A.10)
-- [ ] `Test_Cllllc_PtP_AnalyticalVsNgspice_Forward` and `_Reverse`
+- [ ] All `TestTopologyClllc` cases pass (≥ 22 cases per § A.10)
+- [ ] `Test_Clllc_PtP_AnalyticalVsNgspice_Forward` and `_Reverse`
       NRMSE ≤ 0.20
-- [ ] `Test_Cllllc_Forward_Reverse_Symmetry` confirms identical
+- [ ] `Test_Clllc_Forward_Reverse_Symmetry` confirms identical
       waveforms in symmetric mode
-- [ ] `Test_Cllllc_ZVS_Boundaries_Both_Bridges` confirms BOTH bridges'
+- [ ] `Test_Clllc_ZVS_Boundaries_Both_Bridges` confirms BOTH bridges'
       ZVS-margin diagnostics change sign at predicted thresholds
 - [ ] Schema fields documented in
-      `MAS/schemas/inputs/topologies/cllllcResonant.json`
+      `MAS/schemas/inputs/topologies/clllcResonant.json`
 - [ ] Header docstring includes ASCII art (with all 8 switches and
       symmetric tank labelled), equations with citations, references,
       accuracy disclaimer, disambiguation note (CLLLC vs LLC vs CLLC
@@ -863,7 +863,7 @@ that's CLLC.
 
 - **Three-phase CLLLC** — 12 switches per side, 3-φ transformer with
   integrated leakage. Reference: Navitas SiC 3-φ CLLLC 20 kW.
-  Distinct enough to be a separate class (`ThreePhaseCllllc`).
+  Distinct enough to be a separate class (`ThreePhaseClllc`).
 - **Modular / interleaved CLLLC** — N parallel cells with phase-shifted
   carriers, > 50 kW. Per-cell magnetics are basic CLLLC; cell-balancing
   is the new analysis. Defer.

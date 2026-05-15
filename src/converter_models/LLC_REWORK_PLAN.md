@@ -23,7 +23,7 @@ or human can execute Tracks A and B end-to-end from this file alone.
 | Multi-output warn-once | missing | mirrors `Dab.cpp:855–906` |
 | Required tests | 21 cases, 3 missing | + `ZVS_Boundaries`, `RectifierType_*`, `Waveform_Plotting` |
 
-The new `Cllllc` class identified during the survey (symmetric
+The new `Clllc` class identified during the survey (symmetric
 Lr1+Cr1+Lm+Cr2+Lr2 tank, distinct from existing `Cllc`) is **out of
 scope** for this rework. See § 7 for future-work notes.
 
@@ -72,7 +72,7 @@ the secondary network changes. This mirrors `PsfbRectifierType` in
 
 | Variant | Why distinct | Reference |
 |---|---|---|
-| `Cllllc` | Symmetric Lr1+Cr1+Lm+Cr2+Lr2 tank, fully bidirectional, different gain analytics | Wolfspeed CRD-22DD12N (22 kW OBC); MDPI Electronics 12(7):1605 |
+| `Clllc` | Symmetric Lr1+Cr1+Lm+Cr2+Lr2 tank, fully bidirectional, different gain analytics | Wolfspeed CRD-22DD12N (22 kW OBC); MDPI Electronics 12(7):1605 |
 
 ### Skip
 
@@ -349,7 +349,7 @@ external Lr (`Inputs`). Branch on `rectType`:
 | `MAS/schemas/inputs/topologies/llcResonant.json` | — | add `rectifierType` field + `llcRectifierType` enum |
 | `tests/TestTopologyLlc.cpp` | `ZVS_Boundaries`, `Waveform_Plotting` | `RectifierType_FullBridge`, `RectifierType_CurrentDoubler`, `RectifierType_VoltageDoubler` |
 
-Out of scope: any new file under `src/converter_models/`. No `Cllllc.*`
+Out of scope: any new file under `src/converter_models/`. No `Clllc.*`
 in this rework.
 
 ---
@@ -397,7 +397,7 @@ variants supported."
 
 ## 7. Future work (not part of this rework)
 
-- **`Cllllc` class** — symmetric tank Lr1+Cr1+Lm+Cr2+Lr2; bidirectional
+- **`Clllc` class** — symmetric tank Lr1+Cr1+Lm+Cr2+Lr2; bidirectional
   EV/server applications. Mirror `Cllc.{cpp,h}` structure. References:
   Wolfspeed CRD-22DD12N (22 kW OBC), MDPI Electronics 12(7):1605.
   Estimated effort similar to the original `Cllc` introduction.
