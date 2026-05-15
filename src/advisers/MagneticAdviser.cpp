@@ -371,9 +371,17 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     logEntry("Found " + std::to_string(masData.size()) + " magnetics", "MagneticAdviser", 2);
     auto masMagneticsWithScoring = score_magnetics(masData, filterFlow);
 
-    sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
-        return b1.second > b2.second;
-    });
+        sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
+            if (b1.second != b2.second) {
+                return b1.second > b2.second;
+            }
+            // Deterministic tiebreaker: lexicographic reference. Without this,
+            // parts with equal totalScoring (common when one filter dominates
+            // and other filter contributions saturate) get reordered between
+            // runs by std::sort's unstable behaviour, breaking ranking
+            // determinism in the UI and tests.
+            return b1.first.get_mutable_magnetic().get_reference() < b2.first.get_mutable_magnetic().get_reference();
+        });
 
     if (masMagneticsWithScoring.size() > maximumNumberResults) {
         masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));

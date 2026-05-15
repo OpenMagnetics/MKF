@@ -1920,26 +1920,23 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
     bool valid = true;
     double scoring = 0;
 
-    // Impedance scoring: dimensionless log-ratio with industry-standard dead band.
+    // Impedance scoring: dimensionless log-ratio.
     //
     // For a "minimum impedance" requirement the part is invalid if Zact < Zreq at any
-    // frequency. Among valid parts we want to:
-    //   - reward parts that comfortably meet the requirement,
-    //   - not over-reward parts that grossly over-dimension (cost / size penalty),
-    //   - leave a tolerance band that absorbs typical CMC manufacturing tolerance
-    //     (~30%) plus a small design margin, so a "well-sized" part is not penalized.
+    // frequency. Among valid parts we want to reward parts close to the requirement
+    // (smallest over-dimensioning) and penalize gross over-dimensioning (cost/size).
     //
-    // Per-frequency penalty:
-    //     dev_i = log10(max(Zact_i / Zreq_i, 1))   // 0 when under-spec (caught by validity)
-    //     pen_i = max(0, dev_i - log10(1 + DEAD_BAND))
+    // Per-frequency:
+    //     dev_i = log10(max(Zact_i / Zreq_i, 1))   // 0 when at-spec (under-spec → invalid)
     // Filter score = mean over frequency points (then min-max normalized + inverted
-    // by normalize_scoring downstream).
+    // downstream so smallest dev becomes the top score).
     //
-    // Dead band: 50% (factor 1.5) - covers typical ±25..30% impedance tolerance of
-    // common-mode chokes (Würth WE-CMB, TDK ACT, Murata DLW, EPCOS B82xxx) plus
-    // ~20% engineering headroom for temperature drift / aging. Tunable below.
-    constexpr double IMPEDANCE_DEAD_BAND = 0.50;
-    const double deadBandLog = std::log10(1.0 + IMPEDANCE_DEAD_BAND);
+    // No dead band on the raw score: normalize_scoring rescales to [0,1] so any
+    // constant offset is wiped out, and a hard zero-clamp collapses all in-band parts
+    // to the same value -- which then triggers the min==max degenerate branch in
+    // normalize_scoring and returns 1.0 for every part (the "all show 100" bug).
+    // Keeping the raw monotonic dev preserves ranking spread when this is the only
+    // active filter.
 
     if (inputs->get_design_requirements().get_minimum_impedance()) {
         auto impedanceRequirement = inputs->get_design_requirements().get_minimum_impedance().value();
@@ -1953,11 +1950,10 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
             }
 
             // Ratio is clamped to >= 1: under-spec parts are already invalidated above,
-            // so we only score over-dimensioning above the dead band.
+            // so we only score over-dimensioning.
             double ratio = (zReq > 0) ? std::max(zAct / zReq, 1.0) : 1.0;
             double dev = std::log10(ratio);
-            double penalty = std::max(0.0, dev - deadBandLog);
-            scoring += penalty;
+            scoring += dev;
         }
         scoring /= impedanceRequirement.size();
     }

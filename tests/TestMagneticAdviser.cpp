@@ -2608,6 +2608,90 @@ namespace {
         REQUIRE(masMagnetics.size() > 0);
     }
 
+    TEST_CASE("Test_CatalogueAdviser_Single_Filter_Ranking_Spread", "[adviser][magnetic-adviser][catalogue][bug][smoke-test]") {
+        // Regression test for "all parts show score 100" bug.
+        //
+        // When the user enables a single filter (e.g. only Impedance at weight=1,
+        // strictlyRequired=true), every returned magnetic in the El Choker UI
+        // displayed the same scoring value (1.0 → 100). Root cause: the Impedance
+        // filter clamped every in-band part to penalty=0, so all per-part scorings
+        // were identical (0). normalize_scoring then hit its min==max degenerate
+        // branch and returned 1.0 for every part, collapsing the ranking.
+        //
+        // This test asserts that with a single strict Impedance filter and a catalogue
+        // of magnetics with measurably different impedances, the per-part scorings
+        // span at least 2 distinct values — proving the ranking is monotonic.
+
+        auto json_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_catalogueadviser_web_1_2218.json");
+        std::ifstream json_file(json_path);
+        json catalogueJson = json::parse(json_file);
+
+        std::vector<OpenMagnetics::Mas> catalogue;
+        from_json(catalogueJson, catalogue);
+        REQUIRE(catalogue.size() >= 1);
+
+        // The on-disk fixture is a family of identical magnetics. To get a
+        // ranking-spread test we mutate copies of the first Mas with different
+        // turn counts (impedance scales monotonically with N for an ungapped
+        // ferrite core), producing measurably distinct |Z| at the test frequency.
+        OpenMagnetics::Mas templateMas = catalogue[0];
+        catalogue.clear();
+        for (uint64_t turns : {120UL, 180UL, 240UL, 300UL}) {
+            OpenMagnetics::Mas copy = templateMas;
+            copy.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(turns);
+            // Force a unique reference so add_scoring/get_scorings does not collide.
+            MagneticManufacturerInfo info;
+            info.set_reference("turns_" + std::to_string(turns));
+            copy.get_mutable_magnetic().set_manufacturer_info(info);
+            catalogue.push_back(copy);
+        }
+        REQUIRE(catalogue.size() >= 2);
+
+        // Inject a minimum-impedance requirement that all magnetics in this catalogue
+        // can comfortably meet (so the strict filter does not reject them, and we
+        // can observe the ranking spread among the surviving parts).
+        ImpedancePoint impedancePoint;
+        impedancePoint.set_magnitude(1.0);  // 1 Ω at 150 kHz — trivially met by any CMC
+        ImpedanceAtFrequency impedanceAtFrequency;
+        impedanceAtFrequency.set_frequency(150000);
+        impedanceAtFrequency.set_impedance(impedancePoint);
+        std::vector<ImpedanceAtFrequency> minimumImpedance{impedanceAtFrequency};
+        for (auto& mas : catalogue) {
+            mas.get_mutable_inputs().get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
+        }
+
+        // Single filter, strict, full weight — exactly the El Choker UI scenario when
+        // the user sets only the Impedance slider to 100.
+        json filterFlowJson = json::parse(R"([{"filter": "Impedance", "invert": true, "log": false, "strictlyRequired": true, "weight": 1 }])");
+        std::vector<OpenMagnetics::MagneticFilterOperation> filterFlow = filterFlowJson.get<std::vector<OpenMagnetics::MagneticFilterOperation>>();
+
+        MagneticAdviser magneticAdviser(false);
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(catalogue, filterFlow, catalogue.size());
+        REQUIRE(masMagnetics.size() >= 2);
+
+        // Sanity-check the underlying raw impedances actually differ across the
+        // catalogue. If they don't, the test data is unsuitable and we should
+        // fail loudly rather than silently passing on identical scores.
+        std::set<double> distinctImpedances;
+        for (auto& [mas, _] : masMagnetics) {
+            auto z = abs(Impedance().calculate_impedance(mas.get_mutable_magnetic(), 150000));
+            distinctImpedances.insert(std::round(z * 1e6) / 1e6);
+        }
+        REQUIRE(distinctImpedances.size() >= 2);
+
+        // The actual regression assertion: scores must span at least 2 distinct
+        // values. Pre-fix this collapsed to {1.0} for every part.
+        std::set<double> distinctScores;
+        for (auto& [mas, scoring] : masMagnetics) {
+            distinctScores.insert(std::round(scoring * 1e6) / 1e6);
+        }
+        REQUIRE(distinctScores.size() >= 2);
+
+        // Adviser sorts highest-first; with invert=true on Impedance, the smallest
+        // over-dimensioning (closest to requirement) should be the top score.
+        REQUIRE(masMagnetics.front().second > masMagnetics.back().second);
+    }
+
     TEST_CASE("Test_CatalogueAdviser_Web_4", "[adviser][magnetic-adviser][catalogue][bug]") {
         SKIP("Test needs investigation");
 
