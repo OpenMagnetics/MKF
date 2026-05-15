@@ -760,15 +760,184 @@ TEST_CASE("CLLLC Phase B-1: PtP NRMSE reverse — analytical vs ngspice ≤ 0.30
 
 
 // ─────────────────────────────────────────────────────────────────────────
-// Stubbed v2 surface still throws (Phase B-1 leaves only extras + advanced)
+// Stubbed v2 surface still throws (Phase B-2 implements extras —
+// AdvancedClllc::process is the remaining stub)
 // ─────────────────────────────────────────────────────────────────────────
 
-TEST_CASE("CLLLC: extras + advanced stubs still throw std::logic_error",
-          "[clllc-topology][v2-pending]") {
+TEST_CASE("CLLLC: get_extra_components_inputs without process throws (must call solver first)",
+          "[clllc-topology][phase-b-2]") {
     CLLLC c(minimal_valid_clllc());
+    // Solver hasn't run → no extra waveforms → must throw a runtime error
+    // (NOT silently return an empty list — per CLAUDE.md "no fallbacks").
     CHECK_THROWS_AS(c.get_extra_components_inputs(
                         OpenMagnetics::ExtraComponentsMode::IDEAL),
-                    std::logic_error);
+                    std::runtime_error);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase B-2 — get_extra_components_inputs (CLLLC_PLAN.md §A.9)
+// ─────────────────────────────────────────────────────────────────────────
+
+namespace {
+// Helper: drive the solver so extra* waveforms are populated, with a
+// deterministic discrete-Lr (non-integrated) configuration.
+CLLLC make_solved_clllc(bool integrated = false) {
+    json j = minimal_valid_clllc();
+    j["integratedResonantInductors"] = integrated;
+    CLLLC c(j);
+    c.process_design_requirements();
+    c.process_operating_points({c.get_computed_turns_ratio()},
+                               c.get_computed_magnetizing_inductance());
+    return c;
+}
+}  // namespace
+
+TEST_CASE("CLLLC Phase B-2: extras count — IDEAL + discrete = Cr1 + Cr2 + Lr1 + Lr2 (4)",
+          "[clllc-topology][phase-b-2]") {
+    auto c = make_solved_clllc(/*integrated=*/false);
+    auto extras = c.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+    REQUIRE(extras.size() == 4);
+    // First two are CAS::Inputs (Cr1, Cr2); next two are MAS Inputs (Lr1, Lr2).
+    CHECK(std::holds_alternative<CAS::Inputs>(extras[0]));
+    CHECK(std::holds_alternative<CAS::Inputs>(extras[1]));
+    CHECK(std::holds_alternative<OpenMagnetics::Inputs>(extras[2]));
+    CHECK(std::holds_alternative<OpenMagnetics::Inputs>(extras[3]));
+}
+
+TEST_CASE("CLLLC Phase B-2: extras count — IDEAL + integrated = Cr1 + Cr2 only (2)",
+          "[clllc-topology][phase-b-2]") {
+    auto c = make_solved_clllc(/*integrated=*/true);
+    auto extras = c.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+    REQUIRE(extras.size() == 2);
+    CHECK(std::holds_alternative<CAS::Inputs>(extras[0]));
+    CHECK(std::holds_alternative<CAS::Inputs>(extras[1]));
+}
+
+TEST_CASE("CLLLC Phase B-2: extras count — REAL + discrete = Cr1, Cr2, HV bus, LV bus, Lr1, Lr2 (6)",
+          "[clllc-topology][phase-b-2]") {
+    auto c = make_solved_clllc(/*integrated=*/false);
+    auto extras = c.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::REAL);
+    REQUIRE(extras.size() == 6);
+    // Order is documented: Cr1, Cr2, HVbus, LVbus, Lr1, Lr2.
+    for (size_t i = 0; i < 4; ++i)
+        CHECK(std::holds_alternative<CAS::Inputs>(extras[i]));
+    CHECK(std::holds_alternative<OpenMagnetics::Inputs>(extras[4]));
+    CHECK(std::holds_alternative<OpenMagnetics::Inputs>(extras[5]));
+}
+
+TEST_CASE("CLLLC Phase B-2: extras count — REAL + integrated = Cr1, Cr2, HV bus, LV bus (4)",
+          "[clllc-topology][phase-b-2]") {
+    auto c = make_solved_clllc(/*integrated=*/true);
+    auto extras = c.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::REAL);
+    REQUIRE(extras.size() == 4);
+    for (auto& v : extras)
+        CHECK(std::holds_alternative<CAS::Inputs>(v));
+}
+
+TEST_CASE("CLLLC Phase B-2: Cr1 capacitance equals computed Cr1 and Cr2 ≈ Cr1·n²",
+          "[clllc-topology][phase-b-2]") {
+    auto c = make_solved_clllc();
+    auto extras = c.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+    REQUIRE(extras.size() >= 2);
+
+    auto& cr1 = std::get<CAS::Inputs>(extras[0]);
+    auto& cr2 = std::get<CAS::Inputs>(extras[1]);
+
+    double Cr1 = c.get_computed_primary_resonant_capacitance();
+    double Cr2 = c.get_computed_secondary_resonant_capacitance();
+    double n   = c.get_computed_turns_ratio();
+
+    REQUIRE(cr1.get_design_requirements().get_capacitance().get_nominal().has_value());
+    REQUIRE(cr2.get_design_requirements().get_capacitance().get_nominal().has_value());
+    CHECK_THAT(cr1.get_design_requirements().get_capacitance().get_nominal().value(),
+               WithinRel(Cr1, 1e-9));
+    CHECK_THAT(cr2.get_design_requirements().get_capacitance().get_nominal().value(),
+               WithinRel(Cr2, 1e-9));
+    // Symmetric tank invariant
+    CHECK_THAT(Cr2, WithinRel(Cr1 * n * n, 1e-9));
+
+    // Roles + names sanity
+    REQUIRE(cr1.get_design_requirements().get_role().has_value());
+    CHECK(cr1.get_design_requirements().get_role().value() ==
+          CAS::Application::RESONANT);
+    CHECK(cr2.get_design_requirements().get_role().value() ==
+          CAS::Application::RESONANT);
+
+    // Rated voltage = 1.5 × peak ≥ peak (positive, finite)
+    CHECK(cr1.get_design_requirements().get_rated_voltage() > 0.0);
+    CHECK(cr2.get_design_requirements().get_rated_voltage() > 0.0);
+}
+
+TEST_CASE("CLLLC Phase B-2: Cr operating-point excitations are populated",
+          "[clllc-topology][phase-b-2]") {
+    auto c = make_solved_clllc();
+    auto extras = c.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+    auto& cr1 = std::get<CAS::Inputs>(extras[0]);
+    REQUIRE(!cr1.get_operating_points().empty());
+    const auto& exc = cr1.get_operating_points()[0].get_excitation();
+    REQUIRE(exc.get_voltage().has_value());
+    REQUIRE(exc.get_current().has_value());
+    REQUIRE(exc.get_voltage().value().get_waveform().has_value());
+    REQUIRE(exc.get_current().value().get_waveform().has_value());
+    CHECK(!exc.get_voltage().value().get_waveform().value().get_data().empty());
+    CHECK(!exc.get_current().value().get_waveform().value().get_data().empty());
+}
+
+TEST_CASE("CLLLC Phase B-2: Lr1/Lr2 Inputs carry correct inductance and excitations",
+          "[clllc-topology][phase-b-2]") {
+    auto c = make_solved_clllc(/*integrated=*/false);
+    auto extras = c.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::IDEAL);
+    REQUIRE(extras.size() == 4);
+
+    auto& lr1 = std::get<OpenMagnetics::Inputs>(extras[2]);
+    auto& lr2 = std::get<OpenMagnetics::Inputs>(extras[3]);
+
+    REQUIRE(lr1.get_design_requirements().get_magnetizing_inductance()
+                .get_nominal().has_value());
+    REQUIRE(lr2.get_design_requirements().get_magnetizing_inductance()
+                .get_nominal().has_value());
+    CHECK_THAT(lr1.get_design_requirements().get_magnetizing_inductance()
+                  .get_nominal().value(),
+               WithinRel(c.get_computed_primary_series_inductance(), 1e-9));
+    CHECK_THAT(lr2.get_design_requirements().get_magnetizing_inductance()
+                  .get_nominal().value(),
+               WithinRel(c.get_computed_secondary_series_inductance(), 1e-9));
+
+    // Operating points carry waveform-bearing excitations
+    REQUIRE(!lr1.get_operating_points().empty());
+    const auto& opLr1 = lr1.get_operating_points()[0];
+    REQUIRE(!opLr1.get_excitations_per_winding().empty());
+    const auto& excLr1 = opLr1.get_excitations_per_winding()[0];
+    REQUIRE(excLr1.get_current().has_value());
+    REQUIRE(excLr1.get_voltage().has_value());
+    REQUIRE(excLr1.get_current().value().get_waveform().has_value());
+    CHECK(!excLr1.get_current().value().get_waveform().value().get_data().empty());
+}
+
+TEST_CASE("CLLLC Phase B-2: REAL mode bus caps carry sane rated voltages",
+          "[clllc-topology][phase-b-2]") {
+    auto c = make_solved_clllc(/*integrated=*/true);
+    auto extras = c.get_extra_components_inputs(
+        OpenMagnetics::ExtraComponentsMode::REAL);
+    REQUIRE(extras.size() == 4);
+    auto& hvBus = std::get<CAS::Inputs>(extras[2]);
+    auto& lvBus = std::get<CAS::Inputs>(extras[3]);
+
+    REQUIRE(hvBus.get_design_requirements().get_role().has_value());
+    CHECK(hvBus.get_design_requirements().get_role().value() ==
+          CAS::Application::DC_LINK);
+    CHECK(lvBus.get_design_requirements().get_role().value() ==
+          CAS::Application::DC_LINK);
+    // Rated ≥ nominal bus voltage (1.2× margin applied internally)
+    CHECK(hvBus.get_design_requirements().get_rated_voltage() >= 400.0);
+    CHECK(lvBus.get_design_requirements().get_rated_voltage() >= 400.0);
 }
 
 

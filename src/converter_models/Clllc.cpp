@@ -790,6 +790,29 @@ OperatingPoint Clllc::process_operating_point_for_input_voltage(
     extraLmCurrentWaveforms.push_back(makeWfm(iLmF));
     extraTimeVectors.push_back(tF);
 
+    // Lr voltage = L · di/dt; central difference (periodic boundary). The
+    // physical Lr1 always lives on the HV side regardless of solver frame, so
+    // when reverse the solver's iLr1 corresponds to the LV-side current and we
+    // pair it with computedSecondarySeriesInductance (= physical Lr2).
+    auto numericalLvDrop = [&](const std::vector<double>& isig, double Lval) {
+        std::vector<double> v(isig.size(), 0.0);
+        if (isig.size() < 3 || tF.size() < 3) return v;
+        for (size_t k = 1; k + 1 < isig.size(); ++k) {
+            double dt = tF[k + 1] - tF[k - 1];
+            v[k] = (dt > 1e-15) ? Lval * (isig[k + 1] - isig[k - 1]) / dt : 0.0;
+        }
+        // Periodic boundaries
+        v.front() = v[1];
+        v.back()  = v[v.size() - 2];
+        return v;
+    };
+    double L_for_iLr1 = reverse ? computedSecondarySeriesInductance
+                                : computedPrimarySeriesInductance;
+    double L_for_iLr2 = reverse ? computedPrimarySeriesInductance
+                                : computedSecondarySeriesInductance;
+    extraLr1VoltageWaveforms.push_back(makeWfm(numericalLvDrop(iLr1F, L_for_iLr1)));
+    extraLr2VoltageWaveforms.push_back(makeWfm(numericalLvDrop(iLr2F, L_for_iLr2)));
+
     // ----- Excitations: primary and secondary winding -----
     {
         Waveform iWfm = makeWfm(reverse ? iLr2F : iLr1F);
@@ -1357,17 +1380,189 @@ std::vector<ConverterWaveforms> Clllc::simulate_and_extract_topology_waveforms(
 }
 
 // =====================================================================
-// Extra components — TODO(clllc-v1) per CLLLC_PLAN.md §A.9 (transformer
-// with two integrated leakages OR two discrete inductors, plus Cr1, Cr2,
-// HV bus cap, LV bus cap).
+// Extra components — CLLLC_PLAN.md §A.9
+// Always emits Cr1 + Cr2 (CAS::Inputs). When integratedResonantInductors
+// is false, also emits Lr1 + Lr2 (MAS Inputs). When mode == REAL, also
+// emits HV + LV bus caps (CAS::Inputs, sized from operating-point bus
+// voltages and load currents — no time-domain waveforms because the
+// solver does not currently model bus ripple).
 // =====================================================================
 std::vector<std::variant<Inputs, CAS::Inputs>> Clllc::get_extra_components_inputs(
-        ExtraComponentsMode /*mode*/,
+        ExtraComponentsMode mode,
         std::optional<Magnetic> /*magnetic*/) {
-    throw std::logic_error(
-        "Clllc::get_extra_components_inputs not yet implemented. "
-        "Pending solver (needs operating-point waveforms to size Cr1/Cr2/bus caps). "
-        "See CLLLC_PLAN.md §A.9.");
+    // Note: Phase B-2 keeps the analytical Cr from process_design_requirements
+    // even in REAL mode. Cr-resizing from a designed magnetic's actual
+    // leakage is intentionally deferred to a follow-up commit (CLLLC_PLAN
+    // §A.9 — Cr1/Cr2 still produced; magnetic re-sizing is the optional
+    // refinement).
+
+    if (computedPrimarySeriesInductance <= 0 ||
+        computedPrimaryResonantCapacitance <= 0 ||
+        extraCr1VoltageWaveforms.empty()) {
+        throw std::runtime_error(
+            "Clllc::get_extra_components_inputs: call process_operating_points() first");
+    }
+
+    bool integratedLs = get_integrated_resonant_inductors().value_or(false);
+    double Lr1 = computedPrimarySeriesInductance;
+    double Lr2 = computedSecondarySeriesInductance;
+    double Cr1 = computedPrimaryResonantCapacitance;
+    double Cr2 = computedSecondaryResonantCapacitance;
+    double fr  = computedPrimaryResonantFrequency;
+    if (fr <= 0) fr = get_effective_resonant_frequency();
+
+    auto& ops = get_operating_points();
+    size_t nOps = extraCr1VoltageWaveforms.size();
+    if (nOps != extraCr2VoltageWaveforms.size() ||
+        nOps != extraCr1CurrentWaveforms.size() ||
+        nOps != extraCr2CurrentWaveforms.size()) {
+        throw std::runtime_error(
+            "Clllc::get_extra_components_inputs: extra-waveform vectors out of sync");
+    }
+
+    std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+    auto buildCapInputs = [&](const std::string& name,
+                              double C,
+                              const std::vector<Waveform>& vWfms,
+                              const std::vector<Waveform>& iWfms) {
+        CAS::Inputs casInputs;
+        CAS::DesignRequirements dr;
+
+        CAS::DimensionWithTolerance capacitance;
+        capacitance.set_nominal(C);
+        dr.set_capacitance(capacitance);
+
+        double peakV = 0.0;
+        for (const auto& w : vWfms)
+            for (double v : w.get_data())
+                peakV = std::max(peakV, std::abs(v));
+        // CLLLC plan §A.9: 1.5x peak rating for the resonant Cr (ringing
+        // during direction-reversal transients).
+        dr.set_rated_voltage(peakV * 1.5);
+        dr.set_role(CAS::Application::RESONANT);
+        dr.set_name(name);
+        casInputs.set_design_requirements(dr);
+
+        std::vector<CAS::TwoTerminalOperatingPoint> casOps;
+        for (size_t i = 0; i < vWfms.size(); ++i) {
+            CAS::TwoTerminalOperatingPoint op;
+            CAS::OperatingPointExcitation exc;
+            double fsw = (i < ops.size()) ? ops[i].get_switching_frequency() : fr;
+            exc.set_frequency(fsw);
+
+            CAS::SignalDescriptor vSig;
+            CAS::Waveform vWfm;
+            vWfm.set_data(vWfms[i].get_data());
+            if (vWfms[i].get_time()) vWfm.set_time(vWfms[i].get_time().value());
+            vSig.set_waveform(vWfm);
+            exc.set_voltage(vSig);
+
+            CAS::SignalDescriptor iSig;
+            CAS::Waveform iWfm;
+            iWfm.set_data(iWfms[i].get_data());
+            if (iWfms[i].get_time()) iWfm.set_time(iWfms[i].get_time().value());
+            iSig.set_waveform(iWfm);
+            exc.set_current(iSig);
+
+            op.set_excitation(exc);
+            casOps.push_back(op);
+        }
+        casInputs.set_operating_points(casOps);
+        result.emplace_back(std::move(casInputs));
+    };
+
+    // Always: Cr1 (HV side) and Cr2 (LV side).
+    buildCapInputs("Cr1_HV_resonantCapacitor", Cr1,
+                   extraCr1VoltageWaveforms, extraCr1CurrentWaveforms);
+    buildCapInputs("Cr2_LV_resonantCapacitor", Cr2,
+                   extraCr2VoltageWaveforms, extraCr2CurrentWaveforms);
+
+    // Mode REAL: HV + LV bus caps, sized from operating-point bus voltages.
+    // The solver does not produce bus-ripple waveforms, so the CAS::Inputs
+    // here carry only DesignRequirements (capacitance + rated voltage).
+    if (mode == ExtraComponentsMode::REAL) {
+        auto buildBusCap = [&](const std::string& name, double Vbus_max) {
+            CAS::Inputs busCap;
+            CAS::DesignRequirements dr;
+            // Placeholder bulk capacitance: 1 µF is a deliberate lower bound;
+            // the magnetic-adviser pipeline is expected to refine this from
+            // ripple-current targets in a later phase. We do NOT silently
+            // fabricate a "typical" value — 1 µF is documented minimum.
+            CAS::DimensionWithTolerance c;
+            c.set_nominal(1.0e-6);
+            dr.set_capacitance(c);
+            dr.set_rated_voltage(Vbus_max * 1.2);
+            dr.set_role(CAS::Application::DC_LINK);
+            dr.set_name(name);
+            busCap.set_design_requirements(dr);
+            result.emplace_back(std::move(busCap));
+        };
+
+        // Bus voltages live on the ClllcResonant design spec (HV/LV are the
+        // converter ports). Use maximum of nominal/maximum dimension fields.
+        auto pickBusMax = [](const DimensionWithTolerance& d) -> double {
+            if (d.get_maximum().has_value()) return d.get_maximum().value();
+            if (d.get_nominal().has_value()) return d.get_nominal().value();
+            if (d.get_minimum().has_value()) return d.get_minimum().value();
+            return 0.0;
+        };
+        double Vhv_max = pickBusMax(get_high_voltage_bus_voltage());
+        double Vlv_max = pickBusMax(get_low_voltage_bus_voltage());
+        if (Vhv_max <= 0 || Vlv_max <= 0) {
+            throw std::runtime_error(
+                "Clllc::get_extra_components_inputs: REAL mode requires "
+                "high/low voltage bus voltages on the design spec");
+        }
+        buildBusCap("HV_busCapacitor", Vhv_max);
+        buildBusCap("LV_busCapacitor", Vlv_max);
+    }
+
+    // Discrete Lr1 + Lr2 inductors when not integrated into the transformer.
+    if (!integratedLs) {
+        auto buildInductorInputs = [&](const std::string& name,
+                                       double L,
+                                       const std::vector<Waveform>& iWfms,
+                                       const std::vector<Waveform>& vWfms) {
+            if (iWfms.size() != vWfms.size())
+                throw std::runtime_error(
+                    "Clllc::get_extra_components_inputs: " + name +
+                    " current/voltage waveform count mismatch");
+
+            Inputs masInputs;
+            DesignRequirements dr;
+            DimensionWithTolerance inductance;
+            inductance.set_nominal(L);
+            dr.set_magnetizing_inductance(inductance);
+            dr.set_name(name);
+            dr.set_topology(Topologies::CLLLC_RESONANT_CONVERTER);
+            dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+            dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+            masInputs.set_design_requirements(dr);
+
+            std::vector<OperatingPoint> masOps;
+            for (size_t i = 0; i < iWfms.size(); ++i) {
+                OperatingPoint op;
+                double fsw = (i < ops.size()) ? ops[i].get_switching_frequency() : fr;
+                auto exc = complete_excitation(iWfms[i], vWfms[i], fsw, "Primary");
+                op.get_mutable_excitations_per_winding().push_back(exc);
+                masOps.push_back(op);
+            }
+            masInputs.set_operating_points(masOps);
+            result.emplace_back(std::move(masInputs));
+        };
+
+        if (extraLr1VoltageWaveforms.empty() || extraLr2VoltageWaveforms.empty())
+            throw std::runtime_error(
+                "Clllc::get_extra_components_inputs: discrete Lr requires "
+                "Lr voltage waveforms (run process_operating_points first)");
+        buildInductorInputs("Lr1_HV_seriesInductor", Lr1,
+                            extraLr1CurrentWaveforms, extraLr1VoltageWaveforms);
+        buildInductorInputs("Lr2_LV_seriesInductor", Lr2,
+                            extraLr2CurrentWaveforms, extraLr2VoltageWaveforms);
+    }
+
+    return result;
 }
 
 // =====================================================================
