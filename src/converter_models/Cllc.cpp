@@ -1,6 +1,7 @@
 #include "converter_models/Cllc.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/LeakageInductance.h"
 #include "support/Utils.h"
 #include <cfloat>
 #include <cmath>
@@ -1101,6 +1102,9 @@ double get_value_or(T&& val, double default_val) {
         params.secondaryResonantInductance = a * L1 / (n * n);
         params.secondaryResonantCapacitance = n * n * b * params.primaryResonantCapacitance;
 
+        // Cache for get_extra_components_inputs.
+        lastResonantParameters = params;
+
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t opIndex = 0; opIndex < get_operating_points().size(); ++opIndex) {
@@ -1579,6 +1583,200 @@ double get_value_or(T&& val, double default_val) {
         set_num_periods_to_extract(originalNumPeriodsToExtract);
 
         return results;
+    }
+
+    // =========================================================================
+    // Extra components: Cr1, Cr2, Lr1, Lr2 ancillary MAS/CAS Inputs
+    // =========================================================================
+    //
+    // Mirrors Llc::get_extra_components_inputs and Clllc::get_extra_components_inputs.
+    // Cr1/Cr2 are always emitted (CAS::Inputs, RESONANT role). Lr1/Lr2 are
+    // emitted as MAS::Inputs only when the corresponding integratedResonantInductor*
+    // flag is false (or, in REAL mode, when the actual transformer leakage is
+    // smaller than the required Lr — in which case the residual external
+    // inductance is sized as Lr - Llk).
+    std::vector<std::variant<Inputs, CAS::Inputs>>
+    CllcConverter::get_extra_components_inputs(ExtraComponentsMode mode,
+                                               std::optional<Magnetic> magnetic) {
+        if (mode == ExtraComponentsMode::REAL && !magnetic.has_value()) {
+            throw std::invalid_argument(
+                "CllcConverter::get_extra_components_inputs: mode REAL requires a designed magnetic");
+        }
+
+        if (extraCr1VoltageWaveforms.empty()) {
+            throw std::runtime_error(
+                "CllcConverter::get_extra_components_inputs: call process_operating_points() first");
+        }
+
+        const double Lr1 = lastResonantParameters.primaryResonantInductance;
+        const double Lr2 = lastResonantParameters.secondaryResonantInductance;
+        double       Cr1 = lastResonantParameters.primaryResonantCapacitance;
+        double       Cr2 = lastResonantParameters.secondaryResonantCapacitance;
+        const double n   = lastResonantParameters.turnsRatio;
+        const double fr  = lastResonantParameters.resonantFrequency;
+        if (Lr1 <= 0 || Cr1 <= 0 || fr <= 0) {
+            throw std::runtime_error(
+                "CllcConverter::get_extra_components_inputs: cached resonant parameters invalid "
+                "(call process_operating_points first)");
+        }
+
+        bool integratedLr1 = get_integrated_resonant_inductor1().value_or(true);
+        bool integratedLr2 = get_integrated_resonant_inductor2().value_or(true);
+
+        // REAL mode: rebalance Cr against the actual primary-side leakage so
+        // the tank still resonates at fr when Lr1 is integrated. Mirrors
+        // Llc.cpp:1631-1640.
+        double Llk_pri = 0.0;
+        if (mode == ExtraComponentsMode::REAL) {
+            auto leakageOutput = LeakageInductance().calculate_leakage_inductance_all_windings(
+                magnetic.value(), fr);
+            auto perWinding = leakageOutput.get_leakage_inductance_per_winding();
+            if (!perWinding.empty()) {
+                Llk_pri = resolve_dimensional_values(perWinding[0]);
+            }
+            double Lr1_eff = (Llk_pri >= Lr1) ? Llk_pri : Lr1;
+            Cr1 = 1.0 / (4.0 * M_PI * M_PI * fr * fr * Lr1_eff);
+            // Maintain the symmetric / asymmetric ratio b = Cr2 / (n²·Cr1).
+            bool symmetric = get_symmetric_design().value_or(true);
+            double b = symmetric ? 1.0 : 1.052;
+            Cr2 = n * n * b * Cr1;
+        }
+
+        auto& ops = get_operating_points();
+        std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+        auto buildCapInputs = [&](const std::string& name,
+                                  double C,
+                                  const std::vector<Waveform>& vWfms,
+                                  const std::vector<Waveform>& iWfms) {
+            if (vWfms.size() != iWfms.size()) {
+                throw std::runtime_error(
+                    "CllcConverter::get_extra_components_inputs: " + name +
+                    " voltage/current waveform count mismatch");
+            }
+            CAS::Inputs casInputs;
+            CAS::DesignRequirements dr;
+
+            CAS::DimensionWithTolerance capacitance;
+            capacitance.set_nominal(C);
+            dr.set_capacitance(capacitance);
+
+            double peakV = 0.0;
+            for (const auto& w : vWfms) {
+                for (double v : w.get_data()) {
+                    peakV = std::max(peakV, std::abs(v));
+                }
+            }
+            // 1.5x peak rating — bidirectional CLLC sees ringing on direction
+            // reversal (matches Clllc convention).
+            dr.set_rated_voltage(peakV * 1.5);
+            dr.set_role(CAS::Application::RESONANT);
+            dr.set_name(name);
+            casInputs.set_design_requirements(dr);
+
+            std::vector<CAS::TwoTerminalOperatingPoint> casOps;
+            for (size_t i = 0; i < vWfms.size(); ++i) {
+                CAS::TwoTerminalOperatingPoint op;
+                CAS::OperatingPointExcitation exc;
+                double fsw = (i < ops.size())
+                                 ? get_value_or(ops[i].get_switching_frequency(), fr)
+                                 : fr;
+                exc.set_frequency(fsw);
+
+                CAS::SignalDescriptor vSig;
+                CAS::Waveform vWfm;
+                vWfm.set_data(vWfms[i].get_data());
+                if (vWfms[i].get_time()) vWfm.set_time(vWfms[i].get_time().value());
+                vSig.set_waveform(vWfm);
+                exc.set_voltage(vSig);
+
+                CAS::SignalDescriptor iSig;
+                CAS::Waveform iWfm;
+                iWfm.set_data(iWfms[i].get_data());
+                if (iWfms[i].get_time()) iWfm.set_time(iWfms[i].get_time().value());
+                iSig.set_waveform(iWfm);
+                exc.set_current(iSig);
+
+                op.set_excitation(exc);
+                casOps.push_back(op);
+            }
+            casInputs.set_operating_points(casOps);
+            result.emplace_back(std::move(casInputs));
+        };
+
+        buildCapInputs("Cr1_resonantCapacitor_primary", Cr1,
+                       extraCr1VoltageWaveforms, extraCr1CurrentWaveforms);
+        buildCapInputs("Cr2_resonantCapacitor_secondary", Cr2,
+                       extraCr2VoltageWaveforms, extraCr2CurrentWaveforms);
+
+        // Discrete external resonant inductors. In REAL mode the magnetic's
+        // own leakage absorbs part (or all) of Lr.
+        auto buildInductorInputs = [&](const std::string& name,
+                                       double L,
+                                       const std::vector<Waveform>& iWfms,
+                                       const std::vector<Waveform>& vWfms) {
+            if (iWfms.size() != vWfms.size()) {
+                throw std::runtime_error(
+                    "CllcConverter::get_extra_components_inputs: " + name +
+                    " current/voltage waveform count mismatch");
+            }
+            Inputs masInputs;
+            DesignRequirements dr;
+            DimensionWithTolerance inductance;
+            inductance.set_nominal(L);
+            dr.set_magnetizing_inductance(inductance);
+            dr.set_name(name);
+            dr.set_topology(Topologies::CLLC_RESONANT_CONVERTER);
+            dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+            dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+            masInputs.set_design_requirements(dr);
+
+            std::vector<OperatingPoint> masOps;
+            for (size_t i = 0; i < iWfms.size(); ++i) {
+                OperatingPoint op;
+                double fsw = (i < ops.size())
+                                 ? get_value_or(ops[i].get_switching_frequency(), fr)
+                                 : fr;
+                auto exc = complete_excitation(iWfms[i], vWfms[i], fsw, "Primary");
+                op.get_mutable_excitations_per_winding().push_back(exc);
+                masOps.push_back(op);
+            }
+            masInputs.set_operating_points(masOps);
+            result.emplace_back(std::move(masInputs));
+        };
+
+        // Lr1 sizing: IDEAL → full Lr1 when not integrated; REAL → residual
+        // beyond the magnetic's own primary leakage.
+        double Lr1_external = 0.0;
+        if (mode == ExtraComponentsMode::IDEAL && !integratedLr1) {
+            Lr1_external = Lr1;
+        }
+        else if (mode == ExtraComponentsMode::REAL) {
+            Lr1_external = (Llk_pri < Lr1) ? (Lr1 - Llk_pri) : 0.0;
+        }
+        if (Lr1_external > 0.0 && !extraLr1VoltageWaveforms.empty()) {
+            buildInductorInputs("Lr1_seriesInductor_primary", Lr1_external,
+                                extraLr1CurrentWaveforms, extraLr1VoltageWaveforms);
+        }
+
+        // Lr2 sizing: same logic on the secondary side. Lr2 is referred to
+        // the secondary, so the leakage to subtract would be the secondary
+        // winding's leakage; for now mirror the primary heuristic when REAL
+        // and absorb fully when IDEAL+integrated. (Tightening to true
+        // secondary-leakage subtraction is deferred to P7.)
+        double Lr2_external = 0.0;
+        if (mode == ExtraComponentsMode::IDEAL && !integratedLr2) {
+            Lr2_external = Lr2;
+        }
+        else if (mode == ExtraComponentsMode::REAL) {
+            Lr2_external = integratedLr2 ? 0.0 : Lr2;
+        }
+        if (Lr2_external > 0.0 && !extraLr2VoltageWaveforms.empty()) {
+            buildInductorInputs("Lr2_seriesInductor_secondary", Lr2_external,
+                                extraLr2CurrentWaveforms, extraLr2VoltageWaveforms);
+        }
+
+        return result;
     }
 
     // =========================================================================

@@ -1268,4 +1268,71 @@ namespace {
         CHECK(netlist.find("Rload") != std::string::npos);
     }
 
+    // ---------------------------------------------------------------------
+    // P5 — get_extra_components_inputs round-trips Cr1, Cr2, Lr1, Lr2.
+    // Symmetric design → Cr1==Cr2 and (when both flags=false) two inductors.
+    // Default (integratedResonantInductor1/2 == true) → only the two caps.
+    // ---------------------------------------------------------------------
+    TEST_CASE("Test_Cllc_ExtraComponents_Cr1_Cr2_Lr1_Lr2",
+              "[converter-model][cllc-topology][extra-components][p5][smoke-test]") {
+        json cllcJson = create_standard_cllc_json(100000.0, CllcPowerFlow::FORWARD);
+        OpenMagnetics::CllcConverter cllc(cllcJson);
+        cllc._assertErrors = true;
+
+        auto params = cllc.calculate_resonant_parameters();
+        std::vector<double> turnsRatios = {params.turnsRatio};
+        REQUIRE_NOTHROW(cllc.process_operating_points(turnsRatios, params.magnetizingInductance));
+
+        // Default flags = true (Lr integrated into transformer leakage).
+        // IDEAL → expect exactly Cr1 and Cr2 (no discrete inductors).
+        auto extras_default = cllc.get_extra_components_inputs(
+            OpenMagnetics::ExtraComponentsMode::IDEAL);
+        REQUIRE(extras_default.size() == 2);
+        // Both must be CAS::Inputs (capacitors).
+        for (auto& v : extras_default) {
+            REQUIRE(std::holds_alternative<CAS::Inputs>(v));
+        }
+        {
+            auto& cap1 = std::get<CAS::Inputs>(extras_default[0]);
+            auto& cap2 = std::get<CAS::Inputs>(extras_default[1]);
+            auto C1 = cap1.get_design_requirements().get_capacitance().get_nominal().value();
+            auto C2 = cap2.get_design_requirements().get_capacitance().get_nominal().value();
+            REQUIRE(C1 > 0);
+            REQUIRE(C2 > 0);
+            // Symmetric default → C2 = n²·C1 with b=1.0.
+            double n = params.turnsRatio;
+            REQUIRE_THAT(C2 / C1,
+                         Catch::Matchers::WithinRel(n * n, 0.05));
+            // Operating points must carry waveforms.
+            REQUIRE(cap1.get_operating_points().size() >= 1);
+            REQUIRE(cap1.get_operating_points()[0].get_excitation()
+                        .get_voltage()->get_waveform()->get_data().size() > 0);
+        }
+
+        // Flip integration flags off and re-process so storage reflects the
+        // discrete-inductor case. IDEAL → Cr1, Cr2, Lr1, Lr2 = 4 entries.
+        cllc.set_integrated_resonant_inductor1(false);
+        cllc.set_integrated_resonant_inductor2(false);
+        REQUIRE_NOTHROW(cllc.process_operating_points(turnsRatios, params.magnetizingInductance));
+        auto extras_discrete = cllc.get_extra_components_inputs(
+            OpenMagnetics::ExtraComponentsMode::IDEAL);
+        REQUIRE(extras_discrete.size() == 4);
+        REQUIRE(std::holds_alternative<CAS::Inputs>(extras_discrete[0]));
+        REQUIRE(std::holds_alternative<CAS::Inputs>(extras_discrete[1]));
+        REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras_discrete[2]));
+        REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras_discrete[3]));
+        {
+            auto& Lr1_in = std::get<OpenMagnetics::Inputs>(extras_discrete[2]);
+            auto Lr1_val = Lr1_in.get_design_requirements()
+                               .get_magnetizing_inductance().get_nominal().value();
+            REQUIRE(Lr1_val > 0);
+            REQUIRE(Lr1_in.get_operating_points().size() >= 1);
+        }
+
+        // REAL mode without a magnetic must throw.
+        REQUIRE_THROWS_AS(cllc.get_extra_components_inputs(
+                              OpenMagnetics::ExtraComponentsMode::REAL),
+                          std::invalid_argument);
+    }
+
 } // anonymous namespace

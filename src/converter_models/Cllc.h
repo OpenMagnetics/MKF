@@ -269,6 +269,11 @@ private:
     mutable std::vector<Waveform> extraLr2CurrentWaveforms;
     mutable std::vector<std::vector<double>> extraTimeVectors;
 
+    // Resonant parameters used during the last process_operating_points()
+    // call. Cached so get_extra_components_inputs can size Cr1/Cr2/Lr1/Lr2
+    // identically to what populated the extra*Waveforms above.
+    mutable CllcResonantParameters lastResonantParameters{};
+
 public:
     bool _assertErrors = false;
 
@@ -394,6 +399,20 @@ public:
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
         size_t numberOfPeriods = 2);
+
+    /**
+     * @brief Return ancillary MAS/CAS Inputs for Cr1, Cr2 and (when not
+     * integrated into the transformer leakage) Lr1, Lr2. Call
+     * process_operating_points() first.
+     *
+     * IDEAL: Cr1/Cr2 always; Lr1/Lr2 only when the corresponding
+     *        integratedResonantInductor* flag is false.
+     * REAL : same as IDEAL plus, for the inductors, the external part
+     *        Lr_external = max(Lr - leakage, 0).
+     */
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 };
 
 
