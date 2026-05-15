@@ -1,0 +1,225 @@
+#pragma once
+// Version: 0.1 - Phase 1+2 (skeleton + per-phase analytical solver at peak-of-line)
+#include "Constants.h"
+#include <MAS.hpp>
+#include "processors/Inputs.h"
+#include "constructive_models/Magnetic.h"
+#include "converter_models/Topology.h"
+#include "processors/NgspiceRunner.h"
+
+namespace OpenMagnetics {
+using namespace MAS;
+
+/**
+ * @brief Vienna rectifier (3-phase, 3-level, unidirectional boost-type PFC).
+ *
+ * Three identical line-frequency boost inductors (one per phase) carry pure-AC
+ * line current at 120 deg phase shift. Switch blocking voltage = Vdc/2 (the
+ * 3-level advantage). Originally proposed by Kolar & Zach, PCIM 1994; modern
+ * SiC industrial implementations include TI TIDA-010257, ST STDES-VIENNARECT,
+ * Microchip MSCSICPFC-REF5 and Infineon REF_11KW_PFC_SIC_QD.
+ *
+ * Phase 1+2 scope (this version):
+ *   - Schema-driven configuration (lineToLineVoltage, outputDcVoltage,
+ *     switchingFrequency, currentRippleRatio, viennaVariant, switchType,
+ *     synchronousRectifier, phaseCount, samplingStrategy).
+ *   - Single-channel Vienna I, T-type switches, diode rectifier only.
+ *     Throws on every other variant (deferred to Phase 3+).
+ *   - Sampling strategy: only `peakOfLineOnly` is implemented. Throws on
+ *     `peakOfLinePlusSectors` and `fullLineCycle` (deferred to Phase 3+).
+ *   - process_operating_points returns ONE OperatingPoint with THREE
+ *     "windings" (Phase A inductor, Phase B inductor, Phase C inductor).
+ *     Each winding represents the phase inductor at its OWN peak-of-line
+ *     instant - the worst-case sizing point. The three inductors are
+ *     identical by design (balanced 3-phase grid).
+ *
+ * KEY EQUATIONS (Kolar 1994; TI TIDUCJ0B; ST UM2975)
+ *   V_phase_peak = sqrt(2) * V_LL / sqrt(3)
+ *   M            = V_phase_peak / (Vdc / 2)         (modulation index, must be <= 1)
+ *   I_pk         = sqrt(2) * P / (3 * V_phase_rms * eta * PF)
+ *   d(peak)      = 1 - M                             (per-phase duty at peak-of-line)
+ *   DeltaI_L     = V_phase_peak * d(peak) / (L * Fsw)   (peak-to-peak inductor ripple)
+ *   L            = V_phase_peak * (1 - M) / (DeltaI_L_target * Fsw)
+ *   Vsw          = Vdc / 2                          (switch blocking voltage, 3-level)
+ *   I_sw_rms     = I_pk * sqrt(1/4 - 2*M/(3*pi))    [Hartmann ETH 19755 (2011)]
+ *   I_D_avg      = I_pk / pi                         (per fast rectifier diode)
+ *
+ * REFERENCES
+ *   [1] J. W. Kolar, F. C. Zach, "A Novel Three-Phase Three-Switch
+ *       Three-Level Unity Power Factor PWM Rectifier", PCIM 1994.
+ *   [2] J. W. Kolar, "Vienna Rectifier and Beyond", APEC 2018 plenary
+ *       (ETH-PES).
+ *   [3] T. Friedli, J. W. Kolar, "The Essence of Three-Phase PFC Rectifier
+ *       Systems Part II", IEEE TPEL.
+ *   [4] TI TIDUCJ0B (TIDM-1000 user guide); TI TIDA-010257 (10 kW Vienna
+ *       PFC); ST UM2975 (STDES-VIENNARECT 15 kW); Microchip DS50002952B.
+ *   [5] src/converter_models/VIENNA_PLAN.md - full design rationale.
+ *
+ * ACCURACY DISCLAIMER
+ *   Phase 1+2 samples ONLY at peak-of-line. A full line-cycle envelope
+ *   (THD validation, sector-weighted RMS, neutral-point ripple modelling)
+ *   is deferred to Phase 3+. Three-phase grid is assumed balanced.
+ *   Neutral-point voltage is assumed balanced by an outer control loop.
+ *
+ * DISAMBIGUATION
+ *   Vienna vs 2-level 3-phase boost rectifier: 2-level uses 6 IGBTs +
+ *     6 diodes, switch V-stress = Vdc (full bus). Different topology.
+ *   Vienna vs 3L-ANPC: ANPC is bidirectional (V2G fast charging). Vienna
+ *     is intrinsically unidirectional (diode bridge).
+ *   Vienna I vs Vienna II: single switch per leg vs two switches per leg.
+ *     Same topology, covered by `viennaVariant` flag. Phase 1+2 supports
+ *     viennaI only.
+ *   Vienna vs single-phase totem-pole PFC: 3-phase vs 1-phase. Single-
+ *     phase is in PowerFactorCorrection.cpp.
+ */
+class Vienna : public MAS::ViennaRectifier, public Topology {
+public:
+    enum class Phase { A, B, C };
+
+private:
+    // Computed design values - filled by process_design_requirements().
+    double computedBoostInductance     = 0;   // single value (all 3 phases identical) [H]
+    double computedModulationIndex     = 0;   // M = V_phase_peak / (Vdc/2)
+    double computedLinePeakCurrent     = 0;   // I_pk per phase [A]
+    double computedSwitchVoltageStress = 0;   // = Vdc/2 [V]
+
+    // User overrides for L (skipped MAS schema; settable via C++).
+    double userBoostInductance = 0;           // 0 = unset
+
+    // Diagnostics populated per operating point.
+    mutable double lastInductorPeakCurrent  = 0.0;   // I_pk
+    mutable double lastInductorRipplePeakToPeak = 0.0;
+    mutable double lastDutyAtPeak           = 0.0;   // 1 - M
+    mutable double lastSwitchVoltageStress  = 0.0;   // Vdc/2
+    mutable double lastSwitchRmsCurrent     = 0.0;   // Kolar 1994
+    mutable double lastDiodeAvgCurrent      = 0.0;   // I_pk/pi
+    mutable double lastModulationIndex      = 0.0;
+    mutable double lastInputPower           = 0.0;
+
+public:
+    bool _assertErrors = false;
+
+    Vienna(const json& j);
+    Vienna() {}
+
+    // Vienna switches connect each phase node to the neutral midpoint -
+    // they route inductor current rather than setting a bridge-midpoint
+    // voltage. So `is_bridge_topology()` stays false (default).
+
+    MAS::Topologies topology_kind() const override {
+        return MAS::Topologies::VIENNA_RECTIFIER_CONVERTER;
+    }
+
+    // Computed-design accessors
+    double get_computed_boost_inductance()      const { return computedBoostInductance; }
+    double get_computed_modulation_index()      const { return computedModulationIndex; }
+    double get_computed_line_peak_current()     const { return computedLinePeakCurrent; }
+    double get_computed_switch_voltage_stress() const { return computedSwitchVoltageStress; }
+
+    // User override (Lf)
+    void   set_user_boost_inductance(double v) { userBoostInductance = v; }
+    double get_user_boost_inductance() const   { return userBoostInductance; }
+
+    // Diagnostics (last solved OP)
+    double get_last_inductor_peak_current()      const { return lastInductorPeakCurrent; }
+    double get_last_inductor_ripple_peak_to_peak() const { return lastInductorRipplePeakToPeak; }
+    double get_last_duty_at_peak()               const { return lastDutyAtPeak; }
+    double get_last_switch_voltage_stress()      const { return lastSwitchVoltageStress; }
+    double get_last_switch_rms_current()         const { return lastSwitchRmsCurrent; }
+    double get_last_diode_avg_current()          const { return lastDiodeAvgCurrent; }
+    double get_last_modulation_index()           const { return lastModulationIndex; }
+    double get_last_input_power()                const { return lastInputPower; }
+
+    // Static analytical helpers (Phase 1+2)
+    /** V_phase_peak = sqrt(2) * V_LL / sqrt(3). */
+    static double compute_phase_peak_voltage(double V_LL_rms);
+    /** Modulation index M = V_phase_peak / (Vdc/2). Must be <= 1 (no over-modulation). */
+    static double compute_modulation_index(double V_phase_peak, double Vdc);
+    /** I_pk = sqrt(2) * P / (3 * V_phase_rms * eta * PF). */
+    static double compute_line_peak_current(double P, double V_phase_rms, double eff, double pf);
+    /** L = V_phase_peak * (1 - M) / (DeltaI_pp_target * Fsw). */
+    static double compute_inductor_for_ripple(double V_phase_peak, double M, double Fsw, double DeltaI_pp_target);
+    /** Switch RMS via Hartmann ETH 19755 (2011) closed form (per-switch, single Vienna leg). */
+    static double compute_switch_rms(double I_pk, double M);
+    /** Per-diode average current = I_pk / pi (full-wave bridge). */
+    static double compute_diode_avg(double I_pk);
+
+    // Topology interface
+    bool run_checks(bool assert = false) override;
+    DesignRequirements process_design_requirements() override;
+
+    /** Returns ONE OperatingPoint with THREE windings (Phase A/B/C boost inductor),
+     *  each sampled at its own peak-of-line instant. */
+    std::vector<OperatingPoint> process_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance) override;
+
+    std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
+
+    /** Per-OP analytical solver. */
+    OperatingPoint process_operating_point_for_input_voltage(
+        const TopologyExcitation& viennaOpPoint);
+};
+
+
+// ----------------------------------------------------------------------------
+// AdvancedVienna: user supplies L directly (bypasses ripple-based derivation).
+// ----------------------------------------------------------------------------
+class AdvancedVienna : public Vienna {
+private:
+    std::optional<double> desiredBoostInductance;
+
+public:
+    AdvancedVienna() = default;
+    ~AdvancedVienna() = default;
+
+    AdvancedVienna(const json& j);
+
+    DesignRequirements process_design_requirements() override;
+
+    std::optional<double> get_desired_boost_inductance() const { return desiredBoostInductance; }
+    void set_desired_boost_inductance(std::optional<double> v) { desiredBoostInductance = v; }
+};
+
+
+// ----------------------------------------------------------------------------
+// JSON serialization for AdvancedVienna (Vienna itself uses MAS::ViennaRectifier
+// generated from_json/to_json via the explicit-cast pattern in the ctor).
+// ----------------------------------------------------------------------------
+inline void from_json(const json& j, AdvancedVienna& x) {
+    x.set_current_ripple_ratio(get_stack_optional<double>(j, "currentRippleRatio"));
+    x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
+    x.set_line_frequency(get_stack_optional<double>(j, "lineFrequency"));
+    x.set_line_to_line_voltage(j.at("lineToLineVoltage").get<DimensionWithTolerance>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<TopologyExcitation>>());
+    x.set_output_dc_voltage(j.at("outputDcVoltage").get<double>());
+    x.set_phase_count(get_stack_optional<int64_t>(j, "phaseCount"));
+    x.set_power_factor(get_stack_optional<double>(j, "powerFactor"));
+    x.set_sampling_strategy(get_stack_optional<ViennaSamplingStrategy>(j, "samplingStrategy"));
+    x.set_switching_frequency(j.at("switchingFrequency").get<double>());
+    x.set_switch_type(get_stack_optional<ViennaSwitchType>(j, "switchType"));
+    x.set_synchronous_rectifier(get_stack_optional<bool>(j, "synchronousRectifier"));
+    x.set_vienna_variant(get_stack_optional<ViennaVariant>(j, "viennaVariant"));
+
+    x.set_desired_boost_inductance(get_stack_optional<double>(j, "desiredBoostInductance"));
+}
+
+inline void to_json(json& j, const AdvancedVienna& x) {
+    j = json::object();
+    j["currentRippleRatio"]    = x.get_current_ripple_ratio();
+    j["efficiency"]            = x.get_efficiency();
+    j["lineFrequency"]         = x.get_line_frequency();
+    j["lineToLineVoltage"]     = x.get_line_to_line_voltage();
+    j["operatingPoints"]       = x.get_operating_points();
+    j["outputDcVoltage"]       = x.get_output_dc_voltage();
+    j["phaseCount"]            = x.get_phase_count();
+    j["powerFactor"]           = x.get_power_factor();
+    j["samplingStrategy"]      = x.get_sampling_strategy();
+    j["switchingFrequency"]    = x.get_switching_frequency();
+    j["switchType"]            = x.get_switch_type();
+    j["synchronousRectifier"]  = x.get_synchronous_rectifier();
+    j["viennaVariant"]         = x.get_vienna_variant();
+    j["desiredBoostInductance"]= x.get_desired_boost_inductance();
+}
+
+} // namespace OpenMagnetics
