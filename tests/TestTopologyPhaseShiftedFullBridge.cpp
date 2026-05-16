@@ -673,13 +673,15 @@ TEST_CASE("Test_Psfb_PtP_AnalyticalVsNgspice", "[converter-model][psfb-topology]
 
         double nrmse = ptp_nrmse(aResampled, sResampled);
         INFO("PSFB primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
-        // TODO(DAB-quality): tighten to ≤ 0.15 once PSFB-specific commutation
-        // model improvements land.  Currently measured at ~0.24 after fixing
-        // the freewheel decay (τ = Lr/(2·RON), physics-derived) and the
-        // diode-model mismatch.  PSHB sits at 0.11 with the same fix; PSFB
-        // residual gap is likely in the active-interval commutation ramp
-        // (currently linear; SPICE shows a sigmoidal shape at high Iout).
-        CHECK(nrmse < 0.30);
+        // TODO(DAB-quality): tighten to ≤ 0.15 once PSFB-specific
+        // commutation-ramp model improvements land. Currently measured at
+        // ~0.16 after the diode-dynamic-R freewheel-decay fix
+        // (τ = Lr/(n²·R_d_diode), Vlatkovic-style asymmetric commutation).
+        // Three reference designs cluster at 13.5-16.6 % (see
+        // TestPhaseShiftedFullBridgeReferenceDesignsPtp).  Residual gap is
+        // in the active-interval start-value (analytical undershoots SPICE
+        // by ~0.7 A — duty-cycle-loss model under-estimate).
+        CHECK(nrmse < 0.20);
     }
 }
 
@@ -772,8 +774,8 @@ TEST_CASE("Test_Psfb_Multiple_Outputs_PtP_Uniform",
         INFO("PSFB multi-output (uniform) primary NRMSE: " << (nrmse * 100.0) << "%");
         // TODO(DAB-quality): tighten to ≤ 0.15 once analytical commutation
         // model is improved.  See note in Test_Psfb_PtP_AnalyticalVsNgspice.
-        // Currently measured at ~0.22 with physics-derived freewheel τ.
-        CHECK(nrmse < 0.30);
+        // Currently measured at ~0.13 with diode-dynamic-R freewheel τ.
+        CHECK(nrmse < 0.20);
     }
 }
 
@@ -824,8 +826,9 @@ TEST_CASE("Test_Psfb_Multiple_Outputs_PtP_ModerateSpread",
         double nrmse = ptp_nrmse(aR, sR);
         INFO("PSFB multi-output (2:1 spread) primary NRMSE: " << (nrmse * 100.0) << "%");
         // Allow looser threshold for spread case: secondary load-share
-        // approximation is documented to be off by 20-100 %.
-        CHECK(nrmse < 0.40);
+        // approximation is documented to be off by 20-100 %. Measured at
+        // ~0.12 after diode-dynamic-R freewheel-decay fix.
+        CHECK(nrmse < 0.25);
     }
 }
 

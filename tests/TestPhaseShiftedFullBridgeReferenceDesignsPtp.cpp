@@ -155,26 +155,26 @@ void run_ptp_gates(const RefDesignSpec& s) {
 TEST_CASE("PSFB reference design PtP — Telecom 600 W 12 V brick "
           "(400V→12V/50A 100 kHz)",
           "[converter-model][psfb-topology][refdesign][ptp][slow]") {
-    RefDesignSpec s{"Telecom-600W", 400.0, 12.0, 50.0, 100e3,
-                    5e-6, 126.0,
-                    30.0, 2.0, 0.30, 0.25};
+     RefDesignSpec s{"Telecom-600W", 400.0, 12.0, 50.0, 100e3,
+                     5e-6, 126.0,
+                     30.0, 2.0, 0.30, 0.20};
     run_ptp_gates(s);
 }
 
 TEST_CASE("PSFB reference design PtP — Server 1.2 kW 24 V rail "
           "(400V→24V/50A 100 kHz)",
           "[converter-model][psfb-topology][refdesign][ptp][slow]") {
-    RefDesignSpec s{"Server-1.2kW", 400.0, 24.0, 50.0, 100e3,
-                    5e-6, 126.0,
-                    30.0, 2.0, 0.30, 0.25};
+     RefDesignSpec s{"Server-1.2kW", 400.0, 24.0, 50.0, 100e3,
+                     5e-6, 126.0,
+                     30.0, 2.0, 0.30, 0.20};
     run_ptp_gates(s);
 }
 
 TEST_CASE("PSFB reference design PtP — EV onboard 1 kW 48 V auxiliary "
           "(400V→48V/21A 100 kHz)",
           "[converter-model][psfb-topology][refdesign][ptp][slow]") {
-    RefDesignSpec s{"EV-Aux-1kW", 400.0, 48.0, 21.0, 100e3,
-                    5e-6, 126.0,
-                    30.0, 2.0, 0.30, 0.25};
+     RefDesignSpec s{"EV-Aux-1kW", 400.0, 48.0, 21.0, 100e3,
+                     5e-6, 126.0,
+                     30.0, 2.0, 0.30, 0.20};
     run_ptp_gates(s);
 }

@@ -37,7 +37,7 @@ real production volume scores higher than a topology that's just
 | `Flyback.cpp` | |
 | `SingleSwitchForward.cpp` / `TwoSwitchForward.cpp` / `ActiveClampForward.cpp` | |
 | `PushPull.cpp` | |
-| `PhaseShiftedFullBridge.cpp` | rectifier-type-aware (CT/CD/FB); 3 ref designs + ZVS + multi-output + NgSpice PtP gates (current iPri NRMSE ≤ 0.25; sigmoidal-commutation refinement pending to reach DAB-quality ≤ 0.15) |
+| `PhaseShiftedFullBridge.cpp` | rectifier-type-aware (CT/CD/FB); 3 ref designs + ZVS + multi-output + NgSpice PtP gates (current iPri NRMSE ≤ 0.20; commutation-ramp refinement pending to reach DAB-quality ≤ 0.15). FW decay model τ = Lr/(n²·R_d_diode) per Vlatkovic 1992 §III asymmetric-commutation. |
 | `PhaseShiftedHalfBridge.cpp` | **DAB-quality** — rectifier-type-aware (CT/CD/FB); 3 ref designs (NRMSE ≤ 0.10), ZVS test, physics-derived freewheel τ = Lr/(2·RON), current-dependent diode drop matched to SPICE |
 | `Dab.cpp` | gold reference, all four DAB modulations |
 | `Llc.cpp` | DAB-quality (Tracks A + B): ZVS diagnostics, ITL=500/500, multi-output warn, 41 test cases / 1335 assertions; rectifier-type-aware (CT / FB / CD / VD) with per-variant netlist + extras (CD: 2× MAS::Inputs for Lo; VD: 2× CAS::Inputs for stacked Co) |
