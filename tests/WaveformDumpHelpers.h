@@ -40,6 +40,30 @@
 namespace OpenMagnetics {
 namespace Testing {
 
+namespace detail {
+
+// Extract a (time, data) pair from a SignalDescriptor's waveform, or {} {}.
+inline std::pair<std::vector<double>, std::vector<double>>
+sig_wf(const std::optional<MAS::SignalDescriptor>& s) {
+    if (!s || !s->get_waveform()) return {{}, {}};
+    auto w = *s->get_waveform();
+    auto tv = w.get_time();
+    return { tv ? tv.value() : std::vector<double>{}, w.get_data() };
+}
+
+inline std::vector<double>
+resample_or_zeros(const std::vector<double>& t,
+                  const std::vector<double>& d, int N) {
+    if (t.empty() || d.empty()) return std::vector<double>(N, 0.0);
+    return ptp_interp(t, d, N);
+}
+
+inline double safe_back(const std::vector<double>& v) {
+    return v.empty() ? std::numeric_limits<double>::max() : v.back();
+}
+
+} // namespace detail
+
 inline std::string dump_waveforms_csv(const std::string& tag,
                                       const MAS::OperatingPoint& analytical,
                                       const MAS::OperatingPoint& spice,
@@ -60,24 +84,47 @@ inline std::string dump_waveforms_csv(const std::string& tag,
         return {};
     }
 
-    // Per-winding resampled vectors and a common time horizon.
+    // Per-winding resampled vectors for i, v, im (magnetizing — only meaningful
+    // on winding 0).  Common time horizon = shortest non-empty t.back().
     double T = std::numeric_limits<double>::max();
-    std::vector<std::vector<double>> aI(nWind), sI(nWind);
+
+    struct WindingDump {
+        std::vector<double> aI, sI, aV, sV;
+    };
+    std::vector<WindingDump> wd(nWind);
+    std::vector<double> aIm, sIm;
+    bool haveIm = false;
+
     for (std::size_t w = 0; w < nWind; ++w) {
-        auto aT = ptp_current_time(analytical, w);
-        auto aD = ptp_current(analytical, w);
-        auto sT = ptp_current_time(spice, w);
-        auto sD = ptp_current(spice, w);
-        if (aT.empty() || aD.empty() || sT.empty() || sD.empty()) {
-            std::cerr << "[dump_waveforms_csv] winding " << w
-                      << " missing current waveform; skip column\n";
-            aI[w].assign(N, 0.0);
-            sI[w].assign(N, 0.0);
-            continue;
+        auto& aExc = analytical.get_excitations_per_winding()[w];
+        auto& sExc = spice.get_excitations_per_winding()[w];
+
+        auto [aIt, aId] = detail::sig_wf(aExc.get_current());
+        auto [sIt, sId] = detail::sig_wf(sExc.get_current());
+        auto [aVt, aVd] = detail::sig_wf(aExc.get_voltage());
+        auto [sVt, sVd] = detail::sig_wf(sExc.get_voltage());
+
+        T = std::min({T,
+                      detail::safe_back(aIt), detail::safe_back(sIt),
+                      detail::safe_back(aVt), detail::safe_back(sVt)});
+
+        wd[w].aI = detail::resample_or_zeros(aIt, aId, N);
+        wd[w].sI = detail::resample_or_zeros(sIt, sId, N);
+        wd[w].aV = detail::resample_or_zeros(aVt, aVd, N);
+        wd[w].sV = detail::resample_or_zeros(sVt, sVd, N);
+
+        if (w == 0) {
+            auto [aImt, aImd] = detail::sig_wf(aExc.get_magnetizing_current());
+            auto [sImt, sImd] = detail::sig_wf(sExc.get_magnetizing_current());
+            if (!aImd.empty() || !sImd.empty()) {
+                haveIm = true;
+                T = std::min({T,
+                              detail::safe_back(aImt),
+                              detail::safe_back(sImt)});
+                aIm = detail::resample_or_zeros(aImt, aImd, N);
+                sIm = detail::resample_or_zeros(sImt, sImd, N);
+            }
         }
-        T = std::min({T, aT.back(), sT.back()});
-        aI[w] = ptp_interp(aT, aD, N);
-        sI[w] = ptp_interp(sT, sD, N);
     }
     if (T == std::numeric_limits<double>::max()) T = 1.0;
 
@@ -89,7 +136,12 @@ inline std::string dump_waveforms_csv(const std::string& tag,
     out << "time_s";
     for (std::size_t w = 0; w < nWind; ++w) {
         out << ",analytical_w" << w << "_i_A"
-            << ",spice_w" << w << "_i_A";
+            << ",spice_w"      << w << "_i_A"
+            << ",analytical_w" << w << "_v_V"
+            << ",spice_w"      << w << "_v_V";
+    }
+    if (haveIm) {
+        out << ",analytical_im_A,spice_im_A";
     }
     out << "\n";
     out.setf(std::ios::scientific);
@@ -98,14 +150,17 @@ inline std::string dump_waveforms_csv(const std::string& tag,
         double tk = T * k / (N - 1);
         out << tk;
         for (std::size_t w = 0; w < nWind; ++w) {
-            out << "," << aI[w][k] << "," << sI[w][k];
+            out << "," << wd[w].aI[k] << "," << wd[w].sI[k]
+                << "," << wd[w].aV[k] << "," << wd[w].sV[k];
         }
+        if (haveIm) out << "," << aIm[k] << "," << sIm[k];
         out << "\n";
     }
     out.close();
     std::cerr << "[dump_waveforms_csv] " << path << " ("
-              << N << " samples, " << nWind << " winding(s), T="
-              << T << " s)\n";
+              << N << " samples, " << nWind << " winding(s)"
+              << (haveIm ? ", +Im" : "")
+              << ", T=" << T << " s)\n";
     return path;
 }
 
