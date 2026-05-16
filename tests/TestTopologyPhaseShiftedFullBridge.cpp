@@ -5,6 +5,7 @@
 #include "TestingUtils.h"
 #include "processors/NgspiceRunner.h"
 #include "ConverterPortChecks.h"
+#include "WaveformDumpHelpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -661,6 +662,10 @@ TEST_CASE("Test_Psfb_PtP_AnalyticalVsNgspice", "[converter-model][psfb-topology]
 
     auto sim = psfb.simulate_and_extract_operating_points(tr, Lm);
     REQUIRE(!sim.empty());
+    // Inert unless MKF_DUMP_WAVEFORMS=1: writes /tmp/mkf_wf_psfb_singleop_*.csv
+    // with side-by-side analytical and SPICE iPri for visual diff.  Used to
+    // characterize the residual ~22 % NRMSE shape gap (see TODO above CHECK).
+    OpenMagnetics::Testing::dump_waveforms_csv("psfb_singleop", analytical[0], sim[0]);
     auto sTime = ptp_current_time(sim[0], 0);
     auto sData = ptp_current(sim[0], 0);
     if (!sData.empty()) {
