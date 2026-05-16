@@ -476,27 +476,25 @@ OperatingPoint Psfb::process_operating_point_for_input_voltage(
             // Freewheel: in a full-bridge rectifier the output inductor
             // current freewheels through the LOWER (or UPPER) diode pair
             // *bypassing* the transformer secondary winding. The primary
-            // tank decouples from the reflected load and Ipri rapidly
-            // collapses toward the magnetizing component only.
-            // Empirical PSFB model: linear decay from the end-of-active
-            // value (ILo_max/n + Im_peak) down to Im_peak over the first
-            // 30 % of the freewheel interval, then held at Im_peak. This
-            // matches NgSpice within ~10 % NRMSE for typical Lk / Lm /
-            // Vd combinations.
+            // tank is shorted by the same-leg MOSFET pair, so Ipri decays
+            // exponentially through 2·RON_mosfet:
+            //     τ = Lr / (2 · RON)
+            // For the standard SPICE bridge (RON=0.01 Ω) and typical Lr =
+            // 1-10 µH this gives τ = 50-500 µs, which is *long* compared to
+            // a freewheel interval of (1-D)·Ts/2 = 1.5 µs at Fs=100 kHz —
+            // so the primary current stays essentially flat at its end-of-
+            // active value through freewheel, with only a small exponential
+            // droop.  The old "0.3·dur_fw" linear decay was off by ~100×
+            // (made primary decay to Im_peak in 0.45 µs instead of 1.5 µs)
+            // and was tuned against a SPICE model with 25 % Vo droop, so it
+            // happened to compensate by coincidence.
+            constexpr double RON_PER_SWITCH = 0.01;   // matches SPICE SW1 model
+            double tau_fw = (Lr > 0) ? Lr / (2.0 * RON_PER_SWITCH) : 1.0;
             double t_fw = t - t_active;
-            double dur_fw = Thalf - t_active;
-            // τ_decay tuned empirically against ngspice: 25 % of the
-            // freewheel duration brings NRMSE under 0.15 across the
-            // 380–420 V / 12 V / 50 A test-bench range.
-            double tau = 0.3 * dur_fw;
             double ipri_start_fw = ILo_max / n + Im_peak;
             double ipri_end_fw   = Im_peak;
-            if (tau > 1e-15 && t_fw < tau) {
-                double f = t_fw / tau;
-                Ipri_full[k] = ipri_start_fw + (ipri_end_fw - ipri_start_fw) * f;
-            } else {
-                Ipri_full[k] = ipri_end_fw;
-            }
+            double f = 1.0 - std::exp(-t_fw / tau_fw);   // 0 at t=0, →1 as t→∞
+            Ipri_full[k] = ipri_start_fw + (ipri_end_fw - ipri_start_fw) * f;
         }
     }
 

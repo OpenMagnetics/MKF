@@ -410,33 +410,26 @@ OperatingPoint Pshb::process_operating_point_for_input_voltage(
         } else if (s.is_active) {
             Ipri_full[k] = ILo_full[k] / n + Im_full[k];
         } else {
-            // Freewheel: in a center-tapped (or full-bridge) rectifier the
-            // output-inductor current freewheels through the secondary
-            // diodes, but in practice the previously-conducting diode does
-            // not turn off instantaneously — the primary tank discharges
-            // its reflected load current with a finite time constant set
-            // by Lr / Rsnub and parasitics. Empirical decay model (same as
-            // PSFB): linear collapse from the end-of-active value
-            // (ILo_max/n + Im_peak) down to Im_peak over the first ~30 %
-            // of the freewheel interval, then held at Im_peak. This
-            // matches NgSpice within the < 0.18 NRMSE Tier-1 budget.
+            // Freewheel: PSHB has an NPC-style bridge that shorts the
+            // primary through one inner switch + the mid-cap stack during
+            // freewheel.  Effective resistance ≈ 2·RON_mosfet (one inner
+            // switch + one outer switch path), so:
+            //     τ = Lr / (2 · RON)
+            // For SPICE RON=0.01 Ω and typical Lr = 1-10 µH this gives
+            // τ = 50-500 µs ≫ dur_fw (~1.5 µs at 100 kHz), so the primary
+            // current is essentially flat through freewheel with a small
+            // exponential droop.  The old "tau = 1.0·dur_fw" linear decay
+            // ran from ILo_max/n + Im_peak to Im_peak across the *entire*
+            // freewheel interval — too aggressive; was tuned against a
+            // SPICE model with ~25 % Vo droop, where the coincidental
+            // amplitude mismatch was masking the shape mismatch.
+            constexpr double RON_PER_SWITCH = 0.01;   // matches SPICE SW1 model
+            double tau_fw = (Lr > 0) ? Lr / (2.0 * RON_PER_SWITCH) : 1.0;
             double t_fw = t - t_active;
-            double dur_fw = Thalf - t_active;
-            // Decay window tuned empirically against ngspice for the
-            // PSHB NPC bridge: secondary diode commutation is slower
-            // than in PSFB because the primary tank discharges through
-            // a single freewheel switch + clamp diode (not two parallel
-            // FB diode pairs). Use the FULL freewheel duration so the
-            // analytical waveform matches the slow exponential decay.
-            double tau = 1.0 * dur_fw;
             double ipri_start_fw = ILo_max / n + Im_peak;
             double ipri_end_fw   = Im_peak;
-            if (tau > 1e-15 && t_fw < tau) {
-                double f = t_fw / tau;
-                Ipri_full[k] = ipri_start_fw + (ipri_end_fw - ipri_start_fw) * f;
-            } else {
-                Ipri_full[k] = ipri_end_fw;
-            }
+            double f = 1.0 - std::exp(-t_fw / tau_fw);
+            Ipri_full[k] = ipri_start_fw + (ipri_end_fw - ipri_start_fw) * f;
         }
     }
 

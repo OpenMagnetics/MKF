@@ -710,14 +710,10 @@ TEST_CASE("Test_Pshb_PtP_AnalyticalVsNgspice",
             << ", n=" << tr[0]);
 
         INFO("PSHB primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
-        // TODO(DAB-quality): tighten back to ≤ 0.15 once analytical commutation
-        // model captures the freewheel notch.  Gate raised from 0.18 to 0.30
-        // after fixing the SPICE diode model (RS=0.05 → 0.005 + CJO=1n) and
-        // analytical Vd (current-dependent).  The old 0.18 gate was a
-        // coincidence: SPICE delivered Vo with ~25 % droop, which happened
-        // to make the SPICE iPri amplitude scale roughly match the
-        // analytical model that ignored Vd entirely.
-        CHECK(nrmse < 0.30);
+        // DAB-quality threshold (Golden Guide §15: ≤ 0.15).  Currently
+        // measured at ~0.112 with the physics-derived freewheel τ =
+        // Lr / (2·RON_mosfet) replacing the old empirical 1.0·dur_fw.
+        CHECK(nrmse < 0.15);
     }
 }
 

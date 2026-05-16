@@ -157,7 +157,7 @@ TEST_CASE("PSFB reference design PtP — Telecom 600 W 12 V brick "
           "[converter-model][psfb-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"Telecom-600W", 400.0, 12.0, 50.0, 100e3,
                     5e-6, 126.0,
-                    30.0, 2.0, 0.30, 0.50};
+                    30.0, 2.0, 0.30, 0.25};
     run_ptp_gates(s);
 }
 
@@ -166,7 +166,7 @@ TEST_CASE("PSFB reference design PtP — Server 1.2 kW 24 V rail "
           "[converter-model][psfb-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"Server-1.2kW", 400.0, 24.0, 50.0, 100e3,
                     5e-6, 126.0,
-                    30.0, 2.0, 0.30, 0.50};
+                    30.0, 2.0, 0.30, 0.25};
     run_ptp_gates(s);
 }
 
@@ -175,6 +175,6 @@ TEST_CASE("PSFB reference design PtP — EV onboard 1 kW 48 V auxiliary "
           "[converter-model][psfb-topology][refdesign][ptp][slow]") {
     RefDesignSpec s{"EV-Aux-1kW", 400.0, 48.0, 21.0, 100e3,
                     5e-6, 126.0,
-                    30.0, 2.0, 0.30, 0.50};
+                    30.0, 2.0, 0.30, 0.25};
     run_ptp_gates(s);
 }

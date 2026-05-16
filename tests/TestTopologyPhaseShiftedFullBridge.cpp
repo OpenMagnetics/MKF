@@ -668,17 +668,13 @@ TEST_CASE("Test_Psfb_PtP_AnalyticalVsNgspice", "[converter-model][psfb-topology]
 
         double nrmse = ptp_nrmse(aResampled, sResampled);
         INFO("PSFB primary current NRMSE (analytical vs NgSpice): " << (nrmse * 100.0) << "%");
-        // TODO(DAB-quality): tighten back to ≤ 0.15 once analytical commutation
-        // model captures the diode-conduction freewheel notch the SPICE model
-        // now produces.  Previously this gated at 0.18 — that number was a
-        // coincidence: the SPICE diode drop was ~3.25 V (RS=0.05) which
-        // happened to scale the SPICE iPri to roughly match an analytical
-        // model that ignored Vd entirely.  After fixing both the SPICE diode
-        // (RS=0.005, CJO=1n) and the analytical Vd (current-dependent,
-        // matched to SPICE), SPICE delivers correct Vo within ~1 % but the
-        // analytical waveform shape lags — gate raised to 0.40 until the
-        // commutation model is improved.
-        CHECK(nrmse < 0.40);
+        // TODO(DAB-quality): tighten to ≤ 0.15 once PSFB-specific commutation
+        // model improvements land.  Currently measured at ~0.24 after fixing
+        // the freewheel decay (τ = Lr/(2·RON), physics-derived) and the
+        // diode-model mismatch.  PSHB sits at 0.11 with the same fix; PSFB
+        // residual gap is likely in the active-interval commutation ramp
+        // (currently linear; SPICE shows a sigmoidal shape at high Iout).
+        CHECK(nrmse < 0.30);
     }
 }
 
@@ -771,7 +767,8 @@ TEST_CASE("Test_Psfb_Multiple_Outputs_PtP_Uniform",
         INFO("PSFB multi-output (uniform) primary NRMSE: " << (nrmse * 100.0) << "%");
         // TODO(DAB-quality): tighten to ≤ 0.15 once analytical commutation
         // model is improved.  See note in Test_Psfb_PtP_AnalyticalVsNgspice.
-        CHECK(nrmse < 0.45);
+        // Currently measured at ~0.22 with physics-derived freewheel τ.
+        CHECK(nrmse < 0.30);
     }
 }
 
