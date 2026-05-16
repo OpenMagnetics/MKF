@@ -78,6 +78,25 @@ double Psfb::compute_primary_rms_current(double Io, double n, double Deff) {
     return (Io / n) * std::sqrt(Deff);
 }
 
+// =========================================================================
+// Static: diode forward drop at a given conduction current
+// Matches the SPICE diode model used in generate_ngspice_circuit:
+//     .model DIDEAL D(IS=1e-12 RS=0.005)
+// Vd(I) = Vt · ln(I / IS) + I · RS,    Vt = kT/q ≈ 0.025 V at 300 K
+// RS=0.005 chosen to match a representative Schottky rectifier (e.g.
+// STPS40L40 has Vf ≈ 0.45 V at 40 A, implying RS ≈ 0.005 Ω).  RS=0.05
+// (the previous value) gave 3.25 V drop at 50 A — physically wrong and
+// caused 29 % Vo droop relative to design.
+// =========================================================================
+double Psfb::compute_diode_drop_at_current(double Io) {
+    constexpr double DIODE_IS = 1e-12;
+    constexpr double DIODE_RS = 0.005;
+    constexpr double VT       = 0.025;
+    if (Io <= 0)
+        throw std::runtime_error("PSFB: compute_diode_drop_at_current requires Io > 0");
+    return VT * std::log(Io / DIODE_IS) + Io * DIODE_RS;
+}
+
 
 // =========================================================================
 // Input validation
@@ -133,7 +152,11 @@ DesignRequirements Psfb::process_design_requirements() {
     double phi_deg = ops[0].get_phase_shift();
 
     BRectifierType rectType = get_rectifier_type().value_or(BRectifierType::CENTER_TAPPED);
-    double Vd = 0.6;
+    // Diode drop at rated load, computed from the SAME model used in the
+    // SPICE netlist (D(IS=1e-12 RS=0.05)).  Using the fixed 0.6 V default
+    // here caused -29 % Vo droop at 50 A in SPICE because the real drop is
+    // ~3.25 V per diode at that current — a "silent default" bug.
+    double Vd = compute_diode_drop_at_current(Io);
     computedDiodeVoltageDrop = Vd;
 
     double D_cmd = (phi_deg > 1e-6) ? compute_effective_duty_cycle(phi_deg) : 0.7;
@@ -701,7 +724,7 @@ std::string Psfb::generate_ngspice_circuit(
 
     const auto bridgeMode = get_bridge_simulation_mode();
 
-    circuit << ".model DIDEAL D(IS=1e-12 RS=0.05)\n";
+    circuit << ".model DIDEAL D(IS=1e-12 RS=0.005 CJO=1n)\n";
     if (bridgeMode == BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH) {
         circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
     }

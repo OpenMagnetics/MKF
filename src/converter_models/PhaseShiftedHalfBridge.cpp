@@ -80,6 +80,23 @@ double Pshb::compute_primary_rms_current(double Io, double n, double Deff) {
     return (Io / n) * std::sqrt(Deff);
 }
 
+// =========================================================================
+// Static: diode forward drop at a given conduction current
+// Matches the SPICE diode model used in generate_ngspice_circuit:
+//     .model DIDEAL D(IS=1e-12 RS=0.005 BV=1000 IBV=1e-12)
+// Vd(I) = Vt · ln(I / IS) + I · RS,    Vt = kT/q ≈ 0.025 V at 300 K
+// RS=0.005 matches a representative Schottky (Vf ≈ 0.45 V at 40 A);
+// RS=0.05 gave a physically wrong 3.25 V drop at 50 A.
+// =========================================================================
+double Pshb::compute_diode_drop_at_current(double Io) {
+    constexpr double DIODE_IS = 1e-12;
+    constexpr double DIODE_RS = 0.005;
+    constexpr double VT       = 0.025;
+    if (Io <= 0)
+        throw std::runtime_error("PSHB: compute_diode_drop_at_current requires Io > 0");
+    return VT * std::log(Io / DIODE_IS) + Io * DIODE_RS;
+}
+
 
 // =========================================================================
 // Input validation
@@ -127,7 +144,9 @@ DesignRequirements Pshb::process_design_requirements() {
     double phi_deg = ops[0].get_phase_shift();
 
     BRectifierType rectType = get_rectifier_type().value_or(BRectifierType::CENTER_TAPPED);
-    double Vd = 0.6;
+    // Diode drop computed from the same model used in the SPICE netlist;
+    // the prior fixed 0.6 V default caused ~25 % Vo droop at 50 A.
+    double Vd = compute_diode_drop_at_current(Io);
     computedDiodeVoltageDrop = Vd;
 
     double D_cmd = (phi_deg > 1e-6) ? compute_effective_duty_cycle(phi_deg) : 0.75;
@@ -652,7 +671,7 @@ std::string Pshb::generate_ngspice_circuit(
     // model (Vhb = Vin/2, Deff active fraction per half-cycle).
     const double t_act = Deff * halfPeriod;
 
-    circuit << ".model DIDEAL D(IS=1e-12 RS=0.05 BV=1000 IBV=1e-12)\n";
+    circuit << ".model DIDEAL D(IS=1e-12 RS=0.005 CJO=1n BV=1000 IBV=1e-12)\n";
     if (bridgeMode == BridgeSimulationMode::VOLTAGE_CONTROLLED_SWITCH) {
         circuit << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
     }

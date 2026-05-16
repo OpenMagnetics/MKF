@@ -187,6 +187,12 @@ public:
                                             double Io, double rippleRatio);
     static double compute_primary_rms_current(double Io, double n, double Deff);
 
+    // Diode forward drop at a given conduction current.  Matches the SPICE
+    // diode model used in generate_ngspice_circuit (.model DIDEAL
+    // D(IS=1e-12 RS=0.05)) so the analytical design step picks an `n` that
+    // makes SPICE deliver the requested Vo at the load, not Vo − Vd_real.
+    static double compute_diode_drop_at_current(double Io);
+
     // ---- Extra components ----
     std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
         ExtraComponentsMode mode,
