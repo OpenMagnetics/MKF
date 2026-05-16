@@ -2048,6 +2048,151 @@ TEST_CASE("Test_Llc_Waveform_Plotting",
 }
 
 // =============================================================================
+// Track B — rectifier-type variant tests (FB / CD / VD)
+// =============================================================================
+
+namespace {
+json make_llc_rectifier_test_json(const std::string& rectifierType) {
+    json j;
+    j["inputVoltage"] = json{{"nominal", 400.0}};
+    j["bridgeType"] = "halfBridge";
+    j["minSwitchingFrequency"] = 80000;
+    j["maxSwitchingFrequency"] = 200000;
+    j["qualityFactor"] = 0.4;
+    j["inductanceRatio"] = 5.0;
+    j["integratedResonantInductor"] = false;
+    j["rectifierType"] = rectifierType;
+    j["operatingPoints"] = json::array({
+        json{{"ambientTemperature", 25.0},
+             {"outputVoltages", {48.0}},
+             {"outputCurrents", {5.0}},
+             {"switchingFrequency", 100000}}});
+    return j;
+}
+} // namespace
+
+TEST_CASE("Test_Llc_RectifierType_FullBridge",
+          "[converter-model][llc-topology][rectifier-type]") {
+    Llc llc(make_llc_rectifier_test_json("fullBridge"));
+
+    REQUIRE(llc.get_effective_rectifier_type() == LlcRectifierType::FULL_BRIDGE);
+    REQUIRE(llc.windings_per_output() == 1);
+
+    auto req = llc.process_design_requirements();
+    // FB has 1 secondary winding per output (vs CT's 2).
+    CHECK(req.get_turns_ratios().size() == 1);
+    REQUIRE(req.get_isolation_sides().has_value());
+    CHECK(req.get_isolation_sides()->size() == 2);   // primary + 1 secondary
+
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    double n  = resolve_dimensional_values(req.get_turns_ratios()[0]);
+    auto ops = llc.process_operating_points({n}, Lm);
+    REQUIRE(!ops.empty());
+
+    // FB: primary + 1 secondary winding (CT would have 2).
+    auto& exc = ops[0].get_excitations_per_winding();
+    CHECK(exc.size() == 2);
+
+    // Secondary current is bipolar (not unipolar like CT halves).
+    REQUIRE(exc[1].get_current().has_value());
+    auto iSecData = exc[1].get_current()->get_waveform()->get_data();
+    REQUIRE(!iSecData.empty());
+    double pos_max = 0.0, neg_min = 0.0;
+    for (double v : iSecData) {
+        pos_max = std::max(pos_max, v);
+        neg_min = std::min(neg_min, v);
+    }
+    // Both polarities present (>5% of peak) — confirms bipolar shape.
+    CHECK(pos_max > 0.0);
+    CHECK(neg_min < 0.0);
+    CHECK(std::abs(neg_min) > 0.05 * pos_max);
+}
+
+TEST_CASE("Test_Llc_RectifierType_CurrentDoubler",
+          "[converter-model][llc-topology][rectifier-type]") {
+    Llc llc(make_llc_rectifier_test_json("currentDoubler"));
+
+    REQUIRE(llc.get_effective_rectifier_type() == LlcRectifierType::CURRENT_DOUBLER);
+    REQUIRE(llc.windings_per_output() == 1);
+
+    auto req = llc.process_design_requirements();
+    CHECK(req.get_turns_ratios().size() == 1);
+
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    double n  = resolve_dimensional_values(req.get_turns_ratios()[0]);
+    auto ops = llc.process_operating_points({n}, Lm);
+    REQUIRE(!ops.empty());
+
+    // CD extras should expose two output inductors (Lo1, Lo2) as MAS Inputs.
+    auto extras = llc.get_extra_components_inputs(ExtraComponentsMode::IDEAL);
+    // Resonant cap + (optional Ls inductor) + 2 Lo inductors.
+    // With integratedResonantInductor=false ⇒ 1 cap + 1 Ls + 2 Lo = 4 components.
+    CHECK(extras.size() == 4);
+    // Last two entries must be MAS Inputs (the Lo inductors).
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[2]));
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[3]));
+    auto& lo1 = std::get<OpenMagnetics::Inputs>(extras[2]);
+    auto& lo2 = std::get<OpenMagnetics::Inputs>(extras[3]);
+    double Lo1 = resolve_dimensional_values(
+        lo1.get_design_requirements().get_magnetizing_inductance());
+    double Lo2 = resolve_dimensional_values(
+        lo2.get_design_requirements().get_magnetizing_inductance());
+    CHECK(Lo1 > 0);
+    CHECK(Lo2 > 0);
+    CHECK(std::abs(Lo1 - Lo2) < 1e-9);   // symmetric doubler
+
+    // Each Lo carries ≈ Iout/2 average DC (5A / 2 = 2.5A).
+    auto& lo1Ops = lo1.get_operating_points();
+    REQUIRE(!lo1Ops.empty());
+    auto& lo1Exc = lo1Ops[0].get_excitations_per_winding()[0];
+    REQUIRE(lo1Exc.get_current().has_value());
+    auto iLo1 = lo1Exc.get_current()->get_waveform()->get_data();
+    REQUIRE(!iLo1.empty());
+    double iLo1_avg = 0;
+    for (double v : iLo1) iLo1_avg += v;
+    iLo1_avg /= iLo1.size();
+    CHECK(iLo1_avg > 1.0);    // sane lower bound on Iout/2
+    CHECK(iLo1_avg < 4.0);    // sane upper bound (allowing for ripple bias)
+}
+
+TEST_CASE("Test_Llc_RectifierType_VoltageDoubler",
+          "[converter-model][llc-topology][rectifier-type]") {
+    Llc llc(make_llc_rectifier_test_json("voltageDoubler"));
+
+    REQUIRE(llc.get_effective_rectifier_type() == LlcRectifierType::VOLTAGE_DOUBLER);
+    REQUIRE(llc.windings_per_output() == 1);
+
+    auto req = llc.process_design_requirements();
+    CHECK(req.get_turns_ratios().size() == 1);
+
+    // VD design doubles n: turns ratio should be ~2x what CT would produce.
+    // Compare against a CT instance.
+    json ctJson = make_llc_rectifier_test_json("centerTapped");
+    Llc llcCt(ctJson);
+    auto reqCt = llcCt.process_design_requirements();
+    double n_vd = resolve_dimensional_values(req.get_turns_ratios()[0]);
+    double n_ct = resolve_dimensional_values(reqCt.get_turns_ratios()[0]);
+    CHECK(std::abs(n_vd - 2.0 * n_ct) < 0.1);
+
+    double Lm = resolve_dimensional_values(req.get_magnetizing_inductance());
+    auto ops = llc.process_operating_points({n_vd}, Lm);
+    REQUIRE(!ops.empty());
+
+    // VD extras: resonant cap + Ls + 2 output caps (CAS::Inputs).
+    auto extras = llc.get_extra_components_inputs(ExtraComponentsMode::IDEAL);
+    CHECK(extras.size() == 4);
+    REQUIRE(std::holds_alternative<CAS::Inputs>(extras[2]));
+    REQUIRE(std::holds_alternative<CAS::Inputs>(extras[3]));
+    auto& capHi = std::get<CAS::Inputs>(extras[2]);
+    auto& capLo = std::get<CAS::Inputs>(extras[3]);
+    // Each cap rated for Vo/2 · 1.2 = 28.8 V (Vo = 48).
+    double ratedHi = capHi.get_design_requirements().get_rated_voltage();
+    double ratedLo = capLo.get_design_requirements().get_rated_voltage();
+    CHECK(std::abs(ratedHi - 28.8) < 0.1);
+    CHECK(std::abs(ratedLo - 28.8) < 0.1);
+}
+
+// =============================================================================
 // LLC waveform validation tests (merged from TestTopologyWaveforms.cpp)
 // =============================================================================
 

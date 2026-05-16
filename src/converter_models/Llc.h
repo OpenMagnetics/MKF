@@ -114,6 +114,15 @@ private:
     mutable std::vector<Waveform> extraIndCurrentWaveforms;   // ILs full-period (separate-Ls current, same as cap current)
     mutable std::vector<std::vector<double>> extraTimeVectors; // time vectors per OP
 
+    // Rectifier-variant-specific extras (populated only when relevant rectType is selected).
+    // CURRENT_DOUBLER: per output, two filter inductors Lo1/Lo2 each carrying ≈ Iout/2 DC.
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;     // ILo1 (CD)
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;     // VLo1 (CD)
+    mutable std::vector<Waveform> extraLo2CurrentWaveforms;    // ILo2 (CD)
+    mutable std::vector<Waveform> extraLo2VoltageWaveforms;    // VLo2 (CD)
+    // VOLTAGE_DOUBLER: per output, output-capacitor stack midpoint voltage.
+    mutable std::vector<Waveform> extraVoutCapVoltageWaveforms; // V across one of the doubler caps (Vo/2 nominal)
+
 public:
     bool _assertErrors = false;
 
@@ -174,6 +183,17 @@ public:
 
     // Topology interface ─────────────────────────────────────
     bool run_checks(bool assert = false) override;
+
+    /** Rectifier type with CT default (schema field is optional). */
+    LlcRectifierType get_effective_rectifier_type() const {
+        return get_rectifier_type().value_or(LlcRectifierType::CENTER_TAPPED);
+    }
+    /** True when the secondary uses a center-tapped winding (2 half-windings per output). */
+    bool is_center_tapped() const {
+        return get_effective_rectifier_type() == LlcRectifierType::CENTER_TAPPED;
+    }
+    /** Number of physical secondary windings per output: 2 for CT, 1 otherwise. */
+    size_t windings_per_output() const { return is_center_tapped() ? 2 : 1; }
 
     DesignRequirements process_design_requirements() override;
 

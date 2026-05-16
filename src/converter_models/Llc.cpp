@@ -107,18 +107,27 @@ DesignRequirements Llc::process_design_requirements() {
     double mainTurnsRatio = Vo / mainOutputVoltage;
 
     // turnsRatios stores SECONDARY turns ratios only (primary implicit, ratio = 1).
-    // Each output corresponds to a CENTER-TAPPED secondary, modelled as TWO physical
-    // windings; we therefore push the same ratio twice per output so that the
-    // turns_ratios vector aligns 1-to-1 with non-primary windings (winding count =
-    // turns_ratios.size() + 1 = 1 + 2*nOutputs).
+    // Number of physical secondary windings per output depends on rectifierType:
+    //   CT  → 2 (center-tapped, two halves)
+    //   FB  → 1 (single secondary, four diodes)
+    //   CD  → 1 (single secondary, two diodes + two output inductors)
+    //   VD  → 1 (single secondary, two diodes + two output capacitors)
+    // We push the same ratio `windings_per_output()` times per output so the
+    // turns_ratios vector aligns 1-to-1 with non-primary windings.
     size_t nOutputs = ops[0].get_output_voltages().size();
+    size_t wpo = windings_per_output();
     std::vector<double> outputTurnsRatios;
     outputTurnsRatios.reserve(nOutputs);
     for (size_t i = 0; i < nOutputs; ++i) {
         double Vout_i = ops[0].get_output_voltages()[i];
         if (Vout_i <= 0)
             throw std::runtime_error("LLC: output voltage must be positive");
-        outputTurnsRatios.push_back(Vo / Vout_i);
+        // For VD, the cap stack delivers 2·Vsec_pk to the load, so the
+        // secondary turns ratio is doubled (we need half the Vsec amplitude).
+        double n_design = (get_effective_rectifier_type() == LlcRectifierType::VOLTAGE_DOUBLER)
+                          ? (Vo / Vout_i) * 2.0
+                          : (Vo / Vout_i);
+        outputTurnsRatios.push_back(n_design);
     }
 
     double Rload = mainOutputVoltage / mainOutputCurrent;
@@ -152,8 +161,8 @@ DesignRequirements Llc::process_design_requirements() {
     for (auto n : outputTurnsRatios) {
         DimensionWithTolerance nTol;
         nTol.set_nominal(roundFloat(n, 2));
-        designRequirements.get_mutable_turns_ratios().push_back(nTol);  // half 1
-        designRequirements.get_mutable_turns_ratios().push_back(nTol);  // half 2
+        for (size_t w = 0; w < wpo; ++w)
+            designRequirements.get_mutable_turns_ratios().push_back(nTol);
     }
     DimensionWithTolerance inductanceWithTolerance;
     inductanceWithTolerance.set_nominal(roundFloat(L, 10));
@@ -167,12 +176,12 @@ DesignRequirements Llc::process_design_requirements() {
         designRequirements.set_leakage_inductance(leakageReqs);
     }
 
-    // Isolation sides: primary, then 2 entries per output (one per center-tapped half)
+    // Isolation sides: primary, then `windings_per_output()` entries per output.
     std::vector<IsolationSide> isolationSides;
     isolationSides.push_back(get_isolation_side_from_index(0));
     for (size_t i = 0; i < nOutputs; ++i) {
-        isolationSides.push_back(get_isolation_side_from_index(i + 1));
-        isolationSides.push_back(get_isolation_side_from_index(i + 1));
+        for (size_t w = 0; w < wpo; ++w)
+            isolationSides.push_back(get_isolation_side_from_index(i + 1));
     }
     designRequirements.set_isolation_sides(isolationSides);
     designRequirements.set_topology(Topologies::LLC_RESONANT_CONVERTER);
@@ -211,6 +220,11 @@ std::vector<OperatingPoint> Llc::process_operating_points(
     extraIndVoltageWaveforms.clear();
     extraIndCurrentWaveforms.clear();
     extraTimeVectors.clear();
+    extraLoCurrentWaveforms.clear();
+    extraLoVoltageWaveforms.clear();
+    extraLo2CurrentWaveforms.clear();
+    extraLo2VoltageWaveforms.clear();
+    extraVoutCapVoltageWaveforms.clear();
 
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
@@ -759,13 +773,18 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
 
     double Vi = k_bridge * inputVoltage;
 
-    // turnsRatios stores 2 entries per output (one per center-tapped half) when
-    // built by process_design_requirements. Recover the per-output ratio.
+    // turnsRatios stores `windings_per_output()` entries per output (2 for CT,
+    // 1 for FB/CD/VD) when built by process_design_requirements.
     size_t nOutputs = llcOpPoint.get_output_voltages().size();
     if (nOutputs == 0) nOutputs = 1;
+    size_t wpo = windings_per_output();
     auto get_n_for_output = [&](size_t outputIdx) -> double {
         if (turnsRatios.empty())
             return Vi / llcOpPoint.get_output_voltages()[outputIdx];
+        if (turnsRatios.size() == wpo * nOutputs)
+            return turnsRatios[wpo * outputIdx];
+        // Backward-compat: also accept legacy 2*nOutputs layout from
+        // pre-rectifierType fixtures even when wpo == 1.
         if (turnsRatios.size() == 2 * nOutputs)
             return turnsRatios[2 * outputIdx];
         if (outputIdx < turnsRatios.size())
@@ -1048,21 +1067,32 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 
-    // --- Secondary excitations (one per center-tapped half, per output) ---
+    // --- Secondary excitations ---
     //
     // Convention:
-    //   n_i = primary-to-secondary turns ratio for output i (Np / Ns_half_i)
-    //   Id  = ILs - IL  is the *primary-referred* secondary diode current
-    //         (the share of the resonant tank current actually transferred
+    //   n_i  = primary-to-secondary turns ratio for output i
+    //   Id   = ILs - IL  is the *primary-referred* secondary diode current
+    //          (the share of the resonant tank current actually transferred
     //          to the secondaries via the transformer).
-    //
-    // Physical secondary current per output (ampere-turn balance):
-    //   I_sec_i = Id * n_i           (multiply by turns ratio, not divide)
+    //   I_sec_i = Id * n_i           (ampere-turn balance: I_sec increases with n
+    //                                   because we multiply, not divide).
     //
     // Multi-output approximation: each output receives its share of Id in
-    // proportion to its load conductance, then is scaled by n_i to get the
-    // physical secondary current. For a single output this collapses to the
-    // exact analytical answer.
+    // proportion to its load conductance, then is scaled by n_i. For a single
+    // output this collapses to the exact analytical answer.
+    //
+    // Per-rectifier-type waveform shaping (Llc.h::LlcRectifierType):
+    //   CT  → 2 windings per output. Each half conducts on one polarity only.
+    //         Vsec_half = VLm / n; |I_half| = max(0, ±Id*share*n).
+    //   FB  → 1 winding per output. Continuous full-wave conduction.
+    //         Vsec  = VLm / n (bipolar 3-level); |I_sec| = |Id*share|*n.
+    //   CD  → 1 winding per output + two output inductors L_o1/L_o2.
+    //         Vsec  = VLm / n; I_sec = Id*share*n (alternating polarity).
+    //         Each Lo carries IoutDC/2 with 2·Fs ripple. (Lo waveforms stored
+    //         in extraLo*Waveforms for get_extra_components_inputs.)
+    //   VD  → 1 winding per output. Cap stack provides 2·Vsec_pk to load.
+    //         n_i is doubled at design time so Vsec_pk = Vout/2.
+    //         Vsec = VLm / n; |I_sec| = |Id*share|*n; output cap voltage = Vo/2.
     double total_g = 0.0;
     for (size_t i = 0; i < nOutputs; ++i) {
         double Vout_i = llcOpPoint.get_output_voltages()[i];
@@ -1070,6 +1100,8 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         if (Vout_i > 0 && Iout_i > 0) total_g += Iout_i / Vout_i;
     }
     if (total_g <= 0) total_g = 1.0;
+
+    LlcRectifierType rectType = get_effective_rectifier_type();
 
     for (size_t outputIdx = 0; outputIdx < nOutputs; ++outputIdx) {
         double n_i = get_n_for_output(outputIdx);
@@ -1081,41 +1113,147 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
                        ? (Iout_i / Vout_i) / total_g
                        : (outputIdx == 0 ? 1.0 : 0.0);
 
-        for (size_t halfIdx = 0; halfIdx < 2; ++halfIdx) {
+        switch (rectType) {
+        case LlcRectifierType::CENTER_TAPPED: {
+            // Two half-windings, each conducting on one polarity of the cycle.
+            for (size_t halfIdx = 0; halfIdx < 2; ++halfIdx) {
+                std::vector<double> iSecData(totalSamples, 0.0);
+                std::vector<double> vSecData(totalSamples, 0.0);
+                for (int k = 0; k < totalSamples; ++k) {
+                    double Id = ILs_full[k] - IL_full[k];
+                    if (!std::isfinite(Id)) Id = 0;
+                    double Id_share = Id * share;
+                    double Id_half = (halfIdx == 0)
+                                     ? std::max(0.0, Id_share)
+                                     : std::max(0.0, -Id_share);
+                    iSecData[k] = Id_half * n_i;
+                    vSecData[k] = VLm_full[k] / n_i;
+                    if (!std::isfinite(iSecData[k])) iSecData[k] = 0;
+                    if (!std::isfinite(vSecData[k])) vSecData[k] = 0;
+                }
+                Waveform secCurrentWfm; secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+                secCurrentWfm.set_data(iSecData); secCurrentWfm.set_time(time_full);
+                Waveform secVoltageWfm; secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+                secVoltageWfm.set_data(vSecData); secVoltageWfm.set_time(time_full);
+                std::string windingName = "Secondary " + std::to_string(outputIdx)
+                                        + " Half " + std::to_string(halfIdx + 1);
+                auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
+                operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            }
+            break;
+        }
+        case LlcRectifierType::FULL_BRIDGE: {
+            // Single secondary winding. Bipolar Vsec, full-wave rectified at load.
+            // Diode-bridge rectifies; the winding carries bipolar Id*share*n.
             std::vector<double> iSecData(totalSamples, 0.0);
             std::vector<double> vSecData(totalSamples, 0.0);
-
             for (int k = 0; k < totalSamples; ++k) {
                 double Id = ILs_full[k] - IL_full[k];
                 if (!std::isfinite(Id)) Id = 0;
-                double Id_share = Id * share;
-                // Each half of the center-tapped secondary conducts only on
-                // one polarity of the primary cycle:
-                //   half 0 → positive Id only
-                //   half 1 → negative Id only (recorded as |Id|)
-                double Id_half = (halfIdx == 0)
-                                 ? std::max(0.0, Id_share)
-                                 : std::max(0.0, -Id_share);
-                iSecData[k] = Id_half * n_i;       // ampere-turn balance
-                vSecData[k] = VLm_full[k] / n_i;   // V_sec = V_pri / n
+                iSecData[k] = Id * share * n_i;          // bipolar; sign matches Id
+                vSecData[k] = VLm_full[k] / n_i;         // bipolar Vsec
                 if (!std::isfinite(iSecData[k])) iSecData[k] = 0;
                 if (!std::isfinite(vSecData[k])) vSecData[k] = 0;
             }
-
-            Waveform secCurrentWfm;
-            secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
-            secCurrentWfm.set_data(iSecData);
-            secCurrentWfm.set_time(time_full);
-
-            Waveform secVoltageWfm;
-            secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
-            secVoltageWfm.set_data(vSecData);
-            secVoltageWfm.set_time(time_full);
-
-            std::string windingName = "Secondary " + std::to_string(outputIdx)
-                                    + " Half " + std::to_string(halfIdx + 1);
+            Waveform secCurrentWfm; secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secCurrentWfm.set_data(iSecData); secCurrentWfm.set_time(time_full);
+            Waveform secVoltageWfm; secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secVoltageWfm.set_data(vSecData); secVoltageWfm.set_time(time_full);
+            std::string windingName = "Secondary " + std::to_string(outputIdx);
             auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            break;
+        }
+        case LlcRectifierType::CURRENT_DOUBLER: {
+            // Single secondary winding driving two output inductors via two diodes.
+            // Secondary current = Id*share*n (bipolar), but each Lo only conducts on
+            // alternating half-cycles: Lo1 = max(0, +I_sec), Lo2 = max(0, -I_sec),
+            // each with average ≈ Iout/2 and ripple at 2·Fs (cancels at load node).
+            std::vector<double> iSecData(totalSamples, 0.0);
+            std::vector<double> vSecData(totalSamples, 0.0);
+            std::vector<double> iLo1Data(totalSamples, 0.0);
+            std::vector<double> iLo2Data(totalSamples, 0.0);
+            std::vector<double> vLo1Data(totalSamples, 0.0);
+            std::vector<double> vLo2Data(totalSamples, 0.0);
+            // CD inductor sizing: ripple ≤ 30% of IoutDC by convention.
+            // VLo amplitude tracks Vsec − Vo when the corresponding diode conducts,
+            // and −Vo during freewheel.
+            for (int k = 0; k < totalSamples; ++k) {
+                double Id = ILs_full[k] - IL_full[k];
+                if (!std::isfinite(Id)) Id = 0;
+                double I_sec = Id * share * n_i;
+                double V_sec = VLm_full[k] / n_i;
+                iSecData[k] = I_sec;
+                vSecData[k] = V_sec;
+                // Lo1 / Lo2 currents — KCL at output node: ILo1 + ILo2 = IoutDC.
+                // Each carries IoutDC/2 mean with a triangular ripple of opposite
+                // sign sourced from the secondary current (which itself averages 0).
+                double Iout_dc = (Vout_i > 0) ? (Iout_i) : 0.0;
+                double ripple  = I_sec / 4.0;            // peak excursion ≈ |I_sec|/4
+                iLo1Data[k] = Iout_dc / 2.0 + ripple;
+                iLo2Data[k] = Iout_dc / 2.0 - ripple;
+                // VLo when conducting = (Vsec − Vo); freewheel = -Vo.
+                vLo1Data[k] = (I_sec > 0) ? (V_sec - Vout_i) : (-Vout_i);
+                vLo2Data[k] = (I_sec < 0) ? (-V_sec - Vout_i) : (-Vout_i);
+                if (!std::isfinite(iSecData[k])) iSecData[k] = 0;
+                if (!std::isfinite(vSecData[k])) vSecData[k] = 0;
+                if (!std::isfinite(iLo1Data[k])) iLo1Data[k] = 0;
+                if (!std::isfinite(iLo2Data[k])) iLo2Data[k] = 0;
+                if (!std::isfinite(vLo1Data[k])) vLo1Data[k] = 0;
+                if (!std::isfinite(vLo2Data[k])) vLo2Data[k] = 0;
+            }
+            Waveform secCurrentWfm; secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secCurrentWfm.set_data(iSecData); secCurrentWfm.set_time(time_full);
+            Waveform secVoltageWfm; secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secVoltageWfm.set_data(vSecData); secVoltageWfm.set_time(time_full);
+            std::string windingName = "Secondary " + std::to_string(outputIdx);
+            auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            // Stash Lo waveforms for get_extra_components_inputs.
+            Waveform lo1I; lo1I.set_ancillary_label(WaveformLabel::CUSTOM);
+            lo1I.set_data(iLo1Data); lo1I.set_time(time_full);
+            Waveform lo1V; lo1V.set_ancillary_label(WaveformLabel::CUSTOM);
+            lo1V.set_data(vLo1Data); lo1V.set_time(time_full);
+            Waveform lo2I; lo2I.set_ancillary_label(WaveformLabel::CUSTOM);
+            lo2I.set_data(iLo2Data); lo2I.set_time(time_full);
+            Waveform lo2V; lo2V.set_ancillary_label(WaveformLabel::CUSTOM);
+            lo2V.set_data(vLo2Data); lo2V.set_time(time_full);
+            extraLoCurrentWaveforms.push_back(lo1I);
+            extraLoVoltageWaveforms.push_back(lo1V);
+            extraLo2CurrentWaveforms.push_back(lo2I);
+            extraLo2VoltageWaveforms.push_back(lo2V);
+            break;
+        }
+        case LlcRectifierType::VOLTAGE_DOUBLER: {
+            // Single secondary winding. Two diodes + two output capacitors stacked.
+            // Each cap charges to Vsec_pk = Vo/2 (n_i was doubled at design time).
+            // The secondary current is bipolar; both caps share the same |I_sec|.
+            std::vector<double> iSecData(totalSamples, 0.0);
+            std::vector<double> vSecData(totalSamples, 0.0);
+            std::vector<double> vCapData(totalSamples, 0.0);
+            for (int k = 0; k < totalSamples; ++k) {
+                double Id = ILs_full[k] - IL_full[k];
+                if (!std::isfinite(Id)) Id = 0;
+                iSecData[k] = Id * share * n_i;
+                vSecData[k] = VLm_full[k] / n_i;
+                vCapData[k] = Vout_i / 2.0;              // DC nominal; ripple is small
+                if (!std::isfinite(iSecData[k])) iSecData[k] = 0;
+                if (!std::isfinite(vSecData[k])) vSecData[k] = 0;
+            }
+            Waveform secCurrentWfm; secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secCurrentWfm.set_data(iSecData); secCurrentWfm.set_time(time_full);
+            Waveform secVoltageWfm; secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secVoltageWfm.set_data(vSecData); secVoltageWfm.set_time(time_full);
+            std::string windingName = "Secondary " + std::to_string(outputIdx);
+            auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            Waveform capWfm; capWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            capWfm.set_data(vCapData); capWfm.set_time(time_full);
+            extraVoutCapVoltageWaveforms.push_back(capWfm);
+            break;
+        }
+        default:
+            throw std::runtime_error("LLC: unknown rectifier type encountered in process_operating_point_for_input_voltage");
         }
     }
 
@@ -1323,28 +1461,45 @@ std::string Llc::generate_ngspice_circuit(
     }
     circuit << "Lpri pri_top pri_bot " << std::scientific << Lpri_total << "\n";
 
-    // Per-output center-tapped secondary windings + diodes + load.
+    // Per-output secondary windings — count varies with rectifier type:
+    //   CT  → 2 half-windings (Lsec1/Lsec2) with center tap (sec_ct).
+    //   FB  → 1 secondary (Lsec) feeding a 4-diode bridge.
+    //   CD  → 1 secondary (Lsec) feeding 2 diodes + 2 output inductors.
+    //   VD  → 1 secondary (Lsec) feeding 2 diodes + a series capacitor stack.
+    LlcRectifierType rectType = get_effective_rectifier_type();
+    bool ct = (rectType == LlcRectifierType::CENTER_TAPPED);
+
     for (size_t i = 0; i < numOutputs; ++i) {
         double n_i = nPerOutput[i];
-        double Lsec_half = Lpri_total / (n_i * n_i);
         std::string si = std::to_string(i + 1);
-        circuit << "Lsec1_o" << si << " sec_top_sec_o" << si << " sec_ct_o" << si
-                << " " << std::scientific << Lsec_half << "\n";
-        circuit << "Lsec2_o" << si << " sec_ct_o" << si << " sec_bot_sec_o" << si
-                << " " << std::scientific << Lsec_half << "\n";
+        if (ct) {
+            double Lsec_half = Lpri_total / (n_i * n_i);
+            circuit << "Lsec1_o" << si << " sec_top_sec_o" << si << " sec_ct_o" << si
+                    << " " << std::scientific << Lsec_half << "\n";
+            circuit << "Lsec2_o" << si << " sec_ct_o" << si << " sec_bot_sec_o" << si
+                    << " " << std::scientific << Lsec_half << "\n";
+        } else {
+            // Single-winding secondary. Full Lsec sees the full Vpri/n_i.
+            double Lsec = Lpri_total / (n_i * n_i);
+            circuit << "Lsec_o" << si << " sec_pos_sec_o" << si << " sec_neg_sec_o" << si
+                    << " " << std::scientific << Lsec << "\n";
+        }
     }
-    // Emit a full pairwise K matrix across every coupled inductor (Lpri + two
-    // halves per output). ngspice requires explicit pairwise couplings for
-    // every pair — an "incomplete K set" makes the mutual-inductance matrix
-    // non-positive-definite and the transient solver can't converge (every
-    // multi-output LLC would fail with "Timestep too small").
+    // Emit a full pairwise K matrix across every coupled inductor. ngspice
+    // requires explicit pairwise couplings for every pair — an "incomplete
+    // K set" makes the mutual-inductance matrix non-positive-definite and the
+    // transient solver can't converge.
     std::vector<std::string> coupledInductors;
-    coupledInductors.reserve(1 + 2 * numOutputs);
+    coupledInductors.reserve(1 + windings_per_output() * numOutputs);
     coupledInductors.emplace_back("Lpri");
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
-        coupledInductors.push_back("Lsec1_o" + si);
-        coupledInductors.push_back("Lsec2_o" + si);
+        if (ct) {
+            coupledInductors.push_back("Lsec1_o" + si);
+            coupledInductors.push_back("Lsec2_o" + si);
+        } else {
+            coupledInductors.push_back("Lsec_o" + si);
+        }
     }
     int kIdx = 0;
     for (size_t a = 0; a < coupledInductors.size(); ++a) {
@@ -1364,29 +1519,119 @@ std::string Llc::generate_ngspice_circuit(
         double Vout_i = llcOp.get_output_voltages()[i];
         double Iout_i = llcOp.get_output_currents()[i];
         double Rload_i = (Iout_i > 0) ? (Vout_i / Iout_i) : 100.0;
+        // n_i kept for parity with other branches; CD branch consumes it.
+        [[maybe_unused]] double n_i = nPerOutput[i];
 
-        circuit << "* Output " << si << " rectifier (Vout=" << Vout_i << "V Rload=" << Rload_i << ")\n";
-        circuit << "D1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " DRECT\n";
-        circuit << "D2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " DRECT\n";
-        circuit << "Rsn1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " 100\n";
-        circuit << "Csn1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " 100p\n";
-        circuit << "Rsn2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " 100\n";
-        circuit << "Csn2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " 100p\n";
-        // Per-half winding-current sense
-        circuit << "Vsec1_sense_o" << si << " sec_top_sec_o" << si << " sec_top_o" << si << " 0\n";
-        circuit << "Vsec2_sense_o" << si << " sec_bot_sec_o" << si << " sec_bot_o" << si << " 0\n";
-        // Center tap → load return current sense
-        circuit << "Vsec_sense_o" << si << " sec_ct_o" << si << " vout_neg_o" << si << " 0\n";
-        circuit << "Vgnd_o" << si << " vout_neg_o" << si << " 0 0\n";
-        circuit << "Resr_o" << si << " vout_pos_o" << si << " vout_cap_o" << si << " 0.05\n";
-        circuit << "Cout_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
-        circuit << "Rload_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
+        circuit << "* Output " << si << " rectifier ("
+                << (ct ? "CT" : rectType == LlcRectifierType::FULL_BRIDGE ? "FB"
+                              : rectType == LlcRectifierType::CURRENT_DOUBLER ? "CD" : "VD")
+                << " Vout=" << Vout_i << "V Rload=" << Rload_i << ")\n";
+
+        switch (rectType) {
+        case LlcRectifierType::CENTER_TAPPED: {
+            circuit << "D1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " DRECT\n";
+            circuit << "D2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " DRECT\n";
+            circuit << "Rsn1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " 100\n";
+            circuit << "Csn1_o" << si << " sec_top_o" << si << " vout_pos_o" << si << " 100p\n";
+            circuit << "Rsn2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " 100\n";
+            circuit << "Csn2_o" << si << " sec_bot_o" << si << " vout_pos_o" << si << " 100p\n";
+            circuit << "Vsec1_sense_o" << si << " sec_top_sec_o" << si << " sec_top_o" << si << " 0\n";
+            circuit << "Vsec2_sense_o" << si << " sec_bot_sec_o" << si << " sec_bot_o" << si << " 0\n";
+            circuit << "Vsec_sense_o" << si << " sec_ct_o" << si << " vout_neg_o" << si << " 0\n";
+            circuit << "Vgnd_o" << si << " vout_neg_o" << si << " 0 0\n";
+            circuit << "Resr_o" << si << " vout_pos_o" << si << " vout_cap_o" << si << " 0.05\n";
+            circuit << "Cout_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
+            circuit << "Rload_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
+            break;
+        }
+        case LlcRectifierType::FULL_BRIDGE: {
+            // 4-diode bridge: sec_pos / sec_neg → vout_pos / vout_neg.
+            circuit << "Dh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " DRECT\n";
+            circuit << "Dh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " DRECT\n";
+            circuit << "Dl1_o" << si << " vout_neg_o" << si << " sec_pos_o" << si << " DRECT\n";
+            circuit << "Dl2_o" << si << " vout_neg_o" << si << " sec_neg_o" << si << " DRECT\n";
+            // Snubbers across each diode (optional, helps convergence).
+            circuit << "Rsnh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100\n";
+            circuit << "Csnh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100p\n";
+            circuit << "Rsnh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100\n";
+            circuit << "Csnh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100p\n";
+            // Winding-current sense
+            circuit << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
+            circuit << "Vsec_ret_o" << si << " sec_neg_o" << si << " sec_neg_sec_o" << si << " 0\n";
+            circuit << "Vgnd_o" << si << " vout_neg_o" << si << " 0 0\n";
+            circuit << "Resr_o" << si << " vout_pos_o" << si << " vout_cap_o" << si << " 0.05\n";
+            circuit << "Cout_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
+            circuit << "Rload_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
+            break;
+        }
+        case LlcRectifierType::CURRENT_DOUBLER: {
+            // Two diodes + two output inductors. Sec winding has its midpoint
+            // floating; both terminals feed inductors that sum at vout_pos.
+            // Lo sizing: ripple ≤ 30% IoutDC at the per-Lo switching freq (Fs).
+            double Iout_dc = (Iout_i > 0) ? Iout_i : 1.0;
+            double fsw_sim = 1.0 / period;
+            double Lo = (Vout_i > 0) ? (Vout_i / (4.0 * fsw_sim * 0.30 * Iout_dc)) : 10e-6;
+            circuit << "D1_o" << si << " sec_neg_o" << si << " lo1_a_o" << si << " DRECT\n";
+            circuit << "D2_o" << si << " sec_pos_o" << si << " lo2_a_o" << si << " DRECT\n";
+            // Sense + filter inductors
+            circuit << "VLo1_sense_o" << si << " lo1_a_o" << si << " lo1_b_o" << si << " 0\n";
+            circuit << "VLo2_sense_o" << si << " lo2_a_o" << si << " lo2_b_o" << si << " 0\n";
+            circuit << "Lo1_o" << si << " lo1_b_o" << si << " vout_pos_o" << si << " " << std::scientific << Lo << "\n";
+            circuit << "Lo2_o" << si << " lo2_b_o" << si << " vout_pos_o" << si << " " << std::scientific << Lo << "\n";
+            // Secondary winding terminals connect to diode anodes via sense srcs
+            circuit << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
+            circuit << "Vsec_ret_o" << si << " sec_neg_o" << si << " sec_neg_sec_o" << si << " 0\n";
+            // Common-return: each Lo's far end shares vout_neg via the load.
+            // Both winding terminals' return through vout_neg via the diode topology.
+            circuit << "Vgnd_o" << si << " vout_neg_o" << si << " 0 0\n";
+            // The CD return path: vout_neg connects to the winding midpoint via
+            // the load. With a floating winding, the two diodes' cathodes meet
+            // at lo1_a/lo2_a which feed Lo1/Lo2 to vout_pos. The freewheeling
+            // path is via the other diode's body (or an antiparallel ideal D).
+            circuit << "Dfw1_o" << si << " vout_neg_o" << si << " lo1_a_o" << si << " DRECT\n";
+            circuit << "Dfw2_o" << si << " vout_neg_o" << si << " lo2_a_o" << si << " DRECT\n";
+            circuit << "Resr_o" << si << " vout_pos_o" << si << " vout_cap_o" << si << " 0.05\n";
+            circuit << "Cout_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
+            circuit << "Rload_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
+            break;
+        }
+        case LlcRectifierType::VOLTAGE_DOUBLER: {
+            // Two diodes + capacitor stack. Sec winding's negative terminal
+            // is tied to the cap midpoint; positive terminal feeds the two
+            // diodes which charge Co_hi and Co_lo respectively. Vo = 2·Vsec_pk.
+            // n_i has been doubled at design time so Vsec_pk = Vo/2.
+            circuit << "Dh_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " DRECT\n";
+            circuit << "Dl_o" << si << " vout_mid_o" << si << " sec_pos_o" << si << " DRECT\n";
+            // Snubbers
+            circuit << "Rsnh_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100\n";
+            circuit << "Csnh_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100p\n";
+            // Sense + winding return
+            circuit << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
+            circuit << "Vsec_ret_o" << si << " vout_mid_o" << si << " sec_neg_sec_o" << si << " 0\n";
+            // Cap stack: Co_hi from vout_pos → vout_mid, Co_lo from vout_mid → vout_neg.
+            circuit << "Co_hi_o" << si << " vout_pos_o" << si << " vout_mid_o" << si << " " << std::scientific << 94e-6 << "\n";
+            circuit << "Co_lo_o" << si << " vout_mid_o" << si << " vout_neg_o" << si << " " << std::scientific << 94e-6 << "\n";
+            circuit << "Vgnd_o" << si << " vout_neg_o" << si << " 0 0\n";
+            circuit << "Rload_o" << si << " vout_pos_o" << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
+            break;
+        }
+        default:
+            throw std::runtime_error("LLC: unknown rectifier type encountered in generate_ngspice_circuit");
+        }
     }
 
     // Initial conditions to speed up settling
     circuit << ".ic";
-    for (size_t i = 0; i < numOutputs; ++i)
-        circuit << " v(vout_cap_o" << (i + 1) << ")=" << llcOp.get_output_voltages()[i];
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        double Vout_i = llcOp.get_output_voltages()[i];
+        if (rectType == LlcRectifierType::VOLTAGE_DOUBLER) {
+            circuit << " v(vout_pos_o" << si << ")=" << Vout_i
+                    << " v(vout_mid_o" << si << ")=" << (Vout_i / 2.0);
+        } else {
+            circuit << " v(vout_cap_o" << si << ")=" << Vout_i;
+        }
+    }
     if (!integratedLs) circuit << " v(cr_ls)=0";
     circuit << "\n\n";
 
@@ -1399,10 +1644,30 @@ std::string Llc::generate_ngspice_circuit(
     else              circuit << " v(sw_node) v(mid_point)";
     for (size_t i = 0; i < numOutputs; ++i) {
         std::string si = std::to_string(i + 1);
-        circuit << " v(sec_top_o" << si << ") v(sec_bot_o" << si << ")"
-                << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
-                << " i(Vsec1_sense_o" << si << ") i(Vsec2_sense_o" << si << ")"
-                << " i(Vsec_sense_o" << si << ")";
+        switch (rectType) {
+        case LlcRectifierType::CENTER_TAPPED:
+            circuit << " v(sec_top_o" << si << ") v(sec_bot_o" << si << ")"
+                    << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
+                    << " i(Vsec1_sense_o" << si << ") i(Vsec2_sense_o" << si << ")"
+                    << " i(Vsec_sense_o" << si << ")";
+            break;
+        case LlcRectifierType::FULL_BRIDGE:
+            circuit << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"
+                    << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
+                    << " i(Vsec_sense_o" << si << ")";
+            break;
+        case LlcRectifierType::CURRENT_DOUBLER:
+            circuit << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"
+                    << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
+                    << " i(Vsec_sense_o" << si << ")"
+                    << " i(VLo1_sense_o" << si << ") i(VLo2_sense_o" << si << ")";
+            break;
+        case LlcRectifierType::VOLTAGE_DOUBLER:
+            circuit << " v(sec_pos_o" << si << ")"
+                    << " v(vout_pos_o" << si << ") v(vout_mid_o" << si << ")"
+                    << " i(Vsec_sense_o" << si << ")";
+            break;
+        }
     }
     circuit << "\n\n.end\n";
 
@@ -1463,17 +1728,29 @@ std::vector<OperatingPoint> Llc::simulate_and_extract_operating_points(
 
             size_t numOutputs = ops[opIdx].get_output_voltages().size();
             if (numOutputs == 0) numOutputs = 1;
+            LlcRectifierType rectTypeSim = get_effective_rectifier_type();
             for (size_t outIdx = 0; outIdx < numOutputs; ++outIdx) {
                 std::string si = std::to_string(outIdx + 1);
-                waveformMapping.push_back({{"voltage", "sec_top_o" + si},
-                                           {"current", "vsec1_sense_o" + si + "#branch"}});
-                windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 1");
-                flipCurrentSign.push_back(true);
-
-                waveformMapping.push_back({{"voltage", "sec_bot_o" + si},
-                                           {"current", "vsec2_sense_o" + si + "#branch"}});
-                windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 2");
-                flipCurrentSign.push_back(true);
+                switch (rectTypeSim) {
+                case LlcRectifierType::CENTER_TAPPED:
+                    waveformMapping.push_back({{"voltage", "sec_top_o" + si},
+                                               {"current", "vsec1_sense_o" + si + "#branch"}});
+                    windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 1");
+                    flipCurrentSign.push_back(true);
+                    waveformMapping.push_back({{"voltage", "sec_bot_o" + si},
+                                               {"current", "vsec2_sense_o" + si + "#branch"}});
+                    windingNames.push_back("Secondary " + std::to_string(outIdx) + " Half 2");
+                    flipCurrentSign.push_back(true);
+                    break;
+                case LlcRectifierType::FULL_BRIDGE:
+                case LlcRectifierType::CURRENT_DOUBLER:
+                case LlcRectifierType::VOLTAGE_DOUBLER:
+                    waveformMapping.push_back({{"voltage", "sec_pos_o" + si},
+                                               {"current", "vsec_sense_o" + si + "#branch"}});
+                    windingNames.push_back("Secondary " + std::to_string(outIdx));
+                    flipCurrentSign.push_back(true);
+                    break;
+                }
             }
 
             OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
@@ -1577,9 +1854,13 @@ std::vector<ConverterWaveforms> Llc::simulate_and_extract_topology_waveforms(
         // average to zero in steady state).
         size_t numOutputs = ops[opIdx].get_output_voltages().size();
         if (numOutputs == 0) numOutputs = 1;
+        LlcRectifierType rectTypeTW = get_effective_rectifier_type();
         for (size_t i = 0; i < numOutputs; ++i) {
             std::string si = std::to_string(i + 1);
-            auto vCap = getWf("vout_cap_o" + si);
+            // VD uses vout_pos (stacked cap top) as the rail; others use vout_cap.
+            auto vCap = (rectTypeTW == LlcRectifierType::VOLTAGE_DOUBLER)
+                        ? getWf("vout_pos_o" + si)
+                        : getWf("vout_cap_o" + si);
             if (vCap.get_data().empty()) continue;
             wf.get_mutable_output_voltages().push_back(vCap);
             const double Vo_i = ops[opIdx].get_output_voltages()[i];
@@ -1770,6 +2051,92 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Llc::get_extra_components_inputs(
         }
         masInputs.set_operating_points(masOps);
         result.emplace_back(std::move(masInputs));
+    }
+
+    // Rectifier-variant extras.
+    LlcRectifierType rectTypeExtras = get_effective_rectifier_type();
+    if (rectTypeExtras == LlcRectifierType::CURRENT_DOUBLER &&
+        !extraLoCurrentWaveforms.empty()) {
+        // Two output inductors L_o1 / L_o2 — emit two MAS Inputs.
+        // Inductance value matches the SPICE netlist sizing:
+        // Lo = Vout / (4·Fs·0.30·IoutDC).
+        auto& ops = get_operating_points();
+        if (ops.empty()) throw std::runtime_error("LLC CD extras: no operating points");
+        double Vout_0 = ops[0].get_output_voltages()[0];
+        double Iout_0 = ops[0].get_output_currents()[0];
+        double fsw_0  = ops[0].get_switching_frequency();
+        if (Vout_0 <= 0 || Iout_0 <= 0 || fsw_0 <= 0)
+            throw std::runtime_error("LLC CD extras: invalid output/freq for Lo sizing");
+        double Lo_design = Vout_0 / (4.0 * fsw_0 * 0.30 * Iout_0);
+
+        for (size_t loIdx = 0; loIdx < 2; ++loIdx) {
+            Inputs loInputs;
+            DesignRequirements drLo;
+            DimensionWithTolerance loInd;
+            loInd.set_nominal(Lo_design);
+            drLo.set_magnetizing_inductance(loInd);
+            drLo.set_name(std::string("outputInductor") + (loIdx == 0 ? "1" : "2"));
+            drLo.set_topology(Topologies::LLC_RESONANT_CONVERTER);
+            drLo.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+            drLo.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::SECONDARY});
+            loInputs.set_design_requirements(drLo);
+
+            std::vector<OperatingPoint> loOps;
+            auto& iVec = (loIdx == 0) ? extraLoCurrentWaveforms : extraLo2CurrentWaveforms;
+            auto& vVec = (loIdx == 0) ? extraLoVoltageWaveforms : extraLo2VoltageWaveforms;
+            for (size_t i = 0; i < iVec.size(); ++i) {
+                OperatingPoint op;
+                auto excitation = complete_excitation(iVec[i], vVec[i], fsw_0,
+                                                     (loIdx == 0) ? "Lo1" : "Lo2");
+                op.get_mutable_excitations_per_winding().push_back(excitation);
+                loOps.push_back(op);
+            }
+            loInputs.set_operating_points(loOps);
+            result.emplace_back(std::move(loInputs));
+        }
+    }
+    else if (rectTypeExtras == LlcRectifierType::VOLTAGE_DOUBLER &&
+             !extraVoutCapVoltageWaveforms.empty()) {
+        // Two stacked output capacitors. Both see Vo/2 nominal DC; current
+        // through them is ±I_sec on alternating halves. We emit two CAS::Inputs
+        // sized identically (each cap rated to Vo/2 · 1.2 margin).
+        auto& ops = get_operating_points();
+        if (ops.empty()) throw std::runtime_error("LLC VD extras: no operating points");
+        double Vout_0 = ops[0].get_output_voltages()[0];
+        for (size_t capIdx = 0; capIdx < 2; ++capIdx) {
+            CAS::Inputs casCap;
+            CAS::DesignRequirements drCap;
+            CAS::DimensionWithTolerance cap;
+            cap.set_nominal(94e-6);                          // matches netlist
+            drCap.set_capacitance(cap);
+            drCap.set_rated_voltage((Vout_0 / 2.0) * 1.2);   // 20 % margin
+            drCap.set_role(CAS::Application::DC_LINK);
+            drCap.set_name(std::string("outputCapacitor") + (capIdx == 0 ? "Hi" : "Lo"));
+            casCap.set_design_requirements(drCap);
+
+            std::vector<CAS::TwoTerminalOperatingPoint> capOps;
+            for (size_t i = 0; i < extraVoutCapVoltageWaveforms.size(); ++i) {
+                CAS::TwoTerminalOperatingPoint op;
+                CAS::OperatingPointExcitation exc;
+                exc.set_frequency(fr);
+                CAS::SignalDescriptor vSig; CAS::Waveform vWfm;
+                vWfm.set_data(extraVoutCapVoltageWaveforms[i].get_data());
+                if (extraVoutCapVoltageWaveforms[i].get_time())
+                    vWfm.set_time(extraVoutCapVoltageWaveforms[i].get_time().value());
+                vSig.set_waveform(vWfm); exc.set_voltage(vSig);
+                // Current = secondary current divided across the two caps;
+                // we approximate via the resonant tank current waveform.
+                CAS::SignalDescriptor iSig; CAS::Waveform iWfm;
+                iWfm.set_data(extraCapCurrentWaveforms[i].get_data());
+                if (extraCapCurrentWaveforms[i].get_time())
+                    iWfm.set_time(extraCapCurrentWaveforms[i].get_time().value());
+                iSig.set_waveform(iWfm); exc.set_current(iSig);
+                op.set_excitation(exc);
+                capOps.push_back(op);
+            }
+            casCap.set_operating_points(capOps);
+            result.emplace_back(std::move(casCap));
+        }
     }
 
     return result;
