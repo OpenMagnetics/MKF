@@ -189,6 +189,23 @@ std::vector<OperatingPoint> Llc::process_operating_points(
     if (computedResonantInductance <= 0 || computedResonantCapacitance <= 0)
         process_design_requirements();
 
+    // Multi-output warn-once: per-secondary currents are projected from the
+    // primary tank current by load-share weighting (no per-secondary leakage
+    // model). Same pattern as Dab.cpp.
+    {
+        auto& opsTmp = get_operating_points();
+        if (!opsTmp.empty() && opsTmp[0].get_output_voltages().size() > 1) {
+            static thread_local bool warned = false;
+            if (!warned) {
+                std::cerr << "[Llc] Multi-output: per-secondary currents are "
+                          << "approximated via load-share projection. Provide "
+                          << "per-secondary leakage inductance for accurate "
+                          << "individual current waveforms.\n";
+                warned = true;
+            }
+        }
+    }
+
     extraCapVoltageWaveforms.clear();
     extraCapCurrentWaveforms.clear();
     extraIndVoltageWaveforms.clear();
@@ -885,6 +902,27 @@ OperatingPoint Llc::process_operating_point_for_input_voltage(
         lastSubStateSequence.push_back(static_cast<int>(seg.state));
     lastSteadyStateResidual = residual;
 
+    // DAB-quality ZVS diagnostics.
+    //   • Peak tank current: max(|iLs|) over the sampled half-period.
+    //   • ZVS margin (lagging leg): magnetizing current at the half-cycle
+    //     switching instant minus the reflected load current at that instant
+    //     (Huang SLUP263 §6). When > 0, Coss is discharged by Im before the
+    //     opposite leg turns on.
+    //   • ZVS load threshold: Vbus·t_dead / (4·Lm) — the maximum load the
+    //     magnetizing energy can sustain ZVS for (Huang SLUP263 eq. 12).
+    //   • Resonant transition time: dead time (Coss-resonance interval).
+    double peakI = 0.0;
+    for (int k = 0; k <= N; ++k)
+        peakI = std::max(peakI, std::abs(std::isfinite(ILs_pos[k]) ? ILs_pos[k] : 0.0));
+    lastPrimaryPeakCurrent     = peakI;
+    double Im_at_switch        = std::isfinite(IL_pos[N]) ? IL_pos[N] : 0.0;
+    lastZvsMarginLagging       = std::abs(Im_at_switch) - std::abs(Iload_reflected);
+    double Vbus_bridge         = k_bridge * inputVoltage;  // primary swing
+    lastZvsLoadThreshold       = (L > 0)
+        ? (Vbus_bridge * computedDeadTime) / (4.0 * L)
+        : 0.0;
+    lastResonantTransitionTime = computedDeadTime;
+
     // Stuff used by the legacy ILs0/IL0 references below (waveform emission).
     double ILs0 = x0.iLs;
     double IL0  = x0.iL;
@@ -1352,7 +1390,7 @@ std::string Llc::generate_ngspice_circuit(
     if (!integratedLs) circuit << " v(cr_ls)=0";
     circuit << "\n\n";
 
-    circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=300 ITL4=100\n";
+    circuit << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
     circuit << ".options METHOD=GEAR TRTOL=7\n\n";
     circuit << ".tran " << std::scientific << maxStep << " " << simTime
             << " " << startTime << " " << maxStep << " UIC\n\n";

@@ -13,8 +13,44 @@ using namespace MAS;
 /**
  * @brief LLC Resonant Converter (Half-Bridge or Full-Bridge)
  *
- * Inherits converter-level parameters from MAS::LlcResonant and
- * the Topology interface, exactly mirroring the TwoSwitchForward pattern.
+ * ┌─────────── HB-LLC + Center-Tapped Rectifier (canonical) ───────────┐
+ *
+ *   Vbus ──┬── Q1 ──┬─── Lr ── Cr ──┬─ Lpri ─┐    ┌─ Lsec1 ─┬── D1 ──┬── Vo+
+ *          │        │               │         )||(          │        │
+ *          │        SW              │         )||(    ┌─ Lsec2 ─ D2 ─┤
+ *          │        │               │         )||(    │ (center tap) │
+ *          │        Q2 ─┐           │ Lm in   )||(  Vout-           Cout / Rload
+ *          │        │   │           │ parallel)||(    │              │
+ *          ⏚        ⏚   ⏚           └─────────┘      ⏚              ⏚
+ *
+ * FB-LLC variant: replace half-bridge with 4-MOSFET full bridge driving
+ * the tank between (bridge_a, bridge_b); doubles Vpri and removes the
+ * Vbus/2 split.  Rectifier variants (full-bridge / current-doubler /
+ * voltage-doubler) swap the secondary network on the same tank — see
+ * rectifierType field.
+ *
+ * Inherits from MAS::LlcResonant + Topology, mirroring TwoSwitchForward.
+ *
+ * --- Accuracy disclaimer (read before trusting numerical results) ---
+ * The analytical solver (Runo Nielsen TDA) and the SPICE netlist make
+ * the following simplifications. Numbers within ±10 % of bench data are
+ * normal; tighter is fortunate.
+ *   • Coss is fixed at design value; SPICE uses a linear C, not Coss(Vds).
+ *   • Body-diode reverse recovery is omitted (D model has RS but no Trr).
+ *   • Gate-driver propagation delay is ignored; dead time is enforced ideally.
+ *   • Magnetic-core nonlinearity (μ vs B) is not in the analytical solver;
+ *     SPICE inductors are linear.
+ *   • Synchronous-rectifier MOSFET losses are not modelled (diode-only).
+ *
+ * --- Disambiguation (LLC vs neighbours) ---
+ *   • LLC      — series Lr + Cr, parallel Lm; resonant; passive rectifier.
+ *   • SRC      — series Lr + Cr only, no parallel Lm. See Src.cpp.
+ *   • DAB      — active full bridge on BOTH sides, no resonant tank. See Dab.cpp.
+ *   • PSHB     — phase-shifted half-bridge, PWM (not resonant). See
+ *                PhaseShiftedHalfBridge.cpp. The Pinheiro-Barbi PSHB ≠ AHB
+ *                labelling caveat applies here too.
+ *   • CLLC     — bidirectional asymmetric resonant. See Cllc.cpp.
+ *   • CLLLC    — bidirectional symmetric Lr1+Cr1+Lm+Cr2+Lr2 tank. See Clllc.cpp.
  *
  * Analytical equations based on Runo Nielsen's Time Domain Approach (TDA)
  * (cf. www.runonielsen.dk/LLC_LCC.pdf, www.runonielsen.dk/llc.pdf)
@@ -61,6 +97,13 @@ private:
     mutable double computedLipInputVoltage = 0.0;
     mutable std::vector<int> lastSubStateSequence;
     mutable double lastSteadyStateResidual = 0.0;
+
+    // DAB-quality ZVS diagnostics (populated per OP by
+    // process_operating_point_for_input_voltage). Mirror Dab.cpp / Clllc.cpp.
+    mutable double lastZvsMarginLagging       = 0.0;  // A; >0 ⇒ ZVS achieved
+    mutable double lastZvsLoadThreshold       = 0.0;  // A; load above which ZVS lost
+    mutable double lastResonantTransitionTime = 0.0;  // s; commutation interval
+    mutable double lastPrimaryPeakCurrent     = 0.0;  // A; peak |iLs| over period
 
     // Extra-component waveforms — one entry per operating point, populated by
     // process_operating_point_for_input_voltage, consumed by get_extra_components_inputs.
@@ -114,6 +157,16 @@ public:
     const std::vector<int>& get_last_sub_state_sequence() const { return lastSubStateSequence; }
     /** L2-norm of the steady-state residual ‖F(x0)‖ from the last Newton solve. */
     double get_last_steady_state_residual() const { return lastSteadyStateResidual; }
+
+    // DAB-quality ZVS accessors (per-OP, populated by the solver).
+    /** Magnetizing-current ZVS margin at lagging-leg switching instant. */
+    double get_last_zvs_margin_lagging() const { return lastZvsMarginLagging; }
+    /** Load-current threshold above which lagging-leg ZVS is lost. */
+    double get_last_zvs_load_threshold() const { return lastZvsLoadThreshold; }
+    /** Resonant transition time (dead-time / Coss-resonance interval). */
+    double get_last_resonant_transition_time() const { return lastResonantTransitionTime; }
+    /** Peak primary tank current over the last solved period. */
+    double get_last_primary_peak_current() const { return lastPrimaryPeakCurrent; }
 
     // User-settable inductance ratio (Ln = Lm / Ls)
     // Returns user value if set, otherwise falls back to computedInductanceRatio (default 5)
