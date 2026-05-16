@@ -5,7 +5,7 @@ beyond the ones currently implemented or already planned. Sibling to
 the existing plan documents in this directory:
 
 - `CONVERTER_MODELS_GOLDEN_GUIDE.md` — the DAB-quality spec
-- `LLC_REWORK_PLAN.md` — bring the existing Llc to Tier-1
+- `LLC_REWORK_PLAN.md` — **DONE** (Tracks A + B): brought Llc to DAB-quality with all four rectifier variants (CT / FB / CD / VD)
 - `CLLC_REWRITE_PLAN.md` — rewrite of the Cllc model
 - `SEPIC_PLAN.md` — add SEPIC from scratch
 - `ZETA_PLAN.md` — add Zeta from scratch (sibling to SEPIC)
@@ -39,7 +39,8 @@ real production volume scores higher than a topology that's just
 | `PushPull.cpp` | |
 | `PhaseShiftedFullBridge.cpp` / `PhaseShiftedHalfBridge.cpp` | rectifier-type-aware (CT/CD/FB) |
 | `Dab.cpp` | gold reference, all four DAB modulations |
-| `Llc.cpp` / `Cllc.cpp` | resonant; rework / rewrite plans exist |
+| `Llc.cpp` | DAB-quality (Tracks A + B): ZVS diagnostics, ITL=500/500, multi-output warn, 41 test cases / 1335 assertions; rectifier-type-aware (CT / FB / CD / VD) with per-variant netlist + extras (CD: 2× MAS::Inputs for Lo; VD: 2× CAS::Inputs for stacked Co) |
+| `Cllc.cpp` | resonant; rewrite plan exists (`CLLC_REWRITE_PLAN.md`) |
 | `Sepic.cpp` / `Zeta.cpp` / `Cuk.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
 | `Weinberg.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
 | `FourSwitchBuckBoost.cpp` | DAB-quality (3 ref designs spanning BUCK/BOOST/BUCK_BOOST regions, NRMSE, VoltSec, ConvPort) |
@@ -61,7 +62,7 @@ real production volume scores higher than a topology that's just
 - **Vienna rectifier** — `VIENNA_PLAN.md`
 - **Asymmetric Half-Bridge** — `ASYMMETRIC_HALF_BRIDGE_PLAN.md`
 - **Series Resonant Converter** — `SRC_PLAN.md`
-- **LLC rework** — `LLC_REWORK_PLAN.md`
+- **LLC rework** — `LLC_REWORK_PLAN.md` **(DONE)**
 - **CLLC rewrite** — `CLLC_REWRITE_PLAN.md`
 
 ---
