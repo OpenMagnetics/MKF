@@ -1782,9 +1782,21 @@ double get_value_or(T&& val, double default_val) {
             circuit << "Vin vin_p 0 " << inputVoltage << "\n\n";
         }
 
-        // Switch model: VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg per plan §6.2
+        // Switch model: VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg per plan §6.2.
+        // DBODY — antiparallel body diode for every SW1 instance. The
+        // bare ngspice SW model has no body diode and no Coss, so during
+        // the deadtime the resonant tank current (which cannot stop
+        // because L1+Lpri keep it flowing) has no freewheel path and is
+        // forced through the RC snubbers. On KIT-20kW that produced
+        // ~23 kW of phantom snubber dissipation (50 % of Pin), inflating
+        // the SPICE primary current peak from the analytical ±38.7 A to
+        // ±54 A. Real CLLC MOSFETs always have body diodes; ZVS itself
+        // depends on tank current charging/discharging Coss and
+        // freewheeling through the diode during deadtime. See
+        // TestCllcKitLossBreakdown.cpp.
         circuit << "* Switch model (CLLC_REWRITE_PLAN §6.2)\n";
-        circuit << ".model SW1 SW(VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg)\n\n";
+        circuit << ".model SW1 SW(VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg)\n";
+        circuit << ".model DBODY D(IS=1e-12 N=1 RS=0.001 BV=2000)\n\n";
 
         // PWM control signals for full bridge
         // Pair 1: S1 (high-side leg A), S4 (low-side leg B) - first half cycle
@@ -1801,6 +1813,14 @@ double get_value_or(T&& val, double default_val) {
         circuit << "S2 node_a 0     pwm2 0 SW1\n";
         circuit << "S3 vin_p node_b pwm2 0 SW1\n";
         circuit << "S4 node_b 0     pwm1 0 SW1\n";
+        // Antiparallel body diodes — high-side: anode=drain, cathode=source(=vin_p).
+        // Low-side: anode=source(=0), cathode=drain. Provides freewheel
+        // path during deadtime so tank current doesn't dump into snubbers.
+        circuit << "* Primary body diodes (antiparallel across each switch)\n";
+        circuit << "DS1 node_a vin_p DBODY\n";
+        circuit << "DS2 0      node_a DBODY\n";
+        circuit << "DS3 node_b vin_p DBODY\n";
+        circuit << "DS4 0      node_b DBODY\n";
         // Per-switch snubbers (1k + 1nF) — 4 primary, 4 secondary = 8 total
         circuit << "* Primary snubbers (1k + 1nF across each switch)\n";
         circuit << "Rsn_S1 vin_p ns1 1k\n   Csn_S1 ns1 node_a 1n\n";
@@ -1859,6 +1879,15 @@ double get_value_or(T&& val, double default_val) {
         circuit << "Sb vout_n node_c pwm2 0 SW1\n";
         circuit << "Sc node_d vout_p pwm2 0 SW1\n";
         circuit << "Sd vout_n node_d pwm1 0 SW1\n";
+        // NOTE: no antiparallel body diodes on the SR side. Adding them
+        // turns the SR into a passive rectifier (the diodes follow the
+        // current direction regardless of pwm gating), which clamps Vout
+        // to (Vin · tank_gain · n) − 2·V_F instead of the analytical
+        // active-SR operating point — breaks the loss gate on
+        // high-power asymmetric designs (KIT, Infineon). The SR-side
+        // deadtime is short enough (≤ 250 ns) and Coss-free that the
+        // tank current can briefly pump the snubber RC without
+        // catastrophic dissipation.
         // Per-switch snubbers (1k + 1nF) on the SR side
         circuit << "* Secondary snubbers (1k + 1nF across each SR switch)\n";
         circuit << "Rsn_Sa node_c nsa 1k\n  Csn_Sa nsa vout_p 1n\n";
@@ -1880,7 +1909,13 @@ double get_value_or(T&& val, double default_val) {
         }
         else {
             circuit << "* Output filter, current sense, and load\n";
-            circuit << "Cout vout_p vout_n 100u IC=" << outputVoltage << "\n";
+            // Cout sized 10 µF — small enough that τ = Cout·Rload settles
+            // inside the 50-cycle window (e.g. KIT 32 Ω → τ = 320 µs ≈
+            // 32 switching periods), but big enough that ripple stays
+            // ≤ a few % so Pout_recon = mean(V²)/Rload is well-defined.
+            // The original 100 µF (τ = 3 ms) never reached steady state
+            // once the primary body diodes removed the snubber damping.
+            circuit << "Cout vout_p vout_n 10u IC=" << outputVoltage << "\n";
             circuit << "Vout_sense vout_p vout_load 0\n";
             circuit << "Rload vout_load vout_n " << std::fixed << Rload
                     << std::scientific << "\n\n";
