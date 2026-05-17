@@ -42,7 +42,7 @@ real production volume scores higher than a topology that's just
 | `PhaseShiftedHalfBridge.cpp` | **DAB-quality** — rectifier-type-aware (CT/CD/FB); 3 ref designs (NRMSE ≤ 0.10), ZVS test, physics-derived freewheel τ = Lr/(2·RON), current-dependent diode drop matched to SPICE |
 | `Dab.cpp` | gold reference, all four DAB modulations |
 | `Llc.cpp` | DAB-quality (Tracks A + B): ZVS diagnostics, ITL=500/500, multi-output warn, 42 test cases / 1352 assertions; rectifier-type-aware (CT / FB / CD / VD) with per-variant netlist + extras (CD: 2× MAS::Inputs for Lo; VD: 2× CAS::Inputs for stacked Co). CD SPICE topology rewritten to the canonical Steigerwald form (D1/D2: sec→vout_pos, Lo1/Lo2: sec→vout_neg) with PtP regression (Telecom-240W-CD); earlier topology had no vout_neg→sec return path and never converged on a real CD case. |
-| `Cllc.cpp` | resonant; rewrite plan exists (`CLLC_REWRITE_PLAN.md`) |
+| `Cllc.cpp` | DAB-quality (4-state TDA solver per Sun 2020 TPEL with damped Picard / multi-start seeds; bidirectional 8-MOSFET SPICE netlist with active SR + primary body diodes; rectifier-type-aware extras (Cr1/Cr2/Lr1/Lr2); 33 test cases / 363 assertions including 6 PtP ref designs (Telecom at/below/above fr, Infineon REF-DAB11KIZSICSYS, KIT 20 kW asymmetric, reverse-mode), ZVS boundary tests fwd+rev, KIT loss-breakdown diagnostic. CLLC_REWRITE_PLAN.md fully executed.) |
 | `Sepic.cpp` / `Zeta.cpp` / `Cuk.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
 | `Weinberg.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
 | `FourSwitchBuckBoost.cpp` | DAB-quality (3 ref designs spanning BUCK/BOOST/BUCK_BOOST regions, NRMSE, VoltSec, ConvPort) |
@@ -65,7 +65,7 @@ real production volume scores higher than a topology that's just
 - **Asymmetric Half-Bridge** — `ASYMMETRIC_HALF_BRIDGE_PLAN.md`
 - **Series Resonant Converter** — `SRC_PLAN.md`
 - **LLC rework** — `LLC_REWORK_PLAN.md` **(DONE)**
-- **CLLC rewrite** — `CLLC_REWRITE_PLAN.md`
+- **CLLC rewrite** — `CLLC_REWRITE_PLAN.md` **(DONE)**
 
 ---
 
