@@ -7,6 +7,7 @@
 #include "constructive_models/Magnetic.h"
 #include <map>
 #include <optional>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -169,6 +170,15 @@ struct SpiceSimulationConfig {
     // ---- Snubber RC across each switch ----
     double snubR = 100.0;         // [Ω]
     double snubC = 100e-12;       // [F]
+    // Optional override for the *real-magnetic* simulation path (when the
+    // converter is solved against an actual Magnetic component with non-
+    // zero leakage inductance, not the ideal-coupling K=1 model). For
+    // ideal-K=1 paths, `snubR` can be very large (no Lk → no spike to
+    // damp) so the snubber doesn't draw DC bias; with real leakage, the
+    // turn-off Lk·di/dt spike needs a much smaller R to clamp. Topologies
+    // that distinguish the two paths (e.g. Flyback) read `snubRReal` when
+    // generating the real-magnetic netlist. NaN ⇒ fall back to `snubR`.
+    double snubRReal = std::numeric_limits<double>::quiet_NaN();
 
     // ---- Output diode model (.model DIDEAL D(...)) ----
     double diodeIS = 1e-14;       // saturation current [A]

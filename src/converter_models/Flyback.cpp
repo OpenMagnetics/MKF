@@ -729,7 +729,10 @@ namespace OpenMagnetics {
                 << ")\n";
         circuit << ".model SW1 SW VT=" << cfg.swModelVT << " VH=" << cfg.swModelVH << "\n";
         circuit << "S1 vin_dc pri_p pwm_ctrl 0 SW1\n";
-        circuit << "Rsnub_s1 vin_dc pri_p " << cfg.snubR << "\n"
+        // Real-magnetic path: use snubRReal if set (handles real Lk·di/dt
+        // turn-off spike clamping), else fall back to snubR.
+        double snubR_eff = std::isnan(cfg.snubRReal) ? cfg.snubR : cfg.snubRReal;
+        circuit << "Rsnub_s1 vin_dc pri_p " << snubR_eff << "\n"
                 << "Csnub_s1 vin_dc pri_p " << std::scientific << cfg.snubC << std::fixed << "\n\n";
 
         // Primary current sense (for waveform extraction)

@@ -1182,8 +1182,30 @@ namespace {
         CHECK(secI_avg > 0.6);  // Should be around 1A (accounting for SPICE model losses)
         CHECK(secI_avg < 1.5);
         
-        // In CCM, primary current should not go to zero
-        CHECK(priI_min > 0.0);
+        // CCM validation (correct flyback physics):
+        // The secondary winding current is *zero during on-time* (rectifier
+        // reverse-biased) and a *trapezoid during off-time* (rectifier conducts
+        // Lm flux). So the raw min of the secondary current waveform is always
+        // ~0 — it does NOT distinguish CCM from DCM. The proper CCM criterion
+        // is that the off-time trapezoid's *valley* (just before MOSFET turn-on)
+        // stays > 0, equivalently:
+        //
+        //    peak_sec  >  ΔI_sec   where   ΔI_sec = Vout · D' · T / Lsec
+        //
+        // The previous "CHECK(priI_min > 0)" was an artefact of the 1 kΩ RC
+        // snubber pulling a DC bias through the primary; with the snubber
+        // raised to 100 kΩ (Topology.cpp), that bias is gone and the check
+        // collapses. See CONVERTER_MODELS_GOLDEN_GUIDE.md §5.x.
+        double secI_max = *std::max_element(secCurrentData.begin(), secCurrentData.end());
+        double Vout_settled = secV_max;                       // SPICE-settled Vout
+        double D_steady = (turnsRatios[0] * Vout_settled) /
+                          (turnsRatios[0] * Vout_settled + 48.0);  // V_in nominal
+        double D_prime = 1.0 - D_steady;
+        double T_period = 1.0 / 100e3;                        // Fs = 100 kHz
+        double Lsec = magnetizingInductance / (turnsRatios[0] * turnsRatios[0]);
+        double dI_sec = Vout_settled * D_prime * T_period / Lsec;
+        INFO("CCM check: secI_max = " << secI_max << " A, ΔI_sec = " << dI_sec << " A (valley = " << (secI_max - dI_sec) << " A)");
+        CHECK(secI_max > dI_sec);   // valley > 0 ⇒ CCM
 
         INFO("Flyback CCM ngspice simulation test passed");
 

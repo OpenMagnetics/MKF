@@ -82,18 +82,39 @@ namespace OpenMagnetics {
             // 100 µF used in non-isolated buck/boost EVMs); the
             // demag-pulse-driven current ramp on the secondary doesn't
             // need as much bulk smoothing because peak current is
-            // already metered by the controller. Snubber τ = 100 ns
-            // (1 kΩ × 100 pF) is large enough to absorb leakage-induced
-            // ringing at switch turn-off — more aggressive than Boost
-            // because flybacks always have measurable leakage from the
-            // airgap. GEAR + TRTOL = 7 needed: the ideal-coupling
-            // Lp/Ls coupled-inductor model produces near-step changes
-            // in iL at every switching edge, which trapezoidal
-            // integration handles poorly.
+            // already metered by the controller. Snubber R = 100 kΩ
+            // (× 100 pF, τ = 10 µs) intentionally large: with the
+            // ideal-coupling K=1 transformer model leakage inductance is
+            // zero so there is no spike to absorb, but a low snubR
+            // (e.g. 1 kΩ) draws a continuous DC bias of tens of mA
+            // from vin_dc into the primary winding sense during
+            // off-time — the drain sits at -N·Vout (relative to
+            // ground), so I_bias = (Vin + N·Vout) / Rsnub flows through
+            // the primary current sense. On the low-power EVMs
+            // (PMP30817 1.2 W, LM5180EVM 3 W) that is 30 % of peak
+            // primary current and biases SPICE's primary-current
+            // waveform away from the (correctly) zero-during-off
+            // analytical model, polluting the NRMSE shape comparison.
+            // 100 kΩ is high enough to drop the DC bias to <1 mA while
+            // still presenting a small-signal damping path. GEAR +
+            // TRTOL = 7 needed: the ideal-coupling Lp/Ls coupled-
+            // inductor model produces near-step changes in iL at every
+            // switching edge, which trapezoidal integration handles
+            // poorly.
             {
                 SpiceSimulationConfig flyback;
                 flyback.swModelVT = 2.5;       flyback.swModelVH = 0.5;
-                flyback.snubR = 1e3;           flyback.snubC = 100e-12;
+                flyback.snubR = 1e5;           flyback.snubC = 100e-12;
+                // Real-magnetic path retains the proven 1 kΩ damping for the
+                // Lk·di/dt turn-off spike (Lk is non-zero with an actual
+                // Magnetic component, vs the ideal-K=1 transformer used by
+                // simulate_and_extract_topology_waveforms). 100 kΩ on the
+                // real-magnetic path lets the spike run to ~12× Vin
+                // (TestNgspiceRunner "Flyback ideal vs real magnetic
+                // comparison" measures ~296 V at Vin = 24 V), which is the
+                // *physically correct* uncladmped behaviour but well past
+                // the 5× Vin envelope used to validate the design.
+                flyback.snubRReal = 1e3;
                 flyback.outputCapacitance = 10e-6;
                 flyback.method = "GEAR";       flyback.trTol = 7.0;
                 m[MAS::Topologies::FLYBACK_CONVERTER] = flyback;

@@ -28,6 +28,7 @@
 #include "processors/NgspiceRunner.h"
 #include "ConverterPortChecks.h"
 #include "PtpHelpers.h"
+#include "WaveformDumpHelpers.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -71,6 +72,51 @@ OpenMagnetics::Flyback build(const RefDesignSpec& s) {
     return f;
 }
 
+// Build a Flyback identical to `build(s)` but with output current
+// overridden to the SPICE-settled value (`Iout_spice`) and the current
+// ripple ratio explicitly set to its physics value
+//   ΔI_pp / (2·Iavg)  with  ΔI_pp = Vin·D/(Lm·Fs)
+// rather than the nominal-design 0.4. Used for the NRMSE shape
+// comparison so the analytical and SPICE primary-current waveforms
+// reference the same operating point: open-loop SPICE settles Vout
+// below nominal due to diode/switch losses, which lowers the actual
+// primary-current offset (Iavg = Iout/N/(1-D)) and raises the actual
+// ripple-ratio (ΔI/Iavg) — both effects need to be reflected in the
+// analytical model before the shape comparison is meaningful.
+OpenMagnetics::Flyback build_for_shape_match(const RefDesignSpec& s,
+                                             double Iout_spice,
+                                             double Lm) {
+    // D is fixed by the analytical-derived PWM and unchanged by Vout
+    // settling because the SPICE netlist hard-codes tOn = D_nominal·T.
+    double Vor = s.N * s.Vout;
+    double D = Vor / (s.Vin + Vor);
+    double Iavg = Iout_spice / s.N / (1.0 - D);
+    double dIpp = s.Vin * D / (Lm * s.Fs);
+    double ripple = dIpp / (2.0 * Iavg);   // (peak-trough)/(2·Iavg) — matches
+                                           // how Flyback.cpp consumes the
+                                           // currentRippleRatio field:
+                                           //   pp = center · ripple · 2
+
+    OpenMagnetics::Flyback f;
+    DimensionWithTolerance iv;
+    iv.set_nominal(s.Vin);
+    iv.set_minimum(s.Vin * 0.95);
+    iv.set_maximum(s.Vin * 1.05);
+    f.set_input_voltage(iv);
+    f.set_diode_voltage_drop(0.0);
+    f.set_efficiency(1.0);
+    f.set_current_ripple_ratio(ripple);
+    f.set_maximum_duty_cycle(0.5);
+    f.set_maximum_drain_source_voltage(s.Vin + s.N * s.Vout + 50.0);
+    OpenMagnetics::FlybackOperatingPoint op;
+    op.set_output_voltages({s.Vout});         // nominal Vout keeps D invariant
+    op.set_output_currents({Iout_spice});     // settled Iout from SPICE
+    op.set_switching_frequency(s.Fs);
+    op.set_ambient_temperature(25.0);
+    f.set_operating_points(std::vector<OpenMagnetics::FlybackOperatingPoint>{op});
+    return f;
+}
+
 // Lm chosen so the analytical primary-current ripple matches what the
 // SPICE primary current produces — keeps PtP shape comparison fair.
 //   Vor = N·Vout, D = Vor/(Vin+Vor), I_center = (Iout/N)/(1-D),
@@ -96,14 +142,14 @@ void run_ptp_gates(const RefDesignSpec& s) {
     const double Lm = consistent_lm(s);
     const std::vector<double> tr{s.N};
 
-    // ── Analytical pass — anchors primary-current shape ───────────────
-    auto analyticalOps = fly.process_operating_points(tr, Lm);
-    REQUIRE(!analyticalOps.empty());
-    auto aTime = ptp_current_time(analyticalOps[0], 0);
-    auto aData = ptp_current(analyticalOps[0], 0);
-    REQUIRE(!aData.empty());
-    REQUIRE(!aTime.empty());
-    auto aResampled = ptp_interp(aTime, aData, 256);
+    // ── Analytical pass (nominal OP) — used for diagnostic only ────────
+    // The NRMSE comparison further down uses a second analytical pass
+    // anchored on the SPICE-settled operating point (see
+    // `build_for_shape_match`) because open-loop SPICE settles Vout
+    // below nominal and the analytical primary-current
+    // offset/ripple-ratio shape is highly sensitive to that settling.
+    auto analyticalOpsNominal = fly.process_operating_points(tr, Lm);
+    REQUIRE(!analyticalOpsNominal.empty());
 
     // ── SPICE switching pass ──────────────────────────────────────────
     // Cout RC tail at high-Fs / low-Iout corners is long; mirror Buck
@@ -176,16 +222,37 @@ void run_ptp_gates(const RefDesignSpec& s) {
     CHECK(loss <= s.tol_loss_max);
 
     // Gate 4 — primary-current shape NRMSE (analytical vs SPICE).
+    // Re-run analytical with SPICE-settled Iout and auto-physics ripple
+    // ratio so both waveforms reference the same operating point.
+    auto flyShape = build_for_shape_match(s, ioutMean, Lm);
+    auto analyticalOps = flyShape.process_operating_points(tr, Lm);
+    REQUIRE(!analyticalOps.empty());
+    auto aTime = ptp_current_time(analyticalOps[0], 0);
+    auto aData = ptp_current(analyticalOps[0], 0);
+    REQUIRE(!aData.empty());
+    REQUIRE(!aTime.empty());
+    auto aResampled = ptp_interp(aTime, aData, 256);
+
     auto sTime = ptp_current_time(simOps[0], 0);
     auto sData = ptp_current(simOps[0], 0);
     REQUIRE(!sData.empty());
     REQUIRE(!sTime.empty());
     auto sResampled = ptp_interp(sTime, sData, 256);
-    const double nrmse = ptp_nrmse(aResampled, sResampled);
+    // 256-shift NRMSE — the sub-period commutation of the secondary
+    // diode (with the SPICE Csnub charging through the primary-current
+    // sense as the drain voltage swings) introduces a ~40-100 ns lag
+    // between SPICE's primary-current step and the analytical ideal
+    // step; the default 64-shift phase grid (period/64 ≈ 60-220 ns at
+    // these Fs) is too coarse to align that lag and leaves a ~5 pp
+    // spurious NRMSE residual. 256 shifts resolves it.
+    const double nrmse = ptp_nrmse(aResampled, sResampled, 256);
     std::cout << "  iPri NRMSE (analytical vs SPICE) = "
               << 100.0 * nrmse << " %   (gate "
               << 100.0 * s.tol_nrmse << " %)\n";
     CHECK(nrmse < s.tol_nrmse);
+
+    OpenMagnetics::Testing::dump_waveforms_csv(
+        std::string("flyback_") + s.name, analyticalOps[0], simOps[0]);
 }
 
 }  // namespace
@@ -208,7 +275,7 @@ TEST_CASE("Flyback reference design PtP — TI PMP30817 (1.2 W primary-side-regu
         /*tol_walltime*/ 5.0,
         /*tol_rload_pct*/ 2.0,
         /*tol_loss_max*/ 0.60,
-        /*tol_nrmse*/    0.26
+        /*tol_nrmse*/    0.15
     };
     run_ptp_gates(s);
 }
@@ -226,7 +293,7 @@ TEST_CASE("Flyback reference design PtP — TI LM5180EVM-DUAL (3 W dual-output)"
         /*tol_walltime*/ 5.0,
         /*tol_rload_pct*/ 2.0,
         /*tol_loss_max*/ 0.60,
-        /*tol_nrmse*/    0.26
+        /*tol_nrmse*/    0.15
     };
     run_ptp_gates(s);
 }
@@ -244,7 +311,7 @@ TEST_CASE("Flyback reference design PtP — TI TIDA-00709 (33 W QR-flyback)",
         /*tol_walltime*/ 5.0,
         /*tol_rload_pct*/ 2.0,
         /*tol_loss_max*/ 0.60,
-        /*tol_nrmse*/    0.26
+        /*tol_nrmse*/    0.15
     };
     run_ptp_gates(s);
 }

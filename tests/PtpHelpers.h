@@ -196,7 +196,8 @@ inline std::vector<double> ptp_interp(const std::vector<double>& t,
 }
 
 inline double ptp_nrmse(const std::vector<double>& ref,
-                        const std::vector<double>& sim) {
+                        const std::vector<double>& sim,
+                        int num_shifts = 64) {
     int N = (int)ref.size();
     double ref_mean = 0.0, sim_mean = 0.0;
     for (int i = 0; i < N; ++i) { ref_mean += ref[i]; sim_mean += sim[i]; }
@@ -210,7 +211,7 @@ inline double ptp_nrmse(const std::vector<double>& ref,
     rAC = std::sqrt(rAC / N); sAC = std::sqrt(sAC / N);
     if (rAC < 1e-10 || sAC < 1e-10) return 1.0;
     for (int i = 0; i < N; ++i) { r[i] /= rAC; s[i] /= sAC; }
-    int ns = std::min(N, 64);
+    int ns = std::min(N, num_shifts);
     double best = std::numeric_limits<double>::max();
     for (int ss = 0; ss < ns; ++ss) {
         int sh = ss * N / ns;
