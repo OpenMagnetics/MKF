@@ -31,6 +31,7 @@
 #include "processors/NgspiceRunner.h"
 #include "ConverterPortChecks.h"
 #include "PtpHelpers.h"
+#include "WaveformDumpHelpers.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -85,7 +86,11 @@ void run_ptp_gates(const RefDesignSpec& s) {
     auto ib = build(s);
     const std::vector<double> tr{s.n};
 
-    // ── Analytical pass — anchors primary-current shape ───────────────
+    // ── Analytical pass — piecewise primary-current shape (see
+    // IsolatedBuck::process_operating_point_for_input_voltage). The
+    // shape captures the off-time secondary-reflected step that K=1
+    // coupled inductors physically enforce; symmetric-triangle prior
+    // was off by ≥30 % NRMSE on these flybuck designs.
     auto analyticalOps = ib.process_operating_points(tr, s.Lpri);
     REQUIRE(!analyticalOps.empty());
     auto aTime = ptp_current_time(analyticalOps[0], 0);
@@ -175,16 +180,25 @@ void run_ptp_gates(const RefDesignSpec& s) {
     CHECK(std::fabs(poutErr) <= s.tol_loss_max);
 
     // Gate 4 — primary-current shape NRMSE.
+    // 256-shift NRMSE — sub-period commutation (per-switch Csnub
+    // charging through the primary sense as the drain swings) lags
+    // SPICE's primary-current step ~40-100 ns behind the analytical
+    // ideal step; the default 64-shift phase grid (period/64 ≈ 40 ns
+    // at 350 kHz) is too coarse to align that lag and leaves a
+    // spurious ~5-10 pp NRMSE residual.
     auto sTime = ptp_current_time(simOps[0], 0);
     auto sData = ptp_current(simOps[0], 0);
     REQUIRE(!sData.empty());
     REQUIRE(!sTime.empty());
     auto sResampled = ptp_interp(sTime, sData, 256);
-    const double nrmse = ptp_nrmse(aResampled, sResampled);
+    const double nrmse = ptp_nrmse(aResampled, sResampled, 256);
     std::cout << "  iPri NRMSE (analytical vs SPICE) = "
               << 100.0 * nrmse << " %   (gate "
               << 100.0 * s.tol_nrmse << " %)\n";
     CHECK(nrmse < s.tol_nrmse);
+
+    OpenMagnetics::Testing::dump_waveforms_csv(
+        std::string("isolated_buck_") + s.name, analyticalOps[0], simOps[0]);
 }
 
 }  // namespace
@@ -208,7 +222,7 @@ TEST_CASE("IsolatedBuck reference design PtP — TI LM5160 SNVA674 (24V→12V Fl
         /*tol_walltime*/ 4.0,
         /*tol_rload_pct*/ 0.01,
         /*tol_loss_max*/ 0.10,
-        /*tol_nrmse*/    0.32
+        /*tol_nrmse*/    0.15
     };
     run_ptp_gates(s);
 }
@@ -227,7 +241,7 @@ TEST_CASE("IsolatedBuck reference design PtP — TI LM5017 SNVA674A (48V→5V Fl
         /*tol_walltime*/ 4.0,
         /*tol_rload_pct*/ 0.01,
         /*tol_loss_max*/ 0.10,
-        /*tol_nrmse*/    0.32
+        /*tol_nrmse*/    0.15
     };
     run_ptp_gates(s);
 }
@@ -246,7 +260,7 @@ TEST_CASE("IsolatedBuck reference design PtP — TI LM5160-Q1 (60V→12V automot
         /*tol_walltime*/ 4.0,
         /*tol_rload_pct*/ 0.01,
         /*tol_loss_max*/ 0.10,
-        /*tol_nrmse*/    0.32
+        /*tol_nrmse*/    0.15
     };
     run_ptp_gates(s);
 }

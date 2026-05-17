@@ -61,9 +61,29 @@ namespace OpenMagnetics {
 
         auto tOn = dutyCycle * period;
         auto magnetizingCurrentRipple = (inputVoltage - primaryOutputVoltage) * tOn / inductance;
-        auto primaryCurrentMaximum = primaryOutputCurrent + totalReflectedSecondaryCurrent + magnetizingCurrentRipple / 2;
-        auto primaryCurrentMinimum = primaryOutputCurrent - totalReflectedSecondaryCurrent * (2 * dutyCycle) / (1 - dutyCycle) - magnetizingCurrentRipple / 2;
-        auto primaryCurrentPeakToPeak = primaryCurrentMaximum - primaryCurrentMinimum;
+        // Magnetizing-current bounds (continuous symmetric triangle anchored
+        // on Iout_pri + Σ Iout_sec/n, i.e. i_mag avg). i_mag = i_pri during
+        // ON-time (secondary blocked), so primary peak = i_mag_max.
+        auto magnetizingCurrentAverage = primaryOutputCurrent + totalReflectedSecondaryCurrent;
+        auto magnetizingCurrentMax     = magnetizingCurrentAverage + magnetizingCurrentRipple / 2;
+        auto magnetizingCurrentMin     = magnetizingCurrentAverage - magnetizingCurrentRipple / 2;
+        // OFF-time secondary inductor current (avg over OFF-window) by
+        // Cout_sec charge balance: ∫i_sec dt = Iout_sec · T → i_sec_off_avg
+        // = Iout_sec / (1-D). Reflected into the primary winding this is
+        // subtracted from i_mag during the OFF interval (i_pri = i_mag −
+        // i_sec/n, dot convention). At switching edges, i_sec snaps
+        // 0 ↔ I_sec_off_avg/n which is a STEP on the primary winding
+        // current (the magnetizing flux is continuous, individual winding
+        // currents are not — this is intrinsic to K=1 coupled inductors).
+        auto reflectedSecondaryOffsetOff = 0.0;
+        for (size_t secondaryIndex = 0; secondaryIndex + 1 < outputOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
+            const double Isec = outputOperatingPoint.get_output_currents()[secondaryIndex + 1];
+            reflectedSecondaryOffsetOff += (Isec / (1.0 - dutyCycle)) / turnsRatios[secondaryIndex];
+        }
+        // Bookkeeping aliases kept for downstream code (peak / pp).
+        auto primaryCurrentMaximum     = magnetizingCurrentMax;
+        auto primaryCurrentMinimum     = magnetizingCurrentMin - reflectedSecondaryOffsetOff;
+        (void)primaryCurrentMinimum;   // exposed via lastPrimary* diagnostics only
 
         auto primaryVoltageMaximum = inputVoltage - primaryOutputVoltage;
         auto primaryVoltageMinimum = -primaryOutputVoltage;
@@ -91,7 +111,53 @@ namespace OpenMagnetics {
             Waveform currentWaveform;
             Waveform voltageWaveform;
 
-            currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryOutputCurrent, 0);
+            // PRIMARY WINDING current is the Lpri inductor current and has
+            // a PIECEWISE shape (NOT a symmetric triangle) because at K=1
+            // each winding current can step at switching events while the
+            // magnetizing flux (and hence i_mag) stays continuous.
+            //
+            // ON-time  (S1 closed, secondary diode reverse-biased):
+            //   i_sec = 0 → i_pri = i_mag, ramps from i_mag_min → i_mag_max
+            //   at slope (Vin − Vout_pri)/Lpri.
+            //
+            // At t = D·T (ON→OFF): secondary diode commutates ON.
+            //   i_sec jumps 0 → I_sec_off_avg ≈ Iout_sec/(1−D) (Cout_sec
+            //   charge balance). Primary winding loses i_sec/n of its
+            //   current: STEP DOWN by Σ Iout_sec/((1−D)·n).
+            //
+            // OFF-time (S1 open, S2/synchronous freewheel):
+            //   i_pri = i_mag(t) − Σ i_sec/n, ramps down at the SAME slope
+            //   −Vout_pri/Lpri as i_mag (since the reflected offset is
+            //   approximately constant over the OFF window for small
+            //   Cout-driven i_sec ripple).
+            //
+            // At t = T (OFF→ON): secondary diode reverse-biases.
+            //   i_sec snaps back to 0, i_pri STEPS UP by the same offset
+            //   and lands on i_mag_min, ready for the next on-ramp.
+            //
+            // Period-average check (KCL at vpri_out):
+            //   ⟨i_pri⟩ = D·(i_mag_min + i_mag_max)/2
+            //             + (1−D)·[(i_mag_min + i_mag_max)/2 − I_off]
+            //           = ⟨i_mag⟩ − (1−D)·I_off
+            //           = (Iout_pri + Σ Iout_sec/n) − Σ Iout_sec/n
+            //           = Iout_pri ✓
+            //
+            // Replaces the older symmetric-TRIANGULAR(magnetizingRipple,
+            // centred on Iout_pri) shape, which ignored the off-time
+            // reflected-secondary step and produced ≥30 % NRMSE versus
+            // SPICE on flybuck reference designs (LM5160 / LM5017 / LM5160-Q1
+            // — see TestIsolatedBuckReferenceDesignsPtp.cpp).
+            const double iPriOnStart   = magnetizingCurrentMin;
+            const double iPriOnEnd     = magnetizingCurrentMax;
+            const double iPriOffStart  = magnetizingCurrentMax - reflectedSecondaryOffsetOff;
+            const double iPriOffEnd    = magnetizingCurrentMin - reflectedSecondaryOffsetOff;
+            {
+                std::vector<double> data = {iPriOnStart, iPriOnEnd, iPriOffStart, iPriOffEnd};
+                std::vector<double> time = {0.0,         tOn,       tOn,         period};
+                currentWaveform.set_ancillary_label(WaveformLabel::CUSTOM);
+                currentWaveform.set_data(data);
+                currentWaveform.set_time(time);
+            }
             voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
 
             auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
@@ -643,12 +709,32 @@ namespace OpenMagnetics {
 
         // Couple primary to each secondary with high coupling
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
-            circuit << "Kpri_sec" << secIdx << " Lpri Lsec" << secIdx << " 0.99\n";
+            // K=1 (perfect coupling) matches the analytical model's
+            // ideal-transformer assumption. With K<1 the induced
+            // secondary voltage (K · V_pri / n) is below the nominal
+            // secondary rail by a factor (1−K)/n, so for low-voltage
+            // secondaries (e.g. design 2: 5/9 = 0.55 V nominal) the
+            // secondary diode NEVER reaches forward bias against its
+            // Cout_sec IC=Vout_sec_nom initial condition; the Cout
+            // then discharges through Rload_sec to ~0 V and breaks
+            // the entire flybuck operation in SPICE. K=1 also matches
+            // Flyback's coupling (already validated DAB-quality with
+            // K=1). The trade-off is that with K=1 the individual
+            // winding currents can step at switching events (only
+            // total ampere-turns is constrained continuous, not each
+            // winding) — see piecewise analytical model below for
+            // how this is handled.
+            circuit << "Kpri_sec" << secIdx << " Lpri Lsec" << secIdx << " 1\n";
         }
-        // Couple secondaries to each other
+        // Couple secondaries to each other. Must also be K=1 for matrix
+        // consistency: with Kpri_secA = Kpri_secB = 1, the K-matrix forces
+        // Ksec_secA_secB = 1 too (any lesser K violates the Cauchy-Schwarz
+        // bound on the inductance matrix and makes the coupled-inductor
+        // ngspice element non-positive-definite → simulation aborts with
+        // "No output file generated by ngspice").
         for (size_t i = 0; i < numSecondaries; ++i) {
             for (size_t j = i + 1; j < numSecondaries; ++j) {
-                circuit << "Ksec" << i << "_" << j << " Lsec" << i << " Lsec" << j << " 0.99\n";
+                circuit << "Ksec" << i << "_" << j << " Lsec" << i << " Lsec" << j << " 1\n";
             }
         }
         circuit << "\n";
