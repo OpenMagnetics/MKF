@@ -36,7 +36,7 @@ real production volume scores higher than a topology that's just
 | `IsolatedBuck.cpp` / `IsolatedBuckBoost.cpp` | |
 | `Flyback.cpp` | **DAB-quality** — 3 ref designs (PMP30817 1.2 W, LM5180EVM-DUAL 3 W, TIDA-00709 33 W) with iPri NRMSE ≤ 0.15 vs SPICE; snubber split into ideal-K=1 (100 kΩ, no DC bias) and real-magnetic (1 kΩ, Lk-spike damped) paths; shape-match OP uses SPICE-settled Iout; 256-shift NRMSE alignment |
 | `SingleSwitchForward.cpp` / `TwoSwitchForward.cpp` / `ActiveClampForward.cpp` | |
-| `PushPull.cpp` | |
+| `PushPull.cpp` | **DAB-quality** — 3 ref designs (SN6501 1.2 W, SN6505B 3.3 W, SN6507 5 W) with iPri NRMSE ≤ 0.15 vs SPICE; shape-match OP uses SPICE-settled Iout; 256-shift NRMSE alignment |
 | `PhaseShiftedFullBridge.cpp` | rectifier-type-aware (CT/CD/FB); 3 ref designs + ZVS + multi-output + NgSpice PtP gates (current iPri NRMSE ≤ 0.20; commutation-ramp refinement pending to reach DAB-quality ≤ 0.15). FW decay model τ = Lr/(n²·R_d_diode) per Vlatkovic 1992 §III asymmetric-commutation. |
 | `PhaseShiftedHalfBridge.cpp` | **DAB-quality** — rectifier-type-aware (CT/CD/FB); 3 ref designs (NRMSE ≤ 0.10), ZVS test, physics-derived freewheel τ = Lr/(2·RON), current-dependent diode drop matched to SPICE |
 | `Dab.cpp` | gold reference, all four DAB modulations |
