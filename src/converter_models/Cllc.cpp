@@ -1195,9 +1195,17 @@ double get_value_or(T&& val, double default_val) {
         // sampling/diagnostics/waveform-emission code runs unchanged
         // (Vc_pos = vCr1 + vCr2_pri reproduces the series-cap total).
         // -------------------------------------------------------------------
-        const bool is_asymmetric =
-            std::abs(params.resonantInductorRatio  - 1.0) > 1e-6 ||
-            std::abs(params.resonantCapacitorRatio - 1.0) > 1e-6;
+        // ALL tanks now route through the 4-state TDA (Sun et al. 2020 IEEE
+        // TPEL 35(4):3491–3505). For symmetric tanks (a=b=1) it reduces to
+        // the same physics as the legacy 3-state collapsed form but with
+        // independent (vCr1, vCr2_pri) state — important because the F
+        // sub-state explicitly models the dead-time / commutation interval
+        // that the 3-state form smeared out. Originally a separate path
+        // existed for asymmetric only; promoting all tanks to 4-state is
+        // strictly more general and fixes the Infineon-11kW shape gap
+        // (15.75% NRMSE due to missing dead-time modeling in the 3-state
+        // path; flagged in HANDOFF.md and FIXME-P7).
+        const bool is_asymmetric = true;
 
         std::vector<CllcSubStateSegment> segments;
         double residual = 0.0;

@@ -390,7 +390,7 @@ TEST_CASE("CLLC reference design PtP — Infineon AN-2024-06 EV charger "
     // and reverse-mode SR drive in P8.
     RefDesignSpec s{"Infineon-11kW", 750.0, 700.0, 800.0, 600.0, 18.33,
                     73e3, 40e3, 250e3,
-                    60.0, 2.0, 0.20, 0.60, 0.16};
+                    60.0, 2.0, 0.20, 0.60, 0.15};
     run_ptp_gates(s);
 }
 
