@@ -1565,31 +1565,50 @@ std::string Llc::generate_ngspice_circuit(
             break;
         }
         case LlcRectifierType::CURRENT_DOUBLER: {
-            // Two diodes + two output inductors. Sec winding has its midpoint
-            // floating; both terminals feed inductors that sum at vout_pos.
-            // Lo sizing: ripple ≤ 30% IoutDC at the per-Lo switching freq (Fs).
+            // CURRENT_DOUBLER (canonical topology — mirrors Src.cpp CD branch):
+            //   D1:  sec_pos → vout_pos          D2:  sec_neg → vout_pos
+            //   Lo1: sec_pos → vout_neg          Lo2: sec_neg → vout_neg
+            //   Cout / Rload between vout_pos and vout_neg
+            //
+            // Conduction trace (V(sec_pos) > V(sec_neg)):
+            //   sec_pos → D1 → vout_pos → Rload → vout_neg → Lo2 → sec_neg
+            //   (winding closes the loop). Lo1 freewheels through D1 + Rload + Lo2.
+            // Each Lo carries Iout/2 DC; ripple cancels at 2·fs at vout_pos.
+            //
+            // Lo sizing for SPICE: large enough to clamp Lo currents to
+            // ~Iout/2 (CCM with small ripple) so the current-doubler mode
+            // actually obtains. ~30% per-Lo ripple:
+            //     Lo = Vo / (4 · fs · 0.30 · Iout_DC)
+            // (Independent of the 30% designer-facing ripple emitted by
+            // get_extra_components_inputs for the physical magnetic.)
+            //
+            // Earlier LLC CD SPICE had no return path from vout_neg to the
+            // secondary winding (Lo's terminated at vout_pos with isolated
+            // freewheel diodes onto vout_neg) — SPICE never converged on
+            // a real CD case, and LLC had no CD PtP regression so the bug
+            // was never caught. Restored to the textbook form used in
+            // Telecom 3 kW briks (Steigerwald §IV).
             double Iout_dc = (Iout_i > 0) ? Iout_i : 1.0;
             double fsw_sim = 1.0 / period;
-            double Lo = (Vout_i > 0) ? (Vout_i / (4.0 * fsw_sim * 0.30 * Iout_dc)) : 10e-6;
-            circuit << "D1_o" << si << " sec_neg_o" << si << " lo1_a_o" << si << " DRECT\n";
-            circuit << "D2_o" << si << " sec_pos_o" << si << " lo2_a_o" << si << " DRECT\n";
-            // Sense + filter inductors
-            circuit << "VLo1_sense_o" << si << " lo1_a_o" << si << " lo1_b_o" << si << " 0\n";
-            circuit << "VLo2_sense_o" << si << " lo2_a_o" << si << " lo2_b_o" << si << " 0\n";
-            circuit << "Lo1_o" << si << " lo1_b_o" << si << " vout_pos_o" << si << " " << std::scientific << Lo << "\n";
-            circuit << "Lo2_o" << si << " lo2_b_o" << si << " vout_pos_o" << si << " " << std::scientific << Lo << "\n";
-            // Secondary winding terminals connect to diode anodes via sense srcs
+            double Lo = (Vout_i > 0)
+                ? (Vout_i / (4.0 * fsw_sim * 0.30 * Iout_dc))
+                : 10e-6;
+            circuit << "D1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " DRECT\n";
+            circuit << "D2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " DRECT\n";
+            // RC snubbers across each diode.
+            circuit << "Rsn1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100\n";
+            circuit << "Csn1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100p\n";
+            circuit << "Rsn2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100\n";
+            circuit << "Csn2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100p\n";
+            // Output inductors with per-Lo current sense.
+            circuit << "VLo1_sense_o" << si << " sec_pos_o" << si << " lo1_a_o" << si << " 0\n";
+            circuit << "Lo1_o" << si << " lo1_a_o" << si << " vout_neg_o" << si << " " << std::scientific << Lo << "\n";
+            circuit << "VLo2_sense_o" << si << " sec_neg_o" << si << " lo2_a_o" << si << " 0\n";
+            circuit << "Lo2_o" << si << " lo2_a_o" << si << " vout_neg_o" << si << " " << std::scientific << Lo << "\n";
+            // Secondary winding sense (bipolar; same naming as FB).
             circuit << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
-            circuit << "Vsec_ret_o" << si << " sec_neg_o" << si << " sec_neg_sec_o" << si << " 0\n";
-            // Common-return: each Lo's far end shares vout_neg via the load.
-            // Both winding terminals' return through vout_neg via the diode topology.
+            circuit << "Vsec_ret_o"   << si << " sec_neg_o"    << si << " sec_neg_sec_o" << si << " 0\n";
             circuit << "Vgnd_o" << si << " vout_neg_o" << si << " 0 0\n";
-            // The CD return path: vout_neg connects to the winding midpoint via
-            // the load. With a floating winding, the two diodes' cathodes meet
-            // at lo1_a/lo2_a which feed Lo1/Lo2 to vout_pos. The freewheeling
-            // path is via the other diode's body (or an antiparallel ideal D).
-            circuit << "Dfw1_o" << si << " vout_neg_o" << si << " lo1_a_o" << si << " DRECT\n";
-            circuit << "Dfw2_o" << si << " vout_neg_o" << si << " lo2_a_o" << si << " DRECT\n";
             circuit << "Resr_o" << si << " vout_pos_o" << si << " vout_cap_o" << si << " 0.05\n";
             circuit << "Cout_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
             circuit << "Rload_o" << si << " vout_cap_o" << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";

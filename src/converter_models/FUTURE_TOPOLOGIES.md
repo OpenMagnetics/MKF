@@ -41,7 +41,7 @@ real production volume scores higher than a topology that's just
 | `PhaseShiftedFullBridge.cpp` | rectifier-type-aware (CT/CD/FB); 3 ref designs + ZVS + multi-output + NgSpice PtP gates (current iPri NRMSE ≤ 0.20; commutation-ramp refinement pending to reach DAB-quality ≤ 0.15). FW decay model τ = Lr/(n²·R_d_diode) per Vlatkovic 1992 §III asymmetric-commutation. |
 | `PhaseShiftedHalfBridge.cpp` | **DAB-quality** — rectifier-type-aware (CT/CD/FB); 3 ref designs (NRMSE ≤ 0.10), ZVS test, physics-derived freewheel τ = Lr/(2·RON), current-dependent diode drop matched to SPICE |
 | `Dab.cpp` | gold reference, all four DAB modulations |
-| `Llc.cpp` | DAB-quality (Tracks A + B): ZVS diagnostics, ITL=500/500, multi-output warn, 41 test cases / 1335 assertions; rectifier-type-aware (CT / FB / CD / VD) with per-variant netlist + extras (CD: 2× MAS::Inputs for Lo; VD: 2× CAS::Inputs for stacked Co) |
+| `Llc.cpp` | DAB-quality (Tracks A + B): ZVS diagnostics, ITL=500/500, multi-output warn, 42 test cases / 1352 assertions; rectifier-type-aware (CT / FB / CD / VD) with per-variant netlist + extras (CD: 2× MAS::Inputs for Lo; VD: 2× CAS::Inputs for stacked Co). CD SPICE topology rewritten to the canonical Steigerwald form (D1/D2: sec→vout_pos, Lo1/Lo2: sec→vout_neg) with PtP regression (Telecom-240W-CD); earlier topology had no vout_neg→sec return path and never converged on a real CD case. |
 | `Cllc.cpp` | resonant; rewrite plan exists (`CLLC_REWRITE_PLAN.md`) |
 | `Sepic.cpp` / `Zeta.cpp` / `Cuk.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |
 | `Weinberg.cpp` | DAB-quality (header, 3 ref designs, NRMSE, snubber, GEAR) |

@@ -23,6 +23,40 @@ look online if needed**.
 
 ## This session — accomplishments
 
+### LLC CD SPICE topology fix (May 2026)
+
+Rewrote LLC's current-doubler SPICE branch (`Llc.cpp:1567-1596`) to the
+canonical Steigerwald topology. The earlier pattern had no return path
+from `vout_neg` to either secondary terminal — Lo1/Lo2 both terminated
+at `vout_pos`, with isolated freewheel diodes onto `vout_neg`. SPICE
+would never converge on a real CD reference design, and LLC had no CD
+PtP regression so the bug went undetected until SRC's CD buildout
+flagged it.
+
+**Changes:**
+- `src/converter_models/Llc.cpp` CURRENT_DOUBLER branch in
+  `generate_ngspice_circuit` — replaced with the same canonical form
+  Src.cpp uses: D1/D2 from sec_pos/sec_neg to vout_pos, Lo1/Lo2 from
+  sec_pos/sec_neg to vout_neg, Cout+Rload across vout_pos..vout_neg,
+  per-Lo current sense, RC snubbers, no freewheel diodes. Pulled the
+  same 30%-per-Lo ripple sizing as Src.cpp.
+- `tests/TestLlcReferenceDesignsPtp.cpp` — `RefDesignSpec` gained an
+  optional `rectifierType` field; added 4th case `Telecom-240W-CD`
+  (400V → 12V/20A, 100 kHz HB) with loosened Vout (±70 %) and NRMSE
+  (50 %) gates per the same FHA-vs-CD physics caveat documented in
+  FIXME-src-3 (FHA over-predicts CD gain by ~3×).
+- `src/converter_models/FUTURE_TOPOLOGIES.md` — updated the LLC row to
+  reflect the new test count and the CD topology fix.
+
+**Result:** Full `[llc-topology]` suite green (42 cases, 1352
+assertions). Telecom-240W-CD: SPICE converges cleanly in 0.22 s wall
+time, Vout 5.4 V (target 12 V → 55 % under, consistent with FHA-vs-CD
+mismatch), NRMSE 14.8 %.
+
+---
+
+## Previous session — accomplishments
+
 ### SRC CT + CD rectifier buildout (May 2026) — DAB-quality tier-1
 
 Extended the SRC SPICE buildout (already FB-only after the prior session)
