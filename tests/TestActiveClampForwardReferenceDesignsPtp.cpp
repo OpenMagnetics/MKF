@@ -27,12 +27,15 @@
 //                        truly-faithful efficiency check waits for
 //                        REVIEW_PLAN §3.C ZVS/leakage rework.
 //   4. primary current   NRMSE analytical vs SPICE < tol_nrmse
-//                        Loose (≈ 0.99 like the existing
-//                        Test_ActiveClampForward_PtP_AnalyticalVsNgspice)
-//                        because the analytical model lacks the active-
-//                        clamp resonant hump on the primary.  Once §3.C
-//                        ships the resonant analytical model this can
-//                        tighten toward 0.20 like Buck/Boost.
+//                        After the volt-second `/2` removal (no inherent
+//                        /2 in Forward) and shape-match OP anchoring
+//                        (build_for_shape_match), Erickson-50W passes
+//                        DAB-quality (0.15).  UCC2897A and AN1023 still
+//                        sit at ~0.27 — see per-design notes; the
+//                        residual is a SPICE netlist artifact (mag
+//                        current commutates to secondary rather than
+//                        through the active-clamp leg) not an analytical
+//                        bug.
 //
 // Open-loop Vout droop is allowed: the netlist has no Vout regulator,
 // so Vout_spice tracks below Vout_nom by the conduction loss.  We do
@@ -56,6 +59,7 @@
 #include "processors/NgspiceRunner.h"
 #include "ConverterPortChecks.h"
 #include "PtpHelpers.h"
+#include "WaveformDumpHelpers.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -101,6 +105,63 @@ OpenMagnetics::ActiveClampForward build(const RefDesignSpec& s) {
     return fwd;
 }
 
+// Shape-match helper.  Open-loop SPICE drives the main switch at the
+// fixed maximum duty cycle (`tOn = Dmax · Tsw`, see
+// ActiveClampForward.cpp `generate_ngspice_circuit`), so the actual
+// ON-time is set by Dmax — not by the design Vout target.  For a
+// shape-faithful NRMSE we rebuild the analytical model so its
+// internally-computed t1 equals SPICE's tOn, and its secondary ripple
+// matches what the physical Lout produces at the SPICE-settled OP:
+//
+//   • Vout target overridden to `Vout_for_t1 = Dmax·Vin/n − Vd` so that
+//     analytical's `t1 = period · (Vout+Vd)·n / Vin` collapses exactly
+//     to `Dmax · Tsw`, the timing SPICE actually uses.
+//   • Iout overridden to the SPICE-settled `Vout_spice² / Rload_nom`
+//     (load is a pure resistor; ACF's iout is a vout/R projection).
+//   • current_ripple_ratio recomputed from the physical Lout sized in
+//     `ActiveClampForward::get_output_inductance` (worst-case Vin_max,
+//     Dmax, ripple=0.3) and evaluated at the actual Vin_nom, Vout_spice:
+//       Lout      = (Vin_max/n − Vd − Vout_nom) · Dmax/Fs / 0.3
+//       ΔIout     = (Vin_nom/n − Vd − Vout_spice) · Dmax / (Fs·Lout)
+//       ripple_ss = ΔIout / Iout_spice
+//
+// This aligns analytical and SPICE on the three knobs that set the
+// primary-current shape: t1 (timing), Im (= Vin·t1/Lm) and the
+// secondary ramp slope.
+OpenMagnetics::ActiveClampForward build_for_shape_match(
+    const RefDesignSpec& s, double Vout_spice, double turnsRatio) {
+    const double Vout_for_t1 = s.D * s.Vin / turnsRatio - 0.5;
+    const double Iout_spice = Vout_spice * s.Iout / s.Vout;
+    const double Lout = (s.Vin_max / turnsRatio - 0.5 - s.Vout) * s.D
+                        / s.Fs / 0.3;
+    const double dIout =
+        (s.Vin / turnsRatio - 0.5 - Vout_spice) * s.D / (s.Fs * Lout);
+    const double ripple = (Iout_spice > 0.0) ? dIout / Iout_spice : 0.3;
+
+    OpenMagnetics::ActiveClampForward fwd;
+    DimensionWithTolerance iv;
+    // Collapse Vin range to the nominal so the multi-OP iteration in
+    // process_operating_points produces a single point at Vin_nom (the
+    // SPICE OP).  Otherwise the Vin_min sweep would require t1 > T/2 at
+    // the higher Vout_for_t1 target and throw INVALID_DESIGN.
+    iv.set_nominal(s.Vin);
+    iv.set_minimum(s.Vin);
+    iv.set_maximum(s.Vin);
+    fwd.set_input_voltage(iv);
+    fwd.set_diode_voltage_drop(0.5);
+    fwd.set_efficiency(0.9);
+    fwd.set_current_ripple_ratio(ripple);
+    fwd.set_duty_cycle(s.D);
+
+    ForwardOperatingPoint op;
+    op.set_output_voltages({Vout_for_t1});
+    op.set_output_currents({Iout_spice});
+    op.set_switching_frequency(s.Fs);
+    op.set_ambient_temperature(25.0);
+    fwd.set_operating_points({op});
+    return fwd;
+}
+
 using namespace OpenMagnetics::Testing;
 
 // ── PtP harness ────────────────────────────────────────────────────────
@@ -127,14 +188,14 @@ void run_ptp_gates(const RefDesignSpec& s) {
     std::cout << "  N=" << turnsRatios[0] << "  Lm="
               << 1e6 * Lm << " uH\n";
 
-    // ── Analytical pass (anchors the expected primary-current shape) ──
+    // ── Analytical pass (nominal OP) — diagnostic only ────────────────
+    // The NRMSE comparison further down uses a second analytical pass
+    // anchored on the SPICE-settled operating point (see
+    // build_for_shape_match): open-loop SPICE drives D=Dmax fixed and
+    // Vout droops 30-40 % from nominal, changing the analytical ON/OFF
+    // slope ratio.
     auto analyticalOps = fwd.process_operating_points(turnsRatios, Lm);
     REQUIRE(!analyticalOps.empty());
-    auto aTime = ptp_current_time(analyticalOps[0], 0);
-    auto aData = ptp_current(analyticalOps[0], 0);
-    REQUIRE(!aData.empty());
-    REQUIRE(!aTime.empty());
-    auto aResampled = ptp_interp(aTime, aData, 256);
 
     // ── SPICE switching pass — wall-clock-gated workhorse ─────────────
     // ACF hardcodes Cout = 100 µF + Cclamp = 10 µF.  At low Iout the
@@ -204,16 +265,34 @@ void run_ptp_gates(const RefDesignSpec& s) {
     CHECK(loss <=  s.tol_loss_max);
 
     // Gate 4 — primary current waveform NRMSE (analytical vs SPICE).
+    // Re-run analytical with the SPICE-settled OP (see
+    // build_for_shape_match) so both waveforms share the same t1, Im,
+    // and secondary ripple.
+    const double voutMean = ConverterPortChecks::time_weighted_mean(voutT, voutD);
+    auto fwdShape = build_for_shape_match(s, voutMean, turnsRatios[0]);
+    auto analyticalOpsShape = fwdShape.process_operating_points(turnsRatios, Lm);
+    REQUIRE(!analyticalOpsShape.empty());
+    auto aTime = ptp_current_time(analyticalOpsShape[0], 0);
+    auto aData = ptp_current(analyticalOpsShape[0], 0);
+    REQUIRE(!aData.empty());
+    REQUIRE(!aTime.empty());
+    auto aResampled = ptp_interp(aTime, aData, 256);
+
     auto sTime = ptp_current_time(simOps[0], 0);
     auto sData = ptp_current(simOps[0], 0);
     REQUIRE(!sData.empty());
     REQUIRE(!sTime.empty());
     auto sResampled = ptp_interp(sTime, sData, 256);
-    const double nrmse = ptp_nrmse(aResampled, sResampled);
+    const double nrmse = ptp_nrmse(aResampled, sResampled, 256);
+    std::cout << "  Vout_spice = " << voutMean << " V (Vout_nom "
+              << s.Vout << " V)\n";
     std::cout << "  iPri NRMSE (analytical vs SPICE) = "
               << 100.0 * nrmse << " %   (gate "
               << 100.0 * s.tol_nrmse << " %)\n";
     CHECK(nrmse < s.tol_nrmse);
+
+    OpenMagnetics::Testing::dump_waveforms_csv(
+        std::string("acf_") + s.name, analyticalOpsShape[0], simOps[0]);
 }
 
 }  // namespace
@@ -241,7 +320,17 @@ TEST_CASE("ACF reference design PtP — UCC2897A-class 100 W telecom POL "
         /*tol_vin_pct*/  2.0,
         /*tol_loss_neg*/ 0.05,
         /*tol_loss_max*/ 0.60,
-        /*tol_nrmse*/    1.10
+        // SPICE primary current collapses to ~0 during OFF for high-N
+        // (n=4.26) / high-Iout (30 A) designs: the magnetizing current
+        // commutates via the secondary-side rectifier instead of via the
+        // active-clamp leg (the SW model's Cclamp path with K=0.9999
+        // loses out to the small Lsec = Lm/n²).  Analytical assumes the
+        // ideal +Im/2 → -Im/2 ramp through the clamp.  Resolving this
+        // requires either tighter coupling K, a body-diode on S_clamp,
+        // or a clamp-cap-referenced-to-Vin topology in the netlist —
+        // tracked separately; loosen the gate here to 0.30 (vs DAB's
+        // 0.15) to keep the regression honest about the residual.
+        /*tol_nrmse*/    0.30
     };
     run_ptp_gates(s);
 }
@@ -262,7 +351,10 @@ TEST_CASE("ACF reference design PtP — Erickson §6.4-class 50 W "
         /*tol_vin_pct*/  2.0,
         /*tol_loss_neg*/ 0.05,
         /*tol_loss_max*/ 0.60,
-        /*tol_nrmse*/    1.10
+        // Erickson is moderate-N (1.75) / moderate-Iout (10 A); SPICE
+        // primary stays continuous through OFF and analytical matches
+        // to DAB-quality after shape-match.
+        /*tol_nrmse*/    0.15
     };
     run_ptp_gates(s);
 }
@@ -283,7 +375,10 @@ TEST_CASE("ACF reference design PtP — AN-1023-class 200 W brick "
         /*tol_vin_pct*/  2.0,
         /*tol_loss_neg*/ 0.05,
         /*tol_loss_max*/ 0.60,
-        /*tol_nrmse*/    1.10
+        // High Iout (16 A) exhibits the same SPICE secondary-commutation
+        // artifact as UCC2897A (see notes there).  Loose to 0.30 until
+        // the netlist clamp-leg fix lands.
+        /*tol_nrmse*/    0.30
     };
     run_ptp_gates(s);
 }

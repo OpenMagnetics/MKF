@@ -51,7 +51,13 @@ namespace OpenMagnetics {
 
         // Assume CCM
         auto period = 1.0 / switchingFrequency;
-        auto t1 = period / 2 * (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
+        // Switch ON time from volt-second balance on the output inductor:
+        //   Vout = Vin/n · D − Vd  ⇒  D = (Vout+Vd)/(Vin/n)
+        // SSF has NO inherent /2 (unlike push-pull/half-bridge where D is
+        // per-half-cycle).  Matches the SPICE netlist tOn computation
+        // (generate_ngspice_circuit line ~519) so SPICE and analytical use
+        // the same duty cycle and waveform timing.
+        auto t1 = period * (mainOutputVoltage + diodeVoltageDrop) / (inputVoltage / mainSecondaryTurnsRatio);
         if (t1 > period / 2) {
             throw InvalidInputException(ErrorCode::INVALID_DESIGN_REQUIREMENTS, "T1 cannot be larger than period/2, wrong topology configuration");
         }
