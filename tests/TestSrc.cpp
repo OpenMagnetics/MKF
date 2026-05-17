@@ -14,11 +14,13 @@
  *   - AdvancedSrc round-trip sets desired turns ratio and resonant components
  */
 #include "converter_models/Src.h"
+#include "converter_models/Topology.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <variant>
 
 using namespace OpenMagnetics;
 using Catch::Matchers::WithinAbs;
@@ -175,4 +177,91 @@ TEST_CASE("SRC: rejects unsupported rectifier types in Phase 2", "[src-topology]
     REQUIRE_THROWS_AS(
         src.process_operating_points(std::vector<double>{}, 0),
         std::runtime_error);
+}
+
+
+// =====================================================================
+// get_extra_components_inputs — Cr (CAS) + Lr (MAS Inputs)
+// =====================================================================
+
+TEST_CASE("SRC: get_extra_components_inputs throws before processing", "[src-topology]") {
+    auto j = make_src_json(400, 48, 10, 100e3, 100e3, 2.0);
+    Src src(j);
+    REQUIRE_THROWS_AS(
+        src.get_extra_components_inputs(ExtraComponentsMode::IDEAL),
+        std::runtime_error);
+}
+
+
+TEST_CASE("SRC: get_extra_components_inputs REAL requires magnetic", "[src-topology]") {
+    auto j = make_src_json(400, 48, 10, 100e3, 100e3, 2.0);
+    Src src(j);
+    src.process_operating_points(std::vector<double>{}, 0);
+    REQUIRE_THROWS_AS(
+        src.get_extra_components_inputs(ExtraComponentsMode::REAL, std::nullopt),
+        std::invalid_argument);
+}
+
+
+TEST_CASE("SRC: get_extra_components_inputs IDEAL returns Cr + Lr", "[src-topology]") {
+    // HB, fr=100kHz, Q=2, Vin=400, Vout=48, Iout=10A
+    auto j = make_src_json(400, 48, 10, /*fsw*/100e3, /*fr*/100e3, /*Q*/2.0);
+    Src src(j);
+    src.process_operating_points(std::vector<double>{}, 0);
+
+    auto extras = src.get_extra_components_inputs(ExtraComponentsMode::IDEAL);
+    REQUIRE(extras.size() == 2);
+
+    // [0] = Cr as CAS::Inputs (RESONANT application)
+    REQUIRE(std::holds_alternative<CAS::Inputs>(extras[0]));
+    auto& crInputs = std::get<CAS::Inputs>(extras[0]);
+    auto& crDr = crInputs.get_design_requirements();
+    REQUIRE(crDr.get_capacitance().get_nominal().has_value());
+    double Cr_emit = crDr.get_capacitance().get_nominal().value();
+    REQUIRE_THAT(Cr_emit, WithinRel(src.get_computed_resonant_capacitance(), 1e-9));
+    REQUIRE(crDr.get_rated_voltage() > 0);
+    REQUIRE(crDr.get_role().has_value());
+    REQUIRE(crDr.get_role().value() == CAS::Application::RESONANT);
+    REQUIRE(!crInputs.get_operating_points().empty());
+    {
+        auto& exc = crInputs.get_operating_points()[0].get_excitation();
+        REQUIRE(exc.get_voltage().has_value());
+        REQUIRE(exc.get_current().has_value());
+        REQUIRE(!exc.get_voltage()->get_waveform()->get_data().empty());
+        REQUIRE(!exc.get_current()->get_waveform()->get_data().empty());
+    }
+
+    // [1] = Lr as MAS Inputs (always external in IDEAL)
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[1]));
+    auto& lrInputs = std::get<OpenMagnetics::Inputs>(extras[1]);
+    auto& lrDr = lrInputs.get_design_requirements();
+    REQUIRE(lrDr.get_magnetizing_inductance().get_nominal().has_value());
+    double Lr_emit = lrDr.get_magnetizing_inductance().get_nominal().value();
+    REQUIRE_THAT(Lr_emit, WithinRel(src.get_computed_resonant_inductance(), 1e-9));
+    REQUIRE(lrDr.get_topology().has_value());
+    REQUIRE(lrDr.get_topology().value() == Topologies::SERIES_RESONANT_CONVERTER);
+    REQUIRE(!lrInputs.get_operating_points().empty());
+    {
+        auto& exc = lrInputs.get_operating_points()[0].get_excitations_per_winding()[0];
+        REQUIRE(exc.get_current().has_value());
+        REQUIRE(exc.get_voltage().has_value());
+    }
+}
+
+
+TEST_CASE("SRC: get_extra_components_inputs round-trips fr = 1/(2π√(LrCr))",
+          "[src-topology]") {
+    auto j = make_src_json(400, 48, 10, 100e3, 100e3, 2.0);
+    Src src(j);
+    src.process_operating_points(std::vector<double>{}, 0);
+    auto extras = src.get_extra_components_inputs(ExtraComponentsMode::IDEAL);
+    REQUIRE(extras.size() == 2);
+    double Cr = std::get<CAS::Inputs>(extras[0])
+                    .get_design_requirements().get_capacitance()
+                    .get_nominal().value();
+    double Lr = std::get<OpenMagnetics::Inputs>(extras[1])
+                    .get_design_requirements().get_magnetizing_inductance()
+                    .get_nominal().value();
+    double fr = 1.0 / (2.0 * M_PI * std::sqrt(Lr * Cr));
+    REQUIRE_THAT(fr, WithinRel(100e3, 1e-3));
 }

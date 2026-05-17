@@ -159,6 +159,18 @@ public:
         const std::vector<double>& turnsRatios,
         double magnetizingInductance,
         size_t numberOfPeriods = 2);
+
+    /** Extra-component inputs: SRC has TWO discrete components beyond the
+     *  transformer — the resonant capacitor Cr and the series inductor Lr.
+     *  Returns a vector of length 2: { CAS::Inputs(resonantCapacitor),
+     *  MAS::Inputs(seriesInductor) }. The Lr Inputs is sized to either the
+     *  full computedResonantInductance (mode=IDEAL) or to the residual
+     *  Lr_external = max(Lr - Llk, 0) once a physical magnetic is available
+     *  (mode=REAL). Requires a prior process_operating_points() call so
+     *  extraCap and extraInd waveforms are populated. */
+    std::vector<std::variant<Inputs, CAS::Inputs>> get_extra_components_inputs(
+        ExtraComponentsMode mode,
+        std::optional<Magnetic> magnetic = std::nullopt) override;
 };
 
 

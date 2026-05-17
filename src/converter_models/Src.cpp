@@ -20,6 +20,7 @@
 // =====================================================================
 #include "converter_models/Src.h"
 #include "converter_models/Topology.h"
+#include "physical_models/LeakageInductance.h"
 #include "support/Utils.h"
 #include <cmath>
 #include <iostream>
@@ -242,6 +243,12 @@ std::vector<OperatingPoint> Src::process_operating_points(
     if (computedResonantInductance <= 0 || computedResonantCapacitance <= 0)
         process_design_requirements();
 
+    // Clear extra-component waveforms — repopulated by per-OP solver.
+    extraCapVoltageWaveforms.clear();
+    extraCapCurrentWaveforms.clear();
+    extraIndVoltageWaveforms.clear();
+    extraIndCurrentWaveforms.clear();
+
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
     auto& ops = get_operating_points();
@@ -372,17 +379,42 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
     // ── Primary winding waveforms (sinusoidal current; square bridge voltage) ──
     std::vector<double> ILr_full(totalSamples);
     std::vector<double> Vpri_full(totalSamples);
+    std::vector<double> VCr_full(totalSamples);   // FHA: voltage across Cr (lags ILr by 90°)
+    std::vector<double> VLr_full(totalSamples);   // FHA: voltage across Lr (leads ILr by 90°)
     double Vbridge_lvl = k_bridge * inputVoltage;   // half-bridge: ±Vin/2; full-bridge: ±Vin
     for (int k = 0; k < totalSamples; ++k) {
         double t = time_full[k];
         double theta = w * t;                       // bridge half-cycle ref (high half: 0..π)
         ILr_full[k]  = ILr_pk * std::sin(theta - phi);
+        // VCr = (1/C)·∫i dt = -(ILr_pk/(ωC))·cos(θ-φ)   (FHA, zero-mean)
+        VCr_full[k]  = -VCr_pk * std::cos(theta - phi);
+        // VLr = Lr·di/dt = ω·Lr·ILr_pk·cos(θ-φ) = XLr·ILr_pk·cos(θ-φ)
+        VLr_full[k]  =  XLr * ILr_pk * std::cos(theta - phi);
         // Bridge midpoint voltage referred to bridge-zero-DC frame:
         //   half 0 (0 ≤ θ mod 2π < π) → +Vbridge_lvl
         //   half 1 (π ≤ θ mod 2π < 2π) → -Vbridge_lvl
         double thetaMod = std::fmod(theta, 2.0 * M_PI);
         if (thetaMod < 0) thetaMod += 2.0 * M_PI;
         Vpri_full[k] = (thetaMod < M_PI) ? +Vbridge_lvl : -Vbridge_lvl;
+    }
+
+    // Stash Cr / Lr waveforms for get_extra_components_inputs.
+    {
+        Waveform vcW; vcW.set_ancillary_label(WaveformLabel::CUSTOM);
+        vcW.set_data(VCr_full); vcW.set_time(time_full);
+        extraCapVoltageWaveforms.push_back(vcW);
+
+        Waveform icW; icW.set_ancillary_label(WaveformLabel::CUSTOM);
+        icW.set_data(ILr_full); icW.set_time(time_full);     // same current through Cr and Lr (series)
+        extraCapCurrentWaveforms.push_back(icW);
+
+        Waveform vlW; vlW.set_ancillary_label(WaveformLabel::CUSTOM);
+        vlW.set_data(VLr_full); vlW.set_time(time_full);
+        extraIndVoltageWaveforms.push_back(vlW);
+
+        Waveform ilW; ilW.set_ancillary_label(WaveformLabel::CUSTOM);
+        ilW.set_data(ILr_full); ilW.set_time(time_full);
+        extraIndCurrentWaveforms.push_back(ilW);
     }
 
     {
@@ -852,6 +884,134 @@ std::vector<ConverterWaveforms> Src::simulate_and_extract_topology_waveforms(
     }
     set_num_periods_to_extract(originalNumPeriods);
     return results;
+}
+
+
+// =====================================================================
+// get_extra_components_inputs
+//
+// SRC has TWO discrete components alongside the transformer:
+//   1. resonant capacitor Cr  — emitted as a CAS::Inputs
+//   2. series inductor Lr     — emitted as MAS Inputs (always external;
+//                               SRC has no "integrated Lr in transformer
+//                               leakage" branch — that's the LLC pattern).
+//
+// mode=IDEAL  → series-inductor inductance = computedResonantInductance
+// mode=REAL   → recompute Cr to resonate at fr with the actual available
+//               inductance (leakage if Llk >= Lr, otherwise Lr), and emit
+//               the external residual Lr_ext = max(Lr - Llk, 0).
+//
+// Mirrors Llc::get_extra_components_inputs (separate-Ls branch) with the
+// LLC's CT/CD/VD output-side extras stripped — SRC Phase-1+2 supports
+// only FB-diode rectifier.
+// =====================================================================
+std::vector<std::variant<Inputs, CAS::Inputs>> Src::get_extra_components_inputs(
+    ExtraComponentsMode mode,
+    std::optional<Magnetic> magnetic)
+{
+    if (mode == ExtraComponentsMode::REAL && !magnetic.has_value())
+        throw std::invalid_argument(
+            "SRC get_extra_components_inputs: mode REAL requires a designed magnetic");
+
+    if (computedResonantInductance <= 0 || computedResonantCapacitance <= 0 ||
+        extraCapVoltageWaveforms.empty())
+        throw std::runtime_error(
+            "SRC get_extra_components_inputs: call process_operating_points first");
+
+    double Lr = computedResonantInductance;
+    double Cr = computedResonantCapacitance;
+    double fr = computedResonantFrequency;
+    if (fr <= 0)
+        throw std::runtime_error("SRC get_extra_components_inputs: resonant frequency not set");
+
+    double Llk = 0.0;
+    if (mode == ExtraComponentsMode::REAL) {
+        auto leakageOutput = LeakageInductance().calculate_leakage_inductance_all_windings(
+            magnetic.value(), fr);
+        auto perWinding = leakageOutput.get_leakage_inductance_per_winding();
+        if (!perWinding.empty())
+            Llk = resolve_dimensional_values(perWinding[0]);
+        // Recalculate Cr to resonate with the actual available inductance.
+        double Lr_eff = (Llk >= Lr) ? Llk : Lr;
+        Cr = 1.0 / (4.0 * M_PI * M_PI * fr * fr * Lr_eff);
+    }
+
+    size_t nOps = extraCapVoltageWaveforms.size();
+    std::vector<std::variant<Inputs, CAS::Inputs>> result;
+
+    // -------- (1) Resonant capacitor Cr ---------
+    {
+        CAS::Inputs casInputs;
+        CAS::DesignRequirements dr;
+        CAS::DimensionWithTolerance capacitance;
+        capacitance.set_nominal(Cr);
+        dr.set_capacitance(capacitance);
+
+        double peakVc = 0.0;
+        for (const auto& wfm : extraCapVoltageWaveforms)
+            for (double v : wfm.get_data())
+                peakVc = std::max(peakVc, std::abs(v));
+        dr.set_rated_voltage(peakVc * 1.2);
+        dr.set_role(CAS::Application::RESONANT);
+        dr.set_name("resonantCapacitor");
+        casInputs.set_design_requirements(dr);
+
+        std::vector<CAS::TwoTerminalOperatingPoint> casOps;
+        for (size_t i = 0; i < nOps; ++i) {
+            CAS::TwoTerminalOperatingPoint op;
+            CAS::OperatingPointExcitation exc;
+            exc.set_frequency(fr);
+
+            CAS::SignalDescriptor vSig; CAS::Waveform vWfm;
+            vWfm.set_data(extraCapVoltageWaveforms[i].get_data());
+            if (extraCapVoltageWaveforms[i].get_time())
+                vWfm.set_time(extraCapVoltageWaveforms[i].get_time().value());
+            vSig.set_waveform(vWfm); exc.set_voltage(vSig);
+
+            CAS::SignalDescriptor iSig; CAS::Waveform iWfm;
+            iWfm.set_data(extraCapCurrentWaveforms[i].get_data());
+            if (extraCapCurrentWaveforms[i].get_time())
+                iWfm.set_time(extraCapCurrentWaveforms[i].get_time().value());
+            iSig.set_waveform(iWfm); exc.set_current(iSig);
+
+            op.set_excitation(exc);
+            casOps.push_back(op);
+        }
+        casInputs.set_operating_points(casOps);
+        result.emplace_back(std::move(casInputs));
+    }
+
+    // -------- (2) Series inductor Lr (always external in SRC) ---------
+    double Lr_external = (mode == ExtraComponentsMode::IDEAL)
+        ? Lr
+        : ((Llk < Lr) ? (Lr - Llk) : 0.0);
+
+    if (Lr_external > 0.0 && !extraIndVoltageWaveforms.empty()) {
+        Inputs masInputs;
+        DesignRequirements dr;
+        DimensionWithTolerance inductance;
+        inductance.set_nominal(Lr_external);
+        dr.set_magnetizing_inductance(inductance);
+        dr.set_name("seriesInductor");
+        dr.set_topology(Topologies::SERIES_RESONANT_CONVERTER);
+        dr.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+        dr.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY});
+        masInputs.set_design_requirements(dr);
+
+        std::vector<OperatingPoint> masOps;
+        for (size_t i = 0; i < nOps; ++i) {
+            OperatingPoint op;
+            auto& vWfm = extraIndVoltageWaveforms[i];
+            auto& iWfm = extraIndCurrentWaveforms[i];
+            auto excitation = complete_excitation(iWfm, vWfm, fr, "Primary");
+            op.get_mutable_excitations_per_winding().push_back(excitation);
+            masOps.push_back(op);
+        }
+        masInputs.set_operating_points(masOps);
+        result.emplace_back(std::move(masInputs));
+    }
+
+    return result;
 }
 
 
