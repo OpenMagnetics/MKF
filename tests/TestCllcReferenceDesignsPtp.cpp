@@ -21,6 +21,21 @@
 // diagnostically while still rejecting a regressed waveform that lost
 // shape entirely.
 //
+// FIXME-item3 (Telecom-250W above-fr loss):
+// Telecom-250W (fsw=250 kHz, above fr=200 kHz) reports 34 % loss vs
+// 1-17 % on the other designs. CSV (May-2026): SPICE secondary current
+// peaks ±1.38 A vs analytical ±7.95 A — a 6× gap (analytical correctly
+// reflects n=8.33×; SPICE only delivers 1.66× ratio). Cause: SR is
+// gated synchronously with primary PWM (Cllc.cpp:1862-1881). At fr or
+// below the residual secondary current at SR-open is ~0 so this is
+// fine, but above-fr it is non-zero and gets dumped into the 1k SR
+// snubbers. Attempted fix (adding antiparallel SR body diodes) turns
+// the SR into a passive rectifier and breaks at-fr designs and the
+// reverse mode (peak ratio exploded to 171× on reverse). Proper fix
+// needs current-direction-aware SR gating (B-source conditional on
+// i_sec polarity) — significant model work. Still within the 60 %
+// loss gate.
+
 // FIXME-item2 (reverse-mode shape mismatch, lower priority):
 // The Telecom-500W-REVERSE design sits at iPri NRMSE ≈ 8.85 % vs
 // forward variants at ≈ 5 %. Investigation (May-2026):
