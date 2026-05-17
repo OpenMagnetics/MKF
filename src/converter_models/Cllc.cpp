@@ -820,6 +820,27 @@ double get_value_or(T&& val, double default_val) {
                                                        Vi_solver, Vo, Lr_eq, Lm, Cr_eq,
                                                        segments, residual);
 
+        // FIXME (asymmetric 5-state TDA): per plan §7 and the comment at
+        // line 357, asymmetric tanks (a≠1 or b≠1) are currently run through
+        // the SYMMETRIC collapsed 3-state form (Lr_eq, Cr_eq, Lm). On the
+        // KIT-20kW-Asymmetric reference (a=0.95, b=1.052) the Newton over
+        // this collapsed form has multiple local minima:
+        //   • OP[0] (Vi=804 nominal+LIP): converges to vC≈-4545 V (5.7×Vi)
+        //     with residual ≈ 8.25; the cap discharge through the tank
+        //     impedance Zr=√(Lr_eq/Cr_eq)≈15Ω yields a spurious peak
+        //     current ≈ 4545/15 ≈ 300 A, matching the observed analytical
+        //     i_range = ±301 A vs SPICE ±54 A.
+        //   • OP[2] (Vi=900): false convergence (residual ≈ 1.7e-4) to a
+        //     non-physical iLs=5.4e4 A, vC=-1.6 MV — caught by the sanity
+        //     block below; the fallback seed is then re-propagated but is
+        //     itself not a steady state, so the emitted waveform contains
+        //     a transient.
+        // The shape-only ptp_nrmse (PtpHelpers.h:213) normalises each
+        // waveform by its own AC-RMS, so this 5.6× amplitude bug still
+        // passes the 16 % NRMSE gate. The proper fix is implementing the
+        // asymmetric 5-state TDA (4-D Newton on (iLr1, iLm, vCr1, vCr2)
+        // with separate Lr1/Cr1 and Lr2/Cr2 sub-state ODEs). Sanity tweaks
+        // here only shift the failure mode — fallback is non-steady-state.
         // Sanity-check against null-space blow-up; fall back to seed if violated.
         double sanity_iLs = std::max(10.0 * Ires_est, 20.0);
         double sanity_vC  = std::max(10.0 * std::abs(Vi), 10.0 * std::abs(Vo));
