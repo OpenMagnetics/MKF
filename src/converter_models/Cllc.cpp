@@ -709,6 +709,416 @@ double get_value_or(T&& val, double default_val) {
         }
     }
 
+    // =========================================================================
+    // 4-STATE asymmetric CLLC TDA — implements Sun et al. 2020 IEEE TPEL
+    // piecewise time-domain model for the case a≠1 or b≠1 (asymmetric tanks).
+    //
+    // State : (iLr1, iLm, vCr1, vCr2_pri)   — vCr2 referred to primary
+    // Modes : P_POS, P_NEG, F            — same labels as symmetric path
+    // ODE   : block-antidiagonal 4x4 linear with constant forcing.
+    //         A² is block-diagonal with 2×2 blocks M_top=A12·A21,
+    //         M_bot=A21·A12 (same eigenvalues). Closed-form propagator via
+    //         2×2 eigendecomposition of M_top — exact, no Euler.
+    //
+    // Per-mode forcing (σ = +1 P_POS, −1 P_NEG):
+    //   Δ = Lr1·Lm + Lr1·Lr2 + Lr2·Lm
+    //   diLr1/dt = ((Lm+Lr2)·(Vi-vCr1) - Lm·(vCr2+σ·Vo)) / Δ
+    //   diLm /dt = ( Lr2  ·(Vi-vCr1) + Lr1·(vCr2+σ·Vo)) / Δ
+    //   dvCr1/dt = iLr1 / Cr1
+    //   dvCr2/dt = (iLr1 - iLm) / Cr2
+    //   Equilibrium: x_eq = (0, 0, Vi, -σ·Vo).
+    // F (freewheel): iLr1 ≡ iLm enforced (i_Lr2 = 0 → Cr2 frozen):
+    //   diLm/dt  = (Vi - vCr1) / (Lr1 + Lm)
+    //   dvCr1/dt = iLm / Cr1
+    //   dvCr2/dt = 0
+    // =========================================================================
+    struct CllcTankParams4 { double Lr1, Lm, Lr2, Cr1, Cr2; };
+    struct CllcState4 { double iLr1, iLm, vCr1, vCr2; };
+    struct CllcSegment4 {
+        CllcSubState state;
+        double t_start, t_end;
+        CllcState4 x_start, x_end;
+    };
+
+    // Solve  d²x/dt² = M·x  for 2-D x at time t given x(0) and dx/dt(0).
+    // For physical resonant tanks both eigenvalues of M are ≤ 0; this
+    // routine computes x(t) = cos(√(-M)·t)·x(0) + (sin(√(-M)·t)/√(-M))·ẋ(0)
+    // via 2×2 eigendecomposition. Degenerate ω→0 falls back to the
+    // straight-line limit (x + ẋ·t).
+    void cllc4_oscillate_2x2(const double M[2][2], double t,
+                              double x0, double x1, double xd0, double xd1,
+                              double& y0, double& y1) {
+        double tr = M[0][0] + M[1][1];
+        double det = M[0][0]*M[1][1] - M[0][1]*M[1][0];
+        double disc = (tr*tr) * 0.25 - det;
+        if (disc < 0 && disc > -1e-20) disc = 0;   // numerical fuzz
+        if (disc < 0) {
+            // Complex eigenvalues — shouldn't happen for lossless tanks
+            // (symmetric-positive structure of A12·A21 with real Lr,Cr).
+            // Throw rather than silently round; mirrors CLAUDE.md "no
+            // silent shortcuts" rule.
+            throw std::runtime_error(
+                "CLLC 4-state propagator: M has complex eigenvalues "
+                "(disc=" + std::to_string(disc) + "); tank parameters "
+                "may be non-physical (negative Lr/Cr).");
+        }
+        double sq = std::sqrt(disc);
+        double mu1 = tr * 0.5 + sq;     // larger (less negative) eigenvalue
+        double mu2 = tr * 0.5 - sq;
+        // Numerical fuzz: small positive μ rounded to 0 (purely imaginary
+        // mode reduces to drift); large positive μ would mean unstable
+        // tank — throw.
+        if (mu1 > 1e-6 || mu2 > 1e-6) {
+            throw std::runtime_error(
+                "CLLC 4-state propagator: M has positive eigenvalue "
+                "(μ1=" + std::to_string(mu1) + ", μ2=" + std::to_string(mu2) +
+                "); tank is non-passive.");
+        }
+        double w1 = std::sqrt(std::max(-mu1, 0.0));
+        double w2 = std::sqrt(std::max(-mu2, 0.0));
+        // Eigenvectors v1, v2 of M (M·v = μ·v).
+        double v1[2], v2[2];
+        if (std::abs(M[0][1]) > 1e-30 * (std::abs(tr) + 1.0)) {
+            v1[0] = M[0][1]; v1[1] = mu1 - M[0][0];
+            v2[0] = M[0][1]; v2[1] = mu2 - M[0][0];
+        }
+        else if (std::abs(M[1][0]) > 1e-30 * (std::abs(tr) + 1.0)) {
+            v1[0] = mu1 - M[1][1]; v1[1] = M[1][0];
+            v2[0] = mu2 - M[1][1]; v2[1] = M[1][0];
+        }
+        else {
+            // M is diagonal (decoupled). μ1 ↔ M[0][0], μ2 ↔ M[1][1] in
+            // some order; choose canonical alignment.
+            if (std::abs(M[0][0] - mu1) < std::abs(M[0][0] - mu2)) {
+                v1[0] = 1; v1[1] = 0; v2[0] = 0; v2[1] = 1;
+            } else {
+                v1[0] = 0; v1[1] = 1; v2[0] = 1; v2[1] = 0;
+            }
+        }
+        double det_P = v1[0]*v2[1] - v1[1]*v2[0];
+        if (std::abs(det_P) < 1e-30) {
+            throw std::runtime_error(
+                "CLLC 4-state propagator: degenerate eigenvector matrix "
+                "(repeated eigenvalue without Jordan block handling).");
+        }
+        // Decompose x0 and xdot0 in the eigenbasis: (a, b) such that
+        // x = a·v1 + b·v2. Solving the 2×2 system P·(a,b)^T = x:
+        auto decomp = [&](double r0, double r1, double& a, double& b) {
+            a = ( v2[1]*r0 - v2[0]*r1) / det_P;
+            b = (-v1[1]*r0 + v1[0]*r1) / det_P;
+        };
+        double a0, b0, ad0, bd0;
+        decomp(x0,  x1,  a0,  b0);
+        decomp(xd0, xd1, ad0, bd0);
+        auto evolve = [](double w, double t_, double a, double ad) {
+            if (w < 1e-30) return a + ad * t_;     // ω→0: drift limit
+            return a * std::cos(w*t_) + ad * std::sin(w*t_) / w;
+        };
+        double c1 = evolve(w1, t, a0, ad0);
+        double c2 = evolve(w2, t, b0, bd0);
+        y0 = c1*v1[0] + c2*v2[0];
+        y1 = c1*v1[1] + c2*v2[1];
+    }
+
+    CllcState4 cllc4_propagate_substate(CllcSubState s, CllcState4 x_in,
+                                         double dt, double Vi, double Vo,
+                                         const CllcTankParams4& tp) {
+        if (dt <= 0) return x_in;
+        if (s == CllcSubState::F) {
+            // Freewheel: iLr1 ≡ iLm, vCr2 frozen. Single LC oscillator
+            // with L_F = Lr1 + Lm, C_F = Cr1, equilibrium iLm_eq=0, vCr1_eq=Vi.
+            double L_F = tp.Lr1 + tp.Lm;
+            double w  = 1.0 / std::sqrt(L_F * tp.Cr1);
+            double Z  = std::sqrt(L_F / tp.Cr1);
+            double cs = std::cos(w*dt), sn = std::sin(w*dt);
+            double iLm0 = x_in.iLm;          // = iLr1 in F mode
+            double dVc  = x_in.vCr1 - Vi;
+            CllcState4 out{};
+            out.iLm  = iLm0 * cs - dVc / Z * sn;
+            out.iLr1 = out.iLm;
+            out.vCr1 = Vi + dVc * cs + iLm0 * Z * sn;
+            out.vCr2 = x_in.vCr2;
+            return out;
+        }
+        // P_POS / P_NEG: full 4-state propagation.
+        double sigma = (s == CllcSubState::P_POS) ? +1.0 : -1.0;
+        double Delta = tp.Lr1*tp.Lm + tp.Lr1*tp.Lr2 + tp.Lr2*tp.Lm;
+        double x3_eq = Vi;
+        double x4_eq = -sigma * Vo;
+        // Shifted state z̃ = z − z_eq.
+        double xt0 = x_in.iLr1;
+        double xt1 = x_in.iLm;
+        double yt0 = x_in.vCr1 - x3_eq;
+        double yt1 = x_in.vCr2 - x4_eq;
+        // A12 entries (top-right block of A).
+        double A12[2][2] = {
+            { -(tp.Lm + tp.Lr2)/Delta, -tp.Lm/Delta },
+            { -tp.Lr2/Delta,             tp.Lr1/Delta }
+        };
+        // A21 entries (bottom-left block of A).
+        double A21[2][2] = {
+            { 1.0/tp.Cr1, 0.0 },
+            { 1.0/tp.Cr2, -1.0/tp.Cr2 }
+        };
+        // ẋ(0) = A12·ỹ(0), ẏ(0) = A21·x̃(0).
+        double xd0 = A12[0][0]*yt0 + A12[0][1]*yt1;
+        double xd1 = A12[1][0]*yt0 + A12[1][1]*yt1;
+        double yd0 = A21[0][0]*xt0 + A21[0][1]*xt1;
+        double yd1 = A21[1][0]*xt0 + A21[1][1]*xt1;
+        // M_top = A12·A21, M_bot = A21·A12.
+        double Mt[2][2] = {
+            { A12[0][0]*A21[0][0] + A12[0][1]*A21[1][0],
+              A12[0][0]*A21[0][1] + A12[0][1]*A21[1][1] },
+            { A12[1][0]*A21[0][0] + A12[1][1]*A21[1][0],
+              A12[1][0]*A21[0][1] + A12[1][1]*A21[1][1] }
+        };
+        double Mb[2][2] = {
+            { A21[0][0]*A12[0][0] + A21[0][1]*A12[1][0],
+              A21[0][0]*A12[0][1] + A21[0][1]*A12[1][1] },
+            { A21[1][0]*A12[0][0] + A21[1][1]*A12[1][0],
+              A21[1][0]*A12[0][1] + A21[1][1]*A12[1][1] }
+        };
+        double x_new0, x_new1, y_new0, y_new1;
+        cllc4_oscillate_2x2(Mt, dt, xt0, xt1, xd0, xd1, x_new0, x_new1);
+        cllc4_oscillate_2x2(Mb, dt, yt0, yt1, yd0, yd1, y_new0, y_new1);
+        CllcState4 out{};
+        out.iLr1 = x_new0;
+        out.iLm  = x_new1;
+        out.vCr1 = y_new0 + x3_eq;
+        out.vCr2 = y_new1 + x4_eq;
+        return out;
+    }
+
+    // VLm during a P sub-state is ±Vo; during F it is Lm/(Lr1+Lm)·(Vi-vCr1).
+    // Trigger value at end of dt: P_POS → F when iLr1 - iLm drops to 0 from
+    // positive; P_NEG → F when it rises to 0 from negative; F → P when VLm
+    // exits ±Vo window. Mirror of cllc_trigger_value semantics.
+    double cllc4_trigger_value(CllcSubState s, CllcState4 x_in, double dt,
+                                double Vi, double Vo, const CllcTankParams4& tp) {
+        CllcState4 x = cllc4_propagate_substate(s, x_in, dt, Vi, Vo, tp);
+        if (s == CllcSubState::P_POS) return x.iLm  - x.iLr1;    // rises to 0
+        if (s == CllcSubState::P_NEG) return x.iLr1 - x.iLm;     // rises to 0
+        double VLm = (tp.Lm / (tp.Lr1 + tp.Lm)) * (Vi - x.vCr1);
+        return std::max(VLm - Vo, -VLm - Vo);
+    }
+
+    double cllc4_find_next_event(CllcSubState s, CllcState4 x_in, double t_max,
+                                  double Vi, double Vo, const CllcTankParams4& tp) {
+        constexpr int COARSE_STEPS = 64;
+        double dt_coarse = t_max / COARSE_STEPS;
+        double prev_g = cllc4_trigger_value(s, x_in, 1e-12, Vi, Vo, tp);
+        if (prev_g >= 0) return 0.0;
+        for (int k = 1; k <= COARSE_STEPS; ++k) {
+            double t = k * dt_coarse;
+            double g = cllc4_trigger_value(s, x_in, t, Vi, Vo, tp);
+            if (g >= 0 && std::isfinite(g)) {
+                double lo = t - dt_coarse, hi = t, g_lo = prev_g;
+                for (int it = 0; it < 50; ++it) {
+                    double mid = 0.5 * (lo + hi);
+                    double g_mid = cllc4_trigger_value(s, x_in, mid, Vi, Vo, tp);
+                    if (g_mid * g_lo < 0) { hi = mid; }
+                    else { lo = mid; g_lo = g_mid; }
+                    if ((hi - lo) < 1e-12) break;
+                }
+                return 0.5 * (lo + hi);
+            }
+            prev_g = g;
+        }
+        return t_max;
+    }
+
+    CllcSubState cllc4_next_state_after_F(CllcState4 x, double Vi,
+                                            const CllcTankParams4& tp) {
+        double VLm = (tp.Lm / (tp.Lr1 + tp.Lm)) * (Vi - x.vCr1);
+        return (VLm > 0) ? CllcSubState::P_POS : CllcSubState::P_NEG;
+    }
+
+    CllcSubState cllc4_initial_substate(CllcState4 x0, double Vi, double Vo,
+                                          const CllcTankParams4& tp) {
+        double Id = x0.iLr1 - x0.iLm;   // = iLr2_pri (secondary tank current)
+        if (std::abs(Id) > 1e-9) {
+            return (Id > 0) ? CllcSubState::P_POS : CllcSubState::P_NEG;
+        }
+        double VLm = (tp.Lm / (tp.Lr1 + tp.Lm)) * (Vi - x0.vCr1);
+        if (VLm >  Vo) return CllcSubState::P_POS;
+        if (VLm < -Vo) return CllcSubState::P_NEG;
+        return CllcSubState::F;
+    }
+
+    std::vector<CllcSegment4> cllc4_propagate_half_cycle(
+        CllcState4 x0, double Thalf, double Vi, double Vo,
+        const CllcTankParams4& tp)
+    {
+        std::vector<CllcSegment4> segments;
+        segments.reserve(8);
+        CllcSubState current = cllc4_initial_substate(x0, Vi, Vo, tp);
+        CllcState4 x = x0;
+        double t = 0.0;
+        constexpr int MAX_SEGMENTS = 16;
+        for (int k = 0; k < MAX_SEGMENTS; ++k) {
+            double remaining = Thalf - t;
+            if (remaining <= 1e-15) break;
+            double t_event = cllc4_find_next_event(current, x, remaining, Vi, Vo, tp);
+            double dt = std::min(t_event, remaining);
+            if (dt < 1e-15 && k > 0) {
+                current = (current == CllcSubState::F)
+                          ? cllc4_next_state_after_F(x, Vi, tp)
+                          : CllcSubState::F;
+                continue;
+            }
+            CllcState4 x_end = cllc4_propagate_substate(current, x, dt, Vi, Vo, tp);
+            segments.push_back({current, t, t + dt, x, x_end});
+            t += dt; x = x_end;
+            if (t >= Thalf - 1e-15) break;
+            current = (current == CllcSubState::F)
+                      ? cllc4_next_state_after_F(x, Vi, tp)
+                      : CllcSubState::F;
+        }
+        return segments;
+    }
+
+    /// 4-D damped Newton on F(x0) = x(Thalf) + x(0)  (half-wave antisymmetry).
+    /// Same shape as the 3-D Newton above, with a 4×4 Jacobian via central
+    /// differences and Gauss-elimination solve.
+    CllcState4 cllc4_solve_steady_state(
+        CllcState4 x0_seed, double Thalf, double Vi, double Vo,
+        const CllcTankParams4& tp,
+        std::vector<CllcSegment4>& outSegments, double& outResidual)
+    {
+        auto eval_F = [&](CllcState4 x0) -> std::array<double, 4> {
+            auto segs = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
+            CllcState4 xe = segs.empty() ? x0 : segs.back().x_end;
+            return { xe.iLr1 + x0.iLr1, xe.iLm + x0.iLm,
+                     xe.vCr1 + x0.vCr1, xe.vCr2 + x0.vCr2 };
+        };
+        auto norm = [](const std::array<double, 4>& f) {
+            return std::sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2] + f[3]*f[3]);
+        };
+        CllcState4 x0 = x0_seed;
+        auto F = eval_F(x0);
+        double r = norm(F);
+        constexpr int MAX_ITERS = 30;
+        constexpr double TOL = 1e-7;
+        double scale_i = std::max(1e-3, 0.01 * std::abs(x0.iLr1) + 1e-3);
+        double scale_v = std::max(1e-2, 0.01 * std::abs(x0.vCr1)  + 1e-2);
+        double damping = 1.0;
+        double prev_r = r;
+        int stagnant = 0;
+        // Index-to-perturbation table (so we can loop 0..3 over state dims).
+        auto perturb = [&](CllcState4 base, int idx, double delta) {
+            CllcState4 p = base;
+            switch (idx) {
+                case 0: p.iLr1 += delta; break;
+                case 1: p.iLm  += delta; break;
+                case 2: p.vCr1 += delta; break;
+                case 3: p.vCr2 += delta; break;
+            }
+            return p;
+        };
+        for (int iter = 0; iter < MAX_ITERS && r > TOL; ++iter) {
+            double J[4][4];
+            for (int j = 0; j < 4; ++j) {
+                double d = (j < 2) ? scale_i : scale_v;
+                auto Fp = eval_F(perturb(x0, j, +d));
+                auto Fm = eval_F(perturb(x0, j, -d));
+                for (int i = 0; i < 4; ++i) J[i][j] = (Fp[i] - Fm[i]) / (2.0 * d);
+            }
+            // Augmented matrix [J | -F]; partial-pivot Gauss elimination.
+            double A[4][5];
+            for (int i = 0; i < 4; ++i) {
+                for (int j = 0; j < 4; ++j) A[i][j] = J[i][j];
+                A[i][4] = -F[i];
+            }
+            bool singular = false;
+            for (int col = 0; col < 4; ++col) {
+                int piv = col; double maxv = std::abs(A[col][col]);
+                for (int row = col + 1; row < 4; ++row) {
+                    if (std::abs(A[row][col]) > maxv) { maxv = std::abs(A[row][col]); piv = row; }
+                }
+                if (maxv < 1e-14) { singular = true; break; }
+                if (piv != col) std::swap(A[col], A[piv]);
+                for (int row = col + 1; row < 4; ++row) {
+                    double f = A[row][col] / A[col][col];
+                    for (int k = col; k < 5; ++k) A[row][k] -= f * A[col][k];
+                }
+            }
+            if (singular) break;
+            double dx[4];
+            for (int i = 3; i >= 0; --i) {
+                double sum = A[i][4];
+                for (int j = i + 1; j < 4; ++j) sum -= A[i][j] * dx[j];
+                dx[i] = sum / A[i][i];
+            }
+            // Damped line search.
+            double try_d = damping;
+            CllcState4 x_new{}; std::array<double, 4> F_new{};
+            double r_new = r; bool accepted = false;
+            for (int ls = 0; ls < 6; ++ls) {
+                x_new = x0;
+                x_new.iLr1 += try_d * dx[0];
+                x_new.iLm  += try_d * dx[1];
+                x_new.vCr1 += try_d * dx[2];
+                x_new.vCr2 += try_d * dx[3];
+                F_new = eval_F(x_new);
+                r_new = norm(F_new);
+                if (std::isfinite(r_new) && r_new < r) { accepted = true; break; }
+                try_d *= 0.5;
+            }
+            if (!accepted) {
+                // Picard fallback: x_new := -x(Thalf) (use half-cycle antisymmetry directly).
+                auto segs = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
+                if (!segs.empty()) {
+                    CllcState4 xe = segs.back().x_end;
+                    x_new.iLr1 = -xe.iLr1; x_new.iLm = -xe.iLm;
+                    x_new.vCr1 = -xe.vCr1; x_new.vCr2 = -xe.vCr2;
+                    F_new = eval_F(x_new);
+                    r_new = norm(F_new);
+                }
+            }
+            x0 = x_new; F = F_new;
+            if (r_new >= prev_r * 0.999) { stagnant++; damping *= 0.7; }
+            else { stagnant = 0; damping = std::min(1.0, damping * 1.2); }
+            prev_r = r_new; r = r_new;
+            if (stagnant >= 4) break;
+        }
+        outSegments = cllc4_propagate_half_cycle(x0, Thalf, Vi, Vo, tp);
+        outResidual = r;
+        return x0;
+    }
+
+    /// Sample the 4-state segment chain onto a uniform N+1-long grid.
+    void cllc4_sample_segments(const std::vector<CllcSegment4>& segs,
+                                double Thalf, int N,
+                                double Vi, double Vo,
+                                const CllcTankParams4& tp,
+                                std::vector<double>& iLr1_out,
+                                std::vector<double>& iLm_out,
+                                std::vector<double>& vCr1_out,
+                                std::vector<double>& vCr2_out)
+    {
+        double dt = Thalf / N;
+        size_t segIdx = 0;
+        for (int k = 0; k <= N; ++k) {
+            double t = std::min<double>(k * dt, Thalf);
+            while (segIdx + 1 < segs.size() && t > segs[segIdx].t_end + 1e-15) ++segIdx;
+            if (segs.empty()) {
+                iLr1_out[k] = iLm_out[k] = vCr1_out[k] = vCr2_out[k] = 0.0;
+                continue;
+            }
+            const auto& seg = segs[segIdx];
+            double t_local = t - seg.t_start;
+            if (t_local < 0) t_local = 0;
+            double seg_dt = seg.t_end - seg.t_start;
+            if (t_local > seg_dt) t_local = seg_dt;
+            CllcState4 x = cllc4_propagate_substate(seg.state, seg.x_start,
+                                                      t_local, Vi, Vo, tp);
+            iLr1_out[k] = x.iLr1;
+            iLm_out[k]  = x.iLm;
+            vCr1_out[k] = x.vCr1;
+            vCr2_out[k] = x.vCr2;
+        }
+    }
+
     } // anonymous namespace
 
     // -------------------------------------------------------------------------
@@ -814,55 +1224,100 @@ double get_value_or(T&& val, double default_val) {
             Vi_solver = Vi * 1.005;
         }
 
+        // -------------------------------------------------------------------
+        // ASYMMETRIC vs SYMMETRIC TANK BRANCH
+        //
+        // For symmetric tanks (a=b=1, default), the 5-element CLLC network
+        // collapses exactly to a 3-state LLC-equivalent (Lr_eq, Cr_eq, Lm)
+        // and the existing 3-D Newton TDA above is used.
+        //
+        // For asymmetric tanks (a≠1 or b≠1, e.g. KIT-20kW 0.95/1.052) the
+        // collapsed form is no longer exact — the Newton over the symmetric
+        // collapsed model has multiple local minima (verified on KIT: OP[0]
+        // converges to vC≈-4545 V producing a spurious 300 A primary peak
+        // vs SPICE 54 A). We then route through the full 4-state TDA
+        // (Sun et al. 2020 IEEE TPEL 35(4) 3491–3505) with state
+        // (iLr1, iLm, vCr1, vCr2_pri) and a 4-D Newton, closed-form 2×2
+        // eigendecomposition propagator. The output (ILs_pos, IL_pos,
+        // Vc_pos, segments) preserves the same shape so all downstream
+        // sampling/diagnostics/waveform-emission code runs unchanged
+        // (Vc_pos = vCr1 + vCr2_pri reproduces the series-cap total).
+        // -------------------------------------------------------------------
+        const bool is_asymmetric =
+            std::abs(params.resonantInductorRatio  - 1.0) > 1e-6 ||
+            std::abs(params.resonantCapacitorRatio - 1.0) > 1e-6;
+
         std::vector<CllcSubStateSegment> segments;
         double residual = 0.0;
-        CllcStateVector x0 = cllc_solve_steady_state(x0_seed, Thalf_eff,
-                                                       Vi_solver, Vo, Lr_eq, Lm, Cr_eq,
-                                                       segments, residual);
-
-        // FIXME (asymmetric 5-state TDA): per plan §7 and the comment at
-        // line 357, asymmetric tanks (a≠1 or b≠1) are currently run through
-        // the SYMMETRIC collapsed 3-state form (Lr_eq, Cr_eq, Lm). On the
-        // KIT-20kW-Asymmetric reference (a=0.95, b=1.052) the Newton over
-        // this collapsed form has multiple local minima:
-        //   • OP[0] (Vi=804 nominal+LIP): converges to vC≈-4545 V (5.7×Vi)
-        //     with residual ≈ 8.25; the cap discharge through the tank
-        //     impedance Zr=√(Lr_eq/Cr_eq)≈15Ω yields a spurious peak
-        //     current ≈ 4545/15 ≈ 300 A, matching the observed analytical
-        //     i_range = ±301 A vs SPICE ±54 A.
-        //   • OP[2] (Vi=900): false convergence (residual ≈ 1.7e-4) to a
-        //     non-physical iLs=5.4e4 A, vC=-1.6 MV — caught by the sanity
-        //     block below; the fallback seed is then re-propagated but is
-        //     itself not a steady state, so the emitted waveform contains
-        //     a transient.
-        // The shape-only ptp_nrmse (PtpHelpers.h:213) normalises each
-        // waveform by its own AC-RMS, so this 5.6× amplitude bug still
-        // passes the 16 % NRMSE gate. The proper fix is implementing the
-        // asymmetric 5-state TDA (4-D Newton on (iLr1, iLm, vCr1, vCr2)
-        // with separate Lr1/Cr1 and Lr2/Cr2 sub-state ODEs). Sanity tweaks
-        // here only shift the failure mode — fallback is non-steady-state.
-        // Sanity-check against null-space blow-up; fall back to seed if violated.
-        double sanity_iLs = std::max(10.0 * Ires_est, 20.0);
-        double sanity_vC  = std::max(10.0 * std::abs(Vi), 10.0 * std::abs(Vo));
-        if (sanity_vC < 200.0) sanity_vC = 200.0;
-        if (!std::isfinite(x0.iLs) || !std::isfinite(x0.iL) || !std::isfinite(x0.vC) ||
-            std::abs(x0.iLs) > sanity_iLs ||
-            std::abs(x0.vC)  > sanity_vC) {
-            x0 = x0_seed;
-            residual = -1.0;
-        }
-        // Re-propagate with the authoritative Vi for waveform emission.
-        segments = cllc_propagate_half_cycle(x0, Thalf_eff, Vi, Vo, Lr_eq, Lm, Cr_eq);
-
-        // -------------------------------------------------------------------
-        // Sample the segment chain across the positive half cycle.
-        // -------------------------------------------------------------------
         const int N = 200;
         double dt = Thalf_eff / N;
         std::vector<double> ILs_pos(N + 1, 0.0), IL_pos(N + 1, 0.0), Vc_pos(N + 1, 0.0);
-        cllc_sample_segments(segments, Thalf_eff, N,
-                              Vi, Vo, Lr_eq, Lm, Cr_eq,
-                              ILs_pos, IL_pos, Vc_pos);
+
+        if (is_asymmetric) {
+            // 4-state path. Lr2/Cr2 already in primary-referred units.
+            CllcTankParams4 tp4{Lr1, Lm, Lr2_pri, Cr1, Cr2_pri};
+            CllcState4 seed4{ -Ires_est, -Im_pk_est, 0.0, 0.0 };
+            std::vector<CllcSegment4> segs4;
+            CllcState4 x0_4 = cllc4_solve_steady_state(seed4, Thalf_eff,
+                                                        Vi_solver, Vo, tp4,
+                                                        segs4, residual);
+            // Sanity check (per-state bounds). Same philosophy as the
+            // symmetric block below, applied to the 4-D state.
+            double sanity_i = std::max(10.0 * Ires_est, 20.0);
+            double sanity_v = std::max({10.0 * std::abs(Vi),
+                                        10.0 * std::abs(Vo), 200.0});
+            if (!std::isfinite(x0_4.iLr1) || !std::isfinite(x0_4.iLm) ||
+                !std::isfinite(x0_4.vCr1) || !std::isfinite(x0_4.vCr2) ||
+                std::abs(x0_4.iLr1) > sanity_i ||
+                std::abs(x0_4.iLm)  > sanity_i ||
+                std::abs(x0_4.vCr1) > sanity_v ||
+                std::abs(x0_4.vCr2) > sanity_v) {
+                x0_4 = seed4;
+                residual = -1.0;
+            }
+            // Re-propagate with the authoritative Vi (drop the LIP perturbation).
+            segs4 = cllc4_propagate_half_cycle(x0_4, Thalf_eff, Vi, Vo, tp4);
+            // Sample 4-state segments, then collapse vCr1+vCr2 → Vc_pos so
+            // the downstream symmetric-aware code path works unchanged.
+            std::vector<double> vCr1_pos(N + 1, 0.0), vCr2_pos(N + 1, 0.0);
+            cllc4_sample_segments(segs4, Thalf_eff, N, Vi, Vo, tp4,
+                                    ILs_pos, IL_pos, vCr1_pos, vCr2_pos);
+            for (int k = 0; k <= N; ++k) Vc_pos[k] = vCr1_pos[k] + vCr2_pos[k];
+            // Convert 4-state segments to the symmetric SegmentVector shape
+            // for downstream mode classification / VLm reconstruction. The
+            // x_start / x_end vC field carries the collapsed-cap total.
+            segments.reserve(segs4.size());
+            for (const auto& s4 : segs4) {
+                segments.push_back({
+                    s4.state, s4.t_start, s4.t_end,
+                    CllcStateVector{s4.x_start.iLr1, s4.x_start.iLm,
+                                    s4.x_start.vCr1 + s4.x_start.vCr2},
+                    CllcStateVector{s4.x_end.iLr1,  s4.x_end.iLm,
+                                    s4.x_end.vCr1 + s4.x_end.vCr2}
+                });
+            }
+        }
+        else {
+            // Symmetric path — original 3-state TDA, unchanged.
+            CllcStateVector x0 = cllc_solve_steady_state(x0_seed, Thalf_eff,
+                                                           Vi_solver, Vo, Lr_eq, Lm, Cr_eq,
+                                                           segments, residual);
+            // Sanity-check against null-space blow-up; fall back to seed if violated.
+            double sanity_iLs = std::max(10.0 * Ires_est, 20.0);
+            double sanity_vC  = std::max(10.0 * std::abs(Vi), 10.0 * std::abs(Vo));
+            if (sanity_vC < 200.0) sanity_vC = 200.0;
+            if (!std::isfinite(x0.iLs) || !std::isfinite(x0.iL) || !std::isfinite(x0.vC) ||
+                std::abs(x0.iLs) > sanity_iLs ||
+                std::abs(x0.vC)  > sanity_vC) {
+                x0 = x0_seed;
+                residual = -1.0;
+            }
+            // Re-propagate with the authoritative Vi for waveform emission.
+            segments = cllc_propagate_half_cycle(x0, Thalf_eff, Vi, Vo, Lr_eq, Lm, Cr_eq);
+            cllc_sample_segments(segments, Thalf_eff, N,
+                                   Vi, Vo, Lr_eq, Lm, Cr_eq,
+                                   ILs_pos, IL_pos, Vc_pos);
+        }
 
         // VLm at each sample (closed-form per sub-state).
         std::vector<double> VLm_pos(N + 1, 0.0);
