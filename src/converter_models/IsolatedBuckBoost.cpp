@@ -68,12 +68,22 @@ namespace OpenMagnetics {
 
         auto primaryCurrentPeakToPeak = (inputVoltage * primaryOutputVoltage) / (inputVoltage + primaryOutputVoltage) / (switchingFrequency * inductance);
 
-        // Fly-Buck-Boost: average magnetizing current = primary output current + reflected secondary currents
-        // (derived from power balance: P_in = P_pri + P_sec, with primary forward-type and secondary flyback-type)
-        auto primaryCurrentAverage = primaryOutputCurrent + totalReflectedSecondaryCurrent;
+        // Fly-Buck-Boost: continuous magnetizing current (K=1, Bimag probe sums
+        // i(Lpri) + Σ i(Lsec)/n). In CCM, each cap's charge balance gives
+        // ⟨i_winding⟩_off · (1−D) = I_out_winding, so ⟨i_pri⟩_off = I_out_pri/(1−D)
+        // and ⟨i_sec⟩_off = I_out_sec/(1−D). Summing referred to primary:
+        //   ⟨i_mag⟩ = (I_out_pri + Σ I_out_sec/n) / (1−D)
+        // (Same buck-boost current scaling as Erickson §5.2 applied to all windings
+        // sharing the magnetizing flux.) Earlier code dropped the /(1−D) factor,
+        // under-estimating I_mag by (1−D)× — D=0.294 design 1: 0.567 A vs true 0.802 A.
+        auto primaryCurrentAverage = (primaryOutputCurrent + totalReflectedSecondaryCurrent) / (1.0 - dutyCycle);
 
+        // Fly-Buck-Boost primary winding voltage swing:
+        //   ON  (S1 closed):    V(pri_in) = +Vin
+        //   OFF (Dpri conducts): V(pri_in) clamps to V(vpri_out) − Vd ≈ −|Vout_pri|
+        // → V_max = +Vin, V_min = −(Vout_pri + Vd), ptp = Vin + Vout_pri + Vd.
         auto primaryVoltaveMaximum = inputVoltage;
-        auto primaryVoltaveMinimum = primaryOutputVoltage - diodeVoltageDrop;
+        auto primaryVoltaveMinimum = -(primaryOutputVoltage + diodeVoltageDrop);
         auto primaryVoltavePeaktoPeak = primaryVoltaveMaximum - primaryVoltaveMinimum;
 
         // Per-OP analytical diagnostics (mirrors IsolatedBuck.cpp).
@@ -492,12 +502,22 @@ namespace OpenMagnetics {
         circuit << "* Diode model\n";
         circuit << ".model DIDEAL D(IS=1e-14 RS=1e-6)\n\n";
         
-        // Primary output (buck-boost output from switch node through diode)
-        circuit << "* Primary Output Stage (Buck-Boost)\n";
-        circuit << "Dpri pri_in vpri_rect DIDEAL\n";
+        // Primary output: inverting (Fly-Buck-Boost) topology per TI SNVAA84
+        // ("negative output for fly-buck-boost"). Canonical inverting buck-boost:
+        //   Vin → S1 → pri_in → Lpri → 0   (during ON, i_L ramps from low to high)
+        //   vpri_out (negative cap) → Dpri → pri_in   (during OFF, Dpri conducts;
+        //     V(pri_in) clamps to V(vpri_out)≈−|Vout|, inductor discharges into cap,
+        //     making vpri_out MORE negative)
+        // Earlier wiring (Dpri pri_in→vpri_rect with IC=+Vout) is non-physical: during
+        // OFF V(pri_in) goes negative, so a forward-biased Dpri would need vpri_rect
+        // even more negative; with +5V IC it was permanently reverse-biased, the
+        // primary cap never charged, all power went through Dsec only, and the
+        // converter ran in DCM with NRMSE 17-36% on the magnetizing-current shape.
+        circuit << "* Primary Output Stage (inverting Buck-Boost; Vout < 0)\n";
+        circuit << "Dpri vpri_rect pri_in DIDEAL\n";
         circuit << "Vpri_out_sense vpri_rect vpri_out 0\n";
         double primaryLoadResistance = primaryOutputVoltage / primaryOutputCurrent;
-        circuit << "Cpri vpri_out 0 100u IC=" << primaryOutputVoltage << "\n";
+        circuit << "Cpri vpri_out 0 100u IC=" << (-primaryOutputVoltage) << "\n";
         circuit << "Rload_pri vpri_out 0 " << primaryLoadResistance << "\n\n";
         
         // Secondary output stages
@@ -546,7 +566,7 @@ namespace OpenMagnetics {
         circuit << ".options RELTOL=0.001 ABSTOL=1e-9 VNTOL=1e-6 ITL1=1000 ITL4=1000 RSHUNT=1e12 RSERIES=1e-4\n";
         
         // Initial conditions - use .nodeset for better DC convergence
-        circuit << ".nodeset v(pri_in)=0 v(vpri_out)=" << primaryOutputVoltage << "\n";
+        circuit << ".nodeset v(pri_in)=0 v(vpri_out)=" << (-primaryOutputVoltage) << "\n";
         for (size_t secIdx = 0; secIdx < numSecondaries; ++secIdx) {
             circuit << ".nodeset v(vout" << secIdx << ")=" << opPoint.get_output_voltages()[secIdx + 1] << "\n";
         }

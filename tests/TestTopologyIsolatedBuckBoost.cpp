@@ -359,7 +359,7 @@ namespace {
         if (!runner.is_available()) SKIP("ngspice not available");
 
         const double Vin = 12.0;
-        const double Vpri = 6.0, Ipri = 0.5;   // primary buck-boost output
+        const double Vpri = 6.0, Ipri = 0.5;   // primary buck-boost output (industry-convention magnitudes)
         const double Vsec = 5.0, Isec = 1.0;   // transformer secondary
 
         OpenMagnetics::IsolatedBuckBoost ibb;
@@ -377,6 +377,10 @@ namespace {
         op.set_ambient_temperature(25.0);
         ibb.set_operating_points({op});
         ibb.set_num_periods_to_extract(1);
+        // Fly-Buck-Boost's primary cap RC tail and ~0.6 V diode drops need
+        // hundreds of periods to settle (default 20 leaves Vout at ~40 %
+        // of nominal — see PtP tests' 1200-period budget for context).
+        ibb.set_num_steady_state_periods(400);
 
         auto req = ibb.process_design_requirements();
         std::vector<double> tr;
@@ -386,19 +390,19 @@ namespace {
         auto wfs = ibb.simulate_and_extract_topology_waveforms(tr, Lm);
         REQUIRE(!wfs.empty());
 
-        // IsolatedBuckBoost has known steady-state convergence issues with the
-        // current netlist (the analytical model and SPICE diverge by ~50%+ on
-        // output magnitudes — see Phase 4 SPICE polish backlog in
-        // CONVERTER_MODELS_REVIEW_PLAN.md §3.H). The §5.1 gate's job is to
-        // catch AC-in-DC-stream regressions on the data flow, NOT to enforce
-        // steady-state accuracy. We use a generous tolerance (1.0 = 100 %)
-        // for output magnitudes; the input-voltage flat-DC check (kVinMeanTol
-        // = 0.01 inside ConverterPortChecks) remains tight.
+        // §5.1 gate's job: catch AC-in-DC-stream regressions on data flow.
+        // The primary output is INVERTING (Fly-Buck-Boost per TI SNVAA84) so
+        // nominal Vpri is passed in NEGATED here; the secondary is a normal
+        // non-inverting rectified output.  Tolerance kept at 1.0 (100 %)
+        // because real diode drops shift the settled Vout magnitude by
+        // ~10-20 % below the η=0.9/Vd=0.5 analytical anchor; the input-
+        // voltage flat-DC check (kVinMeanTol = 0.01 inside ConverterPortChecks)
+        // remains tight.
         constexpr double kIbbVoutMeanTol = 1.0;
         constexpr double kIbbIoutMeanTol = 1.0;
         for (size_t i = 0; i < wfs.size(); ++i) {
             ConverterPortChecks::check_dc_ports(wfs[i], "IsolatedBuckBoost", i,
-                                                Vin, {Vpri, Vsec}, {Ipri, Isec},
+                                                Vin, {-Vpri, Vsec}, {-Ipri, Isec},
                                                 kIbbVoutMeanTol, kIbbIoutMeanTol);
         }
     }
@@ -481,15 +485,22 @@ namespace {
         op.set_ambient_temperature(25.0);
         ibb.processOperatingPointsForInputVoltage(s.Vin, op, /*turnsRatios*/{s.n}, s.Lpri);
 
-        // Closed-form expectations (η=1, Vd=0, CCM flyback):
+        // Closed-form expectations (η=1, Vd=0, CCM Fly-Buck-Boost per
+        // TI SNVAA84):
         //   D        = Vout / (Vin + Vout)
         //   ΔIm_pp   = Vin · D / (L · Fs)
         //            = Vin · Vout / ((Vin+Vout) · L · Fs)
-        //   Im_avg   = Iout_pri + Iout_sec / n        (sum of reflected loads)
+        //   Im_avg   = (Iout_pri + Iout_sec/n) / (1 − D)
+        //              ── Erickson §5.2 buck-boost charge balance applied
+        //              per winding: each load is sustained by the diode
+        //              current during OFF, ⟨i_diode⟩ = Iout / (1−D), and
+        //              the magnetizing current at the load currents'
+        //              reference (primary) averages to the sum of all
+        //              reflected load currents divided by (1−D).
         //   Im_pk    = Im_avg + ΔIm_pp / 2
         const double D_exp        = s.Vout / (s.Vin + s.Vout);
         const double dIm_exp      = s.Vin * s.Vout / ((s.Vin + s.Vout) * s.Lpri * s.Fs);
-        const double Ipri_avg_exp = s.Iout + s.Iout2 / s.n;
+        const double Ipri_avg_exp = (s.Iout + s.Iout2 / s.n) / (1.0 - D_exp);
         const double Ipri_pk_exp  = Ipri_avg_exp + 0.5 * dIm_exp;
 
         INFO(s.name << " — D="         << ibb.get_last_duty_cycle()
