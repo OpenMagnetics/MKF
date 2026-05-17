@@ -96,6 +96,10 @@ private:
     mutable double lastModulationIndex      = 0.0;
     mutable double lastInputPower           = 0.0;
 
+    // SPICE simulation tuning (mirrors Llc / Cllc / Src).
+    int numPeriodsToExtract   = 5;
+    int numSteadyStatePeriods = 20;
+
 public:
     bool _assertErrors = false;
 
@@ -159,6 +163,40 @@ public:
     /** Per-OP analytical solver. */
     OperatingPoint process_operating_point_for_input_voltage(
         const TopologyExcitation& viennaOpPoint);
+
+    // ── SPICE simulation tuning ─────────────────────────────────────────────
+    int  get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int v)  { numSteadyStatePeriods = v; }
+    int  get_num_periods_to_extract()   const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int v)    { numPeriodsToExtract = v; }
+
+    // ── SPICE buildout (Phase-1 SPICE: single-phase boost emulation) ────────
+    //
+    // FIXME-vienna-1 (single-phase emulation):
+    //   The Phase-1 SPICE netlist models ONE phase as a stand-alone boost
+    //   converter at its own peak-of-line operating point (frozen DC source
+    //   = V_phase_peak, switch to neutral, diode to upper half-bus). The
+    //   resulting inductor waveform is duplicated to all three windings
+    //   (Phase A/B/C) by analytical symmetry — exactly matching the
+    //   analytical model's assumption. Full 3-phase netlist with all three
+    //   phases at frozen-DC line-angle voltages, T-type switches, split-bus
+    //   caps + neutral-point modelling (per VIENNA_PLAN.md §A.6) is
+    //   deferred to Phase 3+.
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex      = 0,
+        size_t operatingPointIndex    = 0);
+
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t numberOfPeriods = 1);
+
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t numberOfPeriods = 1);
 };
 
 

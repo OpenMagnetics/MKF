@@ -29,7 +29,12 @@
 #include "converter_models/Vienna.h"
 #include "converter_models/Topology.h"
 #include "support/Utils.h"
+#include "processors/NgspiceRunner.h"
+#include <algorithm>
 #include <cmath>
+#include <iostream>
+#include <map>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 #include <string>
@@ -412,6 +417,306 @@ DesignRequirements AdvancedVienna::process_design_requirements() {
     if (desiredBoostInductance.has_value() && desiredBoostInductance.value() > 0)
         set_user_boost_inductance(desiredBoostInductance.value());
     return Vienna::process_design_requirements();
+}
+
+// =====================================================================
+// generate_ngspice_circuit  (Phase-1 SPICE: single-phase boost emulation)
+//
+// Emits ONE phase of the Vienna as a stand-alone boost converter at
+// peak-of-line (line angle = pi/2 for the modelled phase). Inputs:
+//   - Vphase  DC source        = V_phase_peak  (frozen at line peak)
+//   - L_boost                  = computedBoostInductance
+//   - Sense Vsrc Vph_sense     for inductor-current readout
+//   - Voltage-controlled switch SBOOST + body-diode DSWBD (T-type leg)
+//     gated at fsw, duty = 1 - M (boost duty at peak-of-line)
+//   - Fast diode DBOOST from sw node to upper half-bus
+//   - Cout (split-bus emulation: one cap = Vdc/2) with .ic
+//   - Rload sized so I_avg(L) ~= I_pk (power-balance through one phase)
+//
+// The three Vienna phase inductors are identical by analytical
+// symmetry; we duplicate this waveform across "Phase A/B/C" windings in
+// the extractor.
+// =====================================================================
+std::string Vienna::generate_ngspice_circuit(
+    const std::vector<double>& /*turnsRatios*/,
+    double magnetizingInductance,
+    size_t /*inputVoltageIndex*/,
+    size_t operatingPointIndex)
+{
+    auto& ops = get_operating_points();
+    if (ops.empty())
+        throw std::runtime_error("Vienna generate_ngspice_circuit: no operating points");
+    auto& vOp = ops[std::min(operatingPointIndex, ops.size() - 1)];
+
+    double Fsw = get_switching_frequency();
+    if (Fsw <= 0)
+        throw std::runtime_error("Vienna generate_ngspice_circuit: switching frequency must be > 0");
+
+    auto& vll = get_line_to_line_voltage();
+    double V_LL = vll.get_nominal().value_or(
+        (vll.get_minimum().value_or(0) + vll.get_maximum().value_or(0)) / 2.0);
+    double Vdc  = get_output_dc_voltage();
+    double V_phase_peak = compute_phase_peak_voltage(V_LL);
+    double V_phase_rms  = V_phase_peak / std::sqrt(2.0);
+    double M    = compute_modulation_index(V_phase_peak, Vdc);
+    if (M > 1.0)
+        throw std::runtime_error(
+            "Vienna generate_ngspice_circuit: M=" + std::to_string(M) +
+            " > 1 (over-modulation).");
+
+    double eff = get_efficiency().value_or(0.97);
+    double pf  = get_power_factor().value_or(0.99);
+
+    double Vout_total = vOp.get_output_voltages()[0];
+    double Iout_total = vOp.get_output_currents()[0];
+    double P_total    = Vout_total * Iout_total;
+    if (P_total <= 0)
+        throw std::runtime_error("Vienna generate_ngspice_circuit: P must be > 0");
+
+    double I_pk = compute_line_peak_current(P_total, V_phase_rms, eff, pf);
+    double L    = (magnetizingInductance > 0) ? magnetizingInductance
+                                              : computedBoostInductance;
+    if (L <= 0)
+        throw std::runtime_error("Vienna generate_ngspice_circuit: boost L not initialised");
+
+    double period      = 1.0 / Fsw;
+    double duty        = 1.0 - M;                 // boost duty at peak-of-line
+    double tOn         = duty * period;
+    double tEdge       = std::min(period * 0.005, 20e-9);
+    if (tOn <= 2.0 * tEdge)
+        throw std::runtime_error(
+            "Vienna generate_ngspice_circuit: tOn=" + std::to_string(tOn) +
+            " too small for ramp tEdge=" + std::to_string(tEdge));
+
+    // Per-phase upper half-bus emulation. Average current into the cap (when
+    // switch is OFF) equals I_pk*(1-d) = I_pk*M in steady state, so
+    //   R_load_per_phase = (Vdc/2) / (I_pk * M).
+    double V_half      = Vdc / 2.0;
+    double Iload_phase = I_pk * M;
+    if (Iload_phase <= 0)
+        throw std::runtime_error("Vienna: Iload per phase non-positive");
+    double Rload       = V_half / Iload_phase;
+
+    int    numPeriodsTotal = numSteadyStatePeriods + numPeriodsToExtract;
+    double simTime         = numPeriodsTotal * period;
+    double startTime       = numSteadyStatePeriods * period;
+    double maxStep         = period / 200.0;
+
+    std::ostringstream c;
+    c << "* Vienna PFC v0.1 (Phase-1 SPICE: single-phase boost emulation at peak-of-line)\n";
+    c << "* Phase A at line peak (frozen DC). The three Vienna phase inductors\n";
+    c << "* are identical by analytical symmetry; this waveform is replicated\n";
+    c << "* across Phase A/B/C windings in the extractor.\n";
+    c << "* V_LL=" << V_LL << "V  Vdc=" << Vdc << "V  Fsw=" << (Fsw/1e3) << "kHz\n";
+    c << "* V_phase_peak=" << V_phase_peak << "V  M=" << M << "  d_peak=" << duty << "\n";
+    c << "* L=" << (L*1e6) << "uH  I_pk=" << I_pk << "A  Rload_phase=" << Rload << " ohm\n\n";
+
+    // DC bus probe (V_LL rail — single-phase emulation has no real 3-phase bus,
+    // so we emit the V_phase_peak rail as the "input" for converter-port checks
+    // and downstream Vin sanity gates use V_phase_peak, not V_LL).
+    c << "Vphase vphase 0 " << V_phase_peak << "\n";
+    c << "Rphase_dummy vphase 0 1Meg\n\n";
+
+    // Boost inductor with primary current sense (IC= sets initial current)
+    c << "Vph_sense vphase l_a 0\n";
+    c << "Lboost l_a sw_node " << std::scientific << L << std::fixed
+      << " IC=" << I_pk << "\n\n";
+
+    // Switch model: T-type bidir leg behaves as a low-side switch from sw_node
+    // to ground (neutral midpoint). Use SW1 with antiparallel ideal diode
+    // (so the switch carries inductor current regardless of polarity).
+    c << ".model SW1 SW VT=2.5 VH=0.8 RON=0.01 ROFF=1Meg\n";
+    c << ".model DIDEAL D(IS=1e-12 RS=0.05)\n";
+    c << ".model DBOOST D(Is=1e-8 N=0.01 RS=0.01)\n\n";
+
+    c << "Vpwm pwm 0 PULSE(0 5 0 "
+      << std::scientific << tEdge << " " << tEdge << " "
+      << tOn << " " << period << std::fixed << ")\n";
+    c << "Ssw sw_node 0 pwm 0 SW1\n";
+    c << "Dsw_bd 0 sw_node DIDEAL\n";
+    c << "Rsnub_sw sw_node 0 1k\n";
+    c << "Csnub_sw sw_node 0 1n\n\n";
+
+    // Boost diode to upper half-bus + cap + load
+    c << "Dboost sw_node vdc_plus DBOOST\n";
+    c << "Resr vdc_plus vdc_cap 0.05\n";
+    c << "Cout vdc_cap 0 " << std::scientific << 47e-6 << std::fixed << "\n";
+    c << "Rload vdc_cap 0 " << Rload << "\n\n";
+
+    // Initial conditions: pre-charge bus to steady-state.
+    c << ".ic v(vdc_cap)=" << V_half
+      << " v(vdc_plus)="   << V_half << "\n\n";
+
+    c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
+    c << ".options METHOD=GEAR TRTOL=7\n\n";
+    c << ".tran " << std::scientific << maxStep << " " << simTime
+      << " " << startTime << " " << maxStep << " UIC\n\n";
+
+    c << ".save v(vphase) i(Vphase) v(l_a) v(sw_node) v(vdc_plus) v(vdc_cap)"
+      << " i(Vph_sense)\n\n";
+    c << ".end\n";
+    return c.str();
+}
+
+// =====================================================================
+// simulate_and_extract_operating_points
+//
+// One netlist per (Vin x OP) combo. Vienna currently has a single
+// lineToLineVoltage spec (no nominal/min/max sweep), so this is one
+// netlist per OP. The single-phase-emulation waveform is mapped to all
+// three "Phase A/B/C" windings (identical by analytical symmetry).
+// =====================================================================
+std::vector<OperatingPoint> Vienna::simulate_and_extract_operating_points(
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance,
+    size_t numberOfPeriods)
+{
+    NgspiceRunner runner;
+    if (!runner.is_available())
+        return process_operating_points(turnsRatios, magnetizingInductance);
+
+    int numPeriods = (numberOfPeriods > 0) ? static_cast<int>(numberOfPeriods)
+                                           : get_num_periods_to_extract();
+    int originalNumPeriodsToExtract = get_num_periods_to_extract();
+    set_num_periods_to_extract(numPeriods);
+
+    std::vector<OperatingPoint> result;
+    auto& ops = get_operating_points();
+    for (size_t opIdx = 0; opIdx < ops.size(); ++opIdx) {
+        std::string netlist = generate_ngspice_circuit(
+            turnsRatios, magnetizingInductance, 0, opIdx);
+        double Fsw = get_switching_frequency();
+
+        SimulationConfig config;
+        config.frequency        = Fsw;
+        config.extractOnePeriod = true;
+        config.numberOfPeriods  = get_num_periods_to_extract();
+        config.keepTempFiles    = false;
+
+        auto simResult = runner.run_simulation(netlist, config);
+        if (!simResult.success) {
+            std::cerr << "Vienna sim failed: " << simResult.errorMessage
+                      << ". Falling back to analytical." << std::endl;
+            set_num_periods_to_extract(originalNumPeriodsToExtract);
+            return process_operating_points(turnsRatios, magnetizingInductance);
+        }
+
+        // Map the same single-phase inductor waveform to all 3 windings.
+        NgspiceRunner::WaveformNameMapping waveformMapping;
+        std::vector<std::string> windingNames;
+        std::vector<bool> flipCurrentSign;
+        for (const char* nm : {"Phase A", "Phase B", "Phase C"}) {
+            waveformMapping.push_back({{"voltage", "l_a"},
+                                       {"current", "vph_sense#branch"}});
+            windingNames.push_back(nm);
+            flipCurrentSign.push_back(false);
+        }
+
+        OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
+            simResult, waveformMapping, Fsw, windingNames,
+            ops[opIdx].get_ambient_temperature(), flipCurrentSign);
+        operatingPoint.set_name("OP " + std::to_string(opIdx));
+        result.push_back(operatingPoint);
+    }
+
+    set_num_periods_to_extract(originalNumPeriodsToExtract);
+    return result;
+}
+
+// =====================================================================
+// simulate_and_extract_topology_waveforms
+//
+// §5.1 converter-port stream: for the single-phase emulation we report
+// v(vphase) as input_voltage (the V_phase_peak rail). input_current is
+// reconstructed from power balance (P_total / (eta * V_phase_peak * 3) per
+// phase). output_voltage is v(vdc_cap) scaled by 2 to reconstitute the
+// full Vdc bus; output_current = Vout/Rload_nom. Single-phase circuit so
+// only one output stream.
+// =====================================================================
+std::vector<ConverterWaveforms> Vienna::simulate_and_extract_topology_waveforms(
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance,
+    size_t numberOfPeriods)
+{
+    NgspiceRunner runner;
+    if (!runner.is_available())
+        throw std::runtime_error("Vienna simulate_and_extract_topology_waveforms: ngspice not available");
+
+    int originalNumPeriods = get_num_periods_to_extract();
+    set_num_periods_to_extract(static_cast<int>(numberOfPeriods));
+
+    std::vector<ConverterWaveforms> results;
+    auto& ops = get_operating_points();
+    for (size_t opIdx = 0; opIdx < ops.size(); ++opIdx) {
+        std::string netlist = generate_ngspice_circuit(
+            turnsRatios, magnetizingInductance, 0, opIdx);
+        double Fsw = get_switching_frequency();
+
+        SimulationConfig config;
+        config.frequency        = Fsw;
+        config.extractOnePeriod = true;
+        config.numberOfPeriods  = numberOfPeriods;
+        config.keepTempFiles    = false;
+
+        auto simResult = runner.run_simulation(netlist, config);
+        if (!simResult.success)
+            throw std::runtime_error("Vienna simulation failed: " + simResult.errorMessage);
+
+        std::map<std::string, size_t> nameToIndex;
+        for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+            std::string lower = simResult.waveformNames[i];
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            nameToIndex[lower] = i;
+        }
+        auto getWf = [&](const std::string& name) -> Waveform {
+            std::string lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            auto it = nameToIndex.find(lower);
+            return (it != nameToIndex.end()) ? simResult.waveforms[it->second] : Waveform();
+        };
+
+        ConverterWaveforms wf;
+        wf.set_switching_frequency(Fsw);
+        wf.set_operating_point_name("Vienna op. point " + std::to_string(opIdx));
+
+        Waveform vphase = getWf("vphase");
+        if (!vphase.get_data().empty()) wf.set_input_voltage(vphase);
+
+        // Power-balance reconstruction of per-phase input current.
+        double Vphase_local = 0.0;
+        if (!vphase.get_data().empty()) {
+            for (double v : vphase.get_data()) Vphase_local += v;
+            Vphase_local /= vphase.get_data().size();
+        }
+        double Pout_total = ops[opIdx].get_output_voltages()[0] *
+                            ops[opIdx].get_output_currents()[0];
+        double effLocal   = get_efficiency().value_or(0.97);
+        // Per-phase DC-equivalent input current at the frozen peak (one of three).
+        const double Iin_dc = (Vphase_local > 0.0)
+            ? (Pout_total / (effLocal * Vphase_local * 3.0)) : 0.0;
+        Waveform iInWf = vphase;
+        for (auto& v : iInWf.get_mutable_data()) v = Iin_dc;
+        wf.set_input_current(iInWf);
+
+        // Output rail: SPICE simulates upper half-bus (Vdc/2). Reconstitute
+        // the full Vdc bus by scaling x2 (split-bus symmetric assumption).
+        Waveform vCap = getWf("vdc_cap");
+        if (!vCap.get_data().empty()) {
+            Waveform vFull = vCap;
+            for (auto& v : vFull.get_mutable_data()) v *= 2.0;
+            wf.get_mutable_output_voltages().push_back(vFull);
+
+            const double Vo_nom  = ops[opIdx].get_output_voltages()[0];
+            const double Io_nom  = ops[opIdx].get_output_currents()[0];
+            const double Rload_nom = (Io_nom > 0) ? (Vo_nom / Io_nom) : 100.0;
+            Waveform ioutWf = vFull;
+            for (auto& v : ioutWf.get_mutable_data()) v = v / Rload_nom;
+            wf.get_mutable_output_currents().push_back(ioutWf);
+        }
+        results.push_back(wf);
+    }
+    set_num_periods_to_extract(originalNumPeriods);
+    return results;
 }
 
 } // namespace OpenMagnetics
