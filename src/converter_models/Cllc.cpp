@@ -1564,10 +1564,18 @@ double get_value_or(T&& val, double default_val) {
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
 
+        // gcc 13/14 false positive: when OperatingConditions is later
+        // copied into the OperatingPoint via set_conditions, gcc traces
+        // a byte-wise copy through std::optional<Cooling>'s storage and
+        // can't prove the disengaged optional isn't read. The optional
+        // is explicitly set to nullopt below; the warning is spurious.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
         OperatingConditions conditions;
         conditions.set_ambient_temperature(cllcOpPoint.get_ambient_temperature());
         conditions.set_cooling(std::nullopt);
         operatingPoint.set_conditions(conditions);
+#pragma GCC diagnostic pop
 
         return operatingPoint;
     }

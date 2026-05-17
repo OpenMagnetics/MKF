@@ -23,6 +23,71 @@ look online if needed**.
 
 ## This session — accomplishments
 
+### CLLC polish (May 2026) — committed & pushed
+
+After the prior CLLC DAB-quality session (commit `5f075d73`), a 6-item polish
+list was tackled. Snapshot of final state for all 6 PtP designs:
+
+| Design | Pin (W) | Loss % | NRMSE | Peak ratio (spice/anal) |
+|---|---|---|---|---|
+| Telecom-500W (at fr) | 578 | 17.6 | 5.6 % | 1.345 |
+| Telecom-500W-BelowFr | 560 | 15.4 | 4.4 % | 1.354 |
+| Telecom-250W (above fr) | 371 | **34.5** | 4.6 % | 1.357 |
+| Infineon-11kW | 11491 | 0.9 | 5.4 % | 1.352 |
+| KIT-20kW-Asymmetric | 21464 | 11.3 | 4.5 % | 1.367 |
+| Telecom-500W-REVERSE | n/a | n/a | **8.8 %** | 0.895 |
+
+All 132 assertions in 6 cases pass. Highlights:
+
+- **`98f7d470`** `test(cllc): add SPICE loss-breakdown diagnostic for KIT-20kW`
+  — `tests/TestCllcKitLossBreakdown.cpp`, tagged `[.diag][cllc-loss-breakdown]`.
+- **`556301d1`** `fix(cllc): add primary body diodes + shrink Cout — phantom snubber loss 23 kW → 0.5 kW`
+  — `.model DBODY`, 4 antiparallel diodes on primary only (NOT SR), Cout
+  100 µF → 10 µF. KIT phantom loss 23 060 W → 589 W. NRMSE 15.4 % → 4.5 %.
+- **`c6b0fccb`** `test(cllc): add peak-amplitude gate to PtP suite`
+  — `ptp_nrmse` is mean-subtracted AND RMS-normalized, so amplitude scale
+  errors register as only ~4-5 % NRMSE: shape-only. Added explicit
+  `tol_peak_ratio_min/max` per `RefDesignSpec`, default [0.5, 1.7].
+  Catches the FIXME-item1 regression band.
+- **`41db0ff0`** `test(cllc): T_common resampling + diagnostics for reverse-mode PtP`
+  — applied the same time-horizon resampling fix that forward had; only
+  moves reverse NRMSE 8.88 → 8.85 % though (residual is real shape gap).
+- **`2260bca1`** `docs(cllc): document FIXME-item3 (Telecom-250W above-fr SR snubber loss)`
+  — diagnosed cause (SR sync-gated with primary PWM; above-fr the SR
+  opens with non-zero secondary current that gets dumped into the 1k
+  snubbers, 6× under-delivery on secondary). Attempted SR-body-diode
+  fix turned reverse into 171× explosion; reverted.
+
+### Deferred (documented in-file as FIXME-itemN)
+
+- **#1** KIT primary peak ±53.8 A vs analytical ±38.7 A (systematic 1.35-1.39×
+  across ALL 5 forward designs). Stiff-Vout experiment proved diagnosis
+  (drops peak to ±33.5 A, collapses Pin 16× → 1.34 kW). Means at the
+  design fsw the tank only naturally delivers ~7 % of Pnom into Vnom; the
+  Cout+Rload sim hides this by letting Vout drift. **Fix belongs in
+  `Cllc.cpp` solver** (`process_operating_point_for_input_voltage` or
+  `CllcResonantParameters` derivation), not the testbench.
+- **#2** Telecom-500W-REVERSE 8.85 % NRMSE. Likely reverse-mode TDA seed-bias
+  (`Cllc.cpp:1158-1168`); under 15 % gate.
+- **#3** Telecom-250W 34 % loss. Requires current-direction-aware SR gating
+  (B-source conditional on i_sec polarity). Under 60 % gate.
+
+### Other items (already complete or non-issues)
+
+- **#4** DAB body-diode fix: **already in place**. `Dab.cpp:1065-1074` and
+  `:1162-1171` have antiparallel `D1..D8 DIDEAL` diodes on every switch.
+  All 2444 DAB assertions pass.
+- **#5** This HANDOFF.md update.
+- **#6** `-Wmaybe-uninitialized` at `Cllc.cpp:1567` — gcc 13/14 false
+  positive from `std::optional<Cooling>` storage byte-wise traversal
+  during `set_conditions(conditions)` copy. The optional is explicitly
+  set to `nullopt`. Suppressed with a localized `#pragma GCC diagnostic
+  push/pop`.
+
+---
+
+## Previous session — accomplishments
+
 ### Committed & pushed
 - **`477773a4`** `feat(psfb): replace MOSFET-RON freewheel tau with diode-dynamic-R model`
   - PSFB freewheel τ changed from `Lr/(2·RON_mosfet)` ≈ 250 µs to
