@@ -170,13 +170,72 @@ TEST_CASE("SRC: AdvancedSrc round-trips desired turns ratio and Lr/Cr", "[src-to
 }
 
 
-TEST_CASE("SRC: rejects currentDoubler rectifier (pending CD support)", "[src-topology]") {
+// =====================================================================
+// CURRENT_DOUBLER rectifier (analytical, Phase-2 extension)
+// =====================================================================
+
+TEST_CASE("SRC: currentDoubler emits 1 secondary per output (FB-like winding count)",
+          "[src-topology]") {
     auto j = make_src_json(400, 48, 10, 100e3, 100e3);
     j["rectifierType"] = "currentDoubler";
     Src src(j);
-    REQUIRE_THROWS_AS(
-        src.process_operating_points(std::vector<double>{}, 0),
-        std::runtime_error);
+    REQUIRE(src.get_effective_rectifier_type() == SrcRectifierType::CURRENT_DOUBLER);
+    REQUIRE(src.is_center_tapped() == false);
+    REQUIRE(src.windings_per_output() == 1);
+
+    auto ops = src.process_operating_points(std::vector<double>{}, 0);
+    REQUIRE(!ops.empty());
+    // 1 primary + 1 secondary per output (the 2 output inductors Lo1/Lo2 are
+    // emitted via get_extra_components_inputs, not as additional windings).
+    REQUIRE(ops[0].get_excitations_per_winding().size() == 2);
+}
+
+
+TEST_CASE("SRC: currentDoubler stashes Lo1/Lo2 waveforms for extras", "[src-topology]") {
+    // Sanity: per-OP solver must populate the Lo1/Lo2 stash so that
+    // get_extra_components_inputs can emit two outputInductor MAS Inputs.
+    auto j = make_src_json(400, 48, 10, /*fsw*/100e3, /*fr*/100e3, /*Q*/2.0);
+    j["rectifierType"] = "currentDoubler";
+    Src src(j);
+    src.process_operating_points(std::vector<double>{}, 0);
+
+    auto extras = src.get_extra_components_inputs(ExtraComponentsMode::IDEAL);
+    // Expected layout: { Cr (CAS::Inputs), Lr (MAS Inputs), Lo1 (MAS), Lo2 (MAS) }.
+    REQUIRE(extras.size() == 4);
+    REQUIRE(std::holds_alternative<CAS::Inputs>(extras[0]));   // Cr
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[1]));  // Lr
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[2]));  // Lo1
+    REQUIRE(std::holds_alternative<OpenMagnetics::Inputs>(extras[3]));  // Lo2
+
+    auto& lo1 = std::get<OpenMagnetics::Inputs>(extras[2]);
+    auto& lo2 = std::get<OpenMagnetics::Inputs>(extras[3]);
+    REQUIRE(lo1.get_design_requirements().get_name().value() == "outputInductor1");
+    REQUIRE(lo2.get_design_requirements().get_name().value() == "outputInductor2");
+    // Lo sizing convention (Vout / (4·fs·0.30·Iout) = 48 / (4·100k·0.3·10)).
+    const double Lo_design = 48.0 / (4.0 * 100e3 * 0.30 * 10.0);
+    const double Lo1_nom = lo1.get_design_requirements()
+                              .get_magnetizing_inductance()
+                              .get_nominal().value();
+    REQUIRE_THAT(Lo1_nom, WithinRel(Lo_design, 1e-6));
+    // KCL: at any sample, ILo1 + ILo2 should be ≈ Iout_dc.
+    auto& lo1Ops = lo1.get_operating_points();
+    auto& lo2Ops = lo2.get_operating_points();
+    REQUIRE(!lo1Ops.empty()); REQUIRE(!lo2Ops.empty());
+    auto i1 = lo1Ops[0].get_excitations_per_winding()[0].get_current();
+    auto i2 = lo2Ops[0].get_excitations_per_winding()[0].get_current();
+    REQUIRE(i1.has_value()); REQUIRE(i2.has_value());
+    auto i1Wfm = i1->get_waveform();
+    auto i2Wfm = i2->get_waveform();
+    REQUIRE(i1Wfm.has_value()); REQUIRE(i2Wfm.has_value());
+    // Average the sum over the period; should land at Iout_dc = 10 A.
+    const auto& i1Data = i1Wfm->get_data();
+    const auto& i2Data = i2Wfm->get_data();
+    REQUIRE(i1Data.size() == i2Data.size());
+    REQUIRE(!i1Data.empty());
+    double sumMean = 0.0;
+    for (size_t k = 0; k < i1Data.size(); ++k) sumMean += (i1Data[k] + i2Data[k]);
+    sumMean /= i1Data.size();
+    REQUIRE_THAT(sumMean, WithinAbs(10.0, 0.5));   // ≈ Iout_dc, ripple-free DC
 }
 
 

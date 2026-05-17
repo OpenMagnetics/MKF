@@ -253,6 +253,10 @@ std::vector<OperatingPoint> Src::process_operating_points(
     extraCapCurrentWaveforms.clear();
     extraIndVoltageWaveforms.clear();
     extraIndCurrentWaveforms.clear();
+    extraLoCurrentWaveforms.clear();
+    extraLoVoltageWaveforms.clear();
+    extraLo2CurrentWaveforms.clear();
+    extraLo2VoltageWaveforms.clear();
 
     std::vector<OperatingPoint> result;
     auto& inputVoltage = get_input_voltage();
@@ -444,16 +448,11 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
 
     // ── Secondary windings (per-output, per-rectifier-type) ──
     //
-    // Phase 2+: supports FULL_BRIDGE_DIODE (1 winding/output) and
-    // CENTER_TAPPED_DIODE (2 half-windings/output, each carrying only its
-    // conducting half-cycle of the primary tank current). CURRENT_DOUBLER is
-    // still deferred — throw with a clear message.
+    // Phase 2+: supports FULL_BRIDGE_DIODE (1 winding/output), CENTER_TAPPED_DIODE
+    // (2 half-windings/output, each carrying only its conducting half-cycle of
+    // the primary tank current), and CURRENT_DOUBLER (1 secondary winding + 2
+    // output filter inductors Lo1/Lo2 — emitted via get_extra_components_inputs).
     auto rt = get_effective_rectifier_type();
-    if (rt == SrcRectifierType::CURRENT_DOUBLER) {
-        throw std::runtime_error(
-            "SRC: currentDoubler rectifier is not yet supported "
-            "(centerTappedDiode and fullBridgeDiode are supported).");
-    }
 
     // For current sharing across multi-output secondaries, we weight by load
     // conductance, matching the LLC convention.
@@ -515,6 +514,63 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
                 auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
                 operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
             }
+        }
+        else if (rt == SrcRectifierType::CURRENT_DOUBLER) {
+            // CD: single bipolar secondary winding feeding two diodes and two
+            // output filter inductors Lo1/Lo2. The secondary winding carries
+            // the same bipolar reflected primary current as the FB case; the
+            // CD-specific behaviour lives in Lo1/Lo2 (stashed for
+            // get_extra_components_inputs). Mirrors Llc.cpp:1167-1226.
+            std::vector<double> iSecData(totalSamples, 0.0);
+            std::vector<double> vSecData(totalSamples, 0.0);
+            std::vector<double> iLo1Data(totalSamples, 0.0);
+            std::vector<double> iLo2Data(totalSamples, 0.0);
+            std::vector<double> vLo1Data(totalSamples, 0.0);
+            std::vector<double> vLo2Data(totalSamples, 0.0);
+            const double Iout_dc = (Vout_i > 0 && Iout_i > 0) ? Iout_i : 0.0;
+            for (int k = 0; k < totalSamples; ++k) {
+                double iPri = ILr_full[k];
+                double I_sec = iPri * n_i * share;             // bipolar; matches FB sign
+                double V_sec = (iPri >= 0.0) ? +Vout_i : -Vout_i;
+                iSecData[k] = std::isfinite(I_sec) ? I_sec : 0.0;
+                vSecData[k] = std::isfinite(V_sec) ? V_sec : 0.0;
+                // Lo1/Lo2 — KCL at output node: ILo1 + ILo2 = IoutDC. Each
+                // carries IoutDC/2 mean with opposite-sign ripple sourced from
+                // the secondary current (which averages 0 over a period).
+                double ripple = I_sec / 4.0;                   // peak excursion ≈ |I_sec|/4
+                iLo1Data[k] = Iout_dc / 2.0 + ripple;
+                iLo2Data[k] = Iout_dc / 2.0 - ripple;
+                // VLo when its diode conducts = (Vsec − Vo) / (−Vsec − Vo);
+                // when freewheeling = −Vo.
+                vLo1Data[k] = (I_sec > 0) ? (V_sec - Vout_i) : (-Vout_i);
+                vLo2Data[k] = (I_sec < 0) ? (-V_sec - Vout_i) : (-Vout_i);
+                if (!std::isfinite(iLo1Data[k])) iLo1Data[k] = 0;
+                if (!std::isfinite(iLo2Data[k])) iLo2Data[k] = 0;
+                if (!std::isfinite(vLo1Data[k])) vLo1Data[k] = 0;
+                if (!std::isfinite(vLo2Data[k])) vLo2Data[k] = 0;
+            }
+            Waveform secCurrentWfm; secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secCurrentWfm.set_data(iSecData); secCurrentWfm.set_time(time_full);
+            Waveform secVoltageWfm; secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secVoltageWfm.set_data(vSecData); secVoltageWfm.set_time(time_full);
+            std::string windingName = "Secondary " + std::to_string(outputIdx);
+            auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+
+            // Stash Lo waveforms for get_extra_components_inputs (one entry per
+            // output appended in outputIdx order; consumers must respect that).
+            Waveform lo1I; lo1I.set_ancillary_label(WaveformLabel::CUSTOM);
+            lo1I.set_data(iLo1Data); lo1I.set_time(time_full);
+            Waveform lo1V; lo1V.set_ancillary_label(WaveformLabel::CUSTOM);
+            lo1V.set_data(vLo1Data); lo1V.set_time(time_full);
+            Waveform lo2I; lo2I.set_ancillary_label(WaveformLabel::CUSTOM);
+            lo2I.set_data(iLo2Data); lo2I.set_time(time_full);
+            Waveform lo2V; lo2V.set_ancillary_label(WaveformLabel::CUSTOM);
+            lo2V.set_data(vLo2Data); lo2V.set_time(time_full);
+            extraLoCurrentWaveforms.push_back(lo1I);
+            extraLoVoltageWaveforms.push_back(lo1V);
+            extraLo2CurrentWaveforms.push_back(lo2I);
+            extraLo2VoltageWaveforms.push_back(lo2V);
         }
         else {
             // FULL_BRIDGE_DIODE: single secondary winding.
@@ -1136,6 +1192,49 @@ std::vector<std::variant<Inputs, CAS::Inputs>> Src::get_extra_components_inputs(
         }
         masInputs.set_operating_points(masOps);
         result.emplace_back(std::move(masInputs));
+    }
+
+    // -------- (3) CD output filter inductors Lo1 / Lo2 ---------
+    // Only emitted when rectifier is CURRENT_DOUBLER and the per-OP solver
+    // populated the Lo stash. Lo sizing mirrors the LLC CD SPICE convention
+    // (Llc.cpp:2070): Lo = Vout / (4·Fs·0.30·IoutDC) — 30 % ripple of IoutDC.
+    if (get_effective_rectifier_type() == SrcRectifierType::CURRENT_DOUBLER &&
+        !extraLoCurrentWaveforms.empty()) {
+        auto& ops = get_operating_points();
+        if (ops.empty())
+            throw std::runtime_error("SRC CD extras: no operating points");
+        double Vout_0 = ops[0].get_output_voltages()[0];
+        double Iout_0 = ops[0].get_output_currents()[0];
+        double fsw_0  = ops[0].get_switching_frequency();
+        if (Vout_0 <= 0 || Iout_0 <= 0 || fsw_0 <= 0)
+            throw std::runtime_error("SRC CD extras: invalid output/freq for Lo sizing");
+        double Lo_design = Vout_0 / (4.0 * fsw_0 * 0.30 * Iout_0);
+
+        for (size_t loIdx = 0; loIdx < 2; ++loIdx) {
+            Inputs loInputs;
+            DesignRequirements drLo;
+            DimensionWithTolerance loInd;
+            loInd.set_nominal(Lo_design);
+            drLo.set_magnetizing_inductance(loInd);
+            drLo.set_name(std::string("outputInductor") + (loIdx == 0 ? "1" : "2"));
+            drLo.set_topology(Topologies::SERIES_RESONANT_CONVERTER);
+            drLo.set_turns_ratios(std::vector<DimensionWithTolerance>{});
+            drLo.set_isolation_sides(std::vector<IsolationSide>{IsolationSide::SECONDARY});
+            loInputs.set_design_requirements(drLo);
+
+            std::vector<OperatingPoint> loOps;
+            auto& iVec = (loIdx == 0) ? extraLoCurrentWaveforms  : extraLo2CurrentWaveforms;
+            auto& vVec = (loIdx == 0) ? extraLoVoltageWaveforms  : extraLo2VoltageWaveforms;
+            for (size_t i = 0; i < iVec.size(); ++i) {
+                OperatingPoint op;
+                auto excitation = complete_excitation(iVec[i], vVec[i], fsw_0,
+                                                     (loIdx == 0) ? "Lo1" : "Lo2");
+                op.get_mutable_excitations_per_winding().push_back(excitation);
+                loOps.push_back(op);
+            }
+            loInputs.set_operating_points(loOps);
+            result.emplace_back(std::move(loInputs));
+        }
     }
 
     return result;

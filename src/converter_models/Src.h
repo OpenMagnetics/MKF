@@ -68,6 +68,12 @@ private:
     mutable std::vector<Waveform> extraCapCurrentWaveforms;   // ILr full-period
     mutable std::vector<Waveform> extraIndVoltageWaveforms;   // VLr full-period
     mutable std::vector<Waveform> extraIndCurrentWaveforms;   // ILr full-period
+    // CURRENT_DOUBLER: per output, two filter inductors Lo1/Lo2 each carrying
+    // ≈ Iout/2 DC plus ±I_sec/4 ripple. Cleared on every process_operating_points.
+    mutable std::vector<Waveform> extraLoCurrentWaveforms;    // ILo1 (CD)
+    mutable std::vector<Waveform> extraLoVoltageWaveforms;    // VLo1 (CD)
+    mutable std::vector<Waveform> extraLo2CurrentWaveforms;   // ILo2 (CD)
+    mutable std::vector<Waveform> extraLo2VoltageWaveforms;   // VLo2 (CD)
 
 public:
     bool _assertErrors = false;
