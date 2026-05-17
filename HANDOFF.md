@@ -163,48 +163,64 @@ ls -t /tmp/mkf_wf_*.csv | head -1
 
 Campaign effectively stalled (see queue §7 PFC notes and §8-11). Options for next agent:
 
-1. **CLLC — implement the asymmetric 5-state TDA** (precondition for CLLLC). All
-   6 PtP tests pass with current gates (15/15/15/16/16/15 %), but the
-   16 % gates on Infineon-11kW (15.75 %) and KIT-20kW-Asymmetric (13.93 %)
-   are FIXMEs masking real physics gaps. Findings from session 25fbbb8b:
+1. **CLLC — Infineon-11kW residual structural shape gap** (the last design
+   not at the DAB-quality 0.15 NRMSE gate). Status as of commit `254770da`:
+   5/6 PtP designs now pass at the 0.15 gate; Infineon-11kW alone is held
+   at the 0.16 gate (current NRMSE 15.75 %).
 
-   - **KIT amplitude bug**: analytical i_pri peak ±301 A vs SPICE ±54 A
-     (5.6× over-prediction). Cause precisely localised in `Cllc.cpp:817-845`:
-     asymmetric tanks (a≠1, b≠1) currently run through the **symmetric
-     collapsed 3-state form** (Lr_eq, Cr_eq, Lm) per the documented deferral
-     at `Cllc.cpp:357-358`. The Newton over this collapsed form has multiple
-     local minima for KIT:
-       • OP[0] (Vi=804, LIP nominal): residual=8.25 (poor), `vC=-4545 V`
-         (5.7× Vi). Cap discharges through Zr=√(Lr_eq/Cr_eq)≈15 Ω →
-         peak ≈ 4545/15 ≈ 300 A. Matches observed ±301 A.
-       • OP[2] (Vi=900): false convergence (residual=1.7e-4) to
-         `iLs=5.4e4 A, vC=-1.6 MV`. Sanity block catches it; fallback to
-         seed is itself non-steady-state, so re-propagation yields a
-         transient. Sanity-threshold tweaks here only shift the failure
-         mode — they don't fix it.
-     Proper fix: 4-D Newton on (iLr1, iLm, vCr1, vCr2) with separate Lr1/Cr1
-     and Lr2/Cr2 sub-state ODEs. Detailed FIXME with reproduction info
-     added at `Cllc.cpp:817-845` and `CLLC_REWRITE_PLAN.md` §7.
-     **The shape-only NRMSE (`PtpHelpers.h:213`) hides this — KIT still
-     passes at 13.93 %.** Until the 5-state is implemented, amplitude bugs
-     of this magnitude won't surface from the NRMSE gate alone; rely on the
-     diagnostic block in `TestCllcReferenceDesignsPtp.cpp:188-216` (the
-     `analytical: i_range=[...]` print) to spot regressions.
+   **What's already done this campaign**:
+   - Commit `0f5bde38` (`feat(cllc): 4-state asymmetric TDA per Sun 2020 TPEL`):
+     full 4-state piecewise TDA per Sun et al. IEEE TPEL 35(4):3491-3505 (2020)
+     for asymmetric tanks (a≠1 or b≠1). State (iLr1, iLm, vCr1, vCr2_pri);
+     shifted system block-antidiagonal so each half-cycle factors into two
+     2×2 oscillators (closed-form eigendecomp). KIT amplitude collapsed
+     from analytical ±301 A (5.6× over-prediction) to physically plausible
+     range. Symmetric tanks unchanged (still 3-state path).
+   - Commit `254770da` (`feat(cllc): damped Picard 4-state solver`):
+     replaced the 4-D finite-difference Newton (which trapped on degenerate
+     low-amplitude basins) with damped Picard `x_{n+1} = α·(−x(Thalf|x_n))
+     + (1−α)·x_n`, α=0.4, ≤200 iters, multi-start over 6 physically-motivated
+     seeds. KIT NRMSE 15.02 % → 12.99 %, gate tightened 0.16 → 0.15.
 
-   - **Infineon-11kW gap** (15.75 % vs 15 % target): NOT period-mismatch
-     (T_common refactor in 25fbbb8b only moved it 15.45→15.75 %, within
-     noise). Diagnostic dumps in `/tmp/mkf_wf_cllc_Infineon-11kW_*.csv`
-     show a sharp commutation transient near the half-period boundary in
-     SPICE that the analytical model doesn't reproduce. Options: (a) model
-     the dead-time / commutation interval as a 5th sub-state, (b) trim
-     SPICE waveform around the dead-time region before NRMSE,
-     (c) accept and tighten the gate to 0.16 with a documented FIXME.
+   **Remaining work for Infineon (15.75 % > 0.15)**:
+   - The amplitudes match SPICE within 3 % (analytical ±35.95/+34.27 A vs
+     SPICE ±36.29/+35.17 A), but the WAVEFORM SHAPES differ structurally:
+     analytical is closer to a triangle/distorted shape, SPICE is closer
+     to a clean sinusoid. The 64-sample-shift ptp_nrmse alignment can't
+     close the structural gap — diagnostic dump:
+     `/tmp/mkf_wf_cllc_Infineon-11kW_<ms>.csv`.
+   - Cause is most likely the dead-time / commutation interval not being
+     modelled as an explicit 5th sub-state in the 3-state symmetric path.
+     Infineon runs at fs=73 kHz with fr≈80-90 kHz (near the mode-1/2
+     boundary), where this matters most. KIT at fs=fr=100 kHz isn't
+     affected because Sun's 4-state already includes the F segments.
+   - **Recommended next step**: lift the 4-state model to also handle
+     symmetric tanks (it's strictly more general and handles dead time
+     via the F segment); route ALL CLLC tanks through it, not just
+     asymmetric ones. Then the per-design NRMSE should drop further.
+     Alternative: add an explicit dead-time sub-state to the 3-state
+     symmetric path. Either path should bring Infineon under 0.15.
 
-   - **Test infrastructure ready**: env-gated CSV dump
-     (`MKF_DUMP_WAVEFORMS=1`) writes 9-column waveform dumps to
-     `/tmp/mkf_wf_cllc_<name>_<ms>.csv`; T_common shared-horizon NRMSE
-     removes the period-mismatch artefact; per-test diagnostics print
-     t_span, i_range, mean for both signals.
+   **Known limitation of the Picard solver**: for high-gain operating
+   points (e.g. KIT OP[2] Vi=900) the lossless tank's Picard map can fail
+   to converge (residual ~140 instead of <1e-6). Multi-start picks the
+   best of 6 seeds, but for the basin where the high-amplitude steady
+   state lives, none of the current seeds is close enough. Workaround
+   (not yet implemented): cycle-iterate WITHOUT antisymmetry, alternating
+   bridge polarity each half — converges via small numerical dissipation.
+
+   **Amplitude residual on KIT** (analytical ±38.7 A vs SPICE ±54 A,
+   gap ~28 %): the Picard map is collapsing to a low-amplitude basin
+   (the lossless fixed-point set has a continuum of solutions from
+   zero-amplitude up to load-driven). Same fix as above (transient
+   simulation with bridge alternation) would likely push amplitudes
+   to within a few % of SPICE.
+
+   **Test infrastructure ready** (unchanged): env-gated CSV dump
+   (`MKF_DUMP_WAVEFORMS=1`) writes 9-column waveform dumps to
+   `/tmp/mkf_wf_cllc_<name>_<ms>.csv`; T_common shared-horizon NRMSE
+   removes the period-mismatch artefact; per-test diagnostics print
+   t_span, i_range, mean for both signals.
 
 2. **PFC controller deep-dive** — investigate why `fc_i = 5 kHz` current loop
    responds at ~500 µs instead of ~32 µs. Start in
