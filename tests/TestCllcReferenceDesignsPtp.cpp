@@ -38,6 +38,7 @@
 #include "processors/NgspiceRunner.h"
 #include "ConverterPortChecks.h"
 #include "PtpHelpers.h"
+#include "WaveformDumpHelpers.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -169,11 +170,56 @@ void run_ptp_gates_impl(const RefDesignSpec& s, const nlohmann::json& fixture) {
     auto sTime = ptp_current_time(simOps[0], 0);
     auto sData = ptp_current(simOps[0], 0);
     REQUIRE(!sData.empty()); REQUIRE(!sTime.empty());
-    auto sResampled = ptp_interp(sTime, sData, 256);
-    const double nrmse = ptp_nrmse(aResampled, sResampled);
+    // Resample BOTH waveforms onto a common physical horizon so that the
+    // 256-sample grids represent the same physical time slice. Without
+    // this, SPICE's (t.back() ≈ T_period − ε) and analytical's (t.back()
+    // ≈ T_period − 2·dead_time) cover slightly different physical spans;
+    // the 64-shift NRMSE alignment cannot compensate for the resulting
+    // frequency drift (~3-4 % NRMSE artefact on the lower-fs designs).
+    const double T_common = std::min(aTime.back(), sTime.back());
+    auto resample_to = [](const std::vector<double>& t,
+                          const std::vector<double>& d,
+                          double Tmax, int N) {
+        std::vector<double> out(N);
+        for (int i = 0; i < N; ++i) {
+            double ti = Tmax * i / (N - 1);
+            int lo = 0;
+            for (int k = 0; k + 1 < (int)t.size(); ++k) if (t[k] <= ti) lo = k;
+            int hi = std::min(lo + 1, (int)t.size() - 1);
+            double dt = t[hi] - t[lo];
+            out[i] = (dt < 1e-20) ? d[hi]
+                                   : d[lo] + (ti - t[lo]) / dt * (d[hi] - d[lo]);
+        }
+        return out;
+    };
+    auto aCommon = resample_to(aTime, aData, T_common, 256);
+    auto sCommon = resample_to(sTime, sData, T_common, 256);
+    const double nrmse = ptp_nrmse(aCommon, sCommon);
+    // Diagnostic: report the raw time-span and amplitude of both waveforms.
+    // Period mismatch (e.g. analytical excludes dead-time, SPICE includes it)
+    // makes ptp_interp resample over DIFFERENT physical horizons; that maps
+    // 1:1 to apparent NRMSE since the 256-sample grids no longer represent
+    // the same time slice.
+    const double a_tspan = aTime.back() - aTime.front();
+    const double s_tspan = sTime.back() - sTime.front();
+    auto stats = [](const std::vector<double>& v) {
+        double mn = v[0], mx = v[0], mean = 0.0;
+        for (double x : v) { mn = std::min(mn, x); mx = std::max(mx, x); mean += x; }
+        return std::tuple<double,double,double>(mn, mx, mean / v.size());
+    };
+    auto [a_min, a_max, a_mean] = stats(aData);
+    auto [s_min, s_max, s_mean] = stats(sData);
+    std::cout << "  analytical: t_span=" << a_tspan*1e6 << " us, N=" << aData.size()
+              << ", i_range=[" << a_min << ", " << a_max << "], mean=" << a_mean << "\n";
+    std::cout << "  spice:      t_span=" << s_tspan*1e6 << " us, N=" << sData.size()
+              << ", i_range=[" << s_min << ", " << s_max << "], mean=" << s_mean << "\n";
+    std::cout << "  T_common = " << T_common*1e6 << " us\n";
     std::cout << "  iPri NRMSE = " << 100.0*nrmse << " %   (gate "
               << 100.0*s.tol_nrmse << " %)\n";
     CHECK(nrmse < s.tol_nrmse);
+    // Env-gated CSV dump (MKF_DUMP_WAVEFORMS=1) for shape-gap diagnosis.
+    dump_waveforms_csv(std::string("cllc_") + s.name,
+                       analyticalOps[0], simOps[0]);
 }
 
 void run_ptp_gates(const RefDesignSpec& s) {
