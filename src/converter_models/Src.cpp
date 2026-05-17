@@ -198,10 +198,12 @@ DesignRequirements Src::process_design_requirements() {
 
     DesignRequirements designRequirements;
     designRequirements.get_mutable_turns_ratios().clear();
+    size_t wpo = windings_per_output();
     for (auto n : outputTurnsRatios) {
         DimensionWithTolerance nTol;
         nTol.set_nominal(roundFloat(n, 2));
-        designRequirements.get_mutable_turns_ratios().push_back(nTol);
+        for (size_t w = 0; w < wpo; ++w)
+            designRequirements.get_mutable_turns_ratios().push_back(nTol);
     }
 
     // Magnetizing inductance: SRC has no Lm in the resonant tank — the
@@ -223,11 +225,14 @@ DesignRequirements Src::process_design_requirements() {
     leakageReqs.push_back(lrTol);
     designRequirements.set_leakage_inductance(leakageReqs);
 
-    // Isolation: primary + one entry per output (full-bridge rectifier model).
+    // Isolation: primary + windings_per_output() entries per output (CT splits
+    // each output into 2 half-windings, FB/CD use 1 winding per output).
     std::vector<IsolationSide> isolationSides;
     isolationSides.push_back(get_isolation_side_from_index(0));
-    for (size_t i = 0; i < nOutputs; ++i)
-        isolationSides.push_back(get_isolation_side_from_index(i + 1));
+    for (size_t i = 0; i < nOutputs; ++i) {
+        for (size_t w = 0; w < wpo; ++w)
+            isolationSides.push_back(get_isolation_side_from_index(i + 1));
+    }
     designRequirements.set_isolation_sides(isolationSides);
     designRequirements.set_topology(Topologies::SERIES_RESONANT_CONVERTER);
 
@@ -333,10 +338,15 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
     }
 
     size_t nOutputs = srcOpPoint.get_output_voltages().size();
+    size_t wpo = windings_per_output();
     auto get_n_for_output = [&](size_t outputIdx) -> double {
         if (turnsRatios.empty())
             return (k_bridge * inputVoltage) / srcOpPoint.get_output_voltages()[outputIdx];
-        if (outputIdx < turnsRatios.size()) return turnsRatios[outputIdx];
+        // turnsRatios is laid out per non-primary winding (wpo entries / output).
+        // All wpo entries for a given output carry the same n_design (LLC CT
+        // convention), so we read the first entry of the output's block.
+        size_t flatIdx = outputIdx * wpo;
+        if (flatIdx < turnsRatios.size()) return turnsRatios[flatIdx];
         return turnsRatios[0];
     };
 
@@ -432,16 +442,17 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
 
-    // ── Secondary windings (one per output; full-bridge rectifier model) ──
+    // ── Secondary windings (per-output, per-rectifier-type) ──
     //
-    // Phase 2 supports only full-bridge diode rectifier on the secondary
-    // (rectifierType=fullBridgeDiode, the schema default). Center-tapped and
-    // current-doubler are deferred to Phase 3.
-    auto rt = get_rectifier_type();
-    if (rt.has_value() && rt.value() != SrcRectifierType::FULL_BRIDGE_DIODE) {
+    // Phase 2+: supports FULL_BRIDGE_DIODE (1 winding/output) and
+    // CENTER_TAPPED_DIODE (2 half-windings/output, each carrying only its
+    // conducting half-cycle of the primary tank current). CURRENT_DOUBLER is
+    // still deferred — throw with a clear message.
+    auto rt = get_effective_rectifier_type();
+    if (rt == SrcRectifierType::CURRENT_DOUBLER) {
         throw std::runtime_error(
-            "SRC: only fullBridgeDiode rectifier is supported in Phase 2 "
-            "(centerTappedDiode / currentDoubler deferred to Phase 3).");
+            "SRC: currentDoubler rectifier is not yet supported "
+            "(centerTappedDiode and fullBridgeDiode are supported).");
     }
 
     // For current sharing across multi-output secondaries, we weight by load
@@ -464,33 +475,77 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
                          ? (Iout_i / Vout_i) / total_g
                          : (outputIdx == 0 ? 1.0 : 0.0);
 
-        std::vector<double> iSecData(totalSamples, 0.0);
-        std::vector<double> vSecData(totalSamples, 0.0);
-        for (int k = 0; k < totalSamples; ++k) {
-            // Secondary current (winding) = primary current × n × share
-            // (full-wave bridge: secondary winding sees full sinusoid; the
-            // diode bridge handles polarity inversion to feed Vout.)
-            double iSec = ILr_full[k] * n_i * share;
-            // Secondary winding voltage = +Vout_i during positive half of
-            // primary current (rectifier conducts D1/D4), -Vout_i otherwise.
-            double vSec = (ILr_full[k] >= 0.0) ? +Vout_i : -Vout_i;
-            iSecData[k] = std::isfinite(iSec) ? iSec : 0.0;
-            vSecData[k] = std::isfinite(vSec) ? vSec : 0.0;
+        if (rt == SrcRectifierType::CENTER_TAPPED_DIODE) {
+            // CT: two half-windings. Each conducts on alternating half-cycles.
+            //   halfIdx=0 → conducts when primary tank current > 0
+            //              ⇒ i_top = max(0, +ILr·n·share), v_top = +Vout (D1 on)
+            //              ⇒ when D2 is on instead, v_top = -Vout (reflected)
+            //   halfIdx=1 → symmetric, swapped polarity.
+            // n_i is primary:half-secondary (same convention as LLC CT).
+            for (size_t halfIdx = 0; halfIdx < 2; ++halfIdx) {
+                std::vector<double> iSecData(totalSamples, 0.0);
+                std::vector<double> vSecData(totalSamples, 0.0);
+                for (int k = 0; k < totalSamples; ++k) {
+                    double iPri = ILr_full[k];
+                    double i_share = iPri * n_i * share;
+                    double i_half = (halfIdx == 0)
+                                    ? std::max(0.0, +i_share)
+                                    : std::max(0.0, -i_share);
+                    // Each half-winding voltage flips sign when the opposite
+                    // diode is conducting. halfIdx=0: +Vout when iPri>0,
+                    // -Vout when iPri<0. halfIdx=1: opposite.
+                    double v_half = (halfIdx == 0)
+                                    ? ((iPri >= 0.0) ? +Vout_i : -Vout_i)
+                                    : ((iPri >= 0.0) ? -Vout_i : +Vout_i);
+                    iSecData[k] = std::isfinite(i_half) ? i_half : 0.0;
+                    vSecData[k] = std::isfinite(v_half) ? v_half : 0.0;
+                }
+                Waveform secCurrentWfm;
+                secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+                secCurrentWfm.set_data(iSecData);
+                secCurrentWfm.set_time(time_full);
+
+                Waveform secVoltageWfm;
+                secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+                secVoltageWfm.set_data(vSecData);
+                secVoltageWfm.set_time(time_full);
+
+                std::string windingName = "Secondary " + std::to_string(outputIdx)
+                                        + " Half " + std::to_string(halfIdx + 1);
+                auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
+                operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            }
         }
+        else {
+            // FULL_BRIDGE_DIODE: single secondary winding.
+            std::vector<double> iSecData(totalSamples, 0.0);
+            std::vector<double> vSecData(totalSamples, 0.0);
+            for (int k = 0; k < totalSamples; ++k) {
+                // Secondary current (winding) = primary current × n × share
+                // (full-wave bridge: secondary winding sees full sinusoid; the
+                // diode bridge handles polarity inversion to feed Vout.)
+                double iSec = ILr_full[k] * n_i * share;
+                // Secondary winding voltage = +Vout_i during positive half of
+                // primary current (rectifier conducts D1/D4), -Vout_i otherwise.
+                double vSec = (ILr_full[k] >= 0.0) ? +Vout_i : -Vout_i;
+                iSecData[k] = std::isfinite(iSec) ? iSec : 0.0;
+                vSecData[k] = std::isfinite(vSec) ? vSec : 0.0;
+            }
 
-        Waveform secCurrentWfm;
-        secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
-        secCurrentWfm.set_data(iSecData);
-        secCurrentWfm.set_time(time_full);
+            Waveform secCurrentWfm;
+            secCurrentWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secCurrentWfm.set_data(iSecData);
+            secCurrentWfm.set_time(time_full);
 
-        Waveform secVoltageWfm;
-        secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
-        secVoltageWfm.set_data(vSecData);
-        secVoltageWfm.set_time(time_full);
+            Waveform secVoltageWfm;
+            secVoltageWfm.set_ancillary_label(WaveformLabel::CUSTOM);
+            secVoltageWfm.set_data(vSecData);
+            secVoltageWfm.set_time(time_full);
 
-        std::string windingName = "Secondary " + std::to_string(outputIdx);
-        auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
-        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+            std::string windingName = "Secondary " + std::to_string(outputIdx);
+            auto excitation = complete_excitation(secCurrentWfm, secVoltageWfm, fsw, windingName);
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+        }
     }
 
     OperatingConditions conditions;
@@ -529,6 +584,17 @@ std::string Src::generate_ngspice_circuit(
     size_t inputVoltageIndex,
     size_t operatingPointIndex)
 {
+    // SPICE codegen currently covers only the FULL_BRIDGE_DIODE rectifier.
+    // CT/CD analytical paths are supported (process_operating_points) but the
+    // matching SPICE netlists are pending. Throw loudly rather than silently
+    // produce an FB-shaped netlist that misrepresents the topology.
+    if (get_effective_rectifier_type() != SrcRectifierType::FULL_BRIDGE_DIODE) {
+        throw std::runtime_error(
+            "SRC SPICE codegen: only fullBridgeDiode rectifier is supported in "
+            "the current build (centerTappedDiode / currentDoubler are pending "
+            "— analytical process_operating_points handles them).");
+    }
+
     auto& inputVoltageSpec = get_input_voltage();
     auto& ops              = get_operating_points();
 

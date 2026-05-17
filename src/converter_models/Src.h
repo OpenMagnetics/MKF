@@ -114,6 +114,21 @@ public:
      *  available. */
     double get_effective_resonant_frequency() const;
 
+    /** Effective secondary rectifier type. Defaults to FULL_BRIDGE_DIODE when
+     *  rectifierType is unset in the schema (matches Phase-1/2 behaviour). */
+    SrcRectifierType get_effective_rectifier_type() const {
+        return get_rectifier_type().value_or(SrcRectifierType::FULL_BRIDGE_DIODE);
+    }
+
+    /** True iff the effective secondary rectifier is center-tapped (CT). */
+    bool is_center_tapped() const {
+        return get_effective_rectifier_type() == SrcRectifierType::CENTER_TAPPED_DIODE;
+    }
+
+    /** Number of secondary windings produced per output. CT splits each output
+     *  into two half-windings; FB and CD use a single secondary winding. */
+    size_t windings_per_output() const { return is_center_tapped() ? 2 : 1; }
+
     // ── Topology interface ──────────────────────────────────────────────────
     bool run_checks(bool assert = false) override;
     DesignRequirements process_design_requirements() override;

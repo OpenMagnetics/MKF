@@ -170,12 +170,123 @@ TEST_CASE("SRC: AdvancedSrc round-trips desired turns ratio and Lr/Cr", "[src-to
 }
 
 
-TEST_CASE("SRC: rejects unsupported rectifier types in Phase 2", "[src-topology]") {
+TEST_CASE("SRC: rejects currentDoubler rectifier (pending CD support)", "[src-topology]") {
+    auto j = make_src_json(400, 48, 10, 100e3, 100e3);
+    j["rectifierType"] = "currentDoubler";
+    Src src(j);
+    REQUIRE_THROWS_AS(
+        src.process_operating_points(std::vector<double>{}, 0),
+        std::runtime_error);
+}
+
+
+// =====================================================================
+// CENTER_TAPPED_DIODE rectifier (analytical, Phase-2 extension)
+// =====================================================================
+
+TEST_CASE("SRC: centerTappedDiode design emits 2 windings per output", "[src-topology]") {
+    auto j = make_src_json(400, 48, 10, 100e3, 100e3);
+    j["rectifierType"] = "centerTappedDiode";
+    Src src(j);
+
+    REQUIRE(src.get_effective_rectifier_type() == SrcRectifierType::CENTER_TAPPED_DIODE);
+    REQUIRE(src.is_center_tapped());
+    REQUIRE(src.windings_per_output() == 2);
+
+    auto dr = src.process_design_requirements();
+    // turns_ratios: wpo=2 entries per output (both equal to the same n_design).
+    REQUIRE(dr.get_turns_ratios().size() == 2);
+    double n0 = dr.get_turns_ratios()[0].get_nominal().value();
+    double n1 = dr.get_turns_ratios()[1].get_nominal().value();
+    REQUIRE_THAT(n0, WithinRel(0.5 * 400.0 / 48.0, 0.02));   // same as FB
+    REQUIRE(n0 == n1);
+    // isolation_sides: 1 primary + 2 (wpo) secondary entries per output.
+    REQUIRE(dr.get_isolation_sides().has_value());
+    REQUIRE(dr.get_isolation_sides()->size() == 3);
+}
+
+
+TEST_CASE("SRC: centerTappedDiode emits two half-windings with alternating conduction",
+          "[src-topology]") {
+    auto j = make_src_json(400, 48, 10, /*fsw*/100e3, /*fr*/100e3, /*Q*/2.0);
+    j["rectifierType"] = "centerTappedDiode";
+    Src src(j);
+    auto ops = src.process_operating_points(std::vector<double>{}, 0);
+    REQUIRE(!ops.empty());
+
+    auto& windings = ops[0].get_excitations_per_winding();
+    // primary + 2 secondary halves
+    REQUIRE(windings.size() == 3);
+
+    auto halfA_i = windings[1].get_current()->get_waveform()->get_data();
+    auto halfA_v = windings[1].get_voltage()->get_waveform()->get_data();
+    auto halfB_i = windings[2].get_current()->get_waveform()->get_data();
+    auto halfB_v = windings[2].get_voltage()->get_waveform()->get_data();
+    REQUIRE(!halfA_i.empty());
+    REQUIRE(halfA_i.size() == halfB_i.size());
+
+    // Each half-winding current must be non-negative everywhere (CT rectifier
+    // only allows one direction per half via the diode).
+    double maxA = 0, maxB = 0;
+    for (size_t k = 0; k < halfA_i.size(); ++k) {
+        REQUIRE(halfA_i[k] >= -1e-9);
+        REQUIRE(halfB_i[k] >= -1e-9);
+        maxA = std::max(maxA, halfA_i[k]);
+        maxB = std::max(maxB, halfB_i[k]);
+    }
+    REQUIRE(maxA > 0);
+    REQUIRE(maxB > 0);
+    // Symmetric peaks (within numerical tolerance from polarity-step interpolation).
+    REQUIRE_THAT(maxA, WithinRel(maxB, 0.05));
+
+    // Voltage waveforms: bipolar ±Vout square wave, with opposite polarity
+    // between halves. Verify peak magnitudes match Vout (samples near the
+    // polarity step interpolate to lower magnitudes — accept the peak only).
+    double peakA = 0, peakB = 0;
+    for (size_t k = 0; k < halfA_v.size(); ++k) {
+        peakA = std::max(peakA, std::abs(halfA_v[k]));
+        peakB = std::max(peakB, std::abs(halfB_v[k]));
+    }
+    REQUIRE_THAT(peakA, WithinRel(48.0, 1e-3));
+    REQUIRE_THAT(peakB, WithinRel(48.0, 1e-3));
+
+    // Half-windings 180° out of phase: when one is +Vout, the other is -Vout
+    // (away from the polarity-step interpolation region). Cross-correlation
+    // at lag 0 should be negative ⇒ Σ vA·vB < 0.
+    double dot = 0.0;
+    for (size_t k = 0; k < halfA_v.size(); ++k)
+        dot += halfA_v[k] * halfB_v[k];
+    REQUIRE(dot < 0.0);
+}
+
+
+TEST_CASE("SRC: centerTappedDiode tank waveforms match fullBridgeDiode", "[src-topology]") {
+    // CT and FB have the same FHA model — only the winding decomposition differs.
+    // Primary current peak and Vcr peak must match within 1 %.
+    auto jFB = make_src_json(400, 48, 10, 100e3, 100e3, 2.0);
+    Src srcFB(jFB);
+    srcFB.process_operating_points(std::vector<double>{}, 0);
+
+    auto jCT = make_src_json(400, 48, 10, 100e3, 100e3, 2.0);
+    jCT["rectifierType"] = "centerTappedDiode";
+    Src srcCT(jCT);
+    srcCT.process_operating_points(std::vector<double>{}, 0);
+
+    REQUIRE_THAT(srcCT.get_last_ir_peak(),
+                 WithinRel(srcFB.get_last_ir_peak(), 1e-3));
+    REQUIRE_THAT(srcCT.get_last_vcr_peak(),
+                 WithinRel(srcFB.get_last_vcr_peak(), 1e-3));
+    REQUIRE_THAT(srcCT.get_last_gain(),
+                 WithinRel(srcFB.get_last_gain(), 1e-9));
+}
+
+
+TEST_CASE("SRC: centerTappedDiode SPICE codegen still throws (pending)", "[src-topology]") {
     auto j = make_src_json(400, 48, 10, 100e3, 100e3);
     j["rectifierType"] = "centerTappedDiode";
     Src src(j);
     REQUIRE_THROWS_AS(
-        src.process_operating_points(std::vector<double>{}, 0),
+        src.generate_ngspice_circuit(std::vector<double>{4.17}, 0),
         std::runtime_error);
 }
 
