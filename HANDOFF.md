@@ -163,58 +163,32 @@ ls -t /tmp/mkf_wf_*.csv | head -1
 
 Campaign effectively stalled (see queue §7 PFC notes and §8-11). Options for next agent:
 
-1. **CLLC — Infineon-11kW residual structural shape gap** (the last design
-   not at the DAB-quality 0.15 NRMSE gate). Status as of commit `254770da`:
-   5/6 PtP designs now pass at the 0.15 gate; Infineon-11kW alone is held
-   at the 0.16 gate (current NRMSE 15.75 %).
+1. **CLLC — DAB-quality REACHED on all 6 PtP designs** (commit `5f075d73`).
+   Per-design NRMSE: Telecom-500W 3.88 %, Telecom-500W-BelowFr 5.44 %,
+   Telecom-250W 4.77 %, **Infineon-11kW 10.43 %** (was 15.75 %),
+   KIT-20kW-Asymmetric 12.99 %, Telecom-500W-REVERSE 11.69 %. All under
+   the 0.15 DAB-quality gate. Full CLLC suite green (33 cases / 353 assert).
 
    **What's already done this campaign**:
-   - Commit `0f5bde38` (`feat(cllc): 4-state asymmetric TDA per Sun 2020 TPEL`):
-     full 4-state piecewise TDA per Sun et al. IEEE TPEL 35(4):3491-3505 (2020)
-     for asymmetric tanks (a≠1 or b≠1). State (iLr1, iLm, vCr1, vCr2_pri);
-     shifted system block-antidiagonal so each half-cycle factors into two
-     2×2 oscillators (closed-form eigendecomp). KIT amplitude collapsed
-     from analytical ±301 A (5.6× over-prediction) to physically plausible
-     range. Symmetric tanks unchanged (still 3-state path).
-   - Commit `254770da` (`feat(cllc): damped Picard 4-state solver`):
-     replaced the 4-D finite-difference Newton (which trapped on degenerate
-     low-amplitude basins) with damped Picard `x_{n+1} = α·(−x(Thalf|x_n))
-     + (1−α)·x_n`, α=0.4, ≤200 iters, multi-start over 6 physically-motivated
-     seeds. KIT NRMSE 15.02 % → 12.99 %, gate tightened 0.16 → 0.15.
+   - `0f5bde38` 4-state asymmetric TDA per Sun 2020 TPEL — KIT amplitude
+     fix (±301 A → physically plausible). State (iLr1, iLm, vCr1, vCr2_pri);
+     shifted system block-antidiagonal, closed-form 2×2 eigendecomp.
+   - `254770da` damped Picard 4-state solver (α=0.4, ≤200 iters) with
+     multi-start over 6 physically-motivated seeds + sanity + degeneracy
+     filters. Replaces 4-D Newton that trapped on low-amplitude basins.
+   - `5f075d73` **route ALL CLLC tanks through 4-state TDA** (symmetric
+     too). 3-state collapsed path retired. F sub-state explicitly models
+     dead-time / commutation interval — that's the missing physics that
+     was costing Infineon ~5 pp. Infineon gate tightened 0.16 → 0.15.
 
-   **Remaining work for Infineon (15.75 % > 0.15)**:
-   - The amplitudes match SPICE within 3 % (analytical ±35.95/+34.27 A vs
-     SPICE ±36.29/+35.17 A), but the WAVEFORM SHAPES differ structurally:
-     analytical is closer to a triangle/distorted shape, SPICE is closer
-     to a clean sinusoid. The 64-sample-shift ptp_nrmse alignment can't
-     close the structural gap — diagnostic dump:
-     `/tmp/mkf_wf_cllc_Infineon-11kW_<ms>.csv`.
-   - Cause is most likely the dead-time / commutation interval not being
-     modelled as an explicit 5th sub-state in the 3-state symmetric path.
-     Infineon runs at fs=73 kHz with fr≈80-90 kHz (near the mode-1/2
-     boundary), where this matters most. KIT at fs=fr=100 kHz isn't
-     affected because Sun's 4-state already includes the F segments.
-   - **Recommended next step**: lift the 4-state model to also handle
-     symmetric tanks (it's strictly more general and handles dead time
-     via the F segment); route ALL CLLC tanks through it, not just
-     asymmetric ones. Then the per-design NRMSE should drop further.
-     Alternative: add an explicit dead-time sub-state to the 3-state
-     symmetric path. Either path should bring Infineon under 0.15.
-
-   **Known limitation of the Picard solver**: for high-gain operating
-   points (e.g. KIT OP[2] Vi=900) the lossless tank's Picard map can fail
-   to converge (residual ~140 instead of <1e-6). Multi-start picks the
-   best of 6 seeds, but for the basin where the high-amplitude steady
-   state lives, none of the current seeds is close enough. Workaround
-   (not yet implemented): cycle-iterate WITHOUT antisymmetry, alternating
-   bridge polarity each half — converges via small numerical dissipation.
-
-   **Amplitude residual on KIT** (analytical ±38.7 A vs SPICE ±54 A,
-   gap ~28 %): the Picard map is collapsing to a low-amplitude basin
-   (the lossless fixed-point set has a continuum of solutions from
-   zero-amplitude up to load-driven). Same fix as above (transient
-   simulation with bridge alternation) would likely push amplitudes
-   to within a few % of SPICE.
+   **Residual amplitude gap on KIT** (analytical ±38.7 A vs SPICE ±54 A,
+   ~28 % low): Picard map is biased toward low-amplitude basin (lossless
+   tank → continuum of fixed-points from zero up to load-driven). NRMSE
+   is shape-only so still passes gate, but a future amplitude-aware
+   improvement would replace the Picard solve with multi-cycle transient
+   simulation alternating bridge polarity (no antisymmetry trick), letting
+   small numerical dissipation settle the steady state. Not required for
+   DAB-quality; document only.
 
    **Test infrastructure ready** (unchanged): env-gated CSV dump
    (`MKF_DUMP_WAVEFORMS=1`) writes 9-column waveform dumps to
