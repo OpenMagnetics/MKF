@@ -56,6 +56,19 @@ private:
     mutable double lastVcrPeak       = 0.0;   // resonant cap peak voltage [V]
     mutable bool   lastIsAboveResonance = true;
 
+    // SPICE simulation tuning (mirrors Llc / Cllc).
+    int numPeriodsToExtract   = 5;
+    int numSteadyStatePeriods = 10;
+
+    // Extra-component waveforms — one entry per operating point, populated by
+    // process_operating_point_for_input_voltage and consumed by
+    // get_extra_components_inputs. Cleared at the start of every
+    // process_operating_points() call.
+    mutable std::vector<Waveform> extraCapVoltageWaveforms;   // Vcr full-period
+    mutable std::vector<Waveform> extraCapCurrentWaveforms;   // ILr full-period
+    mutable std::vector<Waveform> extraIndVoltageWaveforms;   // VLr full-period
+    mutable std::vector<Waveform> extraIndCurrentWaveforms;   // ILr full-period
+
 public:
     bool _assertErrors = false;
 
@@ -117,6 +130,35 @@ public:
         double inputVoltage,
         const TopologyExcitation& srcOpPoint,
         const std::vector<double>& turnsRatios);
+
+    // ── SPICE simulation ────────────────────────────────────────────────────
+    int  get_num_periods_to_extract()   const { return numPeriodsToExtract; }
+    void set_num_periods_to_extract(int v)    { numPeriodsToExtract = v; }
+    int  get_num_steady_state_periods() const { return numSteadyStatePeriods; }
+    void set_num_steady_state_periods(int v)  { numSteadyStatePeriods = v; }
+
+    /** Emit a self-contained ngspice deck for one (Vin, OP) combination.
+     *  Behavioural-PULSE bridge (no SW1/body-diode model); full-bridge diode
+     *  rectifier; separate Lr (no "integrated" branch). HB and FB bridges
+     *  supported. Mirrors Llc::generate_ngspice_circuit. */
+    std::string generate_ngspice_circuit(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t inputVoltageIndex   = 0,
+        size_t operatingPointIndex = 0);
+
+    /** Run ngspice across (Vin × OP) and return one OperatingPoint per cell. */
+    std::vector<OperatingPoint> simulate_and_extract_operating_points(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t numberOfPeriods = 0);
+
+    /** Run ngspice and emit ConverterWaveforms for port-level diagnostics
+     *  (input_voltage, input_current, output_voltages, output_currents). */
+    std::vector<ConverterWaveforms> simulate_and_extract_topology_waveforms(
+        const std::vector<double>& turnsRatios,
+        double magnetizingInductance,
+        size_t numberOfPeriods = 2);
 };
 
 

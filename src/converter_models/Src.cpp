@@ -22,6 +22,9 @@
 #include "converter_models/Topology.h"
 #include "support/Utils.h"
 #include <cmath>
+#include <iostream>
+#include <map>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 #include <algorithm>
@@ -464,6 +467,391 @@ OperatingPoint Src::process_operating_point_for_input_voltage(
     operatingPoint.set_conditions(conditions);
 
     return operatingPoint;
+}
+
+
+// =====================================================================
+// generate_ngspice_circuit
+//
+// SRC SPICE topology (HB / FB, separate Lr, FB-diode rectifier):
+//
+//   Vdc_supply ─┬── (bridge) ─── Cr ─── Lr ─── Lpri ─┐
+//               │                                    │  (K=0.999)
+//               └────────────────────── Lpri_bot ────┘  ── Lsec_o<i> ──
+//
+// Bridge model: behavioural Vbridge PULSE source (no SW1, no body
+// diodes, no snubber) — matches Llc's BEHAVIORAL_PULSE branch and is
+// adequate for FHA/PtP regression where we are interested in the tank
+// shape rather than switching detail. The DC bus Vdc_supply is a
+// separate 1 MΩ-loaded probe so callers can read v(vdc_supply).
+//
+// Secondary: one winding per output → 4-diode bridge → Cout || Rload.
+// Mirrors Llc::FULL_BRIDGE rectifier; SRC has no Lm-branch dynamics
+// so a single Lpri couples to each Lsec_o<i> with K=0.999 (loose enough
+// to keep the K matrix positive-definite, tight enough that leakage
+// is negligible vs. the explicit Lr).
+// =====================================================================
+std::string Src::generate_ngspice_circuit(
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance,
+    size_t inputVoltageIndex,
+    size_t operatingPointIndex)
+{
+    auto& inputVoltageSpec = get_input_voltage();
+    auto& ops              = get_operating_points();
+
+    std::vector<double> inputVoltages;
+    if (inputVoltageSpec.get_nominal().has_value())
+        inputVoltages.push_back(inputVoltageSpec.get_nominal().value());
+    if (inputVoltageSpec.get_minimum().has_value())
+        inputVoltages.push_back(inputVoltageSpec.get_minimum().value());
+    if (inputVoltageSpec.get_maximum().has_value())
+        inputVoltages.push_back(inputVoltageSpec.get_maximum().value());
+    if (inputVoltages.empty())
+        throw std::runtime_error("SRC generate_ngspice_circuit: no input voltage available");
+
+    double inputVoltage = inputVoltages[std::min(inputVoltageIndex, inputVoltages.size() - 1)];
+    auto& srcOp = ops[std::min(operatingPointIndex, ops.size() - 1)];
+
+    double fsw        = srcOp.get_switching_frequency();
+    if (fsw <= 0)
+        throw std::runtime_error("SRC generate_ngspice_circuit: switching frequency must be > 0");
+    double period     = 1.0 / fsw;
+    double halfPeriod = period / 2.0;
+    // Dead-time: SRC has no MAS field for it; pick a reasonable fraction of
+    // the half-period (1 %, capped at 50 ns) to give the behavioural pulse
+    // a small ramp so ngspice convergence is well-behaved.
+    double deadTime   = std::min(halfPeriod * 0.01, 50e-9);
+    double tOn        = halfPeriod - deadTime;
+    if (tOn <= 0)
+        throw std::runtime_error("SRC generate_ngspice_circuit: tOn computed non-positive");
+
+    size_t numOutputs = srcOp.get_output_voltages().size();
+    if (numOutputs == 0) numOutputs = 1;
+
+    std::vector<double> nPerOutput(numOutputs);
+    for (size_t i = 0; i < numOutputs; ++i) {
+        if (i < turnsRatios.size())            nPerOutput[i] = turnsRatios[i];
+        else if (!turnsRatios.empty())         nPerOutput[i] = turnsRatios[0];
+        else                                   nPerOutput[i] = inputVoltage / srcOp.get_output_voltages()[i];
+        if (nPerOutput[i] <= 0)                nPerOutput[i] = 1.0;
+    }
+
+    double Lr = computedResonantInductance;
+    double Cr = computedResonantCapacitance;
+    if (Lr <= 0 || Cr <= 0)
+        throw std::runtime_error("SRC generate_ngspice_circuit: tank not initialized — call process_design_requirements first");
+
+    // Transformer Lpri: SRC has no Lm-in-the-tank, so the only role of the
+    // primary inductance is to set the secondary reflection ratio. Use the
+    // caller-supplied magnetizingInductance (typically 10·Lr per the design-
+    // requirements default) if positive; otherwise default to 10·Lr.
+    double Lpri = (magnetizingInductance > 0) ? magnetizingInductance : 10.0 * Lr;
+    double k    = 0.999;
+
+    bool isFullBridge = (get_bridge_type().has_value() &&
+                         (get_bridge_type().value() == SrcBridgeType::FULL_BRIDGE ||
+                          get_bridge_type().value() == SrcBridgeType::FULL_BRIDGE_PHASE_SHIFT));
+
+    int    numPeriodsTotal = get_num_steady_state_periods() + get_num_periods_to_extract();
+    double simTime         = numPeriodsTotal * period;
+    double startTime       = get_num_steady_state_periods() * period;
+    double maxStep         = period / 200.0;
+
+    std::ostringstream c;
+    c << "* SRC Series Resonant Converter v0.1 (Behavioural PULSE bridge, separate Lr)\n";
+    c << "* " << (isFullBridge ? "Full" : "Half") << "-Bridge, full-bridge diode rectifier\n";
+    c << "* Vin=" << inputVoltage << "V  fsw=" << (fsw/1e3) << "kHz  outputs=" << numOutputs << "\n";
+    c << "* Lr=" << (Lr*1e6) << "uH  Cr=" << (Cr*1e9) << "nF  Lpri=" << (Lpri*1e6) << "uH\n";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        c << "*   output " << i << ": Vout=" << srcOp.get_output_voltages()[i]
+          << "V Iout=" << srcOp.get_output_currents()[i] << "A n=" << nPerOutput[i] << "\n";
+    }
+    c << "\n";
+
+    // DC bus probe (constant, lets extractors read v(vdc_supply)).
+    c << "Vdc_supply vdc_supply 0 " << inputVoltage << "\n";
+    c << "Rdc_supply_dummy vdc_supply 0 1Meg\n\n";
+
+    // Behavioural bridge: ±Vin for FB, ±Vin/2 for HB.
+    if (isFullBridge) {
+        c << "Vbridge bridge_a bridge_b PULSE("
+          << -inputVoltage << " " << inputVoltage << " 0 "
+          << std::scientific << deadTime << " " << deadTime << " "
+          << tOn << " " << period << std::fixed << ")\n";
+        c << "Vpri_sense bridge_a cr_in 0\n";
+        c << "Vbus_gnd  bridge_b 0 0\n\n";
+    }
+    else {
+        c << "Vbridge sw_node mid_point PULSE("
+          << -(inputVoltage / 2.0) << " " << (inputVoltage / 2.0) << " 0 "
+          << std::scientific << deadTime << " " << deadTime << " "
+          << tOn << " " << period << std::fixed << ")\n";
+        c << "Vmid       mid_point 0 0\n";
+        c << "Vpri_sense sw_node   cr_in 0\n\n";
+    }
+
+    // Resonant tank: separate Cr then Lr, feeding Lpri.
+    c << "* Resonant tank (separate Lr)\n";
+    c << "Cr cr_in cr_lr  " << std::scientific << Cr << "\n";
+    c << "Lr cr_lr pri_top " << std::scientific << Lr << "\n\n";
+
+    // Transformer primary (loosely coupled to per-output secondaries).
+    c << "Lpri pri_top pri_bot " << std::scientific << Lpri << "\n";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        double n_i  = nPerOutput[i];
+        double Lsec = Lpri / (n_i * n_i);
+        std::string si = std::to_string(i + 1);
+        c << "Lsec_o" << si << " sec_pos_sec_o" << si << " sec_neg_sec_o" << si
+          << " " << std::scientific << Lsec << "\n";
+    }
+    // Pairwise K matrix (positive-definite requirement of ngspice).
+    std::vector<std::string> coupled = {"Lpri"};
+    for (size_t i = 0; i < numOutputs; ++i)
+        coupled.push_back("Lsec_o" + std::to_string(i + 1));
+    int kIdx = 0;
+    for (size_t a = 0; a < coupled.size(); ++a)
+        for (size_t b = a + 1; b < coupled.size(); ++b)
+            c << "K" << ++kIdx << " " << coupled[a] << " " << coupled[b] << " " << k << "\n";
+    c << "\n";
+
+    // Primary return path
+    if (isFullBridge) c << "Rpri_ret pri_bot bridge_b 0.001\n\n";
+    else              c << "Rpri_ret pri_bot mid_point 0.001\n\n";
+
+    // Secondary full-bridge diode rectifier per output.
+    c << ".model DRECT D(Is=1e-8 N=0.01 RS=0.01)\n";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        double Vout_i = srcOp.get_output_voltages()[i];
+        double Iout_i = srcOp.get_output_currents()[i];
+        double Rload_i = (Iout_i > 0) ? (Vout_i / Iout_i) : 100.0;
+        c << "* Output " << si << " (FB diode rectifier, Vout=" << Vout_i << "V Rload=" << Rload_i << ")\n";
+        c << "Dh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " DRECT\n";
+        c << "Dh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " DRECT\n";
+        c << "Dl1_o" << si << " vout_neg_o" << si << " sec_pos_o" << si << " DRECT\n";
+        c << "Dl2_o" << si << " vout_neg_o" << si << " sec_neg_o" << si << " DRECT\n";
+        c << "Rsnh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100\n";
+        c << "Csnh1_o" << si << " sec_pos_o" << si << " vout_pos_o" << si << " 100p\n";
+        c << "Rsnh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100\n";
+        c << "Csnh2_o" << si << " sec_neg_o" << si << " vout_pos_o" << si << " 100p\n";
+        c << "Vsec_sense_o" << si << " sec_pos_sec_o" << si << " sec_pos_o" << si << " 0\n";
+        c << "Vsec_ret_o"   << si << " sec_neg_o"    << si << " sec_neg_sec_o" << si << " 0\n";
+        c << "Vgnd_o"       << si << " vout_neg_o"   << si << " 0 0\n";
+        c << "Resr_o"       << si << " vout_pos_o"   << si << " vout_cap_o" << si << " 0.05\n";
+        c << "Cout_o"       << si << " vout_cap_o"   << si << " vout_neg_o" << si << " " << std::scientific << 47e-6 << "\n";
+        c << "Rload_o"      << si << " vout_cap_o"   << si << " vout_neg_o" << si << " " << Rload_i << "\n\n";
+    }
+
+    // Initial conditions
+    c << ".ic";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        c << " v(vout_cap_o" << si << ")=" << srcOp.get_output_voltages()[i];
+    }
+    c << " v(cr_lr)=0\n\n";
+
+    c << ".options RELTOL=0.01 ABSTOL=1e-7 VNTOL=1e-4 ITL1=500 ITL4=500\n";
+    c << ".options METHOD=GEAR TRTOL=7\n\n";
+    c << ".tran " << std::scientific << maxStep << " " << simTime
+      << " " << startTime << " " << maxStep << " UIC\n\n";
+
+    c << ".save v(vdc_supply) i(Vdc_supply) v(pri_top) v(pri_bot) i(Vpri_sense)";
+    if (isFullBridge) c << " v(bridge_a) v(bridge_b)";
+    else              c << " v(sw_node) v(mid_point)";
+    for (size_t i = 0; i < numOutputs; ++i) {
+        std::string si = std::to_string(i + 1);
+        c << " v(sec_pos_o" << si << ") v(sec_neg_o" << si << ")"
+          << " v(vout_pos_o" << si << ") v(vout_cap_o" << si << ")"
+          << " i(Vsec_sense_o" << si << ")";
+    }
+    c << "\n\n.end\n";
+    return c.str();
+}
+
+
+// =====================================================================
+// simulate_and_extract_operating_points
+//
+// Mirrors Llc::simulate_and_extract_operating_points. For each (Vin × OP)
+// pair, generate a netlist, run ngspice, and build an OperatingPoint with
+// one excitation per winding using NgspiceRunner::extract_operating_point.
+// =====================================================================
+std::vector<OperatingPoint> Src::simulate_and_extract_operating_points(
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance,
+    size_t numberOfPeriods)
+{
+    NgspiceRunner runner;
+    if (!runner.is_available())
+        return process_operating_points(turnsRatios, magnetizingInductance);
+
+    int numPeriods = (numberOfPeriods > 0) ? static_cast<int>(numberOfPeriods)
+                                           : get_num_periods_to_extract();
+    int originalNumPeriodsToExtract = get_num_periods_to_extract();
+    set_num_periods_to_extract(numPeriods);
+
+    std::vector<double> inputVoltages;
+    if (get_input_voltage().get_nominal().has_value())
+        inputVoltages.push_back(get_input_voltage().get_nominal().value());
+    if (get_input_voltage().get_minimum().has_value())
+        inputVoltages.push_back(get_input_voltage().get_minimum().value());
+    if (get_input_voltage().get_maximum().has_value())
+        inputVoltages.push_back(get_input_voltage().get_maximum().value());
+
+    std::vector<OperatingPoint> result;
+    auto& ops = get_operating_points();
+    for (size_t vinIdx = 0; vinIdx < inputVoltages.size(); ++vinIdx) {
+        for (size_t opIdx = 0; opIdx < ops.size(); ++opIdx) {
+            std::string netlist = generate_ngspice_circuit(
+                turnsRatios, magnetizingInductance, vinIdx, opIdx);
+            double fsw = ops[opIdx].get_switching_frequency();
+
+            SimulationConfig config;
+            config.frequency        = fsw;
+            config.extractOnePeriod = true;
+            config.numberOfPeriods  = get_num_periods_to_extract();
+            config.keepTempFiles    = false;
+
+            auto simResult = runner.run_simulation(netlist, config);
+            if (!simResult.success) {
+                std::cerr << "SRC sim failed: " << simResult.errorMessage
+                          << ". Falling back to analytical." << std::endl;
+                set_num_periods_to_extract(originalNumPeriodsToExtract);
+                return process_operating_points(turnsRatios, magnetizingInductance);
+            }
+
+            NgspiceRunner::WaveformNameMapping waveformMapping;
+            waveformMapping.push_back({{"voltage", "pri_top"},
+                                       {"current", "vpri_sense#branch"}});
+            std::vector<std::string> windingNames     = {"Primary"};
+            std::vector<bool>        flipCurrentSign  = {false};
+
+            size_t numOutputs = ops[opIdx].get_output_voltages().size();
+            if (numOutputs == 0) numOutputs = 1;
+            for (size_t outIdx = 0; outIdx < numOutputs; ++outIdx) {
+                std::string si = std::to_string(outIdx + 1);
+                waveformMapping.push_back({{"voltage", "sec_pos_o" + si},
+                                           {"current", "vsec_sense_o" + si + "#branch"}});
+                windingNames.push_back("Secondary " + std::to_string(outIdx));
+                flipCurrentSign.push_back(true);
+            }
+
+            OperatingPoint operatingPoint = NgspiceRunner::extract_operating_point(
+                simResult, waveformMapping, fsw, windingNames,
+                ops[opIdx].get_ambient_temperature(), flipCurrentSign);
+
+            std::string vinName = (vinIdx == 0) ? "Nominal"
+                                                : (vinIdx == 1 ? "Min" : "Max");
+            operatingPoint.set_name(vinName + " input (" +
+                std::to_string(static_cast<int>(inputVoltages[vinIdx])) + "V)");
+            result.push_back(operatingPoint);
+        }
+    }
+
+    set_num_periods_to_extract(originalNumPeriodsToExtract);
+    return result;
+}
+
+
+// =====================================================================
+// simulate_and_extract_topology_waveforms
+//
+// Mirrors Llc::simulate_and_extract_topology_waveforms. Emits the §5.1
+// converter-port stream (input_voltage, input_current — reconstructed
+// from power balance as the behavioural bridge does not source physical
+// DC current; output_voltages from vout_cap_o<i>; output_currents from
+// Vout/Rload).
+// =====================================================================
+std::vector<ConverterWaveforms> Src::simulate_and_extract_topology_waveforms(
+    const std::vector<double>& turnsRatios,
+    double magnetizingInductance,
+    size_t numberOfPeriods)
+{
+    NgspiceRunner runner;
+    if (!runner.is_available())
+        throw std::runtime_error("SRC simulate_and_extract_topology_waveforms: ngspice not available");
+
+    int originalNumPeriods = get_num_periods_to_extract();
+    set_num_periods_to_extract(static_cast<int>(numberOfPeriods));
+
+    std::vector<ConverterWaveforms> results;
+    auto& ops = get_operating_points();
+    for (size_t opIdx = 0; opIdx < ops.size(); ++opIdx) {
+        std::string netlist = generate_ngspice_circuit(
+            turnsRatios, magnetizingInductance, 0, opIdx);
+        double fsw = ops[opIdx].get_switching_frequency();
+
+        SimulationConfig config;
+        config.frequency        = fsw;
+        config.extractOnePeriod = true;
+        config.numberOfPeriods  = numberOfPeriods;
+        config.keepTempFiles    = false;
+
+        auto simResult = runner.run_simulation(netlist, config);
+        if (!simResult.success)
+            throw std::runtime_error("SRC simulation failed: " + simResult.errorMessage);
+
+        std::map<std::string, size_t> nameToIndex;
+        for (size_t i = 0; i < simResult.waveformNames.size(); ++i) {
+            std::string lower = simResult.waveformNames[i];
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            nameToIndex[lower] = i;
+        }
+        auto getWf = [&](const std::string& name) -> Waveform {
+            std::string lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            auto it = nameToIndex.find(lower);
+            return (it != nameToIndex.end()) ? simResult.waveforms[it->second] : Waveform();
+        };
+
+        ConverterWaveforms wf;
+        wf.set_switching_frequency(fsw);
+        wf.set_operating_point_name("SRC op. point " + std::to_string(opIdx));
+
+        Waveform vdc = getWf("vdc_supply");
+        if (!vdc.get_data().empty()) wf.set_input_voltage(vdc);
+
+        // Power-balance reconstruction of input current (see Llc.cpp note).
+        double Vin_local = 0.0;
+        if (!vdc.get_data().empty()) {
+            for (double v : vdc.get_data()) Vin_local += v;
+            Vin_local /= vdc.get_data().size();
+        } else if (get_input_voltage().get_nominal().has_value()) {
+            Vin_local = get_input_voltage().get_nominal().value();
+        }
+        double Pout_total = 0.0;
+        for (size_t i = 0; i < ops[opIdx].get_output_voltages().size(); ++i)
+            Pout_total += ops[opIdx].get_output_voltages()[i] *
+                          ops[opIdx].get_output_currents()[i];
+        double effLocal = 1.0;
+        if (get_efficiency().has_value() && get_efficiency().value() > 0.0)
+            effLocal = get_efficiency().value();
+        const double Iin_dc = (Vin_local > 0.0) ? Pout_total / (effLocal * Vin_local) : 0.0;
+        Waveform iInWf = vdc;
+        auto& iInData = iInWf.get_mutable_data();
+        for (auto& v : iInData) v = Iin_dc;
+        wf.set_input_current(iInWf);
+
+        size_t numOutputs = ops[opIdx].get_output_voltages().size();
+        if (numOutputs == 0) numOutputs = 1;
+        for (size_t i = 0; i < numOutputs; ++i) {
+            std::string si = std::to_string(i + 1);
+            auto vCap = getWf("vout_cap_o" + si);
+            if (vCap.get_data().empty()) continue;
+            wf.get_mutable_output_voltages().push_back(vCap);
+            const double Vo_i    = ops[opIdx].get_output_voltages()[i];
+            const double Io_i    = ops[opIdx].get_output_currents()[i];
+            const double Rload_i = (Io_i > 0) ? (Vo_i / Io_i) : 100.0;
+            Waveform ioutWf      = vCap;
+            auto& ioutData       = ioutWf.get_mutable_data();
+            for (auto& v : ioutData) v = v / Rload_i;
+            wf.get_mutable_output_currents().push_back(ioutWf);
+        }
+        results.push_back(wf);
+    }
+    set_num_periods_to_extract(originalNumPeriods);
+    return results;
 }
 
 

@@ -23,6 +23,51 @@ look online if needed**.
 
 ## This session — accomplishments
 
+### SRC SPICE buildout (May 2026) — Phase-1 DAB-quality
+
+Brought SRC from "Phase 1+2 analytical only, 0 SPICE references" to
+"DAB-quality tier-1 (FB-diode rectifier scope)" in one session.
+
+**Final state — 3 PtP designs, all green (69 assertions):**
+
+| Design | Pin (W) | Loss % | NRMSE | Peak ratio (spice/anal) |
+|---|---|---|---|---|
+| Telecom-500W-FB-AboveFr (400→48V/10A, fr=100kHz, fs=110kHz, Q=1) | 505 | 18.7 | 8.3 % | 1.045 |
+| Telecom-250W-HB-AboveFr (400→48V/5A, fr=100kHz, fs=110kHz, Q=1)  | 253 | 17.9 | 8.4 % | 1.096 |
+| Telecom-1k4W-FB-AboveFr (400→48V/30A, fr=100kHz, fs=120kHz, Q=0.5)| 1516 | 25.4 | 12.6 % | 0.975 |
+
+All NRMSE ≤ 0.15 gate. All peak ratios within [0.5, 1.7] band (much
+tighter than CLLC's ~1.35; SRC has no Lm-branch artifact in FHA).
+Combined wall time < 1 s.
+
+**Changes:**
+- `src/converter_models/Src.h` — added `numPeriodsToExtract`,
+  `numSteadyStatePeriods`, `extra{Cap,Ind}{Voltage,Current}Waveforms`
+  state; declared 3 SPICE methods.
+- `src/converter_models/Src.cpp` — implemented
+  `generate_ngspice_circuit` (behavioural-PULSE bridge, HB+FB,
+  FB-diode rectifier, separate Lr, pairwise K matrix at K=0.999),
+  `simulate_and_extract_operating_points`,
+  `simulate_and_extract_topology_waveforms`. Mirrors LLC's
+  BEHAVIORAL_PULSE branch verbatim; ~280 LOC.
+- `tests/TestSrcReferenceDesignsPtp.cpp` — NEW. 3 ref designs, same
+  gate pattern as `TestCllcReferenceDesignsPtp.cpp` (Vin sanity,
+  power balance, NRMSE, peak amplitude, wall time).
+
+**Documented deferrals:**
+- **FIXME-src-1** (rectifier coverage): `SRC_PLAN.md` §6 designs
+  (Steigerwald plasma, Telecom 3 kW CD, X-ray HV CT) use CT/CD
+  rectifiers. Phase-1 SPICE is FB-diode only; analytical solver
+  already throws on non-FB rectifiers. Adding CT/CD requires
+  branches in both `process_operating_point_for_input_voltage`
+  and `generate_ngspice_circuit`. Until then the PtP suite uses
+  FB-diode variants.
+- **`get_extra_components_inputs`** for Cr/Lr: state members are
+  in place but `process_operating_point_for_input_voltage` does
+  not yet populate `extra*Waveforms`, and `get_extra_components_inputs`
+  itself is not yet implemented. Not blocking PtP suite. Mirror
+  `Llc.cpp:1934-2143` when needed.
+
 ### CLLC polish (May 2026) — committed & pushed
 
 After the prior CLLC DAB-quality session (commit `5f075d73`), a 6-item polish
